@@ -93,7 +93,7 @@ jobs:
           lein: 2.12.0
 
       - name: Cache Maven deps
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.m2
           # runner OS and JDK in the key: the same project.clj resolves different
@@ -180,7 +180,7 @@ jobs:
           lein: 2.12.0
 
       - name: Cache Maven deps
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.m2
           key: m2-${{ runner.os }}-jdk21-${{ hashFiles('project.clj') }}
@@ -220,7 +220,7 @@ jobs:
           lein: 2.12.0
 
       - name: Cache Maven deps
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.m2
           # runner OS and JDK in the key: the same project.clj resolves different
