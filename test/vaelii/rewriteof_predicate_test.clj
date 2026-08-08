@@ -45,10 +45,10 @@
         "a type-with-type rewriteOf is accepted")))
 
 (tu/deftest-kb crossing-roles-is-refused
-  (tu/with-terms [parentOf physical_object Fido NameContext]
+  (tu/with-terms [parentOf physical_object Muffet NameContext]
     (testing "an individual with a predicate is a likely import bug"
       (is (thrown? clojure.lang.ExceptionInfo
-                   (v/assert kb (list 'rewriteOf parentOf Fido) NameContext))))
+                   (v/assert kb (list 'rewriteOf parentOf Muffet) NameContext))))
     (testing "a clearly-camelCase predicate with a clearly-snake_case type"
       (is (thrown? clojure.lang.ExceptionInfo
                    (v/assert kb (list 'rewriteOf parentOf physical_object) NameContext))))))

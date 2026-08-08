@@ -102,10 +102,10 @@
   ;; level that would answer exercises `:tried` being `(range floor (inc n))` rather
   ;; than starting at 0 — and must still find an answer at a higher level rather than
   ;; reporting none.
-  (tu/with-terms [dog Fido]
-    (v/assert kb (list dog Fido) 'NaturalWorldContext)
-    (let [low  (v/escalate kb (list dog Fido) 'NaturalWorldContext)
-          high (v/escalate kb (list dog Fido) 'NaturalWorldContext 5)]
+  (tu/with-terms [dog Muffet]
+    (v/assert kb (list dog Muffet) 'NaturalWorldContext)
+    (let [low  (v/escalate kb (list dog Muffet) 'NaturalWorldContext)
+          high (v/escalate kb (list dog Muffet) 'NaturalWorldContext 5)]
       (testing "from the default floor the cheapest answering level is found"
         (is (some? (:level low)))
         (is (>= (:level low) 2)))
@@ -121,7 +121,7 @@
   ;; Level 1 narrows a context extent by functor.  With a variable context *and* a
   ;; non-symbol functor there is no root to drive it, and the guard must yield an
   ;; empty result rather than throwing or enumerating the KB.
-  (tu/with-terms [dog Fido]
-    (v/assert kb (list dog Fido) 'NaturalWorldContext)
+  (tu/with-terms [dog Muffet]
+    (v/assert kb (list dog Muffet) 'NaturalWorldContext)
     (is (empty? (v/lookup kb 1 '(?p ?x) '?ctx))
         "nothing names a root, so level 1 has nothing to offer")))

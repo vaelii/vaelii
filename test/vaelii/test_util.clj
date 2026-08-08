@@ -254,7 +254,7 @@
 
 (defn fresh-term
   "A gensym'd temporary term of `role`, naming it after `base` so a failure reads
-  `tmpdog17` / `TmpFido17` rather than an anonymous `tmp_t17`.  The generated name
+  `tmpdog17` / `TmpMuffet17` rather than an anonymous `tmp_t17`.  The generated name
   satisfies the naming invariant for its role by construction.
 
   A `:type` temp keeps the **base's own spelling**: a base already carrying an
@@ -294,9 +294,9 @@
   "Bind each symbol to a gensym'd temporary term, hiding the gensym plumbing.  The
   *role* is inferred from the symbol's own shape, and the generated name embeds it:
 
-    (with-terms [dog Fido parentOf StoryContext]
-      (v/assert kb (list dog Fido) StoryContext))
-    ;; dog -> tmpdog17   Fido -> TmpFido18
+    (with-terms [dog Muffet parentOf StoryContext]
+      (v/assert kb (list dog Muffet) StoryContext))
+    ;; dog -> tmpdog17   Muffet -> TmpMuffet18
     ;; parentOf -> tmpParentOf19   StoryContext -> TmpStory20Context
 
   So the test reads like the ontology it is about, while every term stays unique and
@@ -404,8 +404,8 @@
   fixture plumbing stays out of the test:
 
     (deftest-kb a-dog-is-an-animal
-      (with-terms [dog Fido]
-        (v/assert kb (list dog Fido) 'UniverseContext)))"
+      (with-terms [dog Muffet]
+        (v/assert kb (list dog Muffet) 'UniverseContext)))"
   [name & body]
   `(clojure.test/deftest ~name (let [~'kb *kb*] ~@body)))
 

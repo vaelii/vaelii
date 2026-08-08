@@ -61,8 +61,8 @@
   [kb]
   (v/assert kb '(genl dog animal) 'OverlayContext {:strength :monotonic})
   (v/assert-rule kb '[(dog ?x)] '(mammal ?x) 'OverlayContext)
-  (v/assert kb '(dog Fido) 'OverlayContext {:strength :monotonic})
-  (v/assert kb '(ownerOf Ann Fido) 'OverlayContext {:strength :monotonic})
+  (v/assert kb '(dog Muffet) 'OverlayContext {:strength :monotonic})
+  (v/assert kb '(ownerOf Ann Muffet) 'OverlayContext {:strength :monotonic})
   kb)
 
 (defn- fresh-base
@@ -92,7 +92,7 @@
   (testing "the record half"
     (let [r (frozen/frozen-records (mem/memory-record-store {:space [::frozen]}))]
       (is (thrown-with-msg? clojure.lang.ExceptionInfo #"mounted read-only"
-                            (p/put-sentex r {:sentence '(dog Fido)})))
+                            (p/put-sentex r {:sentence '(dog Muffet)})))
       (is (thrown-with-msg? clojure.lang.ExceptionInfo #"mounted read-only"
                             (p/clear-records! r)))
       (is (set? (p/sentex-ids r)) "and reads still work"))))
@@ -150,13 +150,13 @@
   (let [base (fresh-base 1)
         f    (v/fork base)]
     (testing "stored content, belief and the taxonomy all arrive"
-      (is (= '#{(dog Fido)} (sentences (v/sentexes-matching f '(dog ?x) 'OverlayContext))))
-      (is (= '#{(ownerOf Ann Fido)} (sentences (v/sentexes-matching f '(ownerOf ?who Fido) 'OverlayContext))))
-      (is (= '#{(mammal Fido)} (sentences (v/sentexes-matching f '(mammal ?x) 'OverlayContext)))
+      (is (= '#{(dog Muffet)} (sentences (v/sentexes-matching f '(dog ?x) 'OverlayContext))))
+      (is (= '#{(ownerOf Ann Muffet)} (sentences (v/sentexes-matching f '(ownerOf ?who Muffet) 'OverlayContext))))
+      (is (= '#{(mammal Muffet)} (sentences (v/sentexes-matching f '(mammal ?x) 'OverlayContext)))
           "including what the base's rule derived")
-      (is (v/isa? f 'Fido 'animal) "and the genl closure the base's edge licenses"))
+      (is (v/isa? f 'Muffet 'animal) "and the genl closure the base's edge licenses"))
     (testing "the term index and the roots read through too"
-      (is (seq (v/find-sentexes f 'Fido)))
+      (is (seq (v/find-sentexes f 'Muffet)))
       (is (= (v/count-with-functor base 'dog) (v/count-with-functor f 'dog)))
       (is (= (v/sentex-count base) (v/sentex-count f))))
     (v/clear! base)))
@@ -167,11 +167,11 @@
         f      (v/fork base)]
     (v/assert f '(dog Rex) 'OverlayContext {:strength :monotonic})
     (testing "the fork sees its own write joined to what it inherited"
-      (is (= '#{(dog Fido) (dog Rex)} (sentences (v/sentexes-matching f '(dog ?x) 'OverlayContext))))
-      (is (= '#{(mammal Fido) (mammal Rex)} (sentences (v/sentexes-matching f '(mammal ?x) 'OverlayContext)))
+      (is (= '#{(dog Muffet) (dog Rex)} (sentences (v/sentexes-matching f '(dog ?x) 'OverlayContext))))
+      (is (= '#{(mammal Muffet) (mammal Rex)} (sentences (v/sentexes-matching f '(mammal ?x) 'OverlayContext)))
           "the base's rule fired over the fork's fact"))
     (testing "and the base saw none of it"
-      (is (= '#{(dog Fido)} (sentences (v/sentexes-matching base '(dog ?x) 'OverlayContext))))
+      (is (= '#{(dog Muffet)} (sentences (v/sentexes-matching base '(dog ?x) 'OverlayContext))))
       (is (= before (base-snapshot base)) "the base is byte-identical"))
     (v/clear! base)))
 
@@ -179,16 +179,16 @@
   (let [base   (fresh-base 3)
         before (base-snapshot base)
         f      (v/fork base)
-        h      (v/handle-of f '(dog Fido) 'OverlayContext)]
+        h      (v/handle-of f '(dog Muffet) 'OverlayContext)]
     (is (some? h) "the inherited premise is reachable by handle")
     (v/retract! f h)
     (testing "gone in the fork, with what it derived"
       (is (empty? (v/sentexes-matching f '(dog ?x) 'OverlayContext)))
       (is (empty? (v/sentexes-matching f '(mammal ?x) 'OverlayContext)) "the sweep reached the conclusion")
-      (is (nil? (v/handle-of f '(dog Fido) 'OverlayContext)) "the tombstone hides it from lookup"))
+      (is (nil? (v/handle-of f '(dog Muffet) 'OverlayContext)) "the tombstone hides it from lookup"))
     (testing "present in the base"
-      (is (= '#{(dog Fido)} (sentences (v/sentexes-matching base '(dog ?x) 'OverlayContext))))
-      (is (= '#{(mammal Fido)} (sentences (v/sentexes-matching base '(mammal ?x) 'OverlayContext))))
+      (is (= '#{(dog Muffet)} (sentences (v/sentexes-matching base '(dog ?x) 'OverlayContext))))
+      (is (= '#{(mammal Muffet)} (sentences (v/sentexes-matching base '(mammal ?x) 'OverlayContext))))
       (is (= before (base-snapshot base))))
     (v/clear! base)))
 
@@ -202,12 +202,12 @@
       (let [h (v/assert f '(dog Rex) 'OverlayContext {:strength :monotonic})]
         (is (> (long h) (long top)) (str "minted " h " over a base topping out at " top))))
     (testing "a record written at a base handle overrides it, in the fork only"
-      (let [h  (v/handle-of f '(ownerOf Ann Fido) 'OverlayContext)
+      (let [h  (v/handle-of f '(ownerOf Ann Muffet) 'OverlayContext)
             sx (p/get-sentex recs h)]
         (is (<= (long h) (long top)) "the handle is in the base's range")
-        (p/put-sentex recs (assoc sx :sentence '(ownerOf Bob Fido)))
-        (is (= '(ownerOf Bob Fido) (:sentence (p/get-sentex recs h))) "the override wins in the fork")
-        (is (= '(ownerOf Ann Fido) (:sentence (p/get-sentex (:records base) h)))
+        (p/put-sentex recs (assoc sx :sentence '(ownerOf Bob Muffet)))
+        (is (= '(ownerOf Bob Muffet) (:sentence (p/get-sentex recs h))) "the override wins in the fork")
+        (is (= '(ownerOf Ann Muffet) (:sentence (p/get-sentex (:records base) h)))
             "and the base record is untouched")))
     (is (= before (base-snapshot base)))
     (v/clear! base)))
@@ -238,9 +238,9 @@
     (v/assert f '(dog Rex) 'OverlayContext {:strength :monotonic})
     (let [{:keys [sentexes]} (v/reindex f)]
       (is (= sentexes (v/sentex-count f)) "every merged record was re-indexed, once")
-      (is (= '#{(dog Fido) (dog Rex)} (sentences (v/sentexes-matching f '(dog ?x) 'OverlayContext))))
+      (is (= '#{(dog Muffet) (dog Rex)} (sentences (v/sentexes-matching f '(dog ?x) 'OverlayContext))))
       (is (= 2 (v/count-with-functor f 'dog)) "and no posting was double-counted")
-      (is (v/isa? f 'Fido 'animal) "the taxonomy came back with it"))
+      (is (v/isa? f 'Muffet 'animal) "the taxonomy came back with it"))
     (is (= before (base-snapshot base)) "and the base was not rebuilt into")
     (v/clear! base)))
 
@@ -260,7 +260,7 @@
       (is (= 1 (v/count-with-functor base 'dog)))
       (is (= 2 (v/count-with-arg f 1 'Rex)) "the argument root counts the merged view"))
     (testing "a delete of an inherited record moves them back"
-      (v/retract! f (v/handle-of f '(dog Fido) 'OverlayContext))
+      (v/retract! f (v/handle-of f '(dog Muffet) 'OverlayContext))
       (is (= 1 (v/count-with-functor f 'dog)))
       (is (= 1 (v/count-with-functor base 'dog)))
       (is (= n0 (v/count-in-context f 'OverlayContext))
@@ -279,10 +279,10 @@
   (let [base (fresh-base 10)
         f    (v/fork base)]
     (v/assert f '(dog Rex) 'OverlayContext {:strength :monotonic})
-    (v/retract! f (v/handle-of f '(ownerOf Ann Fido) 'OverlayContext))
+    (v/retract! f (v/handle-of f '(ownerOf Ann Muffet) 'OverlayContext))
     (let [entries (into {} (p/index-entries (:index f)))
           fork-h  (v/handle-of f '(dog Rex) 'OverlayContext)
-          base-h  (v/handle-of base '(dog Fido) 'OverlayContext)]
+          base-h  (v/handle-of base '(dog Muffet) 'OverlayContext)]
       (testing "a root inherited from the base and extended by the fork comes out merged"
         (is (= #{fork-h base-h} (get entries '[:functor-root dog]))))
       (testing "and one the fork emptied of its inherited member is simply gone"
@@ -293,7 +293,7 @@
                             (keys entries)))))
       (testing "the term roster merges too — inherited names, plus and minus the fork's"
         (let [terms (set (v/terms f))]
-          (is (contains? terms 'Fido) "a name the fork inherited and left alone")
+          (is (contains? terms 'Muffet) "a name the fork inherited and left alone")
           (is (contains? terms 'Rex)  "one the fork introduced")
           (is (not (contains? terms 'Ann))
               "and one the fork's retraction retired — the roster is derived from the
@@ -309,13 +309,13 @@
     (doseq [[i f] (map-indexed vector forks)]
       (v/assert f (list 'dog (symbol (str "Fork" i))) 'OverlayContext {:strength :monotonic}))
     ;; the middle fork also drops what it inherited, so the three differ in both directions
-    (v/retract! (nth forks 1) (v/handle-of (nth forks 1) '(dog Fido) 'OverlayContext))
+    (v/retract! (nth forks 1) (v/handle-of (nth forks 1) '(dog Muffet) 'OverlayContext))
     (testing "each fork sees its own edit over the base and nobody else's"
-      (is (= '#{(dog Fido) (dog Fork0)} (sentences (v/sentexes-matching (nth forks 0) '(dog ?x) 'OverlayContext))))
+      (is (= '#{(dog Muffet) (dog Fork0)} (sentences (v/sentexes-matching (nth forks 0) '(dog ?x) 'OverlayContext))))
       (is (= '#{(dog Fork1)}            (sentences (v/sentexes-matching (nth forks 1) '(dog ?x) 'OverlayContext))))
-      (is (= '#{(dog Fido) (dog Fork2)} (sentences (v/sentexes-matching (nth forks 2) '(dog ?x) 'OverlayContext)))))
+      (is (= '#{(dog Muffet) (dog Fork2)} (sentences (v/sentexes-matching (nth forks 2) '(dog ?x) 'OverlayContext)))))
     (testing "and the base is what it was"
-      (is (= '#{(dog Fido)} (sentences (v/sentexes-matching base '(dog ?x) 'OverlayContext))))
+      (is (= '#{(dog Muffet)} (sentences (v/sentexes-matching base '(dog ?x) 'OverlayContext))))
       (is (= before (base-snapshot base))))
     (v/clear! base)))
 
@@ -331,19 +331,19 @@
     (try
       (let [f (v/fork base {:backend :disk :dir dir})]
         (v/assert f '(dog Rex) 'OverlayContext {:strength :monotonic})
-        (v/retract! f (v/handle-of f '(dog Fido) 'OverlayContext))
+        (v/retract! f (v/handle-of f '(dog Muffet) 'OverlayContext))
         (is (= '#{(dog Rex)} (sentences (v/sentexes-matching f '(dog ?x) 'OverlayContext)))))
       (disk/close-dir! dir)
       (testing "remounted over the same base, the fork is where it was left"
         (let [f2 (v/fork base {:backend :disk :dir dir})]
           (is (= '#{(dog Rex)} (sentences (v/sentexes-matching f2 '(dog ?x) 'OverlayContext)))
               "the inherited premise stayed retracted and the fork's own fact came back")
-          (is (empty? (v/sentexes-matching f2 '(mammal Fido) 'OverlayContext))
+          (is (empty? (v/sentexes-matching f2 '(mammal Muffet) 'OverlayContext))
               "and so did what the retraction swept")
           (is (= '#{(mammal Rex)} (sentences (v/sentexes-matching f2 '(mammal ?x) 'OverlayContext)))
               "the base's rule still fires over the fork's own fact")))
       (testing "while the base never learned any of it"
-        (is (= '#{(dog Fido)} (sentences (v/sentexes-matching base '(dog ?x) 'OverlayContext)))))
+        (is (= '#{(dog Muffet)} (sentences (v/sentexes-matching base '(dog ?x) 'OverlayContext)))))
       (finally
         (disk/close-dir! dir)
         (rm-rf! dir)
@@ -366,12 +366,12 @@
         (v/close! f))
       (testing "the directory is free, so it mounts again"
         (let [f2 (v/fork base {:backend :disk :dir dir})]
-          (is (= '#{(dog Fido) (dog Rex)}
+          (is (= '#{(dog Muffet) (dog Rex)}
                  (sentences (v/sentexes-matching f2 '(dog ?x) 'OverlayContext)))
               "with both halves of the merged view intact")
           (v/close! f2)))
       (testing "and the base is untouched — it is mounted read-only and shared"
-        (is (= '#{(dog Fido)} (sentences (v/sentexes-matching base '(dog ?x) 'OverlayContext)))))
+        (is (= '#{(dog Muffet)} (sentences (v/sentexes-matching base '(dog ?x) 'OverlayContext)))))
       (finally
         (disk/close-dir! dir)
         (rm-rf! dir)
@@ -385,14 +385,14 @@
   ;; suite this way — see scripts/test-backends.sh.)
   (let [base (doto (v/open-kb (assoc (base-opts 9) :recover? false)) (v/clear!))
         f    (v/fork base (fork-opts 9))]
-    (tu/with-terms [dog Fido ThisContext]
+    (tu/with-terms [dog Muffet ThisContext]
       (v/assert f (list 'genl dog 'thing) ThisContext {:strength :monotonic})
       (v/assert-rule f [(list dog '?x)] (list 'mammal '?x) ThisContext)
-      (v/assert f (list dog Fido) ThisContext {:strength :monotonic})
+      (v/assert f (list dog Muffet) ThisContext {:strength :monotonic})
       (is (= 1 (count (v/sentexes-matching f (list dog '?x) ThisContext))))
       (is (seq (v/sentexes-matching f (list 'mammal '?x) ThisContext)))
-      (is (v/isa? f Fido 'thing))
-      (v/retract! f (v/handle-of f (list dog Fido) ThisContext))
+      (is (v/isa? f Muffet 'thing))
+      (v/retract! f (v/handle-of f (list dog Muffet) ThisContext))
       (is (empty? (v/sentexes-matching f (list 'mammal '?x) ThisContext)) "and retraction sweeps"))
     (is (zero? (v/sentex-count base)) "the empty base stayed empty")
     (v/clear! f)))
@@ -410,10 +410,10 @@
         (is (= :warn (:naming f)))
         (is (= :arbitrate (:constraints f)))
         (testing "and the inherited policy is the one that acts"
-          (tu/with-terms [dog_t cat_t Fido ThisContext]
+          (tu/with-terms [dog_t cat_t Muffet ThisContext]
             (v/assert f (list 'disjoint dog_t cat_t) ThisContext)
-            (v/assert f (list dog_t Fido) ThisContext)
-            (is (v/assert f (list cat_t Fido) ThisContext)
+            (v/assert f (list dog_t Muffet) ThisContext)
+            (is (v/assert f (list cat_t Muffet) ThisContext)
                 "the base arbitrates, so the fork admits the clash rather than refusing")
             (is (= 1 (count (v/contradictions f))))))
         (v/clear! f))
@@ -486,7 +486,7 @@
             (pr-str {:index-layout (dec kv/index-layout-version)}))
       (testing "remounted under a moved layout, the fork's own half is rebuilt"
         (let [f2 (v/fork base {:backend :disk :dir dir})]
-          (is (= '#{(dog Fido) (dog Rex)}
+          (is (= '#{(dog Muffet) (dog Rex)}
                  (sentences (v/sentexes-matching f2 '(dog ?x) 'OverlayContext)))
               "the fork-local fact is findable again")
           (is (= (pr-str {:index-layout kv/index-layout-version})

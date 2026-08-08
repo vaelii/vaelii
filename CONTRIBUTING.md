@@ -156,13 +156,13 @@ rejection messages: [`docs/naming.md`](docs/naming.md).
 | Role | Convention | Example |
 |------|-----------|---------|
 | predicate | camelCase, lowercase-initial | `parentOf`, `genl`, `argIsa` |
-| individual | CapitalCamelCase | `Fido`, `Tom` |
+| individual | CapitalCamelCase | `Muffet`, `Tom` |
 | type | snake_case, a **unary** predicate | `dog`, `physical_object` |
 | context | ends with `Context`, CapitalCamelCase | `CoreContext`, `UniverseContext` |
 
 What follows from it:
 
-- **Types are unary predicates.** Write `(dog Fido)`, not `(isa Fido Dog)`. `thing` is
+- **Types are unary predicates.** Write `(dog Muffet)`, not `(isa Muffet Dog)`. `thing` is
   the root of the `genl` hierarchy.
 - **snake_case implies arity 1.** An underscored functor names a type, and a type is a
   one-place predicate, so `(lives_in ?x cold_place)` is refused — write `livesIn`. A

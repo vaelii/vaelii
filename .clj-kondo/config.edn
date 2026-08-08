@@ -5,7 +5,7 @@
 ;; the box it reported ~940 phantom `Unresolved symbol` errors:
 ;;
 ;;   - deftest-kb        binds `kb`             (a deftest whose body has kb bound)
-;;   - with-terms        binds a vector of temps (with-terms [dog Fido] …)
+;;   - with-terms        binds a vector of temps (with-terms [dog Muffet] …)
 ;;   - with-kb / with-neutral-kb / with-cleared-kb   bind a KB symbol
 ;;
 ;; `:lint-as` teaches clj-kondo the deftest/let shape of each; the matching

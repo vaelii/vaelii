@@ -521,7 +521,7 @@
 (defn specs
   "The subtypes of type `t`, reflexively — `t` itself plus everything that reaches
   it by `genl`.  A set; `#{t}` when `t` is not a node in the type hierarchy.  This
-  is the fan-out that lets an antecedent `(animal ?x)` match a stored `(dog Fido)`.
+  is the fan-out that lets an antecedent `(animal ?x)` match a stored `(dog Muffet)`.
   With a `context`, only edges visible from it are walked."
   ([kb t] (tax/specs (:taxonomy kb) t))
   ([kb t context] (tax/specs (:taxonomy kb) t context)))
@@ -3879,7 +3879,7 @@
   "The bindings `goal` takes on the sentex at `handle`, or nil when it does not answer.
 
   Matched with `res/match1`, which is the same subsumption a rule antecedent gets: a
-  goal `(animal ?x)` is answered by a stored `(dog Fido)` through the `genl` closure,
+  goal `(animal ?x)` is answered by a stored `(dog Muffet)` through the `genl` closure,
   and a goal `(parentOf ?x ?y)` by a stored `(fatherOf Tom Bob)`.  One cached closure
   lookup, so this stays a *filter over the region* rather than the re-run of a query
   that would make every mutation cost a query per listener.

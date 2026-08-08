@@ -250,8 +250,8 @@
                           (budget/collect (range 5) :max-results))))
   (testing "the four rostered bounds all pass at every door"
     (tu/with-neutral-kb [kb tu/fresh]
-      (tu/with-terms [dog Fido BudgetContext]
-        (v/assert kb (list dog Fido) BudgetContext)
+      (tu/with-terms [dog Muffet BudgetContext]
+        (v/assert kb (list dog Muffet) BudgetContext)
         (is (= :complete (:status (v/ask-within kb (list dog '?x) BudgetContext
                                                 {:max-ms 5000 :max-results 10
                                                  :max-cost :search}))))

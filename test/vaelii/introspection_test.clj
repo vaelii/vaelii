@@ -30,21 +30,21 @@
   ;; weigh it against and nothing for `settle` to arbitrate: the conclusion is dropped
   ;; and lands here.  (Disjointness, functionality and asymmetry each *do* name an
   ;; opposing sentex, and are arbitrated instead — see `soundness_test`.)
-  (tu/with-terms [person rock parentOf looksLike Boulder Fido]
+  (tu/with-terms [person rock parentOf looksLike Boulder Muffet]
     (v/assert kb (list 'genl person 'thing) 'UniverseContext)
     (v/assert kb (list 'genl rock 'thing) 'UniverseContext)
     (v/assert kb (list 'argIsa parentOf 1 person) 'UniverseContext)
     (v/assert kb (list rock Boulder) 'UniverseContext)
-    (v/assert kb (fwd [(list looksLike '?x)] (list parentOf '?x Fido)) 'UniverseContext)
+    (v/assert kb (fwd [(list looksLike '?x)] (list parentOf '?x Muffet)) 'UniverseContext)
     (v/assert kb (list looksLike Boulder) 'UniverseContext)
     (testing "the inadmissible conclusion is not believed"
-      (is (empty? (v/sentexes-matching kb (list parentOf Boulder Fido) 'UniverseContext))))
+      (is (empty? (v/sentexes-matching kb (list parentOf Boulder Muffet) 'UniverseContext))))
     (let [vs (filter #(= :arg-type (:violation %)) (v/violations kb))]
       (testing "and it is reported, rather than dropped silently"
         (is (= 1 (count vs)) "exactly one conclusion was dropped")
         (let [{:keys [violation sentence context rule detail]} (first vs)]
           (is (= :arg-type violation))
-          (is (= (list parentOf Boulder Fido) sentence))
+          (is (= (list parentOf Boulder Muffet) sentence))
           (is (= 'UniverseContext context))
           (is (integer? rule) "the firing rule's handle, so the drop is attributable")
           (is (map? detail))
@@ -55,12 +55,12 @@
   ;; counts runs), and `clear-violations!` is the one way to empty it.  Clearing at the
   ;; start of each chaining run instead would make a bulk load's drops unobservable by
   ;; its end — assert #38 erasing what #37 dropped.
-  (tu/with-terms [person rock parentOf looksLike Boulder Fido Other]
+  (tu/with-terms [person rock parentOf looksLike Boulder Muffet Other]
     (v/assert kb (list 'genl person 'thing) 'UniverseContext)
     (v/assert kb (list 'genl rock 'thing) 'UniverseContext)
     (v/assert kb (list 'argIsa parentOf 1 person) 'UniverseContext)
     (v/assert kb (list rock Boulder) 'UniverseContext)
-    (v/assert kb (fwd [(list looksLike '?x)] (list parentOf '?x Fido)) 'UniverseContext)
+    (v/assert kb (fwd [(list looksLike '?x)] (list parentOf '?x Muffet)) 'UniverseContext)
     (v/assert kb (list looksLike Boulder) 'UniverseContext)
     (is (= 1 (count (v/violations kb))))
     (testing "an unrelated later assert re-runs chaining and the drop is still reported"
@@ -79,14 +79,14 @@
   ;; was covered; a check that stopped reporting (or reported under the wrong key)
   ;; would be invisible, since the conclusion is absent either way.
   (testing "an argIsa violation"
-    (tu/with-terms [parentOf person rock looksLike Boulder Fido]
+    (tu/with-terms [parentOf person rock looksLike Boulder Muffet]
       (v/assert kb (list 'genl rock 'thing) 'UniverseContext)
       (v/assert kb (list 'argIsa parentOf 1 person) 'UniverseContext)
       (v/assert kb (list rock Boulder) 'UniverseContext)
-      (v/assert kb (fwd [(list looksLike '?x)] (list parentOf '?x Fido)) 'UniverseContext)
+      (v/assert kb (fwd [(list looksLike '?x)] (list parentOf '?x Muffet)) 'UniverseContext)
       (v/assert kb (list looksLike Boulder) 'UniverseContext)
       (is (= [:arg-type] (map :violation (v/violations kb))))
-      (is (empty? (v/sentexes-matching kb (list parentOf Boulder Fido) 'UniverseContext)))))
+      (is (empty? (v/sentexes-matching kb (list parentOf Boulder Muffet) 'UniverseContext)))))
 
   ;; No `:functional` case here on purpose.  `functional` is mid-redesign: a clash
   ;; between two *symbol* values now derives `(equals V1 V2)` and merges them rather
@@ -142,42 +142,42 @@
 ;; ---- types-of ------------------------------------------------------------
 
 (tu/deftest-kb types-of-reports-believed-unary-memberships-only
-  (tu/with-terms [dog pet parentOf Fido Rex]
-    (v/assert kb (list dog Fido) 'NaturalWorldContext)
-    (v/assert kb (list pet Fido) 'NaturalWorldContext)
-    (v/assert kb (list parentOf Fido Rex) 'NaturalWorldContext)
-    (let [ts (set (v/types-of kb Fido))]
+  (tu/with-terms [dog pet parentOf Muffet Rex]
+    (v/assert kb (list dog Muffet) 'NaturalWorldContext)
+    (v/assert kb (list pet Muffet) 'NaturalWorldContext)
+    (v/assert kb (list parentOf Muffet Rex) 'NaturalWorldContext)
+    (let [ts (set (v/types-of kb Muffet))]
       (testing "every unary predicate asserted of the individual"
         (is (contains? ts dog))
         (is (contains? ts pet)))
       (testing "but not a binary relation it merely fills argument 1 of"
         (is (not (contains? ts parentOf))
-            "(parentOf Fido Rex) does not make parentOf a *type* of Fido")))
+            "(parentOf Muffet Rex) does not make parentOf a *type* of Muffet")))
     (testing "and not a type of some other individual"
       (is (empty? (v/types-of kb Rex))))))
 
 (tu/deftest-kb types-of-does-not-report-a-defeated-membership
   ;; The belief filter.  A membership that lost a contradiction is still *stored*,
   ;; so a version reading the index without consulting the TMS still finds it.
-  (tu/with-terms [dog Fido]
-    (v/assert kb (list dog Fido) 'NaturalWorldContext {:strength :default})
-    (is (contains? (set (v/types-of kb Fido)) dog))
-    (v/assert kb (list 'not (list dog Fido)) 'NaturalWorldContext {:strength :monotonic})
+  (tu/with-terms [dog Muffet]
+    (v/assert kb (list dog Muffet) 'NaturalWorldContext {:strength :default})
+    (is (contains? (set (v/types-of kb Muffet)) dog))
+    (v/assert kb (list 'not (list dog Muffet)) 'NaturalWorldContext {:strength :monotonic})
     (testing "the defeated membership drops out of types-of"
-      (is (not (contains? (set (v/types-of kb Fido)) dog))
-          "known-true negation beats the default, so dog is no longer believed of Fido"))))
+      (is (not (contains? (set (v/types-of kb Muffet)) dog))
+          "known-true negation beats the default, so dog is no longer believed of Muffet"))))
 
 (tu/deftest-kb types-of-is-scoped-to-what-the-context-sees
-  (tu/with-terms [dog Fido AlphaContext BetaContext]
+  (tu/with-terms [dog Muffet AlphaContext BetaContext]
     (v/assert kb (list 'genlContext AlphaContext 'UniverseContext) 'UniverseContext)
     (v/assert kb (list 'genlContext BetaContext 'UniverseContext) 'UniverseContext)
-    (v/assert kb (list dog Fido) AlphaContext)
+    (v/assert kb (list dog Muffet) AlphaContext)
     (testing "the default arity sees any context"
-      (is (contains? (set (v/types-of kb Fido)) dog)))
+      (is (contains? (set (v/types-of kb Muffet)) dog)))
     (testing "the asserting context sees its own membership"
-      (is (contains? (set (v/types-of kb Fido AlphaContext)) dog)))
+      (is (contains? (set (v/types-of kb Muffet AlphaContext)) dog)))
     (testing "a sibling context does not"
-      (is (not (contains? (set (v/types-of kb Fido BetaContext)) dog))
+      (is (not (contains? (set (v/types-of kb Muffet BetaContext)) dog))
           "Beta does not see Alpha, so Alpha's membership is invisible from it"))))
 
 ;; ---- justification / dependent-justifications -----------------------------------

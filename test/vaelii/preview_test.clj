@@ -168,17 +168,17 @@
 (tu/deftest-kb a-conclusion-the-derivation-path-would-drop-is-reported-as-a-violation
   ;; an `argIsa` conviction has no opposing sentex to weigh against, so the derivation
   ;; path drops it — and a preview says so before the write happens
-  (tu/with-terms [person rock parentOf looksLike Boulder Fido StoryContext]
+  (tu/with-terms [person rock parentOf looksLike Boulder Muffet StoryContext]
     (v/assert kb (list 'genl person 'thing) StoryContext)
     (v/assert kb (list 'genl rock 'thing) StoryContext)
     (v/assert kb (list 'argIsa parentOf 1 person) StoryContext)
     (v/assert kb (list rock Boulder) StoryContext)
-    (v/assert kb (vr/rule-sentence [(list looksLike '?x)] (list parentOf '?x Fido)) StoryContext)
+    (v/assert kb (vr/rule-sentence [(list looksLike '?x)] (list parentOf '?x Muffet)) StoryContext)
     (let [before (content kb)
           r      (v/preview kb {:add [[(list looksLike Boulder) StoryContext]]})]
       (testing "the drop is reported where a real run would report it"
         (is (= [:arg-type] (mapv :violation (:violations r))))
-        (is (= [(list parentOf Boulder Fido)] (mapv :sentence (:violations r)))))
+        (is (= [(list parentOf Boulder Muffet)] (mapv :sentence (:violations r)))))
       (testing "only the admissible half of the batch is believed"
         (is (= [(list looksLike Boulder)] (sentences (:believed-added r)))))
       (testing "the KB's own ledger is left as it was found"
@@ -432,8 +432,8 @@
   ;; silent-default failure is a cap silently off: `{:max-result 5}` reads as no key at
   ;; all, the diff comes back uncapped, and `:bounded?` says false as though the whole
   ;; answer had been asked for.
-  (tu/with-terms [dog Fido CapContext]
-    (let [batch {:add [[(list dog Fido) CapContext]]}]
+  (tu/with-terms [dog Muffet CapContext]
+    (let [batch {:add [[(list dog Muffet) CapContext]]}]
       (testing "preview refuses the singular typo, naming its roster"
         (let [e (is (thrown? clojure.lang.ExceptionInfo
                              (v/preview kb batch {:max-result 5})))]

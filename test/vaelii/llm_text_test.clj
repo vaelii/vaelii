@@ -260,7 +260,7 @@
       (is (= [:context-escape]
              (mapv :type (session/check-batch kb {:add [escape] :remove []})))))
     (testing "and it is reported against the entry it came from"
-      (let [p (first (session/check-batch kb {:add [['(dog Fido1) 'LionMouseContext] escape]
+      (let [p (first (session/check-batch kb {:add [['(dog Muffet1) 'LionMouseContext] escape]
                                               :remove []}))]
         (is (= 1 (:index p)))
         (is (= :add (:in p)))))

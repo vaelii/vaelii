@@ -71,20 +71,20 @@
     (fn [dir]
       (let [kb1 (v/open-kb {:backend :disk :dir dir :recover? false})]
         (v/assert kb1 '(genl dog animal) 'UniverseContext {:strength :monotonic})
-        (v/assert kb1 '(dog Fido) 'UniverseContext {:strength :monotonic})
+        (v/assert kb1 '(dog Muffet) 'UniverseContext {:strength :monotonic})
         (testing "a KB reopened over the same directory (a restart) starts with an empty
                  in-memory graph but the same durable records, and recover rebuilds it"
           (let [kb2 (v/open-kb {:backend :disk :dir dir :recover? false})]
-            (is (not (v/isa? kb2 'Fido 'animal)) "taxonomy not rebuilt yet")
+            (is (not (v/isa? kb2 'Muffet 'animal)) "taxonomy not rebuilt yet")
             ;; the durable record is in the shared store — handle-of answers about
             ;; storage, not belief, so it is visible before recover (query is
             ;; belief-filtered by kb2's still-empty TMS, so it is not)
-            (is (some? (v/handle-of kb2 '(dog Fido) 'UniverseContext))
+            (is (some? (v/handle-of kb2 '(dog Muffet) 'UniverseContext))
                 "the durable record is visible at the storage layer")
             (is (empty? (v/sentexes-matching kb2 '(dog ?x) 'UniverseContext))
                 "but not believed until recover rebuilds the TMS")
             (v/recover kb2)
-            (is (v/isa? kb2 'Fido 'animal) "recover rebuilt the taxonomy from the store")
+            (is (v/isa? kb2 'Muffet 'animal) "recover rebuilt the taxonomy from the store")
             (is (seq (v/sentexes-matching kb2 '(dog ?x) 'UniverseContext)) "and belief with it")))))))
 
 (deftest close-then-reopen-from-disk-survives
@@ -92,7 +92,7 @@
     (fn [dir]
       (let [kb (v/open-kb {:backend :disk :dir dir :recover? false})]
         (v/assert kb '(genl dog animal) 'UniverseContext {:strength :monotonic})
-        (v/assert kb '(dog Fido) 'UniverseContext {:strength :monotonic}))
+        (v/assert kb '(dog Muffet) 'UniverseContext {:strength :monotonic}))
       ;; a genuine restart: fsync + close + release the lock + forget the stores, so the
       ;; reopen reads the durable logs from disk with fresh RAM state (not the shared
       ;; in-process registry the test above relies on)
@@ -100,9 +100,9 @@
       (is (not (lock/held? dir)) "the lock is released on close")
       (testing "a brand-new KB reads the durable store back from disk"
         (let [kb2 (v/open-kb {:backend :disk :dir dir :recover? false})]
-          (is (some? (v/handle-of kb2 '(dog Fido) 'UniverseContext)) "the record survived")
+          (is (some? (v/handle-of kb2 '(dog Muffet) 'UniverseContext)) "the record survived")
           (v/recover kb2)
-          (is (v/isa? kb2 'Fido 'animal) "and its taxonomy edge"))))))
+          (is (v/isa? kb2 'Muffet 'animal) "and its taxonomy edge"))))))
 
 (deftest public-close-releases-the-directory-and-a-reopen-recovers-by-default
   ;; the public pair end-to-end: `open-kb` threads the directory onto the KB's `:dir`,
@@ -111,18 +111,18 @@
   ;; open over the same directory reads the data back.
   (with-tmp
     (fn [dir]
-      (tu/with-terms [dog animal Fido]
+      (tu/with-terms [dog animal Muffet]
         (let [kb (v/open-kb {:backend :disk :dir dir :recover? false})]
           (v/assert kb (list 'genl dog animal) 'UniverseContext {:strength :monotonic})
-          (v/assert kb (list dog Fido) 'UniverseContext {:strength :monotonic})
+          (v/assert kb (list dog Muffet) 'UniverseContext {:strength :monotonic})
           (is (identical? kb (v/close! kb)) "close! returns the KB"))
         (is (not (lock/held? dir)) "close! released the single-writer lock")
         (is (empty? (backend/opened dir)) "and forgot the directory's stores")
         (testing "the same JVM reopens the directory; :recover? defaults to :auto"
           (let [kb2 (v/open-kb {:backend :disk :dir dir})]
-            (is (seq (v/sentexes-matching kb2 (list dog Fido) 'UniverseContext))
+            (is (seq (v/sentexes-matching kb2 (list dog Muffet) 'UniverseContext))
                 "the data is back and believed with no explicit recover call")
-            (is (v/isa? kb2 Fido animal))))))))
+            (is (v/isa? kb2 Muffet animal))))))))
 
 (deftest public-close-on-a-memory-kb-is-a-no-op
   ;; an in-memory KB has no `:dir`, so close! releases nothing and the KB stays
@@ -131,10 +131,10 @@
   ;; scratch KB has a directory, and closing it would pull the store out from under
   ;; every later test.
   (let [kb (v/open-kb {:backend :memory :space ::noop-space :recover? false})]
-    (tu/with-terms [dog Fido Rex]
-      (v/assert kb (list dog Fido) 'UniverseContext)
+    (tu/with-terms [dog Muffet Rex]
+      (v/assert kb (list dog Muffet) 'UniverseContext)
       (is (identical? kb (v/close! kb)) "close! returns the KB")
-      (is (some? (v/handle-of kb (list dog Fido) 'UniverseContext))
+      (is (some? (v/handle-of kb (list dog Muffet) 'UniverseContext))
           "the store is untouched")
       (v/assert kb (list dog Rex) 'UniverseContext)
       (is (some? (v/handle-of kb (list dog Rex) 'UniverseContext))
@@ -148,9 +148,9 @@
   ;; that.  The first component failure resurfaces after the cleanup.
   (with-tmp
     (fn [dir]
-      (tu/with-terms [dog Fido]
+      (tu/with-terms [dog Muffet]
         (let [kb (v/open-kb {:backend :disk :dir dir :recover? false})]
-          (v/assert kb (list dog Fido) 'UniverseContext {:strength :monotonic}))
+          (v/assert kb (list dog Muffet) 'UniverseContext {:strength :monotonic}))
         ;; drs/close! is a plain fn called through its var, so with-redefs intercepts
         ;; (a protocol-method var would not)
         (with-redefs [drs/close! (fn [_] (throw (java.io.IOException. "disk full (simulated)")))]
@@ -160,7 +160,7 @@
         (is (empty? (backend/opened dir)) "and the registry entry is dropped")
         (testing "so a subsequent open of the same directory succeeds"
           (let [kb2 (v/open-kb {:backend :disk :dir dir :recover? false})]
-            (is (some? (v/handle-of kb2 (list dog Fido) 'UniverseContext))
+            (is (some? (v/handle-of kb2 (list dog Muffet) 'UniverseContext))
                 "the durable record reads back in the reopened store")))))))
 
 (deftest distinct-directories-are-isolated
@@ -170,9 +170,9 @@
         (fn [dir2]
           (let [kb1 (v/open-kb {:backend :disk :dir dir1 :recover? false})
                 kb2 (v/open-kb {:backend :disk :dir dir2 :recover? false})]
-            (v/assert kb1 '(dog Fido) 'UniverseContext {:strength :monotonic})
-            (is (some? (v/handle-of kb1 '(dog Fido) 'UniverseContext)))
-            (is (nil? (v/handle-of kb2 '(dog Fido) 'UniverseContext))
+            (v/assert kb1 '(dog Muffet) 'UniverseContext {:strength :monotonic})
+            (is (some? (v/handle-of kb1 '(dog Muffet) 'UniverseContext)))
+            (is (nil? (v/handle-of kb2 '(dog Muffet) 'UniverseContext))
                 "a second directory shares nothing with the first")))))))
 
 (deftest reindex-rebuilds-index-from-records-on-disk
@@ -180,16 +180,16 @@
     (fn [dir]
       (let [kb (v/open-kb {:backend :disk :dir dir :recover? false})]
         (v/assert kb '(genl dog animal) 'UniverseContext {:strength :monotonic})
-        (v/assert kb '(dog Fido) 'UniverseContext {:strength :monotonic})
+        (v/assert kb '(dog Muffet) 'UniverseContext {:strength :monotonic})
         (v/assert-rule kb ['(dog ?x)] '(barks ?x) 'UniverseContext)
         (let [before {:dogs (set (map :sentence (v/sentexes-matching kb '(dog ?x) 'UniverseContext)))
-                      :isa  (v/isa? kb 'Fido 'animal)
-                      :term (count (v/find-sentexes kb 'Fido))}]
+                      :isa  (v/isa? kb 'Muffet 'animal)
+                      :term (count (v/find-sentexes kb 'Muffet))}]
           (v/reindex kb)                          ; wipe the index, rebuild from the records, recover
           (testing "every index read answers as it did before the rebuild"
             (is (= (:dogs before) (set (map :sentence (v/sentexes-matching kb '(dog ?x) 'UniverseContext)))))
-            (is (= (:isa before) (v/isa? kb 'Fido 'animal)))
-            (is (= (:term before) (count (v/find-sentexes kb 'Fido))))))))))
+            (is (= (:isa before) (v/isa? kb 'Muffet 'animal)))
+            (is (= (:term before) (count (v/find-sentexes kb 'Muffet))))))))))
 
 (deftest disk-dir-derivation
   (is (= "/some/where" (backend/disk-dir {:dir "/some/where"}))

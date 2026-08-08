@@ -238,7 +238,7 @@
 
 (defn- level-4
   "Level 3 plus **predicate inheritance**: a unary type predicate is matched over its
-  genl subtype closure, so `(animal ?x)` is satisfied by a stored `(dog Fido)`.  This
+  genl subtype closure, so `(animal ?x)` is satisfied by a stored `(dog Muffet)`.  This
   is exactly `res/matches-visible` — the layer the whole engine matches through."
   [kb goal context]
   (map (fn [[h b s]] (stored-result 4 h b s)) (res/matches-visible kb goal context)))

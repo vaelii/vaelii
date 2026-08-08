@@ -66,7 +66,7 @@
 (argIsa eats 2 food)
 
 (comment FatherFn
-         "(FatherFn ?animal) means the father of ?animal. A reifiableFunction, so a ground application denotes an object rather than being computed, and it reifies to an opaque constant before it reaches the index. Corresponding to fatherOf is what keeps it from minting a second name for a father the KB already knows: (FatherFn Fido) resolves to the father of a believed (fatherOf Fido F). Where none is known it mints a placeholder and projects that back onto fatherOf, so the placeholder still answers whose father it is, and a father arriving later is equated with it. See docs/nat.md.")
+         "(FatherFn ?animal) means the father of ?animal. A reifiableFunction, so a ground application denotes an object rather than being computed, and it reifies to an opaque constant before it reaches the index. Corresponding to fatherOf is what keeps it from minting a second name for a father the KB already knows: (FatherFn Muffet) resolves to the father of a believed (fatherOf Muffet F). Where none is known it mints a placeholder and projects that back onto fatherOf, so the placeholder still answers whose father it is, and a father arriving later is equated with it. See docs/nat.md.")
 (reifiableFunction FatherFn)
 (functionCorrespondingPredicate FatherFn fatherOf)
 (resultIsa FatherFn animal)

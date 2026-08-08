@@ -35,7 +35,7 @@ vocabulary to make sense, it is a subsystem test wearing the wrong hat.
 | taxonomy | is a penguin a thing; is a dog a cat | [taxonomy.md](taxonomy.md) |
 | disjointness | can one animal be two kinds that exclude each other | [taxonomy.md](taxonomy.md) |
 | inheritance | are dogs bigger than ants, given only that mammals are bigger than insects | [inherit.md](inherit.md) |
-| argument types | what is Bone1, given only that Fido eats it | [argtypes.md](argtypes.md) |
+| argument types | what is Bone1, given only that Muffet eats it | [argtypes.md](argtypes.md) |
 | evaluables | is 1970 before 1995; what is 3 × (2 + 4) | [inference.md](inference.md) |
 | backward chaining | who is older, given two birth years | [inference.md](inference.md) |
 | defaults | does the eagle fly, and does the penguin | [nmtms.md](nmtms.md) |
@@ -122,8 +122,8 @@ Four decisions carry the design:
   from the KB's own comments, so what the judge sees is the knowledge base's sentence. A
   sentence the KB documents nothing about glosses to `:named` and is skipped and counted:
   an unanswerable question dressed up as a low score measures the prompt.
-- **A derived claim is shown its situation, and never its rule.** *Fido is awake* is not
-  judgeable — nobody knows Fido. *Given: Fido is a dog. Claim: Fido is awake.* is. The rule
+- **A derived claim is shown its situation, and never its rule.** *Muffet is awake* is not
+  judgeable — nobody knows Muffet. *Given: Muffet is a dog. Claim: Muffet is awake.* is. The rule
   is left out because showing it turns the question into *does this follow*, which is
   validity, the one thing the engine already guarantees. The `genl` edges the firing went
   through are left out too: an edge is vocabulary, not a situation.
@@ -173,8 +173,8 @@ beside one is not an excuse for it, it is the fact a reader needs to decide whet
 judge found a bad claim or a defeasible one.
 
 **An inverted argument is invisible to this instrument.** The falsehood that got through,
-in all three runs, is `(eats Kibble Fido)` — *Kibble takes Fido as nourishment* — which the
-judge agreed with, noting that kibble is what dogs like Fido eat. It read the sentence as
+in all three runs, is `(eats Kibble Muffet)` — *Kibble takes Muffet as nourishment* — which the
+judge agreed with, noting that kibble is what dogs like Muffet eat. It read the sentence as
 the sensible claim rather than the one written. This is the sharpest limit of the method
 and it is worth stating plainly: **a judge repairs an implausible reading instead of
 disputing it**, so a KB bug that swaps two arguments of a plausible relation is exactly the

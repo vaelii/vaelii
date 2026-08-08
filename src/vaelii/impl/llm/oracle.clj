@@ -32,8 +32,8 @@
 
   ## A derived claim is shown its situation, and never its rule
 
-  *Fido is awake* is not judgeable on its own — nobody knows Fido.  *Given that Fido is
-  a dog, Fido is awake* is: it is the everyday question of whether that is a reasonable
+  *Muffet is awake* is not judgeable on its own — nobody knows Muffet.  *Given that Muffet is
+  a dog, Muffet is awake* is: it is the everyday question of whether that is a reasonable
   thing to say about a dog you have just been told about.  So a derived claim carries
   the facts its justification rests on, glossed the same way.
 
@@ -215,7 +215,7 @@
   "One claim as the prompt shows it: its number, the situation it rests on when it has
   one, and the claim itself.
 
-  Each given keeps the capital it was composed with — lower-casing an opening `Fido` to
+  Each given keeps the capital it was composed with — lower-casing an opening `Muffet` to
   make the join read better would misspell the vocabulary, which is the one thing a gloss
   may not do."
   [{:keys [index text givens]}]

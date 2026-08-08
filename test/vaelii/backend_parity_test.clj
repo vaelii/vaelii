@@ -76,7 +76,7 @@
   (v/assert kb '(argIsa ownerOf 2 animal) 'ParityContext {:strength :monotonic})
   (v/assert-rule kb '[(dog ?x)] '(mammal ?x) 'ParityContext)
   (v/assert kb '(dog Rex) 'ParityContext {:strength :monotonic})
-  (v/assert kb '(dog Fido) 'ParityContext {:strength :monotonic})
+  (v/assert kb '(dog Muffet) 'ParityContext {:strength :monotonic})
   (v/assert kb '(cat Tom) 'ParityContext {:strength :monotonic})
   (v/assert kb '(ownerOf Ann Rex) 'ParityContext {:strength :monotonic})
   (v/assert kb '(bornIn Rex 1970) 'ParityContext {:strength :monotonic})
@@ -112,7 +112,7 @@
          :by-args        (sentences kb (p/sentexes-with-args ix 'ownerOf [[1 'Ann] [2 'Rex]]))
          :in-context     (count (p/sentexes-in-context ix 'ParityContext))
          :by-term        (sentences kb (p/sentexes-with-term ix 'Rex))
-         :find-sentexes  (sentences kb (v/find-sentexes kb 'Fido))
+         :find-sentexes  (sentences kb (v/find-sentexes kb 'Muffet))
          ;; the trie itself, through the protocol
          :lookup-0       (sentences kb (v/lookup kb 0 '(dog Rex) 'ParityContext))
          :count-at       (p/count-at ix '[dog])
