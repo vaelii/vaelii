@@ -62,22 +62,22 @@
 
 (tu/deftest-kb every-pattern-shape-finds-what-is-stored
   (tu/with-terms [dog cat parentOf rel bornIn note
-                  Fido Rex Tom Sam Ann Bob Cid A B C X ProbeContext]
-    (let [facts [(list dog Fido) (list dog Rex) (list cat Tom)
+                  Muffet Rex Tom Sam Ann Bob Cid A B C X ProbeContext]
+    (let [facts [(list dog Muffet) (list dog Rex) (list cat Tom)
                  (list parentOf Ann Bob) (list parentOf Bob Cid) (list parentOf Ann Cid)
                  (list rel A B C) (list rel A X C)
-                 (list bornIn Fido 1970) (list bornIn Rex 1995)
-                 (list note Fido "a string")
+                 (list bornIn Muffet 1970) (list bornIn Rex 1995)
+                 (list note Muffet "a string")
                  (list 'not (list dog Tom)) (list 'not (list dog Sam))
                  (list 'not (list parentOf Cid Ann))]
           shapes [;; concrete functor, the ordinary cases
-                  (list dog '?x) (list dog Fido)
+                  (list dog '?x) (list dog Muffet)
                   (list parentOf Ann '?y) (list parentOf '?x Cid)
                   (list rel A '?y C) (list rel '?x '?y C)
                   ;; arguments the roots do not key
                   (list bornIn '?x 1970) (list note '?x "a string")
                   ;; open functor
-                  (list '?p Fido) (list '?p '?x)
+                  (list '?p Muffet) (list '?p '?x)
                   (list '?p Ann '?y) (list '?p '?x Cid)
                   ;; negative literals — the shape both relative oracles were blind to
                   (list 'not (list dog Tom))

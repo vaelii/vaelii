@@ -99,9 +99,9 @@
       (doseq [_ (range 40)]
         (let [t (tu/tmp-type "dog")]
           (v/assert kb (list 'genl t animal) StoryContext {:chain? false})
-          (v/assert kb (list t (tu/tmp-ind "Fido")) StoryContext {:chain? false})))
+          (v/assert kb (list t (tu/tmp-ind "Muffet")) StoryContext {:chain? false})))
       ;; `animal` is in its own spec closure — populate it, for the reason above
-      (v/assert kb (list animal (tu/tmp-ind "Fido")) StoryContext {:chain? false})
+      (v/assert kb (list animal (tu/tmp-ind "Muffet")) StoryContext {:chain? false})
       ;; the reference fan-out (level 4's default is the set-algebra path — see below)
       (binding [res/*hierarchical-retrieval* false]
         (let [[one all] (calls #'res/raw-match
@@ -135,7 +135,7 @@
       ;; iteration order over gensyms, decides whether a lazy walk pays for a whole
       ;; barren row: the test then passes or fails by luck rather than by laziness.
       (doseq [c (conj ctxs SubContext), t (conj typs animal)]
-        (v/assert kb (list t (tu/tmp-ind "Fido")) c {:chain? false}))
+        (v/assert kb (list t (tu/tmp-ind "Muffet")) c {:chain? false}))
       ;; the reference fan-out (level 4's default is the set-algebra path — see below)
       (binding [res/*hierarchical-retrieval* false]
         (let [[one all] (calls #'res/raw-match
@@ -235,12 +235,12 @@
 ;; level returns the same answers whether or not it was consulted.
 
 (tu/deftest-kb escalate-stops-running-levels-at-the-first-one-that-answers
-  (tu/with-terms [dog Fido StoryContext]
-    (v/assert kb (list dog Fido) StoryContext)
+  (tu/with-terms [dog Muffet StoryContext]
+    (v/assert kb (list dog Muffet) StoryContext)
     (let [ran  (atom [])
           orig levels/lookup]
       (with-redefs [levels/lookup (fn [k l g c] (swap! ran conj l) (orig k l g c))]
-        (let [r (v/escalate kb (list dog Fido) StoryContext)]
+        (let [r (v/escalate kb (list dog Muffet) StoryContext)]
           (testing "the goal is answered at the query floor"
             (is (= 2 (:level r))))
           (testing ":tried is not a summary of the climb — it IS the climb"

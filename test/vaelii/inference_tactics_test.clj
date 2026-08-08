@@ -69,9 +69,9 @@
   ;; One cost model, two readers.  A node ordering that disagreed with the join plan it
   ;; is about to run would be a cost model arguing with itself.
   (tu/with-terms [dog parentOf BaseContext]
-    (tu/with-terms [BsTom BsRex BsFido]
+    (tu/with-terms [BsTom BsRex BsMuffet]
       (v/assert kb (list dog BsRex) BaseContext)
-      (v/assert kb (list dog BsFido) BaseContext)
+      (v/assert kb (list dog BsMuffet) BaseContext)
       (v/assert kb (list parentOf BsTom BsRex) BaseContext)
       (let [goals [(list dog '?y) (list parentOf BsTom '?y)]
             n     (node BaseContext (mapv #(vector % 3) goals))]

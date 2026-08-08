@@ -1682,8 +1682,8 @@
 ;;
 ;;   - a **rule fired**.  There is a real derived sentex with a real justification, so it
 ;;     is believed in the JTMS sense, has a handle, and its whole proof is a click away.
-;;   - a **type subsumes**.  `(genl dog animal)` plus `(dog Fido)` makes Fido an animal,
-;;     and the engine deliberately never materializes `(animal Fido)`: matching fans a
+;;   - a **type subsumes**.  `(genl dog animal)` plus `(dog Muffet)` makes Muffet an animal,
+;;     and the engine deliberately never materializes `(animal Muffet)`: matching fans a
 ;;     functor out over its genl spec closure instead, which is what lets a hundred
 ;;     million facts avoid a hundred million more (docs/taxonomy.md).  So there is no
 ;;     record, no justification and nothing to link — the claim is answered on demand by
@@ -3763,7 +3763,7 @@
      [:ul.edit-errors (map problem-line problems)])
    [:label {:for "assert-text"} "Sentences " [:span.muted "(one per line)"]]
    [:textarea#assert-text {:name "text" :rows 6 :spellcheck "false"
-                           :placeholder "(dog Fido)"} text]
+                           :placeholder "(dog Muffet)"} text]
    [:div.assert-row
     [:label {:for "assert-ctx"} "Context"]
     [:input#assert-ctx {:type "text" :name "ctx" :size 24 :autocomplete "off"
@@ -3774,7 +3774,7 @@
      [:input#assert-mono (cond-> {:type "checkbox" :name "strength" :value "monotonic"}
                            monotonic? (assoc :checked "checked"))]
      " known-true " [:code "{:strength :monotonic}"]]]
-   [:p.hint "A fact is ground — " [:code "(dog Fido)"] ". A universal is a rule — "
+   [:p.hint "A fact is ground — " [:code "(dog Muffet)"] ". A universal is a rule — "
     [:code "(implies (dog ?x) (animal ?x))"] " — optionally wrapped in "
     [:code "set/forwardRule"] " / " [:code "set/defaultRule"] ". Every line is checked "
     "before anything is written, and the whole form is one settle."]
@@ -4094,7 +4094,7 @@
 (defn- ->form
   "Read a `?q=` / `?ctx=` query param as EDN, or nil when it is not readable.  Every
   route that takes a term or a goal parses through this: the value is whatever a URL
-  carried, so `(` is as likely as `(dog Fido)` and an unguarded read throws a 500
+  carried, so `(` is as likely as `(dog Muffet)` and an unguarded read throws a 500
   rather than rendering a page.
 
   `Throwable`, not `Exception`, for the reason the daemon's reader carries: a deeply

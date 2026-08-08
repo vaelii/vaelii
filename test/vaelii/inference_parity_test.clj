@@ -181,12 +181,12 @@
       (testing "a fact under a sub-predicate answers the supertype antecedent"
         (is (= #{{'?x SbA '?z SbB}} (parity kb (list anc '?x '?z) SubContext))))))
   (tu/with-terms [dog animal barks TypeContext]
-    (tu/with-terms [TyFido]
+    (tu/with-terms [TyMuffet]
       (v/assert kb (list 'genl dog animal) TypeContext)
-      (v/assert kb (list dog TyFido) TypeContext)
+      (v/assert kb (list dog TyMuffet) TypeContext)
       (v/assert-rule kb [(list animal '?x)] (list barks '?x) TypeContext
                      {:direction :backward})
-      (is (= #{{'?x TyFido}} (parity kb (list barks '?x) TypeContext))))))
+      (is (= #{{'?x TyMuffet}} (parity kb (list barks '?x) TypeContext))))))
 
 (tu/deftest-kb context-scoping-agrees
   (tu/with-terms [parentOf anc OuterContext InnerContext]

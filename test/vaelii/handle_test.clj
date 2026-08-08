@@ -60,7 +60,7 @@
     (fn [kb]
       (let [records (:records kb)]
         (doseq [n [1 2 3]]
-          (p/put-sentex records (assoc (res/kb-sentex kb (list 'dog (symbol (str "Fido" n)))
+          (p/put-sentex records (assoc (res/kb-sentex kb (list 'dog (symbol (str "Muffet" n)))
                                                       'HandleContext)
                                        :id n)))
         (p/put-justification records (jtms/->just 9 :import #{1 2} 3 {} :default))
@@ -75,7 +75,7 @@
     (fn [kb]
       (let [records (:records kb)
             stored  (doall (for [n [1 2 3]]
-                             (let [rec (res/kb-sentex kb (list 'dog (symbol (str "Fido" n)))
+                             (let [rec (res/kb-sentex kb (list 'dog (symbol (str "Muffet" n)))
                                                       'HandleContext)]
                                (p/put-sentex records (assoc rec :id n))
                                [n (:sentence rec)])))
@@ -92,7 +92,7 @@
   (with-each-backend
     (fn [kb]
       (let [records (:records kb)]
-        (p/put-sentex records (assoc (res/kb-sentex kb '(dog Fido) 'HandleContext) :id 1))
+        (p/put-sentex records (assoc (res/kb-sentex kb '(dog Muffet) 'HandleContext) :id 1))
         (doseq [id [-1 0 999999]]
           (is (nil? (p/get-sentex records id)) (str "sentex " id))
           (is (nil? (p/get-justification records id)) (str "justification " id)))

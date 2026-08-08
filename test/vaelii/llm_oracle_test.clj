@@ -92,10 +92,10 @@
 (tu/deftest-kb a-sentence-the-kb-documents-nothing-about-is-not-put-to-a-judge
   ;; Asking about a `:named` gloss measures the prompt, not the KB — the model would be
   ;; judging our spacing of an s-expression.
-  (tu/with-terms [zorks Fido2]
-    (v/assert kb (list 'dog Fido2) N)
-    (v/assert kb (list zorks Fido2) N)
-    (let [handle (v/handle-of kb (list zorks Fido2) N)
+  (tu/with-terms [zorks Muffet2]
+    (v/assert kb (list 'dog Muffet2) N)
+    (v/assert kb (list zorks Muffet2) N)
+    (let [handle (v/handle-of kb (list zorks Muffet2) N)
           claim (first (oracle/claims kb [handle]))]
       (is (= :named (:source claim)))
       (is (not (oracle/judgeable? claim)))
@@ -239,7 +239,7 @@
     (partType bird fin)
     (partType tree feather)
     (not (mortal Rex99))
-    (eats Kibble Fido)])
+    (eats Kibble Muffet)])
 
 (defn- controls!
   "Assert the control claims into a scratch context beneath the world and return their

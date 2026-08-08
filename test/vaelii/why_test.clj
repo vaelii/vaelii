@@ -90,8 +90,8 @@
           (is (= #{ph} (set (map :handle cycles)))))))))
 
 (tu/deftest-kb why-on-a-premise-and-on-an-unknown-handle
-  (tu/with-terms [dog Fido FactContext]
-    (let [h (v/assert kb (list dog Fido) FactContext {:strength :monotonic})
+  (tu/with-terms [dog Muffet FactContext]
+    (let [h (v/assert kb (list dog Muffet) FactContext {:strength :monotonic})
           w (v/why kb h)]
       (testing "a premise terminates immediately, carrying its assumption strength"
         (is (true? (:believed? w)))
@@ -189,8 +189,8 @@
           (is (contains? (set (mapcat :missing (:support wn))) fh)))))))
 
 (tu/deftest-kb why-not-on-a-believed-and-on-an-unknown-handle
-  (tu/with-terms [dog Fido FactContext]
-    (let [h (v/assert kb (list dog Fido) FactContext)]
+  (tu/with-terms [dog Muffet FactContext]
+    (let [h (v/assert kb (list dog Muffet) FactContext)]
       (testing "a believed handle has nothing to explain"
         (is (true? (:believed? (v/why-not kb h))))
         (is (nil? (:reason (v/why-not kb h))))))

@@ -279,7 +279,7 @@ content-identical under all four settings of the pair.
 Matching fans the **functor** out over its genl spec closure, so a supertype is met
 by its subtypes and — the same closure, one dimension over — a super-*predicate* by
 its sub-predicates. The type case is the familiar one: `(animal ?x)` is satisfied by
-a stored `(dog Fido)`. Generalized to every arity, `(parentOf a ?x)` reaches a stored
+a stored `(dog Muffet)`. Generalized to every arity, `(parentOf a ?x)` reaches a stored
 `(fatherOf a v)`, and a `(parentOf ?x ?y)` rule antecedent fires on a
 `(fatherOf Tom Bob)` fact, once `(genl fatherOf parentOf)` holds.
 
@@ -975,7 +975,7 @@ functor-blind shapes are costed. Both of the functor-keyed models — the subtyp
 and the functor root — read the functor as a concrete symbol, and both answer *low*
 when it is not one, which is the one direction a cost model may not err in: a lower
 bound ranks the dearest literal cheapest and hoists it to the front, where its
-fan-out multiplies everything after it. So an **open functor** (`(?type Fido)`) is
+fan-out multiplies everything after it. So an **open functor** (`(?type Muffet)`) is
 costed by the argument roots alone — the same posting `res/candidate-handles`
 actually reads for it — and a **dotted rest** (`(rel A . ?args)`), which pins no
 argument position at all since its tail splices a whole list, falls back to the
@@ -1224,7 +1224,7 @@ Built-in provers (`default-provers`, held per-KB in an atom):
 - **ArgTypeProver** — infers an individual's type from *how it is used*: if a
   believed relation puts `x` in a position that `(argIsa P n T')` constrains, then
   `x` is a `T'` (and, by genl, every supertype). So `argIsa` reads two ways — a
-  **constraint** when asserting, and an **inference** when querying (Fido eats
+  **constraint** when asserting, and an **inference** when querying (Muffet eats
   Bone1 and eat's 2nd argument is food ⇒ Bone1 is food). On-demand, never
   materialized. Partial (50).
 - **FactProver** — index matches (`matches-visible`). Partial (50).

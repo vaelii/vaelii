@@ -11,9 +11,9 @@
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
 
 (tu/deftest-kb unification
-  (is (= '{?x Fido} (res/unify '(dog ?x) '(dog Fido))))
-  (is (nil? (res/unify '(dog ?x) '(cat Fido))))
-  (is (= 'Fido (get (res/unify '(?r ?x ?y) '(parentOf Fido Rex)) '?x))))
+  (is (= '{?x Muffet} (res/unify '(dog ?x) '(dog Muffet))))
+  (is (nil? (res/unify '(dog ?x) '(cat Muffet))))
+  (is (= 'Muffet (get (res/unify '(?r ?x ?y) '(parentOf Muffet Rex)) '?x))))
 
 (tu/deftest-kb backward-with-rule
   (let [parentOf (tu/tmp-pred) grandparentOf (tu/tmp-pred)

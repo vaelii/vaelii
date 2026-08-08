@@ -37,7 +37,7 @@
 
   * `spellings` turns each run of the document's words into the symbols a KB term could be
     spelled as — *prepared for winter* into `preparedForWinter` and `prepared_for_winter`,
-    *Fido* into `Fido` — and `known` asks the KB which of them it has.  Generating and
+    *Muffet* into `Muffet` — and `known` asks the KB which of them it has.  Generating and
     asking runs the *opposite* way from inverting the KB's vocabulary into the words each
     term is written with, which is the one read here that would grow with the KB;
   * `resolve-in` walks the document longest-run-first and non-overlapping, so a compound
@@ -344,7 +344,7 @@
      {"type" "object"
       "properties"
       {"sentence" {"type" "string"
-                   "description" (str "One s-expression and nothing else, e.g. (dog Fido) "
+                   "description" (str "One s-expression and nothing else, e.g. (dog Muffet) "
                                       "or (implies (dog ?x) (mortal ?x))")}
        "segment" {"type" "integer"
                   "description" "The number of the numbered sentence this came from."}

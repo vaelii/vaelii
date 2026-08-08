@@ -66,7 +66,7 @@
              (for [i (range n)] (blank #{i}))
              [(blank (set (range n)))]
              (when (pos? n) [(cons pred (cons 'ZzzNoSuch (rest args)))])
-             ;; the functor blanked — `(?type Fido)`.  There is no predicate hierarchy
+             ;; the functor blanked — `(?type Muffet)`.  There is no predicate hierarchy
              ;; to filter by, so the set-algebra path must reach the identical set from
              ;; the argument root alone, and must bind the functor variable.
              [(cons '?fn args)]

@@ -1055,7 +1055,7 @@
   seeds — the taxonomy twin of `lift-existing`, and there for exactly the same reason.
 
   Matching fans an antecedent's functor over its `genl` **spec** closure, so an edge
-  arriving after the facts changes which antecedents they satisfy: `(dog Fido)` stored,
+  arriving after the facts changes which antecedents they satisfy: `(dog Muffet)` stored,
   then `(genl dog animal)`, and a rule on `(animal ?x)` should fire.  The semi-naive
   agenda never sees it — the arriving datum is the *edge*, and firing the rules keyed on
   `genl` is not the same thing as re-firing the rules the edge just connected.  Without

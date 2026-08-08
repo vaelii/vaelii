@@ -79,11 +79,11 @@
 ;;; ── the assert path keeps its guardrail unless asked otherwise ────────
 
 (tu/deftest-kb a-disjoint-clash-on-the-assert-path-still-refuses-by-default
-  (tu/with-terms [dog_t cat_t Fido]
+  (tu/with-terms [dog_t cat_t Muffet]
     (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-    (v/assert kb (list dog_t Fido) 'UniverseContext)
-    (is (thrown? clojure.lang.ExceptionInfo (v/assert kb (list cat_t Fido) 'UniverseContext)))
-    (is (nil? (v/handle-of kb (list cat_t Fido) 'UniverseContext))
+    (v/assert kb (list dog_t Muffet) 'UniverseContext)
+    (is (thrown? clojure.lang.ExceptionInfo (v/assert kb (list cat_t Muffet) 'UniverseContext)))
+    (is (nil? (v/handle-of kb (list cat_t Muffet) 'UniverseContext))
         "a refusal stores nothing")
     (is (empty? (v/contradictions kb)))))
 
@@ -93,26 +93,26 @@
   ;; the one rule — refuse only against known-true content.
   (binding [checks/*arbitrate-constraints?* true]
     (tu/with-kb [kb (tu/fresh)]
-      (tu/with-terms [dog_t cat_t Fido]
+      (tu/with-terms [dog_t cat_t Muffet]
         (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-        (v/assert kb (list dog_t Fido) 'UniverseContext)
+        (v/assert kb (list dog_t Muffet) 'UniverseContext)
         (testing "the clashing membership is admitted rather than refused"
-          (is (v/assert kb (list cat_t Fido) 'UniverseContext)))
+          (is (v/assert kb (list cat_t Muffet) 'UniverseContext)))
         (testing "and the pair is a represented dilemma, both believed"
-          (is (seq (v/sentexes-matching kb (list dog_t Fido) 'UniverseContext)))
-          (is (seq (v/sentexes-matching kb (list cat_t Fido) 'UniverseContext)))
+          (is (seq (v/sentexes-matching kb (list dog_t Muffet) 'UniverseContext)))
+          (is (seq (v/sentexes-matching kb (list cat_t Muffet) 'UniverseContext)))
           (is (= 1 (count (v/contradictions kb)))))))))
 
 (tu/deftest-kb arbitration-never-admits-a-clash-with-known-true-content
   ;; the one thing the var does not buy: admitting what the KB can never believe
   (binding [checks/*arbitrate-constraints?* true]
     (tu/with-kb [kb (tu/fresh)]
-      (tu/with-terms [dog_t cat_t Fido]
+      (tu/with-terms [dog_t cat_t Muffet]
         (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-        (v/assert kb (list dog_t Fido) 'UniverseContext {:strength :monotonic})
+        (v/assert kb (list dog_t Muffet) 'UniverseContext {:strength :monotonic})
         (is (thrown? clojure.lang.ExceptionInfo
-                     (v/assert kb (list cat_t Fido) 'UniverseContext)))
-        (is (nil? (v/handle-of kb (list cat_t Fido) 'UniverseContext)))))))
+                     (v/assert kb (list cat_t Muffet) 'UniverseContext)))
+        (is (nil? (v/handle-of kb (list cat_t Muffet) 'UniverseContext)))))))
 
 ;;; ── what stays a refusal ──────────────────────────────────────────────
 
@@ -122,13 +122,13 @@
   ;; simply store nonsense.
   (binding [checks/*arbitrate-constraints?* true]
     (tu/with-kb [kb (tu/fresh)]
-      (tu/with-terms [dog_t Fido]
+      (tu/with-terms [dog_t Muffet]
         (testing "a genl cycle"
           (is (thrown? clojure.lang.ExceptionInfo
                        (v/assert kb (list 'genl dog_t dog_t) 'UniverseContext))))
         (testing "a genl of an individual"
           (is (thrown? clojure.lang.ExceptionInfo
-                       (v/assert kb (list 'genl Fido dog_t) 'UniverseContext))))
+                       (v/assert kb (list 'genl Muffet dog_t) 'UniverseContext))))
         (testing "a non-ground fact"
           (is (thrown? clojure.lang.ExceptionInfo
                        (v/assert kb (list dog_t '?x) 'UniverseContext))))))))
@@ -139,13 +139,13 @@
   ;; it stays a refusal at the door and a drop at the firing.
   (binding [checks/*arbitrate-constraints?* true]
     (tu/with-kb [kb (tu/fresh)]
-      (tu/with-terms [person_t rock_t parentOf Boulder Fido]
+      (tu/with-terms [person_t rock_t parentOf Boulder Muffet]
         (v/assert kb (list 'genl person_t 'thing) 'UniverseContext)
         (v/assert kb (list 'genl rock_t 'thing) 'UniverseContext)
         (v/assert kb (list 'argIsa parentOf 1 person_t) 'UniverseContext)
         (v/assert kb (list rock_t Boulder) 'UniverseContext)
         (is (thrown? clojure.lang.ExceptionInfo
-                     (v/assert kb (list parentOf Boulder Fido) 'UniverseContext))
+                     (v/assert kb (list parentOf Boulder Muffet) 'UniverseContext))
             "refused at the door even with arbitration on")
         (is (empty? (v/contradictions kb)))))))
 
@@ -169,9 +169,9 @@
 (tu/deftest-kb a-definitional-dilemma-names-the-constraint-it-violated
   ;; a rebuttal and a definitional clash are both dilemmas and both stay believed, so
   ;; without `:kind` they read alike — and they are not alike
-  (tu/with-terms [dog_t cat_t Fido]
+  (tu/with-terms [dog_t cat_t Muffet]
     (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-    (v/assert kb (list dog_t Fido) 'UniverseContext)
+    (v/assert kb (list dog_t Muffet) 'UniverseContext)
     (v/assert kb (fwd [(list dog_t '?x)] (list cat_t '?x)) 'UniverseContext)
     (testing "a definitional clash names its constraint"
       (is (= [:disjoint] (mapv :kind (v/contradictions kb)))))
@@ -192,9 +192,9 @@
   ;; premise needing truth maintenance of its own, and it would go stale the moment
   ;; either side moved.  CoreContext says so of the predicate; this holds the engine to
   ;; it, since the report *reads* like a sentence and the mistake would be invisible.
-  (tu/with-terms [dog_t cat_t Fido]
+  (tu/with-terms [dog_t cat_t Muffet]
     (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-    (v/assert kb (list dog_t Fido) 'UniverseContext)
+    (v/assert kb (list dog_t Muffet) 'UniverseContext)
     (let [before (v/sentex-count kb)]
       (v/assert kb (fwd [(list dog_t '?x)] (list cat_t '?x)) 'UniverseContext)
       (let [reported (:sentence (first (v/contradictions kb)))]
@@ -228,9 +228,9 @@
       (is (= [:monotonic :monotonic] (mapv :defeat-class (:sides c)))))))
 
 (tu/deftest-kb a-dilemma-reports-the-same-shape-as-a-conflict
-  (tu/with-terms [dog_t cat_t Fido]
+  (tu/with-terms [dog_t cat_t Muffet]
     (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-    (v/assert kb (list dog_t Fido) 'UniverseContext)
+    (v/assert kb (list dog_t Muffet) 'UniverseContext)
     (v/assert kb (fwd [(list dog_t '?x)] (list cat_t '?x)) 'UniverseContext)
     (is (= report-keys (into #{} (keys (first (v/contradictions kb)))))
         "the two readings differ in why the pair stands, not in what is reported")))
@@ -243,10 +243,10 @@
   ;; never forgotten costs an `arbitrable-violations` call per settle, forever.
   (binding [checks/*arbitrate-constraints?* true]
     (tu/with-kb [kb (tu/fresh)]
-      (tu/with-terms [dog_t cat_t Fido]
+      (tu/with-terms [dog_t cat_t Muffet]
         (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-        (v/assert kb (list dog_t Fido) 'UniverseContext)
-        (v/assert kb (list cat_t Fido) 'UniverseContext)
+        (v/assert kb (list dog_t Muffet) 'UniverseContext)
+        (v/assert kb (list cat_t Muffet) 'UniverseContext)
         (is (= 1 (count (:pairs @(:clashes kb)))) "the pair is remembered")
         (testing "retracting the separation retires it, and it is forgotten"
           (v/retract! kb (v/handle-of kb (list 'disjoint dog_t cat_t) 'UniverseContext))
@@ -268,10 +268,10 @@
   ;; timing assertion would be flaky; this cannot be.
   (binding [checks/*arbitrate-constraints?* true]
     (tu/with-kb [kb (tu/fresh)]
-      (tu/with-terms [dog_t cat_t Fido Rex]
+      (tu/with-terms [dog_t cat_t Muffet Rex]
         (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-        (v/assert kb (list dog_t Fido) 'UniverseContext)
-        (v/assert kb (list cat_t Fido) 'UniverseContext)
+        (v/assert kb (list dog_t Muffet) 'UniverseContext)
+        (v/assert kb (list cat_t Muffet) 'UniverseContext)
         (let [pair  (first (keys (:nogoods @(:clashes kb))))
               entry (get (:nogoods @(:clashes kb)) pair)]
           (is (some? entry))
@@ -357,18 +357,18 @@
   ;; clash and filing a report about it.
   (binding [checks/*arbitrate-constraints?* true]
     (tu/with-kb [kb (tu/fresh)]
-      (tu/with-terms [dog_t cat_t Fido]
+      (tu/with-terms [dog_t cat_t Muffet]
         (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-        (v/assert kb (list dog_t Fido) 'UniverseContext)
-        (v/assert kb (list cat_t Fido) 'UniverseContext)
+        (v/assert kb (list dog_t Muffet) 'UniverseContext)
+        (v/assert kb (list cat_t Muffet) 'UniverseContext)
         (is (= 1 (count (v/contradictions kb))))
         (testing "retracting one membership retires the pair"
-          (v/retract! kb (v/handle-of kb (list cat_t Fido) 'UniverseContext))
+          (v/retract! kb (v/handle-of kb (list cat_t Muffet) 'UniverseContext))
           (is (empty? (v/contradictions kb)))
-          (is (seq (v/sentexes-matching kb (list dog_t Fido) 'UniverseContext))
+          (is (seq (v/sentexes-matching kb (list dog_t Muffet) 'UniverseContext))
               "and leaves the survivor alone"))
         (testing "and asserting it again brings the pair back"
-          (v/assert kb (list cat_t Fido) 'UniverseContext)
+          (v/assert kb (list cat_t Muffet) 'UniverseContext)
           (is (= 1 (count (v/contradictions kb)))))
         (testing "retracting the *declaration* retires it too — nothing separates them now"
           (v/retract! kb (v/handle-of kb (list 'disjoint dog_t cat_t) 'UniverseContext))
@@ -390,9 +390,9 @@
       (is (not (v/in? kb h)) "and still defeated after it"))))
 
 (tu/deftest-kb a-dilemma-survives-a-rebuild
-  (tu/with-terms [dog_t cat_t Fido]
+  (tu/with-terms [dog_t cat_t Muffet]
     (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-    (v/assert kb (list dog_t Fido) 'UniverseContext)
+    (v/assert kb (list dog_t Muffet) 'UniverseContext)
     (v/assert kb (fwd [(list dog_t '?x)] (list cat_t '?x)) 'UniverseContext)
     (is (= 1 (count (v/contradictions kb))) "a dilemma before the rebuild")
     (v/recover kb)
@@ -433,13 +433,13 @@
   ;; stored pairs, so the members have to be reached through `tax/metatype-members`
   (binding [checks/*arbitrate-constraints?* true]
     (tu/with-kb [kb (tu/fresh)]
-      (tu/with-terms [animalSpecies dog_t cat_t Fido]
+      (tu/with-terms [animalSpecies dog_t cat_t Muffet]
         (v/assert kb (list 'genl dog_t 'thing) 'UniverseContext)
         (v/assert kb (list 'genl cat_t 'thing) 'UniverseContext)
         (v/assert kb (list animalSpecies dog_t) 'UniverseContext)
         (v/assert kb (list animalSpecies cat_t) 'UniverseContext)
-        (v/assert kb (list dog_t Fido) 'UniverseContext)
-        (v/assert kb (list cat_t Fido) 'UniverseContext)
+        (v/assert kb (list dog_t Muffet) 'UniverseContext)
+        (v/assert kb (list cat_t Muffet) 'UniverseContext)
         (is (empty? (v/contradictions kb)) "the metatype is not disjoint yet")
         (v/assert kb (list 'disjointMetatype animalSpecies) 'UniverseContext)
         (is (= [:disjoint] (mapv :kind (v/contradictions kb))))
@@ -457,13 +457,13 @@
   ;; decided it.
   (binding [checks/*arbitrate-constraints?* true]
     (tu/with-kb [kb (tu/fresh)]
-      (tu/with-terms [animalSpecies dog_t cat_t Fido]
+      (tu/with-terms [animalSpecies dog_t cat_t Muffet]
         (v/assert kb (list 'genl dog_t 'thing) 'UniverseContext)
         (v/assert kb (list 'genl cat_t 'thing) 'UniverseContext)
         (v/assert kb (list animalSpecies dog_t) 'UniverseContext)
         (v/assert kb (list 'disjointMetatype animalSpecies) 'UniverseContext)
-        (v/assert kb (list dog_t Fido) 'UniverseContext)
-        (v/assert kb (list cat_t Fido) 'UniverseContext)
+        (v/assert kb (list dog_t Muffet) 'UniverseContext)
+        (v/assert kb (list cat_t Muffet) 'UniverseContext)
         (is (empty? (v/contradictions kb))
             "cat_t is not a member yet, so the metatype separates nothing from dog_t")
         (v/assert kb (list animalSpecies cat_t) 'UniverseContext)
@@ -514,11 +514,11 @@
 
 (tu/deftest-kb a-separation-across-a-visibility-edge-is-arbitrated
   (binding [checks/*arbitrate-constraints?* true]
-    (tu/with-terms [GenContext SpecContext dog_t cat_t Fido]
+    (tu/with-terms [GenContext SpecContext dog_t cat_t Muffet]
       (straddle-kb kb GenContext SpecContext)
       (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-      (v/assert kb (list cat_t Fido) SpecContext)
-      (v/assert kb (list dog_t Fido) GenContext)
+      (v/assert kb (list cat_t Muffet) SpecContext)
+      (v/assert kb (list dog_t Muffet) GenContext)
       (is (= [:disjoint] (mapv :kind (v/contradictions kb)))))))
 
 (tu/deftest-kb a-functional-slot-filled-across-a-visibility-edge-is-arbitrated
@@ -562,18 +562,18 @@
   ;; beside content that contradicts it.
   (binding [checks/*arbitrate-constraints?* true]
     (tu/with-kb [kb (tu/fresh)]
-      (tu/with-terms [GenContext SpecContext dog_t cat_t Fido]
+      (tu/with-terms [GenContext SpecContext dog_t cat_t Muffet]
         (straddle-kb kb GenContext SpecContext)
         (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-        (v/assert kb (list dog_t Fido) GenContext)
-        (v/assert kb (list dog_t Fido) SpecContext)
-        (v/assert kb (list cat_t Fido) SpecContext)
+        (v/assert kb (list dog_t Muffet) GenContext)
+        (v/assert kb (list dog_t Muffet) SpecContext)
+        (v/assert kb (list cat_t Muffet) SpecContext)
         (is (= 2 (count (v/contradictions kb)))
             "one pair per opposing sentex, not one per opposing type")
-        (is (= #{#{(v/handle-of kb (list cat_t Fido) SpecContext)
-                   (v/handle-of kb (list dog_t Fido) GenContext)}
-                 #{(v/handle-of kb (list cat_t Fido) SpecContext)
-                   (v/handle-of kb (list dog_t Fido) SpecContext)}}
+        (is (= #{#{(v/handle-of kb (list cat_t Muffet) SpecContext)
+                   (v/handle-of kb (list dog_t Muffet) GenContext)}
+                 #{(v/handle-of kb (list cat_t Muffet) SpecContext)
+                   (v/handle-of kb (list dog_t Muffet) SpecContext)}}
                (into #{} (map :nogood) (v/contradictions kb))))))))
 
 (tu/deftest-kb a-pair-reachable-from-several-viewers-is-one-entry
@@ -607,11 +607,11 @@
   ;; `arbitrable-violations` call per settle for the rest of the KB's life.
   (binding [checks/*arbitrate-constraints?* true]
     (tu/with-kb [kb (tu/fresh)]
-      (tu/with-terms [GenContext SpecContext dog_t cat_t Fido]
+      (tu/with-terms [GenContext SpecContext dog_t cat_t Muffet]
         (straddle-kb kb GenContext SpecContext)
         (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-        (v/assert kb (list cat_t Fido) SpecContext)
-        (v/assert kb (list dog_t Fido) GenContext)
+        (v/assert kb (list cat_t Muffet) SpecContext)
+        (v/assert kb (list dog_t Muffet) GenContext)
         (is (= 1 (count (v/contradictions kb))))
         (is (= 1 (count (:pairs @(:clashes kb)))) "the pair is remembered")
         (testing "the edge leaving takes the joint view with it"
@@ -621,8 +621,8 @@
           (is (empty? (v/contradictions kb)))
           (is (empty? (:pairs @(:clashes kb)))
               "both members still believed, and no context sees them together")
-          (is (v/ask? kb (list dog_t Fido) GenContext))
-          (is (v/ask? kb (list cat_t Fido) SpecContext)))
+          (is (v/ask? kb (list dog_t Muffet) GenContext))
+          (is (v/ask? kb (list cat_t Muffet) SpecContext)))
         (testing "and the edge returning brings the pair back"
           (v/assert kb (list 'genlContext SpecContext GenContext) 'UniverseContext)
           (is (= 1 (count (v/contradictions kb)))))))))
@@ -839,20 +839,20 @@
 (deftest the-per-kb-policy-decides-in-both-directions
   (testing ":arbitrate admits under a process default that refuses"
     (tu/with-neutral-kb [kb arbitrating-kb]
-      (tu/with-terms [dog_t cat_t Fido]
+      (tu/with-terms [dog_t cat_t Muffet]
         (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-        (v/assert kb (list dog_t Fido) 'UniverseContext)
-        (is (v/assert kb (list cat_t Fido) 'UniverseContext))
+        (v/assert kb (list dog_t Muffet) 'UniverseContext)
+        (is (v/assert kb (list cat_t Muffet) 'UniverseContext))
         (is (= 1 (count (v/contradictions kb)))))))
   (testing ":refuse refuses under a process default that arbitrates"
     (binding [checks/*arbitrate-constraints?* true]
       (tu/with-neutral-kb [kb refusing-kb]
-        (tu/with-terms [dog_t cat_t Fido]
+        (tu/with-terms [dog_t cat_t Muffet]
           (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-          (v/assert kb (list dog_t Fido) 'UniverseContext)
+          (v/assert kb (list dog_t Muffet) 'UniverseContext)
           (is (thrown? clojure.lang.ExceptionInfo
-                       (v/assert kb (list cat_t Fido) 'UniverseContext)))
-          (is (nil? (v/handle-of kb (list cat_t Fido) 'UniverseContext))))))))
+                       (v/assert kb (list cat_t Muffet) 'UniverseContext)))
+          (is (nil? (v/handle-of kb (list cat_t Muffet) 'UniverseContext))))))))
 
 (deftest a-kb-that-names-no-policy-still-reads-the-process-default
   ;; nil is not a third policy — it means the caller said nothing, and the var is what
@@ -860,10 +860,10 @@
   ;; every `binding` out of the picture for every KB in the process.
   (binding [checks/*arbitrate-constraints?* true]
     (tu/with-neutral-kb [kb tu/fresh]
-      (tu/with-terms [dog_t cat_t Fido]
+      (tu/with-terms [dog_t cat_t Muffet]
         (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-        (v/assert kb (list dog_t Fido) 'UniverseContext)
-        (is (v/assert kb (list cat_t Fido) 'UniverseContext)
+        (v/assert kb (list dog_t Muffet) 'UniverseContext)
+        (is (v/assert kb (list cat_t Muffet) 'UniverseContext)
             "an unstated policy arbitrates when the process default does")))))
 
 (deftest a-declaration-arriving-last-reaches-back-only-under-arbitrate
@@ -873,22 +873,22 @@
   ;; fact one line later, so whether the KB is consistent depends on arrival order.
   (testing ":refuse files the exposure and decides nothing"
     (tu/with-neutral-kb [kb refusing-kb]
-      (tu/with-terms [dog_t cat_t Fido]
-        (v/assert kb (list dog_t Fido) 'UniverseContext {:strength :monotonic})
-        (v/assert kb (list cat_t Fido) 'UniverseContext)
+      (tu/with-terms [dog_t cat_t Muffet]
+        (v/assert kb (list dog_t Muffet) 'UniverseContext {:strength :monotonic})
+        (v/assert kb (list cat_t Muffet) 'UniverseContext)
         (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
         (is (some #{:disjoint} (map :violation (v/violations kb))))
         (is (empty? (v/contradictions kb)))
-        (is (v/ask? kb (list cat_t Fido) 'UniverseContext)
+        (is (v/ask? kb (list cat_t Muffet) 'UniverseContext)
             "the weaker membership is still believed"))))
   (testing ":arbitrate reaches back and defeats the weaker side"
     (tu/with-neutral-kb [kb arbitrating-kb]
-      (tu/with-terms [dog_t cat_t Fido]
-        (v/assert kb (list dog_t Fido) 'UniverseContext {:strength :monotonic})
-        (v/assert kb (list cat_t Fido) 'UniverseContext)
+      (tu/with-terms [dog_t cat_t Muffet]
+        (v/assert kb (list dog_t Muffet) 'UniverseContext {:strength :monotonic})
+        (v/assert kb (list cat_t Muffet) 'UniverseContext)
         (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext)
-        (is (v/ask? kb (list dog_t Fido) 'UniverseContext))
-        (is (not (v/ask? kb (list cat_t Fido) 'UniverseContext))
+        (is (v/ask? kb (list dog_t Muffet) 'UniverseContext))
+        (is (not (v/ask? kb (list cat_t Muffet) 'UniverseContext))
             "the default loses to known-true content it was stored before")))))
 
 (deftest belief-agrees-whichever-arrived-first-under-arbitrate
@@ -898,11 +898,11 @@
   ;; belief, and it does.
   (let [believed (fn [build ops]
                    (tu/with-neutral-kb [kb build]
-                     (tu/with-terms [dog_t cat_t Fido]
-                       (doseq [op (ops dog_t cat_t Fido)]
+                     (tu/with-terms [dog_t cat_t Muffet]
+                       (doseq [op (ops dog_t cat_t Muffet)]
                          (try (op kb) (catch clojure.lang.ExceptionInfo _ nil)))
-                       {:known-true (v/ask? kb (list dog_t Fido) 'UniverseContext)
-                        :default    (v/ask? kb (list cat_t Fido) 'UniverseContext)})))
+                       {:known-true (v/ask? kb (list dog_t Muffet) 'UniverseContext)
+                        :default    (v/ask? kb (list cat_t Muffet) 'UniverseContext)})))
         facts-first  (believed arbitrating-kb
                                (fn [d c F] [#(v/assert % (list d F) 'UniverseContext {:strength :monotonic})
                                             #(v/assert % (list c F) 'UniverseContext)
@@ -933,24 +933,24 @@
   ;; collide with nothing — including a second concurrent run, which `VAELII_TEST_SPACE`
   ;; moves the suite's block for but could not move a hard-coded integer.
   (let [spaces {:space [::restart]}
-        build! (fn [kb dog_t cat_t Fido]
-                 (v/assert kb (list dog_t Fido) 'UniverseContext {:strength :monotonic})
-                 (v/assert kb (list cat_t Fido) 'UniverseContext)
+        build! (fn [kb dog_t cat_t Muffet]
+                 (v/assert kb (list dog_t Muffet) 'UniverseContext {:strength :monotonic})
+                 (v/assert kb (list cat_t Muffet) 'UniverseContext)
                  (v/assert kb (list 'disjoint dog_t cat_t) 'UniverseContext))
-        believed (fn [kb dog_t cat_t Fido]
-                   [(v/in? kb (v/handle-of kb (list dog_t Fido) 'UniverseContext))
-                    (v/in? kb (v/handle-of kb (list cat_t Fido) 'UniverseContext))])]
-    (tu/with-terms [dog_t cat_t Fido]
+        believed (fn [kb dog_t cat_t Muffet]
+                   [(v/in? kb (v/handle-of kb (list dog_t Muffet) 'UniverseContext))
+                    (v/in? kb (v/handle-of kb (list cat_t Muffet) 'UniverseContext))])]
+    (tu/with-terms [dog_t cat_t Muffet]
       (let [kb (doto (v/open-kb (assoc spaces :constraints :refuse :recover? false)) (tu/clear-kb!))]
         (try
-          (build! kb dog_t cat_t Fido)
-          (is (= [true true] (believed kb dog_t cat_t Fido))
+          (build! kb dog_t cat_t Muffet)
+          (is (= [true true] (believed kb dog_t cat_t Muffet))
               ":refuse files the exposure and leaves both sides believed")
           (is (some #{:disjoint} (map :violation (v/violations kb))))
           (testing "recovered under the same policy, the clash is decided"
             (let [re (v/open-kb (assoc spaces :constraints :refuse :recover? :auto))]
-              (is (= [true false] (believed re dog_t cat_t Fido)))))
+              (is (= [true false] (believed re dog_t cat_t Muffet)))))
           (testing "and under :arbitrate, which agrees either side of the restart"
             (let [re (v/open-kb (assoc spaces :constraints :arbitrate :recover? :auto))]
-              (is (= [true false] (believed re dog_t cat_t Fido)))))
+              (is (= [true false] (believed re dog_t cat_t Muffet)))))
           (finally (tu/clear-kb! kb)))))))

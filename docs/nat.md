@@ -137,14 +137,14 @@ name somebody by their role before it knows their name.
 It is read in **both** directions, and that is the point: a KB told only one of the two
 spellings can otherwise reason with only that one.
 
-- **value → term.** A believed `(motherOf Fido Mary)` reifies `(MotherFn Fido)` to
+- **value → term.** A believed `(motherOf Muffet Mary)` reifies `(MotherFn Muffet)` to
   `Mary`. The expression names the object the KB already has a name for rather than
   minting a second one beside it, so the correspondence is a *computed* `rewriteOf`
   target — the same seam, looked up through the predicate instead of declared per
   expression. It is consulted before the dedup probe, because a real term outranks a
   placeholder.
 - **term → value.** When no value is known, the mint proceeds and the constant is
-  **projected** back onto the predicate: `(motherOf Fido K)`, asserted with the rest of
+  **projected** back onto the predicate: `(motherOf Muffet K)`, asserted with the rest of
   `K`'s bookkeeping and *after* the result types, since the projected literal is
   argIsa-checked and `K`'s types are what it is checked against. So the placeholder
   answers `motherOf`'s questions instead of being a term nothing says anything about.

@@ -239,14 +239,14 @@
   ;; over its spec closure, so a `genl` edge changes which antecedents the *stored*
   ;; facts satisfy.  The arriving datum is the edge, and firing the rules keyed on
   ;; `genl` is not the same thing as re-firing the rules the edge just connected — so
-  ;; without `special/subsumption-seeds` these four sentences derive `(breathes Fido)`
+  ;; without `special/subsumption-seeds` these four sentences derive `(breathes Muffet)`
   ;; in the orders that put the edge before the fact and nothing in the others.
   (let [ops [#(v/assert % '(genl animal_t thing) 'UniverseContext)
              #(v/assert % '(genl dog_t animal_t) 'UniverseContext)
              #(v/assert % '(implies (animal_t ?x) (breathes ?x)) 'UniverseContext)
-             #(v/assert % '(dog_t Fido) 'UniverseContext)]
+             #(v/assert % '(dog_t Muffet) 'UniverseContext)]
         observe (fn [kb]
-                  {:derived (boolean (seq (v/sentexes-matching kb '(breathes Fido) 'UniverseContext)))})]
+                  {:derived (boolean (seq (v/sentexes-matching kb '(breathes Muffet) 'UniverseContext)))})]
     (is (= {:derived true} (one-outcome! "subsumption firing" ops observe))
         "and the one outcome is the conclusion, not the silence"))
   (tu/clear-kb! (tu/test-kb)))

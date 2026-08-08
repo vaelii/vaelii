@@ -244,19 +244,19 @@
 ;; no answer and the conclusion must be derived.
 
 (tu/deftest-kb an-exception-derivable-only-by-backchaining-does-not-block
-  (tu/with-terms [dog pet loud scary Fido PetContext]
-    ;; backward-only, so forward chaining never materializes (scary Fido)
+  (tu/with-terms [dog pet loud scary Muffet PetContext]
+    ;; backward-only, so forward chaining never materializes (scary Muffet)
     (v/assert-rule kb [(list loud '?x)] (list scary '?x) PetContext {:direction :backward})
     (v/assert kb (except-rule (list scary '?x)
                               [(list dog '?x)] (list pet '?x))
               PetContext)
-    (v/assert kb (list dog Fido)  PetContext)
-    (v/assert kb (list loud Fido) PetContext)
+    (v/assert kb (list dog Muffet)  PetContext)
+    (v/assert kb (list loud Muffet) PetContext)
     (testing "the exception is a level-7 answer and nothing less"
-      (is (empty? (v/lookup kb 6 (list scary Fido) PetContext)))
-      (is (seq    (v/lookup kb 7 (list scary Fido) PetContext))))
+      (is (empty? (v/lookup kb 6 (list scary Muffet) PetContext)))
+      (is (seq    (v/lookup kb 7 (list scary Muffet) PetContext))))
     (testing "so it does not hold, and the rule fires (the open-world reading)"
-      (is (seq (v/sentexes-matching kb (list pet Fido) PetContext))))))
+      (is (seq (v/sentexes-matching kb (list pet Muffet) PetContext))))))
 
 ;; ---- 10. backward inference and why-not ---------------------------------
 ;; DECISION (Semantics): "under backward chaining the argument is constructed and

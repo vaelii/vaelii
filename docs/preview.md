@@ -199,12 +199,12 @@ reads as a complete one.
 about a batch that landed:
 
 ```clojure
-(edit-with-consequences! kb {:add [['(dog Fido) 'StoryContext]]})
+(edit-with-consequences! kb {:add [['(dog Muffet) 'StoryContext]]})
 ;; => {:added [4] :removed {…}
-;;     :believed-added   [{:sentence (dog Fido)    :premise? true  :handle 4 …}
-;;                        {:sentence (mortal Fido) :premise? false :handle 5
+;;     :believed-added   [{:sentence (dog Muffet)    :premise? true  :handle 4 …}
+;;                        {:sentence (mortal Muffet) :premise? false :handle 5
 ;;                         :justification {:rule (implies (dog ?x) (mortal ?x))
-;;                                         :antecedents [(dog Fido)] :informant 3}}]
+;;                                         :antecedents [(dog Muffet)] :informant 3}}]
 ;;     :believed-removed []
 ;;     :bounded?         false}
 ```

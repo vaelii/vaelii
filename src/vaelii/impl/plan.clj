@@ -125,10 +125,10 @@
         :else                    (first goal)))
 
 (defn- variable-functor?
-  "A literal whose *functor* is open — `(?type Fido)`.  It names no predicate, so
+  "A literal whose *functor* is open — `(?type Muffet)`.  It names no predicate, so
   neither of the two functor-keyed models below means anything for it: there is no
   subtype closure to fan over and no functor root to count.  The argument roots are
-  what is left — and for the plain `(?type Fido)` shape they are exactly what the
+  what is left — and for the plain `(?type Muffet)` shape they are exactly what the
   matcher reads for it (`res/candidate-handles`), so the estimate is the candidate
   set.  A dotted rest has not even those."
   [goal]
@@ -265,7 +265,7 @@
          (count-with-functor ix (functor-of goal)))
 
        ;; A unary type literal fans out over its subtype closure at match time —
-       ;; `(animal ?x)` is answered by every stored `(dog Fido)`.  Costing it by
+       ;; `(animal ?x)` is answered by every stored `(dog Muffet)`.  Costing it by
        ;; `animal`'s own extent would rank the most expensive kind of literal in the
        ;; KB as the cheapest, since a type high in the hierarchy usually has no direct
        ;; instances at all.  A non-type predicate has a singleton closure, so this

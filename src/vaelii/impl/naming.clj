@@ -5,7 +5,7 @@
   every **literal** of a sentence rather than to its outermost functor alone.
 
     predicate    camelCase, lowercase-initial, no underscore   parentOf, genl, argIsa
-    individual   CapitalCamelCase                               Fido, Tom
+    individual   CapitalCamelCase                               Muffet, Tom
     type         snake_case, lowercase, unary predicate         dog, physical_object
     sense        a type, plus which sense of it is meant        abrasive-grit
     context      CapitalCamelCase ending in Context             UniverseContext, CoreContext
@@ -16,7 +16,7 @@
   A sense is a type too, so it is unary for the same reason, and a lexeme is the one
   role a *namespace* decides — its text is a surface form and not ours to spell.
   A functor carrying an **underscore** is a type name and nothing else, and types are
-  used as *unary* predicates — `(dog Fido)`, not `(isa Fido Dog)` — so it is legal at
+  used as *unary* predicates — `(dog Muffet)`, not `(isa Muffet Dog)` — so it is legal at
   arity 1 and nowhere else.  `(lives_in penguin cold_place)` is a type name doing a
   relation's job; admitting it fragments the vocabulary into one-off predicates
   (`lives_in_antarctica`, `capable_of_swimming`) that can never join a rule or match
@@ -334,7 +334,7 @@
 
       :argument
       (str "argument " (pr-str symbol) " in " where
-           " matches no naming convention: an individual is CapitalCamelCase (Fido), a"
+           " matches no naming convention: an individual is CapitalCamelCase (Muffet), a"
            " type is snake_case (physical_object) or a sense (abrasive-grit), and a"
            " predicate is camelCase (parentOf) — write it " (pascal-case symbol)
            " for an individual, or " (str/lower-case (nm symbol)) " for a type")
@@ -491,10 +491,10 @@
   nil.  Where `problems` reads the invariants, this reads *intent*, so everything here
   passes every check and stores cleanly.
 
-  One entry so far.  `(isa Fido Dog)` is the membership spelling every other KR system
+  One entry so far.  `(isa Muffet Dog)` is the membership spelling every other KR system
   taught the reader, and here it stores a two-place predicate named `isa` relating two
   individuals — legal, indexed, believed, and matched by nothing anyone will ask.  The
-  reader then asks `(isa? kb 'Fido 'Dog)` and gets false, with no error to search for,
+  reader then asks `(isa? kb 'Muffet 'Dog)` and gets false, with no error to search for,
   because the type they meant was never asserted.  `CoreContext.txt` says never to write
   it and `docs/naming.md` calls it out by name; neither is in front of someone who is
   typing.
@@ -516,7 +516,7 @@
                      ;; the assert it was meant to help is worse than none
                      (if (and (symbol? x) (symbol? t))
                        (str "(" (type-spelling t) " " x ")")
-                       "as a unary type predicate, (dog Fido)")
+                       "as a unary type predicate, (dog Muffet)")
                      " and the hierarchy with genl.  docs/naming.md")})))
 
 (defn advise!

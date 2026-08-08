@@ -12,7 +12,7 @@
 | Role | Convention | Regex (on the symbol name) | Examples |
 |------|-----------|----------------------------|----------|
 | predicate | camelCase, lowercase-initial, no `_` | `[a-z][a-zA-Z0-9]*` | `parentOf`, `genl`, `argIsa` |
-| individual | CapitalCamelCase | `[A-Z][A-Za-z0-9]*` (not a context) | `Fido`, `Tom` |
+| individual | CapitalCamelCase | `[A-Z][A-Za-z0-9]*` (not a context) | `Muffet`, `Tom` |
 | type | snake_case, a **unary** predicate | `[a-z][a-z0-9_]*` | `dog`, `physical_object` |
 | **sense** | a type, plus the disambiguator saying *which* sense | `[a-z._][…]*-[a-z0-9][…]*` | `abrasive-grit`, `abandonment-romantic` |
 | context | CapitalCamelCase ending in `Context` | `[A-Z][A-Za-z0-9]*Context` | `UniverseContext`, `CoreContext` |
@@ -20,7 +20,7 @@
 
 ## Notes
 
-- **Types are unary predicates.** Write `(dog Fido)`, not `(isa Fido Dog)`.
+- **Types are unary predicates.** Write `(dog Muffet)`, not `(isa Muffet Dog)`.
   `thing` is the root of the `genl` hierarchy.
 - **A sense is a type**, and on a KB built by reading text it is the *usual* type: a
   word alone does not say which of its meanings is meant, and `abandonment-romantic`
@@ -70,7 +70,7 @@
 - **Overlap is expected.** A plain lowercase word (`dog`, `genl`, `parentOf`)
   satisfies both `predicate?` and `type-symbol?`. Role is disambiguated by
   position and arity, not the symbol alone — `genl` is a predicate in
-  `(genl dog animal)`, `dog` is a type in `(dog Fido)`.
+  `(genl dog animal)`, `dog` is a type in `(dog Muffet)`.
 - **Accessors.** `functor`, `args`, `arity` destructure a sentence.
 
 ## Enforcement: every literal, and snake_case is unary
@@ -216,9 +216,9 @@ direction.
 ### Advice: the sentence that breaks no invariant and still means nothing
 
 A shape can be well-formed and still be a mistake, and the front door says so where it
-can name the repair. `(isa Fido Dog)` breaks nothing — `isa` is a well-formed predicate
+can name the repair. `(isa Muffet Dog)` breaks nothing — `isa` is a well-formed predicate
 and both arguments well-formed individuals — so it stores a two-place relation nothing
-reads, and `(isa? kb 'Fido 'Dog)` then answers false with nothing to search for.
+reads, and `(isa? kb 'Muffet 'Dog)` then answers false with nothing to search for.
 `nm/advice` reads *intent* where `problems` reads the invariants: it recognizes the
 shape, and `advise!` logs a `:warn` once per process spelling the rewrite that was
 meant. Advice never refuses and never throws — a naming policy of `:off` silences it,
@@ -229,9 +229,9 @@ What it proposes:
 
 | Written | Proposed |
 |---|---|
-| `(isa Fido Dog)` | `(dog Fido)` |
-| `(isa Fido PhysicalObject)` | `(physical_object Fido)` — snake_case, not `physicalobject` |
-| `(isa Fido <non-symbol>)` | the generic `(<type> <individual>)` form |
+| `(isa Muffet Dog)` | `(dog Muffet)` |
+| `(isa Muffet PhysicalObject)` | `(physical_object Muffet)` — snake_case, not `physicalobject` |
+| `(isa Muffet <non-symbol>)` | the generic `(<type> <individual>)` form |
 
 **One entry, deliberately.** The bar for adding a second is in `advice`'s own docstring:
 a shape somebody might legitimately mean stays out, because a warning on legitimate

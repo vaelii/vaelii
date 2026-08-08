@@ -128,7 +128,7 @@ every request.
 The final answer is one fenced `edn` block:
 
 ```edn
-{:add    [[(dog Fido) WellContext]
+{:add    [[(dog Muffet) WellContext]
           [(parentOf Tom Ann) WellContext {:strength :monotonic}]]
  :remove [4211]}
 ```
@@ -331,12 +331,12 @@ and tells the model to drop an entry it cannot make well-formed rather than gues
 (require '[vaelii.impl.llm.session :as llm]
          '[vaelii.impl.llm.anthropic :as anthropic])
 
-(llm/propose kb {:message  "Fido is a dog and Ann is his owner"
+(llm/propose kb {:message  "Muffet is a dog and Ann is his owner"
                  :provider (anthropic/provider)          ; omit for the offline stub
                  :on-event (fn [ev] …)})                 ; omit for non-streaming
 ;; => {:status :ok
-;;     :batch  {:add [[(dog Fido) WellContext] …] :remove []}
-;;     :edn    "{:add [[(dog Fido) WellContext]] :remove []}"
+;;     :batch  {:add [[(dog Muffet) WellContext] …] :remove []}
+;;     :edn    "{:add [[(dog Muffet) WellContext]] :remove []}"
 ;;     :rejections [] :text "…" :attempts 1 :turns 2 :tool-calls 1
 ;;     :messages [ … the conversation, for a follow-up turn … ]}
 
@@ -510,13 +510,13 @@ a KB with no facts in it.
 
 It is the default, and it is very good at the case this path is for: **transforming
 lines it can see**. Told that three selected facts are about male parents, it rewrote
-the two `parentOf` lines to `fatherOf`, left the unrelated `(dog Fido)` alone, and did
+the two `parentOf` lines to `fatherOf`, left the unrelated `(dog Muffet)` alone, and did
 it in under half a second. Told to change nothing across 60 lines, it returned all 60
 unaltered.
 
 It is measurably weaker at **coining content about vocabulary the selection does not
-contain**. Asked to record that Ann is a veterinarian who treats Fido, it produced
-`(veterinarian Ann)` and `(professional Ann)` correctly but wrote `(treatsAnn Fido)` —
+contain**. Asked to record that Ann is a veterinarian who treats Muffet, it produced
+`(veterinarian Ann)` and `(professional Ann)` correctly but wrote `(treatsAnn Muffet)` —
 folding a binary predicate's first argument into its name. That entry is *well-formed*:
 `treatsAnn` is a legal predicate name and the result is a legal unary fact, so the critic
 has no grounds to reject it and a reviewer is the only thing that catches it. The
@@ -539,7 +539,7 @@ reliability at 20.2 s. Both are per-call `:model` overrides.
                       :provider (provider/provider :ollama)
                       :num-ctx  8192})
 ;; => {:status  :ok
-;;     :lines   "[(fatherOf Tom Ann) WellContext]\n[(dog Fido) WellContext]"
+;;     :lines   "[(fatherOf Tom Ann) WellContext]\n[(dog Muffet) WellContext]"
 ;;     :batch   {:add [[(fatherOf Tom Ann) WellContext]] :remove [4211]}
 ;;     :edn     "{:add [...] :remove [4211]}"
 ;;     :summary {:selected 3 :returned 3 :unchanged 2 :removed 1 :added 1}
@@ -758,8 +758,8 @@ It is scriptable, so a test drives the loop exactly. `:script` is the turns to h
 back, one per call; each is a full response map or a shorthand:
 
 ```clojure
-(stub/provider {:script [{:tool "kb_types_of" :input {"x" "Fido"}}
-                         {:batch {:add [[(dog Fido) WellContext]] :remove []}}
+(stub/provider {:script [{:tool "kb_types_of" :input {"x" "Muffet"}}
+                         {:batch {:add [[(dog Muffet) WellContext]] :remove []}}
                          {:lines [[(fatherOf Tom Ann) WellContext]]}   ; the selection path
                          "plain prose"]})
 ```

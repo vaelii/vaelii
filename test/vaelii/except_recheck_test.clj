@@ -372,14 +372,14 @@
     ;; index's own keying cannot reach the rule.
     (tu/with-cleared-kb [kb tu/isolated-fresh]
       (v/assert kb '(argIsa amotherOf 1 amammal) ctx)
-      (v/assert kb '(exceptWhen (amammal AFido)
+      (v/assert kb '(exceptWhen (amammal AMuffet)
                                 (set/defaultRule (implies (and (amark ?x)) (aseen ?x))))
                 ctx)
       (v/assert kb '(amark AM1) ctx)
       (is (seq (v/sentexes-matching kb '(aseen AM1) '?ctx))
           "fires while nothing excepts it")
-      (v/assert kb '(amotherOf AFido ARex) ctx)
-      (is (v/ask? kb '(amammal AFido) ctx)
+      (v/assert kb '(amotherOf AMuffet ARex) ctx)
+      (is (v/ask? kb '(amammal AMuffet) ctx)
           "the usage types the individual")
       (is (empty? (v/sentexes-matching kb '(aseen AM1) '?ctx))
           "so the exception holds and the conclusion is swept"))))
@@ -387,15 +387,15 @@
 (deftest an-argisa-declaration-arriving-after-the-facts-still-withdraws
   (testing "the other arrival order: the facts first, then the declaration that types them"
     (tu/with-cleared-kb [kb tu/isolated-fresh]
-      (v/assert kb '(exceptWhen (amammal AFido)
+      (v/assert kb '(exceptWhen (amammal AMuffet)
                                 (set/defaultRule (implies (and (amark ?x)) (aseen ?x))))
                 ctx)
-      (v/assert kb '(amotherOf AFido ARex) ctx)
+      (v/assert kb '(amotherOf AMuffet ARex) ctx)
       (v/assert kb '(amark AM1) ctx)
       (is (seq (v/sentexes-matching kb '(aseen AM1) '?ctx))
-          "nothing types AFido yet")
+          "nothing types AMuffet yet")
       (v/assert kb '(argIsa amotherOf 1 amammal) ctx)
-      (is (v/ask? kb '(amammal AFido) ctx))
+      (is (v/ask? kb '(amammal AMuffet) ctx))
       (is (empty? (v/sentexes-matching kb '(aseen AM1) '?ctx))
           "the declaration reaches the fact that was already stored"))))
 
@@ -403,16 +403,16 @@
   (testing "and retracting the typing fact releases the exception"
     (tu/with-cleared-kb [kb tu/isolated-fresh]
       (v/assert kb '(argIsa amotherOf 1 amammal) ctx)
-      (v/assert kb '(exceptWhen (amammal AFido)
+      (v/assert kb '(exceptWhen (amammal AMuffet)
                                 (set/defaultRule (implies (and (amark ?x)) (aseen ?x))))
                 ctx)
-      (v/assert kb '(amotherOf AFido ARex) ctx)
+      (v/assert kb '(amotherOf AMuffet ARex) ctx)
       (v/assert kb '(amark AM1) ctx)
       (is (empty? (v/sentexes-matching kb '(aseen AM1) '?ctx)))
-      (v/retract! kb (v/handle-of kb '(amotherOf AFido ARex) ctx))
-      (is (not (v/ask? kb '(amammal AFido) ctx)))
+      (v/retract! kb (v/handle-of kb '(amotherOf AMuffet ARex) ctx))
+      (is (not (v/ask? kb '(amammal AMuffet) ctx)))
       (is (seq (v/sentexes-matching kb '(aseen AM1) '?ctx))
-          "nothing types AFido any more, so the conclusion is re-derived"))))
+          "nothing types AMuffet any more, so the conclusion is re-derived"))))
 
 ;; ---- the third channel: a declaration, not a fact -----------------------
 ;;

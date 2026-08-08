@@ -52,10 +52,10 @@
       (is (= 1 (plan/est-matches kb (list parentOf '?x '?y) '#{?x ?y}))))))
 
 (tu/deftest-kb a-supertype-literal-costs-its-whole-subtree
-  (tu/with-terms [animal dog cat Fido Tom PlanContext]
+  (tu/with-terms [animal dog cat Muffet Tom PlanContext]
     (v/assert kb (list 'genl dog animal) PlanContext)
     (v/assert kb (list 'genl cat animal) PlanContext)
-    (v/assert kb (list dog Fido) PlanContext)
+    (v/assert kb (list dog Muffet) PlanContext)
     (v/assert kb (list cat Tom) PlanContext)
     (testing "matching fans out over the subtype closure, so the supertype is dearer"
       ;; `animal` has no instance of its own — costing it by its own extent would
@@ -64,20 +64,20 @@
              (plan/est-matches kb (list dog '?x) #{}))))))
 
 (tu/deftest-kb an-open-functor-is-costed-by-the-argument-root
-  ;; `(?type Fido)` names no predicate, so neither functor-keyed model applies: there
+  ;; `(?type Muffet)` names no predicate, so neither functor-keyed model applies: there
   ;; is no subtype closure to fan and no functor root to count.  The matcher answers it
   ;; from the position-1 argument roots (a slot-roster union), so the estimate has to be
   ;; that same count — costing it by the trie (which stops dead at the open first token)
   ;; charges the whole KB.
-  (tu/with-terms [animal dog Fido Other PlanContext]
+  (tu/with-terms [animal dog Muffet Other PlanContext]
     (v/assert kb (list 'genl dog animal) PlanContext)
-    (v/assert kb (list dog Fido) PlanContext)
+    (v/assert kb (list dog Muffet) PlanContext)
     (v/assert kb (list animal Other) PlanContext)
     (testing "bounded by the argument root, not by the size of the KB"
-      (is (= (p/count-with-arg (:index kb) 1 Fido)
-             (plan/est-matches kb (list '?c Fido) #{}))))
+      (is (= (p/count-with-arg (:index kb) 1 Muffet)
+             (plan/est-matches kb (list '?c Muffet) #{}))))
     (testing "with nothing indexable to lead with, nothing bounds it"
-      (is (< (plan/est-matches kb (list '?c Fido) #{})
+      (is (< (plan/est-matches kb (list '?c Muffet) #{})
              (plan/est-matches kb '(?c ?x) #{}))))
     (testing "a concrete unary functor still fans over its subtype closure"
       (is (> (plan/est-matches kb (list animal '?x) #{})
@@ -85,7 +85,7 @@
     (testing "a negated open functor is not ranked cheapest"
       ;; the functor root answers 0 for a variable — a *lower* bound, which would hoist
       ;; the dearest literal in the conjunction to the front
-      (is (pos? (plan/est-matches kb (list 'not (list '?c Fido)) #{}))))))
+      (is (pos? (plan/est-matches kb (list 'not (list '?c Muffet)) #{}))))))
 
 (tu/deftest-kb a-dotted-rest-pattern-is-not-ranked-free
   ;; `(rel . ?args)` splices a whole argument list, so no argument sits at a position
@@ -115,12 +115,12 @@
 ;; ---- ordering -----------------------------------------------------------
 
 (tu/deftest-kb an-open-functor-leads-when-it-is-the-selective-literal
-  (tu/with-terms [animal dog cat bird Fido PlanContext]
-    ;; a type hierarchy wide enough that walking it is dearer than reading Fido's
+  (tu/with-terms [animal dog cat bird Muffet PlanContext]
+    ;; a type hierarchy wide enough that walking it is dearer than reading Muffet's
     ;; own memberships, which is the whole point of leading with the latter
     (doseq [t [dog cat bird]] (v/assert kb (list 'genl t animal) PlanContext))
-    (v/assert kb (list dog Fido) PlanContext)
-    (let [open   (list '?c Fido)
+    (v/assert kb (list dog Muffet) PlanContext)
+    (let [open   (list '?c Muffet)
           hier   (list 'genl '?c animal)
           answers (fn [gs] (set (map #(get % '?c) (v/prove kb gs PlanContext))))]
       (testing "written either way, the open functor is picked first"

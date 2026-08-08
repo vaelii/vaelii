@@ -84,7 +84,7 @@
     (is (nil? (get (inv/declared-arities kb) p)))
     (testing "the shape falls back to a stored fact's arity, which is ground truth"
       (is (nil? (:arity (inv/predicate-shape kb p nil))))
-      (v/assert kb (list p 'Fido 'Roses) ctx)
+      (v/assert kb (list p 'Muffet 'Roses) ctx)
       (is (= 2 (:arity (inv/predicate-shape kb p nil)))))))
 
 (tu/deftest-kb the-inventory-is-sourced-from-declarations-not-facts
@@ -122,7 +122,7 @@
     (testing "argIsa constraints make it a relation"
       (is (= :predicate (inv/term-kind kb eats)))
       (is (= :predicate (inv/term-kind kb flies))))
-    (is (= :individual (inv/term-kind kb 'Fido)))
+    (is (= :individual (inv/term-kind kb 'Muffet)))
     (is (= :context (inv/term-kind kb 'WellContext)))))
 
 (tu/deftest-kb the-card-is-bounded-by-tokens-and-says-what-it-cut

@@ -331,8 +331,8 @@ Both commit paths — the assert form and the proposal panel — write through
 otherwise leaves unsaid:
 
 > **You didn't say this, but it follows**
-> `(mortal Fido)` — because `(dog Fido)` and the rule `(implies (living_thing ?x) (mortal ?x))` · _proof_
-> `(mammal Fido)` — because `(dog Fido)`, and every `dog` is a `mammal`
+> `(mortal Muffet)` — because `(dog Muffet)` and the rule `(implies (living_thing ?x) (mortal ?x))` · _proof_
+> `(mammal Muffet)` — because `(dog Muffet)`, and every `dog` is a `mammal`
 
 Those two lines come from **different mechanisms**, and the callout keeps them apart rather
 than blurring them into one list of "conclusions":
@@ -340,10 +340,10 @@ than blurring them into one list of "conclusions":
 - a **rule fired**. There is a derived sentex with a justification, so it is believed in
   the JTMS sense, has a handle, and its whole proof is one click away. The `because` names
   the antecedent that actually matched and the rule — which is why the example above reads
-  `(dog Fido)` against a rule about `living_thing`: the match fanned out over the genl spec
+  `(dog Muffet)` against a rule about `living_thing`: the match fanned out over the genl spec
   closure, and showing the matched antecedent is showing what happened.
-- a **type subsumes**. `(genl dog animal)` plus `(dog Fido)` makes Fido an animal, and the
-  engine deliberately never materializes `(animal Fido)` — matching fans the functor out
+- a **type subsumes**. `(genl dog animal)` plus `(dog Muffet)` makes Muffet an animal, and the
+  engine deliberately never materializes `(animal Muffet)` — matching fans the functor out
   over the spec closure instead, which is what lets a hundred million facts avoid a hundred
   million more ([taxonomy.md](taxonomy.md)). So there is no record, no justification and
   nothing to link; the claim is answered on demand by `isa?` / `ask`. Calling it "derived"
@@ -665,7 +665,7 @@ them. `vaelii.impl.llm.verdict` gathers them per entry and the panel renders eac
 ✓  (mortal penguin)      → (set/defaultRule (implies (penguin ?x) (mortal ?x)))  → shape  [genl]
 !  (partOf penguin wing) → (partOfType penguin wing)                → lift  ! direction
 +  (implies (penguin ?x) (swims ?x))                                + property
-✗  (genl penguin Fido)                                              ✗ malformed
+✗  (genl penguin Muffet)                                              ✗ malformed
 ```
 
 - **What the KB says** — `check-edit`'s typed problems, each as its *reason* (`open`,

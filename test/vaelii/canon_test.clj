@@ -327,7 +327,7 @@
       (is (= '(implies (p ?who ?whom) (q ?whom ?who))
              (sx/originalize (:sentence s) (:varmap s))))))
   (testing "a fact carries no varmap — canonical variables are a rule concern"
-    (is (nil? (:varmap (sx/sentex '(dog Fido) 'AContext))))))
+    (is (nil? (:varmap (sx/sentex '(dog Muffet) 'AContext))))))
 
 (tu/deftest-kb literal-order-is-structural-not-lexical
   (testing "a smaller-arity literal sorts first, even when its name is lexically later"

@@ -30,7 +30,7 @@
     (is (empty? (:coined v)))))
 
 (tu/deftest-kb a-refusal-arrives-typed-not-as-a-message
-  (let [v (verdict-for kb '(genl penguin Fido))]
+  (let [v (verdict-for kb '(genl penguin Muffet))]
     (is (= :refused (:verdict v)))
     (testing "the type is the keyword `assert` would have thrown"
       (is (= :not-well-formed (:type (first (:problems v))))))
@@ -92,7 +92,7 @@
 (tu/deftest-kb verdicts-line-up-with-the-batch-by-index
   (let [batch {:add [['(genl penguin bird) 'OrganismContext]
                      ['(mortal penguin) 'OrganismContext]
-                     ['(genl penguin Fido) 'OrganismContext]]
+                     ['(genl penguin Muffet) 'OrganismContext]]
                :remove []}
         vs (verdict/verdicts kb batch)]
     (is (= [0 1 2] (map :index vs)))
@@ -104,7 +104,7 @@
     (is (= ['OrganismContext 'OrganismContext 'OrganismContext] (map :context vs)))))
 
 (tu/deftest-kb a-precomputed-check-is-used-rather-than-repeated
-  (let [batch {:add [['(genl penguin Fido) 'OrganismContext]] :remove []}
+  (let [batch {:add [['(genl penguin Muffet) 'OrganismContext]] :remove []}
         ;; the caller's own check-edit result, handed in the way `propose-page` hands
         ;; back its `:rejections`
         problems (v/check-edit kb batch)
@@ -126,6 +126,6 @@
 (tu/deftest-kb nothing-here-writes
   (let [before (tu/sentex-ids kb)]
     (verdict/verdicts kb {:add [['(mortal penguin) 'OrganismContext]
-                                ['(genl penguin Fido) 'OrganismContext]]
+                                ['(genl penguin Muffet) 'OrganismContext]]
                           :remove []})
     (is (= before (tu/sentex-ids kb)) "a verdict is a reading of a proposal")))

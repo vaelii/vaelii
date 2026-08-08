@@ -435,7 +435,7 @@
                       (jtms/add-premise t 1 :monotonic)
                       (jtms/ensure-node t 2 1)
                       (jtms/add-justification
-                       t (jtms/->just 10 'r [1] 2 '{?var0 Fido ?var1 Rex} :monotonic)))
+                       t (jtms/->just 10 'r [1] 2 '{?var0 Muffet ?var1 Rex} :monotonic)))
                     (fn [t] (:bindings (jtms/justification t 10))))))))
 
 (deftest a-justification-round-trips-through-the-columns
