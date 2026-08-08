@@ -297,13 +297,13 @@
           (str bad)))))
 
 (tu/deftest-kb a-structurally-malformed-conditional-declaration-is-refused
-  (tu/with-terms [carnivore_t meat_t someOf Fido]
+  (tu/with-terms [carnivore_t meat_t someOf Muffet]
     (v/assert kb (list 'genl carnivore_t 'thing) 'UniverseContext)
     (v/assert kb (list 'genl meat_t 'thing) 'UniverseContext)
     (doseq [bad [(list 'interArgIsa someOf 1 carnivore_t)               ; four arguments
                  (list 'interArgIsa someOf 0 carnivore_t 2 meat_t)      ; position 0
                  (list 'interArgIsa someOf 1 carnivore_t 0 meat_t)
-                 (list 'interArgIsa someOf 1 carnivore_t 2 Fido)]]      ; an individual
+                 (list 'interArgIsa someOf 1 carnivore_t 2 Muffet)]]      ; an individual
       (is (= :not-well-formed
              (:type (try (v/assert kb bad 'UniverseContext) nil
                          (catch clojure.lang.ExceptionInfo x (ex-data x)))))

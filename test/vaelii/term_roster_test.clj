@@ -70,12 +70,12 @@
 
 (deftest a-term-arrives-and-leaves-with-its-postings
   (tu/with-neutral-kb [kb tu/fresh]
-    (tu/with-terms [dog Fido Rex StoryContext]
+    (tu/with-terms [dog Muffet Rex StoryContext]
       (let [before (set (v/terms kb))
             n0     (v/term-count kb)
-            h1     (v/assert kb (list dog Fido) StoryContext)]
+            h1     (v/assert kb (list dog Muffet) StoryContext)]
         (testing "asserting introduces every name the sentex mentions, once"
-          (is (set/subset? #{dog Fido StoryContext} (set (v/terms kb))))
+          (is (set/subset? #{dog Muffet StoryContext} (set (v/terms kb))))
           (is (= (+ n0 3) (v/term-count kb))))
         (let [h2 (v/assert kb (list dog Rex) StoryContext)]
           (testing "a second sentex over the same names adds only the new one"
@@ -83,7 +83,7 @@
           (testing "retracting one keeps the names the other still mentions"
             (v/retract! kb h1)
             (is (= #{dog Rex StoryContext}
-                   (set/intersection #{dog Fido Rex StoryContext} (set (v/terms kb)))))
+                   (set/intersection #{dog Muffet Rex StoryContext} (set (v/terms kb)))))
             (is (= (+ n0 3) (v/term-count kb))))
           (testing "retracting the last mention retires them all"
             (v/retract! kb h2)

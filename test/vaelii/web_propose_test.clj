@@ -278,7 +278,7 @@
   (tu/with-terms [numbat NumbatContext]
     (v/assert kb (list 'genlContext NumbatContext 'WellContext) 'UniverseContext)
     (let [good (pr-str [(list 'genl numbat 'animal) NumbatContext])
-          bad  (pr-str [(list 'genl numbat 'Fido) NumbatContext])
+          bad  (pr-str [(list 'genl numbat 'Muffet) NumbatContext])
           r (POST-to "/propose/apply" {"line" [good bad]})]
       (is (re-find #"Nothing was stored" (:body r)))
       (is (re-find #"not-well-formed" (:body r)))
@@ -452,10 +452,10 @@
   ;; `preview` sets (`preview_test` pins that it sets it)
   (let [panel (fn [result]
                 (str (#'web/consequence-panel {:kb tu/*kb*} 1 result)))
-        capped (panel {:believed-added [{:sentence '(dog Fido) :context 'WellContext}]
+        capped (panel {:believed-added [{:sentence '(dog Muffet) :context 'WellContext}]
                        :believed-removed [] :refused [] :violations []
                        :contradictions [] :bounded? true})
-        whole  (panel {:believed-added [{:sentence '(dog Fido) :context 'WellContext}]
+        whole  (panel {:believed-added [{:sentence '(dog Muffet) :context 'WellContext}]
                        :believed-removed [] :refused [] :violations []
                        :contradictions [] :bounded? false})]
     (is (str/includes? capped "cut short"))

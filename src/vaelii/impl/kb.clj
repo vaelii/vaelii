@@ -933,7 +933,7 @@
   argument root.  Scoped to memberships visible from `context` (default: any context).
 
   `x` is any term, not only an individual: a predicate carries the meta-ontology's
-  types (`binaryPredicate`, `instanceRelationPredicate`, …) the same way `Fido`
+  types (`binaryPredicate`, `instanceRelationPredicate`, …) the same way `Muffet`
   carries `dog`.
 
   The same three filters `matches-visible` applies, since this *is* the retrieval

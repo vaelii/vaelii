@@ -5,7 +5,7 @@
   (`vaelii.impl.client`).  A thin reitit-ring + jetty layer over `vaelii.core`, the
   network dual of the in-process API.
 
-  **Wire format is EDN.**  A sentence is a symbol s-expression — `(dog Fido)`, `?x`,
+  **Wire format is EDN.**  A sentence is a symbol s-expression — `(dog Muffet)`, `?x`,
   `(genl dog animal)` — which EDN round-trips losslessly; JSON would mangle the symbols.
   The body of every call is `{:op <keyword> :args [...]}`, and the reply is
   `{:ok true :result …}` or `{:ok false :error \"…\"}`.  EDN is read with
@@ -168,7 +168,7 @@
   "Make a result EDN-clean for a client that lacks the `impl` record classes: project
   every sentex/record to a plain map (the `sentex`-map contract).  `clojure.walk/walk`
   `doall`s each seq, so a lazy answer stream is realized before the response closes;
-  a **list stays a list** (a sentence `(dog Fido)` must not become `[dog Fido]`, or it
+  a **list stays a list** (a sentence `(dog Muffet)` must not become `[dog Muffet]`, or it
   would `pr-str` differently on the far side)."
   [x]
   (walk/postwalk (fn [y] (if (record? y) (into {} y) y)) x))

@@ -40,7 +40,7 @@
   can hold a type membership for?
 
   Every non-variable symbol qualifies, whatever role its spelling reads as.  A
-  predicate is as much a thing as `Fido` is: the meta-ontology types predicates
+  predicate is as much a thing as `Muffet` is: the meta-ontology types predicates
   (`unaryPredicate`, `instanceRelationPredicate`, …), separates those types with
   `disjointMetatype`, and constrains predicate-valued argument positions with
   `argIsa` — so restricting the checks to CapitalCamelCase individuals would leave
@@ -795,7 +795,7 @@
 
 (defn- checked-sentence
   "The body the definitional checks see: the double-negation-eliminated positive body,
-  so a `(not (not (dog Fido)))` is still arg/disjoint/functional-checked and a genuine
+  so a `(not (not (dog Muffet)))` is still arg/disjoint/functional-checked and a genuine
   negation is not."
   [sentence]
   (or (sx/positive-body sentence) sentence))

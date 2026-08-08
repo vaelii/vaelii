@@ -43,10 +43,10 @@
 
 (deftest instrumented-boundary-accepts-valid-and-rejects-malformed
   (tu/with-neutral-kb [kb tu/fresh]
-    (tu/with-terms [dog Fido Rex SpecContext]
+    (tu/with-terms [dog Muffet Rex SpecContext]
       (instrumented
        (testing "a well-formed assert (valid opts) passes instrumentation"
-         (is (some? (v/assert kb (list dog Fido) SpecContext {:strength :monotonic}))))
+         (is (some? (v/assert kb (list dog Muffet) SpecContext {:strength :monotonic}))))
        (testing "an unknown :strength keyword is rejected at the boundary"
          (is (= :instrument
                 (rejection #(v/assert kb (list dog Rex) SpecContext {:strength :monotone})))))
@@ -58,10 +58,10 @@
                 (rejection #(v/assert kb (list dog Rex) (str SpecContext))))))
        (testing "a malformed budget (string where a ms count belongs) is rejected"
          (is (= :instrument
-                (rejection #(v/ask-within kb (list dog Fido) SpecContext {:max-ms "soon"})))))
+                (rejection #(v/ask-within kb (list dog Muffet) SpecContext {:max-ms "soon"})))))
        (testing "a bad :max-cost tier is rejected"
          (is (= :instrument
-                (rejection #(v/ask-within kb (list dog Fido) SpecContext {:max-cost :instant})))))
+                (rejection #(v/ask-within kb (list dog Muffet) SpecContext {:max-cost :instant})))))
        (testing "a non-integer handle to retract! is rejected"
          (is (= :instrument (rejection #(v/retract! kb "not-a-handle")))))
        (testing "and none of the refusals stored anything"
@@ -80,10 +80,10 @@
   ;; both `why-not` arities, a `:direction` rule opt.  A wrong spec would reject a
   ;; call the engine accepts — this is what catches it.  Answers are irrelevant.
   (tu/with-neutral-kb [kb tu/fresh]
-    (tu/with-terms [dog cat animal Fido Felix Rex parentOf childOf SpecContext]
+    (tu/with-terms [dog cat animal Muffet Felix Rex parentOf childOf SpecContext]
       (instrumented
        (testing "writes: rule direction opt + provenance"
-         (let [h (v/assert kb (list dog Fido) SpecContext {:strength :monotonic})]
+         (let [h (v/assert kb (list dog Muffet) SpecContext {:strength :monotonic})]
            (is (nat-int? h))
            (is (map? (v/add-provenance kb h {:source :test})))
            (is (nat-int? (v/ist kb SpecContext (list cat Felix))))
@@ -95,51 +95,51 @@
          (dorun (v/ask kb (list dog '?x) SpecContext))
          (v/prove kb (list dog '?x) SpecContext)
          (v/prove kb [(list parentOf '?x '?y) (list dog '?y)] SpecContext)
-         (is (boolean? (v/provable? kb (list dog Fido) SpecContext)))
+         (is (boolean? (v/provable? kb (list dog Muffet) SpecContext)))
          (v/query-plan kb [(list parentOf '?x '?y) (list dog '?y)] SpecContext))
        (testing "the lookup-to-query stack: every level + escalate floor"
          (doseq [lvl (range 0 8)] (dorun (v/lookup kb lvl (list dog '?x) SpecContext)))
-         (v/escalate kb (list dog Fido) SpecContext)
-         (v/escalate kb (list dog Fido) SpecContext 3)
-         (v/explain-levels kb (list dog Fido) SpecContext))
+         (v/escalate kb (list dog Muffet) SpecContext)
+         (v/escalate kb (list dog Muffet) SpecContext 3)
+         (v/explain-levels kb (list dog Muffet) SpecContext))
        (testing "taxonomy + equality + metadata reads"
          (v/genls kb animal) (v/specs kb animal) (v/genl? kb dog animal)
          (v/types kb) (v/contexts kb)
          (v/context-up kb SpecContext) (v/sees? kb SpecContext SpecContext)
-         (is (boolean? (v/isa? kb Fido dog SpecContext)))
-         (v/types-of kb Fido SpecContext)
+         (is (boolean? (v/isa? kb Muffet dog SpecContext)))
+         (v/types-of kb Muffet SpecContext)
          (is (boolean? (v/has-prop? kb :symmetric parentOf)))
          (v/props kb :transitive) (v/inverse-of kb parentOf)
-         (v/representative kb Fido) (v/equiv-class kb Fido)
-         (is (boolean? (v/same-class? kb Fido Fido)))
-         (is (boolean? (v/deprecated? kb Fido))))
+         (v/representative kb Muffet) (v/equiv-class kb Muffet)
+         (is (boolean? (v/same-class? kb Muffet Muffet)))
+         (is (boolean? (v/deprecated? kb Muffet))))
        (testing "browser-support reads: term-role, metatypes, readable, indexable"
-         (is (= :individual (v/term-role Fido)))
+         (is (= :individual (v/term-role Muffet)))
          (is (= :context (v/term-role SpecContext)))
          (is (= :variable (v/term-role '?x)))
          (v/disjoint-metatypes kb)
          (v/metatype-members kb dog)
-         (let [sx (v/sentex kb (v/handle-of kb (list dog Fido) SpecContext))]
-           (is (= (list dog Fido) (v/readable-sentence sx)))
+         (let [sx (v/sentex kb (v/handle-of kb (list dog Muffet) SpecContext))]
+           (is (= (list dog Muffet) (v/readable-sentence sx)))
            (is (coll? (v/indexable-terms sx)))))
        (testing "term index + extents with the {:believed? true} opt"
-         (v/find-sentexes kb Fido) (v/find-sentexes-all kb [Fido dog])
+         (v/find-sentexes kb Muffet) (v/find-sentexes-all kb [Muffet dog])
          (v/sentexes-in-context kb SpecContext {:believed? true})
          (is (nat-int? (v/count-in-context kb SpecContext)))
          (v/sentexes-with-functor kb dog)
          (is (nat-int? (v/count-with-functor kb dog)))
-         (v/sentexes-with-arg kb 1 Fido {:believed? true})
-         (is (nat-int? (v/count-with-arg kb 1 Fido))))
+         (v/sentexes-with-arg kb 1 Muffet {:believed? true})
+         (is (nat-int? (v/count-with-arg kb 1 Muffet))))
        (testing "the vocabulary: enumerate, count, and search with every opt"
          (is (vector? (v/terms kb)))
          (is (nat-int? (v/term-count kb)))
-         (let [head (subs (name Fido) 0 4)]
+         (let [head (subs (name Muffet) 0 4)]
            (v/find-terms kb head)
            (v/find-terms kb (symbol head) {:match :prefix :case-sensitive? true}))
-         (v/find-terms kb (subs (name Fido) 1 4) {:match :substring})
-         (v/find-terms kb (str "^" Fido "$") {:match :regex :limit 5}))
+         (v/find-terms kb (subs (name Muffet) 1 4) {:match :substring})
+         (v/find-terms kb (str "^" Muffet "$") {:match :regex :limit 5}))
        (testing "introspection + both why-not arities"
-         (let [h (v/handle-of kb (list dog Fido) SpecContext)]
+         (let [h (v/handle-of kb (list dog Muffet) SpecContext)]
            (is (nat-int? h))
            (is (boolean? (v/in? kb h)))
            (is (map? (v/sentex kb h)))
@@ -148,7 +148,7 @@
            (is (map? (v/why kb h)))
            (is (map? (v/why-not kb h)))
            (is (map? (v/why-not kb (list dog Rex) SpecContext)))
-           (v/contexts-of kb (list dog Fido))))))))
+           (v/contexts-of kb (list dog Muffet))))))))
 
 ;; ---- the guard instrumentation hides ------------------------------------
 
@@ -161,27 +161,27 @@
   ;; known-true was meant, and nothing downstream can tell it from one that was asked
   ;; for.
   (tu/with-neutral-kb [kb tu/fresh]
-    (tu/with-terms [dog Fido SpecContext]
+    (tu/with-terms [dog Muffet SpecContext]
       (testing "a non-map opts is refused rather than ignored"
         (is (= :unknown-option
-               (rejection #(v/assert kb (list dog Fido) SpecContext :nope)))))
+               (rejection #(v/assert kb (list dog Muffet) SpecContext :nope)))))
       (testing "an unread key, and a :strength that is not an assertable class, likewise"
         (is (= :unknown-option
-               (rejection #(v/assert kb (list dog Fido) SpecContext {:strenth :monotonic}))))
+               (rejection #(v/assert kb (list dog Muffet) SpecContext {:strenth :monotonic}))))
         (is (= :unknown-option
-               (rejection #(v/assert kb (list dog Fido) SpecContext {:strength :monotone})))))
+               (rejection #(v/assert kb (list dog Muffet) SpecContext {:strength :monotone})))))
       (testing "and `check` agrees with `assert` about the non-map — same refusal,
                 same `:type`, since `shape-problems` runs the same guard"
         (is (= [:unknown-option]
-               (mapv :type (v/check kb (list dog Fido) SpecContext :nope)))))
+               (mapv :type (v/check kb (list dog Muffet) SpecContext :nope)))))
       (testing "with an unknown key *and* a non-sequential sentence, both doors read
                 the opts first — one precedence, so one answer"
         (is (= :unknown-option
-               (rejection #(v/assert kb "(dog Fido)" SpecContext {:strenth :monotonic}))))
+               (rejection #(v/assert kb "(dog Muffet)" SpecContext {:strenth :monotonic}))))
         (is (= [:unknown-option]
-               (mapv :type (v/check kb "(dog Fido)" SpecContext {:strenth :monotonic})))))
+               (mapv :type (v/check kb "(dog Muffet)" SpecContext {:strenth :monotonic})))))
       (testing "none of them stored the sentence"
-        (is (nil? (v/handle-of kb (list dog Fido) SpecContext)))))))
+        (is (nil? (v/handle-of kb (list dog Muffet) SpecContext)))))))
 
 (deftest a-direction-refusal-is-predicted-by-check
   ;; `assert` acts on `:direction`, so every refusal it makes must be one `check`
@@ -189,7 +189,7 @@
   ;; then throws mid-`edit` leaves its earlier adds stored, the half-applied state
   ;; the dry run exists to prevent.  Both doors read `direction-opt-problem`.
   (tu/with-neutral-kb [kb tu/fresh]
-    (tu/with-terms [dog cat Fido SpecContext]
+    (tu/with-terms [dog cat Muffet SpecContext]
       (let [rule (list 'implies (list dog '?x) (list cat '?x))]
         (testing "a value outside the roster is refused, not silently wrapped as nothing"
           (is (= :unknown-option
@@ -199,10 +199,10 @@
           (is (nil? (v/handle-of kb rule SpecContext)) "and nothing was stored"))
         (testing "a direction on a non-rule, and one contradicting the wrapper, likewise"
           (is (= :unknown-option
-                 (rejection #(v/assert kb (list dog Fido) SpecContext
+                 (rejection #(v/assert kb (list dog Muffet) SpecContext
                                        {:direction :backward}))))
           (is (= [:unknown-option]
-                 (mapv :type (v/check kb (list dog Fido) SpecContext
+                 (mapv :type (v/check kb (list dog Muffet) SpecContext
                                       {:direction :backward}))))
           (is (= :unknown-option
                  (rejection #(v/assert kb (list 'set/forwardRule rule) SpecContext

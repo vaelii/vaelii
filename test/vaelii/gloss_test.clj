@@ -53,7 +53,7 @@
     (is (= :composed (:source (gloss/text kb '(genl dog animal))))))
   (testing "a parameter is a variable, and `?` is not a word character — the boundary
            has to be written out or the substitution silently matches nothing"
-    (is (= "Fido takes kibble as nourishment." (:text (gloss/text kb '(eats Fido kibble))))))
+    (is (= "Muffet takes kibble as nourishment." (:text (gloss/text kb '(eats Muffet kibble))))))
   (testing "a type membership reads as one, with the type's comment as the apposition"
     (let [{:keys [text source]} (gloss/text kb '(bird Pingu))]
       (is (str/starts-with? text "Pingu is a bird — "))

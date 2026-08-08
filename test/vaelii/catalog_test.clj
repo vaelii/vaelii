@@ -177,7 +177,7 @@
   (let [spaces {:backend :memory :space 60 :recover? false}
         built  (v/open-kb spaces)]
     (try
-      (v/assert built '(dog Fido) 'UniverseContext {})
+      (v/assert built '(dog Muffet) 'UniverseContext {})
       (let [reopened (v/open-kb spaces)]
         (cat/register! "beliefless" "Reopened without recover" reopened)
         (is (cat/activate "beliefless"))

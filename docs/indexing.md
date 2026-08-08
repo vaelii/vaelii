@@ -55,7 +55,7 @@ sentex's decomposition:
 - a **positive fact** — its body **linearized** in preorder (`sentex/key-stream`):
   the functor at the top level, then each argument, with a nested compound expanded
   into an arity marker `[::subterm k]` (k = element count) followed by its elements.
-  `(dog Fido)` in `default` → `[dog Fido default]` (flat, unchanged), and
+  `(dog Muffet)` in `default` → `[dog Muffet default]` (flat, unchanged), and
   `(mass Obj (QuantityFn 5 Kilogram))` → `[mass Obj [::subterm 3] QuantityFn 5
   Kilogram default]`, so `QuantityFn` and `Kilogram` are their own matchable,
   selective trie levels instead of one opaque token (see *Structural subterms* below);
@@ -235,13 +235,13 @@ so `res/match-one` consults them for exactly that case, gated by
   flat-map index folds `clojure.set/intersection` over sets it already holds, and a dense
   one narrows in the postings' own representation so a rare argument pinned on a hot
   predicate costs the rare side ([density.md](density.md)).
-- **An open functor is the same shape at level 0.** `(?type Fido)` — what types does
-  Fido hold, as a *pattern* rather than a `types-of` call — puts the variable at the
+- **An open functor is the same shape at level 0.** `(?type Muffet)` — what types does
+  Muffet hold, as a *pattern* rather than a `types-of` call — puts the variable at the
   first path token, so every ground argument is stuck behind it and the trie can only
   fan out over its whole root child set, i.e. **every functor in the KB**. That fan is
   linear in the vocabulary, which in a broad ontology is the largest thing there is.
   The predicate-agnostic read spans every functor by construction — a union of the
-  scoped roots over `[:argument-slot 1 Fido]` — so it answers in a read per predicate
+  scoped roots over `[:argument-slot 1 Muffet]` — so it answers in a read per predicate
   present at that slot (usually one, a handful when several predicates share it),
   with a `nil` functor to intersect: **flat in the vocabulary** where the trie fan is
   linear in it. A pattern with nothing indexable to lead with (`(?type ?x)`,

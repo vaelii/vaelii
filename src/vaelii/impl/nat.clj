@@ -177,18 +177,18 @@
 ;; the same thing: `F` maps `a₁ … a_M` to `V` exactly when `(P a₁ … a_{N-1} V a_N …
 ;; a_M)` holds.  `N` is 1-based over `P`'s arguments, and omitting it puts the value
 ;; **last** — `(functionCorrespondingPredicate MotherFn motherOf)` makes `(MotherFn
-;; Fido)` the `?v` of `(motherOf Fido ?v)`, which is the shape nearly every
+;; Muffet)` the `?v` of `(motherOf Muffet ?v)`, which is the shape nearly every
 ;; correspondence has.
 ;;
 ;; It is read in **both** directions, and that is the whole of its point: an ontology
 ;; that reifies a function and its predicate separately otherwise says one thing twice
 ;; and can reason with only whichever half it was told.
 ;;
-;;   value → term   a believed `(motherOf Fido Mary)` reifies `(MotherFn Fido)` to
+;;   value → term   a believed `(motherOf Muffet Mary)` reifies `(MotherFn Muffet)` to
 ;;                  `Mary`, so the expression names the object the KB already has a
 ;;                  name for instead of minting a second one beside it.
 ;;   term → value   a constant minted because no value was known yet is *projected*
-;;                  back onto the predicate — `(motherOf Fido K)` — so the placeholder
+;;                  back onto the predicate — `(motherOf Muffet K)` — so the placeholder
 ;;                  answers that predicate's questions rather than being a term
 ;;                  nothing says anything about.
 ;;
@@ -570,7 +570,7 @@
 
 (defn- merge-corresponding-nat!
   "Equate the constant minted for an application with the value a just-asserted
-  corresponding fact gives it.  `(motherOf Fido Mary)` arriving after `(MotherFn Fido)`
+  corresponding fact gives it.  `(motherOf Muffet Mary)` arriving after `(MotherFn Muffet)`
   minted `K` leaves the KB holding two values for one application; the declaration says
   they are one object, so the equality says so too and the migration folds `K`'s uses
   onto `Mary`."

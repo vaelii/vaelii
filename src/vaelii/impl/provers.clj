@@ -1057,7 +1057,7 @@
   "Types an individual `x` must have because it fills an argIsa-constrained argument
   of a believed relation: for each believed `(P .. x@n ..)` with `(argIsa P n T')`,
   `x` is a `T'` and, by genl, every supertype of `T'`.  This is argIsa read the
-  other way — as an inference, not only a constraint (e.g. Fido eats Bone1 and eat's
+  other way — as an inference, not only a constraint (e.g. Muffet eats Bone1 and eat's
   2nd argument is food, so Bone1 is food).
 
   **Lazy and deduped.**  `distinct` over a lazy `for` returns a lazy, duplicate-free

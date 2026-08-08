@@ -107,23 +107,23 @@
 (tu/deftest-kb a-late-genl-edge-fires-what-it-newly-connects
   ;; the order-independence half: the edge arriving last must reach the facts already
   ;; stored, or the same three sentences mean different things in different orders
-  (tu/with-terms [dog4_t animal4_t breathes4 Fido]
+  (tu/with-terms [dog4_t animal4_t breathes4 Muffet]
     (v/assert kb (list 'genl animal4_t 'thing) 'UniverseContext)
     (v/assert kb (list 'implies (list animal4_t '?x) (list breathes4 '?x)) 'UniverseContext)
-    (v/assert kb (list dog4_t Fido) 'UniverseContext)
-    (is (empty? (v/sentexes-matching kb (list breathes4 Fido) 'UniverseContext))
+    (v/assert kb (list dog4_t Muffet) 'UniverseContext)
+    (is (empty? (v/sentexes-matching kb (list breathes4 Muffet) 'UniverseContext))
         "nothing yet — dog4_t is not a kind of animal4_t")
     (v/assert kb (list 'genl dog4_t animal4_t) 'UniverseContext)
-    (is (seq (v/sentexes-matching kb (list breathes4 Fido) 'UniverseContext))
+    (is (seq (v/sentexes-matching kb (list breathes4 Muffet) 'UniverseContext))
         "the edge arriving is what makes the stored fact match the rule")))
 
 (tu/deftest-kb the-same-three-sentences-in-the-other-order-agree
-  (tu/with-terms [dog5_t animal5_t breathes5 Fido]
+  (tu/with-terms [dog5_t animal5_t breathes5 Muffet]
     (v/assert kb (list 'genl animal5_t 'thing) 'UniverseContext)
     (v/assert kb (list 'genl dog5_t animal5_t) 'UniverseContext)
     (v/assert kb (list 'implies (list animal5_t '?x) (list breathes5 '?x)) 'UniverseContext)
-    (v/assert kb (list dog5_t Fido) 'UniverseContext)
-    (is (seq (v/sentexes-matching kb (list breathes5 Fido) 'UniverseContext)))))
+    (v/assert kb (list dog5_t Muffet) 'UniverseContext)
+    (is (seq (v/sentexes-matching kb (list breathes5 Muffet) 'UniverseContext)))))
 
 ;; ---- backward chaining: a rule is a sentex ------------------------------
 

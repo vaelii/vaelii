@@ -15,7 +15,7 @@
 ;; ---- the taxonomy, read from core --------------------------------------
 
 (tu/deftest-kb genl-closure-is-readable-from-core
-  (tu/with-terms [dog mammal animal cat Fido]
+  (tu/with-terms [dog mammal animal cat Muffet]
     (v/assert kb (list 'genl dog mammal)    'UniverseContext)
     (v/assert kb (list 'genl mammal animal) 'UniverseContext)
     (v/assert kb (list 'genl cat mammal)    'UniverseContext)
@@ -23,7 +23,7 @@
       (is (= #{dog mammal animal} (v/genls kb dog)))
       (is (= #{dog cat mammal}    (v/specs kb mammal)))
       (is (= #{animal} (v/genls kb animal)))                 ; reflexive at the root
-      (is (= #{Fido} (v/genls kb Fido))))                    ; and for a non-node
+      (is (= #{Muffet} (v/genls kb Muffet))))                    ; and for a non-node
     (testing "genl? asks the closure transitively"
       (is (v/genl? kb dog animal))
       (is (v/genl? kb dog dog))
@@ -32,7 +32,7 @@
     (testing "types enumerates the hierarchy's nodes"
       (let [ts (set (v/types kb))]
         (is (every? ts [dog cat mammal animal]))
-        (is (not (contains? ts Fido)))))))            ; an individual is not a type
+        (is (not (contains? ts Muffet)))))))            ; an individual is not a type
 
 (tu/deftest-kb genlContext-closure-is-readable-from-core
   (tu/with-terms [LeafContext MidContext TopContext OtherContext]
@@ -71,14 +71,14 @@
 ;; ---- handle-of: the non-creating counterpart to ist ---------------------
 
 (tu/deftest-kb handle-of-finds-without-creating
-  (tu/with-terms [dog Fido Rex StoryContext]
-    (let [h (v/assert kb (list dog Fido) StoryContext)]
+  (tu/with-terms [dog Muffet Rex StoryContext]
+    (let [h (v/assert kb (list dog Muffet) StoryContext)]
       (testing "an existing sentence resolves to its handle"
-        (is (= h (v/handle-of kb (list dog Fido) StoryContext))))
+        (is (= h (v/handle-of kb (list dog Muffet) StoryContext))))
       (testing "a sentence that is not stored is nil — and stays not stored"
         (let [before (tu/sentex-ids kb)]
           (is (nil? (v/handle-of kb (list dog Rex) StoryContext)))
-          (is (nil? (v/handle-of kb (list dog Fido) 'UniverseContext)))   ; wrong context
+          (is (nil? (v/handle-of kb (list dog Muffet) 'UniverseContext)))   ; wrong context
           (is (= before (tu/sentex-ids kb))
               "handle-of must not create — that is the whole difference from ist")))
       (testing "ist, by contrast, creates on a miss (which is why handle-of exists)"
@@ -87,21 +87,21 @@
           (v/retract! kb created))))))
 
 (tu/deftest-kb handle-of-probes-a-symmetric-mirror-and-sees-defeated-sentexes
-  (tu/with-terms [siblingOf dog Ann Bob Fido StoryContext]
+  (tu/with-terms [siblingOf dog Ann Bob Muffet StoryContext]
     (v/assert kb (list 'symmetric siblingOf) 'UniverseContext)
     (let [h (v/assert kb (list siblingOf Ann Bob) StoryContext)]
       (testing "a ground symmetric literal is found in either argument order"
         (is (= h (v/handle-of kb (list siblingOf Bob Ann) StoryContext)))))
     (testing "storage, not belief: a defeated sentex still has a handle"
-      (let [d (v/assert kb (list dog Fido) StoryContext)]
-        (v/assert kb (list 'not (list dog Fido)) StoryContext {:strength :monotonic})
+      (let [d (v/assert kb (list dog Muffet) StoryContext)]
+        (v/assert kb (list 'not (list dog Muffet)) StoryContext {:strength :monotonic})
         (is (false? (v/in? kb d)))
-        (is (empty? (v/sentexes-matching kb (list dog Fido) StoryContext)))     ; query filters belief
-        (is (= d (v/handle-of kb (list dog Fido) StoryContext)))))))  ; handle-of does not
+        (is (empty? (v/sentexes-matching kb (list dog Muffet) StoryContext)))     ; query filters belief
+        (is (= d (v/handle-of kb (list dog Muffet) StoryContext)))))))  ; handle-of does not
 
 (tu/deftest-kb believed-answers-in?-for-a-whole-batch-at-once
-  (tu/with-terms [flies dog Tweety Fido BatchContext]
-    (let [ok   (v/assert kb (list dog Fido) BatchContext)
+  (tu/with-terms [flies dog Tweety Muffet BatchContext]
+    (let [ok   (v/assert kb (list dog Muffet) BatchContext)
           out  (v/assert kb (list flies Tweety) BatchContext)]
       (v/assert kb (list 'not (list flies Tweety)) BatchContext {:strength :monotonic})
       (is (false? (v/in? kb out)) "the default lost to the monotonic negation")

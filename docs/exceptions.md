@@ -600,7 +600,7 @@ deliberately left alone — `stratification_test` pins both directions, because 
 check that rejected recursion would be worse than no check at all.
 
 **Predicate dependence is not literal.** An antecedent `(animal ?x)` is satisfied by
-a stored `(dog Fido)`, and an exception on `flightless` by a stored `(penguin Opus)`
+a stored `(dog Muffet)`, and an exception on `flightless` by a stored `(penguin Opus)`
 when `(genl penguin flightless)` — so both kinds of outgoing edge fan out over the
 genl **spec** closure, which is the fan-out matching does and the one
 `special/recheck-on-predicate` keys the exception trigger on, read in the same

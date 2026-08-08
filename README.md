@@ -33,7 +33,7 @@ lein repl          # loads namespace vaelii.core
 ```
 
 Conventions: predicates are `camelCase`, individuals `CapitalCamelCase`, types
-`snake_case` (unary predicates, e.g. `(dog Fido)`), contexts end with `Context`.
+`snake_case` (unary predicates, e.g. `(dog Muffet)`), contexts end with `Context`.
 
 ```clojure
 (require '[vaelii.core :as v] '[vaelii.starter :as starter])
@@ -48,8 +48,8 @@ Conventions: predicates are `camelCase`, individuals `CapitalCamelCase`, types
 ;; a type hierarchy + a typed individual; genl is transitive and cached
 (v/assert kb '(genl dog animal) 'UniverseContext)
 (v/assert kb '(genl animal thing) 'UniverseContext)
-(v/assert kb '(dog Fido) 'NaturalWorldContext)
-(v/isa?    kb 'Fido 'animal)                       ;=> true (via genl; no context arg, so unscoped — any context counts)
+(v/assert kb '(dog Muffet) 'NaturalWorldContext)
+(v/isa?    kb 'Muffet 'animal)                       ;=> true (via genl; no context arg, so unscoped — any context counts)
 
 ;; a rule is a sentex; forward chaining + truth maintenance
 (v/assert-rule kb '[(parentOf ?x ?y) (parentOf ?y ?z)] '(grandparentOf ?x ?z) 'UniverseContext)
@@ -130,8 +130,8 @@ and add nothing to it. See [docs/operations.md](docs/operations.md).
 
 ```sh
 # command line (--dir persists via the disk backend, recovered on open)
-lein cli assert '(dog Fido)' NaturalWorldContext --dir /var/lib/vaelii
-lein cli match  '(dog ?x)'   NaturalWorldContext --dir /var/lib/vaelii   # => [(dog Fido)]
+lein cli assert '(dog Muffet)' NaturalWorldContext --dir /var/lib/vaelii
+lein cli match  '(dog ?x)'   NaturalWorldContext --dir /var/lib/vaelii   # => [(dog Muffet)]
 lein cli repl --starter                                                   # interactive
 
 # headless daemon: one process owns one KB, serves it as EDN over HTTP
@@ -142,7 +142,7 @@ lein serve 4200 /var/lib/vaelii
 ;; a thin client (zero-dependency java.net.http), conn threaded explicitly
 (require '[vaelii.client :as c])
 (def conn (c/client "localhost" 4200))
-(c/assert  conn '(dog Fido) 'NaturalWorldContext)
+(c/assert  conn '(dog Muffet) 'NaturalWorldContext)
 (c/query   conn '(dog ?x)   'NaturalWorldContext)
 ```
 

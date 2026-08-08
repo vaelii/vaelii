@@ -180,8 +180,8 @@
   ;; and argument roots by guarding on the body's shape, and moving the context key
   ;; inside that same guard would drop rules from `sentexes-in-context` too, leaving
   ;; `count-in-context` under-counting a rule-heavy context.
-  (tu/with-terms [p q Fido dog RuleContext]
-    (let [fact (v/assert kb (list dog Fido) RuleContext)
+  (tu/with-terms [p q Muffet dog RuleContext]
+    (let [fact (v/assert kb (list dog Muffet) RuleContext)
           rule (v/assert kb (list 'implies (list p '?x) (list q '?x)) RuleContext)]
       (testing "the context's extent and cardinality both count the rule"
         (is (= 2 (v/count-in-context kb RuleContext)))
@@ -234,14 +234,14 @@
   ;; keys), so without the guard `find-sentexes-all` on no terms could throw from deep
   ;; in the store rather than reporting the caller passed nothing.  An empty
   ;; conjunction of constraints is vacuous; the honest answer is the empty set.
-  (tu/with-terms [dog Fido TermContext]
-    (v/assert kb (list dog Fido) TermContext)
+  (tu/with-terms [dog Muffet TermContext]
+    (v/assert kb (list dog Muffet) TermContext)
     (testing "the guard lives on the index protocol, and answers with a set"
       (is (= #{} (p/sentexes-with-terms (:index kb) []))))
     (testing "so the public wrapper answers empty instead of throwing"
       (is (empty? (v/find-sentexes-all kb []))))
     (testing "while a real intersection still narrows"
-      (is (= 1 (count (v/find-sentexes-all kb [dog Fido]))))
+      (is (= 1 (count (v/find-sentexes-all kb [dog Muffet]))))
       (is (= 0 (count (v/find-sentexes-all kb [dog (tu/tmp-ind)])))))))
 
 ;; ---- a compound probe, at every floor -----------------------------------
@@ -316,8 +316,8 @@
   ;; decision resting on it flips — known-true content silently becomes defeasible,
   ;; and the KB is *consistent*, just wrong.  So the keyword must survive the store as
   ;; a keyword, and the nil-strength default must be applied on write, not guessed later.
-  (tu/with-terms [dog Fido PremContext]
-    (let [h    (v/assert kb (list dog Fido) PremContext {:strength :monotonic})
+  (tu/with-terms [dog Muffet PremContext]
+    (let [h    (v/assert kb (list dog Muffet) PremContext {:strength :monotonic})
           recs (:records kb)]
       (testing ":monotonic survives the store as :monotonic"
         (is (= :monotonic (p/premise-strength recs h)))

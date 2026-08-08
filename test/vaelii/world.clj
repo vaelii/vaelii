@@ -35,14 +35,14 @@
   conclusions over them land there for the tests to query."
   '[(person Tom) (person Bob) (person Ann) (person Carol) (person Dave)
     (person Eve) (person Nancy)
-    (dog Fido) (cat Whiskers) (penguin Tweety) (eagle Sam) (sparrow Jack)
+    (dog Muffet) (cat Whiskers) (penguin Tweety) (eagle Sam) (sparrow Jack)
     (fish Nemo) (tree Oak1) (flower Rose1) (vehicle Car1) (food Kibble)
     (building Garage1) (building House1)])
 
 (def natural-facts
   '[(parentOf Tom Bob) (parentOf Bob Ann) (parentOf Bob Carol) (parentOf Dave Eve)
     (siblingOf Ann Carol)
-    (eats Fido Kibble) (eats Fido Bone1)
+    (eats Muffet Kibble) (eats Muffet Bone1)
     (partOf Engine1 Car1) (partOf Piston1 Engine1)
     (locatedIn Car1 Garage1) (locatedIn Garage1 House1)])
 
@@ -50,7 +50,7 @@
   '[(marriedTo Bob Nancy)
     (owns Tom Car1) (owns Tom House1)
     (partOf Roof1 House1) (partOf Chimney1 House1)
-    (likes Ann Fido)
+    (likes Ann Muffet)
     (birthYearOf Tom 1970) (birthYearOf Bob 1995)])
 
 (defn load-cast

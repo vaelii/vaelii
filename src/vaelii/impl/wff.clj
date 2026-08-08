@@ -204,7 +204,7 @@
   "The syntactic role of a `rewriteOf` argument, for the same-role check.  A merge
   across incompatible roles is a likely import bug, so it is refused:
 
-    :individual   CapitalCamelCase (Fido, Tom)
+    :individual   CapitalCamelCase (Muffet, Tom)
     :predicate    interior uppercase ⇒ camelCase (bornIn, parentOf)
     :type         underscore ⇒ snake_case (physical_object)
     :either       a bare lowercase word (dog, canine) — a type *or* a predicate,
@@ -213,7 +213,7 @@
                   a name anybody wrote, so it has no spelling to read a role off
 
   `:either` accepts either non-individual partner; the guard that bites is
-  individual-with-non-individual (merging `Fido` into `dog`) and clearly-camelCase
+  individual-with-non-individual (merging `Muffet` into `dog`) and clearly-camelCase
   predicate with clearly-snake_case type (`parentOf` into `physical_object`).  The
   predicate/type split reads off `naming`: a camelCase predicate is not a valid
   snake_case type (the interior uppercase), and vice versa; a bare lowercase word
@@ -296,7 +296,7 @@
   longer cycle both leave the class with no head and are refused like a `genl`
   cycle.  And **both sides must be the same role** — predicate-with-predicate,
   type-with-type, individual-with-individual (`roles-clash?`): rewriting a term of
-  one kind into another is meaningless (merging `Fido` into `dog`) and a likely
+  one kind into another is meaningless (merging `Muffet` into `dog`) and a likely
   import bug.  Unlike round one, a predicate or a type *is* now a legal `rewriteOf`
   target — the merge moves its trie keys, functor root, rule-index postings and
   `genl` closure with it (docs/equality.md).  `sameAs` / `equals` stay
@@ -407,7 +407,7 @@
 
   Both sides fan out over the genl **spec** closure, because predicate dependence
   is not literal: an antecedent `(animal ?x)` is satisfied by a stored
-  `(dog Fido)`, and an exception on `flightless` by a stored `(penguin Opus)` when
+  `(dog Muffet)`, and an exception on `flightless` by a stored `(penguin Opus)` when
   `(genl penguin flightless)`.  This is the fan-out matching does and the one
   `special/recheck-on-predicate` keys the exception trigger on, read in the same
   direction; a cycle that exists only through a subtype has to be caught.

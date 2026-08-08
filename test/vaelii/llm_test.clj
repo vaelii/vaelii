@@ -45,7 +45,7 @@
           (str (tools/tool-name w) " must not resolve to an op"))))
   (testing "and a made-up write tool is simply unknown"
     (is (nil? (tools/op-of "kb_assert")))
-    (is (= false (:ok (tools/call (tu/fresh) "kb_assert" {"sentence" "(dog Fido)"}))))))
+    (is (= false (:ok (tools/call (tu/fresh) "kb_assert" {"sentence" "(dog Muffet)"}))))))
 
 (deftest schemas-are-well-formed-and-stable
   (let [ss (tools/schemas)]
@@ -76,20 +76,20 @@
     (is (not= (tools/tool-name :ask) (tools/tool-name :ask?)))))
 
 (tu/deftest-kb tool-calls-reach-the-kb
-  (tu/with-terms [dog animal Fido]
+  (tu/with-terms [dog animal Muffet]
     (v/assert kb (list 'genl dog animal) 'UniverseContext)
-    (v/assert kb (list dog Fido) 'UniverseContext)
+    (v/assert kb (list dog Muffet) 'UniverseContext)
     (testing "a query returns the stored sentence"
       (let [{:keys [ok result]} (tools/call kb "kb_sentexes_matching" {"sentence" (pr-str (list dog '?x))})]
         (is ok)
-        (is (str/includes? result (str Fido)))))
+        (is (str/includes? result (str Muffet)))))
     (testing "an integer parameter arrives as an integer"
-      (let [h (v/handle-of kb (list dog Fido) 'UniverseContext)
+      (let [h (v/handle-of kb (list dog Muffet) 'UniverseContext)
             {:keys [ok result]} (tools/call kb "kb_in_p" {"handle" h})]
         (is ok)
         (is (= "true" result))))
     (testing "a taxonomic read"
-      (let [{:keys [ok result]} (tools/call kb "kb_isa_p" {"x" (str Fido) "t" (str animal)})]
+      (let [{:keys [ok result]} (tools/call kb "kb_isa_p" {"x" (str Muffet) "t" (str animal)})]
         (is ok)
         (is (= "true" result))))
     (testing "a failing call is reported, not thrown"
@@ -103,12 +103,12 @@
 ;; ---- the system prompt is generated from the KB -------------------------
 
 (tu/deftest-kb system-prompt-reads-the-live-kb
-  (tu/with-terms [dog animal Fido StoryContext]
+  (tu/with-terms [dog animal Muffet StoryContext]
     (let [before (prompt/system-prompt kb)]
       (is (not (str/includes? before (str dog))))
       (v/assert kb (list 'genl dog animal) 'UniverseContext)
       (v/assert kb (list 'genlContext StoryContext 'UniverseContext) 'UniverseContext)
-      (v/assert kb (list dog Fido) StoryContext)
+      (v/assert kb (list dog Muffet) StoryContext)
       (let [after (prompt/system-prompt kb)]
         (is (str/includes? after (str dog)) "a new type reaches the prompt")
         (is (str/includes? after (str StoryContext)) "a new context reaches the prompt")
@@ -118,7 +118,7 @@
         (is (not= before after))))))
 
 (tu/deftest-kb system-prompt-carries-argisa-and-disjointness
-  (tu/with-terms [dog cat parentOf Fido]
+  (tu/with-terms [dog cat parentOf Muffet]
     (v/assert kb (list 'disjoint dog cat) 'UniverseContext)
     (v/assert kb (list 'argIsa parentOf 1 dog) 'UniverseContext)
     (let [p (prompt/system-prompt kb)]
@@ -134,10 +134,10 @@
     (is (= {:add [] :remove []}
            (:batch (session/parse-batch "here you go\n\n```edn\n{:add [] :remove []}\n```")))))
   (testing "the last block wins — a model often shows a draft first"
-    (is (= {:add [['(dog Fido) 'WellContext]] :remove []}
+    (is (= {:add [['(dog Muffet) 'WellContext]] :remove []}
            (:batch (session/parse-batch
                     (str "draft:\n```edn\n{:add [] :remove []}\n```\n"
-                         "final:\n```edn\n{:add [[(dog Fido) WellContext]]}\n```"))))))
+                         "final:\n```edn\n{:add [[(dog Muffet) WellContext]]}\n```"))))))
   (testing "an unfenced map still parses"
     (is (= {:add [] :remove [7]} (:batch (session/parse-batch "{:remove [7]}")))))
   (testing "failures are reported, never thrown"
@@ -153,8 +153,8 @@
 ;; ---- the deterministic critic: typed rejections -------------------------
 
 (tu/deftest-kb a-bad-predicate-name-is-a-naming-rejection
-  (tu/with-terms [Fido]
-    (let [rs (session/check-batch kb {:add [[(list 'BadFunctor Fido) 'UniverseContext]]
+  (tu/with-terms [Muffet]
+    (let [rs (session/check-batch kb {:add [[(list 'BadFunctor Muffet) 'UniverseContext]]
                                       :remove []})]
       (is (= 1 (count rs)))
       (is (= :naming (:type (first rs))))
@@ -168,70 +168,70 @@
       (is (= :not-ground (:type (first rs)))))))
 
 (tu/deftest-kb a-disjoint-clash-is-a-disjoint-rejection
-  (tu/with-terms [dog cat Fido]
+  (tu/with-terms [dog cat Muffet]
     (v/assert kb (list 'disjoint dog cat) 'UniverseContext)
-    (v/assert kb (list dog Fido) 'UniverseContext)
-    (let [rs (session/check-batch kb {:add [[(list cat Fido) 'UniverseContext]] :remove []})]
+    (v/assert kb (list dog Muffet) 'UniverseContext)
+    (let [rs (session/check-batch kb {:add [[(list cat Muffet) 'UniverseContext]] :remove []})]
       (is (= 1 (count rs)))
       (is (= :disjoint (:type (first rs))))))
   (testing "the critic did not store the entry it rejected"
-    (tu/with-terms [dog cat Fido]
+    (tu/with-terms [dog cat Muffet]
       (v/assert kb (list 'disjoint dog cat) 'UniverseContext)
-      (session/check-batch kb {:add [[(list cat Fido) 'UniverseContext]] :remove []})
-      (is (nil? (v/handle-of kb (list cat Fido) 'UniverseContext))
+      (session/check-batch kb {:add [[(list cat Muffet) 'UniverseContext]] :remove []})
+      (is (nil? (v/handle-of kb (list cat Muffet) 'UniverseContext))
           "checking must not write"))))
 
 (tu/deftest-kb an-argisa-clash-is-an-arg-type-rejection
-  (tu/with-terms [dog cat likes Fido Whiskers]
+  (tu/with-terms [dog cat likes Muffet Whiskers]
     (v/assert kb (list 'genl dog 'thing) 'UniverseContext)
     (v/assert kb (list 'genl cat 'thing) 'UniverseContext)
     (v/assert kb (list 'disjoint dog cat) 'UniverseContext)
     (v/assert kb (list 'argIsa likes 1 dog) 'UniverseContext)
     (v/assert kb (list cat Whiskers) 'UniverseContext)
-    (let [rs (session/check-batch kb {:add [[(list likes Whiskers Fido) 'UniverseContext]]
+    (let [rs (session/check-batch kb {:add [[(list likes Whiskers Muffet) 'UniverseContext]]
                                       :remove []})]
       (is (= 1 (count rs)))
       (is (= :arg-type (:type (first rs)))))))
 
 (tu/deftest-kb malformed-entries-and-handles-are-rejected
   (testing "an entry that is not [sentence context]"
-    (is (= :shape (:type (first (session/check-batch kb {:add ['(dog Fido)] :remove []}))))))
+    (is (= :shape (:type (first (session/check-batch kb {:add ['(dog Muffet)] :remove []}))))))
   (testing "a context that is not a symbol"
     (is (= :shape (:type (first (session/check-batch
-                                 kb {:add [['(dog Fido) "WellContext"]] :remove []}))))))
+                                 kb {:add [['(dog Muffet) "WellContext"]] :remove []}))))))
   (testing "a removal naming no stored sentex"
     (let [rs (session/check-batch kb {:add [] :remove [999999]})]
       (is (= :unknown-handle (:type (first rs))))
       (is (= :remove (:in (first rs))))))
   (testing "a removal naming a stored one is fine"
-    (tu/with-terms [dog Fido]
-      (let [h (v/assert kb (list dog Fido) 'UniverseContext)]
+    (tu/with-terms [dog Muffet]
+      (let [h (v/assert kb (list dog Muffet) 'UniverseContext)]
         (is (empty? (session/check-batch kb {:add [] :remove [h]})))))))
 
 (tu/deftest-kb a-well-formed-batch-has-no-rejections
-  (tu/with-terms [dog animal Fido]
+  (tu/with-terms [dog animal Muffet]
     (v/assert kb (list 'genl dog animal) 'UniverseContext)
-    (is (empty? (session/check-batch kb {:add [[(list dog Fido) 'UniverseContext]]
+    (is (empty? (session/check-batch kb {:add [[(list dog Muffet) 'UniverseContext]]
                                          :remove []})))))
 
 ;; ---- the repair loop ----------------------------------------------------
 
 (tu/deftest-kb the-loop-repairs-a-rejected-batch
-  (tu/with-terms [dog Fido]
+  (tu/with-terms [dog Muffet]
     (let [p (stub/provider
-             {:script [{:batch {:add [[(list 'BadFunctor Fido) 'UniverseContext]] :remove []}}
-                       {:batch {:add [[(list dog Fido) 'UniverseContext]] :remove []}}]})
-          result (session/propose kb {:message "add Fido as a dog" :provider p})]
+             {:script [{:batch {:add [[(list 'BadFunctor Muffet) 'UniverseContext]] :remove []}}
+                       {:batch {:add [[(list dog Muffet) 'UniverseContext]] :remove []}}]})
+          result (session/propose kb {:message "add Muffet as a dog" :provider p})]
       (is (= :ok (:status result)))
       (is (= 2 (:attempts result)) "one rejected batch, one accepted")
-      (is (= {:add [[(list dog Fido) 'UniverseContext]] :remove []} (:batch result)))
+      (is (= {:add [[(list dog Muffet) 'UniverseContext]] :remove []} (:batch result)))
       (testing "the critic's typed verdict is what was fed back"
         (is (str/includes? (stub/last-user-text p) ":naming"))
         (is (str/includes? (stub/last-user-text p) "BadFunctor"))))))
 
 (tu/deftest-kb the-loop-gives-up-cleanly-when-repair-fails
-  (tu/with-terms [Fido]
-    (let [bad {:batch {:add [[(list 'BadFunctor Fido) 'UniverseContext]] :remove []}}
+  (tu/with-terms [Muffet]
+    (let [bad {:batch {:add [[(list 'BadFunctor Muffet) 'UniverseContext]] :remove []}}
           p (stub/provider {:script [bad bad bad bad bad] :default (:batch bad)})
           result (session/propose kb {:message "break it" :provider p :max-repairs 2})]
       (is (= :invalid (:status result)) "a stubborn model ends in a report, not a throw")
@@ -257,12 +257,12 @@
     (is (nil? (:batch result)) "no batch is invented out of an empty content array")))
 
 (tu/deftest-kb the-loop-runs-read-tools-then-answers
-  (tu/with-terms [dog Fido]
-    (v/assert kb (list dog Fido) 'UniverseContext)
+  (tu/with-terms [dog Muffet]
+    (v/assert kb (list dog Muffet) 'UniverseContext)
     (let [p (stub/provider
-             {:script [{:tool "kb_types_of" :input {"x" (str Fido)} :prose "checking first"}
+             {:script [{:tool "kb_types_of" :input {"x" (str Muffet)} :prose "checking first"}
                        {:batch {:add [] :remove []}}]})
-          result (session/propose kb {:message "what is Fido?" :provider p})]
+          result (session/propose kb {:message "what is Muffet?" :provider p})]
       (is (= :ok (:status result)))
       (is (= 1 (:tool-calls result)))
       (is (= 2 (:turns result)))
@@ -285,9 +285,9 @@
 ;; ---- streaming ----------------------------------------------------------
 
 (tu/deftest-kb streaming-yields-deltas-and-the-same-result
-  (tu/with-terms [dog Fido]
+  (tu/with-terms [dog Muffet]
     (let [events (atom [])
-          batch {:add [[(list dog Fido) 'UniverseContext]] :remove []}
+          batch {:add [[(list dog Muffet) 'UniverseContext]] :remove []}
           p (stub/provider {:script [{:batch batch}]})
           result (session/propose kb {:message "add it" :provider p
                                       :on-event #(swap! events conj %)})]
@@ -299,24 +299,24 @@
 ;; ---- the write boundary -------------------------------------------------
 
 (tu/deftest-kb a-proposal-is-never-applied-without-an-explicit-apply
-  (tu/with-terms [dog Fido]
+  (tu/with-terms [dog Muffet]
     (let [before (tu/sentex-ids kb)
-          batch {:add [[(list dog Fido) 'UniverseContext]] :remove []}
+          batch {:add [[(list dog Muffet) 'UniverseContext]] :remove []}
           p (stub/provider {:script [{:batch batch}]})
-          proposal (session/propose kb {:message "add Fido" :provider p})]
+          proposal (session/propose kb {:message "add Muffet" :provider p})]
       (is (= :ok (:status proposal)))
       (is (= before (tu/sentex-ids kb))
           "proposing stored nothing — the model has no write path")
-      (is (nil? (v/handle-of kb (list dog Fido) 'UniverseContext)))
+      (is (nil? (v/handle-of kb (list dog Muffet) 'UniverseContext)))
       (testing "the explicit apply is what writes"
         (let [applied (session/apply-proposal! kb proposal)]
           (is (= 1 (count (:added (:result applied)))))
-          (is (some? (v/handle-of kb (list dog Fido) 'UniverseContext)))
+          (is (some? (v/handle-of kb (list dog Muffet) 'UniverseContext)))
           (is (empty? (:violations applied))))))))
 
 (tu/deftest-kb apply-refuses-a-proposal-the-critic-rejected
-  (tu/with-terms [Fido]
-    (let [bad {:batch {:add [[(list 'BadFunctor Fido) 'UniverseContext]] :remove []}}
+  (tu/with-terms [Muffet]
+    (let [bad {:batch {:add [[(list 'BadFunctor Muffet) 'UniverseContext]] :remove []}}
           p (stub/provider {:script [bad bad bad] :default (:batch bad)})
           proposal (session/propose kb {:message "x" :provider p :max-repairs 1})]
       (is (= :invalid (:status proposal)))
@@ -326,14 +326,14 @@
                   (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))))))
 
 (tu/deftest-kb apply-round-trips-a-removal
-  (tu/with-terms [dog Fido]
-    (let [h (v/assert kb (list dog Fido) 'UniverseContext)
+  (tu/with-terms [dog Muffet]
+    (let [h (v/assert kb (list dog Muffet) 'UniverseContext)
           p (stub/provider {:script [{:batch {:add [] :remove [h]}}]})
           proposal (session/propose kb {:message "drop it" :provider p})]
       (is (= :ok (:status proposal)))
-      (is (some? (v/handle-of kb (list dog Fido) 'UniverseContext)) "still there after proposing")
+      (is (some? (v/handle-of kb (list dog Muffet) 'UniverseContext)) "still there after proposing")
       (session/apply-proposal! kb proposal)
-      (is (nil? (v/handle-of kb (list dog Fido) 'UniverseContext))))))
+      (is (nil? (v/handle-of kb (list dog Muffet) 'UniverseContext))))))
 
 ;; ---- the default provider is offline ------------------------------------
 
@@ -433,13 +433,13 @@
             {"type" "content_block_delta" "index" 2
              "delta" {"type" "input_json_delta" "partial_json" "{\"x\":"}}
             {"type" "content_block_delta" "index" 2
-             "delta" {"type" "input_json_delta" "partial_json" "\"Fido\"}"}}
+             "delta" {"type" "input_json_delta" "partial_json" "\"Muffet\"}"}}
             {"type" "content_block_stop" "index" 2}
             {"type" "message_delta" "delta" {"stop_reason" "tool_use"} "usage" {"output_tokens" 30}}]
            #(swap! events conj %))]
     (is (= "one two" (proto/text r)))
     (is (= "tool_use" (:stop-reason r)))
-    (is (= {"x" "Fido"} (:input (first (proto/tool-uses r)))) "partial json reassembles")
+    (is (= {"x" "Muffet"} (:input (first (proto/tool-uses r)))) "partial json reassembles")
     (testing "the signature arrives as its own delta and must ride back out"
       (is (= "sig-abc" (get-in (:content r) [0 :raw "signature"])))
       (is (= "weighing it" (get-in (:content r) [0 :raw "thinking"]))))

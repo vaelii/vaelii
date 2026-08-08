@@ -20,7 +20,7 @@
     (is (seq (v/sentexes-matching kb '(grandparentOf Tom Ann) 'NaturalWorldContext)))
     (is (empty? (v/sentexes-matching kb '(grandparentOf Tom Ann) 'UniverseContext))))
   (testing "the genl taxonomy answers isa? queries"
-    (is (v/isa? kb 'Fido 'animal))
+    (is (v/isa? kb 'Muffet 'animal))
     (is (v/isa? kb 'Tom 'thing))
     (is (v/isa? kb 'Tweety 'animal))                  ; penguin -> bird -> animal
     (is (not (v/isa? kb 'Tom 'dog)))))
@@ -33,7 +33,7 @@
     (is (empty? (v/conflicts kb))))                   ; the strict exception resolves cleanly
   (testing "the mortality default reaches every living individual"
     (is (seq (v/sentexes-matching kb '(mortal Tom) 'NaturalWorldContext)))
-    (is (seq (v/sentexes-matching kb '(mortal Fido) 'NaturalWorldContext))))
+    (is (seq (v/sentexes-matching kb '(mortal Muffet) 'NaturalWorldContext))))
   (testing "predicate metadata answers via the generic provers"
     (is (v/ask? kb '(ancestorOf Tom Ann)))            ; transitive closure of parentOf
     (is (v/ask? kb '(childOf Bob Tom)))               ; inverse of parentOf

@@ -69,12 +69,12 @@
 (tu/deftest-kb every-edge-on-the-path-is-named
   ;; subsumption is transitive, so a two-step climb rests on two edges and either one
   ;; of them is enough to withdraw the conclusion
-  (tu/with-terms [dog_t mammal_t animal_t breathes Fido]
+  (tu/with-terms [dog_t mammal_t animal_t breathes Muffet]
     (v/assert kb (list 'genl dog_t mammal_t) 'UniverseContext)
     (v/assert kb (list 'genl mammal_t animal_t) 'UniverseContext)
     (v/assert kb (list 'implies (list animal_t '?x) (list breathes '?x)) 'UniverseContext)
-    (v/assert kb (list dog_t Fido) 'UniverseContext)
-    (let [derived (:id (first (v/sentexes-matching kb (list breathes Fido) 'UniverseContext)))
+    (v/assert kb (list dog_t Muffet) 'UniverseContext)
+    (let [derived (:id (first (v/sentexes-matching kb (list breathes Muffet) 'UniverseContext)))
           antes   (antecedent-sentences kb derived)]
       (is (some? derived))
       (is (contains? antes (list 'genl dog_t mammal_t)))
@@ -95,14 +95,14 @@
         (is (seq (v/sentexes-matching kb (list fatherOf Tom Bob) 'UniverseContext)))))))
 
 (tu/deftest-kb retracting-one-edge-of-a-chain-withdraws-the-conclusion
-  (tu/with-terms [dog_t mammal_t animal_t breathes Fido]
+  (tu/with-terms [dog_t mammal_t animal_t breathes Muffet]
     (v/assert kb (list 'genl dog_t mammal_t) 'UniverseContext)
     (let [upper (v/assert kb (list 'genl mammal_t animal_t) 'UniverseContext)]
       (v/assert kb (list 'implies (list animal_t '?x) (list breathes '?x)) 'UniverseContext)
-      (v/assert kb (list dog_t Fido) 'UniverseContext)
-      (is (seq (v/sentexes-matching kb (list breathes Fido) 'UniverseContext)))
+      (v/assert kb (list dog_t Muffet) 'UniverseContext)
+      (is (seq (v/sentexes-matching kb (list breathes Muffet) 'UniverseContext)))
       (v/retract! kb upper)
-      (is (empty? (v/sentexes-matching kb (list breathes Fido) 'UniverseContext))
+      (is (empty? (v/sentexes-matching kb (list breathes Muffet) 'UniverseContext))
           "the climb needed both edges, so losing the upper one is enough"))))
 
 (tu/deftest-kb a-retracted-edge-takes-the-whole-cascade-with-it
@@ -182,19 +182,19 @@
 
 (tu/deftest-kb a-second-path-around-the-edge-keeps-the-conclusion
   ;; multiple inheritance: dog reaches animal two ways.  Either edge can go.
-  (tu/with-terms [dog_t mammal_t pet_t animal_t breathes Fido]
+  (tu/with-terms [dog_t mammal_t pet_t animal_t breathes Muffet]
     (v/assert kb (list 'genl dog_t mammal_t) 'UniverseContext)
     (v/assert kb (list 'genl dog_t pet_t) 'UniverseContext)
     (let [via-mammal (v/assert kb (list 'genl mammal_t animal_t) 'UniverseContext)
           via-pet    (v/assert kb (list 'genl pet_t animal_t) 'UniverseContext)]
       (v/assert kb (list 'implies (list animal_t '?x) (list breathes '?x)) 'UniverseContext)
-      (v/assert kb (list dog_t Fido) 'UniverseContext)
-      (is (seq (v/sentexes-matching kb (list breathes Fido) 'UniverseContext)))
+      (v/assert kb (list dog_t Muffet) 'UniverseContext)
+      (is (seq (v/sentexes-matching kb (list breathes Muffet) 'UniverseContext)))
       (v/retract! kb via-mammal)
-      (is (seq (v/sentexes-matching kb (list breathes Fido) 'UniverseContext))
+      (is (seq (v/sentexes-matching kb (list breathes Muffet) 'UniverseContext))
           "a dog is still an animal by the other route, so it still breathes")
       (v/retract! kb via-pet)
-      (is (empty? (v/sentexes-matching kb (list breathes Fido) 'UniverseContext))
+      (is (empty? (v/sentexes-matching kb (list breathes Muffet) 'UniverseContext))
           "with both routes gone the conclusion has nothing left to rest on"))))
 
 (tu/deftest-kb the-edge-survives-a-rebuild-in-the-antecedent-list
@@ -217,16 +217,16 @@
 (tu/deftest-kb an-edit-that-removes-an-edge-settles-once-and-re-derives
   ;; the batch path owes the same re-chain the single retraction does — one settle,
   ;; adds before removes, and what the surviving route licenses is back at the end
-  (tu/with-terms [dog_t mammal_t pet_t animal_t breathes Fido Rex]
+  (tu/with-terms [dog_t mammal_t pet_t animal_t breathes Muffet Rex]
     (v/assert kb (list 'genl dog_t mammal_t) 'UniverseContext)
     (v/assert kb (list 'genl dog_t pet_t) 'UniverseContext)
     (let [via-mammal (v/assert kb (list 'genl mammal_t animal_t) 'UniverseContext)]
       (v/assert kb (list 'genl pet_t animal_t) 'UniverseContext)
       (v/assert kb (list 'implies (list animal_t '?x) (list breathes '?x)) 'UniverseContext)
-      (v/assert kb (list dog_t Fido) 'UniverseContext)
-      (is (seq (v/sentexes-matching kb (list breathes Fido) 'UniverseContext)))
+      (v/assert kb (list dog_t Muffet) 'UniverseContext)
+      (is (seq (v/sentexes-matching kb (list breathes Muffet) 'UniverseContext)))
       (v/edit! kb {:add [[(list dog_t Rex) 'UniverseContext]] :remove [via-mammal]})
-      (is (seq (v/sentexes-matching kb (list breathes Fido) 'UniverseContext))
+      (is (seq (v/sentexes-matching kb (list breathes Muffet) 'UniverseContext))
           "the other route survived the batch, so the old conclusion is back")
       (is (seq (v/sentexes-matching kb (list breathes Rex) 'UniverseContext))
           "and the added fact concluded through it too"))))

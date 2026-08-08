@@ -52,7 +52,7 @@
     (v/assert kb (list 'genl dog animal) 'UniverseContext)
     (v/assert-rule kb [(list animal '?x)] (list breathes '?x) 'UniverseContext)
     (v/assert kb (list dog fido) 'UniverseContext)
-    (testing "a rule about animals fires on a dog (subtype), without materializing (animal Fido)"
+    (testing "a rule about animals fires on a dog (subtype), without materializing (animal Muffet)"
       (is (seq (v/sentexes-matching kb (list breathes fido) 'UniverseContext)))
       (is (empty? (v/sentexes-matching kb (list animal fido) 'UniverseContext))))))
 

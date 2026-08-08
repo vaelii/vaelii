@@ -73,9 +73,9 @@
 ;; ---- the checkers with no tests at all ----------------------------------
 
 (tu/deftest-kb disjointMetatype-must-mark-a-metatype-not-an-individual
-  (tu/with-terms [Fido animalSpecies]
+  (tu/with-terms [Muffet animalSpecies]
     (is (= :not-well-formed
-           (ex-type #(v/assert kb (list 'disjointMetatype Fido) 'UniverseContext)))
+           (ex-type #(v/assert kb (list 'disjointMetatype Muffet) 'UniverseContext)))
         "an individual is not a metatype")
     (testing "and it takes exactly one argument"
       (is (= :not-well-formed
@@ -84,10 +84,10 @@
 (tu/deftest-kb the-predicate-properties-reject-an-individual-argument
   ;; All six route through `prop-problems`.  A predicate dropped from that `case`
   ;; list would fall through to `[]` and accept anything — this is what notices.
-  (tu/with-terms [Fido]
+  (tu/with-terms [Muffet]
     (doseq [prop '[transitive symmetric reflexive functional
                    decontextualizedPredicate forcedDecontextualizedPredicate]]
-      (is (= :not-well-formed (ex-type #(v/assert kb (list prop Fido) 'UniverseContext)))
+      (is (= :not-well-formed (ex-type #(v/assert kb (list prop Muffet) 'UniverseContext)))
           (str prop " must reject an individual")))))
 
 (tu/deftest-kb the-predicate-properties-take-exactly-one-argument
@@ -99,20 +99,20 @@
           (str prop " takes one argument")))))
 
 (tu/deftest-kb inverse-relates-two-predicates
-  (tu/with-terms [parentOf childOf Fido]
+  (tu/with-terms [parentOf childOf Muffet]
     (is (= :not-well-formed
-           (ex-type #(v/assert kb (list 'inverse Fido childOf) 'UniverseContext)))
+           (ex-type #(v/assert kb (list 'inverse Muffet childOf) 'UniverseContext)))
         "an individual in argument 1")
     (is (= :not-well-formed
-           (ex-type #(v/assert kb (list 'inverse parentOf Fido) 'UniverseContext)))
+           (ex-type #(v/assert kb (list 'inverse parentOf Muffet) 'UniverseContext)))
         "an individual in argument 2")
     (is (= :not-well-formed
            (ex-type #(v/assert kb (list 'inverse parentOf) 'UniverseContext)))
         "and it takes two")))
 
 (tu/deftest-kb argIsa-checks-the-shape-of-all-three-arguments
-  (tu/with-terms [parentOf person Fido]
-    (is (nil? (ex-type #(v/assert kb (list 'argIsa Fido 1 person) 'UniverseContext)))
+  (tu/with-terms [parentOf person Muffet]
+    (is (nil? (ex-type #(v/assert kb (list 'argIsa Muffet 1 person) 'UniverseContext)))
         "argument 1 is not held to a spelling: a function has argument positions like a
          predicate does and is spelled like an individual, so no spelling test separates
          the two — and a constraint on a term that never heads a sentence is inert")
@@ -129,7 +129,7 @@
            (ex-type #(v/assert kb (list 'argIsa parentOf 'one person) 'UniverseContext)))
         "and it must be an integer")
     (is (= :not-well-formed
-           (ex-type #(v/assert kb (list 'argIsa parentOf 1 Fido) 'UniverseContext)))
+           (ex-type #(v/assert kb (list 'argIsa parentOf 1 Muffet) 'UniverseContext)))
         "argument 3 must be a type, not an individual")
     (testing "a well-formed argIsa is accepted"
       (is (nil? (ex-type #(v/assert kb (list 'argIsa parentOf 1 person) 'UniverseContext)))))))
@@ -137,8 +137,8 @@
 ;; ---- the ex-info :type contract ----------------------------------------
 
 (tu/deftest-kb a-naming-violation-is-typed-naming
-  (tu/with-terms [dog Fido]
-    (is (= :naming (ex-type #(v/assert kb (list dog Fido) 'SomewhereElse)))
+  (tu/with-terms [dog Muffet]
+    (is (= :naming (ex-type #(v/assert kb (list dog Muffet) 'SomewhereElse)))
         "a context that does not end in Context")))
 
 (tu/deftest-kb a-non-ground-fact-is-typed-not-ground
@@ -158,7 +158,7 @@
   ;; Everything in one context on purpose: the constraint checks are context-scoped,
   ;; and this KB is fresh, so `NaturalWorldContext` has no genlContext edge to
   ;; UniverseContext and a constraint declared there would simply be invisible.
-  (tu/with-terms [parentOf person rock Fido Boulder]
+  (tu/with-terms [parentOf person rock Muffet Boulder]
     ;; `checks/args-problem` is open-world: it only bites when the argument is provably a
     ;; `thing`, so an untyped individual can never violate a constraint.  The genl
     ;; edge is what makes Boulder checkable at all.
@@ -166,7 +166,7 @@
     (v/assert kb (list 'argIsa parentOf 1 person) 'UniverseContext)
     (v/assert kb (list rock Boulder) 'UniverseContext)
     (is (= :arg-type
-           (ex-type #(v/assert kb (list parentOf Boulder Fido) 'UniverseContext)))
+           (ex-type #(v/assert kb (list parentOf Boulder Muffet) 'UniverseContext)))
         "Boulder is a rock, and rock does not reach person through genl")))
 
 ;; The values are **numbers**, and that is the point rather than an incidental
@@ -185,24 +185,24 @@
         "a second, different value for the same first argument")))
 
 (tu/deftest-kb a-malformed-special-predicate-is-typed-not-well-formed
-  (tu/with-terms [dog Fido]
-    (is (= :not-well-formed (ex-type #(v/assert kb (list 'genl dog Fido) 'UniverseContext)))
-        "genl relates types, and Fido is an individual")))
+  (tu/with-terms [dog Muffet]
+    (is (= :not-well-formed (ex-type #(v/assert kb (list 'genl dog Muffet) 'UniverseContext)))
+        "genl relates types, and Muffet is an individual")))
 
 (tu/deftest-kb the-error-payload-carries-more-than-the-type
   ;; The diagnostic keys are the whole value of ex-info over a bare throw; a caller
   ;; that reports "argument 2 of parentOf should be a person" needs them.
-  (tu/with-terms [parentOf person rock Fido Boulder]
+  (tu/with-terms [parentOf person rock Muffet Boulder]
     (v/assert kb (list 'genl rock 'thing) 'UniverseContext)
     (v/assert kb (list 'argIsa parentOf 2 person) 'UniverseContext)
     (v/assert kb (list rock Boulder) 'UniverseContext)
     (try
-      (v/assert kb (list parentOf Fido Boulder) 'UniverseContext)
+      (v/assert kb (list parentOf Muffet Boulder) 'UniverseContext)
       (is false "expected the argIsa constraint to reject this")
       (catch clojure.lang.ExceptionInfo e
         (let [d (ex-data e)]
           (is (= :arg-type (:type d)))
-          (is (= (list parentOf Fido Boulder) (:sentence d)))
+          (is (= (list parentOf Muffet Boulder) (:sentence d)))
           (is (seq (dissoc d :type :sentence))
               "the payload names what was expected where, not just that it failed"))))))
 

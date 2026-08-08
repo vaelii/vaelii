@@ -24,7 +24,7 @@
 (def ^:private d-trip  #(round-trip codec/encode-justification codec/decode-justification %))
 
 (deftest atomic-round-trips
-  (doseq [a [(sx/->AtomicSentex '(dog Fido) 'C 7 :true :monotonic)
+  (doseq [a [(sx/->AtomicSentex '(dog Muffet) 'C 7 :true :monotonic)
              (sx/->AtomicSentex '(bornIn Tom 1970) 'WellContext 12 :true nil)
              (sx/->AtomicSentex '(likes Ann (mother (father Bob))) 'C 3 :false :default)
              (sx/->AtomicSentex '(exceptWhen (penguin ?var0) (sentexHandle 9)) 'C 4 :true nil)
@@ -76,7 +76,7 @@
 
 (deftest non-record-values-pass-through
   (testing "a plain map is not an Atomic and must round-trip as the map it is"
-    (is (= {:sentence '(dog Fido) :context 'C} (sx-trip {:sentence '(dog Fido) :context 'C}))))
+    (is (= {:sentence '(dog Muffet) :context 'C} (sx-trip {:sentence '(dog Muffet) :context 'C}))))
   (testing "provenance is an open application map, stored as it comes"
     (let [p {:creator "agent" :created 1700000000 :nested {:review :pending}}]
       (is (= p (round-trip identity identity p))))))
@@ -85,7 +85,7 @@
   ;; the durable stores hold nippy-frozen RECORDS.  `decode` dispatches on the thawed
   ;; frame's shape, so those frames must come back unchanged — this is what keeps an
   ;; existing store readable rather than needing a rewrite.
-  (let [a      (sx/->AtomicSentex '(dog Fido) 'C 7 :true :monotonic)
+  (let [a      (sx/->AtomicSentex '(dog Muffet) 'C 7 :true :monotonic)
         r      (sx/->RuleSentex '(implies (and (p ?var0)) (q ?var0)) 'C 8 :true
                                 '[(p ?var0)] '(q ?var0) nil nil :forward nil nil nil)
         d      (jtms/->Justification 20 :rule [1 2] 3 nil :monotonic #{})
@@ -118,7 +118,7 @@
                   (doseq [x (reverse (file-seq (java.io.File. dir)))] (.delete ^java.io.File x))))))
 
 (def ^:private shapes
-  [(sx/->AtomicSentex '(dog Fido) 'C 7 :true :monotonic)
+  [(sx/->AtomicSentex '(dog Muffet) 'C 7 :true :monotonic)
    (sx/->AtomicSentex '(bornIn Tom 1970) 'WellContext 12 :true nil)
    (sx/->AtomicSentex '(comment dog "a domestic canine") 'CoreContext 13 :true :default)
    (sx/->AtomicSentex '(likes Ann (mother (father Bob))) 'C 3 :false :default)
@@ -204,7 +204,7 @@
     (fn [d _]
       (let [on  (get (codec/by-kind d true) "sentexes")
             off (get (codec/by-kind d false) "sentexes")
-            a   (sx/->AtomicSentex '(dog Fido) 'C 7 :true :monotonic)
+            a   (sx/->AtomicSentex '(dog Muffet) 'C 7 :true :monotonic)
             plain (nippy/freeze ((:enc off) a))
             toked (nippy/freeze ((:enc on) a))]
         (is (= a ((:dec on) (nippy/thaw plain))) "tokenizing store reads a plain frame")
@@ -216,11 +216,11 @@
   (with-dict
     (fn [d _]
       (let [{:keys [enc dec]} (get (codec/by-kind d true) "sentexes")
-            frame (nippy/thaw (nippy/freeze (enc (sx/->AtomicSentex '(dog Fido) 'C 7 :true nil))))]
+            frame (nippy/thaw (nippy/freeze (enc (sx/->AtomicSentex '(dog Muffet) 'C 7 :true nil))))]
         (is (codec/tokenized-frame? frame))
         ;; a dictionary that never saw those tokens cannot decode the frame
         (with-dict
           (fn [empty-d _]
             (let [{other :dec} (get (codec/by-kind empty-d true) "sentexes")]
               (is (thrown? clojure.lang.ExceptionInfo (other frame))))))
-        (is (= '(dog Fido) (:sentence (dec frame))) "and the real dictionary still decodes it")))))
+        (is (= '(dog Muffet) (:sentence (dec frame))) "and the real dictionary still decodes it")))))

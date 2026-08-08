@@ -36,7 +36,7 @@
   ;; each of these is a real `sentex/path` level; nil in particular is a legal *token*
   ;; (a rule's empty assumption/constraint slot), not an absent one
   (let [d      (tok/token-dict)
-        tokens ['parentOf 'Fido 'dog 'WellContext '?0
+        tokens ['parentOf 'Muffet 'dog 'WellContext '?0
                 1970 -3 3.5 :false :rule nil
                 (sx/subterm-mark 2) '(dog ?0) '[(dog ?0) (cat ?1)] "a string"]]
     (doseq [t tokens]

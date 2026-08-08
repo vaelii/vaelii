@@ -155,9 +155,9 @@ written or deployed.
   since a list that quietly ends early reads as "this machine has no other KBs".
   *Migration:* name the ones that matter in the catalog file to list them regardless of
   the count. `docs/catalog.md`.
-- **The front door says what a legal-but-wrong sentence should have been.** `(isa Fido
+- **The front door says what a legal-but-wrong sentence should have been.** `(isa Muffet
   Dog)` breaks no naming invariant, so it stored a two-place relation nothing reads and
-  `(isa? kb 'Fido 'Dog)` answered false with nothing to search for. `nm/advice` reads
+  `(isa? kb 'Muffet 'Dog)` answered false with nothing to search for. `nm/advice` reads
   intent where `problems` reads the invariants: it recognizes the shape and logs a
   `:warn` once per process spelling the rewrite that was meant. Beside it, a
   `:no-placement` drop names `genlContext` and points at the `:rule-context` /
@@ -431,7 +431,7 @@ so the rest can be read at leisure.
   `forward-chain`, the extent readers, `preview`, `export!`, `import!` and the anytime
   budget maps. *Migration:* spell the key as the refusal's roster lists it.
 - **Refusal: the operator's mistakes answer in one line.** A CLI flag missing its value
-  bound nil in silence — `lein cli assert '(dog Fido)' Ctx --strength` stored known-true
+  bound nil in silence — `lein cli assert '(dog Muffet)' Ctx --strength` stored known-true
   content at `:default` — and now exits 1 naming the flag; `--memory --dir` is refused as
   a contradiction. *Migration:* none beyond completing the command line.
 - **The browser and CLI survive what they read.** The repl loop and the CLI command arm

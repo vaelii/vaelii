@@ -37,7 +37,7 @@
       (v/assert kb '(genl dog animal) 'CoreContext)
       (v/assert kb '(genl cat animal) 'CoreContext)
       (v/assert kb '(disjoint dog cat) 'CoreContext)
-      (v/assert kb '(dog Fido) 'NaturalWorldContext)
+      (v/assert kb '(dog Muffet) 'NaturalWorldContext)
       (let [server (serve/start kb {:port 0})]
         (try
           (binding [tu/*kb* kb, *remote* (access/remote "localhost" (serve/port server))]
@@ -67,7 +67,7 @@
   (let [via-core   (map :sentence (v/sentexes-matching tu/*kb* '(dog ?x) 'NaturalWorldContext))
         via-raw    (map :sentence (access/sentexes-matching tu/*kb* '(dog ?x) 'NaturalWorldContext))
         via-local  (map :sentence (access/sentexes-matching (access/local tu/*kb*) '(dog ?x) 'NaturalWorldContext))]
-    (is (= '[(dog Fido)] (vec via-core)))
+    (is (= '[(dog Muffet)] (vec via-core)))
     (is (= (vec via-core) (vec via-raw) (vec via-local))
         "a raw KB and an explicit local access both take the in-process path")))
 
@@ -75,13 +75,13 @@
   (testing "a fact query"
     (is (= (map :sentence (v/sentexes-matching tu/*kb* '(dog ?x) 'NaturalWorldContext))
            (map :sentence (access/sentexes-matching *remote* '(dog ?x) 'NaturalWorldContext)))))
-  (testing "specificity — (dog Fido) answers (animal ?x) — over the wire"
-    (is (some #(= 'Fido (get % '?x)) (access/ask *remote* '(animal ?x) 'NaturalWorldContext))))
+  (testing "specificity — (dog Muffet) answers (animal ?x) — over the wire"
+    (is (some #(= 'Muffet (get % '?x)) (access/ask *remote* '(animal ?x) 'NaturalWorldContext))))
   (testing "a taxonomy read (a set of symbols) round-trips"
     (is (= (v/genls tu/*kb* 'dog) (set (access/genls *remote* 'dog)))))
   (testing "a sentence comes back a list, not a vector (wire-safe fidelity)"
     (is (seq? (:sentence (access/sentex *remote*
-                                        (access/handle-of *remote* '(dog Fido) 'NaturalWorldContext)))))))
+                                        (access/handle-of *remote* '(dog Muffet) 'NaturalWorldContext)))))))
 
 (deftest the-vocabulary-reads-the-same-over-the-wire
   ;; a remote client has no records to scan, so term enumeration has to be an op of its
@@ -95,7 +95,7 @@
     (is (= '[dog] (vec (access/find-terms *remote* "dog"))))
     (is (= (v/find-terms tu/*kb* "og" {:match :substring})
            (vec (access/find-terms *remote* "og" {:match :substring}))))
-    (is (= '[Fido] (vec (access/find-terms *remote* "^Fido$" {:match :regex}))))
+    (is (= '[Muffet] (vec (access/find-terms *remote* "^Muffet$" {:match :regex}))))
     (is (= 2 (count (access/find-terms *remote* "" {:limit 2}))))))
 
 ;; ---- the one write: edit, over the wire ----------------------------------
@@ -131,7 +131,7 @@
       (let [lr (GET local-app "/term" "q=dog")
             rr (GET remote-app "/term" "q=dog")]
         (is (= 200 (:status rr)))
-        (is (re-find #"Fido" (:body rr)) "the daemon's fact renders")
+        (is (re-find #"Muffet" (:body rr)) "the daemon's fact renders")
         (is (re-find #"Disjoint" (:body rr)) "dog ⊥ cat renders from the daemon")
         (is (= (kb-part (:body lr)) (kb-part (:body rr)))
             "remote browsing is identical to in-process browsing")))
@@ -145,6 +145,6 @@
       (is (= (:body (GET local-app "/" nil))
              (:body (GET remote-app "/" nil)))))
     (testing "a sentex page (handle-addressed) matches"
-      (let [h (v/handle-of tu/*kb* '(dog Fido) 'NaturalWorldContext)]
+      (let [h (v/handle-of tu/*kb* '(dog Muffet) 'NaturalWorldContext)]
         (is (= (:body (GET local-app (str "/sentex/" h) nil))
                (:body (GET remote-app (str "/sentex/" h) nil))))))))

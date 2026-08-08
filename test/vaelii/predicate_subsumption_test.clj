@@ -160,16 +160,16 @@
 ;; ---- the fan-out is scoped by the vantage --------------------------------
 ;; A genl edge connects a sub-predicate's facts to a supertype pattern only where
 ;; the edge is visible: matching from a context that cannot see `(genl dog animal)`
-;; does not reach `(dog Fido)` from `(animal ?x)`, however visible the fact itself.
+;; does not reach `(dog Muffet)` from `(animal ?x)`, however visible the fact itself.
 ;; Both retrieval paths — the reference fan-out and the set-algebra twin — must
 ;; agree, and the any-context read keeps the global fan.
 
 (tu/deftest-kb the-matching-fan-out-walks-only-visible-genl-edges
-  (tu/with-terms [dog_t animal_t Fido AContext BContext]
+  (tu/with-terms [dog_t animal_t Muffet AContext BContext]
     (v/assert kb (list 'genlContext AContext 'CoreContext) 'CoreContext)
     (v/assert kb (list 'genlContext BContext 'CoreContext) 'CoreContext)
     (v/assert kb (list 'genl dog_t animal_t) AContext)
-    (v/assert kb (list dog_t Fido) 'CoreContext)
+    (v/assert kb (list dog_t Muffet) 'CoreContext)
     (doseq [hierarchical? [true false]]
       (binding [res/*hierarchical-retrieval* hierarchical?]
         (testing (str "hierarchical-retrieval " hierarchical?)

@@ -27,8 +27,8 @@ at `thing`. We cache the reflexive-transitive closure both ways:
    `assert` checks arg *n* with `isa?` (does the arg have a type whose `genls`
    reaches the constraint). Open-world: an untyped arg can't violate.
 2. **Specificity.** Matching a unary type predicate fans out over `specs`, so an
-   antecedent `(animal ?x)` is satisfied by a stored `(dog Fido)` — no need to
-   materialize `(animal Fido)`. `isa?` answers membership on demand.
+   antecedent `(animal ?x)` is satisfied by a stored `(dog Muffet)` — no need to
+   materialize `(animal Muffet)`. `isa?` answers membership on demand.
 3. **(genlContext is the sibling relation over contexts — see contexts.md.)**
 
 ## The closures are derived state
@@ -323,7 +323,7 @@ Two mechanisms declare that types share no instance; both are closed under `genl
 admits every non-variable symbol, so the predicate meta-ontology is enforced the same
 way the domain is: `(relationKind …)` is a `disjointMetatype` over
 `instanceRelationPredicate` and `typeRelationPredicate`, and a predicate declared both
-is refused exactly as `Fido` being both a `dog` and a `cat` is. The same widening makes
+is refused exactly as `Muffet` being both a `dog` and a `cat` is. The same widening makes
 `argIsa` constrain predicate-valued positions — `(argIsa typeToInstancePred 1
 typeRelationPredicate)` refuses a link whose first argument is not classified
 type-level. Numbers, strings and compounds stay outside both checks, since no type

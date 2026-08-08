@@ -11,27 +11,27 @@
 (deftest temp-terms-are-valid-and-debuggable
   (testing "the role is inferred from the symbol's own shape"
     (is (= :type       (tu/term-role 'dog)))
-    (is (= :individual (tu/term-role 'Fido)))
+    (is (= :individual (tu/term-role 'Muffet)))
     (is (= :predicate  (tu/term-role 'parentOf)))
     (is (= :context    (tu/term-role 'StoryContext))))
-  (tu/with-terms [dog Fido parentOf StoryContext]
+  (tu/with-terms [dog Muffet parentOf StoryContext]
     (testing "each generated term satisfies the invariant for its role"
       (is (nm/type-symbol? dog))
-      (is (nm/individual? Fido))
+      (is (nm/individual? Muffet))
       (is (nm/predicate? parentOf))
       (is (nm/context? StoryContext))
-      (is (empty? (nm/problems (list dog Fido) StoryContext))))
+      (is (empty? (nm/problems (list dog Muffet) StoryContext))))
     (testing "and embeds the symbol it was named after, so a failure is readable"
       (is (re-find #"dog"      (name dog)))
-      (is (re-find #"Fido"     (name Fido)))
+      (is (re-find #"Muffet"     (name Muffet)))
       (is (re-find #"ParentOf" (name parentOf)))
       (is (re-find #"Story"    (name StoryContext))))
     (testing "a type temp named after a bare word stays as ambiguous as the word"
       ;; `dog` satisfies both conventions and is disambiguated by arity, so the temp
       ;; is spelled to be usable either way — underscores would pin it to arity 1
       (is (nm/predicate? dog))
-      (is (empty? (nm/problems (list dog Fido) StoryContext)))
-      (is (empty? (nm/problems (list dog Fido Fido) StoryContext))))
+      (is (empty? (nm/problems (list dog Muffet) StoryContext)))
+      (is (empty? (nm/problems (list dog Muffet Muffet) StoryContext))))
     (testing "roles stay distinct — a context is not an individual"
       (is (not (nm/individual? StoryContext)))))
   (testing "a base spelled snake_case is a type and only a type"
@@ -48,7 +48,7 @@
     (is (nm/context? 'UniverseContext))
     (is (not (nm/context? 'Universe))))
   (testing "individuals are CapitalCamelCase but not contexts"
-    (is (nm/individual? 'Fido))
+    (is (nm/individual? 'Muffet))
     (is (not (nm/individual? 'dog)))
     (is (not (nm/individual? 'UniverseContext))))
   (testing "predicates are camelCase, types are snake_case"
@@ -69,15 +69,15 @@
       (is (nm/predicate? w))
       (is (nm/type-symbol? w))
       (testing "so it is unconstrained in arity"
-        (is (empty? (nm/problems (list w 'Fido) 'WellContext)))
-        (is (empty? (nm/problems (list w 'Fido 'Rex) 'WellContext))))))
+        (is (empty? (nm/problems (list w 'Muffet) 'WellContext)))
+        (is (empty? (nm/problems (list w 'Muffet 'Rex) 'WellContext))))))
   (testing "an underscore rules out the predicate convention, and only then does arity bite"
     (doseq [t '[physical_object lives_in tmp_dog_17]]
       (testing (str t)
         (is (not (nm/predicate? t)))
         (is (nm/type-symbol? t))
-        (is (empty? (nm/problems (list t 'Fido) 'WellContext)))
-        (is (seq (nm/problems (list t 'Fido 'Rex) 'WellContext)))))))
+        (is (empty? (nm/problems (list t 'Muffet) 'WellContext)))
+        (is (seq (nm/problems (list t 'Muffet 'Rex) 'WellContext)))))))
 
 (deftest structural-accessors
   (is (= 'parentOf (nm/functor '(parentOf Tom Bob))))
@@ -85,9 +85,9 @@
   (is (= 2 (nm/arity '(parentOf Tom Bob)))))
 
 (deftest problem-detection
-  (is (empty? (nm/problems '(dog Fido) 'NaturalWorldContext)))
-  (is (seq (nm/problems '(dog Fido) 'NaturalWorld)))      ; context does not end in Context
-  (is (seq (nm/problems '(Dog Fido) 'NaturalWorldContext))))   ; functor not lowercase-initial
+  (is (empty? (nm/problems '(dog Muffet) 'NaturalWorldContext)))
+  (is (seq (nm/problems '(dog Muffet) 'NaturalWorld)))      ; context does not end in Context
+  (is (seq (nm/problems '(Dog Muffet) 'NaturalWorldContext))))   ; functor not lowercase-initial
 
 ;; ---- the literals a sentence contains -----------------------------------
 ;; `problems` checks a functor per *literal*, so which positions count as literals is
@@ -95,7 +95,7 @@
 
 (deftest literals-are-found-inside-every-frame
   (testing "a plain fact is one literal"
-    (is (= [[:sentence '(dog Fido)]] (nm/literals '(dog Fido)))))
+    (is (= [[:sentence '(dog Muffet)]] (nm/literals '(dog Muffet)))))
   (testing "a rule's antecedents and consequent each carry their own role"
     (is (= [[:antecedent '(dog ?x)] [:antecedent '(pet ?x)] [:consequent '(animal ?x)]]
            (nm/literals '(implies (and (dog ?x) (pet ?x)) (animal ?x)))))
@@ -233,7 +233,7 @@
                                        (ist ?c (flies ?x)))
                              'WellContext))))
   (testing "anything else is not a context name"
-    (is (seq (nm/problems '(implies (bird ?x) (ist Fido (flies ?x))) 'WellContext)))))
+    (is (seq (nm/problems '(implies (bird ?x) (ist Muffet (flies ?x))) 'WellContext)))))
 
 (deftest the-dotted-marker-is-still-refused-at-the-top-level
   (is (seq (nm/problems '(parentOf Tom . Bob) 'WellContext)))
@@ -252,16 +252,16 @@
   ;; rendered from it.
   (testing "each shape reports its own class, naming the symbol that broke"
     (is (= [{:class :context-name :role :sentence :symbol 'NotAThing}]
-           (map #(dissoc % :literal) (nm/problems* '(dog Fido) 'NotAThing))))
+           (map #(dissoc % :literal) (nm/problems* '(dog Muffet) 'NotAThing))))
     (is (= [{:class :functor :role :sentence :symbol 'Flies}]
            (map #(dissoc % :literal) (nm/problems* '(Flies Tweety) 'WellContext))))
     (is (= [{:class :functor-arity :role :sentence :symbol 'lives_in}]
            (map #(dissoc % :literal) (nm/problems* '(lives_in Tweety cold_place) 'WellContext))))
     (is (= [{:class :argument :role :sentence :symbol 'Baby_Penguin}]
            (map #(dissoc % :literal) (nm/problems* '(parentOf Baby_Penguin Tom) 'WellContext))))
-    (is (= [{:class :ist-context :role :sentence :symbol 'Fido}]
+    (is (= [{:class :ist-context :role :sentence :symbol 'Muffet}]
            (map #(dissoc % :literal)
-                (nm/problems* '(implies (bird ?x) (ist Fido (flies ?x))) 'WellContext)))))
+                (nm/problems* '(implies (bird ?x) (ist Muffet (flies ?x))) 'WellContext)))))
   (testing "every class it can report is one `problem-classes` names"
     (is (every? nm/problem-classes
                 (map :class (nm/problems* '(Flies Baby_Penguin) 'NotAThing)))))
@@ -343,7 +343,7 @@
   ;; A bulk path stores what `assert` refuses — that is what it is for — so the two
   ;; doors are reconciled by a count rather than by a check.
   (let [t (-> nm/empty-tally
-              (nm/tally '(dog Fido) 'WellContext)
+              (nm/tally '(dog Muffet) 'WellContext)
               (nm/tally misnamed 'WellContext)
               (nm/tally '(Flies Tweety) 'NotAThing))]
     (is (= 3 (:checked t)))
@@ -352,7 +352,7 @@
     (is (re-find #"2 of 3 records" (nm/tally-line t)))
     (is (re-find #"66\.7%" (nm/tally-line t))))
   (testing "and says nothing at all when the corpus and the front door agree"
-    (is (nil? (nm/tally-line (nm/tally nm/empty-tally '(dog Fido) 'WellContext))))))
+    (is (nil? (nm/tally-line (nm/tally nm/empty-tally '(dog Muffet) 'WellContext))))))
 
 (deftest a-refused-exceptWhen-leaves-no-bare-rule-behind
   ;; The exception's own literals are held to the naming invariants like every other
@@ -372,51 +372,51 @@
             "the bare rule was not stored — the refusal happened before the store")))))
 
 (deftest the-membership-spelling-every-other-system-taught-is-advised-against
-  ;; `(isa Fido Dog)` breaks no invariant: `isa` is a well-formed predicate and both
+  ;; `(isa Muffet Dog)` breaks no invariant: `isa` is a well-formed predicate and both
   ;; arguments are well-formed individuals, so it is stored, indexed and believed —
-  ;; as a two-place relation nothing reads.  The reader then asks `(isa? kb 'Fido
+  ;; as a two-place relation nothing reads.  The reader then asks `(isa? kb 'Muffet
   ;; 'Dog)`, gets false, and has no error to search for.  docs/naming.md calls this
   ;; out by name and CoreContext.txt says never to write it; neither is in front of
   ;; someone typing, so the front door says it.
   (testing "the shape is advised against, and the advice names the right spelling"
-    (let [{:keys [id message]} (nm/advice '(isa Fido Dog))]
+    (let [{:keys [id message]} (nm/advice '(isa Muffet Dog))]
       (is (= ::nm/isa-is-not-how-membership-is-written id))
-      (is (re-find #"\(dog Fido\)" message)
+      (is (re-find #"\(dog Muffet\)" message)
           "the message spells the sentence that was meant")
       (is (re-find #"unary" message))))
   (testing "it is advice and not a refusal — the sentence breaks no invariant"
-    (is (empty? (nm/problems '(isa Fido Dog) 'UniverseContext))))
+    (is (empty? (nm/problems '(isa Muffet Dog) 'UniverseContext))))
   (testing "a multi-word type is spelled snake_case, not merely lower-cased"
     ;; `physicalobject` is a name the conventions refuse, so suggesting it would
     ;; trade one unusable sentence for another
-    (is (re-find #"\(physical_object Fido\)"
-                 (:message (nm/advice '(isa Fido PhysicalObject))))))
+    (is (re-find #"\(physical_object Muffet\)"
+                 (:message (nm/advice '(isa Muffet PhysicalObject))))))
   (testing "an argument that is not a symbol gets advice, not a ClassCastException"
     ;; a number, a string and a compound are all legal in argument position, and
     ;; `clojure.core/name` throws on every one of them — advice that crashes the
     ;; assert it was meant to help is worse than no advice
-    (doseq [s ['(isa Fido 42)
+    (doseq [s ['(isa Muffet 42)
                '(isa 42 Dog)
-               '(isa Fido "Dog")
+               '(isa Muffet "Dog")
                '(isa (theCatOf Tom) Dog)
-               '(isa Fido (kindOf Dog))]]
+               '(isa Muffet (kindOf Dog))]]
       (let [a (nm/advice s)]                       ; `is` answers a boolean, not the value
         (is (some? a) (pr-str s))
         (is (string? (:message a)) (pr-str s))
         (is (re-find #"unary type predicate" (:message a))
             "and falls back to the generic form rather than guessing a rewrite"))))
   (testing "nothing legitimate draws it"
-    (doseq [s ['(dog Fido)
+    (doseq [s ['(dog Muffet)
                '(genl dog thing)
                '(argIsa parentOf 1 dog)          ; a different predicate entirely
                '(likes Tom Ann)
-               '(isa Fido)                        ; not the two-place shape
-               '(isa Fido Dog Extra)]]
+               '(isa Muffet)                        ; not the two-place shape
+               '(isa Muffet Dog Extra)]]
       (is (nil? (nm/advice s)) (pr-str s))))
   (testing "advise! is silent under :naming :off, which asks for no policing"
     ;; reach past the once-per-process gate by asking the pure fn either side of it
-    (is (some? (nm/advice '(isa Fido Dog))))
-    (is (nil? (nm/advise! :off '(isa Fido Dog) 'UniverseContext)))))
+    (is (some? (nm/advice '(isa Muffet Dog))))
+    (is (nil? (nm/advise! :off '(isa Muffet Dog) 'UniverseContext)))))
 
 ;;; ── senses and lexemes ────────────────────────────────────────────────
 
@@ -437,9 +437,9 @@
                 organ_cultures-3d chiptune_composer-8bit]] ; a digit-leading disambiguator
       (is (= :sense (v/term-role s)) (pr-str s))))
   (testing "a sense is a unary predicate, like every other type"
-    (is (empty? (nm/problems* '(abrasive-grit Fido) 'UniverseContext)))
+    (is (empty? (nm/problems* '(abrasive-grit Muffet) 'UniverseContext)))
     (is (= [:functor-arity]
-           (mapv :class (nm/problems* '(abrasive-grit Fido Rex) 'UniverseContext))))))
+           (mapv :class (nm/problems* '(abrasive-grit Muffet Rex) 'UniverseContext))))))
 
 (deftest a-lexeme-is-parse-input-and-is-marked-by-its-namespace
   (testing "the namespace decides it, and the text is not ours to spell"
@@ -460,7 +460,7 @@
 (deftest the-one-fence-around-a-lexeme-is-that-it-names-no-relation
   (testing "a lexeme applied to arguments is refused — a surface form is not a predicate"
     (is (= [:lexeme-functor]
-           (mapv :class (nm/problems* '(lex/fools_gold Fido) 'UniverseContext)))))
+           (mapv :class (nm/problems* '(lex/fools_gold Muffet) 'UniverseContext)))))
   (testing "but as an argument it is ordinary, which is what lets a sense be stated"
     (is (empty? (nm/problems* '(sense lex/fools_gold fools_gold-mineral)
                               'UniverseContext))))
@@ -484,12 +484,12 @@
 
 (def ^:private class-samples
   "One sentence per `problem-classes` key, and the context to check it in."
-  {:context-name   ['(dog Fido)                                'NotAThing]
+  {:context-name   ['(dog Muffet)                                'NotAThing]
    :functor        ['(Flies Tweety)                            'WellContext]
-   :lexeme-functor ['(lex/fools_gold Fido)                     'WellContext]
+   :lexeme-functor ['(lex/fools_gold Muffet)                     'WellContext]
    :functor-arity  ['(lives_in Tweety cold_place)              'WellContext]
    :argument       ['(parentOf Baby_Penguin Tom)               'WellContext]
-   :ist-context    ['(implies (bird ?x) (ist Fido (flies ?x))) 'WellContext]
+   :ist-context    ['(implies (bird ?x) (ist Muffet (flies ?x))) 'WellContext]
    :dot-marker     ['(parentOf Tom .)                          'WellContext]})
 
 (deftest every-problem-class-renders-a-message
@@ -517,7 +517,7 @@
   ;; are types, and a type is unary — but the snake_case repair does not transfer: there
   ;; is no camelCase spelling of `abrasive-grit`, so offering one names the symbol back
   ;; and reads as advice while being none.
-  (let [[m] (nm/problems '(abrasive-grit Fido Rex) 'UniverseContext)]
+  (let [[m] (nm/problems '(abrasive-grit Muffet Rex) 'UniverseContext)]
     (is (re-find #"is a sense" m))
     (is (not (re-find #"snake_case" m)))
     (is (not (re-find #"camelCase as abrasive-grit" m))))
@@ -531,7 +531,7 @@
   ;; level `assert` can catch, so the refusal arrives as an `IllegalArgumentException`
   ;; naming a `case` — true about the code, and no help to whoever wrote the sentence.
   (tu/with-cleared-kb [kb (kb-with :strict)]
-    (let [e (try (v/assert kb '(lex/fools_gold Fido) 'WellContext) nil
+    (let [e (try (v/assert kb '(lex/fools_gold Muffet) 'WellContext) nil
                  (catch clojure.lang.ExceptionInfo e e))]
       (is (some? e) "a lexeme applied to arguments is refused")
       (is (= :naming (:type (ex-data e))))

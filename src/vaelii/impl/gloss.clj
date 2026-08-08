@@ -19,7 +19,7 @@
       (comment genl \"(genl ?subtype ?supertype) means that every ?subtype is a ?supertype. …\")
 
   a **signature** naming the argument positions with variables, then a clause saying what
-  the predicate means *in those names*.  So glossing `(eats Fido kibble)` is not a
+  the predicate means *in those names*.  So glossing `(eats Muffet kibble)` is not a
   generation problem: read `eats`'s comment, take its first clause, substitute the actual
   arguments for the signature's variables.
 
@@ -215,7 +215,7 @@
 
 (defn- type-literal
   "A unary literal whose predicate declares no signature is a type membership, and reads
-  as one: *Fido is a dog*, with the type's own comment as the apposition after it.  This
+  as one: *Muffet is a dog*, with the type's own comment as the apposition after it.  This
   is where the signature-less comments earn their place — a noun phrase is exactly what
   belongs after \"is a\".
 

@@ -40,8 +40,8 @@ enforces it with a fail-fast file lock. That shapes how the interfaces coexist:
 ## CLI — `vaelii.cli`
 
 ```sh
-lein cli assert  '(dog Fido)' NaturalWorldContext --dir /var/lib/vaelii
-lein cli match   '(dog ?x)'   NaturalWorldContext --dir /var/lib/vaelii   # => [(dog Fido)]
+lein cli assert  '(dog Muffet)' NaturalWorldContext --dir /var/lib/vaelii
+lein cli match   '(dog ?x)'   NaturalWorldContext --dir /var/lib/vaelii   # => [(dog Muffet)]
 lein cli why     3                                --dir /var/lib/vaelii
 lein cli export  /var/backups/vaelii-2026-07     --dir /var/lib/vaelii     # back it up
 lein cli repl --starter                                                    # interactive
@@ -52,7 +52,7 @@ lein cli repl --starter                                                    # int
   `isa`, `types-of`, `handle-of`, `types`, `contexts`, `conflicts`, `contradictions`,
   `load`, `export`, `repl`. `--depth n` is how the line says how far to expand rules,
   and `query` without one expands none. A sentence is
-  written as an EDN string (`'(dog Fido)'`), a context as a symbol, a handle as an
+  written as an EDN string (`'(dog Muffet)'`), a context as a symbol, a handle as an
   integer, and a path as itself — an argument that reads as no EDN form is kept as the
   string it already was, which is what `/var/lib/vaelii` is.
 - **`load <file>`** reads an EDN vector of `[sentence context]` (or `[sentence context
@@ -113,7 +113,7 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   loopback daemon is drivable by every process on the machine. Either way the daemon
   logs which posture it started in, since that is the line to grep for after an incident.
   Put a reverse proxy in front for TLS and rate limiting; the wire is plaintext.
-- **Wire format is EDN.** A sentence is a symbol s-expression — `(dog Fido)`, `?x` —
+- **Wire format is EDN.** A sentence is a symbol s-expression — `(dog Muffet)`, `?x` —
   which EDN round-trips losslessly; JSON would mangle the symbols. Bodies are read with
   `clojure.edn/read-string`, which has no reader-eval, so an untrusted body cannot run
   code.
@@ -212,9 +212,9 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
 ```clojure
 (require '[vaelii.client :as c])
 (def conn (c/client "localhost" 4200))
-(c/assert conn '(dog Fido) 'NaturalWorldContext)    ; => 1
-(c/query  conn '(dog ?x)   'NaturalWorldContext)    ; => ({?x Fido})
-(c/ask?   conn '(animal Fido) 'NaturalWorldContext)
+(c/assert conn '(dog Muffet) 'NaturalWorldContext)    ; => 1
+(c/query  conn '(dog ?x)   'NaturalWorldContext)    ; => ({?x Muffet})
+(c/ask?   conn '(animal Muffet) 'NaturalWorldContext)
 (c/why    conn 1)
 ```
 
@@ -334,7 +334,7 @@ A client reaches it with the same token from its own environment:
 (require '[vaelii.client :as c])
 (def conn (c/client "127.0.0.1" 4200))                   ; VAELII_API_TOKEN, or :token
 (c/health conn)                                          ; => {:ok true}
-(c/assert conn '(dog Fido) 'NaturalWorldContext)
+(c/assert conn '(dog Muffet) 'NaturalWorldContext)
 ```
 
 ## Logging — a dial, and what is behind it

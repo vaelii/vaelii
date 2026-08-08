@@ -5,7 +5,7 @@
   `lein run -m vaelii.impl.cli <cmd> <args…>`.  It runs the engine in-process (no
   daemon); to talk to a running daemon use `vaelii.impl.client` instead.
 
-    lein run -m vaelii.impl.cli assert  '(dog Fido)'  NaturalWorldContext --dir /tmp/kb
+    lein run -m vaelii.impl.cli assert  '(dog Muffet)'  NaturalWorldContext --dir /tmp/kb
     lein run -m vaelii.impl.cli query   '(dog ?x)'    NaturalWorldContext --dir /tmp/kb
     lein run -m vaelii.impl.cli why     3                                 --dir /tmp/kb
     lein run -m vaelii.impl.cli export  /tmp/dump                         --dir /tmp/kb
@@ -162,7 +162,7 @@
     (str "vaelii — a command-line driver for a KB\n\n"
          "  lein cli <command> [args…] [--dir <path>] [--starter] [--memory]\n\n"
          "Quote every argument. A shell eats parens, brackets and `?`:\n"
-         "  lein cli assert '(dog Fido)' NaturalWorldContext --dir /tmp/kb\n"
+         "  lein cli assert '(dog Muffet)' NaturalWorldContext --dir /tmp/kb\n"
          "  lein cli match  '(dog ?x)'   NaturalWorldContext --dir /tmp/kb\n\n"
          "Commands:\n"
          (str/join "\n"

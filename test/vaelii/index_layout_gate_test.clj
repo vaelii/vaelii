@@ -122,12 +122,12 @@
                                :recover? false})
                (v/clear!))]
     (try
-      (v/assert base '(dog Fido) 'UniverseContext {:strength :monotonic})
+      (v/assert base '(dog Muffet) 'UniverseContext {:strength :monotonic})
       (let [default-index (File. (str (backend/disk-dir {}) "/index"))
             stamp-before  (when (.isDirectory default-index)
                             (.exists (File. default-index "layout.edn")))
             f (v/fork base)]
-        (is (= '#{(dog Fido)}
+        (is (= '#{(dog Muffet)}
                (set (map :sentence (v/sentexes-matching f '(dog ?x) 'UniverseContext))))
             "the fork sees its base through an index the gate left alone")
         (v/assert f '(dog Rex) 'UniverseContext {:strength :monotonic})

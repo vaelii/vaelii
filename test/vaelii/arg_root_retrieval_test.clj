@@ -71,7 +71,7 @@
   "For a ground fact `(pred a1 a2 …)`, a spread of query patterns that stress the
   trie's weak spot: each single argument blanked to a variable (the leading-variable
   case among them), all blanked, none blanked, a non-matching probe, and the same
-  spread with the **functor** blanked — `(?type Fido)`, where the variable sits at
+  spread with the **functor** blanked — `(?type Muffet)`, where the variable sits at
   path level 0 so every ground argument is stuck behind it.  The all-blank functor
   pattern has nothing indexable to lead with and must stay on the trie."
   [fact]
@@ -113,7 +113,7 @@
   (tu/with-kb [kb]
     (probed "leading-variable-binary-patterns"
             (for [pred '[parentOf siblingOf marriedTo childOf owns locatedIn]
-                  ind  '[Tom Bob Ann Carol Fido Sam Tweety Dave]]
+                  ind  '[Tom Bob Ann Carol Muffet Sam Tweety Dave]]
               (let [pat (list pred (symbol "?x") ind)
                     [off on :as both] (both-ways #(res/match-pattern kb pat '?ctx))]
                 (is (= off on) (str "diverged on " (pr-str pat)))

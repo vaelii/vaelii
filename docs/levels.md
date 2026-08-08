@@ -18,7 +18,7 @@ legible instead of implicit.
 
 ```clojure
 (v/lookup kb 4 '(animal ?x) 'MantleContext)
-;=> ({:level 4 :handle 41 :sentence (dog Fido) :context MantleContext :bindings {?x Fido}})
+;=> ({:level 4 :handle 41 :sentence (dog Muffet) :context MantleContext :bindings {?x Muffet}})
 ```
 
 ## The eight levels
@@ -103,7 +103,7 @@ goal-rewrite are exactly what distinguishes them.
 Every level yields the same map, with `nil` where a level cannot supply a field:
 
 ```clojure
-{:level 4 :handle 41 :sentence (dog Fido) :context MantleContext :bindings {?x Fido}}
+{:level 4 :handle 41 :sentence (dog Muffet) :context MantleContext :bindings {?x Muffet}}
 ```
 
 Levels 0–4 answer from a stored sentex and carry its `:handle`. Levels 5–7 answer

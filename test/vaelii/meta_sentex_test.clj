@@ -186,23 +186,23 @@
   ;; excepted.  The third one matters most to the definitional checks, which are built
   ;; on these two: a hidden membership that still answered `types-of` would let
   ;; disjointness refuse a sentence on a ground its context cannot see.
-  (let [ctx (tu/tmp-ctx "Sub") dog (tu/tmp-type "dog") Fido (tu/tmp-ind "Fido")]
+  (let [ctx (tu/tmp-ctx "Sub") dog (tu/tmp-type "dog") Muffet (tu/tmp-ind "Muffet")]
     (v/assert kb (list 'genlContext ctx 'WellContext) 'UniverseContext {:strength :monotonic})
-    (let [h (v/assert kb (list dog Fido) ctx {:strength :monotonic})]
-      (is (= [dog] (vec (v/types-of kb Fido ctx))))
-      (is (v/isa? kb Fido dog ctx))
+    (let [h (v/assert kb (list dog Muffet) ctx {:strength :monotonic})]
+      (is (= [dog] (vec (v/types-of kb Muffet ctx))))
+      (is (v/isa? kb Muffet dog ctx))
       (let [eh (v/assert kb (list 'except (sx/sentex-handle h)) ctx {:strength :monotonic})]
         (testing "hidden from both reads where the except is visible"
-          (is (empty? (v/types-of kb Fido ctx)))
-          (is (not (v/isa? kb Fido dog ctx))))
+          (is (empty? (v/types-of kb Muffet ctx)))
+          (is (not (v/isa? kb Muffet dog ctx))))
         (testing "an any-context read still finds it, as with query"
           ;; an except hides its target from the contexts that *see* it, not from the
           ;; general ones above — so a read that stands nowhere in particular is unmoved
-          (is (= [dog] (vec (v/types-of kb Fido)))))
+          (is (= [dog] (vec (v/types-of kb Muffet)))))
         (testing "and both come back when the except goes — belief-following"
           (v/retract! kb eh)
-          (is (= [dog] (vec (v/types-of kb Fido ctx))))
-          (is (v/isa? kb Fido dog ctx)))))))
+          (is (= [dog] (vec (v/types-of kb Muffet ctx))))
+          (is (v/isa? kb Muffet dog ctx)))))))
 
 (tu/deftest-kb a-defeated-except-does-not-hide
   ;; The filter reads *believed* excepts, so an except defeated by a stronger contrary

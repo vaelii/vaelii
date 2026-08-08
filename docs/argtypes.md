@@ -144,8 +144,8 @@ Both are belief varying with arrival order, which is the one thing it may not do
 and deduplication happens where it is a property of content: `find-or-create-sentex`
 gives one sentex per sentence, `has-justification?` one justification per pair.
 
-The consequence is stated as a test: `(dog Fido)` under `(genl dog animal)` already
-*reaches* `animal` by subsumption, and `(animal Fido)` is minted anyway. That the engine
+The consequence is stated as a test: `(dog Muffet)` under `(genl dog animal)` already
+*reaches* `animal` by subsumption, and `(animal Muffet)` is minted anyway. That the engine
 never materializes a supertype membership for *matching* is a different question —
 matching fans the functor over the spec closure and needs no record. Here the declaration
 makes the claim, and being a record is the whole of what this adds.

@@ -30,20 +30,20 @@
       (is (every? (comp seq :adds) table)))))
 
 (tu/deftest-kb lookup-rejects-a-level-off-the-ladder
-  (is (thrown? clojure.lang.ExceptionInfo (v/lookup kb 8 '(dog Fido) 'UniverseContext)))
-  (is (thrown? clojure.lang.ExceptionInfo (v/lookup kb -1 '(dog Fido) 'UniverseContext))))
+  (is (thrown? clojure.lang.ExceptionInfo (v/lookup kb 8 '(dog Muffet) 'UniverseContext)))
+  (is (thrown? clojure.lang.ExceptionInfo (v/lookup kb -1 '(dog Muffet) 'UniverseContext))))
 
 ;; ---- level 0: raw handles at an index location --------------------------
 
 (tu/deftest-kb level-0-returns-raw-handles
-  (tu/with-terms [dog Fido StoryContext]
-    (let [h (v/assert kb (list dog Fido) StoryContext)]
+  (tu/with-terms [dog Muffet StoryContext]
+    (let [h (v/assert kb (list dog Muffet) StoryContext)]
       (testing "a sentence goal is turned into an index path"
-        (is (= #{h} (set (map :handle (v/lookup kb 0 (list dog Fido) StoryContext))))))
+        (is (= #{h} (set (map :handle (v/lookup kb 0 (list dog Muffet) StoryContext))))))
       (testing "a vector goal *is* the path, addressing the index directly"
-        (is (= #{h} (set (map :handle (v/lookup kb 0 [dog Fido StoryContext] nil))))))
+        (is (= #{h} (set (map :handle (v/lookup kb 0 [dog Muffet StoryContext] nil))))))
       (testing "nothing is interpreted — no sentence, context or bindings"
-        (let [r (first (v/lookup kb 0 (list dog Fido) StoryContext))]
+        (let [r (first (v/lookup kb 0 (list dog Muffet) StoryContext))]
           (is (= 0 (:level r)))
           (is (every? nil? ((juxt :sentence :context :bindings) r))))))))
 
@@ -167,18 +167,18 @@
 ;; ---- level 4: predicate inheritance via the genl spec walk --------------
 
 (tu/deftest-kb level-4-adds-the-genl-spec-walk
-  (tu/with-terms [dog animal Fido StoryContext]
+  (tu/with-terms [dog animal Muffet StoryContext]
     (v/assert kb (list 'genl dog animal) StoryContext)
-    (v/assert kb (list dog Fido) StoryContext)
+    (v/assert kb (list dog Muffet) StoryContext)
     (testing "level 3 matches the type predicate literally and finds nothing"
       (is (empty? (v/lookup kb 3 (list animal '?x) StoryContext))))
     (testing "level 4 fans out over the subtype closure and finds the dog"
       (let [rs (v/lookup kb 4 (list animal '?x) StoryContext)]
         (is (= 1 (count rs)))
-        (is (= Fido (get (:bindings (first rs)) '?x)))
+        (is (= Muffet (get (:bindings (first rs)) '?x)))
         (is (integer? (:handle (first rs))))))         ; still a stored answer
     (testing "no supertype fact was materialized to make that work"
-      (is (empty? (v/lookup kb 2 (list animal Fido) StoryContext))))))
+      (is (empty? (v/lookup kb 2 (list animal Muffet) StoryContext))))))
 
 ;; ---- level 5: transitive closure ----------------------------------------
 
@@ -231,11 +231,11 @@
 ;; ---- the uniform result shape -------------------------------------------
 
 (tu/deftest-kb every-level-returns-the-same-map-shape
-  (tu/with-terms [dog animal Fido StoryContext]
+  (tu/with-terms [dog animal Muffet StoryContext]
     (v/assert kb (list 'genl dog animal) StoryContext)
-    (v/assert kb (list dog Fido) StoryContext)
+    (v/assert kb (list dog Muffet) StoryContext)
     (doseq [n (range 8)]
-      (doseq [r (v/lookup kb n (list dog Fido) StoryContext)]
+      (doseq [r (v/lookup kb n (list dog Muffet) StoryContext)]
         (is (= #{:level :handle :sentence :context :bindings} (set (keys r)))
             (str "level " n " result shape"))
         (is (= n (:level r)))))))
@@ -243,19 +243,19 @@
 ;; ---- escalate -----------------------------------------------------------
 
 (tu/deftest-kb escalate-stops-at-the-cheapest-level-that-answers
-  (tu/with-terms [dog animal Fido StoryContext]
+  (tu/with-terms [dog animal Muffet StoryContext]
     (v/assert kb (list 'genl dog animal) StoryContext)
-    (v/assert kb (list dog Fido) StoryContext)
+    (v/assert kb (list dog Muffet) StoryContext)
     (testing "a goal needing the spec walk escalates to level 4 and stops"
       (let [r (v/escalate kb (list animal '?x) StoryContext)]
         (is (= 4 (:level r)))
         (is (= :typed (:name r)))
         (is (= [2 3 4] (:tried r)))                  ; from the default query floor
-        (is (= Fido (get (:bindings (first (:results r))) '?x)))))
+        (is (= Muffet (get (:bindings (first (:results r))) '?x)))))
     (testing "a goal a plain match answers stops at level 2"
-      (is (= 2 (:level (v/escalate kb (list dog Fido) StoryContext)))))
+      (is (= 2 (:level (v/escalate kb (list dog Muffet) StoryContext)))))
     (testing "an explicit floor of 0 admits the retrieval levels"
-      (is (= 0 (:level (v/escalate kb (list dog Fido) StoryContext 0)))))
+      (is (= 0 (:level (v/escalate kb (list dog Muffet) StoryContext 0)))))
     (testing "an unanswerable goal reports no level, having tried them all"
       (tu/with-terms [cat]
         (let [r (v/escalate kb (list cat '?x) StoryContext)]
@@ -280,9 +280,9 @@
 ;; ---- explain-levels ------------------------------------------------------------
 
 (tu/deftest-kb explain-levels-shows-where-the-answer-appears
-  (tu/with-terms [dog animal Fido StoryContext]
+  (tu/with-terms [dog animal Muffet StoryContext]
     (v/assert kb (list 'genl dog animal) StoryContext)
-    (v/assert kb (list dog Fido) StoryContext)
+    (v/assert kb (list dog Muffet) StoryContext)
     (let [rows (v/explain-levels kb (list animal '?x) StoryContext)
           by-n (into {} (map (juxt :level :count)) rows)]
       (testing "one row per level, named"
@@ -307,11 +307,11 @@
   ;; hierarchy, a symmetric predicate, a transitive one, a forward rule — swept over
   ;; goal shapes that land on different rungs.  From the query floor up, no level may
   ;; answer less than the level below it.
-  (tu/with-terms [dog animal siblingOf ancestorOf barks Fido Ann Bob Carol
+  (tu/with-terms [dog animal siblingOf ancestorOf barks Muffet Ann Bob Carol
                   StoryContext SubContext]
     (v/assert kb (list 'genlContext SubContext StoryContext) StoryContext)
     (v/assert kb (list 'genl dog animal) StoryContext)
-    (v/assert kb (list dog Fido) StoryContext)
+    (v/assert kb (list dog Muffet) StoryContext)
     (v/assert kb (list 'symmetric siblingOf) StoryContext)
     (v/assert kb (list siblingOf Ann Bob) StoryContext)
     (v/assert kb (list 'transitive ancestorOf) StoryContext)
@@ -319,11 +319,11 @@
     (v/assert kb (list ancestorOf Bob Carol) StoryContext)
     (v/assert-rule kb [(list dog '?x)] (list barks '?x) StoryContext)
     (doseq [ctx  [StoryContext SubContext]
-            goal [(list dog Fido)          (list dog '?x)
-                  (list animal '?x)        (list animal Fido)
+            goal [(list dog Muffet)          (list dog '?x)
+                  (list animal '?x)        (list animal Muffet)
                   (list siblingOf Bob '?w) (list siblingOf '?w Ann)
                   (list ancestorOf Ann '?x) (list ancestorOf Ann Carol)
-                  (list barks Fido)        (list barks '?x)
+                  (list barks Muffet)        (list barks '?x)
                   (list 'genl dog '?y)]]
       (let [counts (mapv #(count (v/lookup kb % goal ctx)) (range 2 8))]
         (is (apply <= counts)
@@ -356,10 +356,10 @@
   ;; So the fan-out this level introduces is also what would hand one fact back twice,
   ;; under two names the reader knows denote one thing, and the reader-scoped filter
   ;; belongs to it rather than to the level above (docs/equality.md).
-  (tu/with-terms [dog Fido Rex StoryContext SubContext]
+  (tu/with-terms [dog Muffet Rex StoryContext SubContext]
     (v/assert kb (list 'genlContext SubContext StoryContext) StoryContext)
     (v/assert kb (list dog Rex) StoryContext {:strength :monotonic})
-    (v/assert kb (list 'sameAs Fido Rex) SubContext {:strength :monotonic})
+    (v/assert kb (list 'sameAs Muffet Rex) SubContext {:strength :monotonic})
     (let [goal (list dog '?x)
           rep  (v/representative kb Rex SubContext)]
       (testing "the merge really did place a twin below, so there are two to confuse"
