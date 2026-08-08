@@ -27,13 +27,12 @@
 (argIsa likes 1 person)
 
 (comment marriedTo
-         "(marriedTo ?person1 ?person2) means that ?person1 and ?person2 are married to each other. Declared symmetric, so one assertion answers both orders and the mirrored spelling stores as the same sentex, and decontextualized, so a marriage stated in one context is a claim of the whole KB rather than of that theory. A standing state rather than the wedding: there is no time argument, so a KB that needs to say when it began states that of an interval instead.")
+         "(marriedTo ?person1 ?person2) means that ?person1 and ?person2 are married to each other. Declared symmetric, so one assertion answers both orders and the mirrored spelling stores as the same sentex. A standing state rather than the wedding: there is no time argument, so a KB that needs to say when it began states that of an interval instead. NOT decontextualized: a marriage is scoped to the context it is stated in, because marriages are temporally and jurisdictionally bounded — decontextualizing marriedTo causes temporal leakage when multiple marriages are stated in different temporal contexts.")
 (binaryPredicate marriedTo)
 (instanceRelationPredicate marriedTo)
 (argIsa marriedTo 1 person)
 (argIsa marriedTo 2 person)
 (symmetric marriedTo)
-(decontextualizedPredicate marriedTo)
 
 (comment memberOf
          "(memberOf ?person ?organization) means that ?person belongs to ?organization. Membership in a body of people, which is not parthood: a member is not a component of the organization the way a wheel is of a car, and no mereological rule reaches it.")

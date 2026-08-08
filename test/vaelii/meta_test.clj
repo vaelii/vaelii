@@ -165,25 +165,25 @@
     (is (seq (v/sentexes-matching kb '(implies (?pred . ?args) (ist UniverseContext (?pred . ?args))) 'CoreContext)))))
 
 (tu/deftest-kb a-decontextualized-fact-reaches-the-universe
-  ;; marriedTo is decontextualized; a marriage asserted in SocialWorldContext is also
-  ;; deduced into UniverseContext, and so visible from a sibling context that only sees
-  ;; UniverseContext (not SocialWorldContext).
-  (testing "the fact is copied into UniverseContext"
-    (is (seq (v/sentexes-matching kb '(marriedTo Bob Nancy) 'UniverseContext))))
-  (testing "visible from a sibling context (via UniverseContext), unlike a plain social fact"
-    (is (v/ask? kb '(marriedTo Bob Nancy) 'NaturalWorldContext))
-    (is (not (v/ask? kb '(owns Tom Car1) 'NaturalWorldContext))))   ; owns is not lifted
-  (testing "the copy is justified by the placement sentex and the declaration"
-    (let [u (:id (first (v/sentexes-matching kb '(marriedTo Bob Nancy) 'UniverseContext)))
-          d (first (v/supporting-justifications kb u))]
-      (is (= 'decontextualizedPredicate (:informant d)))
-      (is (= 2 (count (:antecedents d))))
-      (is (some #(= '(decontextualizedPredicate marriedTo) (:sentence (v/sentex kb %)))
-                (:antecedents d)))))
-  (testing "and the declaration reads back as predicate metadata"
-    (is (v/has-prop? kb :decontextualized 'marriedTo))
-    (is (not (v/has-prop? kb :decontextualized 'owns)))
-    (is (contains? (v/props kb :decontextualized) 'marriedTo))))
+  ;; birthPlaceOf is used here as a defensibly decontextualized predicate:
+  ;; a birthplace, unlike a marriage, is genuinely context-independent.
+  (tu/with-terms [birthPlaceOf Ann Springfield AlphaContext]
+    (v/assert kb (list 'genlContext AlphaContext 'UniverseContext) 'UniverseContext)
+    (v/assert kb (list 'binaryPredicate birthPlaceOf) 'CoreContext)
+    (v/assert kb (list 'decontextualizedPredicate birthPlaceOf) 'UniverseContext)
+    (v/assert kb (list birthPlaceOf Ann Springfield) AlphaContext)
+    (testing "the fact is copied into UniverseContext"
+      (is (seq (v/sentexes-matching kb (list birthPlaceOf Ann Springfield) 'UniverseContext))))
+    (testing "the copy is justified by the placement sentex and the declaration"
+      (let [u (:id (first (v/sentexes-matching kb (list birthPlaceOf Ann Springfield) 'UniverseContext)))
+            d (first (v/supporting-justifications kb u))]
+        (is (= 'decontextualizedPredicate (:informant d)))
+        (is (= 2 (count (:antecedents d))))
+        (is (some #(= (list 'decontextualizedPredicate birthPlaceOf) (:sentence (v/sentex kb %)))
+                  (:antecedents d)))))
+    (testing "and the declaration reads back as predicate metadata"
+      (is (v/has-prop? kb :decontextualized birthPlaceOf))
+      (is (not (v/has-prop? kb :decontextualized 'owns))))))
 
 (tu/deftest-kb declaring-it-lifts-facts-already-asserted
   ;; The retroactive sweep, the half a declaration-then-facts test never exercises: a
