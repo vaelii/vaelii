@@ -471,8 +471,8 @@
     (with-dirs* 1 "import-roster"
       (fn [^File dir]
         (rm-rf! dir)
-        (tu/with-terms [dog Fido Rex RosterContext]
-          (v/assert kb (list dog Fido) RosterContext)
+        (tu/with-terms [dog Muffet Rex RosterContext]
+          (v/assert kb (list dog Muffet) RosterContext)
           (v/assert kb (list dog Rex) RosterContext))
         (export/export! kb dir {:compression :none})
         (tu/with-cleared-kb [target #(tu/isolated-fresh)]

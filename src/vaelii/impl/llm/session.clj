@@ -976,7 +976,7 @@
         items  (when (map? parsed) (get parsed "candidates"))]
     (if-not (sequential? items)
       {:errors [(str "no candidates found — answer with a JSON object like "
-                     "{\"candidates\": [{\"sentence\": \"(dog Fido)\", \"segment\": 0}]}")]}
+                     "{\"candidates\": [{\"sentence\": \"(dog Muffet)\", \"segment\": 0}]}")]}
       (let [read (map-indexed
                   (fn [i item]
                     (let [src (str (when (map? item) (get item "sentence")))]

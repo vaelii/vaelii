@@ -236,23 +236,23 @@
           "two justifications — each fact holds it up on its own"))))
 
 (tu/deftest-kb a-subsuming-membership-does-not-suppress-the-entailment
-  ;; The stance, stated as a test: `(dog Fido)` under `(genl dog animal)` already
+  ;; The stance, stated as a test: `(dog Muffet)` under `(genl dog animal)` already
   ;; *reaches* `animal` by subsumption, and the entailment is drawn anyway.  Withholding
   ;; it would mean the same three sentences produce different records depending on
   ;; whether the subtype membership arrived first.
-  (tu/with-terms [animal dog parentOf Fido Mary WorldContext]
+  (tu/with-terms [animal dog parentOf Muffet Mary WorldContext]
     (with-entailing
       (a-context kb WorldContext)
       (a-type kb animal WorldContext)
       (v/assert kb (list 'genl dog animal) WorldContext)
       (v/assert kb (list 'argIsa parentOf 1 animal) WorldContext)
-      (v/assert kb (list dog Fido) WorldContext)
-      (v/assert kb (list parentOf Fido Mary) WorldContext)
-      (is (believed? kb (list animal Fido) WorldContext))
+      (v/assert kb (list dog Muffet) WorldContext)
+      (v/assert kb (list parentOf Muffet Mary) WorldContext)
+      (is (believed? kb (list animal Muffet) WorldContext))
       (testing "and it is derived, so retracting the fact takes it back"
-        (v/retract! kb (v/handle-of kb (list parentOf Fido Mary) WorldContext))
-        (is (nil? (v/handle-of kb (list animal Fido) WorldContext)))
-        (is (v/isa? kb Fido animal WorldContext)
+        (v/retract! kb (v/handle-of kb (list parentOf Muffet Mary) WorldContext))
+        (is (nil? (v/handle-of kb (list animal Muffet) WorldContext)))
+        (is (v/isa? kb Muffet animal WorldContext)
             "while subsumption, which never needed the record, still answers")))))
 
 (tu/deftest-kb a-query-mints-nothing

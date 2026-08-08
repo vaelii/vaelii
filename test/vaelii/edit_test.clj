@@ -78,15 +78,15 @@
   ;; reports as `:shape` is what `edit` throws — a 4-element entry is never applied
   ;; with the junk silently dropped.
   (tu/with-neutral-kb [kb tu/fresh]
-    (tu/with-terms [dog Fido ShapeContext]
+    (tu/with-terms [dog Muffet ShapeContext]
       (testing "a 4-element entry is :shape at both doors, and nothing lands"
-        (let [batch  {:add [[(list dog Fido) ShapeContext {} :junk]]}
+        (let [batch  {:add [[(list dog Muffet) ShapeContext {} :junk]]}
               before (v/sentex-count kb)]
           (is (= [:shape] (mapv :type (v/check-edit kb batch))))
           (let [e (is (thrown? clojure.lang.ExceptionInfo (v/edit! kb batch)))]
             (is (= :shape (:type (ex-data e)))))
           (is (= before (v/sentex-count kb)))
-          (is (nil? (v/handle-of kb (list dog Fido) ShapeContext))
+          (is (nil? (v/handle-of kb (list dog Muffet) ShapeContext))
               "the entry was refused whole, not applied minus the junk")))
       (testing "a non-sequential entry is :shape at both doors, not a bare throw"
         (doseq [bad [42 {:sentence 1}]]
@@ -116,9 +116,9 @@
   ;; the deliberate contrast: retracting one absent handle is an ordinary zero-count
   ;; answer, not a batch.
   (tu/with-neutral-kb [kb tu/fresh]
-    (tu/with-terms [dog Fido HalfContext]
+    (tu/with-terms [dog Muffet HalfContext]
       (let [ghost 9999999
-            batch {:add [[(list dog Fido) HalfContext]] :remove [ghost]}]
+            batch {:add [[(list dog Muffet) HalfContext]] :remove [ghost]}]
         (is (nil? (v/sentex kb ghost)) "the handle names nothing stored")
         (testing "check-edit predicts the refusal"
           (is (some #(= :unknown-handle (:type %)) (v/check-edit kb batch))))
@@ -127,7 +127,7 @@
             (is (= :unknown-handle (:type (ex-data e))))
             (is (= ghost (:handle (ex-data e))))))
         (testing "and the add half did not land — no half-applied batch"
-          (is (nil? (v/handle-of kb (list dog Fido) HalfContext))))
+          (is (nil? (v/handle-of kb (list dog Muffet) HalfContext))))
         (testing "retract! standalone keeps its zero-count answer"
           (is (= {:removed-sentexes 0 :removed-justifications 0}
                  (v/retract! kb ghost))))

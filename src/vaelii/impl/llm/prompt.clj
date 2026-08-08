@@ -25,11 +25,11 @@
   "| role | convention | example |
 |------|-----------|---------|
 | predicate | camelCase, lowercase-initial | `parentOf`, `genl`, `argIsa` |
-| individual | CapitalCamelCase | `Fido`, `Tom` |
+| individual | CapitalCamelCase | `Muffet`, `Tom` |
 | type | snake_case, a **unary** predicate | `dog`, `physical_object` |
 | context | CapitalCamelCase ending in `Context` | `WellContext`, `CoreContext` |
 
-Types are unary predicates: write `(dog Fido)`, never `(isa Fido Dog)`. `thing` is the
+Types are unary predicates: write `(dog Muffet)`, never `(isa Muffet Dog)`. `thing` is the
 root of the type hierarchy. A fact must be **ground** — `(mortal ?x)` asserts nothing
 and is refused; a universal claim is written as a rule.")
 
@@ -41,7 +41,7 @@ reviews and applies. Your final message must contain exactly one fenced `edn` bl
 holding a map of this shape:
 
 ```edn
-{:add    [[(dog Fido) WellContext]
+{:add    [[(dog Muffet) WellContext]
           [(parentOf Tom Ann) WellContext {:strength :monotonic}]]
  :remove [4211]}
 ```

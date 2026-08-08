@@ -27,19 +27,19 @@
 
 (deftest check-reports-the-type-assert-would-throw
   (tu/with-neutral-kb [kb kb-with-starter]
-    (tu/with-terms [dog cat Fido TheContext]
+    (tu/with-terms [dog cat Muffet TheContext]
       ;; the disjointness constrains where it is visible, so the asserting context
       ;; is wired below the declaring one
       (v/assert kb (list 'genlContext TheContext 'CoreContext) 'CoreContext)
       (v/assert kb (list 'genl dog 'animal) 'CoreContext)
       (v/assert kb (list 'genl cat 'animal) 'CoreContext)
       (v/assert kb (list 'disjoint dog cat) 'CoreContext)
-      (v/assert kb (list dog Fido) TheContext)
+      (v/assert kb (list dog Muffet) TheContext)
       (doseq [[label sentence context expected]
-              [["a bad context"        (list dog Fido) 'notacontext          :naming]
-               ["a bad functor"        (list 'BadPred Fido) TheContext       :naming]
+              [["a bad context"        (list dog Muffet) 'notacontext          :naming]
+               ["a bad functor"        (list 'BadPred Muffet) TheContext       :naming]
                ["a variable in a fact" (list dog '?x) TheContext             :not-ground]
-               ["genl over an individual" (list 'genl Fido dog) TheContext   :not-well-formed]
+               ["genl over an individual" (list 'genl Muffet dog) TheContext   :not-well-formed]
                ["an unbound consequent variable"
                 (list 'implies (list dog '?x) (list 'animal '?y)) TheContext :not-range-restricted]
                ;; the rule index is keyed by predicate, and a variable names none — so
@@ -48,7 +48,7 @@
                ["a rule literal with a variable predicate"
                 (list 'implies (list 'and (list dog '?x) (list 'transitive '?p))
                       (list '?p '?x '?x)) TheContext                          :not-indexable]
-               ["a disjoint type membership" (list cat Fido) TheContext      :disjoint]]]
+               ["a disjoint type membership" (list cat Muffet) TheContext      :disjoint]]]
         (testing label
           (is (= #{expected} (types-of-check kb sentence context)))
           (is (= expected (assert-type kb sentence context))
@@ -123,13 +123,13 @@
 
 (deftest a-request-that-is-not-a-sentence-in-a-context-is-shaped-wrong
   (tu/with-neutral-kb [kb kb-with-starter]
-    (tu/with-terms [dog Fido TheContext]
-      (is (= #{:shape} (types-of-check kb (list dog Fido) "TheContext")))
+    (tu/with-terms [dog Muffet TheContext]
+      (is (= #{:shape} (types-of-check kb (list dog Muffet) "TheContext")))
       (is (= #{:shape} (types-of-check kb 'dog TheContext)))
       ;; a non-map opts is an opts problem, not a shape one — the same
       ;; `:unknown-option` `assert` throws, since `shape-problems` runs its guard
       (is (= #{:unknown-option}
-             (into #{} (map :type) (v/check kb (list dog Fido) TheContext :nope)))))))
+             (into #{} (map :type) (v/check kb (list dog Muffet) TheContext :nope)))))))
 
 ;; ---- the opts roster: admissible knowledge, inadmissible request ---------
 ;; These two are the request rather than the sentence, and neither is visible after the
@@ -267,7 +267,7 @@
   ;; enumeration order may not pick the declaration a refusal is about
   (doseq [flip? [false true]]
     (tu/with-neutral-kb [kb kb-with-starter]
-      (tu/with-terms [relOf t_first t_second t_plain Fido Alice TheContext]
+      (tu/with-terms [relOf t_first t_second t_plain Muffet Alice TheContext]
         (v/assert kb (list 'genlContext TheContext 'CoreContext) 'CoreContext)
         (doseq [t [t_first t_second t_plain]]
           (v/assert kb (list 'genl t 'thing) 'CoreContext))
@@ -276,9 +276,9 @@
               winner (first (sort-by pr-str [d1 d2]))]
           (doseq [d (if flip? [d2 d1] [d1 d2])]
             (v/assert kb d 'CoreContext))
-          (v/assert kb (list t_plain Fido) TheContext)
+          (v/assert kb (list t_plain Muffet) TheContext)
           (v/assert kb (list t_plain Alice) TheContext)
-          (let [ps (v/check kb (list relOf Fido Alice) TheContext)
+          (let [ps (v/check kb (list relOf Muffet Alice) TheContext)
                 p  (first (filter #(= :arg-type (:type %)) ps))]
             (testing (str "assertion order " (if flip? "second first" "first second"))
               (is (some? p) "both declarations convict, so a violation is reported")
@@ -305,9 +305,9 @@
   ;; `(nth sentence 2)`; four asserted with the extra silently dropped, which is the
   ;; worse of the two because it stores something the caller did not write.
   (tu/with-neutral-kb [kb kb-with-starter]
-    (tu/with-terms [dog Fido IstContext]
+    (tu/with-terms [dog Muffet IstContext]
       (let [short-form (list 'ist IstContext)
-            long-form  (list 'ist IstContext (list dog Fido) 'junk)]
+            long-form  (list 'ist IstContext (list dog Muffet) 'junk)]
         (testing "check reports the shape rather than raising out of nth"
           (is (= #{:shape} (types-of-check kb short-form 'UniverseContext)))
           (is (= #{:shape} (types-of-check kb long-form 'UniverseContext))))
@@ -329,22 +329,22 @@
   ;; non-sequential sentence finds no literals, so a string or nil would pass the naming
   ;; check vacuously and store as an object no query can match.
   (tu/with-neutral-kb [kb tu/fresh]
-    (tu/with-terms [dog Fido InertContext]
+    (tu/with-terms [dog Muffet InertContext]
       (let [before (v/sentex-count kb)]
         (testing "a non-sequential sentence is :shape, as at assert"
-          (doseq [bad ["(dog Fido)" nil 42 {:a 1}]]
+          (doseq [bad ["(dog Muffet)" nil 42 {:a 1}]]
             (let [e (is (thrown? clojure.lang.ExceptionInfo
                                  (v/assert-inert kb bad InertContext))
                         (str (pr-str bad) " is refused"))]
               (is (= :shape (:type (ex-data e)))))))
         (testing "a non-symbol context is :shape, not :naming"
           (let [e (is (thrown? clojure.lang.ExceptionInfo
-                               (v/assert-inert kb (list dog Fido) (str InertContext))))]
+                               (v/assert-inert kb (list dog Muffet) (str InertContext))))]
             (is (= :shape (:type (ex-data e))))))
         (testing "and nothing was stored by any refusal"
           (is (= before (v/sentex-count kb)))))
       (testing "a well-formed inert sentex still stores, unbelieved"
-        (let [h (v/assert-inert kb (list dog Fido) InertContext)]
+        (let [h (v/assert-inert kb (list dog Muffet) InertContext)]
           (is (nat-int? h))
           (is (not (v/in? kb h)) "inert means never a premise")
           (v/retract! kb h))))))

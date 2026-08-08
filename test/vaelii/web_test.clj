@@ -405,7 +405,7 @@
     (testing "taxonomy info and containing sentexes"
       (is (re-find #"Supertypes" (:body r)))            ; dog is a type
       (is (re-find #"Disjoint with" (:body r)))         ; dog ⊥ cat
-      (is (re-find #"Fido" (:body r)))))                ; (dog Fido)
+      (is (re-find #"Muffet" (:body r)))))                ; (dog Muffet)
   (testing "an individual's sentexes are found by term"
     (is (re-find #"parentOf" (:body (GET "/term" "q=Bob"))))))
 
@@ -414,10 +414,10 @@
     (let [r (GET "/term" "q=dog")]
       (is (= 200 (:status r)))
       (is (re-find #"Sentexes by index" (:body r)))
-      (is (re-find #"As predicate" (:body r)))            ; (dog Fido) is a functor-root fact
+      (is (re-find #"As predicate" (:body r)))            ; (dog Muffet) is a functor-root fact
       (is (re-find #"\[:functor-root dog\]" (:body r)))
       (is (re-find #"stored" (:body r)))                  ; the O(1) stored count is shown
-      (is (re-find #"Fido" (:body r)))))                  ; still reachable, now under a group
+      (is (re-find #"Muffet" (:body r)))))                  ; still reachable, now under a group
   (testing "an individual is grouped by the argument position it fills"
     (let [r (GET "/term" "q=Bob")]
       (is (re-find #"argument position" (:body r)))
@@ -970,7 +970,7 @@
   (let [spaces {:backend :memory :space 62 :recover? false}
         built  (v/open-kb spaces)]
     (try
-      (v/assert built '(dog Fido) 'UniverseContext {})
+      (v/assert built '(dog Muffet) 'UniverseContext {})
       (let [reopened (v/open-kb spaces)]
         (cat/register! "wt-beliefless" "Reopened without recover" reopened)
         (is (cat/activate "wt-beliefless"))
@@ -1545,12 +1545,12 @@
         (is (= 200 (:status r)))
         (is (re-find #"unreadable" (:body r)))))
     (testing "a context that is not a symbol at all is refused before anything is read"
-      (let [r (POST "/assert" {"text" "(dog Fido)" "ctx" "42"}
+      (let [r (POST "/assert" {"text" "(dog Muffet)" "ctx" "42"}
                 {"host" "localhost:3000" "origin" "http://localhost:3000"})]
         (is (re-find #"shape" (:body r)))
         (is (re-find #"the context must be a bare symbol" (:body r)))))
     (testing "a context that is a symbol but not a context name fails the naming invariant"
-      (let [r (POST "/assert" {"text" "(dog Fido)" "ctx" "wrong"}
+      (let [r (POST "/assert" {"text" "(dog Muffet)" "ctx" "wrong"}
                 {"host" "localhost:3000" "origin" "http://localhost:3000"})]
         (is (re-find #"naming" (:body r)))))))
 

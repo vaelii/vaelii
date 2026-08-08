@@ -62,9 +62,9 @@ at construction; `{:recover? false}` is the setting that turns the whole class o
 back on. `(v/sentex-count kb)` reading non-zero while queries answer nothing is the tell.
 [storage.md](storage.md).
 
-**The membership was written the way another system spells it.** `(isa Fido Dog)` stores a
+**The membership was written the way another system spells it.** `(isa Muffet Dog)` stores a
 two-place predicate named `isa`, which nothing reads; types here are unary, so membership
-is `(dog Fido)` and the hierarchy is `genl`. The front door logs this once per process,
+is `(dog Muffet)` and the hierarchy is `genl`. The front door logs this once per process,
 and `docs/naming.md` states the convention. [naming.md](naming.md).
 
 Past those: `ask` answers from what is stored or cached and **never expands rules**, so a
@@ -161,8 +161,8 @@ names a type, and a type is a one-place predicate, so `(lives_in ?x cold_place)`
 
 ## An `argIsa` constraint never convicts
 
-`(argIsa parentOf 1 person)` plus `(disjoint dog person)` plus `(dog Fido)` accepts
-`(parentOf Fido Bob)` without complaint. That is open-world and deliberate: the check
+`(argIsa parentOf 1 person)` plus `(disjoint dog person)` plus `(dog Muffet)` accepts
+`(parentOf Muffet Bob)` without complaint. That is open-world and deliberate: the check
 convicts only when the argument's own type closure reaches `thing`, and `dog` reaches it
 only once something says so. Add the edge and the identical assertion throws `:arg-type`:
 

@@ -50,18 +50,18 @@
 ;; ---- the contract: a stored fact short-circuits the scan ----------------
 
 (tu/deftest-kb stored-fact-ground-ask-does-not-scan-the-individuals-relations
-  ;; THE gate.  With `(dog Fido)` stored and Fido also filling 30 argIsa-constrained
-  ;; positions, `ask? (dog Fido)` must be answered by the stored fact — FactProver
+  ;; THE gate.  With `(dog Muffet)` stored and Muffet also filling 30 argIsa-constrained
+  ;; positions, `ask? (dog Muffet)` must be answered by the stored fact — FactProver
   ;; precedes ArgTypeProver and the union is lazy, so ArgTypeProver.solve is never
   ;; forced and `inferred-types` never runs.  Pre-change (ArgTypeProver first, eager
   ;; scan) this issued ~M argIsa probes before FactProver got a turn.
-  (tu/with-terms [Fido]
+  (tu/with-terms [Muffet]
     (let [ctx 'UniverseContext, m 30
-          dog (typed-individual-in-m-relations! kb Fido m ctx)
+          dog (typed-individual-in-m-relations! kb Muffet m ctx)
           calls (atom 0)]
       (with-redefs [res/matches-visible (counting-argisa-probes calls)]
         (testing "the stored membership is provable"
-          (is (v/ask? kb (list dog Fido) ctx)))
+          (is (v/ask? kb (list dog Muffet) ctx)))
         (testing "and it was answered without any inferred-type scan"
           (is (zero? @calls)
               (str "argIsa probes " @calls
@@ -89,13 +89,13 @@
 ;; ---- inferred-only membership still holds -------------------------------
 
 (tu/deftest-kb inferred-only-membership-still-holds
-  ;; (food Bone1) is provable only through (argIsa eats 2 food) + (eats Fido Bone1):
+  ;; (food Bone1) is provable only through (argIsa eats 2 food) + (eats Muffet Bone1):
   ;; no stored (food Bone1) fact, so ArgTypeProver must still run when FactProver
   ;; yields nothing — the reorder and the lazy `some` must not lose this answer.
-  (tu/with-terms [eats food Fido Bone1]
+  (tu/with-terms [eats food Muffet Bone1]
     (let [ctx 'UniverseContext]
       (v/assert kb (list 'argIsa eats 2 food) ctx)
-      (v/assert kb (list eats Fido Bone1) ctx)          ; Bone1 @ arg2, food-constrained
+      (v/assert kb (list eats Muffet Bone1) ctx)          ; Bone1 @ arg2, food-constrained
       (testing "the inferred membership is provable"
         (is (v/ask? kb (list food Bone1) ctx)))
       (testing "with no stored fact backing it"
@@ -108,11 +108,11 @@
   ;; `(?t Bone1)` is the pvar branch — it must still enumerate the individual's whole
   ;; inferred type set (the lazy `for` consumed to the end), including genl supertypes.
   ;; And `types-of`, which bypasses the prover engine, is untouched.
-  (tu/with-terms [eats food edible fruit Fido Bone1]
+  (tu/with-terms [eats food edible fruit Muffet Bone1]
     (let [ctx 'UniverseContext]
       (v/assert kb (list 'genl food edible) ctx)
       (v/assert kb (list 'argIsa eats 2 food) ctx)
-      (v/assert kb (list eats Fido Bone1) ctx)          ; Bone1 inferred food, hence edible
+      (v/assert kb (list eats Muffet Bone1) ctx)          ; Bone1 inferred food, hence edible
       (v/assert kb (list fruit Bone1) ctx)              ; a stored membership as well
       (testing "the open query enumerates the inferred type and its supertypes"
         (let [ts (set (map #(get % '?t) (v/ask kb (list '?t Bone1) ctx)))]
@@ -125,22 +125,22 @@
 ;; ---- ground miss --------------------------------------------------------
 
 (tu/deftest-kb ground-miss-with-no-witness-returns-false
-  ;; (cat Fido) with no stored fact and no argIsa path: ArgTypeProver's `some` exhausts
+  ;; (cat Muffet) with no stored fact and no argIsa path: ArgTypeProver's `some` exhausts
   ;; the witness stream and finds nothing, so the goal fails cleanly.
-  (tu/with-terms [Fido cat]
+  (tu/with-terms [Muffet cat]
     (let [ctx 'UniverseContext, m 5]
-      (typed-individual-in-m-relations! kb Fido m ctx)  ; Fido is inferrably animal, never cat
+      (typed-individual-in-m-relations! kb Muffet m ctx)  ; Muffet is inferrably animal, never cat
       (testing "a type it neither stores nor can infer is not provable"
-        (is (not (v/ask? kb (list cat Fido) ctx)))))))
+        (is (not (v/ask? kb (list cat Muffet) ctx)))))))
 
 ;; ---- the reorder, structurally ------------------------------------------
 
 (tu/deftest-kb factprover-precedes-argtypeprover-in-the-plan
   ;; The union path breaks an equal-cost tie on registry order, so FactProver must sit
   ;; ahead of ArgTypeProver in the plan for a ground `(Type Individual)` goal.
-  (tu/with-terms [dog Fido]
-    (v/assert kb (list dog Fido) 'UniverseContext)
-    (let [provs (mapv :prover (v/query-plan kb (list dog Fido) 'UniverseContext))
+  (tu/with-terms [dog Muffet]
+    (v/assert kb (list dog Muffet) 'UniverseContext)
+    (let [provs (mapv :prover (v/query-plan kb (list dog Muffet) 'UniverseContext))
           pos   (into {} (map-indexed (fn [i p] [p i]) provs))
           fact  (pos "FactProver")
           arg   (pos "ArgTypeProver")]

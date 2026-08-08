@@ -176,11 +176,11 @@
           "more than one chunk past the ceiling was read before it gave up"))
     (testing "a body under the ceiling comes back whole, and as UTF-8 on the string arm"
       (with-redefs [guard/max-body-bytes limit]
-        (let [body (.getBytes "(dog Fido) — é" "UTF-8")]
+        (let [body (.getBytes "(dog Muffet) — é" "UTF-8")]
           (is (= (seq body)
                  (seq (guard/read-capped-body-bytes
                        {:body (java.io.ByteArrayInputStream. body)}))))
-          (is (= "(dog Fido) — é"
+          (is (= "(dog Muffet) — é"
                  (guard/read-capped-body
                   {:body (java.io.ByteArrayInputStream. body)}))))))
     (testing "and a request carrying no body at all is empty, not a crash"

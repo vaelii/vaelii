@@ -35,11 +35,11 @@
       (let [s (drs/open-record-store dir)]
         (try
           (testing "monotonic ids, one space across sentexes and justifications"
-            (let [a (p/put-sentex s {:sentence '(dog Fido) :context 'C})
+            (let [a (p/put-sentex s {:sentence '(dog Muffet) :context 'C})
                   b (p/put-justification s {:informant :rule :antecedents [a]})
                   c (p/put-sentex s {:sentence '(cat Tom) :context 'C})]
               (is (= [1 2 3] [a b c]) "ids allocated 1,2,3 across kinds")
-              (is (= '(dog Fido) (:sentence (p/get-sentex s a))))
+              (is (= '(dog Muffet) (:sentence (p/get-sentex s a))))
               (is (= [a] (:antecedents (p/get-justification s b))))
               (is (= #{a c} (p/sentex-ids s)))
               (is (= #{b} (p/justification-ids s)))))
@@ -57,7 +57,7 @@
     (fn [dir]
       (let [s (drs/open-record-store dir)]
         (try
-          (let [a (p/put-sentex s {:sentence '(dog Fido) :context 'C})
+          (let [a (p/put-sentex s {:sentence '(dog Muffet) :context 'C})
                 b (p/put-sentex s {:sentence '(cat Tom) :context 'C})]
             (p/mark-premise s a :monotonic)
             (is (= #{a} (p/premise-ids s)))
@@ -102,7 +102,7 @@
   (with-tmp
     (fn [dir]
       (let [s (drs/open-record-store dir)]
-        (p/put-sentex s {:sentence '(dog Fido) :context 'C})                     ; 1
+        (p/put-sentex s {:sentence '(dog Muffet) :context 'C})                     ; 1
         (p/put-sentex s {:sentence '(cat Tom) :context 'C :strength :monotonic})  ; 2
         (p/put-sentex s {:sentence '(pig Sam) :context 'C})                      ; 3
         (p/mark-premise s 1 :default)
@@ -164,7 +164,7 @@
   (with-tmp
     (fn [dir]
       (let [s1 (drs/open-record-store dir)
-            a  (p/put-sentex s1 {:sentence '(dog Fido) :context 'C})
+            a  (p/put-sentex s1 {:sentence '(dog Muffet) :context 'C})
             b  (p/put-justification s1 {:informant :rule})
             _  (p/mark-premise s1 a :monotonic)
             _  (p/put-provenance s1 a {:creator "t"})
@@ -173,7 +173,7 @@
         (testing "a reopen recovers every record, the premise set, and the counter"
           (let [s2 (drs/open-record-store dir)]
             (try
-              (is (= '(dog Fido) (:sentence (p/get-sentex s2 a))))
+              (is (= '(dog Muffet) (:sentence (p/get-sentex s2 a))))
               (is (= :monotonic (:strength (p/get-sentex s2 a))))
               (is (= {:informant :rule :id b} (p/get-justification s2 b)))
               (is (= {:creator "t"} (p/get-provenance s2 a)))
@@ -189,7 +189,7 @@
     (fn [dir]
       (let [s (drs/open-record-store dir)]
         (try
-          (p/put-sentex s {:sentence '(dog Fido) :context 'C})
+          (p/put-sentex s {:sentence '(dog Muffet) :context 'C})
           (p/mark-premise s 1 :monotonic)
           (p/clear-records! s)
           (is (= #{} (p/sentex-ids s)))
@@ -255,7 +255,7 @@
   (with-tmp
     (fn [dir]
       (let [s (drs/open-record-store dir)]
-        (p/put-sentex s {:sentence '(dog Fido) :context 'C})          ; id 1, slot 1
+        (p/put-sentex s {:sentence '(dog Muffet) :context 'C})          ; id 1, slot 1
         (drs/close! s))
       ;; simulate a crash after the frame append but before the slot write: a frame
       ;; with no idx slot pointing at it.
@@ -265,13 +265,13 @@
       (let [s (drs/open-record-store dir)]
         (testing "the orphan is not a record — no slot references it"
           (is (= #{1} (p/sentex-ids s)))
-          (is (= '(dog Fido) (:sentence (p/get-sentex s 1)))))
+          (is (= '(dog Muffet) (:sentence (p/get-sentex s 1)))))
         (testing "and compaction reclaims its dead bytes, keeping the live record"
           (is (pos? (drs/dead-ratio s)))
           (drs/compact! s)
           (is (< (drs/dead-ratio s) 1.0e-9))
           (is (= #{1} (p/sentex-ids s)))
-          (is (= '(dog Fido) (:sentence (p/get-sentex s 1)))))
+          (is (= '(dog Muffet) (:sentence (p/get-sentex s 1)))))
         (drs/close! s)))))
 
 (deftest repeated-compaction-and-reopen-stay-consistent
@@ -372,7 +372,7 @@
   (with-tmp
     (fn [dir]
       (let [s1 (drs/open-record-store dir)
-            a  (p/put-sentex s1 {:sentence '(dog Fido) :context 'C})
+            a  (p/put-sentex s1 {:sentence '(dog Muffet) :context 'C})
             b  (p/put-sentex s1 {:sentence '(cat Tom) :context 'C})]
         (drs/close! s1)
         ;; simulate a crash mid-append: a length prefix promising bytes that were
@@ -385,7 +385,7 @@
         (testing "reopen truncates the torn tail and keeps the durable records"
           (let [s2 (drs/open-record-store dir)]
             (try
-              (is (= '(dog Fido) (:sentence (p/get-sentex s2 a))))
+              (is (= '(dog Muffet) (:sentence (p/get-sentex s2 a))))
               (is (= '(cat Tom) (:sentence (p/get-sentex s2 b))))
               (is (= #{a b} (p/sentex-ids s2)))
               (let [log-raf (f/open-log (str dir "/records/sentexes.log"))]
@@ -402,7 +402,7 @@
     (fn [dir]
       (let [root (str dir "/records")
             s1   (drs/open-record-store dir)]
-        (p/put-sentex s1 {:sentence '(dog Fido) :context 'C})
+        (p/put-sentex s1 {:sentence '(dog Muffet) :context 'C})
         (is (nil? (f/read-clean-marker root)) "a marker survived into an open session")
         (drs/close! s1)
         (let [m (f/read-clean-marker root)]
@@ -431,7 +431,7 @@
       (with-tmp
         (fn [dir]
           (let [s1 (drs/open-record-store dir)
-                a  (p/put-sentex s1 {:sentence '(dog Fido) :context 'C})]
+                a  (p/put-sentex s1 {:sentence '(dog Muffet) :context 'C})]
             (drs/close! s1)
             (let [root (str dir "/records")
                   log  (str root "/sentexes.log")]
@@ -442,7 +442,7 @@
               (forge root log)
               (let [s2 (drs/open-record-store dir)]
                 (try
-                  (is (= '(dog Fido) (:sentence (p/get-sentex s2 a))) "the record did not survive")
+                  (is (= '(dog Muffet) (:sentence (p/get-sentex s2 a))) "the record did not survive")
                   (let [log-raf (f/open-log log)]
                     (is (= (f/log-length log-raf) (f/log-tail-offset log-raf))
                         "the torn tail survived — the marker was believed when it should not be")
@@ -464,10 +464,10 @@
     (fn [dir]
       (let [s (drs/open-record-store dir)]
         (try
-          (let [a (p/put-sentex s {:sentence '(dog Fido) :context 'C})
+          (let [a (p/put-sentex s {:sentence '(dog Muffet) :context 'C})
                 b (p/put-justification s {:informant :rule :antecedents [a]})]
             (testing "a written record is cached, and a read returns the same value"
-              (is (= '(dog Fido) (:sentence (cached s :sentexes a))))
+              (is (= '(dog Muffet) (:sentence (cached s :sentexes a))))
               (is (= (p/get-sentex s a) (cached s :sentexes a))))
 
             (testing "a read populates the cache, and matches a cache-bypassing frame read"
@@ -536,7 +536,7 @@
   (with-tmp
     (fn [dir]
       (let [s1 (drs/open-record-store dir {:tokenize? true})
-            a  (p/put-sentex s1 {:sentence '(dog Fido) :context 'C})
+            a  (p/put-sentex s1 {:sentence '(dog Muffet) :context 'C})
             b  (p/put-sentex s1 (sx/->AtomicSentex '(bornIn Tom 1970) 'WellContext nil :true :monotonic))
             r  (p/put-sentex s1 (sx/->RuleSentex '(implies (and (dog ?var0)) (mammal ?var0)) 'C nil
                                                  :true '[(dog ?var0)] '(mammal ?var0) :monotonic
@@ -550,7 +550,7 @@
         (testing "and after a close → reopen, off a dictionary rebuilt from its log"
           (let [s2 (drs/open-record-store dir {:tokenize? true})]
             (try
-              (is (= '(dog Fido) (:sentence (p/get-sentex s2 a))))
+              (is (= '(dog Muffet) (:sentence (p/get-sentex s2 a))))
               (is (= '(bornIn Tom 1970) (:sentence (p/get-sentex s2 b))))
               (is (= :monotonic (:strength (p/get-sentex s2 b))) "the premise strength too")
               (is (= #{b r} (p/premise-ids s2))
@@ -570,7 +570,7 @@
               ;; and what it writes from here is a plain positional frame, beside them
               (let [c (p/put-sentex s3 (sx/->AtomicSentex '(cat Tom) 'C nil :true nil))]
                 (is (= '(cat Tom) (:sentence (p/get-sentex s3 c))))
-                (is (= '(dog Fido) (:sentence (p/get-sentex s3 a))) "the tokenized ones keep reading"))
+                (is (= '(dog Muffet) (:sentence (p/get-sentex s3 a))) "the tokenized ones keep reading"))
               (finally (drs/close! s3)))))))))
 
 (deftest a-wipe-empties-the-dictionary-too
@@ -578,7 +578,7 @@
     (fn [dir]
       (let [s (drs/open-record-store dir {:tokenize? true})]
         (try
-          (p/put-sentex s (sx/->AtomicSentex '(dog Fido) 'C nil :true nil))
+          (p/put-sentex s (sx/->AtomicSentex '(dog Muffet) 'C nil :true nil))
           (is (pos? (dtok/token-count (:dict s))))
           (p/clear-records! s)
           (is (zero? (dtok/token-count (:dict s)))
@@ -597,7 +597,7 @@
     (fn [dir]
       (let [tl (str dir "/records/tokens.log")
             s1 (drs/open-record-store dir {:tokenize? true})
-            a  (p/put-sentex s1 (sx/->AtomicSentex '(dog Fido) 'C nil :true nil))
+            a  (p/put-sentex s1 (sx/->AtomicSentex '(dog Muffet) 'C nil :true nil))
             ;; the dictionary exactly as of `a` — every later token is `b`'s
             after-a (do (drs/fsync s1 true) (.length (java.io.File. tl)))
             b  (p/put-sentex s1 (sx/->AtomicSentex '(elephant Jumbo) 'ZooContext nil :true nil))]
@@ -611,7 +611,7 @@
           (try
             (is (= #{a} (p/sentex-ids s2))
                 "the undecodable record is tombstoned; the decodable one is untouched")
-            (is (= '(dog Fido) (:sentence (p/get-sentex s2 a))))
+            (is (= '(dog Muffet) (:sentence (p/get-sentex s2 a))))
             (is (nil? (p/get-sentex s2 b)))
             ;; and the store is usable afterwards — new tokens continue from where the
             ;; rolled-back dictionary now ends

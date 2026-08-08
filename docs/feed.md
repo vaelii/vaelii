@@ -102,7 +102,7 @@ sweep's retractions inside a retraction stay inside one event.
 
 `(watch kb goal context f)` matches the region's entries against `goal` with
 `res/match1` — the same subsumption a rule antecedent gets, so `(animal ?x)` is answered
-by a stored `(dog Fido)` through the `genl` closure and `(parentOf ?x ?y)` by a stored
+by a stored `(dog Muffet)` through the `genl` closure and `(parentOf ?x ?y)` by a stored
 `(fatherOf Tom Bob)` through the predicate hierarchy. One cached closure lookup per
 candidate.
 

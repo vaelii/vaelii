@@ -79,9 +79,9 @@
   (doseq [i (range 60)]
     (v/assert kb (list 'parentOf (symbol (str "Snap" i)) (symbol (str "Snap" (inc i))))
               'UniverseContext {:strength :monotonic}))
-  (v/assert kb '(dog SnapFido) 'UniverseContext {:strength :monotonic})
-  (v/assert kb '(likes SnapFido SnapBall) 'UniverseContext {:strength :monotonic})
-  (v/assert kb '(bornIn SnapFido 1970) 'UniverseContext {:strength :monotonic})
+  (v/assert kb '(dog SnapMuffet) 'UniverseContext {:strength :monotonic})
+  (v/assert kb '(likes SnapMuffet SnapBall) 'UniverseContext {:strength :monotonic})
+  (v/assert kb '(bornIn SnapMuffet 1970) 'UniverseContext {:strength :monotonic})
   (v/assert-rule kb '[(parentOf ?x ?y)] '(ancestorOf ?x ?y) 'UniverseContext)
   kb)
 
@@ -90,7 +90,7 @@
   (`term-count`, the root count) no query would notice going wrong."
   [kb]
   {:parents  (count (v/sentexes-matching kb '(parentOf ?x ?y) 'UniverseContext))
-   :dog      (v/ask? kb '(dog SnapFido) 'UniverseContext)
+   :dog      (v/ask? kb '(dog SnapMuffet) 'UniverseContext)
    :ball     (count (v/sentexes-matching kb '(likes ?x SnapBall) 'UniverseContext))
    :number   (count (v/sentexes-matching kb '(bornIn ?x 1970) 'UniverseContext))
    :ancestor (v/ask? kb '(ancestorOf Snap0 Snap1) 'UniverseContext)

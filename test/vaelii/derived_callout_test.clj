@@ -25,27 +25,27 @@
 ;; ---- the engine: what a write meant --------------------------------------
 
 (tu/deftest-kb a-rule-firing-is-reported-with-the-argument-that-made-it
-  (tu/with-terms [dog mortal Fido RuleContext]
+  (tu/with-terms [dog mortal Muffet RuleContext]
     (v/assert kb (list 'genlContext RuleContext 'WellContext) 'UniverseContext)
     (v/assert-rule kb [(list dog '?x)] (list mortal '?x) RuleContext)
-    (let [r (v/edit-with-consequences! kb {:add [[(list dog Fido) RuleContext]]})
+    (let [r (v/edit-with-consequences! kb {:add [[(list dog Muffet) RuleContext]]})
           derived (remove :premise? (:believed-added r))]
       (testing "the premise the caller wrote is reported, and marked as one — that mark is
                 how a reader tells what it said from what followed"
-        (is (= [(list dog Fido)]
+        (is (= [(list dog Muffet)]
                (sentences (filter :premise? (:believed-added r))))))
       (testing "and the conclusion it produced, which `edit` alone never mentions"
-        (is (= [(list mortal Fido)] (sentences derived))))
+        (is (= [(list mortal Muffet)] (sentences derived))))
       (testing "with the argument one level deep, as sentences rather than handles"
         (let [j (:justification (first derived))]
-          (is (= [(list dog Fido)] (:antecedents j)))
+          (is (= [(list dog Muffet)] (:antecedents j)))
           (is (= (list 'implies (list dog '?x) (list mortal '?x)) (:rule j)))
           (is (integer? (:informant j)) "the rule handle, so the proof is reachable")))
       (testing "the conclusion is a real sentex with a real proof"
         (let [h (:handle (first derived))]
           (is (nat-int? h))
           (is (v/in? kb h))
-          (is (= (list mortal Fido) (:sentence (v/why kb h)))))))))
+          (is (= (list mortal Muffet) (:sentence (v/why kb h)))))))))
 
 (tu/deftest-kb a-write-that-follows-from-nothing-reports-only-itself
   (tu/with-terms [swims Willy QuietContext]
@@ -100,8 +100,8 @@
         (v/assert kb '(genlContext TmsCalloutContext UniverseContext) 'UniverseContext)
         (v/assert-rule kb ['(tmsCalloutDog ?x)] '(tmsCalloutMortal ?x) 'TmsCalloutContext)
         (let [r (v/edit-with-consequences!
-                 kb {:add [['(tmsCalloutDog TmsCalloutFido) 'TmsCalloutContext]]})]
-          (is (= ['(tmsCalloutMortal TmsCalloutFido)]
+                 kb {:add [['(tmsCalloutDog TmsCalloutMuffet) 'TmsCalloutContext]]})]
+          (is (= ['(tmsCalloutMortal TmsCalloutMuffet)]
                  (sentences (remove :premise? (:believed-added r))))
               (str "under " tms)))
         (finally (v/clear! kb))))))
@@ -138,20 +138,20 @@
   (testing "the newbie's ninety seconds: say two things, and a third is true.  Nothing is
             *derived* here — the engine never materializes a supertype membership — so the
             callout has to read it off the taxonomy, and say so rather than claim a record"
-    (tu/with-terms [dog_ animal_ Fido GenlContext]
+    (tu/with-terms [dog_ animal_ Muffet GenlContext]
       (v/assert kb (list 'genlContext GenlContext 'WellContext) 'UniverseContext)
       (v/assert kb (list 'genl dog_ animal_) GenlContext)
-      (let [out (assert-through-the-form kb (pr-str (list dog_ Fido)) GenlContext)]
+      (let [out (assert-through-the-form kb (pr-str (list dog_ Muffet)) GenlContext)]
         (is (some? out) "the callout appeared")
         (is (str/includes? out "You didn't say this, but it follows"))
-        (is (str/includes? out (str "(" animal_ " " Fido ")")))
+        (is (str/includes? out (str "(" animal_ " " Muffet ")")))
         (testing "and the explanation names the two premises, not handles"
-          (is (str/includes? out (str "because (" dog_ " " Fido ")")))
+          (is (str/includes? out (str "because (" dog_ " " Muffet ")")))
           (is (str/includes? out (str "every " dog_ " is a " animal_)))
           (is (not (re-find #"#\d+" out)) "no bare handle is shown to a first-time reader")))
       (testing "there is genuinely no such sentex — the callout is not describing a record"
-        (is (nil? (v/handle-of kb (list animal_ Fido) GenlContext)))
-        (is (v/ask? kb (list animal_ Fido) GenlContext) "it is still true, answered on demand")))))
+        (is (nil? (v/handle-of kb (list animal_ Muffet) GenlContext)))
+        (is (v/ask? kb (list animal_ Muffet) GenlContext) "it is still true, answered on demand")))))
 
 (tu/deftest-kb a-rule-firing-shows-its-proof-in-the-callout
   (tu/with-terms [fish gilled Nemo FishContext]

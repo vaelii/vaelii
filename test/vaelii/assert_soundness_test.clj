@@ -54,13 +54,13 @@
 (tu/deftest-kb a-wrapper-around-a-fact-does-not-smuggle-it-past-the-context-check
   ;; A context name must end in `Context`.  Asserting into a non-context is refused;
   ;; the wrapper must not launder that either.
-  (tu/with-terms [dog Fido]
+  (tu/with-terms [dog Muffet]
     (testing "asserted directly it is refused"
       (is (thrown? clojure.lang.ExceptionInfo
-                   (v/assert kb (list dog Fido) 'SomewhereElse))))
+                   (v/assert kb (list dog Muffet) 'SomewhereElse))))
     (testing "wrapped, it is refused too"
       (is (thrown? clojure.lang.ExceptionInfo
-                   (v/assert kb (list 'set/defaultRule (list dog Fido)) 'SomewhereElse))))))
+                   (v/assert kb (list 'set/defaultRule (list dog Muffet)) 'SomewhereElse))))))
 
 (tu/deftest-kb a-wrapper-around-a-fact-does-not-smuggle-a-non-ground-sentence-in
   ;; A non-ground fact asserts nothing — stored as a premise it would match any goal.

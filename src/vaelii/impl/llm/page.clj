@@ -172,7 +172,7 @@
    "| role | form | example |\n"
    "|---|---|---|\n"
    "| predicate | camelCase | `livesIn`, `capableOf` |\n"
-   "| individual | CapitalCamelCase | `Antarctica`, `Fido` |\n"
+   "| individual | CapitalCamelCase | `Antarctica`, `Muffet` |\n"
    "| type | snake_case, used as a **unary** predicate | `aquatic_bird`, `physical_object` |\n\n"
    "**Detail belongs in arguments, never in a predicate name.** This is the one rule that "
    "matters most, because breaking it produces answers that look right and are useless: a "

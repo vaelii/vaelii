@@ -19,8 +19,8 @@
 
 (deftest parse-opts-splits-positionals-and-flags
   (testing "--k v pairs and bare --flags, positionals kept in order"
-    (is (= [["assert" "(dog Fido)" "Ctx"] {:dir "/tmp/kb" :strength "monotonic"}]
-           (cli/parse-opts ["assert" "(dog Fido)" "--dir" "/tmp/kb" "Ctx" "--strength" "monotonic"]))))
+    (is (= [["assert" "(dog Muffet)" "Ctx"] {:dir "/tmp/kb" :strength "monotonic"}]
+           (cli/parse-opts ["assert" "(dog Muffet)" "--dir" "/tmp/kb" "Ctx" "--strength" "monotonic"]))))
   (testing "--memory / --starter are boolean flags"
     (is (= [[] {:memory true :starter true}] (cli/parse-opts ["--memory" "--starter"])))))
 
@@ -29,16 +29,16 @@
   (is (= [] (cli/read-forms "   "))))
 
 (tu/deftest-kb dispatch-runs-the-core-commands
-  (tu/with-terms [dog animal Fido CliContext]
+  (tu/with-terms [dog animal Muffet CliContext]
     (testing "assert returns a handle; query returns the matching sentences"
-      (is (nat-int? (cli/dispatch kb "assert" [(list dog Fido) CliContext] {})))
-      (is (= [(list dog Fido)] (cli/dispatch kb "match" [(list dog '?x) CliContext] {}))))
+      (is (nat-int? (cli/dispatch kb "assert" [(list dog Muffet) CliContext] {})))
+      (is (= [(list dog Muffet)] (cli/dispatch kb "match" [(list dog '?x) CliContext] {}))))
     (testing "assert-rule / genl feed ask and provable? (specificity)"
       (cli/dispatch kb "assert" [(list 'genl dog animal) CliContext] {})
-      (is (true? (cli/dispatch kb "provable?" [(list animal Fido) CliContext] {})))
-      (is (some #(= Fido (get % '?x)) (cli/dispatch kb "ask" [(list animal '?x) CliContext] {}))))
+      (is (true? (cli/dispatch kb "provable?" [(list animal Muffet) CliContext] {})))
+      (is (some #(= Muffet (get % '?x)) (cli/dispatch kb "ask" [(list animal '?x) CliContext] {}))))
     (testing "handle-of + why give a proof tree"
-      (let [h (cli/dispatch kb "handle-of" [(list dog Fido) CliContext] {})]
+      (let [h (cli/dispatch kb "handle-of" [(list dog Muffet) CliContext] {})]
         (is (nat-int? h))
         (is (map? (cli/dispatch kb "why" [h] {})))
         (is (true? (cli/dispatch kb "in" [h] {})))))
@@ -48,9 +48,9 @@
     (testing "an unknown command throws with the command list"
       (is (thrown? clojure.lang.ExceptionInfo (cli/dispatch kb "frobnicate" [] {}))))
     (testing "retract tears the fact down"
-      (let [h (cli/dispatch kb "handle-of" [(list dog Fido) CliContext] {})]
+      (let [h (cli/dispatch kb "handle-of" [(list dog Muffet) CliContext] {})]
         (cli/dispatch kb "retract" [h] {})
-        (is (empty? (cli/dispatch kb "match" [(list dog Fido) CliContext] {})))))))
+        (is (empty? (cli/dispatch kb "match" [(list dog Muffet) CliContext] {})))))))
 
 (tu/deftest-kb strength-option-marks-an-assert-monotonic
   (tu/with-terms [cat Felix CliContext]
@@ -59,7 +59,7 @@
 
 (deftest read-arg-keeps-a-path-a-path
   (testing "an argv string that reads as EDN is data — a sentence, a context, a handle"
-    (is (= (list 'dog 'Fido) (cli/read-arg "(dog Fido)")))
+    (is (= (list 'dog 'Muffet) (cli/read-arg "(dog Muffet)")))
     (is (= 'NaturalWorldContext (cli/read-arg "NaturalWorldContext")))
     (is (= 3 (cli/read-arg "3"))))
   (testing "and one that reads as none is the string it already was, which is what an
@@ -74,8 +74,8 @@
                                                  (into-array FileAttribute [])))
         dump (io/file root "a-dump")]
     (try
-      (tu/with-terms [dog Fido ExportContext]
-        (cli/dispatch kb "assert" [(list dog Fido) ExportContext] {})
+      (tu/with-terms [dog Muffet ExportContext]
+        (cli/dispatch kb "assert" [(list dog Muffet) ExportContext] {})
         (let [summary (cli/dispatch kb "export" [(.getPath dump)] {:compression "none"})]
           (testing "the command answers with the writer's own summary"
             (is (= :records (:variant summary)))
@@ -92,7 +92,7 @@
               (try
                 (imp/import-dump target (.getPath dump) {:belief? false})
                 (is (= (v/sentex-count kb) (v/sentex-count target)))
-                (is (some? (v/handle-of target (list dog Fido) ExportContext)))
+                (is (some? (v/handle-of target (list dog Muffet) ExportContext)))
                 (finally (v/clear! target)))))
           (testing "--variant and --compression are the writer's own keywords, read from
                     the strings a shell hands over"
@@ -108,12 +108,12 @@
       (finally (doseq [^File f (reverse (file-seq root))] (.delete f))))))
 
 (tu/deftest-kb load-reads-edn-entries-and-asserts-them-in-one-batch
-  (tu/with-terms [dog cat Fido Felix LoadContext]
+  (tu/with-terms [dog cat Muffet Felix LoadContext]
     (let [f (File/createTempFile "vaelii-cli-load" ".edn")]
       (try
-        (spit f (pr-str [[(list dog Fido) LoadContext] [(list cat Felix) LoadContext]]))
+        (spit f (pr-str [[(list dog Muffet) LoadContext] [(list cat Felix) LoadContext]]))
         (is (= {:loaded 2 :stored 2} (cli/dispatch kb "load" [(.getPath f)] {})))
-        (is (seq (v/sentexes-matching kb (list dog Fido) LoadContext)))
+        (is (seq (v/sentexes-matching kb (list dog Muffet) LoadContext)))
         (is (seq (v/sentexes-matching kb (list cat Felix) LoadContext)))
         (finally (.delete f))))))
 
@@ -121,12 +121,12 @@
   ;; `assert` answers the existing handle for a sentence already stored, so a file of
   ;; duplicates reports what it *did* — one stored sentex — beside what it read.  A
   ;; bare "loaded 3" reports the input's size as though it were the write's.
-  (tu/with-terms [dog Fido DupContext]
+  (tu/with-terms [dog Muffet DupContext]
     (let [f (File/createTempFile "vaelii-cli-dup" ".edn")]
       (try
-        (spit f (pr-str [[(list dog Fido) DupContext]
-                         [(list dog Fido) DupContext]
-                         [(list dog Fido) DupContext]]))
+        (spit f (pr-str [[(list dog Muffet) DupContext]
+                         [(list dog Muffet) DupContext]
+                         [(list dog Muffet) DupContext]]))
         (is (= {:loaded 3 :stored 1} (cli/dispatch kb "load" [(.getPath f)] {})))
         (is (= 1 (count (v/sentexes-matching kb (list dog '?x) DupContext))))
         (finally (.delete f))))))
@@ -137,7 +137,7 @@
   ;; same shape: the KB opens in memory and evaporates at process exit.
   (doseq [flag ["--strength" "--dir" "--depth"]]
     (let [e (is (thrown? clojure.lang.ExceptionInfo
-                         (cli/parse-opts ["assert" "(dog Fido)" "Ctx" flag]))
+                         (cli/parse-opts ["assert" "(dog Muffet)" "Ctx" flag]))
                 (str flag " with no value is refused"))]
       (is (= :unknown-option (:type (ex-data e))))
       (is (= flag (:flag (ex-data e))))
@@ -173,7 +173,7 @@
   ;; `--strenght monotonic` keywordized in silence stored known-true content at
   ;; :default — the exact sentence the flag-with-no-value refusal exists for,
   ;; reached from the other side — and a misspelt `--dir` opened the in-memory KB.
-  (doseq [args [["assert" "(dog Fido)" "C" "--strenght" "monotonic"]
+  (doseq [args [["assert" "(dog Muffet)" "C" "--strenght" "monotonic"]
                 ["query" "(dog ?x)" "C" "--dept" "3"]
                 ["load" "/tmp/x.edn" "--dri" "/tmp/kb"]]]
     (let [e (try (cli/parse-opts args) nil

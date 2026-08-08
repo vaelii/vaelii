@@ -75,7 +75,7 @@
   ([conn sentence context] (c/sentexes-matching conn sentence context)))
 
 (defn query
-  "Solutions for `goal` as binding maps — `({?x Fido})`."
+  "Solutions for `goal` as binding maps — `({?x Muffet})`."
   ([conn goal] (c/query conn goal))
   ([conn goal context] (c/query conn goal context))
   ([conn goal context opts] (c/query conn goal context opts)))

@@ -4,7 +4,7 @@
   "Unification, pattern matching against the indexed store, and backward chaining.
 
   Matching is *type-aware*: a unary type predicate is matched over the subtype
-  closure, so an antecedent `(animal ?x)` is satisfied by a stored `(dog Fido)`.
+  closure, so an antecedent `(animal ?x)` is satisfied by a stored `(dog Muffet)`.
   This is how increasing an individual's specificity never loses the reasoning
   that applied to its more general types — we consult the genl closure at match
   time rather than materializing supertype facts."
@@ -203,13 +203,13 @@
   column and deferring the rest to a per-record filter.  So knowing more of the
   sentence buys a tighter candidate set, not just the same one.
 
-  **The functor is a position too.**  `(?type Fido)` — what types does Fido hold —
+  **The functor is a position too.**  `(?type Muffet)` — what types does Muffet hold —
   is the same shape at level 0: the variable is the *first* path token, so every
   ground argument sits behind it and the trie can only fan out over the whole root
   child set, i.e. every functor in the KB.  That fan is linear in the vocabulary,
   which is the largest thing in a broad ontology.  The predicate-agnostic read spans
   every functor by construction — a union of the scoped roots over the slot roster —
-  so one `sentexes-with-arg` read of position 1, `Fido` answers it flat; with no
+  so one `sentexes-with-arg` read of position 1, `Muffet` answers it flat; with no
   predicate to scope by, `sentexes-with-args` takes a `nil` `pred` and intersects
   those predicate-agnostic reads.
 
@@ -237,7 +237,7 @@
             var-idx (first (keep-indexed (fn [i a] (when-not (sx/ground-term? a) i)) args))
             ground  (keep-indexed (fn [i a] (when (sx/indexable-term? a) [(inc i) a])) args)
             ;; something is still open and a ground root sits past it — the functor
-            ;; being open (`(?type Fido)`) puts *every* argument behind it, and with
+            ;; being open (`(?type Muffet)`) puts *every* argument behind it, and with
             ;; nothing indexable to lead with there is no root to read, so the trie
             ;; keeps that case
             stuck?  (and (seq ground)
@@ -294,7 +294,7 @@
   genl closure) of the antecedent's functor satisfies it, with the arguments unified.
 
   For a unary type antecedent this is the ordinary subtype rule — `(animal ?x)` is met
-  by `(dog Fido)`.  Generalized to n-ary predicates, `(parentOf ?x ?y)` is met by
+  by `(dog Muffet)`.  Generalized to n-ary predicates, `(parentOf ?x ?y)` is met by
   `(fatherOf Tom Bob)` once `(genl fatherOf parentOf)` holds — the same subsumption the
   type hierarchy gives, applied to the predicate hierarchy.  When the functors are
   equal (the common case) or the antecedent's functor has no sub-predicates, this is a
@@ -495,7 +495,7 @@
   "Seq of [handle bindings] for stored sentexes matching `sentence` within
   `context` (default the wildcard ?ctx).  The **functor fans out over its sub-predicate
   (genl spec) closure**, so a unary type predicate is met by its subtypes
-  (`(animal ?x)` ← `(dog Fido)`) and — with predicate-genl edges — an n-ary predicate
+  (`(animal ?x)` ← `(dog Muffet)`) and — with predicate-genl edges — an n-ary predicate
   by its sub-predicates (`(parentOf a ?x)` ← `(fatherOf a v)`).  A functor with no
   sub-predicates has a singleton closure, so this is a no-op for it (the overwhelming
   common case — one cached set lookup, no fan).
@@ -560,7 +560,7 @@
 
 (defn- hierarchical-literal?
   "A plain positive literal the set-algebra path handles: a concrete predicate symbol,
-  or a **variable functor with something indexable to lead with** (`(?type Fido)`).
+  or a **variable functor with something indexable to lead with** (`(?type Muffet)`).
   The two differ only in which dimensions are pinned — a variable functor names no
   predicate, so there is no predicate hierarchy to filter by and every candidate's
   functor is admissible, while the argument root and the context cone still narrow
