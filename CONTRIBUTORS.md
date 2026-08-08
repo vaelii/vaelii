@@ -11,6 +11,7 @@ from your credit or rights.
 ## Maintainer
 
 - **vaelii-admin** — <https://github.com/vaelii-admin>
+- **Pace Heart** - <https://github.com/paceheart> carrying on the Cyc legacy <3
 
 ## Contributors
 
