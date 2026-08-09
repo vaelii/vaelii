@@ -10,9 +10,12 @@
    the canonical multiply-married person."
   (:require [clojure.test :refer [deftest testing is use-fixtures]]
             [vaelii.core :as v]
-            [vaelii.test-util :as tu]))
+            [vaelii.impl.starter :as starter]
+            [vaelii.test-util :as tu]
+            [vaelii.world :as world]))
 
-(use-fixtures :each tu/neutral)
+(use-fixtures :once (tu/loaded (fn [kb] (-> kb starter/load-into world/load-into))))
+(use-fixtures :each (tu/neutral))
 
 (defn setup-temporal-marriages
   "Three temporal contexts, each seeing SocialContext (so the marriedTo->knows
