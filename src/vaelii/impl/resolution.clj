@@ -136,6 +136,33 @@
 
 (defn- unary? [s] (and (sequential? s) (= 2 (count s))))
 
+(defn- dotted-pattern?
+  "Does `form` contain a dotted-rest splice at any nesting depth?"
+  [form]
+  (boolean (and (sequential? form)
+                (some #(= sx/dot-marker %) (tree-seq sequential? seq form)))))
+
+(defn- dotted-candidates
+  "Every fact handle a dotted-rest pattern could unify with.
+
+  A dot changes the pattern's arity, so neither the positional trie nor the argument
+  roots can represent it: `.` is a splice marker, not an argument token.  A concrete
+  functor is bounded by its fact extent.  With an open functor, enumerate the functors
+  present at the matching polarity from the trie's own root roster, then union their
+  extents.  `match-one` still filters polarity and unifies every candidate, so this is a
+  sound superset rather than a second matcher."
+  [ix truth pred]
+  (if pred
+    (p/sentexes-with-functor ix pred)
+    (let [functors (if (= :false truth)
+                     (into #{}
+                           (keep (fn [body]
+                                   (when (and (sequential? body) (symbol? (first body)))
+                                     (first body))))
+                           (p/children ix [:false]))
+                     (filter symbol? (p/children ix [])))]
+      (lazy-mapcat #(p/sentexes-with-functor ix %) functors))))
+
 (def ^:dynamic *arg-root-retrieval*
   "Whether `match-one` may retrieve its candidate handles from a **secondary argument
   root** instead of always walking the trie.
@@ -220,6 +247,11 @@
   narrows on it (`*structural-index*`); off, it falls back to the functor extent — a
   correct superset, and the baseline to measure the structural narrowing against.
 
+  A **dotted-rest pattern** cannot use either positional model: its `.` is a splice
+  marker rather than a stored argument, and the tail has no fixed arity.  It reads the
+  concrete functor's whole extent, or fans over the functor roster when the functor is
+  open, then lets `unify` bind and filter the tail.
+
   Everything else keeps the trie: a fully-ground test (its leaf is exact), a pattern
   whose ground arguments are already a left prefix, and a pattern whose only
   after-a-variable selectivity is a **non-indexable** token (a number/string the
@@ -227,7 +259,7 @@
   Zero-regression by construction — the diverted case is the one the trie answers
   with a full fan-out.
 
-  **The decision is named before it is taken.**  The `cond` below yields one of six
+  **The decision is named before it is taken.**  The `cond` below yields one of seven
   keywords and the `case` under it does the read, so the access path a shape chose is a
   value: `vaelii.impl.profile` tallies it, and a reader has a word for each branch rather
   than a position in a `cond`."
@@ -241,6 +273,7 @@
             args    (vec (rest body))
             pred    (when (and (symbol? f) (not (sx/variable? f))) f)
             var-fn? (and (symbol? f) (sx/variable? f))
+            dotted? (dotted-pattern? body)
             var-idx (first (keep-indexed (fn [i a] (when-not (sx/ground-term? a) i)) args))
             ground  (keep-indexed (fn [i a] (when (sx/indexable-term? a) [(inc i) a])) args)
             ;; something is still open and a ground root sits past it — the functor
@@ -253,6 +286,11 @@
                                   (some (fn [[pos _]] (> (dec pos) var-idx)) ground))))
             path
             (cond
+              ;; A dotted tail changes arity.  Looking up `.` as a trie or argument-root
+              ;; token quietly returns no candidates because stored facts contain only
+              ;; the arguments it stands for.
+              dotted? :dotted-extent
+
               ;; **A negative key holds its whole body as one token**, so the trie can match
               ;; a negative only *exactly* — `[:false (dog ?0) c]` is a different key from
               ;; `[:false (dog Tom) c]`, and no amount of the body being ground narrows it,
@@ -291,6 +329,7 @@
               :else :trie)]
         (prof/record-goal pat path)
         (case path
+          :dotted-extent (dotted-candidates ix (:truth pat) pred)
           :negative-roots (p/sentexes-with-args ix pred ground)
           :negative-fan   (let [pth (sx/path pat)]
                             (into #{} (mapcat #(p/lookup ix (assoc pth 1 %)))

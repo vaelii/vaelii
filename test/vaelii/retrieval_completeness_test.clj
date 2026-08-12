@@ -79,13 +79,19 @@
                   ;; open functor
                   (list '?p Muffet) (list '?p '?x)
                   (list '?p Ann '?y) (list '?p '?x Cid)
+                  ;; dotted rest — concrete/open functors and a fixed prefix
+                  (list dog '. '?args)
+                  (list parentOf Ann '. '?args)
+                  (list '?p '. '?args)
                   ;; negative literals — the shape both relative oracles were blind to
                   (list 'not (list dog Tom))
                   (list 'not (list dog '?x))          ; nothing ground but the functor
                   (list 'not (list parentOf '?x Ann)) ; ground arg AFTER a variable
                   (list 'not (list parentOf Cid '?y)) ; ground arg in a LEFT PREFIX
                   (list 'not (list '?p '?x))          ; nothing pinned at all
-                  (list 'not (list '?p Tom))]]
+                  (list 'not (list '?p Tom))
+                  (list 'not (list dog '. '?args))
+                  (list 'not (list '?p '. '?args))]]
       (v/assert-many kb facts CxProbe {:strength :monotonic})
       (doseq [[label bindings]
               [["default" {}]
@@ -106,4 +112,8 @@
         (is (= 2 (count (got kb (list 'not (list '?p '?x)) CxProbe)))))
       (testing "and the public query answers them too"
         (is (= 2 (count (v/sentexes-matching kb (list 'not (list dog '?x)) CxProbe))))
-        (is (= 1 (count (v/sentexes-matching kb (list 'not (list parentOf Cid '?y)) CxProbe))))))))
+        (is (= 1 (count (v/sentexes-matching kb (list 'not (list parentOf Cid '?y)) CxProbe))))
+        (is (= 11 (count (v/sentexes-matching kb (list '?p '. '?args) CxProbe))))
+        (is (= 3 (count (v/sentexes-matching kb
+                                             (list 'not (list '?p '. '?args))
+                                             CxProbe))))))))

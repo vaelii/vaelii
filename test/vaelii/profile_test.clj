@@ -125,6 +125,12 @@
         (let [snap (collected #(doall (res/raw-match kb (list 'not (list '?p '?x '?y)) ctx)))]
           (is (contains? (paths-of snap :open) :negative-fan))))
 
+      (testing "a dotted rest reads whole functor extents instead of positional indexes"
+        (let [snap (collected #(doall (res/raw-match kb (list p a '. '?args) ctx)))]
+          (is (contains? (paths-of snap p) :dotted-extent)))
+        (let [snap (collected #(doall (res/raw-match kb (list '?pred '. '?args) ctx)))]
+          (is (contains? (paths-of snap :open) :dotted-extent))))
+
       (testing "the argument-root retrieval switch moves the label with the behaviour"
         (let [snap (collected #(binding [res/*arg-root-retrieval* false]
                                  (doall (res/raw-match kb (list p '?x b) ctx))))]

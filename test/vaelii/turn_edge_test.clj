@@ -91,6 +91,43 @@
       (testing "an unrelated pair is not derived"
         (is (empty? (v/sentexes-matching kb (list kin bob tom) 'CxUniverse)))))))
 
+(deftest dotted-rest-enumerates-and-joins-in-either-arrival-order
+  ;; A dotted antecedent is sometimes the arriving trigger and sometimes a stored fact
+  ;; the other antecedent has to retrieve.  Both paths must bind the same tail; otherwise
+  ;; this rule's result depends on which premise happened to arrive last.
+  (tu/with-neutral-kb [kb tu/fresh]
+    (tu/with-terms [agent_type agentCapable typeCapable
+                    AgentA AgentB CapA CapB ToolA ToolB]
+      (v/assert kb
+                (list 'set/forwardRule
+                      (list 'implies
+                            (list 'and
+                                  (list agent_type '?instance)
+                                  (list agentCapable '?instance '. '?args))
+                            (list typeCapable agent_type '. '?args)))
+                'UniverseContext)
+
+      ;; Dotted premise is the trigger.
+      (v/assert kb (list agent_type AgentA) 'UniverseContext)
+      (v/assert kb (list agentCapable AgentA CapA ToolA) 'UniverseContext)
+
+      ;; Dotted premise must be found by the join after the type premise triggers.
+      (v/assert kb (list agentCapable AgentB CapB ToolB) 'UniverseContext)
+      (v/assert kb (list agent_type AgentB) 'UniverseContext)
+
+      (testing "both premise arrival orders derive the same variadic bridge"
+        (is (v/ask? kb (list typeCapable agent_type CapA ToolA) 'UniverseContext))
+        (is (v/ask? kb (list typeCapable agent_type CapB ToolB) 'UniverseContext)))
+      (testing "a dotted pattern directly enumerates and binds a stored tail"
+        (is (= [(list agentCapable AgentB CapB ToolB)]
+               (mapv :sentence
+                     (v/sentexes-matching kb
+                                          (list agentCapable AgentB '. '?args)
+                                          'UniverseContext))))
+        (is (= #{{'?args (list CapB ToolB)}}
+               (set (v/ask kb (list agentCapable AgentB '. '?args)
+                           'UniverseContext))))))))
+
 ;; ---- forced decontextualized predicate (genlCx) -------------------------
 
 (deftest a-forced-genlcx-from-a-plain-context-lands-in-the-universe
