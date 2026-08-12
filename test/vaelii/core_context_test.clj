@@ -55,3 +55,40 @@
     (v/assert kb (list 'binaryPredicate rel) 'CxCore)
     (is (thrown? clojure.lang.ExceptionInfo
                  (v/assert kb (list 'arity rel 7) 'CxCore)))))
+
+(tu/deftest-kb arity-is-guarded-across-predicate-specialization
+  ;; v0.8.0: the genl edge guards arity consistency — a child predicate
+  ;; cannot declare a different arity than its parent, since every child
+  ;; tuple is a parent tuple and tuples of different lengths cannot be the
+  ;; same tuples.  The guard rejects rather than inherits: the child is not
+  ;; given the parent's arity, but it cannot contradict it.
+  (tu/with-terms [parent child]
+    (v/with-deferred-settle kb
+      (v/assert kb (list 'genl child parent) 'CxCore)
+      (v/assert kb (list 'arity parent 2) 'CxCore))
+    (is (thrown? clojure.lang.ExceptionInfo
+                 (v/assert kb (list 'arity child 3) 'CxCore)))))
+
+(tu/deftest-kb meta-constraints-inherit-through-predicate-and-type-hierarchies
+  (tu/with-terms [parent child mammal animal food]
+    (v/with-deferred-settle kb
+      (v/assert kb (list 'genl child parent) 'CxCore)
+      (v/assert kb (list 'genl mammal animal) 'CxCore)
+      (v/assert kb (list 'genl animal 'thing) 'CxCore)
+      (v/assert kb (list 'genl food 'thing) 'CxCore)
+      (v/assert kb (list 'argIsa parent 1 mammal) 'CxCore)
+      (v/assert kb (list 'argGenl parent 2 mammal) 'CxCore)
+      (v/assert kb (list 'interArgIsa parent 1 animal 2 food) 'CxCore))
+    (testing "constraints on a predicate reach its specializations"
+      (is (v/ask? kb (list 'argIsa child 1 mammal) 'CxCore))
+      (is (v/ask? kb (list 'argGenl child 2 mammal) 'CxCore))
+      (is (v/ask? kb (list 'interArgIsa child 1 animal 2 food) 'CxCore)))
+    (testing "unconditional constraint types answer through their supertypes"
+      (is (v/ask? kb (list 'argIsa parent 1 animal) 'CxCore))
+      (is (v/ask? kb (list 'argGenl parent 2 animal) 'CxCore)))
+    (testing "conditional constraints narrow the trigger and widen the target"
+      (is (v/ask? kb (list 'interArgIsa parent 1 mammal 2 food) 'CxCore))
+      (is (v/ask? kb (list 'interArgIsa parent 1 animal 2 'thing) 'CxCore))
+      (is (v/ask? kb (list 'interArgIsa parent 1 mammal 2 'thing) 'CxCore))
+      (is (not (v/ask? kb (list 'interArgIsa parent 1 'thing 2 food) 'CxCore))
+          "a constraint triggered by animal says nothing about non-animal things"))))

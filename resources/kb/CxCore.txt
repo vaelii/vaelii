@@ -50,6 +50,8 @@
 (argIsa argGenl 1 predicate)
 (argIsa argGenl 2 integer)
 (argGenl argGenl 3 thing)
+(argPreserving argGenl 1 genl)
+(argPreservingInverse argGenl 3 genl)
 
 (comment argIsa
          "(argIsa ?predicate ?position ?type) means that argument ?position of ?predicate must be of ?type. Checked through genl transitivity whenever a sentex is asserted, and open-world: an argument whose type is unknown cannot violate it, so this narrows what can be said without demanding that everything be typed.")
@@ -57,12 +59,17 @@
 (argIsa argIsa 1 predicate)
 (argIsa argIsa 2 integer)
 (argGenl argIsa 3 thing)
+(argPreserving argIsa 1 genl)
+(argPreservingInverse argIsa 3 genl)
 
 (comment interArgIsa
          "(interArgIsa ?predicate ?position1 ?type1 ?position2 ?type2) means that whenever argument ?position1 of ?predicate is a ?type1, argument ?position2 must be a ?type2. The conditional argument constraint, and it says what argIsa cannot: (interArgIsa eats 1 carnivore 2 meat) types the second argument only for the eaters that are carnivores, where (argIsa eats 2 meat) would demand meat of every eater. Open-world in both directions, and they point opposite ways — silence about the trigger argument's type leaves the constraint dormant rather than firing it, while silence about the target argument's is what convicts. Checked through genl transitivity from the writing context, like argIsa, and it entails the same way under assertive argument types.")
 (arity interArgIsa 5)
 (instanceRelationPredicate interArgIsa)
 (argIsa interArgIsa 1 predicate)
+(argPreserving interArgIsa 1 genl)
+(argPreserving interArgIsa 3 genl)
+(argPreservingInverse interArgIsa 5 genl)
 
 (comment arity
          "(arity ?predicate ?n) means that ?predicate takes ?n arguments. One for a unaryPredicate, two for a binaryPredicate, three for a ternaryPredicate. The arity and the predicate-type membership derive each other, so asserting either keeps the whole cycle believed, and retracting the one that was actually asserted collapses it.")
