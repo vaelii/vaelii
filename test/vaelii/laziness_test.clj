@@ -26,6 +26,7 @@
             [vaelii.core :as v]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.levels :as levels]
+            [vaelii.impl.profile :as prof]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.resolution :as res]
             [vaelii.test-util :as tu]))
@@ -173,6 +174,31 @@
             (is (<= one 2)
                 (str "the set-algebra path realized " one " of " all
                      " posting entries for one result"))))))))
+
+;; ---- level 2: open dotted-functor extent fan-out ------------------------
+;;
+;; A dotted pattern cannot use a fixed-arity trie path, so an open functor walks the
+;; root functor roster and reads each whole extent.  The roster can be chunked; core
+;; `mapcat` would therefore open thirty-two extents before yielding the first match.
+
+(tu/deftest-kb one-dotted-result-opens-one-functor-extent
+  (let [preds (vec (repeatedly 40 #(tu/tmp-pred "variadic")))
+        goal  (list '?pred '. '?args)]
+    (doseq [pred preds]
+      (v/assert kb (list pred (tu/tmp-ind "Arg")) 'UniverseContext {:chain? false}))
+    (let [reads (fn [consume]
+                  (prof/start)
+                  (try
+                    (consume (res/raw-match kb goal 'UniverseContext))
+                    (get-in (prof/snapshot) [:reads :functor-root] 0)
+                    (finally (prof/stop))))
+          one   (reads first)
+          all   (reads dorun)]
+      (testing "the open dotted query really fans across a chunk-sized roster"
+        (is (>= all 40)))
+      (testing "taking one result opens one extent, not one source chunk"
+        (is (= 1 one)
+            (str "opened " one " extents before yielding the first dotted match"))))))
 
 ;; ---- level 2: the symmetric mirror --------------------------------------
 ;;

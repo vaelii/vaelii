@@ -92,7 +92,7 @@ second by construction and is read as a bound, not added to anything.
 ## The access paths, named
 
 Two matchers decide where candidates come from, and each names its decision so the tally
-can count it. `res/candidate-handles` yields one of six:
+can count it. `res/candidate-handles` yields one of seven:
 
 | path | taken when |
 |---|---|
@@ -102,6 +102,7 @@ can count it. `res/candidate-handles` yields one of six:
 | `:functor-extent` | the same shape with `res/*structural-index*` false — the correct looser superset |
 | `:negative-roots` | an open negative with a functor or a ground argument pinned |
 | `:negative-fan` | an open negative with nothing pinned — the `:false` node's own children |
+| `:dotted-extent` | a variable-arity dotted-rest pattern — one concrete functor extent, or the matching-polarity functor roster when open |
 
 `res/matches-hierarchical`, the set-algebra matcher behind the context-scoped levels,
 makes its own choice and never consults `candidate-handles`:
