@@ -269,6 +269,19 @@
                                           (list qq '?x) SpecContext))))
         (is (= :not-well-formed
                (rejection #(v/assert-rule kb [(list pp '?x)] 'BareSymbol SpecContext)))))
+      (testing "a rule cannot stand as another rule's consequent"
+        (let [nested (list 'implies
+                           (list pp '?x)
+                           (list 'implies (list qq '?x) (list rr '?x)))]
+          (is (= [:not-well-formed]
+                 (mapv :type (v/check kb nested SpecContext))))
+          (is (= :not-well-formed
+                 (rejection #(v/assert-rule kb
+                                            [(list pp '?x)]
+                                            (list 'implies
+                                                  (list qq '?x)
+                                                  (list rr '?x))
+                                            SpecContext))))))
       (testing "assert-inert refuses the same frames"
         (is (= :not-well-formed
                (rejection #(v/assert-inert kb (list 'not (list pp Aa) (list qq Aa))
