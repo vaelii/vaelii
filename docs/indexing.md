@@ -561,5 +561,9 @@ than failing:
   A **generator's** stamped rule is the other exemption, and it is the one that buys
   something back: a variable functor there is a *hole*, filled with a concrete predicate
   before anything is keyed on it, so one generator ranges over a family of predicates
-  while every rule the index sees has a concrete functor.  A stamped variable functor
-  that is not a hole is refused like any other.  See [generators.md](generators.md).
+  while every rule the index sees has a concrete functor.  The generator may itself be
+  stamped by one, and then the fill happens a level earlier — but the claim is unchanged
+  either way, because it is about what reaches the index rather than about what is
+  written: a functor **no enclosing level binds** is refused like any other, and a rule
+  nothing encloses has no enclosing level to bind one.  See
+  [generators.md](generators.md).

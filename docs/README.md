@@ -73,7 +73,7 @@ page costs a sentence rather than a section.
 ## Inference & belief
 
 - [inference.md](inference.md) — rules as sentexes, rule direction, forward/backward chaining, predicate subsumption, incremental matching, the prover engine.
-- [generators.md](generators.md) — a rule whose consequent is a rule: the hole/own-variable split that needs no declaring, what a firing stamps out, why a mint retracts like any conclusion, and the one level of nesting.
+- [generators.md](generators.md) — a rule whose consequent is a rule: the hole/own-variable split that needs no declaring, what a firing stamps out, why a mint retracts like any conclusion, and the nesting that lets a level further out fill a functor.
 - [anytime.md](anytime.md) — resource-bounded / anytime inference: the budget, the resumable partial-result contract, the qualitative `cost` tier.
 - [levels.md](levels.md) — the lookup-to-query stack: eight named levels from a raw index read to full backchaining.
 - [abduction.md](abduction.md) — `abduce`: what would have to be true for a goal to be provable, minted as a defeasible hypothesis in a scratch context — the dead-end observer, the grant that gates it, and the isolation that makes an ignored call free.

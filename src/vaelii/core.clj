@@ -819,67 +819,14 @@
   (jtms/add-premise (:tms kb) h strength)
   (p/mark-premise (:records kb) h strength))
 
-(defn- check-generator
-  "The three refusals that are a **generator**'s alone — a rule whose consequent is a
-  rule (docs/generators.md).  Everything else it must satisfy it satisfies as a rule,
-  through `checks/check-rule!`.
-
-  **Forward-only.** A generator's conclusion is a rule, and there is no backward goal
-  whose answer is one — `concluding-rule-handles` reads a goal's predicate, and a
-  generator's consequent predicate is `implies`, which names nothing a query asks for.
-  A `set/backwardRule` generator would therefore be stored claiming a capability it
-  cannot exercise, which is the accepted-and-inert state the indexability refusal
-  exists to keep out of the KB.  `:inert` stays legal: it claims nothing.
-
-  **No `exceptWhen` on the stamped rule.** An exception is not a rule field — it is a
-  separate meta-sentex keyed by the rule's handle, split off and stored by the assert
-  path (`assert-exceptWhen-meta!`), which a firing does not run.  So a stamped
-  `exceptWhen` would reach the store as nothing at all: the mint would be a rule whose
-  guard had silently evaporated, firing on exactly the bindings its author wrote it not
-  to.  A guard that is dropped in silence is worse than one refused, so it is refused.
-  An `exceptWhen` on the **generator** is a different and legal thing — it says when not
-  to stamp — and the message points there.
-
-  **No generator cycle.** A stamped rule whose conclusion feeds some generator's
-  antecedent is a rule set that mints rules that mint rules, with no fixpoint anybody
-  has bounded.  Refused outright rather than capped, the same call stratification makes
-  for a cycle through negation: the alternative is a KB whose size depends on how long
-  the chainer was allowed to run."
-  [kb sentence context]
-  (let [inner     (rules/inner-rule sentence)
-        consequent (rules/consequent inner)
-        generated (rules/generated-rule consequent)
-        ;; `peel-rule-wrapper` reports the wrapper it found, and a bare rule has none —
-        ;; the record's default is what nil means here, as it does at the constructor
-        direction (or (first (sx/peel-rule-wrapper sentence)) :both)]
-    (when (seq (nth (sx/peel-rule-wrapper consequent) 2))
-      (throw (ex-info (str "the rule a generator generates cannot carry an exceptWhen:"
-                           " an exception is stored as a meta-sentex against the rule's"
-                           " handle, and a firing has no way to split one off, so it"
-                           " would be dropped in silence.  Put the condition in the"
-                           " generated rule's antecedents as an (unknown …), or put the"
-                           " exceptWhen on the generator to say when not to generate")
-                      {:type :not-well-formed :sentence sentence :context context})))
-    (when-not (contains? #{:forward :both :inert} direction)
-      (throw (ex-info (str "a rule generator is forward-only: its conclusion is a rule,"
-                           " and no backward goal asks for one.  Drop the"
-                           " set/backwardRule wrapper — the wrapper on the rule it"
-                           " generates is what sets that rule's direction")
-                      {:type :not-indexable :direction direction :sentence sentence})))
-    (when-let [cyc (checks/generator-cycle kb inner generated context)]
-      (throw (ex-info (str "a rule generator cannot generate a rule that feeds a"
-                           " generator: " cyc)
-                      {:type :not-stratified :sentence sentence :context context
-                       :cycle cyc})))))
-
 (defn- check-rule-sentence
   "Every pre-storage check a rule must pass, as a step that writes nothing —
   `checks/check-rule!`, the list both storage doors read (the other being a generator
-  firing, `chain/place-conclusion`), plus the two a generator alone owes."
+  firing, `chain/place-conclusion`).  A generator's own three are in that list rather
+  than beside it, because a *minted* rule can be a generator too (docs/generators.md)
+  and a check only this door ran would be one the fixpoint could store around."
   [kb sentence context]
-  (checks/check-rule! kb sentence context)
-  (when (rules/generator? sentence)
-    (check-generator kb sentence context)))
+  (checks/check-rule! kb sentence context))
 
 (defn- join-direction
   "The direction a rule stated two ways holds in: the **least restrictive** of the two.

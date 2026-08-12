@@ -1302,6 +1302,156 @@
     (throw (ex-info (str "a do/ imperative cannot appear in a rule: " (pr-str bad))
                     {:type :not-assertible :form bad :sentence sentence}))))
 
+;; ---- generators: the refusals a rule concluding a rule owes ---------------
+;; A generator is a rule and passes everything a rule passes.  What follows is what it
+;; owes *as* a generator, and every one of them is asked of each nesting level, since a
+;; stamped rule may stamp one in turn and each level reaches the store as a rule in its
+;; own right (docs/generators.md).
+
+(defn- stored-generators
+  "Every stored generator, as `[handle sentex]` pairs.
+
+  One index lookup, and the cell it reads is the one that looks like a junk posting:
+  `rules/consequent-predicate` reads the functor of what a rule concludes, and what a
+  generator concludes is a rule — so every generator in the KB is filed under `implies`
+  and nothing else is, at any nesting depth.  Nothing backward-chains through it (a
+  generator is forward-only, and no goal's functor is `implies`), which leaves it doing
+  exactly this one job."
+  [kb]
+  (into []
+        (comp (keep (fn [h] (when-let [s (p/get-sentex (:records kb) h)] [h s])))
+              (filter (fn [[_ s]] (rules/generator-sentex? s))))
+        (p/rules-by-consequent (:index kb) sx/rule-functor)))
+
+(defn- stamped-predicate
+  "The predicate a generator eventually concludes — the **innermost** rule's, through
+  however many levels of stamping stand between.  The levels in between conclude rules,
+  and `implies` is a key nothing reads as a fact; what reaches the fact store is the
+  innermost conclusion, so that is the predicate a cycle can run through."
+  [sentence]
+  (rules/consequent-predicate (rules/innermost-rule sentence)))
+
+(defn- generator-reads
+  "The predicates whose arrival makes this generator **stamp** — the antecedents of
+  every level but the innermost.  The innermost rule's antecedents are excluded on
+  purpose: they trigger the rule that was stamped, which concludes a fact, and a fact is
+  not what makes the rule set grow."
+  [sentence]
+  (into #{} (mapcat #(keep nm/functor (:antecedents %)))
+        (butlast (rules/nesting sentence))))
+
+(defn generator-cycle
+  "A description of the cycle adding this generator would put in the rule set, or nil.
+
+  The graph is generators only, and one hop: an edge runs from a generator to any
+  generator that reads — in an antecedent it stamps from — the predicate its stamped
+  rule concludes.  A cycle there is a rule set that mints rules that mint rules, and
+  unlike ordinary recursion nothing bounds it: each round adds *rules* rather than
+  facts, and the next round's rules are the ones the last round wrote.
+
+  Refused outright rather than depth-capped.  A cap would make the KB's contents a
+  function of how long the chainer happened to run, and \"how many rules does this KB
+  have\" would stop having an answer — the same call stratification makes for a cycle
+  through negation (docs/exceptions.md).  It is also why *nesting* is not a cap worth
+  having: a nested generator stamps one level further before it stops, and what makes a
+  rule set unbounded is the cycle, not the depth.
+
+  **Both directions, because either can be the new edge**: the arriving generator may
+  stamp what a stored one reads, or read what a stored one stamps, and a self-loop is
+  the case where it does both to itself.  Checking only one direction would let the
+  cycle in whenever the two generators were asserted in the other order — which is the
+  order dependence every check here exists to keep out."
+  [kb inner context]
+  (when (rules/generated-rule (rules/consequent inner))
+    (let [stamps (stamped-predicate inner)
+          reads  (generator-reads inner)
+          gens   (stored-generators kb)
+          where  (or (when (and stamps (reads stamps)) "itself")
+                     (some (fn [[h s]]
+                             (when (and stamps (contains? (generator-reads (:sentence s))
+                                                          stamps))
+                               (str "the generator at handle " h)))
+                           gens)
+                     (some (fn [[h s]]
+                             (when-let [p (stamped-predicate (:sentence s))]
+                               (when (reads p)
+                                 (str "the generator at handle " h ", which stamps "
+                                      p))))
+                           gens))]
+      (when where
+        (str "the rule it generates concludes " stamps
+             ", and that predicate is read by " where
+             (when context (str " (asserting into " context ")")))))))
+
+(defn check-generator!
+  "The three refusals that are a **generator**'s alone — a rule whose consequent is a
+  rule (docs/generators.md).  Everything else it must satisfy it satisfies as a rule,
+  through the list below.
+
+  **Forward-only.** A generator's conclusion is a rule, and there is no backward goal
+  whose answer is one — `concluding-rule-handles` reads a goal's predicate, and a
+  generator's consequent predicate is `implies`, which names nothing a query asks for.
+  A `set/backwardRule` generator would therefore be stored claiming a capability it
+  cannot exercise, which is the accepted-and-inert state the indexability refusal
+  exists to keep out of the KB.  `:inert` stays legal: it claims nothing.  Asked of
+  **every** generator level, since a `set/backwardRule` around a middle level would be
+  minted as a backward generator and refused one firing later, in the ledger rather
+  than at the sentence.
+
+  **No `exceptWhen` on a stamped rule.** An exception is not a rule field — it is a
+  separate meta-sentex keyed by the rule's handle, split off and stored by the assert
+  path (`assert-exceptWhen-meta!`), which a firing does not run.  So a stamped
+  `exceptWhen` would reach the store as nothing at all: the mint would be a rule whose
+  guard had silently evaporated, firing on exactly the bindings its author wrote it not
+  to.  A guard that is dropped in silence is worse than one refused, so it is refused.
+  An `exceptWhen` on the **outermost** rule is a different and legal thing — it says
+  when not to stamp — and the message points there.
+
+  **No generator cycle.** A stamped rule whose conclusion feeds some generator's
+  antecedent is a rule set that mints rules that mint rules, with no fixpoint anybody
+  has bounded.  Refused outright rather than capped, the same call stratification makes
+  for a cycle through negation: the alternative is a KB whose size depends on how long
+  the chainer was allowed to run.
+
+  Read by both storage doors through `check-rule!`, so a generator a *firing* stamps
+  owes exactly what one an author wrote owes — which is the whole of what makes nesting
+  safe: the middle level is checked twice, once as a pattern and once as the rule it
+  became."
+  [kb sentence context]
+  (let [inner  (rules/inner-rule sentence)
+        levels (rules/nesting sentence)
+        ;; `peel-rule-wrapper` reports the wrapper it found, and a bare rule has none —
+        ;; the record's default is what nil means here, as it does at the constructor.
+        ;; A level's own wrapper rides the consequent of the level above it, which is
+        ;; where a stamped rule's direction is written.
+        dirs   (cons (or (first (sx/peel-rule-wrapper sentence)) :both)
+                     (map #(or (first (sx/peel-rule-wrapper (:consequent %))) :both)
+                          levels))]
+    (doseq [[i level dir] (map vector (range) levels dirs)
+            :when         (:generated level)]
+      (when (seq (nth (sx/peel-rule-wrapper (:consequent level)) 2))
+        (throw (ex-info (str "the rule a generator generates cannot carry an exceptWhen:"
+                             " an exception is stored as a meta-sentex against the rule's"
+                             " handle, and a firing has no way to split one off, so it"
+                             " would be dropped in silence.  Put the condition in the"
+                             " generated rule's antecedents as an (unknown …), or put the"
+                             " exceptWhen on the outermost rule to say when not to"
+                             " generate")
+                        {:type :not-well-formed :sentence sentence :context context
+                         :nesting-level (inc i)})))
+      (when-not (contains? #{:forward :both :inert} dir)
+        (throw (ex-info (str "a rule generator is forward-only: its conclusion is a rule,"
+                             " and no backward goal asks for one.  Drop the"
+                             " set/backwardRule wrapper — the wrapper on the innermost"
+                             " rule is what sets that rule's direction")
+                        {:type :not-indexable :direction dir :sentence sentence
+                         :nesting-level (inc i)}))))
+    (when-let [cyc (generator-cycle kb inner context)]
+      (throw (ex-info (str "a rule generator cannot generate a rule that feeds a"
+                           " generator: " cyc)
+                      {:type :not-stratified :sentence sentence :context context
+                       :cycle cyc})))))
+
 (defn check-rule!
   "Every pre-storage check a rule must pass, as a step that writes nothing.
 
@@ -1317,7 +1467,11 @@
   `(implies A (and C1 C2))` is split into one rule per conjunct and then `mapv`d,
   and a `mapv` is not a transaction: with the checks inline, a refusal on C2 left
   C1 already stored, indexed, and chained from, while the caller saw a throw and
-  reasonably concluded nothing had been asserted."
+  reasonably concluded nothing had been asserted.
+
+  A **generator** owes three more (`check-generator!`), and they run last so the
+  sharper complaint comes first: a rule that is unbound *and* backward-only is refused
+  for the unbound variable, which is the one its author can act on."
   [kb sentence context]
   (let [inner       (rules/inner-rule sentence)
         [direction] (sx/peel-rule-wrapper sentence)]
@@ -1346,68 +1500,9 @@
     ;; the rule-set check, before anything is stored: an `exceptWhen` is negation as
     ;; failure, and a cycle through it would make the settled state depend on
     ;; arrival order (docs/exceptions.md)
-    (check-stratified kb sentence inner context)))
-
-(defn- stored-generators
-  "Every stored generator, as `[handle sentex]` pairs.
-
-  One index lookup, and the cell it reads is the one that looks like a junk posting:
-  `rules/consequent-predicate` reads the functor of what a rule concludes, and what a
-  generator concludes is a rule — so every generator in the KB is filed under `implies`
-  and nothing else is.  Nothing backward-chains through it (a generator is forward-only,
-  and no goal's functor is `implies`), which leaves it doing exactly this one job."
-  [kb]
-  (into []
-        (comp (keep (fn [h] (when-let [s (p/get-sentex (:records kb) h)] [h s])))
-              (filter (fn [[_ s]] (rules/generator-sentex? s))))
-        (p/rules-by-consequent (:index kb) sx/rule-functor)))
-
-(defn- stamped-predicate
-  "The predicate the rule a generator stamps out concludes."
-  [sentex]
-  (some-> (:consequent sentex) rules/generated-rule rules/consequent-predicate))
-
-(defn generator-cycle
-  "A description of the cycle adding this generator would put in the rule set, or nil.
-
-  The graph is generators only, and one hop: an edge runs from a generator to any
-  generator that reads — in an antecedent — the predicate its stamped rule concludes.
-  A cycle there is a rule set that mints rules that mint rules, and unlike ordinary
-  recursion nothing bounds it: each round adds *rules* rather than facts, and the next
-  round's rules are the ones the last round wrote.
-
-  Refused outright rather than depth-capped.  A cap would make the KB's contents a
-  function of how long the chainer happened to run, and \"how many rules does this KB
-  have\" would stop having an answer — the same call stratification makes for a cycle
-  through negation (docs/exceptions.md).
-
-  **Both directions, because either can be the new edge**: the arriving generator may
-  stamp what a stored one reads, or read what a stored one stamps, and a self-loop is
-  the case where it does both to itself.  Checking only one direction would let the
-  cycle in whenever the two generators were asserted in the other order — which is the
-  order dependence every check here exists to keep out."
-  [kb inner generated context]
-  (when generated
-    (let [stamps (rules/consequent-predicate generated)
-          reads  (set (rules/antecedent-predicates inner))
-          gens   (stored-generators kb)
-          where  (or (when (and stamps (reads stamps)) "itself")
-                     (some (fn [[h s]]
-                             (when (and stamps
-                                        (some #{stamps} (rules/antecedent-predicates
-                                                         (:sentence s))))
-                               (str "the generator at handle " h)))
-                           gens)
-                     (some (fn [[h s]]
-                             (when-let [p (stamped-predicate s)]
-                               (when (reads p)
-                                 (str "the generator at handle " h ", which stamps "
-                                      p))))
-                           gens))]
-      (when where
-        (str "the rule it generates concludes " stamps
-             ", and that predicate is read by " where
-             (when context (str " (asserting into " context ")")))))))
+    (check-stratified kb sentence inner context)
+    (when (rules/generator? sentence)
+      (check-generator! kb sentence context))))
 
 (defn rule-violation
   "`check-rule!` as a **value** in the shape the derivation path files — a
