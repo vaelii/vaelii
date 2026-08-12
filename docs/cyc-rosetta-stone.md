@@ -1,20 +1,24 @@
 # Cyc ↔ Vaelii Rosetta Stone
 
+- **Covers:** vocabulary mapping from OpenCyc/ResearchCyc to Vaelii — core concepts, operations, negation, rules, TMS, privileged contexts.
+- **Not here:** this is one-way orientation, not a compatibility claim. The two systems share vocabulary but differ in semantics; the page names the differences.
+- **Assumes:** reader knows Cyc's API or has `CoreContext.txt` open. Vaelii API is documented in [api.md](api.md).
+
 ## Core Concepts
 
 ```
-Cyc                 → Vaelii
-microtheory (Mt)    → context
-genlMt              → genlContext
-assertion           → sentex
-constant            → symbol (CapitalCamelCase individuals, snake_case types, camelCase preds)
-collection          → type as unary predicate: (dog Muffet) not (isa Muffet Dog)
-genls               → genl
-genlPreds           → genl
-don't-care var (??) → head existential: (exists ?y ...) — syntactic, not naming convention
-rename              → no equivalent (use sameAs/rewriteOf for merging, but no true rename)
-arg1Isa             → no equivalent. Instead of (arg1Isa PRED TYPE), use (argIsa PRED 1 TYPE)
-wff?                → v/check. Checks argIsa, disjoint, functional, naming conventions, etc.
+Cyc                → Vaelii
+Mt                 → context
+genlMt             → genlContext
+assertion          → sentex
+constant           → symbol (CapitalCamelCase individuals, snake_case types, camelCase preds)
+collection         → type as unary predicate: (dog Muffet) not (isa Muffet Dog)
+genls              → genl
+genlPreds          → genl
+don't-care var (??)→ head existential: (exists ?y ...) — syntactic, not naming convention
+rename             → no equivalent (use sameAs/rewriteOf for merging, but no true rename)
+arg1Isa            → no equivalent. Instead of (arg1Isa PRED TYPE), use (argIsa PRED 1 TYPE)
+wff?               → v/check. Checks argIsa, disjoint, functional, naming conventions, etc.
 ```
 
 ## Gotchas for Cyclists
@@ -22,7 +26,7 @@ wff?                → v/check. Checks argIsa, disjoint, functional, naming con
 **argIsa is entailment, not restriction:** In Cyc, argIsa constraints are gates
 at assert time. In vaelii, they are entailment sources — `(argIsa parentOf 1 animal)`
 over `(parentOf Fred Mary)` ENTAILS `(animal Fred)`, it doesn't reject the assertion.
-Our bridge's `check-guarded` / `assert-guarded` enforces the restriction layer.
+A caller wanting Cyc's restriction semantics wraps `check` before `assert` themselves.
 
 **Open-world silent acceptance:** Vaelii silently accepts any assertion with any
 predicate — `(fghgwgads 212)` stores without error. No predicate declaration check,
@@ -52,7 +56,7 @@ assertedMoreSpecifically  → no equivalent
 completeExtentEnumerable  → no equivalent
 ```
 
-## WFF Modes (Cyc → Bridge mapping)
+## WFF Modes (Cyc → Vaelii mapping)
 
 Cyc had three Well-Formed Formula checking modes.
 
@@ -83,6 +87,7 @@ CurrentWorldDataCollectorMt  → WellContext         "all the usual stuff" — s
 InferencePSC/EverythingPSC   → ?ctx                not a context — omit the context
                                                    arg or pass a variable to query
                                                    unscoped
+```
 
 ## Operations
 
@@ -91,7 +96,7 @@ Cyc                 → Vaelii API call
 assert              → (v/assert kb sentence context opts) → handle
 unassert            → (v/retract! kb handle) → {:removed-sentexes n :removed-justifications n}
 find-assertion-cycl → (v/sentexes-matching kb sentence context) — literal only, returns collection
-                      (sentex-matching via our bridge utils — singular, nil if ambiguous)
+                      A caller wanting the singular (nil if ambiguous) wraps first-if-singleton.
 ask (backward)      → (v/query kb goal ctx {:max-depth n}) — bounded backward chaining
 ask (unbounded)     → (v/prove kb goal ctx) — DFS backward chaining
 ask (boolean)       → (v/provable? kb goal ctx)
@@ -155,13 +160,12 @@ arity check         → catches too-few args but NOT too-many (vaelii/vaelii#9)
 - Qualitative constraint reasoning (Allen intervals, RCC8, etc.)
 - Export/import dump format
 - Web browser for ontology exploration
+- Rule generators (a rule whose consequent is a rule — 0.6.0)
 
 ## Cyc has, Vaelii doesn't
 
 - Rename (no equivalent in Vaelii)
 - NL generation
-- Rule schemata / createRule (meta-rules that conclude rules)
-- schematicRuleFormula
 - transitiveViaArg
 - negationPreds for binary+ preds (use paired (not S) rules instead)
 - completeExtentEnumerable
