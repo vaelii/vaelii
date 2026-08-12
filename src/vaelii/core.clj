@@ -1710,6 +1710,13 @@
     :disjoint              a type membership the taxonomy separates
     :functional            a second, irreconcilable value for a functional slot
 
+  The `:disjoint` and `:functional` problems are **constraint-policy-dependent**:
+  under `:refuse` (the default), `check` reports them as problems because `assert`
+  would throw.  Under `:arbitrate`, `check` returns empty for an arbitrable clash
+  because `assert` would admit the sentence and let `settle` resolve the pair — the
+  clash is not a problem at the door, so `check` does not report one.  In both modes,
+  `check` predicts what `assert` would do.
+
   plus three that are about the *request* rather than the knowledge: `:shape` (the
   context is not a symbol, the sentence is not an s-expression), `:unknown-option`
   (`opts` is not a map, an `opts` key `assert` does not read, a `:strength` that is
