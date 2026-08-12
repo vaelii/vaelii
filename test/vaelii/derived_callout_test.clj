@@ -94,8 +94,15 @@
                    (set (sentences (:believed-added actual)))))))))))
 
 (deftest the-two-truth-maintenance-representations-report-the-same-thing
+  ;; A space of its own, because the `finally` below CLEARS it — and a number
+  ;; **outside 4..15**, which is the range `VAELII_TEST_SPACE` selects a block
+  ;; from (`testing.md`).  A literal inside that range is unused only until
+  ;; somebody moves the block onto it, and then the clear takes this namespace's
+  ;; own `:once` starter KB with it — reported by whichever teardown runs next,
+  ;; as a KB that has lost every sentex the fixture loaded, naming nothing that
+  ;; leads back here.
   (doseq [tms [:reference :dense]]
-    (let [kb (v/open-kb {:space 13 :tms tms})]
+    (let [kb (v/open-kb {:space 913 :tms tms})]
       (try
         (v/assert kb '(genlContext TmsCalloutContext UniverseContext) 'UniverseContext)
         (v/assert-rule kb ['(tmsCalloutDog ?x)] '(tmsCalloutMortal ?x) 'TmsCalloutContext)
