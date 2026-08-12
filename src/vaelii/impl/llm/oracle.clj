@@ -91,10 +91,10 @@
 (defn- situation
   "One supporting fact as a given: the gloss with its apposition cut off.
 
-  A gloss opens with the claim and then defines its terms — *Ann is a person — a human
-  being — a mammal that is also …* — which is what a reader of one sentence wants and
-  the wrong thing entirely in front of a question.  The definition is not part of the
-  situation, and three of them make the situation unreadable.
+  A gloss opens with the claim and then defines its terms — *Ann is a human — a
+  biological human being — a mammal that is also …* — which is what a reader of one
+  sentence wants and the wrong thing entirely in front of a question.  The definition
+  is not part of the situation, and three of them make the situation unreadable.
 
   The full stop goes too, so `line` punctuates the join rather than inheriting whatever
   the cut left behind."

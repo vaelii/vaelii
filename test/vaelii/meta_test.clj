@@ -36,7 +36,7 @@
   (testing "the upper ontology rides in the upper contexts, not the collector"
     (is (seq   (v/sentexes-matching kb '(genl dog mammal) 'CxOrganism)))
     (is (empty? (v/sentexes-matching kb '(genl dog mammal) 'CxUniverse)))
-    (is (seq   (v/sentexes-matching kb '(person Tom) 'CxNaturalWorld)))))
+    (is (seq   (v/sentexes-matching kb '(human Tom) 'CxNaturalWorld)))))
 
 (tu/deftest-kb predicates-classified-by-arity
   (testing "unary — every type, and one-place properties"

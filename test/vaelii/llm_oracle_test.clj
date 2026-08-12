@@ -54,9 +54,9 @@
   ;; rests on in front of it, it is an ordinary question about people.
   (let [warm (first (filter #(= '(warmBlooded Ann) (:sentence %)) (derived-claims kb)))]
     (is (some? warm))
-    (is (= ["Ann is a person"] (:givens warm)))
+    (is (= ["Ann is a human"] (:givens warm)))
     (testing "the line reads as a situation and a claim"
-      (is (str/starts-with? (oracle/line warm) (str "[" (:index warm) "] Given: Ann is a person.")))
+      (is (str/starts-with? (oracle/line warm) (str "[" (:index warm) "] Given: Ann is a human.")))
       (is (str/includes? (oracle/line warm) "Claim: Ann holds its own body temperature")))
     (testing "the rule it fired through is not in the line — that would ask about validity"
       (is (not (str/includes? (oracle/line warm) "If")))
@@ -73,12 +73,12 @@
   ;; A gloss defines its terms after the claim, which is what a reader of one sentence
   ;; wants and noise in front of a question.
   (let [cs (derived-claims kb)
-        membership (first (oracle/claims kb [(v/handle-of kb '(person Tom) N)]))]
+        membership (first (oracle/claims kb [(v/handle-of kb '(human Tom) N)]))]
     (is (every? #(not (str/includes? % " — ")) (mapcat :givens cs)))
-    (is (some #(= ["Tom is a person"] (:givens %)) cs)
+    (is (some #(= ["Tom is a human"] (:givens %)) cs)
         "the given is the membership with its definition cut off")
     (testing "the same sentence as a claim keeps whatever the KB composed"
-      (is (str/starts-with? (:text membership) "Tom is a person — a human being")))))
+      (is (str/starts-with? (:text membership) "Tom is a human — a biological human being")))))
 
 (tu/deftest-kb the-prompt-is-a-function-of-the-knowledge-and-not-of-its-order
   ;; Two KBs holding the same knowledge must ask the same question, or one run cannot be

@@ -54,7 +54,10 @@
     (is (v/isa? kb 'MouseA 'animal))
     (is (v/isa? kb 'TortoiseA 'reptile))
     (is (v/isa? kb 'AntA 'insect))
+    (is (v/isa? kb 'BoyA 'human))
     (is (v/isa? kb 'BoyA 'person))
+    (is (v/isa? kb 'BoyA 'mammal))
+    (is (v/isa? kb 'BoyA 'liar))
     (is (v/isa? kb 'WolfA 'mammal))))
 
 (tu/deftest-kb lion-and-mouse-derives-a-repaid-kindness

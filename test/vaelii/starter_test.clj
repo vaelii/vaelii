@@ -107,7 +107,7 @@
   (testing "every ontology type carries exactly one comment"
     (doseq [t '[thing intangible physical_object attribute temporal_thing relation_type
                 substance artifact body_part food living_thing vehicle tool building
-                animal plant mammal bird fish reptile insect person dog cat
+                animal plant mammal bird fish reptile insect human person dog cat
                 lion mouse hare wolf tortoise ant grasshopper
                 penguin eagle sparrow tree flower]]
       (is (= 1 (count (core-context/comment-of kb t))) (str "type " t))))

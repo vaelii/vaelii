@@ -384,7 +384,7 @@ consequent and was refused outright (`:not-range-restricted`) — the critic cat
 the reading got wrong, which is the repair path doing its job.
 
 **A coined type where a broader one exists.** The boy who cried wolf came back as
-`(boy Boy1)` where the gold is `(person BoyA)`. `boy` is a legal type name, nothing rejects
+`(boy Boy1)` where the gold is `(human BoyA)`. `boy` is a legal type name, nothing rejects
 it and nothing ever will — and the coining flag put it at the head of the review queue,
 which is exactly the division of labour this design claims. `(sheep Sheep1)` on the same
 fable is the other half of that: a character the prose mentions and the modeller did not,

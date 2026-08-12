@@ -12,10 +12,10 @@ some antecedent, so a fired conclusion is ground. A **head existential** relaxes
 for one explicitly marked variable:
 
 ```clojure
-(implies (person ?x) (exists ?y (hasMother ?x ?y)))
+(implies (human ?x) (exists ?y (hasMother ?x ?y)))
 ```
 
-Fired forward on `(person Tom)`, this derives `(hasMother Tom K)` where `K` is a
+Fired forward on `(human Tom)`, this derives `(hasMother Tom K)` where `K` is a
 **deterministic skolem constant** — a fresh witness standing for "the y that exists".
 
 ## The surface form
@@ -60,7 +60,7 @@ on the same binding resolves to that one. The arguments are what key determinism
 - **frontier-values** — the bound values of the consequent variables the antecedents
   supply, less any a post-join literal *outputs* (an aggregate's `?n` is computed from
   the frontier rather than one of its values, so keying on it would mint a fresh
-  individual per count) — distinguish `(person Tom)` from `(person Sue)`. The frontier is
+  individual per count) — distinguish `(human Tom)` from `(human Sue)`. The frontier is
   the same for every conjunct of one head, so `(exists ?y (and (Q ?x ?y) (R ?y)))` gives
   `(Q Tom K)` and `(R K)` the **same** `K`.
 
@@ -77,7 +77,7 @@ and belief tie-breaking reads neither the symbol nor any handle.
 ## Belief-following
 
 The witness `(Q a K)` is justified through the JTMS on `[antecedent-facts, rule]` like
-any derived fact, so retracting `(person Tom)` drops `(hasMother Tom K)`, which orphans
+any derived fact, so retracting `(human Tom)` drops `(hasMother Tom K)`, which orphans
 `K`; the NAT orphan sweep (`remove-orphaned-nats!`) then removes its `termOfUnit`, so no
 raw `nat/` symbol dangles.
 

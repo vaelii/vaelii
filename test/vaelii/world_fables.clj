@@ -171,7 +171,7 @@
   ;; the exception be stated at the type rather than at every liar individually.
   (v/assert kb '(genl liar person) 'CxCriedWolf)
   (assert-all kb 'CxCriedWolf
-              '[(person BoyA) (wolf WolfA)
+              '[(human BoyA) (wolf WolfA)
                 (liedBefore BoyA)                     ; he has raised false alarms
                 (criesWolf BoyA)                      ; now he cries wolf again
                 (approaches WolfA BoyA)])             ; and this time the wolf is real

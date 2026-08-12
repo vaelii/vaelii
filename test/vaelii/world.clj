@@ -33,8 +33,8 @@
 (def individuals
   "The cast's type memberships — in CxNaturalWorld, so the biology and kinship
   conclusions over them land there for the tests to query."
-  '[(person Tom) (person Bob) (person Ann) (person Carol) (person Dave)
-    (person Eve) (person Nancy)
+  '[(human Tom) (human Bob) (human Ann) (human Carol) (human Dave)
+    (human Eve) (human Nancy)
     (dog Muffet) (cat Whiskers) (penguin Tweety) (eagle Sam) (sparrow Jack)
     (fish Nemo) (tree Oak1) (flower Rose1) (vehicle Car1) (food Kibble)
     (building Garage1) (building House1)])

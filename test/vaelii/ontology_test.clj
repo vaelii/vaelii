@@ -197,8 +197,19 @@
       (is (seq (v/sentexes-matching kb (list 'arity p 1) '?ctx))
           (str p " is still a one-place predicate"))))
   (testing "while the kinds they are said of are types, and reach the root"
-    (doseq [t '[animal bird penguin dog person physical_object capability flying]]
+    (doseq [t '[animal bird penguin dog human person physical_object capability flying]]
       (is (v/genl? kb t 'thing) (str t " must reach thing")))))
+
+(tu/deftest-kb human-and-person-keep-biological-and-social-types-distinct
+  (tu/with-terms [IonaUnit]
+    (testing "a human is both a person and a mammal"
+      (is (v/genl? kb 'human 'person))
+      (is (v/genl? kb 'human 'mammal)))
+    (testing "a constructed person need not be a mammal and satisfies a social constraint"
+      (v/assert kb (list 'person IonaUnit) N)
+      (is (v/isa? kb IonaUnit 'person))
+      (is (not (v/isa? kb IonaUnit 'mammal)))
+      (is (empty? (v/check kb (list 'likes IonaUnit 'thing) N))))))
 
 (tu/deftest-kb every-shipped-type-is-placed-under-the-root
   ;; An unplaced type is invisible to every closure the engine reads, so it is a type in

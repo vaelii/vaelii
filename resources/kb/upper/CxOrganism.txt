@@ -77,6 +77,10 @@
 (comment horse "A large mammal ridden and used to pull loads.")
 (genl horse mammal)
 
+(comment human "A biological human being — a mammal that is also a person.")
+(genl human mammal)
+(genl human person)
+
 (comment insect "A small six-legged animal.")
 (genl insect animal)
 
@@ -99,8 +103,8 @@
 (comment penguin "A flightless bird — the standard exception to 'birds fly'.")
 (genl penguin bird)
 
-(comment person "A human being — a mammal that is also a social and rational agent.")
-(genl person mammal)
+(comment person "A social agent, whether biological or constructed.")
+(genl person thing)
 
 (comment plant "A living thing that photosynthesizes; disjoint from animal.")
 (genl plant living_thing)

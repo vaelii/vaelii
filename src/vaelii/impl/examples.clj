@@ -175,7 +175,7 @@
             estimated fan-out before running them."
     :rests-on [['(implies (and (parentOf ?x ?y) (parentOf ?y ?z)) (grandparentOf ?x ?z))
                 'CxKinship]]
-    :premises '[(person AdaEx) (person BenEx) (person CalEx)
+    :premises '[(human AdaEx) (human BenEx) (human CalEx)
                 (parentOf AdaEx BenEx) (parentOf BenEx CalEx)]
     :goal '(grandparentOf AdaEx CalEx) :expect :yes}
 
@@ -223,7 +223,7 @@
                   (implies (and (birthYearOf ?x ?bx) (birthYearOf ?y ?by) (lessThan ?bx ?by))
                            (olderThan ?x ?y)))
                 'CxKinship]]
-    :premises '[(person AdaEx) (person BenEx)
+    :premises '[(human AdaEx) (human BenEx)
                 (birthYearOf AdaEx 1970) (birthYearOf BenEx 1980)]
     :goal '(olderThan AdaEx BenEx) :expect :yes}
 
