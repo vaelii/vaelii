@@ -1709,13 +1709,7 @@
     :arg-type              an argIsa constraint on an argument
     :disjoint              a type membership the taxonomy separates
     :functional            a second, irreconcilable value for a functional slot
-
-  The `:disjoint` and `:functional` problems are **constraint-policy-dependent**:
-  under `:refuse` (the default), `check` reports them as problems because `assert`
-  would throw.  Under `:arbitrate`, `check` returns empty for an arbitrable clash
-  because `assert` would admit the sentence and let `settle` resolve the pair — the
-  clash is not a problem at the door, so `check` does not report one.  In both modes,
-  `check` predicts what `assert` would do.
+    :asymmetric            the converse of a claim a declared-asymmetric relation made
 
   plus three that are about the *request* rather than the knowledge: `:shape` (the
   context is not a symbol, the sentence is not an s-expression), `:unknown-option`
@@ -1724,6 +1718,19 @@
   contradicting the wrapper the sentence already carries — see `assert-opt-keys`) and
   `:not-checkable` (a top-level `do/` imperative — an instruction, which `check` will
   not run to find out what it does).
+
+  Two of the definitional problems are **constraint-policy-dependent**, because
+  `assert` is.  Under `:refuse` — the default — `check` reports a `:disjoint` or
+  `:functional` clash, since `assert` would throw one.  Under `:arbitrate` it reports an
+  *arbitrable* clash as nothing at all: `assert` admits the sentence and leaves `settle`
+  to weigh the pair it forms, so there is no problem at the door to report.
+
+  **Arbitrable is narrower than clashing**, and that is the half to read twice.  A clash
+  against **known-true** content is refused under either policy — admitting it would
+  store what the KB can never believe — so `check` reports one there whatever
+  `:constraints` says.  `:asymmetric` reads the opposing class that way in *both*
+  policies and is not policy-dependent at all.  What holds throughout is the promise
+  this docstring opens with: `check` predicts what `assert` would do.
 
   The stages run in `assert`'s order and stop at the first that finds anything, since
   each later one reads the KB assuming the earlier ones held.  A rule is checked the
