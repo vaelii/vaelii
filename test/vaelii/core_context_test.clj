@@ -55,3 +55,39 @@
     (v/assert kb (list 'binaryPredicate rel) 'CoreContext)
     (is (thrown? clojure.lang.ExceptionInfo
                  (v/assert kb (list 'arity rel 7) 'CoreContext)))))
+
+(tu/deftest-kb arity-does-not-inherit-across-predicate-specialization
+  ;; Predicate specialization does not currently require a child to share its
+  ;; parent's signature.  Preserving arity down genl would therefore let this
+  ;; functional relation answer both 2 and 3 for child.
+  (tu/with-terms [parent child]
+    (v/with-deferred-settle kb
+      (v/assert kb (list 'genl child parent) 'CoreContext)
+      (v/assert kb (list 'arity parent 2) 'CoreContext)
+      (v/assert kb (list 'arity child 3) 'CoreContext))
+    (is (v/ask? kb (list 'arity child 3) 'CoreContext))
+    (is (not (v/ask? kb (list 'arity child 2) 'CoreContext)))))
+
+(tu/deftest-kb meta-constraints-inherit-through-predicate-and-type-hierarchies
+  (tu/with-terms [parent child mammal animal food]
+    (v/with-deferred-settle kb
+      (v/assert kb (list 'genl child parent) 'CoreContext)
+      (v/assert kb (list 'genl mammal animal) 'CoreContext)
+      (v/assert kb (list 'genl animal 'thing) 'CoreContext)
+      (v/assert kb (list 'genl food 'thing) 'CoreContext)
+      (v/assert kb (list 'argIsa parent 1 mammal) 'CoreContext)
+      (v/assert kb (list 'argGenl parent 2 mammal) 'CoreContext)
+      (v/assert kb (list 'interArgIsa parent 1 animal 2 food) 'CoreContext))
+    (testing "constraints on a predicate reach its specializations"
+      (is (v/ask? kb (list 'argIsa child 1 mammal) 'CoreContext))
+      (is (v/ask? kb (list 'argGenl child 2 mammal) 'CoreContext))
+      (is (v/ask? kb (list 'interArgIsa child 1 animal 2 food) 'CoreContext)))
+    (testing "unconditional constraint types answer through their supertypes"
+      (is (v/ask? kb (list 'argIsa parent 1 animal) 'CoreContext))
+      (is (v/ask? kb (list 'argGenl parent 2 animal) 'CoreContext)))
+    (testing "conditional constraints narrow the trigger and widen the target"
+      (is (v/ask? kb (list 'interArgIsa parent 1 mammal 2 food) 'CoreContext))
+      (is (v/ask? kb (list 'interArgIsa parent 1 animal 2 'thing) 'CoreContext))
+      (is (v/ask? kb (list 'interArgIsa parent 1 mammal 2 'thing) 'CoreContext))
+      (is (not (v/ask? kb (list 'interArgIsa parent 1 'thing 2 food) 'CoreContext))
+          "a constraint triggered by animal says nothing about non-animal things"))))
