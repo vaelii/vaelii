@@ -31,8 +31,9 @@ the **vector** of handles in that case (a single handle otherwise).
 
 A rule that concludes a **rule** is a *generator*, and its firing stores the rule it
 concludes rather than a fact — the one place range restriction is asked one level in,
-since the stamped rule's own variables are unbound on purpose. See
-[generators.md](generators.md).
+since the stamped rule's own variables are unbound on purpose. The rule it stamps may
+stamp one in turn, at any depth, and a variable an enclosing level fills may head a
+literal. See [generators.md](generators.md).
 
 ## Rule direction (virtual predicates)
 

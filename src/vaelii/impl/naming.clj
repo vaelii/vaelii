@@ -213,8 +213,13 @@
          ;; *index* has no claim on them, because what gets indexed is the mint and
          ;; not the pattern.  `rules/variable-functor-literals` reads the tag to draw
          ;; that line, which is what lets a hole stand in functor position.
+         ;;
+         ;; A stamped rule may stamp one in turn, so a *stamped* consequent is a
+         ;; generator's head by the same reading: the tag survives the whole nesting,
+         ;; and a literal three levels in still reads as stamped rather than as the
+         ;; author's own.
          (and (= sx/rule-functor h) (= 3 n))
-         (let [gen?  (= :consequent role)
+         (let [gen?  (contains? #{:consequent :generated-consequent} role)
                arole (if gen? :generated-antecedent :antecedent)
                crole (if gen? :generated-consequent :consequent)]
            (into (vec (mapcat #(applied-literals arole %) (sx/rule-antecedents form)))

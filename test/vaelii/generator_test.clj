@@ -29,9 +29,14 @@
   (filter :antecedent (v/sentexes-in-context kb ctx)))
 
 (defn- stamped
-  "The rules in `ctx` that a generator minted — every stored rule but the generators."
+  "The rules in `ctx` that conclude a fact — every stored rule but the generators."
   [kb ctx]
   (remove vr/generator-sentex? (rule-sentexes kb ctx)))
+
+(defn- generators
+  "The stored rules in `ctx` that conclude a rule, at any nesting depth."
+  [kb ctx]
+  (filter vr/generator-sentex? (rule-sentexes kb ctx)))
 
 ;; ---- the shape works ------------------------------------------------------
 
@@ -180,9 +185,14 @@
   (try (v/assert kb sentence 'CxUniverse) :accepted
        (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))
 
-(tu/deftest-kb a-generated-rule-cannot-itself-generate
+(tu/deftest-kb a-level-that-fills-nothing-new-is-refused
+  ;; The per-level form of `a-generator-sharing-no-variable-is-refused`, and under
+  ;; nesting it is a mistake the *outer* fill creates: `?x` is a hole of the first
+  ;; level, so it is already ground when the second level is stored, and that level
+  ;; stamps the same rule at every firing.  Saying so at the sentence is what keeps it
+  ;; out of the ledger, one mint at a time.
   (tu/with-terms [aa bb cc dd]
-    (is (= :not-well-formed
+    (is (= :not-range-restricted
            (refusal kb (list 'implies (list aa '?x)
                              (list 'implies (list bb '?x)
                                    (list 'implies (list cc '?x) (list dd '?x)))))))))
@@ -293,22 +303,213 @@
 (tu/deftest-kb check-predicts-assert-on-every-generator-refusal
   ;; the repo's contract, and it matters most at the one door that writes two records:
   ;; an editor validating a generator must be told what the firing would refuse
-  (tu/with-terms [marker dst aa bb cc dd]
+  (tu/with-terms [marker dst aa bb cc dd mid inner]
     (doseq [[label sentence]
-            [["depth 2"      (list 'implies (list aa '?x)
-                                   (list 'implies (list bb '?x)
-                                         (list 'implies (list cc '?x) (list dd '?x))))]
+            [["a level that fills nothing new"
+              (list 'implies (list aa '?x)
+                    (list 'implies (list bb '?x)
+                          (list 'implies (list cc '?x) (list dd '?x))))]
              ["backward"     (list 'set/backwardRule
                                    (list 'implies (list marker '?p)
                                          (list 'implies (list '?p '?x) (list dst '?x))))]
+             ["backward on a middle level"
+              (list 'implies (list marker '?p)
+                    (list 'set/backwardRule
+                          (list 'implies (list '?p '?q)
+                                (list 'implies (list '?q '?x) (list dst '?x)))))]
+             ["an exceptWhen an inner level carries"
+              (list 'implies (list marker '?p)
+                    (list 'implies (list '?p '?q)
+                          (list 'exceptWhen (list mid '?x)
+                                (list 'implies (list '?q '?x) (list dst '?x)))))]
+             ["a functor no level binds, three levels in"
+              (list 'implies (list marker '?p)
+                    (list 'implies (list '?p '?q)
+                          (list 'implies (list 'and (list '?q '?x) (list '?zz '?x))
+                                (list dst '?x))))]
              ["loose var"    (list 'implies (list marker '?p)
-                                   (list 'implies (list '?p '?x) (list dst '?x '?loose)))]]]
+                                   (list 'implies (list '?p '?x) (list dst '?x '?loose)))]
+             ["loose var, three levels in"
+              (list 'implies (list marker '?p)
+                    (list 'implies (list '?p '?q)
+                          (list 'implies (list '?q '?x) (list inner '?x '?loose))))]]]
       (testing label
         (let [predicted (v/check kb sentence 'CxUniverse)
               thrown    (refusal kb sentence)]
           (is (seq predicted) "check reports a problem")
           (is (= thrown (:type (first predicted)))
               "and it is the one assert throws"))))))
+
+;; ---- nesting: a stamped rule may stamp one in turn ------------------------
+;; The scoping rule composes, so nothing is capped: a variable belongs to the outermost
+;; level whose antecedents mention it, and that level's firing grounds it.  What the
+;; extra level buys is a functor: a predicate bound *further out* is concrete before the
+;; rule that uses it is stored, so a family of predicates can range over a family of
+;; types without the index ever seeing a variable in functor position.
+
+(tu/deftest-kb a-generator-may-stamp-a-generator
+  ;; the type-level/instance-level bridge, stated once instead of once per pair: the
+  ;; outer level fills the two predicates, the middle fills the type, and what is stored
+  ;; at the bottom is an ordinary rule over concrete functors
+  (tu/with-terms [typeVersion hasCap capType bird flying Tweety]
+    (v/assert kb (list 'implies (list typeVersion '?ipred '?tpred)
+                       (list 'implies (list '?tpred '?type '?cap)
+                             (list 'implies (list '?type '?instance)
+                                   (list '?ipred '?instance '?cap))))
+              'CxUniverse)
+    (testing "the pair fact stamps a generator, not a rule"
+      (v/assert kb (list typeVersion hasCap capType) 'CxUniverse)
+      (is (= 2 (count (generators kb 'CxUniverse))) "the written one and its mint")
+      (is (empty? (stamped kb 'CxUniverse)) "and nothing that concludes a fact yet"))
+    (testing "the type-level fact stamps the rule the mint was for"
+      (v/assert kb (list capType bird flying) 'CxUniverse)
+      (is (= 1 (count (stamped kb 'CxUniverse))))
+      (is (= bird (first (vr/antecedent-predicates
+                          (:sentence (first (stamped kb 'CxUniverse))))))
+          "keyed on the type, which was a variable two levels up"))
+    (testing "and the instance-level conclusion follows"
+      (v/assert kb (list bird Tweety) 'CxUniverse)
+      (is (= #{flying} (into #{} (map '?c) (v/ask kb (list hasCap Tweety '?c) 'CxUniverse)))))))
+
+(tu/deftest-kb an-outer-level-binds-the-functor-a-middle-one-cannot
+  ;; the distinction nesting exists for, in one pair of sentences.  Both write the same
+  ;; join; only the nested one stores rules the index can key.
+  (tu/with-terms [typeVersion hasCap capType]
+    (testing "same level: the type is bound by a literal of the rule being stored"
+      (is (= :not-indexable
+             (refusal kb (list 'implies (list typeVersion '?ipred '?tpred)
+                               (list 'implies (list 'and (list '?tpred '?type '?cap)
+                                                    (list '?type '?instance))
+                                     (list '?ipred '?instance '?cap)))))))
+    (testing "a level out: the type is a hole of the middle level, ground before it stores"
+      (is (= :accepted
+             (refusal kb (list 'implies (list typeVersion '?ipred '?tpred)
+                               (list 'implies (list '?tpred '?type '?cap)
+                                     (list 'implies (list '?type '?instance)
+                                           (list '?ipred '?instance '?cap))))))))))
+
+(tu/deftest-kb nesting-is-not-capped
+  ;; three levels, so the middle mint is itself a generator that stamps a generator.
+  ;; What bounds a generator is the cycle check, not the depth.
+  (tu/with-terms [aFor m1 m2 m3 endsAt Zed]
+    (v/assert kb (list 'implies (list aFor '?p)
+                       (list 'implies (list '?p '?q)
+                             (list 'implies (list '?q '?r)
+                                   (list 'implies (list '?r '?x) (list endsAt '?x)))))
+              'CxUniverse)
+    (v/assert kb (list aFor m1) 'CxUniverse)
+    (v/assert kb (list m1 m2) 'CxUniverse)
+    (v/assert kb (list m2 m3) 'CxUniverse)
+    (v/assert kb (list m3 Zed) 'CxUniverse)
+    (is (v/ask? kb (list endsAt Zed) 'CxUniverse))
+    (is (empty? (v/violations kb)) "every level's mint stood on its own")
+    (is (= 3 (count (generators kb 'CxUniverse))) "the written generator and two mints")
+    (is (= 1 (count (stamped kb 'CxUniverse))) "and one rule at the bottom")))
+
+(tu/deftest-kb retracting-an-outer-fill-unwinds-the-whole-chain
+  ;; a mint is derived content at every level, so one relabel takes the chain: the fill
+  ;; goes, the generator it stamped stops being believed, the rule *that* stamped goes
+  ;; with it, and so does the conclusion
+  (tu/with-terms [typeVersion hasCap capType bird flying Tweety]
+    (v/assert kb (list 'implies (list typeVersion '?ipred '?tpred)
+                       (list 'implies (list '?tpred '?type '?cap)
+                             (list 'implies (list '?type '?instance)
+                                   (list '?ipred '?instance '?cap))))
+              'CxUniverse)
+    (let [pair (v/assert kb (list typeVersion hasCap capType) 'CxUniverse)]
+      (v/assert kb (list capType bird flying) 'CxUniverse)
+      (v/assert kb (list bird Tweety) 'CxUniverse)
+      (is (seq (v/ask kb (list hasCap Tweety '?c) 'CxUniverse)))
+      (let [minted (mapv :id (remove #(vr/generator-sentex? %)
+                                     (rule-sentexes kb 'CxUniverse)))]
+        (v/retract! kb pair)
+        (testing "the conclusion goes"
+          (is (empty? (v/ask kb (list hasCap Tweety '?c) 'CxUniverse))))
+        (testing "and so does every rule the chain minted, at both levels"
+          (is (every? #(not (v/in? kb %)) minted))
+          (is (= 1 (count (filter #(v/in? kb (:id %)) (rule-sentexes kb 'CxUniverse))))
+              "only the generator the author wrote is left"))))))
+
+(tu/deftest-kb both-arrival-orders-agree-under-nesting
+  ;; order independence again, now over three levels: each level's mint is a datum that
+  ;; joins over what is already stored, so no arrival order needs a sweep of its own
+  (let [run (fn [reverse?]
+              (tu/with-terms [typeVersion hasCap capType bird flying Tweety]
+                (let [gen   #(v/assert kb (list 'implies (list typeVersion '?ipred '?tpred)
+                                                (list 'implies (list '?tpred '?type '?cap)
+                                                      (list 'implies (list '?type '?instance)
+                                                            (list '?ipred '?instance '?cap))))
+                                       'CxUniverse)
+                      facts #(do (v/assert kb (list bird Tweety) 'CxUniverse)
+                                 (v/assert kb (list capType bird flying) 'CxUniverse)
+                                 (v/assert kb (list typeVersion hasCap capType) 'CxUniverse))]
+                  (if reverse? (do (facts) (gen)) (do (gen) (facts)))
+                  {:derived (into #{} (map '?c) (v/ask kb (list hasCap Tweety '?c)
+                                                       'CxUniverse))
+                   :flying  flying})))
+        a   (run false)
+        b   (run true)]
+    (is (= #{(:flying a)} (:derived a)) "generator first derives the conclusion")
+    (is (= #{(:flying b)} (:derived b)) "facts first derives it too")))
+
+(tu/deftest-kb a-middle-level-owes-what-a-generator-owes
+  ;; every level reaches the store as a rule, and the mint reads the same check list the
+  ;; assert door does — so a wrapper or a guard the firing could not honour is refused
+  ;; at the sentence rather than one mint later
+  (tu/with-terms [marker dst blocked]
+    (testing "a backward wrapper on a middle level"
+      (is (= :not-indexable
+             (refusal kb (list 'implies (list marker '?p)
+                               (list 'set/backwardRule
+                                     (list 'implies (list '?p '?q)
+                                           (list 'implies (list '?q '?x) (list dst '?x)))))))))
+    (testing "an exceptWhen on an inner level, which no firing can split off"
+      (is (= :not-well-formed
+             (refusal kb (list 'implies (list marker '?p)
+                               (list 'implies (list '?p '?q)
+                                     (list 'exceptWhen (list blocked '?x)
+                                           (list 'implies (list '?q '?x)
+                                                 (list dst '?x)))))))))
+    (testing "and the innermost rule still owes its own range restriction"
+      (is (= :not-range-restricted
+             (refusal kb (list 'implies (list marker '?p)
+                               (list 'implies (list '?p '?q)
+                                     (list 'implies (list '?q '?x)
+                                           (list dst '?x '?loose))))))))))
+
+(tu/deftest-kb a-nested-mint-that-cannot-stand-is-dropped-and-recorded
+  ;; the mint door under nesting: a fill can make the *middle* rule junk, and the
+  ;; firing must record it rather than throw — the fixpoint is halfway through itself
+  (tu/with-terms [typeVersion capType]
+    (v/assert kb (list 'implies (list typeVersion '?ipred '?tpred)
+                       (list 'implies (list '?tpred '?type '?cap)
+                             (list 'implies (list '?type '?instance)
+                                   (list '?ipred '?instance '?cap))))
+              'CxUniverse)
+    (v/clear-violations! kb)
+    ;; a number in the instance-level predicate's place heads a literal no index can key
+    (v/assert kb (list typeVersion 7 capType) 'CxUniverse)
+    (is (empty? (stamped kb 'CxUniverse)) "nothing was stored for it")
+    (is (= 1 (count (generators kb 'CxUniverse))) "and no generator was minted either")
+    (is (seq (v/violations kb)) "the drop is readable")))
+
+(tu/deftest-kb a-cycle-through-a-nested-generator-is-refused
+  ;; the cycle check reads the *innermost* conclusion, because that is what reaches the
+  ;; fact store — the levels between conclude rules, under a key no fact carries
+  (tu/with-terms [mm nn kk pp]
+    (testing "a nested generator that feeds itself"
+      (is (= :not-stratified
+             (refusal kb (list 'implies (list mm '?p)
+                               (list 'implies (list '?p '?q)
+                                     (list 'implies (list '?q '?x) (list mm '?x))))))))
+    (testing "and one whose innermost conclusion another generator reads"
+      (is (= :accepted
+             (refusal kb (list 'implies (list nn '?p)
+                               (list 'implies (list '?p '?q)
+                                     (list 'implies (list '?q '?x) (list kk '?x)))))))
+      (is (= :not-stratified
+             (refusal kb (list 'implies (list 'and (list kk '?o) (list pp '?o))
+                               (list 'implies (list '?o '?a) (list pp '?a)))))))))
 
 ;; ---- the mint goes through the same door ---------------------------------
 

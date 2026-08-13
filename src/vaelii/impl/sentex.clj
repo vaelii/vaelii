@@ -1535,8 +1535,9 @@
     reads, so the literal matches nothing (`ist-read-problem`);
   * a nested `implies` anywhere but a rule's consequent — a rule is a sentence, not a
     literal, and consequent position is the one place it means something else: a
-    **generator**, whose firing stamps the inner rule out (docs/generators.md).  A
-    third level is refused, so a generator generates a rule and not another generator;
+    **generator**, whose firing stamps the inner rule out (docs/generators.md).  The
+    nesting is not capped there: a stamped rule may stamp one in turn, and each level
+    is checked in the ordinary rule roles;
   * a negated rule — `not` over an `implies`, bare or wrapped: negation lives on
     facts, and what a rule's negation would mean is said as an exception or a
     retraction instead (the record has no shape for it — a rule under `not` would
@@ -1591,26 +1592,20 @@
             (cond
               (not= 3 n)
               [(str "implies takes antecedents and one consequent, got arity " (dec n))]
-              (= :sentence role)
-              (into (vec (mapcat #(walk :antecedent %) (rule-antecedents form)))
-                    (walk :consequent (rule-consequent form)))
               ;; A rule **in consequent position** is a generator's head: the rule its
               ;; firing stamps out (docs/generators.md).  Its own parts are checked in
               ;; the ordinary rule roles, so every arm below — `ist`, a head
               ;; existential, a negated antecedent — holds of the stamped rule exactly
-              ;; as it holds of a written one.
+              ;; as it holds of a written one, at whatever depth it sits.
               ;;
-              ;; One level, and the third is refused here rather than by recursion:
-              ;; the scoping rule that makes a generator readable is that the stamped
-              ;; rule's free variables are its own, and a rule that stamps a generator
-              ;; would need two such splits in one sentence with nothing in the
-              ;; spelling to say which variable belongs to which.
-              (= :consequent role)
-              (let [c (rule-consequent form)]
-                (into (vec (mapcat #(walk :antecedent %) (rule-antecedents form)))
-                      (if (implies? (peek (peel-rule-wrapper c)))
-                        ["a generated rule cannot itself generate a rule; a rule generator nests one level"]
-                        (walk :consequent c))))
+              ;; The recursion is the whole of the nesting rule: a stamped rule that
+              ;; stamps a rule is read here exactly as the one above it was, and the
+              ;; scoping rule composes to match — a variable belongs to the outermost
+              ;; level whose antecedents mention it (`rules/nesting`), which is the
+              ;; level whose firing grounds it.
+              (contains? #{:sentence :consequent} role)
+              (into (vec (mapcat #(walk :antecedent %) (rule-antecedents form)))
+                    (walk :consequent (rule-consequent form)))
               :else
               [(str "a rule cannot stand as a " (clojure.core/name role) " literal")])
             (head-exists? form)

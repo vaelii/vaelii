@@ -31,7 +31,7 @@ src/vaelii/impl/
   protocols.clj     RecordStore, IndexStore (trie + roots + rule index + term index)
   naming.clj        naming-invariant predicates + functor/args/arity
   sentex.clj        Atomic / Rule records (connectives → truth/antecedent/consequent), split so a fact drops the rule-only slots; canonical vars + varmap, literal order, symmetric args, comparison folding/chains; canon (+ symbol interning); α-renamed path; index-terms
-  rules.clj         rule-as-sentex helpers (implies form, predicates, range check, exception closure, conjunctive-consequent expand, the generator's hole split — [generators.md](generators.md))
+  rules.clj         rule-as-sentex helpers (implies form, predicates, range check, exception closure, conjunctive-consequent expand, the generator's hole split and its nesting — [generators.md](generators.md))
   taxonomy.clj      cached genl / genlCx closures; the equality partition (representative / equiv-class / deprecated?); maximal-common-descendant-contexts
   strength.clj      assumption strengths + defeat-class lattice (monotonic>default)
   kv.clj            KvBackend protocol + the one KvIndexStore over it: trie + context/functor/arg roots + rule predicate index + exception re-check index + term index; `index-layout-version`, the number that says which key shapes a build reads

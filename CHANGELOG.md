@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.1 — unreleased
+
+- **A rule generator may stamp a generator, at any depth, and a variable an enclosing
+  level fills may head a literal.** `(implies (typeVersion ?ipred ?tpred) (implies
+  (?tpred ?type ?cap) (implies (?type ?instance) (?ipred ?instance ?cap))))` states a
+  type-level/instance-level bridge once instead of once per predicate pair, and what
+  reaches the index at the bottom is still an ordinary rule over concrete functors. The
+  scoping rule needed nothing added to it: a variable belongs to the outermost level
+  whose antecedents mention it. **A top-level rule antecedent is untouched** — nothing
+  encloses it, so a variable functor there is refused as it always was, and so is one a
+  literal *beside* it binds. Each level owes what a generator owes, at both doors.
+  *Class:* **Additive** — a shape that was refused (`:not-well-formed`, "a rule
+  generator nests one level") is now accepted.
+  [docs/generators.md](docs/generators.md).
+
 ## 0.7.0 — 2026-08-12
 
 - **Breaking: a context name is `Cx`-prefixed, not `Context`-suffixed.** `CoreContext`
