@@ -508,6 +508,21 @@ remote shell. See [`.github/SECURITY.md`](.github/SECURITY.md).
   preserves credit for several contributors. Never add one for a tool, bot, or other
   non-human author: it cannot sign the DCO (§9.4) or the CLA (§9.5), its output has no
   copyright holder the trailer could name, and it skews the contributor statistics.
+- **The `committer` field is covered too.** A commit names three parties — who wrote it,
+  who applied it, and whoever its trailers credit — and the rule above reaches all of
+  them. `committer` differing from `author` is ordinary and welcome: a maintainer
+  rebasing your branch, a patch applied by hand, the merge button. What it may not name
+  is a tool, bot or agent, for the same reason the other two may not.
+- **The `authorship` check is where that is decided**, beside `DCO` and `license/cla`.
+  Every author, committer and trailer on a pull request has to appear in
+  [`.github/AUTHORS.roster`](.github/AUTHORS.roster), which a maintainer writes on
+  `develop`. An account nobody has admitted fails closed, so the first pull request from
+  a new contributor waits on being added — a one-line commit, and it carries to every
+  later one. This is a judgement about who stands behind an account, never about the
+  tools someone writes with: use whatever you like, and sign off as the author of the
+  result. If the check blocks work that is otherwise good, it is a rebase and not a
+  rejection — re-author under the person who signs off, drop the trailers naming anyone
+  else, force-push.
 - **One change per commit** where feasible. Bundle related cleanups.
 - **Run `lein gate` before pushing** (§1.1), plus `./scripts/test-backends.sh` if you
   touched storage and `lein test :all` if you touched inference, indexing or the TMS.
