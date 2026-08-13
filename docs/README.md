@@ -50,6 +50,7 @@ page costs a sentence rather than a section.
 
 ## Start here
 
+- [cyc-rosetta-stone.md](cyc-rosetta-stone.md) — the vocabulary mapping from OpenCyc/ResearchCyc to Vaelii: where the names match, where the semantics diverge, and what Cyc has that Vaelii does not (and vice versa).
 - [kbs.md](kbs.md) — the four knowledge bases you can load and the route to each: what ships here, what the plugin ships, what you supply, and where a KB has to sit to be found.
 - [api.md](api.md) — the public API: every fn on `vaelii.core`, with what it takes and returns, and the five thin entry-point namespaces beside it.
 - [troubleshooting.md](troubleshooting.md) — indexed by symptom rather than subsystem: an empty query, a rule that will not fire, a refused `assert`, a KB holding facts nobody asserted.
