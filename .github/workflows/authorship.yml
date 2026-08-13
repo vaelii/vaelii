@@ -46,8 +46,12 @@ permissions:
   pull-requests: read
 
 jobs:
-  roster:
-    name: every author and trailer is a person we have admitted
+  # THE JOB NAME IS THE CHECK NAME, and the check name is what branch protection
+  # requires — the bare `authorship`, as `lint` is in lint.yml. A descriptive
+  # `name:` here would report the sentence instead, and a required context that
+  # never reports leaves every pull request at "Expected — waiting for status".
+  authorship:
+    name: authorship
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
