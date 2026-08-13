@@ -1,0 +1,65 @@
+name: authorship
+
+# The third contributor gate, beside `DCO` and `license/cla`, and the only one
+# that asks who the named party is rather than whether a string is present.
+#
+# cla-assistant reports `license/cla` green once an account has completed an
+# OAuth flow and clicked through the ICLA. The DCO app reports `DCO` green once
+# each commit carries a `Signed-off-by:` matching its author field. Both are
+# string matchers over an account and a trailer, and neither can ask whether the
+# party named is a person who can make the certification. CONTRIBUTING.md §7
+# requires exactly that, and this workflow is what holds it.
+#
+# The decision is a roster, not an inspection. `.github/AUTHORS.roster` lists the
+# accounts a maintainer has admitted; every author, committer and trailer on a
+# pull request has to appear there. An account nobody has admitted fails closed,
+# whatever it is, so a bot that announces itself and one that does not are
+# treated the same. `scripts/check-authorship.py` also prints what a blocked
+# account looks like — its type, its bio, its age — but those signals only
+# explain the failure and never cause it.
+#
+# The roster and the script are both read from the **base** branch, never from
+# the pull request's tree: the checkout pins `base.sha`, and the script fetches
+# the roster at the base ref over the API. Otherwise a contributor could admit
+# themselves in the same change the roster exists to gate. What a pull request
+# can still edit is this file, because `pull_request` runs the workflow from the
+# merge ref — a diff touching `.github/workflows/` deserves the same suspicion
+# here as anywhere, and branch protection blocks the merge if the required check
+# stops reporting at all.
+#
+# `pull_request`, never `pull_request_target`: this job reads public metadata,
+# touches no secret and writes nothing back, so it has no privilege a fork's
+# pull request could borrow.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+# Least privilege. `contents: read` reaches the roster on the base branch,
+# `pull-requests: read` reaches the commit list. Nothing else, and no write.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  roster:
+    name: every author and trailer is a person we have admitted
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # The base commit, so the script that runs is the one on the protected
+          # branch rather than the copy in the pull request.
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+
+      # python3 is preinstalled on ubuntu-latest; the script imports only the
+      # standard library, so there is nothing to install and no cache to warm.
+      - name: check authorship against the roster
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/check-authorship.py

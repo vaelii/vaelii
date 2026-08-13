@@ -1,0 +1,37 @@
+# The roster of people whose commits may land.
+#
+# CONTRIBUTING.md §7: each commit's author is the person who signs it off, a
+# `Signed-off-by:` may only name someone who can make that certification, and a
+# co-author trailer is human-only. `scripts/check-authorship.py` enforces that
+# against this file, and reports the `authorship` check on every pull request.
+#
+# The two other gates cannot do this. cla-assistant records that an account
+# completed an OAuth flow, and the DCO app matches a trailer string against the
+# commit's author field. Neither can ask whether the party named is a person, so
+# a signature and a sign-off both go green for an account that is not one. This
+# file is where that question is answered, once per contributor, by a maintainer.
+#
+# The gate reads this file **from the base branch**, so a pull request cannot
+# admit its own author. Adding a line is a maintainer commit to `develop`.
+#
+# Format: one person per line. The first token is the name we file them under;
+# every token is an identity that person commits as. A token containing `@` is a
+# git author/committer/trailer email, anything else is a GitHub login. Match on
+# either admits the identity, because trailers carry an email and no login.
+#
+#   <login>  <email>  [<more emails>]   # when, and anything worth knowing
+#
+# Admitting an account is a judgement that a person stands behind it and can
+# make the DCO certification. It is not a judgement about how they wrote the
+# code: a contributor may use whatever tools they like, and remains the author
+# who certifies the result. What may not appear in `author`, `Signed-off-by:` or
+# a co-author trailer is a tool, bot or agent as the named party.
+
+vaelii-admin  289251560+vaelii-admin@users.noreply.github.com   # maintainer
+vaelii-dev    vaelii-dev@users.noreply.github.com               # maintainer, dev tree
+
+# GitHub itself, as the committer of a merge or squash made through the web UI.
+# It is never an author and never carries a trailer.
+web-flow      noreply@github.com                                # github.com merge button
+
+paceheart     ubiquity@gmail.com                                # 2026-08-02, first PR #6
