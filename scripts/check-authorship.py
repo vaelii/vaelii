@@ -78,6 +78,14 @@ YOUNG_DAYS = 180
 
 
 def api(path, token, accept="application/vnd.github+json"):
+    """One request. Parsed as JSON unless the caller asked for something else.
+
+    `application/vnd.github.raw` returns the file's own bytes rather than a JSON
+    envelope around them, so parsing every response the same way makes the roster
+    read — the one call that uses it — a `JSONDecodeError` on the first line of
+    the file. Reading the accept header here is what lets `load_roster` receive
+    the text it asked for.
+    """
     url = path if path.startswith("http") else f"{API}{path}"
     req = urllib.request.Request(url, headers={
         "Accept": accept,
@@ -86,7 +94,10 @@ def api(path, token, accept="application/vnd.github+json"):
         "User-Agent": "vaelii-authorship-gate",
     })
     with urllib.request.urlopen(req) as r:
-        return json.loads(r.read().decode()), r.headers.get("Link", "")
+        body, link = r.read().decode(), r.headers.get("Link", "")
+    if "raw" in accept:
+        return body, link
+    return json.loads(body), link
 
 
 def api_paged(path, token):
@@ -336,6 +347,34 @@ def selftest():
          ({"alice", "bob"}, {"alice@example.com"}))
     case("roster files every token under the first", owner.get("alice@example.com"), "Alice")
 
+    # The roster arrives over the API as the file's own bytes — `load_roster` asks
+    # for `application/vnd.github.raw` — and a reader that parses every response
+    # as JSON turns the first line of the file into a traceback. `--roster` reads
+    # a local path and never crosses that seam, so the case above cannot see it;
+    # this one stubs the transport and does.
+    class _Resp:
+        def __init__(self, body):
+            self._b, self.headers = body.encode(), {}
+
+        def read(self):
+            return self._b
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    real = urllib.request.urlopen
+    urllib.request.urlopen = lambda *_a, **_k: _Resp("Alice  alice@example.com\n")
+    try:
+        got = load_roster("owner/repo", "develop", "token")[:2]
+    except Exception as exc:                       # noqa: BLE001 — the failure IS the finding
+        got = f"{type(exc).__name__}: {exc}"
+    finally:
+        urllib.request.urlopen = real
+    case("roster loads from a raw API body", got, ({"alice"}, {"alice@example.com"}))
+
     width = max(len(n) for n, _, _, _ in cases)
     bad = 0
     for name, good, got, want in cases:
@@ -478,3 +517,9 @@ if __name__ == "__main__":
         sys.exit(main())
     except urllib.error.HTTPError as e:
         die(f"GitHub API {e.code} on {e.url}: {e.read().decode()[:200]}")
+    except json.JSONDecodeError as e:
+        # A response that did not parse is this script misreading the API, not a
+        # verdict about the pull request. Exit 2 says which, where a traceback
+        # says only that something went wrong somewhere.
+        die(f"a GitHub response did not parse as JSON ({e}). The gate reached the "
+            f"API and could not read it, so it has checked nothing.")
