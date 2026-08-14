@@ -16,8 +16,19 @@
 #
 # Format: one person per line. The first token is the name we file them under;
 # every token is an identity that person commits as. A token containing `@` is a
-# git author/committer/trailer email, anything else is a GitHub login. Match on
-# either admits the identity, because trailers carry an email and no login.
+# git author/committer/trailer email, anything else is a GitHub login.
+#
+# Which token is read depends on what the identity carries. An author or
+# committer is matched on the **login**, because GitHub resolved that and nobody
+# can assert it for themselves; the git email beside it is whatever `git config
+# user.email` was set to and admits nothing on its own. An **email** is what a
+# trailer is matched on, a trailer carrying an address and no account. So a line
+# wants the login for the commits an account makes, and the addresses for the
+# trailers that credit them.
+#
+# A trailer with no `<address>` at all matches nothing and is blocked. There is
+# no line that admits one — it names a party nobody can resolve, which is the
+# answer rather than a gap.
 #
 #   <login>  <email>  [<more emails>]   # when, and anything worth knowing
 #
@@ -28,7 +39,6 @@
 # a co-author trailer is a tool, bot or agent as the named party.
 
 vaelii-admin  289251560+vaelii-admin@users.noreply.github.com   # maintainer
-vaelii-dev    vaelii-dev@users.noreply.github.com               # maintainer, dev tree
 
 # GitHub itself, as the committer of a merge or squash made through the web UI.
 # It is never an author and never carries a trailer.

@@ -30,6 +30,15 @@ name: authorship
 # `pull_request`, never `pull_request_target`: this job reads public metadata,
 # touches no secret and writes nothing back, so it has no privilege a fork's
 # pull request could borrow.
+#
+# A RUN WITH NO PULL REQUEST IS GREEN AND MEANS NOTHING. This gate reads the
+# commits of a pull request; every other event — a push, the weekly schedule, a
+# manual dispatch — carries none, so the script says so and exits 0. That green
+# is the reading to distrust: it reports that there was nothing to check, not
+# that anything passed, and `pull_request` is the only trigger whose green is a
+# verdict. `python3 scripts/check-authorship.py --pr <n>` with a token exercises
+# it against real commits, and `--selftest` covers the rules alone, which is
+# what `lein lint` runs.
 
 on:
   push:

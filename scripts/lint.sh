@@ -20,6 +20,10 @@
 #                 header of scripts/check-reflection.sh for why the split exists
 #   - unused      a public var under impl/ that nothing references, against
 #                 scripts/unused-publics-baseline.txt
+#   - authorship  the roster and matching rules behind the `authorship` CI gate,
+#                 against synthetic commits (`--selftest`; no network).  The gate
+#                 itself only runs on a pull request, so this is the one place the
+#                 rules are exercised before one arrives
 #
 #   lein lint               # the clean report
 #   VERBOSE=1 lein lint     # also dump each check's full output, pass or fail
@@ -27,7 +31,8 @@
 #
 # The granular `lein lint-glossary` / `lint-versions` / `lint-links` /
 # `lint-drift` / `lint-kondo` / `lint-cljfmt` / `lint-shellcheck` /
-# `lint-reflect` / `lint-unused` aliases run a single check for a quick one-off.
+# `lint-reflect` / `lint-unused` / `lint-authorship` aliases run a single check
+# for a quick one-off.
 set -uo pipefail   # NOT -e: every check must run even after one fails.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -79,6 +84,7 @@ summary() {
     shellcheck) s="scripts clean" ;;
     reflect)    s="$(grep -oE 'no reflection warnings.*' "$o" | head -1)" ;;
     unused)     s="$(grep -oE '[0-9]+ known[^.]*' "$o" | head -1)" ;;
+    authorship) s="$(grep -oE '[0-9]+ checks, all pass' "$o" | head -1)" ;;
   esac
   echo "${s:-ok}"
 }
@@ -180,6 +186,7 @@ check shellcheck -- shellcheck scripts/lint.sh scripts/lint-glossary.sh scripts/
                                scripts/run-bench-caches.sh
 check reflect    -- bash scripts/check-reflection.sh
 check unused     -- python3 scripts/check-unused-publics.py
+check authorship -- python3 scripts/check-authorship.py --selftest
 
 total=$((pass + fail))
 if [[ $fail -eq 0 ]]; then

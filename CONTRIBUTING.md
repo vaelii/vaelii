@@ -518,11 +518,13 @@ remote shell. See [`.github/SECURITY.md`](.github/SECURITY.md).
   [`.github/AUTHORS.roster`](.github/AUTHORS.roster), which a maintainer writes on
   `develop`. An account nobody has admitted fails closed, so the first pull request from
   a new contributor waits on being added — a one-line commit, and it carries to every
-  later one. This is a judgement about who stands behind an account, never about the
-  tools someone writes with: use whatever you like, and sign off as the author of the
-  result. If the check blocks work that is otherwise good, it is a rebase and not a
-  rejection — re-author under the person who signs off, drop the trailers naming anyone
-  else, force-push.
+  later one. That line wants your GitHub login, which is what a commit you push is
+  matched on, plus any address you sign a trailer with, which is what a trailer is
+  matched on when it names no account. This is a judgement about who stands behind an
+  account, never about the tools someone writes with: use whatever you like, and sign
+  off as the author of the result. If the check blocks work that is otherwise good, it
+  is a rebase and not a rejection — re-author under the person who signs off, drop the
+  trailers naming anyone else, force-push.
 - **One change per commit** where feasible. Bundle related cleanups.
 - **Run `lein gate` before pushing** (§1.1), plus `./scripts/test-backends.sh` if you
   touched storage and `lein test :all` if you touched inference, indexing or the TMS.

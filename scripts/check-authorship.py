@@ -13,6 +13,18 @@ trailer on the pull request must appear in `.github/AUTHORS.roster` on the base
 branch, which only a maintainer can write. An account nobody has admitted fails
 closed, whatever it is and whatever it says about itself.
 
+An author or committer is matched on the **login** GitHub resolved, never on the
+git email beside it: an email is whatever its author set it to, so admitting a
+commit because its email is on the roster would let an unadmitted account walk in
+under an admitted one's address. The email arm is for trailers, which carry an
+email and no account. A trailer carrying neither — a bare `Co-authored-by: Name`
+with no `<address>` — matches nothing and is blocked, which is the point: it
+names a party the roster has no way to admit.
+
+`--selftest` runs the roster and matching rules against synthetic commits and
+needs no network. `lein lint` runs it, so a regression in either shows up before
+a pull request meets it.
+
 The heuristics in MARKERS never decide the outcome. They run on a blocked
 identity to say *why* it looks the way it does, so the failure names something
 actionable instead of a bare login. An account that announces nothing about
@@ -29,6 +41,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -129,12 +142,6 @@ def load_roster(repo, ref, token, local=None):
     return logins, emails, owner_of
 
 
-def raw_roster(repo, ref, token):
-    blob, _ = api(f"/repos/{repo}/contents/{ROSTER_PATH}?ref={ref}", token,
-                  accept="application/vnd.github.raw")
-    return blob if isinstance(blob, str) else ""
-
-
 class Identity:
     def __init__(self, name, email, login, where):
         self.name = (name or "").strip()
@@ -147,8 +154,28 @@ class Identity:
         return (self.login.lower(), self.email)
 
     def label(self):
-        who = f"{self.name} <{self.email}>" if self.name else f"<{self.email}>"
+        if self.email:
+            who = f"{self.name} <{self.email}>" if self.name else f"<{self.email}>"
+        else:
+            who = self.name or "(unnamed)"
         return f"{who}  ({self.login})" if self.login else who
+
+
+def admitted(ident, logins, emails):
+    """Is this identity on the roster?
+
+    One rule, and which arm applies is decided by what the identity carries
+    rather than by trying both. A login is what GitHub resolved for the account
+    that pushed, so where there is one it is the fact worth checking. An email is
+    self-asserted — `git config user.email` takes anything — so it stands in only
+    where there is no account to check: a trailer. Trying both would let the arm
+    nobody has to earn decide the ones they do.
+    """
+    if ident.login:
+        return ident.login.lower() in logins
+    if ident.email:
+        return ident.email in emails
+    return False
 
 
 def collect(commits):
@@ -156,14 +183,20 @@ def collect(commits):
     found = {}
 
     def add(name, email, login, where):
-        if not (email or login):
+        if not (email or login or name):
             return
         # One person, one row. The same identity reaches us in two shapes: an
         # author or committer carries a resolved GitHub login beside the git
         # email, while a trailer carries the email alone. Keying on the email
         # merges the pair, so a contributor is not reported twice and a login
         # learned from one occurrence explains all of them.
-        key = email or f"login:{login.lower()}"
+        #
+        # A name alone is the third shape and it is kept rather than dropped: a
+        # `Co-authored-by: Name` with no `<address>` still names a party, and a
+        # party the roster cannot admit is the answer this gate exists to give.
+        # Discarding it here would report green on the trailer §7 most often has
+        # to refuse.
+        key = email or (f"login:{login.lower()}" if login else f"name:{name.lower()}")
         prior = found.get(key)
         if prior:
             prior.where.append(where)
@@ -221,12 +254,100 @@ def explain(ident, token):
                 f"{profile.get('public_repos', 0)} public repos")
     if not ident.login and ident.email:
         reasons.append("appears only as a trailer, with no GitHub account behind it")
+    if not ident.login and not ident.email:
+        reasons.append("a trailer with no <address> — it credits a party that cannot "
+                       "be resolved to anyone, so nothing can admit it")
     return reasons
 
 
 def die(msg):
     print(f"authorship gate: {msg}", file=sys.stderr)
     sys.exit(2)
+
+
+def selftest():
+    """Exercise the two rules that decide a verdict, without a network.
+
+    Both have a failure mode that reports success: an identity this file never
+    collects is never blocked, and a match arm that is too generous admits. Each
+    is invisible against a live pull request — the check goes green either way —
+    so they are asked here, where a wrong answer is a failed lint rather than a
+    merged commit.
+    """
+    def commit(msg, email="human@example.com", login="paceheart"):
+        side = {"name": "A Person", "email": email}
+        return {"sha": "0" * 40, "author": {"login": login},
+                "committer": {"login": login},
+                "commit": {"author": side, "committer": side, "message": msg}}
+
+    logins, emails = {"paceheart"}, {"ubiquity@gmail.com"}
+
+    def verdict(c):
+        """(label, admitted?) for every identity on one commit."""
+        return {i.label(): admitted(i, logins, emails) for i in collect([c])}
+
+    cases = []
+
+    def case(name, got, want):
+        cases.append((name, got == want, got, want))
+
+    # A trailer naming a party with no <address> is still a party. Dropping it is
+    # a green verdict on the trailer §7 most often has to refuse.
+    v = verdict(commit("t\n\nCo-authored-by: Some Agent"))
+    case("bare-name co-author is collected", len(v), 2)
+    case("bare-name co-author is blocked", v.get("Some Agent"), False)
+
+    v = verdict(commit("t\n\nSigned-off-by: Some Agent"))
+    case("bare-name sign-off is collected", len(v), 2)
+    case("bare-name sign-off is blocked", v.get("Some Agent"), False)
+
+    # An unadmitted account under an admitted address. The email is self-asserted,
+    # so this is the arm that must not decide.
+    v = verdict(commit("t", email="ubiquity@gmail.com", login="some-bot"))
+    case("rostered email cannot admit an unrostered login",
+         v.get("A Person <ubiquity@gmail.com>  (some-bot)"), False)
+
+    # And the ordinary passes, so the rule above is not simply refusing everyone.
+    v = verdict(commit("t", email="whatever@example.com", login="paceheart"))
+    case("rostered login is admitted whatever the email",
+         v.get("A Person <whatever@example.com>  (paceheart)"), True)
+
+    v = verdict(commit("t\n\nCo-authored-by: P <ubiquity@gmail.com>"))
+    case("rostered email admits a trailer", v.get("P <ubiquity@gmail.com>"), True)
+
+    v = verdict(commit("t\n\nCo-authored-by: X <nobody@example.com>"))
+    case("unrostered trailer is blocked", v.get("X <nobody@example.com>"), False)
+
+    # Trailer parsing: the spellings a real message carries.
+    v = verdict(commit("t\n\nco-authored-by:  P <ubiquity@gmail.com>  "))
+    case("trailer match is case- and space-insensitive",
+         v.get("P <ubiquity@gmail.com>"), True)
+
+    # Roster parsing: comments stripped, tokens split by kind, case folded.
+    text = "# comment\n\nAlice  ALICE@example.com  # inline\nbob\n"
+    with tempfile.NamedTemporaryFile("w", suffix=".roster", delete=False) as f:
+        f.write(text)
+        path = f.name
+    try:
+        rl, re_, owner = load_roster("x/y", "main", "", local=path)
+    finally:
+        os.unlink(path)
+    case("roster folds case and splits by kind", (rl, re_),
+         ({"alice", "bob"}, {"alice@example.com"}))
+    case("roster files every token under the first", owner.get("alice@example.com"), "Alice")
+
+    width = max(len(n) for n, _, _, _ in cases)
+    bad = 0
+    for name, good, got, want in cases:
+        print(f"  {'ok  ' if good else 'FAIL'}  {name.ljust(width)}"
+              + ("" if good else f"   got {got!r}, want {want!r}"))
+        bad += 0 if good else 1
+    print()
+    if bad:
+        print(f"authorship selftest: {bad} of {len(cases)} failed", file=sys.stderr)
+        return 1
+    print(f"authorship selftest: {len(cases)} checks, all pass")
+    return 0
 
 
 def event_context():
@@ -248,7 +369,12 @@ def main():
     ap.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY"))
     ap.add_argument("--base", help="branch holding the roster (default: the PR's base)")
     ap.add_argument("--roster", help="read a local roster file instead of the base branch (by hand only)")
+    ap.add_argument("--selftest", action="store_true",
+                    help="check the roster and matching rules against synthetic commits; no network")
     args = ap.parse_args()
+
+    if args.selftest:
+        return selftest()
 
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if not token:
@@ -262,8 +388,18 @@ def main():
         base = base or ev_base
     if pr is None:
         # push, schedule or dispatch: there is no pull request to read, and the
-        # branch itself is behind protection. Nothing to say.
-        print("authorship gate: no pull request in this event, nothing to check.")
+        # branch itself is behind protection.
+        #
+        # Said at length because a green run here is the thing most likely to be
+        # mistaken for the gate working. Dispatching the workflow is the obvious
+        # way to try it, and a dispatch is exactly the event with no authorship
+        # to read.
+        print("authorship gate: no pull request in this event, so nothing was checked.")
+        print("  A green run here is not the gate passing. It reads the commits of a")
+        print("  pull request; a push, a schedule and a manual dispatch have none, and")
+        print("  this run says only that it found none.")
+        print("  To exercise it against real commits, pass --pr <n> with a GITHUB_TOKEN,")
+        print("  or --selftest for the rules alone.")
         return 0
 
     meta, _ = api(f"/repos/{args.repo}/pulls/{pr}", token)
@@ -274,10 +410,15 @@ def main():
     print(f"  base {base}, {len(commits)} commit(s), roster {ROSTER_PATH}@{base}")
     print()
 
+    # Refused, not noted. GitHub's commit list for a pull request stops at 250, so
+    # past that the identities are simply unread — and a verdict over a prefix is
+    # indistinguishable from one over the whole, which is the shape of every gate
+    # that goes quietly green. Exit 2 is the same answer a missing roster gets: not
+    # "these commits are fine", but "this cannot be checked".
     if len(commits) >= 250:
-        print("  NOTE: GitHub caps this endpoint at 250 commits. Rebase or split the")
-        print("        pull request so every commit is readable.")
-        print()
+        die(f"GitHub caps this endpoint at 250 commits and this pull request reads "
+            f"{len(commits)}, so any commit past that is unread and its authorship "
+            f"unchecked. Rebase or split the pull request so every commit is readable.")
 
     logins, emails, owner_of = load_roster(args.repo, base, token, args.roster)
 
@@ -297,15 +438,14 @@ def main():
         print()
     idents = collect(commits)
 
-    admitted, blocked = [], []
+    ok, blocked = [], []
     for ident in idents:
-        hit = (ident.login.lower() in logins) or (ident.email in emails)
-        (admitted if hit else blocked).append(ident)
+        (ok if admitted(ident, logins, emails) else blocked).append(ident)
 
-    for ident in sorted(admitted, key=lambda i: i.label()):
+    for ident in sorted(ok, key=lambda i: i.label()):
         owner = owner_of.get(ident.login.lower()) or owner_of.get(ident.email) or "?"
         print(f"  ok       {ident.label()}  [{owner}]")
-    if admitted and blocked:
+    if ok and blocked:
         print()
 
     for ident in sorted(blocked, key=lambda i: i.label()):
