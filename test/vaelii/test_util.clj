@@ -323,6 +323,22 @@
 (defn tmp-ctx  ([] (symbol (str "Cx" (gensym "Tmp"))))
   ([base] (fresh-term :context base)))
 
+;; ---- query helpers -------------------------------------------------------
+
+(defn first-if-singleton
+  "Returns the first element if `coll` has exactly one item, otherwise nil.
+  Useful when a query must return *the* match, and zero or multiple is an error."
+  [coll]
+  (let [s (seq coll)]
+    (when (and s (nil? (next s)))
+      (first s))))
+
+(defn sentex-matching
+  "Returns the unique sentex matching `sentence` in `context`, or nil.
+  Nil when zero or more than one match — ambiguity is not a match."
+  [kb sentence context]
+  (first-if-singleton (v/sentexes-matching kb sentence context)))
+
 ;; ---- content snapshots + auto-teardown ----------------------------------
 
 (defn sentex-ids    [kb] (set (p/sentex-ids    (:records kb))))

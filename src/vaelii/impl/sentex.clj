@@ -383,14 +383,6 @@
 (def ist-functor  'ist)
 (def dot-marker   '.)
 
-(defn dotted?
-  "True when `form`'s argument list ends in a dotted-rest tail — `(pred a . ?rest)` or
-  `(?pred . ?rest)` — so the trailing variable binds the remaining arguments and the
-  form matches its functor at any arity.  Detected by `dot-marker` sitting as a
-  top-level element."
-  [form]
-  (boolean (and (sequential? form) (some #(= dot-marker %) form))))
-
 ;; ---- sentex handles: a stored sentex as a term --------------------------
 ;; A handle is `(sentexHandle <id>)` — the term form of a stored sentex's integer
 ;; handle, so a *meta-sentex* (`exceptWhen`, `except`) can name another sentex as an

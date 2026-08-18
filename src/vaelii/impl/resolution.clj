@@ -187,20 +187,6 @@
   reason to prefer the looser fallback."
   true)
 
-(defn- all-fact-handles
-  "Every stored **fact** handle, both polarities — the sound candidate superset for a
-  pattern with nothing indexable to lead with (a fully-open dotted `(?pred . ?args)`,
-  which matches its functor at every arity).  The functor roots span both polarities and
-  hold only facts — a rule contributes only its context — so a union over the top-level
-  functors is exactly the fact extent, never a rule, which an open positive trie walk
-  would not surface either.  `match-one`'s `unify` and truth check filter it to the
-  believed positive facts."
-  [ix]
-  (into #{}
-        (comp (filter symbol?)                 ; a functor, not the :false / :rule tag
-              (mapcat #(p/sentexes-with-functor ix %)))
-        (p/children ix [])))
-
 (defn- candidate-handles
   "The stored handles to unify `pat` against — always a superset of the positional
   trie hits (so `match-one`'s `unify` filters it to the identical set), chosen to
@@ -241,7 +227,7 @@
   Zero-regression by construction — the diverted case is the one the trie answers
   with a full fan-out.
 
-  **The decision is named before it is taken.**  The `cond` below yields one of eight
+  **The decision is named before it is taken.**  The `cond` below yields one of six
   keywords and the `case` under it does the read, so the access path a shape chose is a
   value: `vaelii.impl.profile` tallies it, and a reader has a word for each branch rather
   than a position in a `cond`."
@@ -257,16 +243,6 @@
             var-fn? (and (symbol? f) (sx/variable? f))
             var-idx (first (keep-indexed (fn [i a] (when-not (sx/ground-term? a) i)) args))
             ground  (keep-indexed (fn [i a] (when (sx/indexable-term? a) [(inc i) a])) args)
-            ;; a dotted-rest pattern (`(pred . ?args)` / `(?pred . ?args)`) binds a
-            ;; trailing rest-variable, so it matches its functor at *any* arity; its
-            ;; canonical path carries the `.` marker as a level no stored fact has, so
-            ;; the trie finds nothing and the arity-spanning roots source it instead.
-            ;; `dot-ground` are the indexable arguments *before* the marker — the only
-            ;; real positional args a dotted pattern has.
-            dotted?    (sx/dotted? body)
-            dot-ground (when dotted?
-                         (keep-indexed (fn [i a] (when (sx/indexable-term? a) [(inc i) a]))
-                                       (take-while #(not= sx/dot-marker %) args)))
             ;; something is still open and a ground root sits past it — the functor
             ;; being open (`(?type Muffet)`) puts *every* argument behind it, and with
             ;; nothing indexable to lead with there is no root to read, so the trie
@@ -297,20 +273,6 @@
               (and (= :false (:truth pat)) (not (sx/ground-term? body)))
               (if (or pred (seq ground)) :negative-roots :negative-fan)
 
-              ;; **A dotted-rest pattern** matches its functor at every arity, but its
-              ;; canonical path holds the `.` marker as a token no stored fact does, so
-              ;; `p/lookup` finds nothing and no branch below diverts it (the `.` is a
-              ;; non-indexable-*shaped* symbol that would otherwise read as a stuck
-              ;; ground argument).  The secondary roots span every arity: a concrete
-              ;; functor (with any leading ground argument) reads its functor-scoped
-              ;; roots, an open functor with a leading ground argument the
-              ;; predicate-agnostic slot roster — both a superset `unify` filters exact.
-              ;; A fully-open `(?pred . ?args)` pins nothing indexable, so it takes the
-              ;; whole positive-and-negative fact extent, filtered to the exact
-              ;; positive-fact set the same way.
-              (and (= :true (:truth pat)) dotted?)
-              (if (or pred (seq dot-ground)) :dotted-roots :dotted-fan)
-
               ;; A ground argument sitting **after** a variable, which the trie can reach
               ;; only by fanning out over the intervening variable.  This wins over the
               ;; structural walk below even when the stuck argument is a compound: the
@@ -334,8 +296,6 @@
                             (into #{} (mapcat #(p/lookup ix (assoc pth 1 %)))
                                   (p/children ix [:false])))
           :arg-roots      (p/sentexes-with-args ix pred ground)  ; intersect the scoped arg roots
-          :dotted-roots   (p/sentexes-with-args ix pred dot-ground)  ; functor / leading-arg roots, any arity
-          :dotted-fan     (all-fact-handles ix)                      ; open functor, nothing to lead with
           :structural     (p/lookup ix (sx/path pat))
           :functor-extent (p/sentexes-with-functor ix pred)
           :trie           (p/lookup ix (sx/path pat)))))))

@@ -771,7 +771,7 @@ the answers computed are identical, and all three are free where nothing is decl
 ## 0.7.0 — 2026-08-12 — "contexts get one spelling"
 
 - **Breaking: a context name is `Cx`-prefixed, not `Context`-suffixed.** `CoreContext`
-  is `CxCore`, `UniverseContext` is `CxUniverse`, and the `assert` front door refuses a
+  is `CxCore`, `CxUniverse` is `CxUniverse`, and the `assert` front door refuses a
   `Context`-suffixed name by the same naming check that already refused a malformed
   predicate or type. *Migration:* respell every context name — in a stored KB, an
   `assert` call, and a saved dump — to the `Cx` form. `docs/naming.md`.
