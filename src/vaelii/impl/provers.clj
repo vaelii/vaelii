@@ -1354,24 +1354,37 @@
 ;;
 ;; The predicate position reaches DOWN (a constraint on a super binds its
 ;; specializations — `constraining-predicates` is the super-predicate up-walk `check`
-;; uses), each type position reaches UP (a stored subtype constraint answers its
-;; supertypes — `genl?`).  On-demand and non-materializing, so it follows belief with no
-;; cache and `sentexes-matching` still shows only what was stored.  `arity` is NOT here:
-;; a sub-predicate may carry a signature of its own, and the answer would need the
-;; forward `arity`⇒type cycle a backward prover cannot fire; `check`'s `inherited-arity`
-;; still holds a silent sub-predicate to its supers.
+;; uses).  A type position's direction is its variance.  An *unconditional* type reaches
+;; UP (a stored subtype constraint answers its supertypes — `genl?`): `argIsa`/`argGenl`
+;; position 3 and `interArgIsa`'s target position 5.  `interArgIsa`'s *trigger* position
+;; 3 is the antecedent of a conditional, so it is contravariant and reaches DOWN: a
+;; stored `(interArgIsa P n animal m U)` already convicts every `mammal`-trigger fact (a
+;; mammal is an animal), so it answers the narrower `(interArgIsa P n mammal m U)` but
+;; never the wider `(… n thing m U)`, which would convict the non-animals `check` never
+;; touches.  Getting the trigger backwards is both unsound (the widening) and incomplete
+;; (the narrowing) against what `check` enforces — the same `assert`/`ask` agreement #20
+;; is about.  On-demand and non-materializing, so it follows belief with no cache and
+;; `sentexes-matching` still shows only what was stored.  `arity` is NOT here: a
+;; sub-predicate may carry a signature of its own, and the answer would need the forward
+;; `arity`⇒type cycle a backward prover cannot fire; `check`'s `inherited-arity` still
+;; holds a silent sub-predicate to its supers.
 (def ^:private meta-constraint-shape
   "By functor: the goal-list index of the predicate, the position-number indices that
-  must match a stored declaration exactly, and the type indices that reach up `genl`."
-  '{argIsa      {:pred 1 :fixed [2] :types [3]}
-    argGenl     {:pred 1 :fixed [2] :types [3]}
-    interArgIsa {:pred 1 :fixed [2 4] :types [3 5]}})
+  must match a stored declaration exactly, the type indices that reach UP `genl`
+  (covariant — a stored subtype answers its supertypes) and those that reach DOWN
+  (contravariant — a stored supertype answers its subtypes).  Only `interArgIsa`'s
+  trigger is contravariant; its target and the unconditional `argIsa`/`argGenl` type are
+  covariant."
+  '{argIsa      {:pred 1 :fixed [2] :types-up [3]}
+    argGenl     {:pred 1 :fixed [2] :types-up [3]}
+    interArgIsa {:pred 1 :fixed [2 4] :types-up [5] :types-down [3]}})
 
 (defn- meta-generalizes?
   "Does a stored declaration on `goal`'s predicate or a super-predicate answer `goal`
-  once its type positions are read up the `genl` closure?"
+  once each type position is read the way its variance allows — covariant positions up
+  the `genl` closure, the contravariant trigger down it?"
   [kb goal context]
-  (when-let [{:keys [pred fixed types]} (meta-constraint-shape (nm/functor goal))]
+  (when-let [{:keys [pred fixed types-up types-down]} (meta-constraint-shape (nm/functor goal))]
     (let [tax  (:taxonomy kb)
           k    (nm/functor goal)
           gvec (vec goal)
@@ -1385,7 +1398,10 @@
              (fn [[_h b]]
                (let [sval (fn [i] (if (= i pred) p' (get b (symbol (str "?g" i)))))]
                  (and (every? #(= (sval %) (nth gvec %)) fixed)
-                      (every? #(tax/genl? tax (sval %) (nth gvec %) context) types))))
+                      ;; covariant: the stored type sits at or below the queried one
+                      (every? #(tax/genl? tax (sval %) (nth gvec %) context) types-up)
+                      ;; contravariant: the queried type sits at or below the stored one
+                      (every? #(tax/genl? tax (nth gvec %) (sval %) context) types-down))))
              (res/matches-visible kb probe context))))
         (res/constraining-predicates kb k qp context))))))
 

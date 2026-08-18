@@ -1,15 +1,22 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.argpreserving-meta-test
-  "The meta-predicates carry `transitiveInArg` / `transitiveInArgInverse` on their own
-  argument positions, so the query surface answers the same generalizations `check`
-  already walks internally.  Before this, a stored `(argIsa petMammal 1 mammal)` was
-  the only thing `(ask (argIsa petMammal 1 animal))` could return — nothing — even
-  though `(genl mammal animal)` holds and `check` would accept an animal there.  The
-  fix is data, not engine: declaring the meta-predicates preserved along `genl` on
-  themselves (position 3/5 up the type, position 1 down the predicate) closes #20.
+  "The argument-type meta-predicates answer along the `genl` closure on the query
+  surface, so `ask` agrees with the generalization `check` already walks internally.
+  Before this, a stored `(argIsa petMammal 1 mammal)` was the only thing
+  `(ask (argIsa petMammal 1 animal))` could return — nothing — even though
+  `(genl mammal animal)` holds and `check` would accept an animal there, closing #20.
 
-  The KB here is CxCore alone, so what these tests read is the *shipped* declaration
+  The engine answers it in `provers/MetaConstraintProver`, a bounded closure walk, and
+  NOT by declaring the meta-predicates `transitiveInArg` — that would tax every one of
+  the KB's very many `argIsa`/`argGenl` lookups (see `resources/kb/CxCore.txt`).  The
+  predicate position (1) reaches DOWN `genl` (a constraint on a super binds its
+  specializations); an unconditional type reaches UP (a stored subtype answers its
+  supertypes — `argIsa`/`argGenl` position 3, `interArgIsa`'s target position 5); and
+  `interArgIsa`'s trigger position 3, being an antecedent, is contravariant and reaches
+  DOWN.
+
+  The KB here is CxCore alone, so what these tests read is the *shipped* vocabulary
   and not one they stated."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
@@ -66,20 +73,32 @@
       (is (v/ask? kb (list 'argGenl typeRel 1 animal) C))
       (is (empty? (v/sentexes-matching kb (list 'argGenl typeRel 1 animal) '?ctx))))))
 
-(tu/deftest-kb interArgIsa-answers-up-both-type-positions
-  ;; positions 3 and 5 are the two types; each is transitiveInArgInverse along genl
-  (tu/with-terms [myRel carnivore predator meat food]
+(tu/deftest-kb interArgIsa-trigger-narrows-down-target-widens-up
+  ;; The conditional constraint's two types have OPPOSITE variance.  The trigger
+  ;; (position 3) is the antecedent: `(interArgIsa myRel 1 carnivore 2 meat)` convicts
+  ;; every carnivore, so it convicts every lion (a lion is a carnivore) and answers the
+  ;; *subtype* trigger — but it says nothing about predators at large, so it does not
+  ;; answer the *supertype* trigger.  The target (position 5) is the consequent, an
+  ;; ordinary unconditional type: `meat` answers up to `food`.  Widening the trigger up
+  ;; (the old, wrong direction) would convict the non-carnivore predators `check` never
+  ;; touches — unsound; not answering the narrower lion trigger — incomplete.
+  (tu/with-terms [myRel lion carnivore predator meat food]
     (v/assert kb (list 'genl predator 'thing) C)
     (v/assert kb (list 'genl carnivore predator) C)
+    (v/assert kb (list 'genl lion carnivore) C)
     (v/assert kb (list 'genl food 'thing) C)
     (v/assert kb (list 'genl meat food) C)
     (v/assert kb (list 'interArgIsa myRel 1 carnivore 2 meat) C)
-    (testing "position 3 generalizes up its type"
-      (is (v/ask? kb (list 'interArgIsa myRel 1 predator 2 meat) C)))
-    (testing "position 5 generalizes up its type"
+    (testing "the trigger narrows DOWN — a subtype trigger is answered"
+      (is (v/ask? kb (list 'interArgIsa myRel 1 lion 2 meat) C)))
+    (testing "the trigger does NOT widen up — a supertype trigger convicts non-carnivores"
+      (is (not (v/ask? kb (list 'interArgIsa myRel 1 predator 2 meat) C))))
+    (testing "the target widens UP its type"
       (is (v/ask? kb (list 'interArgIsa myRel 1 carnivore 2 food) C)))
-    (testing "neither is materialized"
-      (is (empty? (v/sentexes-matching kb (list 'interArgIsa myRel 1 predator 2 meat) '?ctx))))))
+    (testing "trigger narrowed and target widened together"
+      (is (v/ask? kb (list 'interArgIsa myRel 1 lion 2 food) C)))
+    (testing "nothing is materialized"
+      (is (empty? (v/sentexes-matching kb (list 'interArgIsa myRel 1 lion 2 meat) '?ctx))))))
 
 (tu/deftest-kb arity-does-not-generalize-down-the-predicate
   ;; arity is deliberately NOT among the generalized meta-predicates.  Unlike a type

@@ -57,11 +57,13 @@
 (argIsa argIsa 1 predicate)
 (argIsa argIsa 2 integer)
 (argGenl argIsa 3 thing)
-;; argIsa / argGenl / interArgIsa generalize up genl on the query surface the way check
-;; walks them internally — answered by provers/MetaConstraintProver, and deliberately
-;; NOT declared transitiveInArg: the meta-predicates are among the most-queried there are,
-;; and routing them through the general preservation prover taxes every genl lookup in
-;; the KB.  arity stays a plain fact (a sub-predicate may carry its own signature).
+;; argIsa / argGenl / interArgIsa generalize along genl on the query surface the way
+;; check walks them internally — a stored subtype constraint answers its supertypes, and
+;; interArgIsa's trigger (arg 3), being an antecedent, answers its subtypes instead.
+;; Answered by provers/MetaConstraintProver, and deliberately NOT declared
+;; transitiveInArg: the meta-predicates are among the most-queried there are, and routing
+;; them through the general preservation prover taxes every genl lookup in the KB.  arity
+;; stays a plain fact (a sub-predicate may carry its own signature).
 
 (comment interArgIsa
          "(interArgIsa ?predicate ?position1 ?type1 ?position2 ?type2) means that whenever argument ?position1 of ?predicate is a ?type1, argument ?position2 must be a ?type2. The conditional argument constraint, and it says what argIsa cannot: (interArgIsa eats 1 carnivore 2 meat) types the second argument only for the eaters that are carnivores, where (argIsa eats 2 meat) would demand meat of every eater. Open-world in both directions, and they point opposite ways — silence about the trigger argument's type leaves the constraint dormant rather than firing it, while silence about the target argument's is what convicts. Checked through genl transitivity from the writing context, like argIsa, and it entails the same way under assertive argument types.")
