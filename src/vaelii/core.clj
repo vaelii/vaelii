@@ -4323,7 +4323,10 @@
             {:added added :removed (dissoc removed :seeds)}))))))
 
 (defn in?
-  "Is the sentex handle raw structural JTMS IN, before contextual exceptions?"
+  "Is the sentex handle raw structural JTMS IN, before contextual exceptions?
+
+  When this answers true but a contextual read cannot see the sentex, call
+  `belief-status` to inspect the exception and assertion-context inheritance gates."
   [kb handle]
   (jtms/in? (:tms kb) (the-handle handle "in?")))
 

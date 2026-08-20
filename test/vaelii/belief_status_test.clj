@@ -3,7 +3,7 @@
 (ns vaelii.belief-status-test
   "Contextual belief introspection: raw IN, exception force, and inheritance stay
   distinct while the status report agrees with the boolean and matching surfaces."
-  (:require [clojure.test :refer [is testing use-fixtures]]
+  (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.resolution :as res]
@@ -11,6 +11,10 @@
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
+
+(deftest raw-in-doc-points-to-contextual-diagnostics
+  (is (re-find #"belief-status" (:doc (meta #'v/in?)))
+      "the raw-IN read points a caller at the diagnostic for contextual disagreement"))
 
 (tu/deftest-kb contextual-belief-status-separates-every-gate
   (tu/with-terms [bright gem CxTop CxSibling CxLeaf]
