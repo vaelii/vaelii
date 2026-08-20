@@ -83,6 +83,18 @@
     (is (seq? (:sentence (access/sentex *remote*
                                         (access/handle-of *remote* '(dog Muffet) 'CxNaturalWorld)))))))
 
+(deftest contextual-belief-introspection-has-local-remote-parity
+  (let [h (v/handle-of tu/*kb* '(dog Muffet) 'CxNaturalWorld)
+        expected (v/belief-status tu/*kb* h 'CxNaturalWorld)]
+    (is (= (v/believed? tu/*kb* h 'CxNaturalWorld)
+           (access/believed? tu/*kb* h 'CxNaturalWorld)
+           (access/believed? (access/local tu/*kb*) h 'CxNaturalWorld)
+           (access/believed? *remote* h 'CxNaturalWorld)))
+    (is (= expected
+           (access/belief-status tu/*kb* h 'CxNaturalWorld)
+           (access/belief-status (access/local tu/*kb*) h 'CxNaturalWorld)
+           (access/belief-status *remote* h 'CxNaturalWorld)))))
+
 (deftest the-vocabulary-reads-the-same-over-the-wire
   ;; a remote client has no records to scan, so term enumeration has to be an op of its
   ;; own — and its ORDER has to survive EDN, which is why `terms` answers a vector

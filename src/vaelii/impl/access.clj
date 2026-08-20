@@ -84,7 +84,8 @@
        (def read-ops ~(mapv keyword names))))
 
 (defreads
-  query query? sentexes-matching ask ask? prove provable? sentex handle-of find-sentexes in? believed why-not
+  query query? sentexes-matching ask ask? prove provable? sentex handle-of find-sentexes
+  in? believed? belief-status believed why-not
   why isa? types-of disjoint? genls specs types contexts premise? defeat-class justification
   supporting-justifications dependent-justifications lookup escalate explain-levels count-in-context
   sentexes-in-context sentexes-with-arg sentexes-with-functor count-with-arg

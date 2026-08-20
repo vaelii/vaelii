@@ -4323,13 +4323,58 @@
             {:added added :removed (dissoc removed :seeds)}))))))
 
 (defn in?
-  "Is the sentex handle currently believed (JTMS IN)?"
+  "Is the sentex handle raw structural JTMS IN, before contextual exceptions?"
   [kb handle]
   (jtms/in? (:tms kb) (the-handle handle "in?")))
 
+(defn believed?
+  "Is `handle` JTMS IN after the `(except ...)` cascade visible from `context`?
+
+  This is contextual belief force only.  It deliberately does not require `context`
+  to inherit the sentex's assertion context; `belief-status` reports that final
+  visibility gate separately.  nil and unknown handles answer false; a non-handle is
+  refused with `:bad-handle`, exactly as `in?`."
+  [kb handle context]
+  (let [h (the-handle handle "believed?")]
+    (boolean (and (jtms/in? (:tms kb) h)
+                  (not (res/excepted? kb h context))))))
+
+(defn belief-status
+  "Explain `handle`'s belief and visibility from `context` as a deterministic map.
+
+  Separates storage, raw JTMS IN, context-visible exception force, assertion-context
+  inheritance, and the two terminal answers `:believed?` / `:visible?`.  `:exceptions`
+  is ordered by assertion context and content; nested meta-exceptions are under
+  `:excepted-by`.
+  nil and unknown handles report absent storage and raw belief; a dangling exception
+  may still appear in `:exceptions` / `:excepted?`. Malformed handles are refused with
+  `:bad-handle`."
+  [kb handle context]
+  (let [h       (the-handle handle "belief-status")
+        stored  (when-some [h h] (p/get-sentex (:records kb) h))
+        raw-in? (boolean (jtms/in? (:tms kb) h))
+        {:keys [exceptions excepted?]} (res/exception-status kb h context)
+        believed? (boolean (and raw-in? (not excepted?)))
+        assertion-context (:context stored)
+        path (when stored
+               (some->> (tax/reach-support (:taxonomy kb) :genlCx
+                                           context assertion-context context)
+                        (mapv (fn [[supporter-h supporter-context]]
+                                {:handle supporter-h :context supporter-context}))))]
+    {:handle h
+     :view-context context
+     :stored? (boolean stored)
+     :in? raw-in?
+     :assertion-context assertion-context
+     :exceptions exceptions
+     :excepted? excepted?
+     :inherited-path path
+     :believed? believed?
+     :visible? (boolean (and believed? (some? path)))}))
+
 (defn believed
-  "The subset of `handles` currently believed, as a set — `in?` asked of many handles
-  at once.  Belief is a label already computed on the JTMS node, so this is one map
+  "The subset of `handles` raw structural JTMS IN, as a set — `in?` asked of many
+  handles at once.  IN is a label already computed on the JTMS node, so this is one map
   read per handle either way; what the batch form saves is the **call**, which for a
   remote client (`vaelii.impl.serve`) is a whole round-trip.  A page listing n rows
   asks once instead of n times.

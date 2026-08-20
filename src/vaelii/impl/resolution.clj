@@ -11,6 +11,7 @@
   (:require [clojure.walk :as walk]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.literal-cache :as lc]
+            [vaelii.impl.naming :as nm]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.plan :as plan]
             [vaelii.impl.profile :as prof]
@@ -1080,6 +1081,90 @@
              ;; eh is not a target; it is active
              true)))))
 
+(defn- visible-exception-index
+  "The exception roster visible from `view-context`, flattened to
+  `{target-handle -> #{except-handle ...}}`, or nil when the ordinary no-exception
+  fast path applies.  Both the hot boolean reads and diagnostic exception forest use
+  this one index so they cannot disagree about scope."
+  [kb view-context]
+  (let [by-ctx @(:excepted kb)]
+    (when-not (or (empty? by-ctx) (sx/variable? view-context))
+      (let [up (tax/raw-context-up (:taxonomy kb) view-context)]
+        (not-empty
+         (reduce-kv
+          (fn [m ctx entries]
+            (if-not (contains? up ctx)
+              m
+              (reduce-kv (fn [m2 target ehs]
+                           (update m2 target (fnil into #{}) ehs))
+                         m entries)))
+          {} by-ctx))))))
+
+(defn- exception-states
+  "Evaluate the cascade once for every exception reachable from `roots`.
+
+  Returns `{handle {:in? bool :in-force? bool}}`.  Memoization keeps a linear chain
+  linear instead of re-walking every suffix while rendering the diagnostic forest.
+  `seen` retains the defensive cycle answer; valid graphs are stratified."
+  [tms target->ehs roots]
+  (let [states (atom {})]
+    (letfn [(active? [eh seen]
+              (if (contains? seen eh)
+                false
+                (if-some [state (get @states eh)]
+                  (:in-force? state)
+                  (let [in? (boolean (jtms/in? tms eh))
+                        ;; Eagerly evaluate every child: `not-any?` directly over the
+                        ;; recursive calls would short-circuit after one active child,
+                        ;; leaving its siblings absent from the diagnostic state map.
+                        child-active (mapv #(active? % (conj seen eh))
+                                           (get target->ehs eh))
+                        active (boolean (and in? (not-any? true? child-active)))]
+                    (swap! states assoc eh {:in? in? :in-force? active})
+                    active))))]
+      (doseq [eh roots] (active? eh #{}))
+      @states)))
+
+(defn- exception-node
+  "One deterministic diagnostic node in the exception forest.  `seen` is only the
+  defensive cycle witness; valid exception graphs are stratified and never take it."
+  [records states target->ehs eh seen]
+  (if (contains? seen eh)
+    {:handle eh :in? (get-in states [eh :in?] false) :in-force? false
+     :cycle? true :excepted-by []}
+    (let [seen' (conj seen eh)
+          {:keys [in? in-force?]} (get states eh)]
+      {:handle eh
+       :in? in?
+       :in-force? in-force?
+       :excepted-by (mapv #(exception-node records states target->ehs % seen')
+                          (nm/sort-by-content-key
+                           (fn [h]
+                             (let [s (p/get-sentex records h)]
+                               [(:context s) (:sentence s)]))
+                           (get target->ehs eh)))})))
+
+(defn exception-status
+  "Diagnostic exception forest for `handle` from `view-context`.
+
+  Returns `{:exceptions [...] :excepted? bool}`.  Roots are every visible exception
+  directly targeting `handle`, ordered by assertion context and content; nested
+  meta-exceptions live under `:excepted-by`."
+  [kb handle view-context]
+  (if-let [target->ehs (visible-exception-index kb view-context)]
+    (let [records (:records kb)
+          tms (:tms kb)
+          ordered-roots (nm/sort-by-content-key
+                         (fn [h]
+                           (let [s (p/get-sentex records h)]
+                             [(:context s) (:sentence s)]))
+                         (get target->ehs handle))
+          states (exception-states tms target->ehs ordered-roots)
+          roots (mapv #(exception-node records states target->ehs % #{}) ordered-roots)]
+      {:exceptions roots
+       :excepted? (boolean (some :in-force? roots))})
+    {:exceptions [] :excepted? false}))
+
 (defn excepted-handles
   "The handles hidden from `view-context` by believed `(except (sentexHandle H))`
   facts: an `except` asserted in a context `view-context` sees (its genlCx
@@ -1121,32 +1206,19 @@
   **A caller asking about particular handles wants `excepted?`**, which answers the same
   question without materializing this set."
   [kb view-context]
-  (let [by-ctx @(:excepted kb)]
-    (if (or (empty? by-ctx) (sx/variable? view-context))
-      #{}
-      (let [up  (tax/raw-context-up (:taxonomy kb) view-context)
-            tms (:tms kb)
-            ;; flatten the visible roster into a single target->ehs map for cascade
-            target->ehs (reduce-kv
-                         (fn [m ctx entries]
-                           (if-not (contains? up ctx)
-                             m
-                             (reduce-kv (fn [m2 target ehs]
-                                          (update m2 target (fnil into #{}) ehs))
-                                        m entries)))
-                         {} by-ctx)
-            ;; Meta-except counter gate: when zero, no except targets another except,
-            ;; so every believed except is trivially in force — skip the cascade.
-            has-meta? (pos? @(:meta-except-count kb))]
-        (persistent!
-         (reduce-kv (fn [acc target ehs]
-                      (if (if has-meta?
-                            (some #(except-in-force? tms target->ehs % #{}) ehs)
-                            (some #(jtms/in? tms %) ehs))
-                        (conj! acc target)
-                        acc))
-                    (transient #{})
-                    target->ehs))))))
+  (if-let [target->ehs (visible-exception-index kb view-context)]
+    (let [tms (:tms kb)
+          has-meta? (pos? @(:meta-except-count kb))]
+      (persistent!
+       (reduce-kv (fn [acc target ehs]
+                    (if (if has-meta?
+                          (some #(except-in-force? tms target->ehs % #{}) ehs)
+                          (some #(jtms/in? tms %) ehs))
+                      (conj! acc target)
+                      acc))
+                  (transient #{})
+                  target->ehs)))
+    #{}))
 
 (defn hidden-fn
   "A predicate `(fn [handle]) -> boolean` answering, for **one** `view-context`, what
@@ -1175,25 +1247,29 @@
   [kb view-context]
   (let [by-ctx @(:excepted kb)]
     (when-not (or (empty? by-ctx) (sx/variable? view-context))
-      (let [up  (tax/raw-context-up (:taxonomy kb) view-context)
-            ;; only the contexts that both state an except and are visible from here —
-            ;; computed once, so the predicate walks nothing it will always reject
+      (let [up (tax/raw-context-up (:taxonomy kb) view-context)
             live (into [] (comp (filter #(contains? up (key %))) (map val)) by-ctx)
-            tms  (:tms kb)
-            ;; flatten into target->ehs for cascade check
-            target->ehs (reduce (fn [m entries]
-                                  (reduce-kv (fn [m2 target ehs]
-                                               (update m2 target (fnil into #{}) ehs))
-                                             m entries))
-                                {} live)]
+            tms (:tms kb)]
         (when (seq live)
-          (let [has-meta? (pos? @(:meta-except-count kb))]
+          (if (pos? @(:meta-except-count kb))
+            (let [target->ehs (delay
+                                (reduce (fn [m entries]
+                                          (reduce-kv (fn [m2 target ehs]
+                                                       (update m2 target (fnil into #{}) ehs))
+                                                     m entries))
+                                        {} live))]
+              (fn [handle]
+                (let [roots (reduce (fn [ehs entries]
+                                      (into ehs (get entries handle)))
+                                    #{} live)]
+                  (boolean
+                   (when (seq roots)
+                     (some #(except-in-force? tms @target->ehs % #{}) roots))))))
             (fn [handle]
               (boolean
-               (when-let [ehs (get target->ehs handle)]
-                 (if has-meta?
-                   (some #(except-in-force? tms target->ehs % #{}) ehs)
-                   (some #(jtms/in? tms %) ehs)))))))))))
+               (some (fn [entries]
+                       (some #(jtms/in? tms %) (get entries handle)))
+                     live)))))))))
 
 (defn excepted?
   "Is the sentex at `handle` hidden from `view-context` by a believed `except`?  The

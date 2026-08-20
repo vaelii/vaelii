@@ -14,6 +14,8 @@
   "[[conn sentences context] [conn sentences context opts]]",
   assert-rule
   "[[conn antecedents consequent context] [conn antecedents consequent context opts]]",
+  belief-status "[[conn handle context]]",
+  believed? "[[conn handle context]]",
   call "[[conn op args] [conn op args opts]]",
   client "[[host port] [host port opts]]",
   conflicts "[[conn]]",
@@ -65,7 +67,9 @@
   assert-opt-keys :var,
   assert-rule
   "[[kb antecedents consequent] [kb antecedents consequent context] [kb antecedents consequent context opts]]",
+  belief-status "[[kb handle context]]",
   believed "[[kb handles]]",
+  believed? "[[kb handle context]]",
   bulk-assert-facts! "[[kb facts context] [kb facts context opts]]",
   caches "[[kb]]",
   calculi "[[]]",

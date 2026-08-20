@@ -168,6 +168,8 @@
   ([conn goal context] (call conn :provable? [goal context])))
 
 (defn in? [conn handle] (call conn :in? [handle]))
+(defn believed? [conn handle context] (call conn :believed? [handle context]))
+(defn belief-status [conn handle context] (call conn :belief-status [handle context]))
 (defn why [conn handle] (call conn :why [handle]))
 
 (defn why-not
