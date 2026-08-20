@@ -210,6 +210,14 @@
 (s/fdef vaelii.core/contexts-of
   :args (s/cat :kb ::kb :sentence ::sentence))
 
+(s/fdef vaelii.core/believed?
+  :args (s/cat :kb ::kb :handle ::handle-arg :context ::context)
+  :ret boolean?)
+
+(s/fdef vaelii.core/belief-status
+  :args (s/cat :kb ::kb :handle ::handle-arg :context ::context)
+  :ret map?)
+
 ;; ---- reads: the lookup-to-query stack -----------------------------------
 
 (s/fdef vaelii.core/lookup
@@ -421,6 +429,8 @@
     vaelii.core/sentexes-with-arg
     vaelii.core/count-with-arg
     vaelii.core/in?
+    vaelii.core/believed?
+    vaelii.core/belief-status
     vaelii.core/sentex
     vaelii.core/justification
     vaelii.core/premise?

@@ -267,8 +267,16 @@ default-chain-opts                              ; the bounds a chain run takes w
 (provenance kb handle)                          ; the per-handle bookkeeping map, or nil
 (add-provenance kb handle m)                     ; merge application fields into it
 (retract! kb handle)                            ; teardown -> {:removed-sentexes n :removed-justifications n}
-(in? kb handle)
-(believed kb handles)                           ; in? in batch -> the set of handles that are IN
+(in? kb handle)                                 ; raw structural JTMS IN, before contextual exceptions
+(believed? kb handle context)                   ; IN after exceptions visible from context, before
+                                                ; assertion-context inheritance
+(belief-status kb handle context)               ; deterministic diagnostic map:
+                                                ; {:handle :view-context :stored? :in?
+                                                ;  :assertion-context :exceptions :excepted?
+                                                ;  :inherited-path :believed? :visible?}
+                                                ; :exceptions is context/content ordered; every node
+                                                ; is {:handle :in? :in-force? :excepted-by}
+(believed kb handles)                           ; in? in batch -> the set of raw-IN handles
 (why kb handle opts?)                           ; proof tree: support -> rule + recursive antecedents,
                                                 ; terminating at premises, cycle-guarded, originalized
                                                 ; opts {:max-depth n} (default 256); a branch at the

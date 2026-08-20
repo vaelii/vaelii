@@ -108,6 +108,8 @@
    :prove        (op v/prove)
    :provable?    (op v/provable?)
    :in?          (op v/in?)
+   :believed?    (op v/believed?)
+   :belief-status (op v/belief-status)
    :believed     (op v/believed)
    :why          (op v/why)
    :why-not      (op v/why-not)

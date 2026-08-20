@@ -114,6 +114,14 @@
           (is (:ok r))
           (is (map? (:result r)))
           (is (= (list dog Muffet) (:sentence (:result r))))))
+      (testing "contextual belief and its status dispatch as EDN-clean reads"
+        (let [h (v/handle-of kb (list dog Muffet) CxServe)
+              believed-r (post-op handler :believed? [h CxServe])
+              status-r   (post-op handler :belief-status [h CxServe])]
+          (is (= {:ok true :result true :status 200} believed-r))
+          (is (:ok status-r))
+          (is (= h (get-in status-r [:result :handle])))
+          (is (true? (get-in status-r [:result :visible?])))))
       (testing "preview answers what a batch would believe, and stores nothing"
         ;; served with the writes because it applies the batch and rolls it back — the
         ;; daemon is the single writer, which is exactly the condition it needs

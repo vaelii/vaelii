@@ -102,9 +102,21 @@
   ([conn goal context] (c/provable? conn goal context)))
 
 (defn in?
-  "Whether the sentex `handle` names is currently believed."
+  "Whether the sentex `handle` names is raw JTMS IN."
   [conn handle]
   (c/in? conn handle))
+
+(defn believed?
+  "Whether `handle` is JTMS IN after exceptions visible from `context`, before
+  assertion-context inheritance."
+  [conn handle context]
+  (c/believed? conn handle context))
+
+(defn belief-status
+  "Storage, raw IN, exception forest, inheritance path, belief, and visibility for
+  `handle` as viewed from `context`."
+  [conn handle context]
+  (c/belief-status conn handle context))
 
 (defn why
   "Why the sentex `handle` names is believed — its supporting justifications, as data."
