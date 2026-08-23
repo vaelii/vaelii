@@ -317,6 +317,12 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; opts: `query-opt-keys`, checked at THIS door — a
                                                 ; misspelt depth checked downstream is never checked at
                                                 ; all, and answers :unknown for a derivable sentence
+                                                ; :for-why / :against-why are `why`'s JTMS map, for a
+                                                ; side the store holds; :for-derivation /
+                                                ; :against-derivation are `query`'s {:proof? true} tree,
+                                                ; for a side a rule derived instead.  A side carries at
+                                                ; most one — the derivation is the fallback, and needs a
+                                                ; positive depth and a ground sentence
 ;; introspection: sentex, justification, supporting-justifications, dependent-justifications, premise?, defeat-class
 ;;   both justification listings are ordered by CONTENT — the informant's own sentence,
 ;;   then the antecedent sentences — and so is the antecedent vector inside each

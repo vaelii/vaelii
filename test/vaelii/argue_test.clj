@@ -41,7 +41,73 @@
     (testing "without opts: ask does not fire backward rules"
       (is (= :unknown (:verdict (v/argue kb (list hasFur Muffet) 'CxUniverse)))))
     (testing "with max-depth: rules fire"
-      (is (= :true (:verdict (v/argue kb (list hasFur Muffet) 'CxUniverse {:max-depth 3})))))))
+      (is (= :true (:verdict (v/argue kb (list hasFur Muffet) 'CxUniverse {:max-depth 3})))))
+    (testing "and the rule-derived side carries the search's derivation, not a JTMS why"
+      ;; the conclusion of a backward rule is never stored, so the JTMS has nothing to
+      ;; explain it with and `:for-why` is the wrong key to look under
+      (let [r (v/argue kb (list hasFur Muffet) 'CxUniverse {:max-depth 3})]
+        (is (nil? (:for-why r)))
+        (is (seq (:for-derivation r)))
+        (is (= (list hasFur Muffet) (:goal (first (:for-derivation r)))))
+        (is (= :rule (:via (first (:for-derivation r)))))))))
+
+(tu/deftest-kb argue-a-stored-side-carries-the-jtms-why-and-no-derivation
+  ;; the two explanations are a fallback, not a pair: where the JTMS answers, the search
+  ;; is not run at all — a tree nobody reads costs a whole query
+  (tu/with-terms [dog Muffet]
+    (v/assert kb (list dog Muffet) 'CxUniverse)
+    (let [r (v/argue kb (list dog Muffet) 'CxUniverse {:max-depth 3})]
+      (is (= :true (:verdict r)))
+      (is (true? (:believed? (:for-why r))))
+      (is (nil? (:for-derivation r))))))
+
+(tu/deftest-kb argue-derives-no-tree-for-a-pattern-or-at-depth-zero
+  (tu/with-terms [dog hasFur Muffet Rex]
+    (v/assert kb (list dog Muffet) 'CxUniverse)
+    (v/assert kb (list dog Rex) 'CxUniverse)
+    (v/assert-rule kb [(list dog '?x)] (list hasFur '?x) 'CxUniverse {:direction :backward})
+    (testing "a pattern answers once per binding, so one tree off the front names none of them"
+      (let [r (v/argue kb (list hasFur '?who) 'CxUniverse {:max-depth 3})]
+        (is (= :true (:verdict r)))
+        (is (= 2 (count (:for r))) "both answers are reported")
+        (is (nil? (:for-derivation r)) "and no tree claims to explain them")))
+    (testing "depth 0 expands no rule, so a side it still answers has no derivation"
+      ;; the goal has to be provable at depth 0 for this to say anything: an unprovable
+      ;; one carries no derivation because it carries no `:for` either
+      (let [r (v/argue kb (list dog Muffet) 'CxUniverse {:max-depth 0})]
+        (is (= :true (:verdict r)))
+        (is (nil? (:for-derivation r)))))))
+
+(tu/deftest-kb argue-a-prover-answered-side-carries-the-one-node-the-search-took
+  ;; `genl` transitivity is the registry's answer, not a rule's — nothing is stored, so
+  ;; the JTMS has no why, and the search's tree is the single `:leaf` node it walked.
+  ;; True, and as much as the search knows: pinned because it is the shape every
+  ;; taxonomy-, evaluatable- and calculus-answered side reports
+  (tu/with-terms [dog animal Muffet]
+    (v/assert kb (list dog Muffet) 'CxUniverse)
+    (v/assert kb (list 'genl dog animal) 'CxUniverse)
+    (let [r (v/argue kb (list animal Muffet) 'CxUniverse {:max-depth 3})]
+      (is (= :true (:verdict r)))
+      (is (nil? (:for-why r)) "the transitive conclusion is not stored")
+      (is (= [{:goal (list animal Muffet) :via :leaf}] (:for-derivation r))))))
+
+(tu/deftest-kb argue-explains-both-sides-of-a-contradiction
+  ;; the asymmetry this pair of keys exists to close: before, a side a rule derived was
+  ;; reported as provable and left unexplained, so an adjudicating caller saw evidence
+  ;; for the stored side and silence for the other
+  (tu/with-terms [dog barks Muffet]
+    (v/assert kb (list dog Muffet) 'CxUniverse {:strength :monotonic})
+    (v/assert-rule kb [(list dog '?x)] (list barks '?x) 'CxUniverse
+                   {:direction :backward :strength :default})
+    (v/assert kb (list 'not (list barks Muffet)) 'CxUniverse {:strength :monotonic})
+    (let [r (v/argue kb (list barks Muffet) 'CxUniverse {:max-depth 3})]
+      (is (= :contradiction (:verdict r)))
+      (testing "the stored side reads from the JTMS"
+        (is (= :monotonic (:defeat-class (:against-why r))))
+        (is (nil? (:against-derivation r))))
+      (testing "the derived side reads from the search"
+        (is (nil? (:for-why r)))
+        (is (= :rule (:via (first (:for-derivation r)))))))))
 
 (tu/deftest-kb argue-monotonic-wins-over-default
   (tu/with-terms [hungry Muffet]

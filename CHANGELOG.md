@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — 0.11.1-SNAPSHOT
+
+- **`argue` explains a side a rule derived, not only a side the store holds.** A verdict
+  reached by rule expansion was reported as provable and left unexplained: `:for-why` and
+  `:against-why` read the JTMS, which has nothing to say about a conclusion no sentex
+  holds, so an adjudicating caller saw evidence for a stored side and silence for the
+  other — in the `:contradiction` case, silence for exactly the half under dispute. The
+  search's own derivation now comes back beside them under **`:for-derivation`** /
+  **`:against-derivation`**: `query`'s `{:proof? true}` tree, the same value that door
+  returns. Two keys rather than two shapes of one, because the two explanations read
+  differently (`:goal` / `:via` / `:because` against `:sentence` / `:informant` /
+  `:support`) and answer different questions — a belief record against a search trace. A
+  derivation needs a positive `:max-depth` and a ground sentence, and is a **fallback**:
+  where the JTMS answers, the search is not run. *Class:* **Additive** — no existing key
+  changes shape or drops, and a side carries at most one of the two.
+  *Migration:* none. [docs/api.md](docs/api.md), [docs/inference.md](docs/inference.md)
+
 ## 0.11.0 — 2026-08-22 — "contradiction solving, arrival order, and the durable log"
 
 - **`antiTransitive` convicts the chain it forbids.** `(antiTransitive P)` shipped

@@ -6017,6 +6017,34 @@
     (when (in? kb h)
       (why kb h))))
 
+(defn- argue-derivation
+  "The search's own derivation of `goal` in `context` — `query`'s `{:proof? true}` tree —
+  or nil.  The complement of `argue-justification`: that one reads the JTMS and explains a
+  **stored** belief, this one reads the search and explains an **ephemeral** one, which is
+  the only explanation a side a rule derived has.  Different reads from different places,
+  so `argue` reports them under different keys rather than as two shapes of one.
+
+  Three conditions, each of them a way the tree would otherwise be a lie:
+
+  - a **positive** depth.  At 0 no rule expanded and `query` takes the registry arm, which
+    has no proof to return — the extra search would cost a query and find nothing.
+  - a **ground** goal.  A pattern answers once per binding and `query` returns one tree per
+    answer, so a single tree taken off the front explains one answer the caller cannot
+    identify, over the canonical variables rather than over its bindings.
+  - `results` are reused when the caller already asked for proofs, since the answers then
+    carry their own and re-running the search would only find them again.
+
+  A goal a *prover* answered rather than a rule reaches here too, and its tree is the one
+  node the search took (`:via :leaf`): true, and as much as the search knows."
+  [kb goal context opts results]
+  (let [d (:max-depth opts)]
+    (when (and (nat-int? d)
+               (pos? (long d))
+               (not (sx/some-symbol? sx/variable? goal)))
+      (if (:proof? opts)
+        (:proof (first results))
+        (:proof (first (query kb goal context (assoc opts :proof? true))))))))
+
 (defn- argue-defeat-class
   "The JTMS defeat-class (`:monotonic` / `:default`) of `sentence` in `context`, or nil."
   [kb sentence context]
@@ -6043,8 +6071,18 @@
       {:verdict     :true | :false | :unknown | :contradiction
        :for         <results for asent, when provable>
        :against     <results for (not asent), when provable>
-       :for-why     <justification for asent, when stored and believed>
-       :against-why <justification for (not asent), when stored and believed>}
+       :for-why     <JTMS justification for asent, when stored and believed>
+       :against-why <JTMS justification for (not asent), when stored and believed>
+       :for-derivation     <the search's proof tree, when a rule answered instead>
+       :against-derivation <the same, for (not asent)>}
+
+  **Two kinds of explanation, under two keys.**  `:for-why` is `why`'s JTMS map and
+  explains a *stored* belief; `:for-derivation` is `query`'s `{:proof? true}` tree and
+  explains an *ephemeral* one, which is the only explanation a side a rule derived has.
+  They read differently — `:goal` / `:via` / `:because` against `:sentence` /
+  `:informant` / `:support` — and a side carries at most one of them, so a caller reads
+  whichever key is there rather than discriminating inside a single key.  A derivation
+  needs a positive depth and a ground `asent`; `argue-derivation` says why.
 
   Without opts it uses `ask` (ground facts + prover registry, no rule expansion);
   callers who want rules to fire MUST pass `{:max-depth N}` explicitly — a silent
@@ -6070,27 +6108,23 @@
          against-r (argue-results kb neg context opts)
          pos?      (boolean (seq for-r))
          neg?      (boolean (seq against-r))
-         ;; JTMS justification — stored beliefs only
+         ;; the JTMS's answer: a stored, believed side only
          for-j     (argue-justification kb asent context)
          against-j (argue-justification kb neg context)
-         ;; Inference justification fallback (gate 2): when the JTMS has no
-         ;; stored justification but the query succeeded with rule expansion,
-         ;; re-query with :proof? true to get the inference tree.
-         for-j     (or for-j
-                       (when (and pos? (:max-depth opts))
-                         (when-let [p (:proof (first (query kb asent context
-                                                            (assoc opts :proof? true))))]
-                           {:kind :inference :tree p})))
-         against-j (or against-j
-                       (when (and neg? (:max-depth opts))
-                         (when-let [p (:proof (first (query kb neg context
-                                                            (assoc opts :proof? true))))]
-                           {:kind :inference :tree p})))
+         ;; and the search's, for a side a rule answered rather than the store.  A
+         ;; fallback rather than a second opinion: where the JTMS has a justification it
+         ;; is the better answer, and asking for a tree nobody reads costs a whole query
+         for-d     (when (and pos? (not for-j))
+                     (argue-derivation kb asent context opts for-r))
+         against-d (when (and neg? (not against-j))
+                     (argue-derivation kb neg context opts against-r))
          base      (cond-> {}
                      pos?      (assoc :for for-r)
                      neg?      (assoc :against against-r)
                      for-j     (assoc :for-why for-j)
-                     against-j (assoc :against-why against-j))]
+                     against-j (assoc :against-why against-j)
+                     for-d     (assoc :for-derivation for-d)
+                     against-d (assoc :against-derivation against-d))]
      (cond
        (and pos? (not neg?)) (assoc base :verdict :true)
        (and neg? (not pos?)) (assoc base :verdict :false)
