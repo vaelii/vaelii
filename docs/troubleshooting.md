@@ -152,6 +152,7 @@ without storing anything, and answers with the identical problem.
 | `:not-well-formed` | a malformed connective frame, such as a bare `(implies)` |
 | `:not-range-restricted` | a rule variable in the consequent that no antecedent binds |
 | `:arg-type` / `:arg-genl` | an `arg` / `genlArg` constraint convicted it — [argtypes.md](argtypes.md) |
+| `:arg-variable` | a **rule** variable two argument constraints demand disjoint types of — [taxonomy.md](taxonomy.md) |
 | `:disjoint` / `:functional` / `:asymmetric` | a definitional clash — [exceptions.md](exceptions.md) |
 | `:unknown-option` | an option key nothing reads, or a non-map `opts` |
 

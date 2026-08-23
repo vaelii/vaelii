@@ -491,7 +491,10 @@
        (symbol? (first form))
        (= do-namespace (namespace (first form)))))
 
-(defn- negation? [form]
+(defn negation?
+  "Is `form` a negation `(not <body>)`?  Arity checked, so a `not` at any other arity
+  is not one."
+  [form]
   (and (sequential? form) (= not-functor (first form)) (= 2 (count form))))
 
 (defn implies?

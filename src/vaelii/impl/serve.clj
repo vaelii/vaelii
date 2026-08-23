@@ -274,7 +274,8 @@
   born, and `wire_contract_test` pins the pairing."
   #{:naming :not-well-formed :not-ground :not-range-restricted :not-indexable
     :shape :not-encodable
-    :arg-type :inter-arg-type :arg-genl :quoted-arg-type :arg-position :arg-constraint-kind :arity
+    :arg-type :inter-arg-type :arg-genl :quoted-arg-type :arg-position :arg-constraint-kind
+    :arg-variable :arity
     :disjoint :functional :asymmetric :anti-transitive :unknown-option :bad-handle
     :unknown-handle :bad-level :exception-not-closed :not-stratified :naf-not-closed
     :quantifier-not-local :quantified-conjunction

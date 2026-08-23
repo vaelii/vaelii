@@ -1101,6 +1101,7 @@
    :quoted-arg-type      "quoted arg"
    :arg-position         "arg slot"
    :arg-constraint-kind  "arg kind"
+   :arg-variable         "arg var"
    :arity                "arity"
    :disjoint             "disjoint"
    :asymmetric           "both ways"

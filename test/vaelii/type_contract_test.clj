@@ -150,7 +150,7 @@
   or renamed keyword fails the comparison below until it is added here deliberately —
   with a changelog entry, since callers discriminate on it (CONTRIBUTING.md §3.8)."
   #{:already-loaded :anti-symmetric :anti-transitive :arg-constraint-kind :arg-genl :arg-position
-    :arg-type :arity :asymmetric :bad-algebra :bad-arg
+    :arg-type :arg-variable :arity :asymmetric :bad-algebra :bad-arg
     :bad-args :bad-cursor :bad-foreign-manifest :bad-handle :bad-host
     :bad-level :bad-registrant :bad-reply
     :bad-snapshot :bad-table-entry :base-is-overlay :body-too-large

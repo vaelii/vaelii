@@ -2,7 +2,7 @@
 
 - **Covers:** how the `genl` type hierarchy is cached and queried, how `disjoint` /
   `disjointMetatype` are enforced, and how `arg` / `genlArg` constrain arguments as a
-  rejection check.
+  rejection check — of a ground sentence, and of a rule's shared variables.
 - **Not here:** `genlCx`, the sibling closure over contexts rather than types →
   [contexts.md](contexts.md); `arg` / `genlArg` read as an entailment that mints a
   stored, justified fact → [argtypes.md](argtypes.md).
@@ -1279,6 +1279,50 @@ rejects a wrongly-typed argument), and as an *inference* when querying — the
 `ArgTypeProver` (see [inference.md](inference.md)) concludes an individual's type
 from the arg-constrained position it fills, so a thing's type can follow from
 how it is used, not only from a stored membership.
+
+### And against the variables of a rule
+
+`args-problem` reads a **ground** argument. Every argument of a rule is a variable, so
+it passes over all of them vacuously — and a rule whose variable-binding chain feeds an
+impossible term into a position is stored, fires, and is then convicted one conclusion
+at a time by a complaint naming the conclusion and never the rule that wrote it.
+
+A variable is one term standing in several positions at once, so
+`checks/check-variable-constraints!` holds the positions to **each other** before the
+rule is stored — on both storage doors and in `check`, since it rides `check-rule!`.
+It refuses `:arg-variable`:
+
+```clojure
+(v/check kb '(implies (comment ?x ?string) (genl ?x ?string)) 'CxUniverse)
+;; [{:type :arg-variable :variable ?string :expected [character_string unaryPredicate]
+;;   :message "arg constraint: ?string must be a character_string (arg 2 of comment)
+;;             and a type (arg 2 of genl, a typeRelationPredicate), and the two types
+;;             are disjoint"}]
+```
+
+`(implies (arg ?pred ?n ?kind) (genl ?pred ?kind))` is the shape that must *pass*, and
+does: `?kind` is asked for a kind at both ends.
+
+**A type-level position asks for a `unaryPredicate`**, which is what makes the two
+demands comparable at all — `disjoint` separates *memberships*, and a subtype demand is
+not one until it is read as the membership every type carries. A position is type-level
+when a `genlArg` names it **or** when its predicate is a `typeRelationPredicate`, the
+mark saying that of every position at once; that second half is how `genl`'s second
+argument is constrained, since it deliberately carries no declaration of its own
+(CxCore says why).
+
+Three restrictions keep the arm to what it can actually prove:
+
+- **Instance demand against instance demand only.** Two *subtype* demands are left
+  alone: a type below two disjoint types is empty, not impossible, and nothing else in
+  the KB refuses an empty type.
+- **Positive literals only.** A negated antecedent says the variable does *not* fill
+  that position, so `(implies (and (dog ?x) (not (plant ?x))) …)` is saying exactly what
+  its author meant; an existential is skipped because its variables are local.
+- **Declared disjointness only**, so the arm stays as open-world as the ground one. The
+  literal types carry the declaration that makes the case above bite —
+  `(disjoint character_string predicate)` and `(disjoint integer predicate)` in
+  CxAbstract, text and a number each being a thing no relation is.
 
 ## What is cached, what is not, and why
 

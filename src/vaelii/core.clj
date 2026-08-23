@@ -1989,7 +1989,8 @@
 (defn- rule-problems
   "The pre-storage checks a rule must pass — per conjunct of its consequent, since
   `assert` checks every conjunct of a polycanonicalized rule before storing any of
-  them.  Covers the imperative ban, range-restriction, naming, and stratification."
+  them.  Covers the imperative ban, range-restriction, naming, the argument constraints
+  the rule's own variables carry, and stratification."
   [kb sentence context]
   (first-problems
    (for [form (rules/expand-consequent sentence)]
@@ -2044,6 +2045,8 @@
     :not-stratified        a cycle through negation the rule or edge would close
     :not-assertible        a `do/` imperative inside a rule
     :arg-type              an arg constraint on an argument
+    :arg-variable          two argument constraints on one rule variable that no
+                           term satisfies at once
     :disjoint              a type membership the taxonomy separates
     :functional            a second, irreconcilable value for a functional slot
     :asymmetric            the converse of a claim a declared-asymmetric relation made
@@ -3993,7 +3996,7 @@
   | `:not-well-formed` | a minted sentence a special predicate's own structure check refuses | `:problems` `:message` |
   | `:naming` | a minted sentence breaking a naming invariant — the spellings in docs/naming.md | `:message` |
   | `:no-placement` | the join completed and no context sees the rule, every antecedent fact, and the `genl` edges the match climbed | `:rule-context` `:fact-contexts` `:subsumed` `:would-place` `:message` |
-  | `:not-range-restricted` / `:not-indexable` / `:not-assertible` / `:exception-not-closed` / `:naf-not-closed` / `:quantifier-not-local` / `:quantified-conjunction` | a rule a **generator** minted that the rule checks refuse — the list both storage doors read, so a mint owes what an author's rule owes | the refusal's own keys, and `:message` |
+  | `:not-range-restricted` / `:not-indexable` / `:not-assertible` / `:exception-not-closed` / `:naf-not-closed` / `:quantifier-not-local` / `:quantified-conjunction` / `:arg-variable` | a rule a **generator** minted that the rule checks refuse — the list both storage doors read, so a mint owes what an author's rule owes | the refusal's own keys, and `:message` |
 
   An **arbitrable** clash is not dropped when a *rule* concluded it: a firing has no
   caller to refuse, so the conclusion is placed and this settle weighs the pair, which is

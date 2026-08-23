@@ -1024,7 +1024,7 @@ nesting of the two are classified alike. Every rejection carries an `ex-info` `:
 so a caller discriminates on that rather than guessing from which keys are present:
 `:naming` `:not-well-formed` `:not-ground` `:not-range-restricted` `:not-indexable`
 `:not-assertible` `:arity` `:arg-type` `:arg-genl` `:arg-position` `:inter-arg-type`
-`:arg-constraint-kind` `:disjoint` `:functional` `:asymmetric` `:not-stratified`
+`:arg-constraint-kind` `:arg-variable` `:disjoint` `:functional` `:asymmetric` `:not-stratified`
 `:exception-not-closed`, plus the two about the *request* rather than the knowledge —
 `:shape` (the context is not a symbol, the sentence is not an s-expression, or it is a
 vector — which is how a query spells a conjunction, so one spelling would store a

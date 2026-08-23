@@ -214,7 +214,9 @@
 ;; cannot satisfy: genl is irreflexive here, so (genl thing thing) is refused as
 ;; not-well-formed. Under the assertive reading the declaration would therefore entail
 ;; a conclusion the KB drops, once per genl edge naming thing. A constraint the root
-;; fails is the wrong constraint, not a missing one.
+;; fails is the wrong constraint, not a missing one. The position is not thereby
+;; unconstrained: genl is a typeRelationPredicate, which says of every one of its
+;; positions what genlArg says of one, and the rule-variable check reads it that way.
 
 (comment reifiableFunction
          "(reifiableFunction ?function) means that ?function denotes an object. A ground application of it is a non-atomic term, and reifies to an opaque nat/-namespaced constant before it reaches the index, so it autoindexes like an atomic symbol while every page still renders it as the expression it was minted from. See docs/nat.md.")

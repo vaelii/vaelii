@@ -456,7 +456,7 @@ It returns a **vector of problems**, empty when the sentence is admissible.  Eac
 map with the `:type` keyword `assert` would have thrown — `:naming`, `:not-ground`,
 `:not-well-formed`, `:not-range-restricted`, `:not-indexable`, `:not-stratified`,
 `:not-assertible`, `:exception-not-closed`, `:arg-type`, `:arg-genl`, `:arg-position`, `:inter-arg-type`,
-`:arg-constraint-kind`, `:arity`, `:disjoint`, `:functional`, `:asymmetric` — a readable
+`:arg-constraint-kind`, `:arg-variable`, `:arity`, `:disjoint`, `:functional`, `:asymmetric` — a readable
 `:message`, and whatever else that check knows (`:arg` / `:expected` / `:position` for an
 arg breach, plus `:trigger` and `:trigger-position` for the `interArg` form, which
 names the argument whose type made the constraint fire; `:cycle` for a stratification
