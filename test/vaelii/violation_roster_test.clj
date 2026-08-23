@@ -222,7 +222,7 @@
    "checks/rule-violation"
    {:kinds #{:naming :not-well-formed :not-stratified :not-range-restricted :not-indexable
              :not-assertible :exception-not-closed :naf-not-closed :quantifier-not-local
-             :quantified-conjunction}
+             :quantified-conjunction :arg-variable}
     :why   (str "carries out whatever `:type` `check-rule!` threw, defaulting to "
                 "`:not-well-formed` — so its kinds are the rule checks' refusal "
                 "vocabulary, minted across `checks`, `rules`, `sentex` and `naming`")}

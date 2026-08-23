@@ -2442,6 +2442,171 @@
     (throw (ex-info (str "a do/ imperative cannot appear in a rule: " (pr-str bad))
                     {:type :not-assertible :form bad :sentence sentence}))))
 
+;; ---- the argument constraints a rule's variables carry -------------------
+;;
+;; `args-problem` holds a **ground** argument to what its position declares.  Every
+;; argument of a rule is a variable, so that arm passes over all of them vacuously and
+;; the rule is stored — and then each fact the rule concludes is convicted one at a
+;; time, by a complaint naming the conclusion and never the rule that wrote it.
+;;
+;; A variable is one term standing in several positions at once, though, so the
+;; positions can be held to **each other** before anything fires.  A variable an
+;; antecedent binds through `(arg comment 2 character_string)` and a consequent places
+;; into `(genl ?x ?string)` has to be a run of text and a type at the same time, and
+;; text and a type are declared disjoint: no term is both, so every firing of that rule
+;; would conclude something the door refuses.  The rule is the mistake, and this is
+;; where it is said.
+;;
+;; **A type-level position asks for a type, which is a `unaryPredicate`.**  That is the
+;; second reading this arm needs and the KB already holds it twice over: every type is
+;; asserted a `unaryPredicate` when the schema loads, and `declaration-problem` refuses
+;; an `arg` declaration on a `typeRelationPredicate` precisely because *its* arguments
+;; name kinds.  So a position is type-level when a `genlArg` names it **or** when its
+;; predicate is a `typeRelationPredicate` — which is how `genl`'s second argument is
+;; constrained at all.  That position carries no declaration of its own, deliberately
+;; (see CxCore), and the relation kind is what says what it holds.
+;;
+;; **Instance constraint against instance constraint, and nothing else.**  `(disjoint T
+;; U)` says the two types share no instance, which is exactly what two such constraints
+;; on one variable ask of it — the reading `args-problem` gives a ground term, asked of
+;; a term that is not there yet.  Two *subtype* constraints are left alone: a type below
+;; two disjoint types is empty rather than impossible, and nothing else in the KB
+;; refuses an empty type.
+;;
+;; **Positive literals only.**  A negated antecedent says the variable does not fill
+;; that position, so a constraint carried there is one no binding ever has to satisfy;
+;; reading it would refuse `(implies (and (dog ?x) (not (plant ?x))) …)` for saying
+;; exactly what its author meant.  An existential is skipped for the reason its
+;; variables are local: what it binds inside is not the variable the rest shares.
+
+(def ^:private collection-type
+  "The type a **type-level** argument position asks its filler to be an instance of.
+  Every type in the KB is asserted a `unaryPredicate` as the schema loads, so this is
+  what `genlArg`'s \"a subtype of T\" and `typeRelationPredicate`'s \"relates kinds\"
+  both amount to as a membership — and a membership is what `disjoint` separates."
+  'unaryPredicate)
+
+(defn- binding-literals
+  "The literals of rule `inner` that **bind** its variables: every positive antecedent,
+  plus the consequent — with an `(ist Ctx S)` consequent replaced by the `S` it places,
+  since that is the sentence the conclusion is stored as and so the one whose argument
+  positions the conclusion has to satisfy."
+  [inner]
+  (let [c (rules/consequent inner)
+        c (if (and (sequential? c) (= sx/ist-functor (first c)) (= 3 (count c)))
+            (nth c 2)
+            c)]
+    (conj (into []
+                (remove #(or (sx/negation? %) (sx/unknown? %) (sx/there-exists? %)))
+                (rules/antecedents inner))
+          c)))
+
+(defn- literal-variable-constraints
+  "The memberships one literal demands of the variables sitting in its arguments, as
+  `[[variable {:type T :position n :pred P :via V :level :arg|:genlArg|:kind}] …]`.
+
+  Two sources, and they are the two readings a position can carry.  An `(arg P n T)`
+  declaration types the filler directly.  A **type-level** position — one a `genlArg`
+  names, or any position of a `typeRelationPredicate` — types it as a
+  `unaryPredicate`, since what stands there is a kind.  `:level` is kept so the refusal
+  can say which reading it read, and `:via` so a constraint that descended from a
+  super-predicate names the predicate it was written of, exactly as `args-problem` does.
+
+  Walked in `in-content-order`, so which declaration a refusal names is decided by what
+  the KB says rather than by how the retrieval happened to enumerate."
+  [kb lit context]
+  (let [pred (nm/functor lit)
+        as   (vec (nm/args lit))]
+    (when (and (sequential? lit) (symbol? pred) (some sx/variable? as))
+      (let [decls    (declaration-reader kb pred context)
+            type-rel (seq (res/matches-visible kb (list 'typeRelationPredicate pred) context))
+            of-kind  (fn [kind mk]
+                       (for [m     (in-content-order (decls kind))
+                             :let  [b (nth m 1)
+                                    n (get b '?n)
+                                    a (arg-at as n)]
+                             :when (and (sx/variable? a) (symbol? (get b '?type)))]
+                         [a (mk m b n)]))]
+        (concat
+         (of-kind 'arg
+                  (fn [m b n] {:type (get b '?type) :position n :pred pred
+                               :via (declared-of m) :level :arg}))
+         (of-kind 'genlArg
+                  (fn [m _ n] {:type collection-type :position n :pred pred
+                               :via (declared-of m) :level :genlArg}))
+         (when type-rel
+           (for [[i a] (map-indexed vector as)
+                 :when (sx/variable? a)]
+             [a {:type collection-type :position (inc i) :pred pred
+                 :via pred :level :kind}])))))))
+
+(defn- variable-constraints
+  "`variable -> [{…} …]` over `literals`, in literal order — the whole of what a rule's
+  own text says its variables have to be."
+  [kb literals context]
+  (reduce (fn [acc lit]
+            (reduce (fn [acc [v c]] (update acc v (fnil conj []) c))
+                    acc
+                    (literal-variable-constraints kb lit context)))
+          {} literals))
+
+(defn- variable-constraint-clause
+  "How a refusal names one constraint it found — **a character_string (arg 2 of
+  comment)**, or **a type (arg 2 of genl, a typeRelationPredicate)** for a position
+  whose demand comes from the relation kind rather than from a declaration.  Carries
+  `via-clause` for a constraint that descended from a super-predicate, exactly as
+  `args-problem`'s message does."
+  [{:keys [type position pred via level]}]
+  (str (case level
+         :arg     (str "a " type)
+         :genlArg "a type"
+         :kind    "a type")
+       " (arg " position " of " pred
+       (case level
+         :genlArg (str ", constrained with genlArg" (via-clause via pred))
+         :kind    ", a typeRelationPredicate"
+         (via-clause via pred))
+       ")"))
+
+(defn- variable-clash-problem
+  "The first pair of constraints on one of rule `inner`'s variables that no term
+  satisfies at once, or nil.
+
+  Only two **instance** demands can convict: `disjoint` says two types share no
+  instance, and a membership is what each of these constraints asks for — the
+  `unaryPredicate` a type-level position asks for included.  Variables are taken in
+  name order and each one's constraints in literal-then-content order, so a rule
+  several of whose variables clash is refused for the same one every time."
+  [kb inner context]
+  (let [taxo   (:taxonomy kb)
+        by-var (variable-constraints kb (binding-literals inner) context)]
+    (first
+     ;; `str` rather than `pr-str`: a rule variable is a symbol, so the key is a scalar
+     ;; that no ambient `*print-length*` can collapse to a shared prefix
+     (for [v     (sort-by str (keys by-var))
+           :let  [cs (get by-var v)]
+           :when (< 1 (count cs))
+           [i a] (map-indexed vector cs)
+           b     (drop (inc i) cs)
+           :when (and (not= (:type a) (:type b))
+                      (tax/disjoint? taxo (:type a) (:type b) context))]
+       {:type :arg-variable :sentence inner :variable v
+        :expected [(:type a) (:type b)]
+        :message (str "arg constraint: " v " must be " (variable-constraint-clause a)
+                      " and " (variable-constraint-clause b)
+                      ", and the two types are disjoint")}))))
+
+(defn- check-variable-constraints!
+  "Throw when a variable of rule `inner` carries two argument constraints no term can
+  satisfy together.  The value form is `variable-clash-problem`; this is the door's.
+
+  Private, unlike the cross-namespace rule checks beside it in `check-rule!`: every
+  door that stores a rule reaches this through that list, so there is no second caller
+  for a public name to serve."
+  [kb inner context]
+  (when-let [p (variable-clash-problem kb inner context)]
+    (throw (ex-info (:message p) (dissoc p :message)))))
+
 ;; ---- generators: the refusals a rule concluding a rule owes ---------------
 ;; A generator is a rule and passes everything a rule passes.  What follows is what it
 ;; owes *as* a generator, and every one of them is asked of each nesting level, since a
@@ -2609,6 +2774,12 @@
   C1 already stored, indexed, and chained from, while the caller saw a throw and
   reasonably concluded nothing had been asserted.
 
+  One arm here has no counterpart on the fact path at all —
+  `check-variable-constraints!`, which holds a rule's shared variables to the argument
+  constraints of every position they stand in.  A ground argument is checked by
+  `constraint-checks` on the way in; a variable is checked here or nowhere, since the
+  term it will hold does not exist yet.
+
   A **generator** owes three more (`check-generator!`), and they run last so the
   sharper complaint comes first: a rule that is unbound *and* backward-only is refused
   for the unbound variable, which is the one its author can act on."
@@ -2637,6 +2808,12 @@
     (when-not (= :inert direction)
       (rules/check-indexable-functors inner))
     (nm/check! (:naming kb) inner context)
+    ;; the argument constraints the rule's own variables carry, checked against each
+    ;; other — the arm above this file's `binding-literals` explains.  Here rather than
+    ;; on the fact path because a variable is not an argument any ground check can see,
+    ;; and after naming because it reads declarations off the functors naming just
+    ;; passed.
+    (check-variable-constraints! kb inner context)
     ;; the rule-set check, before anything is stored: an `exceptWhen` is negation as
     ;; failure, and a cycle through it would make the settled state depend on
     ;; arrival order (docs/exceptions.md)

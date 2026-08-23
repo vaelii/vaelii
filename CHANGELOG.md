@@ -2,6 +2,21 @@
 
 ## Unreleased — 0.11.1-SNAPSHOT
 
+- **A rule's shared variables are held to the argument constraints of every position
+  they stand in.** `args-problem` reads a ground argument and every argument of a rule is
+  a variable, so a rule feeding a text-valued binding into a type-valued slot stored
+  clean and was convicted a conclusion at a time, by a complaint naming the conclusion
+  and never the rule. `checks/check-variable-constraints!` runs on both storage doors and
+  in `check`, and refuses the new `:arg-variable` when two constraints on one variable
+  demand disjoint types; a position counts as type-level when a `genlArg` names it or
+  when its predicate is a `typeRelationPredicate`, which is what constrains `genl`'s
+  second argument. CxAbstract gains `(disjoint character_string predicate)` and
+  `(disjoint integer predicate)` — text and a number are each a thing no relation is —
+  so `(implies (comment ?x ?string) (genl ?x ?string))` is refused rather than stored.
+  *Class:* **Fix.** *Migration:* a KB holding such a rule keeps it; a rule
+  re-asserted through the front door is refused, and the refusal names the variable.
+  [docs/taxonomy.md](docs/taxonomy.md)
+
 - **`argue` explains a side a rule derived, not only a side the store holds.** A verdict
   reached by rule expansion was reported as provable and left unexplained: `:for-why` and
   `:against-why` read the JTMS, which has nothing to say about a conclusion no sentex
