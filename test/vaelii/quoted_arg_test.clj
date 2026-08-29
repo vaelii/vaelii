@@ -97,3 +97,40 @@
       (is (= :quoted-arg-type (refusal kb (list textOf Muffet SomeDoc)))))
     (testing "and a string literal satisfies both at once"
       (is (nil? (refusal kb (list textOf Muffet "some text")))))))
+
+(tu/deftest-kb arg-and-quotedarg-can-type-one-symbol-in-both-registers
+  ;; The same written symbol can denote a predicate while being a symbol as syntax.
+  ;; `arg` checks the denotation; `quotedArg` checks the written term.  Neither reading
+  ;; should erase or contaminate the other.
+  (tu/with-terms [testPred parentOf]
+    (v/assert kb (list 'unaryPredicate testPred) 'CxUniverse)
+    (v/assert kb (list 'binaryPredicate parentOf) 'CxUniverse)
+    (v/assert kb (list 'genl 'symbol 'intangible) 'CxUniverse)
+    (v/assert kb (list 'arg testPred 1 'predicate) 'CxUniverse)
+    (v/assert kb (list 'quotedArg testPred 1 'symbol) 'CxUniverse)
+    (is (nil? (refusal kb (list testPred parentOf)))
+        (str "parentOf denotes a predicate and is written as a symbol; placing the "
+             "syntax kind under intangible does not classify the referent as a symbol"))))
+
+(tu/deftest-kb a-quoted-symbol-is-distinct-from-using-its-denotation
+  ;; A different predicate asks for a symbol at the use level.  The bare parentOf denotes
+  ;; a predicate and therefore fails that constraint; `(Quote parentOf)` is a compound
+  ;; mention and remains WFF.  This pins the boundary without conflating it with the
+  ;; preceding predicate's simultaneous arg/quotedArg declarations.
+  (tu/with-terms [quotedTestPred parentOf Quote PredicateQuote]
+    (v/assert kb (list 'unaryPredicate quotedTestPred) 'CxUniverse)
+    (v/assert kb (list 'binaryPredicate parentOf) 'CxUniverse)
+    (v/assert kb (list 'arg quotedTestPred 1 'symbol) 'CxUniverse)
+    (v/assert kb (list 'unreifiableFunction Quote) 'CxUniverse)
+    (v/assert kb (list 'quotingFunction Quote) 'CxUniverse)
+    (v/assert kb (list 'result Quote 'symbol) 'CxUniverse)
+    (v/assert kb (list 'unreifiableFunction PredicateQuote) 'CxUniverse)
+    (v/assert kb (list 'quotingFunction PredicateQuote) 'CxUniverse)
+    (v/assert kb (list 'result PredicateQuote 'predicate) 'CxUniverse)
+    (is (= :arg-type (refusal kb (list quotedTestPred parentOf)))
+        "using parentOf denotes a predicate, not a symbol")
+    (is (= :arg-type
+           (refusal kb (list quotedTestPred (list PredicateQuote parentOf))))
+        "a quoted compound whose declared result is predicate does not satisfy symbol")
+    (is (nil? (refusal kb (list quotedTestPred (list Quote parentOf))))
+        "Quote declares a symbol result, so the quoted mention satisfies the use-level slot")))
