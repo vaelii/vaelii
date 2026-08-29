@@ -296,17 +296,24 @@
         (when-not difference-first?
           (v/assert kb (list 'not (list 'equals ThingOne ThingTwo)) U))
         (testing label
-          (is (merged? kb ThingOne ThingTwo)
-              "the tie leaves the derived equality believed — the merge is not undone")
-          (is (equality-in? kb ThingOne ThingTwo CxBottom)
-              "and its sentex stored in the context that sees both")
           (let [pos (v/handle-of kb (list 'equals ThingOne ThingTwo) CxBottom)
-                neg (v/handle-of kb (list 'not (list 'equals ThingOne ThingTwo)) U)]
+                neg (v/handle-of kb (list 'not (list 'equals ThingOne ThingTwo)) U)
+                dilemmas (v/contradictions kb)]
+            (is (true? (v/in? kb pos))
+                "the derived equality remains believed — the merge is not undone")
+            (is (merged? kb ThingOne ThingTwo)
+                "and the believed equality still joins the two fillers")
+            (is (true? (v/in? kb neg))
+                "the asserted difference remains believed — neither side wins")
             (is (= [:default :default]
                    [(v/defeat-class kb pos) (v/defeat-class kb neg)])
-                "neither side was defeated — the dilemma is represented, not decided"))
-          (is (= 1 (count (v/contradictions kb)))
-              "the pair is reported exactly once")
+                "neither side was defeated — the dilemma is represented, not decided")
+            (is (= 1 (count dilemmas))
+                "the pair is reported exactly once")
+            (is (= #{pos neg} (:nogood (first dilemmas)))
+                "the reported dilemma is this exact positive/negative pair")
+            (is (= 'contradicts (first (:sentence (first dilemmas))))
+                "and it is reported as a contradiction"))
           (is (zero? (count (v/conflicts kb)))
               "as a dilemma, not a conflict"))))))
 
