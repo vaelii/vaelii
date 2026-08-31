@@ -90,11 +90,6 @@ fallback. See [asp.md](asp.md).
 `Program` is emitted to before a clingo/clasp solve. Contested assumptions
 become choice atoms and nogoods become weak constraints. See [asp.md](asp.md).
 
-**AtomicSentex** ![kb](../.github/badges/cat-kb.svg): The sentex record for an
-atomic sentence — a fact, a metadata declaration, or a query pattern — holding only
-`[sentence context id truth strength]`. Split from `RuleSentex` so a fact does not
-carry the rule-only slots. See [canonicalization.md](canonicalization.md).
-
 ## B
 
 **Backward chaining** ![inference](../.github/badges/cat-inference.svg): Proving
@@ -468,6 +463,14 @@ Evaluable arithmetic comparators, variable-arity — a ground chain
 stack — eight levels (`lookup`), each adding exactly one mechanism to the one
 below, from raw index handles to full backchaining. `escalate` finds the
 cheapest level that answers. See [levels.md](levels.md).
+
+**LiteralSentex** ![kb](../.github/badges/cat-kb.svg): The sentex record for a
+literal — a fact or its negation, a metadata declaration, or a query pattern —
+holding only `[sentence context id truth strength]`. Split from `RuleSentex` so a
+fact does not carry the rule-only slots. A *literal* is a signed predicate
+application (an atomic sentence or its negation); the record admits either polarity
+via its `truth` slot, so the name is `Literal`, not `Atomic`. See
+[canonicalization.md](canonicalization.md).
 
 **Locality** ![tms](../.github/badges/cat-tms.svg): The JTMS invariant that no
 operation recomputes the whole graph — every relabel is scoped to the affected

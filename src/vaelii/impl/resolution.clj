@@ -982,7 +982,7 @@
                   (let [stored (p/get-sentex recs h)]
                     ;; an exceptWhen meta-sentex is internal bookkeeping (a rule's
                     ;; exception), not a domain fact, and it is the one *non-ground*
-                    ;; stored Atomic — so it is skipped here, keeping the trie and
+                    ;; stored Literal — so it is skipped here, keeping the trie and
                     ;; argument-root retrieval paths in agreement and ordinary queries
                     ;; clear of it.  A rule's exceptions are read through
                     ;; `provers/rule-exceptions`.
@@ -1454,7 +1454,7 @@
             ;; predicate-hierarchy filter (the sub-predicate closure) and the
             ;; context-hierarchy filter (the genlCx up-closure), in memory.  An
             ;; exceptWhen meta-sentex is internal bookkeeping and skipped, as in
-            ;; `match-one` (the one non-ground stored Atomic).  Both branches below
+            ;; `match-one` (the one non-ground stored Literal).  Both branches below
             ;; admit a candidate exactly here, and differ only in how many answers one
             ;; admitted record may yield.
             blind? (belief-blind?)

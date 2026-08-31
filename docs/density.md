@@ -13,7 +13,7 @@
 `vaelii.impl.disk.*`.
 
 These exist because of a gap between the engine's *seams* and its data structures at
-corpus scale. The seams carry a large KB — the `AtomicSentex`/`RuleSentex` split, symbol interning,
+corpus scale. The seams carry a large KB — the `LiteralSentex`/`RuleSentex` split, symbol interning,
 an index derived from the records and rebuildable by `reindex` — while the default
 structures are persistent Clojure collections holding boxed values, which measure
 ~1,973 B/fact of index (591.9 MB over 300k real facts, measured below). Each backend

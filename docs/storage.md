@@ -1089,9 +1089,9 @@ two KBs over one directory share the durable store — the restart contract the 
 tests rely on — and the lock, file handles, and durability registration are taken once;
 closing either KB closes both.
 
-## The sentex records — `AtomicSentex` and `RuleSentex`
+## The sentex records — `LiteralSentex` and `RuleSentex`
 
-A sentex is stored as one of **two records**, split so an atomic sentex does not carry
+A sentex is stored as one of **two records**, split so a literal sentex does not carry
 the seven rule-only slots — there are 100M+ facts, and each dropped reference field is
 ~4 bytes across all of them (measured: the record shell falls from ~80 to ~48
 bytes/instance, ~3.2 GB at 100M). Both share a scalar **core**; `RuleSentex` adds the rule
@@ -1099,7 +1099,7 @@ decomposition. The `sentex/sentex` constructor canonicalizes the structural conn
 and `set/*` wrappers into these fields rather than leaving them as sentence data, and
 emits the right record.
 
-The **core** (`AtomicSentex` and `RuleSentex` alike):
+The **core** (`LiteralSentex` and `RuleSentex` alike):
 
 - `:sentence` — the readable, normalized form (`(not (flies Tweety))`,
   `(implies (and A B) C)`), kept for display and matching.
@@ -1113,10 +1113,10 @@ The **core** (`AtomicSentex` and `RuleSentex` alike):
   lives **on the record** — with the rank mirrored into the disk idx slot (above), so
   `premise-strength` answers off the slot rather than paging the record on every open.
 
-**`AtomicSentex`** is an atomic sentence — a fact, a metadata declaration, or a query
-pattern: one signed predicate application, ground or holding variables. It adds nothing
-to the core. Reading any rule-only key off an `AtomicSentex` returns `nil`, so
-`(some? (:antecedent sx))` is the atomic-vs-rule discriminant everywhere — no consumer
+**`LiteralSentex`** is a literal — a fact or its negation, a metadata declaration, or a
+query pattern: one signed predicate application, ground or holding variables. It adds
+nothing to the core. Reading any rule-only key off a `LiteralSentex` returns `nil`, so
+`(some? (:antecedent sx))` is the literal-vs-rule discriminant everywhere — no consumer
 needs to know which record it holds.
 
 **`RuleSentex`** is an implication, and adds the decomposition:
@@ -1158,14 +1158,14 @@ connective-free (heads stripped even nested in a rule), and the **trie key** dro
 the `implies` / `and` rule frame — a negative literal keeps its `not` there as its
 polarity (see [indexing.md](indexing.md)). `or` reaches neither, having no slot here at
 all: a rule whose antecedent disjoins is stored as one rule per alternative before a
-record is built ([canonicalization.md](canonicalization.md)). `AtomicSentex` and `RuleSentex` are records (not bare
+record is built ([canonicalization.md](canonicalization.md)). `LiteralSentex` and `RuleSentex` are records (not bare
 maps) so each round-trips through nippy (the on-disk backend) with its type intact.
 
 ## Provenance — a side map, not record fields
 
 Bookkeeping about *who* asserted a sentex and *when* lives in a **per-handle
 provenance entry** keyed by the record handle, deliberately **beside** the record
-rather than as fields on an `AtomicSentex` / `RuleSentex` / `Justification`. Two reasons the shape
+rather than as fields on a `LiteralSentex` / `RuleSentex` / `Justification`. Two reasons the shape
 is a side map:
 
 - The record shapes stay fixed. Adding `:who` / `:when` / `:confidence` / `:source`
@@ -1192,13 +1192,13 @@ who/when); only asserted sentexes are stamped.
 
 The engine stores Clojure data — records, symbols, keywords, numbers — and every
 backend must preserve it type-faithfully (a keyword read back as a keyword, `1970` as
-a number, an `AtomicSentex`/`RuleSentex` back as itself), or `lookup`'s wildcard descent silently
+a number, a `LiteralSentex`/`RuleSentex` back as itself), or `lookup`'s wildcard descent silently
 matches nothing (`kv_backend_test` and `index_edge_test` guard exactly this).
 
 - **In memory** there is nothing to serialize: records sit in the map directly and
   the structured key vectors are the map keys (equal vectors are equal keys).
 - **On disk** values are **nippy**-frozen into the log frames and thawed on read, so
-  an `AtomicSentex` round-trips as an `AtomicSentex` and a `RuleSentex` as a `RuleSentex`; the in-RAM index map
+  a `LiteralSentex` round-trips as a `LiteralSentex` and a `RuleSentex` as a `RuleSentex`; the in-RAM index map
   is rebuilt from the WAL frames the same way. nippy freeze is a pure function of its
   value, so equal values freeze to equal bytes.
 

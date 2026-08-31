@@ -268,4 +268,4 @@ twin somebody writes out by hand.
 ## See also
 
 - [docs/indexing.md](indexing.md) — how the canonical form reaches the trie key.
-- [docs/storage.md](storage.md) — the `AtomicSentex` / `RuleSentex` record shapes.
+- [docs/storage.md](storage.md) — the `LiteralSentex` / `RuleSentex` record shapes.

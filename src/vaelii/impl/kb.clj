@@ -1786,7 +1786,7 @@
   so its leaf can still hold sentexes of the same *shape* naming other variables (two
   `exceptWhen` exceptions on one rule differing in which rule variable they name, a
   `defn*` condition with its variables transposed); for those the stored sentence decides,
-  one record read per sentex at that leaf.  Only a non-ground Atomic pays it: a rule's key
+  one record read per sentex at that leaf.  Only a non-ground Literal pays it: a rule's key
   is its canonical form whole — α-renamed literals, never a bare variable token — so the
   trie answers it exactly."
   [kb built handles]

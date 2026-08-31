@@ -529,7 +529,7 @@ their bindings, so there is no per-literal context to honor; ask the whole conju
 A **sentex map** has the stable keys `:id` (the handle), `:sentence`, `:context`,
 `:truth`, and for a rule `:antecedent` / `:consequent` / `:direction` / `:defeasible`.
 Key into it.
-The concrete record class behind it (`vaelii.impl.sentex/AtomicSentex` / `RuleSentex`) is an
+The concrete record class behind it (`vaelii.impl.sentex/LiteralSentex` / `RuleSentex`) is an
 `impl` detail and not part of the contract — never `instance?`-test it.
 
 **The sentex-map readers are lazy, over live state.**  `sentexes-matching` and the three

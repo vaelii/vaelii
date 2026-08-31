@@ -920,7 +920,7 @@
   [kb ^long limit ^long pair-ms]
   (banner "the churn arm — what retracting and re-asserting costs the index (REAL)")
   (let [tms      (:tms kb)
-        ;; **premises only.**  A derived conclusion is an ordinary atomic sentex with no
+        ;; **premises only.**  A derived conclusion is an ordinary literal sentex with no
         ;; antecedent, so filtering on that alone churns the rule engine's own output —
         ;; and a conclusion a rule drew past an argument constraint does not go back in
         ;; as a premise, which the `lost` counter below reports as a KB no longer the one

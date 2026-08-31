@@ -334,7 +334,7 @@
   docstrings do, legitimately, eight times), and it misses every spelling that is a
   dependency but not the shape it matched: the plain-symbol libspec
   `(:require vaelii.impl.naming)`, the prefix list `(:require [vaelii.impl [naming :as
-  nm]])`, an `(:import (vaelii.impl.sentex AtomicSentex))`, a `requiring-resolve` on a
+  nm]])`, an `(:import (vaelii.impl.sentex LiteralSentex))`, a `requiring-resolve` on a
   quoted symbol, and — the one that needs no require at all — a bare
   `(vaelii.impl.naming/sort-by-content-key …)` call, which resolves at runtime because
   `vaelii.core` has already loaded the namespace.  Reading the file and walking the forms

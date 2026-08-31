@@ -3154,7 +3154,7 @@
   Returns a seq of **sentex maps**.  The stable contract is the map keys — `:id`
   (the handle), `:sentence`, `:context`, `:truth`, and for a rule `:antecedent` /
   `:consequent` / `:direction` — so key into the result.  The concrete record type
-  (`vaelii.impl.sentex/AtomicSentex` / `RuleSentex`) is an internal detail: do not `instance?`-
+  (`vaelii.impl.sentex/LiteralSentex` / `RuleSentex`) is an internal detail: do not `instance?`-
   test it or rely on it, only its keys.
 
   **The seq is lazy, over live state.**  Matches are fetched as it is walked, which is
@@ -5536,7 +5536,7 @@
   "The sentex for a handle as a **map**, or nil.  Same shape contract as `sentexes-matching`'s
   elements: `:id` (the handle), `:sentence`, `:context`, `:truth`, and for a rule
   `:antecedent` / `:consequent` / `:direction` / `:defeasible`.  Key into it; the
-  concrete `vaelii.impl.sentex/AtomicSentex` / `RuleSentex` record class is internal and not
+  concrete `vaelii.impl.sentex/LiteralSentex` / `RuleSentex` record class is internal and not
   part of the contract.  nil (`handle-of` of an absent sentence) answers nil; a
   non-handle (a vector of handles included) is refused (`:bad-handle`)."
   [kb handle]

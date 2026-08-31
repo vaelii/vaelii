@@ -8,7 +8,7 @@
     /find?q=<pattern> the terms whose name matches, from the index's term roster
     /term?q=<term>    every sentex containing the term, grouped by the index root that
                       reaches it (functor / argument-position / context / term-index)
-    /sentex/:id       a sentex (atomic or rule): its belief state (IN, or the why-not
+    /sentex/:id       a sentex (literal or rule): its belief state (IN, or the why-not
                       reason — superseded / defeated / unsupported), supports, dependents
     /justification/:id    a justification: its supports (arguments) and dependent sentex
     /levels?q=<goal>  the lookup-to-query stack: what each of the 8 levels answers

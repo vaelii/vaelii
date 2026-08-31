@@ -23,17 +23,17 @@
 (def ^:private sx-trip #(round-trip codec/encode-sentex codec/decode-sentex %))
 (def ^:private d-trip  #(round-trip codec/encode-justification codec/decode-justification %))
 
-(deftest atomic-round-trips
-  (doseq [a [(sx/->AtomicSentex '(dog Muffet) 'C 7 :true :monotonic)
-             (sx/->AtomicSentex '(bornIn Tom 1970) 'CxWell 12 :true nil)
-             (sx/->AtomicSentex '(likes Ann (mother (father Bob))) 'C 3 :false :default)
-             (sx/->AtomicSentex '(exceptWhen (penguin ?var0) (sentexHandle 9)) 'C 4 :true nil)
+(deftest literal-round-trips
+  (doseq [a [(sx/->LiteralSentex '(dog Muffet) 'C 7 :true :monotonic)
+             (sx/->LiteralSentex '(bornIn Tom 1970) 'CxWell 12 :true nil)
+             (sx/->LiteralSentex '(likes Ann (mother (father Bob))) 'C 3 :false :default)
+             (sx/->LiteralSentex '(exceptWhen (penguin ?var0) (sentexHandle 9)) 'C 4 :true nil)
              ;; every nil-able field nil at once — the shape a bare derived fact has
-             (sx/->AtomicSentex '(p A) 'C nil :true nil)]]
-    (testing (str "atomic " (:sentence a))
+             (sx/->LiteralSentex '(p A) 'C nil :true nil)]]
+    (testing (str "literal " (:sentence a))
       (let [r (sx-trip a)]
         (is (= a r) "equal")
-        (is (instance? vaelii.impl.sentex.AtomicSentex r) "and still an Atomic")
+        (is (instance? vaelii.impl.sentex.LiteralSentex r) "and still a Literal")
         (is (nil? (:antecedent r)) "a rule-only key still reads nil off it")))))
 
 (deftest rule-round-trips
@@ -68,14 +68,14 @@
 (deftest decoding-interns-the-vocabulary
   ;; a record paged off disk must share the one pooled object per name, or every fetch
   ;; mints its own copies and the hot cache retains them
-  (let [a (sx/->AtomicSentex (list 'parentOf 'Tom 'Ann) 'CxWell 1 :true nil)
+  (let [a (sx/->LiteralSentex (list 'parentOf 'Tom 'Ann) 'CxWell 1 :true nil)
         r (sx-trip a)]
     (is (identical? (sx/intern-sym 'parentOf) (first (:sentence r))))
     (is (identical? (sx/intern-sym 'Tom) (second (:sentence r))))
     (is (identical? (sx/intern-sym 'CxWell) (:context r)))))
 
 (deftest non-record-values-pass-through
-  (testing "a plain map is not an Atomic and must round-trip as the map it is"
+  (testing "a plain map is not a Literal and must round-trip as the map it is"
     (is (= {:sentence '(dog Muffet) :context 'C} (sx-trip {:sentence '(dog Muffet) :context 'C}))))
   (testing "provenance is an open application map, stored as it comes"
     (let [p {:creator "agent" :created 1700000000 :nested {:review :pending}}]
@@ -85,7 +85,7 @@
   ;; the durable stores hold nippy-frozen RECORDS.  `decode` dispatches on the thawed
   ;; frame's shape, so those frames must come back unchanged — this is what keeps an
   ;; existing store readable rather than needing a rewrite.
-  (let [a      (sx/->AtomicSentex '(dog Muffet) 'C 7 :true :monotonic)
+  (let [a      (sx/->LiteralSentex '(dog Muffet) 'C 7 :true :monotonic)
         r      (sx/->RuleSentex '(implies (and (p ?var0)) (q ?var0)) 'C 8 :true
                                 '[(p ?var0)] '(q ?var0) nil nil :forward nil nil nil)
         d      (jtms/->Justification 20 :rule [1 2] 3 nil :monotonic #{})
@@ -96,7 +96,7 @@
 
 (deftest a-frame-tag-this-build-does-not-read-is-refused-by-name
   ;; The other direction of the same compatibility question: a positional frame whose tag
-  ;; is not one of this codec's must be refused rather than read as an atomic whose fields
+  ;; is not one of this codec's must be refused rather than read as a literal whose fields
   ;; land in the wrong slots.  Refused *by name*, because `rebuild-premises!`
   ;; discriminates on the type: `:damaged-dictionary` and `:malformed-record` are crash
   ;; damage and tombstone the record, while this one rethrows — a build that cannot read a
@@ -109,7 +109,7 @@
 (deftest the-codec-is-what-shrinks-the-frame
   ;; the point of the codec, asserted rather than assumed: a positional frame is
   ;; materially smaller than the record frame it replaces
-  (let [a     (sx/->AtomicSentex '(parentOf Tom Ann) 'CxNaturalWorld 7 :true :monotonic)
+  (let [a     (sx/->LiteralSentex '(parentOf Tom Ann) 'CxNaturalWorld 7 :true :monotonic)
         rec-b (alength ^bytes (nippy/freeze a))
         pos-b (alength ^bytes (nippy/freeze (codec/encode-sentex a)))]
     (is (< pos-b rec-b)
@@ -130,12 +130,12 @@
                   (doseq [x (reverse (file-seq (java.io.File. dir)))] (.delete ^java.io.File x))))))
 
 (def ^:private shapes
-  [(sx/->AtomicSentex '(dog Muffet) 'C 7 :true :monotonic)
-   (sx/->AtomicSentex '(bornIn Tom 1970) 'CxWell 12 :true nil)
-   (sx/->AtomicSentex '(comment dog "a domestic canine") 'CxCore 13 :true :default)
-   (sx/->AtomicSentex '(likes Ann (mother (father Bob))) 'C 3 :false :default)
-   (sx/->AtomicSentex '(measures Rod 1.5) 'C 14 :true nil)
-   (sx/->AtomicSentex '(p A) 'C nil :true nil)
+  [(sx/->LiteralSentex '(dog Muffet) 'C 7 :true :monotonic)
+   (sx/->LiteralSentex '(bornIn Tom 1970) 'CxWell 12 :true nil)
+   (sx/->LiteralSentex '(comment dog "a domestic canine") 'CxCore 13 :true :default)
+   (sx/->LiteralSentex '(likes Ann (mother (father Bob))) 'C 3 :false :default)
+   (sx/->LiteralSentex '(measures Rod 1.5) 'C 14 :true nil)
+   (sx/->LiteralSentex '(p A) 'C nil :true nil)
    (sx/->RuleSentex '(implies (and (dog ?var0)) (mammal ?var0)) 'C 8 :true
                     '[(dog ?var0)] '(mammal ?var0) :monotonic '{?var0 ?x} :forward true nil nil)
    (sx/->RuleSentex '(implies (and (parentOf ?var0 ?var1) (parentOf ?var1 ?var2))
@@ -165,7 +165,7 @@
   (with-dict
     (fn [d _]
       (let [tok  (get (codec/by-kind d true) "sentexes")
-            a    (sx/->AtomicSentex '(parentOf Tom Ann) 'CxNaturalWorld 7 :true :monotonic)
+            a    (sx/->LiteralSentex '(parentOf Tom Ann) 'CxNaturalWorld 7 :true :monotonic)
             rec-b (alength ^bytes (nippy/freeze a))
             pos-b (alength ^bytes (nippy/freeze (codec/encode-sentex a)))
             tok-b (alength ^bytes (nippy/freeze ((:enc tok) a)))]
@@ -180,11 +180,11 @@
       (let [{:keys [enc dec]} (get (codec/by-kind d true) "sentexes")
             before (dtok/token-count d)]
         (doseq [i (range 50)]
-          (enc (sx/->AtomicSentex (list 'measured 'Rod (+ 1000 i) (str "run-" i)) 'C i :true nil)))
+          (enc (sx/->LiteralSentex (list 'measured 'Rod (+ 1000 i) (str "run-" i)) 'C i :true nil)))
         (is (= (+ before 4) (dtok/token-count d))
             "only measured / Rod / C / :true entered the dictionary — not the 100 literals")
         ;; and they still come back
-        (let [s (sx/->AtomicSentex '(measured Rod 1042 "run-42") 'C 42 :true nil)]
+        (let [s (sx/->LiteralSentex '(measured Rod 1042 "run-42") 'C 42 :true nil)]
           (is (= s (dec (nippy/thaw (nippy/freeze (enc s)))))))))))
 
 (deftest the-dictionary-keys-by-clojure-equality
@@ -233,7 +233,7 @@
     (fn [d _]
       (let [on  (get (codec/by-kind d true) "sentexes")
             off (get (codec/by-kind d false) "sentexes")
-            a   (sx/->AtomicSentex '(dog Muffet) 'C 7 :true :monotonic)
+            a   (sx/->LiteralSentex '(dog Muffet) 'C 7 :true :monotonic)
             plain (nippy/freeze ((:enc off) a))
             toked (nippy/freeze ((:enc on) a))]
         (is (= a ((:dec on) (nippy/thaw plain))) "tokenizing store reads a plain frame")
@@ -245,7 +245,7 @@
   (with-dict
     (fn [d _]
       (let [{:keys [enc dec]} (get (codec/by-kind d true) "sentexes")
-            frame (nippy/thaw (nippy/freeze (enc (sx/->AtomicSentex '(dog Muffet) 'C 7 :true nil))))]
+            frame (nippy/thaw (nippy/freeze (enc (sx/->LiteralSentex '(dog Muffet) 'C 7 :true nil))))]
         (is (codec/tokenized-frame? frame))
         ;; a dictionary that never saw those tokens cannot decode the frame
         (with-dict
@@ -273,7 +273,7 @@
   (with-dict
     (fn [d _]
       (let [{:keys [enc dec]} (get (codec/by-kind d true) "sentexes")
-            frame   (enc (sx/->AtomicSentex '(dog Muffet) 'C 7 :true nil))
+            frame   (enc (sx/->LiteralSentex '(dog Muffet) 'C 7 :true nil))
             ;; -11 is one past the codec's lowest control code; its zigzag varint is
             ;; the single byte 21 — a body no writer of this format produces
             corrupt (assoc frame 1 (byte-array [(byte 21)]))

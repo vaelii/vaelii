@@ -4,7 +4,7 @@
   "How a record is shaped on its way into a log frame, and back.
 
   nippy freezes a Clojure record by writing its **type tag and every field name** into
-  the frame — so a store of 100M sentexes writes `vaelii.impl.sentex.AtomicSentex` and
+  the frame — so a store of 100M sentexes writes `vaelii.impl.sentex.LiteralSentex` and
   `:sentence :context :id :truth :strength` 100M times.  Measured on the real corpus,
   that scaffolding is **56% of the store** (87 of 155 B/record) and it says nothing a
   frame needs to carry: the field layout is a property of the code, identical in every
@@ -13,14 +13,14 @@
   So a frame holds the fields **positionally** — a plain vector, the shape known here —
   which is 1.85× smaller and needs no dictionary, no id allocation, and no new durable
   ground truth (`lein bench-records`).  The codec is per *kind*, because each kind has
-  one known set of shapes: a sentex frame is tagged `atomic`/`rule`, a justification frame
+  one known set of shapes: a sentex frame is tagged `literal`/`rule`, a justification frame
   is a bare vector (there is only one shape), and provenance is an open application map
   that passes through untouched.
 
   **Reading is backward-compatible in both directions.**  `decode` dispatches on the
   thawed frame: a vector is positional, anything else is returned as it thawed.  So a
   store written before this codec reads exactly as it did (its frames are records), and
-  a plain map handed to `put-sentex` — which the tests do, and which is not an `AtomicSentex`
+  a plain map handed to `put-sentex` — which the tests do, and which is not a `LiteralSentex`
   — round-trips as the map it is.
 
   Decoding also **interns** the symbols it rebuilds (`sentex/intern-deep`), so a record
@@ -41,19 +41,19 @@
             [vaelii.impl.sentex :as sx])
   (:import [java.io ByteArrayOutputStream]))
 
-(def ^:private atomic-tag 0)
+(def ^:private literal-tag 0)
 (def ^:private rule-tag   1)
-(def ^:private atomic-tok-tag 2)
+(def ^:private literal-tok-tag 2)
 (def ^:private rule-tok-tag   3)
 
 ;; ---- sentexes -----------------------------------------------------------
 
 (defn encode-sentex
-  "An `AtomicSentex` or `RuleSentex` as a positional vector; anything else unchanged."
+  "An `LiteralSentex` or `RuleSentex` as a positional vector; anything else unchanged."
   [sx]
   (condp instance? sx
-    vaelii.impl.sentex.AtomicSentex
-    [atomic-tag (:sentence sx) (:context sx) (:id sx) (:truth sx) (:strength sx)]
+    vaelii.impl.sentex.LiteralSentex
+    [literal-tag (:sentence sx) (:context sx) (:id sx) (:truth sx) (:strength sx)]
 
     vaelii.impl.sentex.RuleSentex
     [rule-tag (:sentence sx) (:context sx) (:id sx) (:truth sx) (:antecedent sx)
@@ -74,14 +74,14 @@
         (= rule-tag tag)
         (sx/->RuleSentex (f 1) (f 2) (nth v 3) (nth v 4) (f 5) (f 6) (nth v 7) (f 8)
                          (nth v 9) (nth v 10) (nth v 11) (nth v 12))
-        (= atomic-tag tag)
-        (sx/->AtomicSentex (f 1) (f 2) (nth v 3) (nth v 4) (nth v 5))
+        (= literal-tag tag)
+        (sx/->LiteralSentex (f 1) (f 2) (nth v 3) (nth v 4) (nth v 5))
         ;; a tag this build does not read is a frame from some other build — refused
-        ;; by name, never misread as an atomic record whose fields land in the wrong
+        ;; by name, never misread as a literal record whose fields land in the wrong
         ;; slots (the tokenized tags decode on their own path, dictionary in hand)
         :else
         (throw (ex-info (str "unknown sentex frame tag " (pr-str tag) " — this path reads"
-                             " tag " atomic-tag " (atomic) and " rule-tag " (rule), and"
+                             " tag " literal-tag " (literal) and " rule-tag " (rule), and"
                              " the two tokenized twins decode with the dictionary in"
                              " hand; a tag outside those four is a frame some other build"
                              " wrote")
@@ -225,9 +225,9 @@
 
 (defn- encode-sentex-tok [dict sx]
   (condp instance? sx
-    vaelii.impl.sentex.AtomicSentex
+    vaelii.impl.sentex.LiteralSentex
     (let [[bs lits] (encode-body dict [(:sentence sx) (:context sx) (:truth sx) (:strength sx)])]
-      [atomic-tok-tag bs lits (:id sx)])
+      [literal-tok-tag bs lits (:id sx)])
 
     vaelii.impl.sentex.RuleSentex
     (let [[bs lits] (encode-body dict [(:sentence sx) (:context sx) (:truth sx)
@@ -251,7 +251,7 @@
         (sx/->RuleSentex sentence context id truth antecedent consequent strength varmap
                          direction defeasible assumption constraint))
       (let [sentence (rd) context (rd) truth (rd) strength (rd)]
-        (sx/->AtomicSentex sentence context id truth strength)))))
+        (sx/->LiteralSentex sentence context id truth strength)))))
 
 ;; ---- the per-kind table -------------------------------------------------
 
@@ -260,7 +260,7 @@
    ;; reading is never conditional: the frame's own tag says which shape it is, so a
    ;; store holding plain, tokenized and pre-codec frames at once reads all three
    :dec (fn [v]
-          (if (and (vector? v) (#{atomic-tok-tag rule-tok-tag} (nth v 0)))
+          (if (and (vector? v) (#{literal-tok-tag rule-tok-tag} (nth v 0)))
             (decode-sentex-tok dict v)
             (decode-sentex v)))})
 
@@ -268,7 +268,7 @@
   "Whether a thawed frame spells its body as dictionary ids — what a store must have a
   dictionary to read."
   [v]
-  (boolean (and (vector? v) (#{atomic-tok-tag rule-tok-tag} (nth v 0)))))
+  (boolean (and (vector? v) (#{literal-tok-tag rule-tok-tag} (nth v 0)))))
 
 (defn by-kind
   "`kind-name -> {:enc :dec}` for a store.  `dict` is its durable token dictionary, which

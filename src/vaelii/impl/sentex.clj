@@ -42,15 +42,15 @@
 
   `:sentence` holds the canonical, readable form for display and matching.
 
-  A sentex is one of two records — `AtomicSentex` (an atomic sentence: a fact, a metadata
-  declaration, a query pattern) or `RuleSentex` (an implication) — so an atomic sentex does
-  not carry the rule-only slots (there are 100M+ of them), and each still round-trips
-  through nippy with its type intact."
+  A sentex is one of two records — `LiteralSentex` (a literal: a signed predicate
+  application — a fact or its negation, a metadata declaration, a query pattern) or
+  `RuleSentex` (an implication) — so a literal sentex does not carry the rule-only slots
+  (there are 100M+ of them), and each still round-trips through nippy with its type intact."
   (:refer-clojure :exclude [name])
   (:require [vaelii.impl.caches :as caches])
   (:import [java.util.concurrent ConcurrentHashMap]))
 
-;; Two records, split so an atomic sentex does not carry the seven rule-only slots
+;; Two records, split so a literal sentex does not carry the seven rule-only slots
 ;; (facts are the 100M+ case).  Both share the scalar core:
 ;;   sentence    the canonical, readable form — `(not S)` for a negative literal,
 ;;               `(implies (and …) …)` for a rule; display and matching read it
@@ -73,11 +73,11 @@
 ;;   strength    :monotonic | :default | nil    (the assumption strength when the
 ;;               sentex is asserted as a premise; nil for a purely-derived one)
 ;;
-;; An `AtomicSentex` is an atomic sentence — a fact, a metadata declaration, or a query
-;; pattern: one signed predicate application, ground or holding variables.  It adds
+;; A `LiteralSentex` is a literal — a fact or its negation, a metadata declaration, or a
+;; query pattern: one signed predicate application, ground or holding variables.  It adds
 ;; nothing to the core, and reading any rule-only key off it returns nil, so
-;; `(some? (:antecedent sx))` is the atomic-vs-rule discriminant everywhere.
-(defrecord AtomicSentex [sentence context id truth strength])
+;; `(some? (:antecedent sx))` is the literal-vs-rule discriminant everywhere.
+(defrecord LiteralSentex [sentence context id truth strength])
 ;;
 ;; A `RuleSentex` is an implication.  Beyond the core it carries the decomposition the
 ;; connectives and `set/*` wrappers canonicalize into:
@@ -1882,10 +1882,10 @@
       (let [b      (normalize-literal body symmetric?)
             stored (if (= truth :false) (list not-functor b) b)]
         ;; a wrapper on a non-rule is meaningless; it is stripped and ignored
-        (->AtomicSentex stored ctx nil truth nil)))))
+        (->LiteralSentex stored ctx nil truth nil)))))
 
 (defn sentex
-  "Construct a sentex — an `AtomicSentex` or a `RuleSentex` — canonicalizing the structural
+  "Construct a sentex — a `LiteralSentex` or a `RuleSentex` — canonicalizing the structural
   connectives into the record and the sentence into canonical form (see the namespace
   docstring).  Context defaults to 'default; id defaults to nil until the record store
   assigns a handle.
@@ -1896,14 +1896,14 @@
   ([sentence] (sentex sentence 'default))
   ([sentence context] (sentex sentence context nil))
   ([sentence context {:keys [symmetric?] :or {symmetric? (constantly false)}}]
-   ;; A `(exceptWhen <query> (sentexHandle H))` meta-sentex is stored **verbatim** as an
-   ;; Atomic — `peel-rule-wrapper` would otherwise strip the exceptWhen and drop the
+   ;; A `(exceptWhen <query> (sentexHandle H))` meta-sentex is stored **verbatim** as a
+   ;; Literal — `peel-rule-wrapper` would otherwise strip the exceptWhen and drop the
    ;; query, since it cannot tell the stored meta form from the surface wrapper.  This is
    ;; the one point that can: the wrapper's second argument is a rule, the meta's is a
    ;; handle.  Its query holds the rule's canonical variables, so it is a non-ground
-   ;; Atomic — exempt from the ground-fact check by the assert layer.
+   ;; Literal — exempt from the ground-fact check by the assert layer.
    (if (exceptWhen-meta? sentence)
-     (->AtomicSentex (canon sentence) (intern-sym context) nil :true nil)
+     (->LiteralSentex (canon sentence) (intern-sym context) nil :true nil)
      (constructed-sentex sentence context symmetric?))))
 
 (defn body

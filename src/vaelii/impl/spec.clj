@@ -131,7 +131,7 @@
 ;; The *stable* contract is the map shape below — `:id`, `:sentence`, `:context`
 ;; are always present; a rule adds `:antecedent` / `:consequent` / `:direction`.
 ;; Treat the result as a map: callers should key into it, never depend on the
-;; concrete `vaelii.impl.sentex/AtomicSentex` / `RuleSentex` record class, which is an internal
+;; concrete `vaelii.impl.sentex/LiteralSentex` / `RuleSentex` record class, which is an internal
 ;; detail free to change.
 (s/def ::sentex-map (s/keys :req-un [::id ::sentence ::context]
                             :opt-un [::truth ::strength]))

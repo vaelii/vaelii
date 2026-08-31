@@ -507,7 +507,7 @@
             (sentex-ids [_] (p/sentex-ids real))
             (get-sentex [_ _id]
               {:nippy/unthawable {:type :record
-                                  :class-name "vaelii.impl.sentex.AtomicSentex"}}))
+                                  :class-name "vaelii.impl.sentex.LiteralSentex"}}))
           nothing-stored #_{:clj-kondo/ignore [:missing-protocol-method]}
           (reify p/RecordStore
             (sentex-ids [_] #{})

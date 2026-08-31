@@ -72,7 +72,7 @@ The unit of knowledge is a **sentex**: a sentence — a Clojure s-expression, gr
 pattern with `?x` variables — plus the one **context** it holds in.
 
 A sentex canonicalizes into one of two records, split so a fact does not carry the
-rule-only slots: an `AtomicSentex` holds `[sentence context id truth strength]`, and a
+rule-only slots: a `LiteralSentex` holds `[sentence context id truth strength]`, and a
 `RuleSentex` adds `[antecedent consequent varmap direction defeasible assumption
 constraint]`. **A rule is a sentex too**, indexed additionally by its antecedent and
 consequent predicates, so it gets a handle, truth maintenance and retraction for free.

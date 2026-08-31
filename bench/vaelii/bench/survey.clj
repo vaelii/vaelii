@@ -66,7 +66,8 @@
 ;; ---- rule audit (are there rules, and what predicates do they introduce?) ----
 ;; The front-of-log fact sample can miss rules loaded elsewhere, so classify EVERY
 ;; record: a Rule carries :antecedent (the discriminant), an exceptWhen meta is
-;; an Atomic whose :sentence starts with `exceptWhen`, everything else is a fact.  Two
+;; an atomic sentex (a positive `(exceptWhen …)` application — never negated) whose
+;; :sentence starts with `exceptWhen`, everything else is a fact.  Two
 ;; modes: a uniform sample by handle via the .idx (fast, unbiased across the whole store),
 ;; and a full sequential scan (definitive).
 

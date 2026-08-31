@@ -886,7 +886,7 @@
     (fn [dir]
       (let [s1 (drs/open-record-store dir {:tokenize? true})
             a  (p/put-sentex s1 {:sentence '(dog Muffet) :context 'C})
-            b  (p/put-sentex s1 (sx/->AtomicSentex '(bornIn Tom 1970) 'CxWell nil :true :monotonic))
+            b  (p/put-sentex s1 (sx/->LiteralSentex '(bornIn Tom 1970) 'CxWell nil :true :monotonic))
             r  (p/put-sentex s1 (sx/->RuleSentex '(implies (and (dog ?var0)) (mammal ?var0)) 'C nil
                                                  :true '[(dog ?var0)] '(mammal ?var0) :monotonic
                                                  '{?var0 ?x} :forward true nil nil))
@@ -917,7 +917,7 @@
             (try
               (is (= '(bornIn Tom 1970) (:sentence (p/get-sentex s3 b))))
               ;; and what it writes from here is a plain positional frame, beside them
-              (let [c (p/put-sentex s3 (sx/->AtomicSentex '(cat Tom) 'C nil :true nil))]
+              (let [c (p/put-sentex s3 (sx/->LiteralSentex '(cat Tom) 'C nil :true nil))]
                 (is (= '(cat Tom) (:sentence (p/get-sentex s3 c))))
                 (is (= '(dog Muffet) (:sentence (p/get-sentex s3 a))) "the tokenized ones keep reading"))
               (finally (drs/close! s3)))))))))
@@ -927,13 +927,13 @@
     (fn [dir]
       (let [s (drs/open-record-store dir {:tokenize? true})]
         (try
-          (p/put-sentex s (sx/->AtomicSentex '(dog Muffet) 'C nil :true nil))
+          (p/put-sentex s (sx/->LiteralSentex '(dog Muffet) 'C nil :true nil))
           (is (pos? (dtok/token-count (:dict s))))
           (p/clear-records! s)
           (is (zero? (dtok/token-count (:dict s)))
               "a wiped store must not carry its predecessor's vocabulary")
           ;; and it still works afterwards — ids restart from 0 against an empty log
-          (let [h (p/put-sentex s (sx/->AtomicSentex '(cat Tom) 'C nil :true nil))]
+          (let [h (p/put-sentex s (sx/->LiteralSentex '(cat Tom) 'C nil :true nil))]
             (is (= '(cat Tom) (:sentence (p/get-sentex s h)))))
           (finally (drs/close! s)))))))
 
@@ -946,10 +946,10 @@
     (fn [dir]
       (let [tl (str dir "/records/tokens.log")
             s1 (drs/open-record-store dir {:tokenize? true})
-            a  (p/put-sentex s1 (sx/->AtomicSentex '(dog Muffet) 'C nil :true nil))
+            a  (p/put-sentex s1 (sx/->LiteralSentex '(dog Muffet) 'C nil :true nil))
             ;; the dictionary exactly as of `a` — every later token is `b`'s
             after-a (do (drs/fsync s1) (.length (java.io.File. tl)))
-            b  (p/put-sentex s1 (sx/->AtomicSentex '(elephant Jumbo) 'CxZoo nil :true nil))]
+            b  (p/put-sentex s1 (sx/->LiteralSentex '(elephant Jumbo) 'CxZoo nil :true nil))]
         (drs/close! s1)
         (is (> (.length (java.io.File. tl)) after-a) "b introduced new vocabulary")
         ;; roll the dictionary back to that point: b's frame now cites ids that are gone
@@ -964,7 +964,7 @@
             (is (nil? (p/get-sentex s2 b)))
             ;; and the store is usable afterwards — new tokens continue from where the
             ;; rolled-back dictionary now ends
-            (let [c (p/put-sentex s2 (sx/->AtomicSentex '(cat Tom) 'C nil :true nil))]
+            (let [c (p/put-sentex s2 (sx/->LiteralSentex '(cat Tom) 'C nil :true nil))]
               (is (= '(cat Tom) (:sentence (p/get-sentex s2 c)))))
             (finally (drs/close! s2))))))))
 
