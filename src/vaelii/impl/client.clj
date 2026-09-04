@@ -201,9 +201,12 @@
   (call conn :add-provenance [handle m]))
 
 (defn all-specified-violations
-  "Audit every `predAllSpecified` and `predSpecifiedAll` declaration visible in `context`,
-  and return `{[functor pred indep dep] #{violating-instances…}}` — the declarations that
-  hold are omitted, so an empty map is a clean sweep."
+  "Audit every binary `predAllSpecified` and `predSpecifiedAll` declaration visible in
+  `context`, and return `{[functor pred indep] result…}` — each result carrying a
+  `:status`, either `{:status :audited :violations #{…}}` or a `{:status :gap …}`
+  diagnostic (`:missing-slot-typing`, or `:legacy-ternary-declaration` for a stored
+  pre-migration ternary sentex the bulk import path can carry past the assert-time
+  refusal)."
   [conn context]
   (call conn :all-specified-violations [context]))
 
@@ -729,11 +732,14 @@
   (call conn :settle-stats []))
 
 (defn specified-violations
-  "The instances of `indep` that break a `(predAllSpecified pred indep dep)` integrity
-  requirement in `context`: every member x of `indep` for which no believed `(pred x y)`
-  carries a **determinate** filler y in `dep`."
-  ([conn pred indep dep context] (call conn :specified-violations [pred indep dep context]))
-  ([conn pred indep dep context arg-pos] (call conn :specified-violations [pred indep dep context arg-pos])))
+  "The audit result for one binary `(predAllSpecified pred indep)` integrity requirement in
+  `context`, always carrying a `:status`: `{:status :audited :violations #{x…}}` — every
+  member x of `indep` for which no believed `(pred x y)` carries a **determinate** filler
+  y satisfying `pred`'s derived slot contract, an empty set where the requirement holds —
+  or `{:status :gap :gap :missing-slot-typing …}` where `pred` carries no visible slot
+  typing at the audited position."
+  ([conn pred indep context] (call conn :specified-violations [pred indep context]))
+  ([conn pred indep context arg-pos] (call conn :specified-violations [pred indep context arg-pos])))
 
 (defn specs
   "The subtypes of type `t`, reflexively — `t` itself plus everything that reaches it by

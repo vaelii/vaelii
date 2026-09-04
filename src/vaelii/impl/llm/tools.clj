@@ -129,6 +129,7 @@
     term     "A single term (predicate, individual, type, or context name): \"Muffet\"."
     terms    "Terms to intersect on, as EDN strings: [\"Muffet\", \"dog\"]."
     handle   "A sentex handle — the integer id a stored sentex is referenced by."
+    arg-pos  "Which slot the audit reads: \":second\" for predAllSpecified (the default), \":first\" for the predSpecifiedAll twin. Only those two values."
     jid      "A justification id."
     x        "An individual: \"Muffet\"."
     t        "A type: \"dog\"."

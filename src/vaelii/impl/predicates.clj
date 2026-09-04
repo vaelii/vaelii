@@ -669,6 +669,34 @@
                                         " arg-type re-check.")}
                                   :notes "the same one level up; entail-existing covers it too.")
                            "checks/genls-problem — the same, one level up")]
+     ['arg1      (inert {:shape {:args [:relation :type]} :storage [:none] :checked false
+                         :family nil :facets #{}
+                         :notes (str "the binary projection of (arg ?p 1 ?t), bridged to it"
+                                     " by CxCore rules in both directions and held to arg's"
+                                     " own declaration arms at the projected position"
+                                     " (checks/declaration-problem), so both spellings of"
+                                     " one declaration refuse identically. The projection"
+                                     " relates STORED declarations only — a reading arg"
+                                     " generalizes up genl or inherits from a"
+                                     " super-predicate has no argN twin; ask arg for those."
+                                     " Exists so a positional constraint can be the subject"
+                                     " of a binary declaration such as"
+                                     " (predAllSpecified arg1 predicate).")}
+                        (str "binary projection of arg position 1; enforcement shared with"
+                             " arg at the entry point, inference through the bridge rules"))]
+     ['arg2      (inert {:shape {:args [:relation :type]} :storage [:none] :checked false
+                         :family nil :facets #{}
+                         :notes (str "the binary projection of (arg ?p 2 ?t) — see arg1."
+                                     " Deliberately shipped ahead of any consumer, for"
+                                     " symmetry with the KE packet that commissioned the"
+                                     " family; unused-for-now is the stated decision, the"
+                                     " way serve's open-routes states its.")}
+                        "binary projection of arg position 2 — see arg1")]
+     ['arg3      (inert {:shape {:args [:relation :type]} :storage [:none] :checked false
+                         :family nil :facets #{}
+                         :notes (str "the binary projection of (arg ?p 3 ?t) — see arg1"
+                                     " and arg2's unused-for-now note.")}
+                        "binary projection of arg position 3 — see arg1")]
      ['quotedArg (enforced (assoc (prop :declares-quoted-arg :arg :relation
                                         :facets #{:convicts :answers})
                                   :shape  {:args [:relation :position :type]}
@@ -1118,17 +1146,22 @@
                   " (PredInstanceExistsFn ?pred ?fixed ?dep) is its sanctioned"
                   " placeholder."))]
      ['predAllSpecified
-      (enforced {:shape {:args [:predicate :type :type]} :storage [:none] :checked false
+      (enforced {:shape {:args [:predicate :type]} :storage [:none] :checked false
                  :family nil :facets #{}
                  :notes (str "an on-demand audit, not a stored constraint: nothing fires on"
-                             " assert, and the read is a function a caller invokes.")}
+                             " assert, and the read is a function a caller invokes. Binary —"
+                             " the required filler type is derived from ?pred's own slot-2"
+                             " argument contract (arg → membership, genlArg → subtype),"
+                             " never restated; no visible slot typing is a"
+                             " declaration-contract gap the audit reports explicitly.")}
                 (str "vaelii.core/specified-violations — the on-demand integrity"
                      " audit reads the declaration and returns the instances of ?indep with"
                      " no determinate filler; stamps no rule"))]
      ['predSpecifiedAll
-      (enforced {:shape {:args [:predicate :type :type]} :storage [:none] :checked false
+      (enforced {:shape {:args [:predicate :type]} :storage [:none] :checked false
                  :family nil :facets #{}
-                 :notes "the argument-swapped twin, auditing ?pred's first position."}
+                 :notes (str "the argument-swapped twin, auditing ?pred's first position;"
+                             " binary, filler type derived from ?pred's slot-1 contract.")}
                 (str "vaelii.core/specified-violations with :first — audits ?pred's"
                      " first position, the argument-swapped twin"))]
      ['PredAllExistsFn

@@ -516,7 +516,7 @@ See [time.md](time.md).
 **`injection`** ![kb](../.github/badges/cat-kb.svg): `(injection P)` — a **function
 mark**: `P` is single-valued, one-to-one, and total on its declared domain, with nothing
 said about reaching every member of its range. Derives `(functional P)` and
-`(functionalInArg P 1)`, both enforced at the write, and `(predAllSpecified P D R)` off
+`(functionalInArg P 1)`, both enforced at the write, and `(predAllSpecified P D)` off
 the `arg` declarations, audited on demand. See [taxonomy.md](taxonomy.md).
 
 **`ist`** ![kb](../.github/badges/cat-kb.svg): "Is true in" — `(ist Ctx S)`
@@ -724,8 +724,10 @@ quantify one argument position of a binary predicate and fix the other, in three
 classes. The *Instance* pair (`predAllInstance` / `predInstanceAll`) is a rule generator
 and produces inference. The *Exists* four are inert records beside a sanctioned
 placeholder functor. The *Specified* pair (`predAllSpecified` / `predSpecifiedAll`) is an
-on-demand integrity audit reporting the instances with no determinate filler. See
-[predall.md](predall.md).
+on-demand integrity audit reporting the instances with no determinate filler — binary,
+the filler's required type derived from the predicate's own slot contract rather than
+restated, and a predicate with no visible slot typing reported as an explicit
+declaration-contract gap. See [predall.md](predall.md).
 
 **Premise** ![tms](../.github/badges/cat-tms.svg): An asserted datum held IN
 unconditionally (subject to defeat/supersession), as opposed to a derived
@@ -975,7 +977,7 @@ survives. See [equality.md](equality.md).
 **`surjection`** ![kb](../.github/badges/cat-kb.svg): `(surjection P)` — a **function
 mark**: `P` is single-valued, total on its declared domain, and onto its declared range,
 with nothing said about one-to-one. Derives `(functional P)`, enforced at the write, and
-the `(predAllSpecified P D R)` and `(predSpecifiedAll P D R)` requirements off the `arg`
+the `(predAllSpecified P D)` and `(predSpecifiedAll P R)` requirements off the `arg`
 declarations, audited on demand. See [taxonomy.md](taxonomy.md).
 
 **Symmetric arguments** ![kb](../.github/badges/cat-kb.svg): A ground fact of a

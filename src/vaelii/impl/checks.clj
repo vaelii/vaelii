@@ -1140,11 +1140,30 @@
   The two checks are independent and each is open-world on its own, so declaring both
   narrows the slot rather than emptying it.
 
+  `arg1` / `arg2` / `arg3` — the binary projections of `arg` — are held to the same
+  two arms at their projected position, so both spellings of one declaration refuse
+  identically.  Without this the binary spelling would evade the arms entirely: the
+  sentence itself carries no position for the generic machinery to check, the bridge
+  rule's ternary conclusion is convicted on the *derivation* path where a conviction
+  is dropped and recorded rather than thrown, and the author is left holding a
+  believed `argN` fact whose real declaration the engine rejected — silently inert,
+  the exact trap CxCore's `quotedArg` note names.
+
   Open-world throughout: each arm needs a declaration to contradict, so a predicate
   the KB has said nothing about is unconstrained."
   [kb sentence context types]
   (let [[f pred n _ m] sentence]
     (cond
+      (and ('{arg1 1, arg2 2, arg3 3} f) (= 2 (nm/arity sentence)) (symbol? pred))
+      (let [pos ('{arg1 1, arg2 2, arg3 3} f)]
+        (or (some-> (arg-position-problem kb f pred pos context types)
+                    (assoc :sentence sentence))
+            (when (seq (res/matches-visible kb (list 'type_relation_predicate pred) context))
+              {:type :arg-constraint-kind :sentence sentence :predicate pred
+               :message (str pred " is declared type_relation_predicate, so its"
+                             " arguments are constrained with genlArg, not " f
+                             " (the binary projection of arg)")})))
+
       (and (= 'interArg f) (= 5 (nm/arity sentence)) (symbol? pred))
       (some-> (or (arg-position-problem kb f pred n context types)
                   (arg-position-problem kb f pred m context types)

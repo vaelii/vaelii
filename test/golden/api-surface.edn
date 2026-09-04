@@ -112,7 +112,7 @@
   sentexes-with-functor "[[conn pred] [conn pred opts]]",
   settle-stats "[[conn]]",
   specified-violations
-  "[[conn pred indep dep context] [conn pred indep dep context arg-pos]]",
+  "[[conn pred indep context] [conn pred indep context arg-pos]]",
   specs "[[conn t] [conn t context]]",
   supporting-justifications "[[conn handle]]",
   term-count "[[conn]]",
@@ -279,7 +279,7 @@
   settle-stats "[[kb]]",
   sort-by-content "[[keyfn coll] [keyfn cmp coll]]",
   specified-violations
-  "[[kb pred indep dep context] [kb pred indep dep context arg-pos]]",
+  "[[kb pred indep context] [kb pred indep context arg-pos]]",
   specs "[[kb t] [kb t context]]",
   supporting-justifications "[[kb handle]]",
   term-count "[[kb]]",

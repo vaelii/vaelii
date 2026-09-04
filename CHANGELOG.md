@@ -2,10 +2,49 @@
 
 ## Unreleased
 
+- **`predAllSpecified` and `predSpecifiedAll` go binary: the filler type derives from
+  the predicate's own slot contract.** The ternary forms restated in a third argument
+  what `(arg P 2 R)` / `(genlArg P 2 R)` already say, and a restated type can disagree
+  with the contract it copies — a second type system inside one declaration. The
+  declarations are now `(predAllSpecified P D)` and `(predSpecifiedAll P R)`; the audit
+  derives the filler constraints from the visible slot typing of the predicate **and
+  every super-predicate whose declarations bind its tuples** — the same
+  `constraining-predicates` union the assert-time checker reads — with `arg` →
+  membership, `genlArg` → subtype through the reflexive `genl` closure, and a
+  `type_relation_predicate` membership requiring the filler to be visibly a type at
+  every position, composed conjunctively as the checker composes them. A declaration
+  over a predicate with **no** visible denotation typing is reported as an explicit
+  `{:status :gap :gap :missing-slot-typing}` declaration-contract diagnostic, never
+  silently audited unconstrained, and a stored pre-migration ternary sentex — which
+  the bulk import path can carry past the assert-time refusal — surfaces from the
+  sweep as `{:gap :legacy-ternary-declaration}` rather than silently vanishing.
+  `specified-violations` accordingly returns `{:status :audited :violations #{…}}` or
+  `{:status :gap …}` — discriminate on `:status`, not key presence — drops its `dep`
+  parameter, and refuses a non-`:second`/`:first` `arg-pos` with a typed `:bad-args`
+  naming the removed-dep migration (the shape an unmigrated caller's context symbol
+  lands in); `all-specified-violations` keys by `[functor pred indep]` and always
+  carries gaps, so an empty map remains a clean sweep a gap cannot fake. The
+  function-mark rules thin to one antecedent each — totality reads only `(arg P 1 D)`,
+  ontoness only `(arg P 2 R)`. New vocabulary `arg1` / `arg2` / `arg3` — binary
+  projections of `arg`, bridged by rules in both directions and held to `arg`'s own
+  declaration checks at the projected position, so neither spelling launders a
+  declaration the other refuses — lets a positional constraint stand in a binary
+  declaration's subject position, `(predAllSpecified arg1 predicate)` being the
+  founding use; the projections relate stored declarations only, generalized and
+  inherited readings staying `arg`'s. *Class:* **Breaking** (declaration arity and
+  audit return shape). *Migration:* rewrite `(predAllSpecified P D R)` to
+  `(predAllSpecified P D)` and `(predSpecifiedAll P D R)` to `(predSpecifiedAll P R)`,
+  ensure the audited slot carries its `arg`/`genlArg` typing, and read
+  `(:violations result)` under a `:status` check where a bare set was read before.
+  [docs/predall.md](docs/predall.md), [docs/taxonomy.md](docs/taxonomy.md)
+
+  *Breaks:* `(predAllSpecified`, `(predSpecifiedAll`, `specified-violations`,
+  `all-specified-violations`
+
 - **`injection`, `surjection` and `bijection` name what a relation is as a function, and
   the engine reads each half where it can.** Saying a relation was a one-to-one function
   took four separate declarations — `(functional P)`, `(functionalInArg P 1)`,
-  `(predAllSpecified P D R)` and `(predSpecifiedAll P D R)` — and an author who wrote some
+  `(predAllSpecified P D)` and `(predSpecifiedAll P R)` — and an author who wrote some
   of them got partial enforcement with no report of the gap. The three composite marks are
   one declaration each, and eight CxCore forward rules derive the parts, so nothing is
   keyed on the new names. `injection` is single-valued, one-to-one and total; `surjection`

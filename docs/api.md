@@ -118,14 +118,18 @@ default-chain-opts                              ; the bounds a chain run takes w
 (exposed-clashes kb)                            ; the standing cross-context disjointness clashes, asked
                                                 ; of the whole KB — settle files what a change newly
                                                 ; exposes, this answers what the KB holds now
-(specified-violations kb pred indep dep ctx)     ; audit one predAllSpecified declaration: the instances of
-                                                ; `indep` with no DETERMINATE `dep` filler. Pass :first as a
-                                                ; sixth argument for the predSpecifiedAll twin. Reads only,
-                                                ; nothing filed; a skolem filler is indeterminate and an
-                                                ; author-written Exists placeholder is not (docs/predall.md)
+(specified-violations kb pred indep ctx)        ; audit one binary predAllSpecified declaration:
+                                                ; {:violations #{…}} — the instances of `indep` with no
+                                                ; DETERMINATE filler satisfying pred's own slot contract —
+                                                ; or {:gap …} when pred has no visible slot typing. Pass
+                                                ; :first as a fifth argument for the predSpecifiedAll twin.
+                                                ; Reads only, nothing filed; a skolem filler is
+                                                ; indeterminate and an author-written Exists placeholder is
+                                                ; not (docs/predall.md)
 (all-specified-violations kb ctx)               ; every such declaration visible in ctx, audited at once —
-                                                ; {[functor pred indep dep] #{instances…}}, the ones that
-                                                ; hold omitted, so an empty map is a clean sweep
+                                                ; {[functor pred indep] result…}, the ones that hold
+                                                ; omitted and the gaps never, so an empty map is a clean
+                                                ; sweep
 (last-program kb)                              ; the last edge Program solved — the tie, before belief erased it
 (set-solver kb :asp)                           ; the real answer-set backend, by name (:stub is the default)
 (set-solver kb solver)                         ; or any vaelii.impl.solve/Solver value

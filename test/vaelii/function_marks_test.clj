@@ -8,12 +8,14 @@
 
   Each mark splits into two halves, and the split is the design. The **enforced** half is
   `(functional P)` and `(functionalInArg P 1)`, refused or merged at the assert entry
-  point. The **audited** half is `(predAllSpecified P D R)` for totality and
-  `(predSpecifiedAll P D R)` for ontoness, reported by `specified-violations` when a
-  caller asks. Totality and ontoness are claims about a domain and a range rather than
-  about the predicate alone, so the rules read those two types off the predicate's own
-  `(arg P 1 D)` and `(arg P 2 R)` declarations; a predicate declaring no `arg` pair gets
-  the enforced half and no audit.
+  point. The **audited** half is the binary `(predAllSpecified P D)` for totality and
+  `(predSpecifiedAll P R)` for ontoness, reported by `specified-violations` when a
+  caller asks. Each rule reads only the ONE arg declaration naming its quantified
+  collection — `(arg P 1 D)` for totality, `(arg P 2 R)` for ontoness — and the
+  filler's own type is derived by the audit from the predicate's slot contract at read
+  time. A predicate whose quantified side is untyped concludes no requirement; one
+  whose filler side is untyped concludes it, and the audit reports the missing slot
+  contract as an explicit gap.
 
   | mark | functional | one-to-one | total | onto |
   |---|---|---|---|---|
@@ -144,15 +146,15 @@
     (typed-relation! kb capitalCityOf country capital_city)
     (testing "an injection requires totality and says nothing about ontoness"
       (v/assert kb (list 'injection capitalCityOf) U)
-      (is (v/ask? kb (list 'predAllSpecified capitalCityOf country capital_city) U))
-      (is (not (v/ask? kb (list 'predSpecifiedAll capitalCityOf country capital_city) U))
+      (is (v/ask? kb (list 'predAllSpecified capitalCityOf country) U))
+      (is (not (v/ask? kb (list 'predSpecifiedAll capitalCityOf capital_city) U))
           "a capital no country has is not an injection's problem")))
   (testing "a surjection requires both"
     (tu/with-terms [pSur country capital_city]
       (typed-relation! kb pSur country capital_city)
       (v/assert kb (list 'surjection pSur) U)
-      (is (v/ask? kb (list 'predAllSpecified pSur country capital_city) U))
-      (is (v/ask? kb (list 'predSpecifiedAll pSur country capital_city) U)))))
+      (is (v/ask? kb (list 'predAllSpecified pSur country) U))
+      (is (v/ask? kb (list 'predSpecifiedAll pSur capital_city) U)))))
 
 (tu/deftest-kb a-mark-on-a-predicate-with-no-arg-pair-derives-no-audit
   ;; The honest degradation: totality and ontoness name a domain and a range, and a
@@ -171,7 +173,8 @@
     (v/assert kb (list 'bijection capitalCityOf) U)
     (v/assert kb (list country Freedonia) U)
     (testing "a country with no capital breaks totality"
-      (is (= {['predAllSpecified capitalCityOf country capital_city] #{Freedonia}}
+      (is (= {['predAllSpecified capitalCityOf country]
+              {:status :audited :violations #{Freedonia}}}
              (v/all-specified-violations kb U))))
     (testing "and stating its capital clears the sweep"
       (v/assert kb (list capital_city Fredopolis) U)
@@ -184,9 +187,10 @@
     (v/assert kb (list 'bijection capitalCityOf) U)
     (v/assert kb (list capital_city Fredopolis) U)
     (testing "a capital that is the capital of nothing breaks ontoness"
-      (is (= {['predSpecifiedAll capitalCityOf capital_city country] #{Fredopolis}}
+      (is (= {['predSpecifiedAll capitalCityOf capital_city]
+              {:status :audited :violations #{Fredopolis}}}
              (v/all-specified-violations kb U))
-          "the sweep keys the declaration [functor pred indep dep]"))))
+          "the sweep keys the declaration [functor pred indep]"))))
 
 (tu/deftest-kb an-injection-is-audited-for-totality-and-not-for-ontoness
   ;; The discriminating case for the whole family. capitalCityOf is one-to-one and total
@@ -214,18 +218,27 @@
         (is (not (v/ask? kb (list 'surjection capitalCityOf) U)))
         (is (not (v/ask? kb (list 'functional capitalCityOf) U)))
         (is (not (v/ask? kb (list 'functionalInArg capitalCityOf 1) U)))
-        (is (not (v/ask? kb (list 'predAllSpecified capitalCityOf country capital_city) U)))
-        (is (not (v/ask? kb (list 'predSpecifiedAll capitalCityOf country capital_city) U)))))))
+        (is (not (v/ask? kb (list 'predAllSpecified capitalCityOf country) U)))
+        (is (not (v/ask? kb (list 'predSpecifiedAll capitalCityOf capital_city) U)))))))
 
-(tu/deftest-kb retracting-an-arg-declaration-drops-the-audit-half-only
-  ;; The audit half rests on the arg declarations as well as the mark, and the enforced
-  ;; half does not, so withdrawing the domain type leaves the refusals standing.
+(tu/deftest-kb retracting-an-arg-declaration-drops-its-audit-and-gaps-the-twin
+  ;; Each audit rule rests on the ONE arg declaration naming its quantified side, and the
+  ;; enforced half rests on neither. Withdrawing the domain type drops the totality
+  ;; requirement outright; the ontoness requirement still stands on the range declaration,
+  ;; but its filler side is now untyped, so the audit reports it as an explicit gap
+  ;; rather than auditing unconstrained.
   (tu/with-terms [capitalCityOf country capital_city]
     (let [dom (typed-relation! kb capitalCityOf country capital_city)]
       (v/assert kb (list 'bijection capitalCityOf) U)
       (v/retract! kb dom)
-      (is (not (v/ask? kb (list 'predAllSpecified capitalCityOf country capital_city) U)))
-      (is (not (v/ask? kb (list 'predSpecifiedAll capitalCityOf country capital_city) U)))
+      (is (not (v/ask? kb (list 'predAllSpecified capitalCityOf country) U))
+          "totality rested on the domain declaration and goes with it")
+      (is (v/ask? kb (list 'predSpecifiedAll capitalCityOf capital_city) U)
+          "ontoness rests on the range declaration and stands")
+      (is (= {:status :gap :gap :missing-slot-typing :pred capitalCityOf :position 1}
+             (get (v/all-specified-violations kb U)
+                  ['predSpecifiedAll capitalCityOf capital_city]))
+          "and its audit reports the withdrawn filler typing as a gap")
       (is (v/ask? kb (list 'functional capitalCityOf) U)
           "single-valued does not rest on the domain being declared")
       (is (v/ask? kb (list 'functionalInArg capitalCityOf 1) U)))))
@@ -274,10 +287,10 @@
   ;; arguments are undeclared, and the domain and range are declared afterwards.
   (tu/with-terms [capitalCityOf country capital_city]
     (v/assert kb (list 'bijection capitalCityOf) U)
-    (is (not (v/ask? kb (list 'predAllSpecified capitalCityOf country capital_city) U)))
+    (is (not (v/ask? kb (list 'predAllSpecified capitalCityOf country) U)))
     (typed-relation! kb capitalCityOf country capital_city)
-    (is (v/ask? kb (list 'predAllSpecified capitalCityOf country capital_city) U))
-    (is (v/ask? kb (list 'predSpecifiedAll capitalCityOf country capital_city) U))))
+    (is (v/ask? kb (list 'predAllSpecified capitalCityOf country) U))
+    (is (v/ask? kb (list 'predSpecifiedAll capitalCityOf capital_city) U))))
 
 ;;; ── the enforced marks descend the predicate hierarchy ────────────────
 

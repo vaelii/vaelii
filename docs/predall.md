@@ -82,27 +82,51 @@ predicate in the KB. A declaration that stamps nothing has neither problem.
 `predAllSpecified` and `predSpecifiedAll` state a requirement rather than a fact:
 
 ```clojure
-(predAllSpecified hasPet person pet)   ; every person should have a determinate pet
+(predAllSpecified hasPet person)   ; every person should have a determinate pet
 ```
+
+Binary on purpose: the required filler type is never restated in the declaration — it is
+**derived from the predicate's own slot contract** (`(arg hasPet 2 pet)` here; a
+`genlArg`-typed slot derives a subtype constraint instead, and multiple constraints
+compose conjunctively). A declaration over a predicate with no visible slot typing is a
+**declaration-contract gap** the audit reports explicitly, never a silently unconstrained
+audit.
 
 Nothing fires on assert. The requirement is checked when a caller asks:
 
 ```clojure
-(v/specified-violations kb 'hasPet 'person 'pet 'CxUniverse)
-;; => #{Bob Carol}   ; Bob has no filler; Carol's filler is not a pet
+(v/specified-violations kb 'hasPet 'person 'CxUniverse)
+;; => {:status :audited :violations #{Bob}}   ; Bob has no filler
 (v/all-specified-violations kb 'CxUniverse)
-;; => {[predAllSpecified hasPet person pet] #{Bob Carol}}
+;; => {[predAllSpecified hasPet person] {:status :audited :violations #{Bob}}}
 ```
 
-`specified-violations` audits one declaration and returns the instances that violate it.
+Discriminate on `:status`, not key presence — a `{:status :gap …}` result carries no
+`:violations` key, and a bare `(:violations r)` read would nil-pun the gap into a
+clean pass. Two gap kinds ship: `:missing-slot-typing`, and
+`:legacy-ternary-declaration` for a stored pre-migration ternary sentex the bulk
+import path can carry past the assert-time refusal.
+
+`specified-violations` audits one declaration and reports the instances with no admissible filler.
 `all-specified-violations` audits every declaration visible in the context and omits the
-ones that hold, so an empty map is a clean sweep. Both read the KB and store nothing.
-`predSpecifiedAll` is the argument-swapped twin, audited by passing `:first` as the
-argument position.
+ones that hold — but never a `{:gap …}` — so an empty map is a clean sweep and a gap
+cannot pass as one. Both read the KB and store nothing. `predSpecifiedAll` is the
+argument-swapped twin, audited by passing `:first` as the argument position; its filler
+contract derives from slot 1.
+
+The membership arm rides the KB's own reading: with `(arg hasPet 2 pet)` visible,
+argument-type inference types a stored filler off that very declaration, so the
+instance-position bite is existence + determinacy (plus any actively refuted membership) —
+the conformance bite for instance-positions lives at the assert-time checker, and an
+audit stricter than the contract it derives from would be a second type system. The
+subtype arm still convicts on its own: nothing derives a `genl` edge for a filler, so a
+kind the checker excused as evidence-free still violates.
 
 **The function marks derive both.** `(injection P)`, `(surjection P)` and `(bijection P)`
 are declared of a predicate rather than of a pair of collections, and CxCore rules read
-the domain and the range off `(arg P 1 D)` and `(arg P 2 R)` to derive the requirements:
+only the quantified side — the domain off `(arg P 1 D)` for totality, the range off
+`(arg P 2 R)` for ontoness — to derive `(predAllSpecified P D)` and
+`(predSpecifiedAll P R)`; the filler types are the audit's to derive:
 `predAllSpecified` is that family's totality, and `predSpecifiedAll` its ontoness
 ([taxonomy.md](taxonomy.md)). A derived declaration is a stored sentex like a written one,
 so the sweep above reports it with no extra entry point, and retracting the mark or either

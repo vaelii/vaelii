@@ -214,22 +214,301 @@
 ;; ==== Specified class: an integrity audit ==================================
 
 (tu/deftest-kb pred-all-specified-reports-instances-with-no-determinate-filler
+  ;; binary form: the required filler type is DERIVED from hasPet's own slot-2 contract
+  ;; ((arg hasPet 2 pet)), never restated in the declaration.
   (tu/with-terms [hasPet person pet Alice Bob Carol Rex]
     (v/assert kb (list 'binary_predicate hasPet) 'CxUniverse)
     (v/assert kb (list 'unary_predicate person) 'CxUniverse)
     (v/assert kb (list 'unary_predicate pet) 'CxUniverse)
-    (v/assert kb (list 'predAllSpecified hasPet person pet) 'CxUniverse)
+    (v/assert kb (list 'arg hasPet 2 pet) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified hasPet person) 'CxUniverse)
     (v/assert kb (list person Alice) 'CxUniverse)   ; a determinate filler
     (v/assert kb (list person Bob) 'CxUniverse)     ; no filler at all
-    (v/assert kb (list person Carol) 'CxUniverse)   ; a filler, but not in the collection
+    (v/assert kb (list person Carol) 'CxUniverse)   ; a filler of unknown type
     (v/assert kb (list hasPet Alice Rex) 'CxUniverse)
     (v/assert kb (list pet Rex) 'CxUniverse)
     (tu/with-terms [NotAPet]
       (v/assert kb (list hasPet Carol NotAPet) 'CxUniverse))
-    (let [vs (predall/specified-violations kb hasPet person pet 'CxUniverse)]
+    (let [vs (:violations (predall/specified-violations kb hasPet person 'CxUniverse))]
       (is (not (contains? vs Alice)) "Alice has a determinate pet")
       (is (contains? vs Bob) "Bob has no filler at all")
-      (is (contains? vs Carol) "Carol's filler is not a member of the required collection"))))
+      ;; Carol PASSES, and the pass is the design: the audit's membership question is
+      ;; answered by the KB's own reading, and with (arg hasPet 2 pet) visible,
+      ;; argument-type inference types her stored filler off that very declaration.
+      ;; An audit stricter than the contract it derives from would be the second type
+      ;; system the binary form exists to remove; the conformance bite lives at the
+      ;; assert-time checker (which refuses a filler it can convict) and on the
+      ;; kind-position arms tested below.
+      (is (not (contains? vs Carol))
+          "a stored filler is typed by the slot contract itself — no second type system"))))
+
+(tu/deftest-kb a-ternary-pred-all-specified-is-refused
+  ;; the old three-place spellings are gone, not tolerated: both functors are
+  ;; binary_predicates and the arity classifications are pairwise disjoint, so the
+  ;; ternary forms fail WFF at assert instead of quietly storing a second type system —
+  ;; and the refusal is pinned by its typed reason, not by any exception happening.
+  (tu/with-terms [hasPet person pet managedBy manager report]
+    (v/assert kb (list 'binary_predicate hasPet) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate person) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate pet) 'CxUniverse)
+    (v/assert kb (list 'binary_predicate managedBy) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate manager) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate report) 'CxUniverse)
+    (doseq [[functor a b c] [['predAllSpecified hasPet person pet]
+                             ['predSpecifiedAll managedBy manager report]]]
+      (try (v/assert kb (list functor a b c) 'CxUniverse)
+           (is false (str "the retired ternary " functor " spelling must refuse"))
+           (catch clojure.lang.ExceptionInfo e
+             (is (= :arity (:type (ex-data e)))
+                 (str functor ": refused for its arity, not incidentally")))))))
+
+(tu/deftest-kb argn-spellings-share-args-declaration-checks
+  ;; the binary projections run arg's own declaration
+  ;; arms at the projected position, so a declaration the ternary spelling refuses is
+  ;; refused identically under the binary one instead of storing believed-but-inert.
+  (tu/with-terms [owns dog]
+    (v/assert kb (list 'binary_predicate owns) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate dog) 'CxUniverse)
+    (try (v/assert kb (list 'arg3 owns dog) 'CxUniverse)
+         (is false "arg3 on a binary predicate must refuse — the ternary spelling does")
+         (catch clojure.lang.ExceptionInfo e
+           (is (= :arg-position (:type (ex-data e)))
+               "same arm, same typed reason as (arg owns 3 dog)")))
+    (is (not (v/ask? kb '(arg3 owns ?t) 'CxUniverse))
+        "and nothing stored a believed-but-inert binary spelling")
+    (try (v/assert kb (list 'arg1 'genl dog) 'CxUniverse)
+         (is false "arg on a type_relation_predicate must refuse through arg1 too")
+         (catch clojure.lang.ExceptionInfo e
+           (is (= :arg-constraint-kind (:type (ex-data e)))
+               "the relation-kind arm fires for the projection as for the ternary")))))
+
+(tu/deftest-kb a-declaration-without-slot-typing-is-a-reported-gap
+  ;; missing slot typing is an explicit declaration-contract diagnostic, never a silent
+  ;; unconstrained audit: an untyped pred's declaration reports {:gap …}, and the sweep
+  ;; carries the gap where a clean sweep would omit the declaration.
+  (tu/with-terms [likes person Alice Bob]
+    (v/assert kb (list 'binary_predicate likes) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate person) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified likes person) 'CxUniverse)
+    (v/assert kb (list person Alice) 'CxUniverse)
+    (v/assert kb (list likes Alice Bob) 'CxUniverse)
+    (let [r (predall/specified-violations kb likes person 'CxUniverse)]
+      (is (= :gap (:status r)) "the stable discriminant names the variant")
+      (is (= :missing-slot-typing (:gap r)) "the gap is named, not absorbed")
+      (is (= 2 (:position r)) "and carries the audited position")
+      (is (nil? (:violations r)) "no violation set pretends the audit ran"))
+    (is (= {:status :gap :gap :missing-slot-typing :pred likes :position 2}
+           (get (predall/all-specified-violations kb 'CxUniverse)
+                ['predAllSpecified likes person]))
+        "the sweep reports the gap — it can never pass as a clean declaration")))
+
+(tu/deftest-kb inherited-slot-typing-reaches-the-audit
+  ;; the write-once-at-the-general-predicate pattern: the sub-predicate carries no
+  ;; declaration of its own, the super's (arg parentOf 2 person) binds its tuples at
+  ;; assert, and the audit reads the same constraining-predicates union — a sub whose
+  ;; contract is entirely inherited audits, it does not gap.
+  (tu/with-terms [parentOf fatherOf person Alice Bob]
+    (v/assert kb (list 'unary_predicate person) 'CxUniverse)
+    (v/assert kb (list 'binary_predicate parentOf) 'CxUniverse)
+    (v/assert kb (list 'binary_predicate fatherOf) 'CxUniverse)
+    (v/assert kb (list 'genl fatherOf parentOf) 'CxUniverse)
+    (v/assert kb (list 'arg parentOf 2 person) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified fatherOf person) 'CxUniverse)
+    (v/assert kb (list person Alice) 'CxUniverse)
+    (v/assert kb (list person Bob) 'CxUniverse)
+    (v/assert kb (list fatherOf Bob Alice) 'CxUniverse)
+    (let [r (predall/specified-violations kb fatherOf person 'CxUniverse)]
+      (is (= :audited (:status r))
+          "the inherited contract is visible — no spurious gap on a fully-typed sub")
+      (is (not (contains? (:violations r) Bob)) "Bob's filler satisfies it")
+      (is (contains? (:violations r) Alice) "and Alice, fathering nothing, violates"))))
+
+(tu/deftest-kb a-type-relation-slot-audits-the-type-position-arm
+  ;; the type_relation_predicate arm in isolation, content and all: the checker has no
+  ;; ground-fact arm for a type-level position, so the audit's constraint is the union
+  ;; of the two type readings — a kind under thing passes, a declared-but-unplaced
+  ;; unary_predicate passes, and a bare individual with no type evidence violates.
+  (tu/with-terms [governsKind meta_kind placed_kind orphan_kind M1 M2 M3 NotAType]
+    (v/assert kb (list 'unary_predicate meta_kind) 'CxUniverse)
+    (v/assert kb (list 'binary_predicate governsKind) 'CxUniverse)
+    (v/assert kb (list 'type_relation_predicate governsKind) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified governsKind meta_kind) 'CxUniverse)
+    (v/assert kb (list meta_kind M1) 'CxUniverse)
+    (v/assert kb (list meta_kind M2) 'CxUniverse)
+    (v/assert kb (list meta_kind M3) 'CxUniverse)
+    (v/assert kb (list 'genl placed_kind 'thing) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate orphan_kind) 'CxUniverse)
+    (v/assert kb (list governsKind M1 placed_kind) 'CxUniverse)  ; genl reading
+    (v/assert kb (list governsKind M2 orphan_kind) 'CxUniverse)  ; membership reading
+    (v/assert kb (list governsKind M3 NotAType) 'CxUniverse)     ; neither
+    (let [r (predall/specified-violations kb governsKind meta_kind 'CxUniverse)]
+      (is (= :audited (:status r)) "a trp membership is a real slot contract, not a gap")
+      (is (not (contains? (:violations r) M1)) "a kind under thing passes the genl reading")
+      (is (not (contains? (:violations r) M2))
+          "a declared-but-unplaced unary_predicate passes the membership reading")
+      (is (contains? (:violations r) M3)
+          "a filler with no type evidence of any kind violates"))))
+
+(tu/deftest-kb constraints-compose-as-a-conjunction-not-a-disjunction
+  ;; The composition is `every?`, and it CANNOT be distinguished from `some` on stored
+  ;; facts: the assert-time checker refuses exactly the fillers a second enforced
+  ;; constraint would catch (a kind reaching the wrong place and an individual are both
+  ;; convicted at :arg-genl), and the one audit-only arm — :type-position — is subsumed
+  ;; by any subtype constraint it could pair with. So the conjunction is killed at the
+  ;; unit level, calling the private reader with a hand-built two-constraint typings and
+  ;; a filler that satisfies exactly one: under `every?` it fails, under `some` it passes.
+  (tu/with-terms [rel meta_k passes fails F1 Y]
+    (v/assert kb (list 'binary_predicate rel) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate meta_k) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate passes) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate fails) 'CxUniverse)
+    (v/assert kb (list meta_k F1) 'CxUniverse)
+    (v/assert kb (list rel F1 Y) 'CxUniverse)
+    (v/assert kb (list passes Y) 'CxUniverse)          ; Y is a `passes`, not a `fails`
+    (let [admissible? @#'predall/admissible-filler?
+          one         {:check :membership :type passes}
+          other       {:check :membership :type fails}]
+      (is (true?  (admissible? kb rel F1 #{one} 2 'CxUniverse))
+          "Y alone satisfies the one constraint it meets")
+      (is (false? (admissible? kb rel F1 #{one other} 2 'CxUniverse))
+          "but not both — a filler meeting one of two constraints is not admissible"))))
+
+(tu/deftest-kb membership-self-satisfaction-is-the-pinned-design
+  ;; the membership arm's vacuity for stored fillers is a documented contract, not an
+  ;; accident: argument-type inference answers (zpet2 y) off the very (arg zgoverns2 2
+  ;; zpet2) declaration the constraint derives from, so a stored filler cannot fail the
+  ;; arm — the conformance bite for instance positions lives at the assert-time checker.
+  (tu/with-terms [zgoverns2 zmeta2 zpet2 M1 Anything]
+    (v/assert kb (list 'unary_predicate zmeta2) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate zpet2) 'CxUniverse)
+    (v/assert kb (list 'binary_predicate zgoverns2) 'CxUniverse)
+    (v/assert kb (list 'arg zgoverns2 2 zpet2) 'CxUniverse)
+    (v/assert kb (list zmeta2 M1) 'CxUniverse)
+    (v/assert kb (list zgoverns2 M1 Anything) 'CxUniverse)
+    (is (v/ask? kb (list zpet2 Anything) 'CxUniverse)
+        "any stored filler is a member by the KB's own reading — the declaration types it")
+    (v/assert kb (list 'predAllSpecified zgoverns2 zmeta2) 'CxUniverse)
+    (is (= {:status :audited :violations #{}}
+           (predall/specified-violations kb zgoverns2 zmeta2 'CxUniverse))
+        "so a single arg-typed constraint can only be failed by absence or indeterminacy")))
+
+(tu/deftest-kb a-stale-arg-pos-is-refused-typed
+  ;; the retired 5-argument call shape collides with the new arity — an unmigrated
+  ;; caller's context symbol lands in arg-pos — and must surface as the typed refusal
+  ;; the daemon's 400 contract routes, not an anonymous case miss.
+  (tu/with-terms [hasPet person pet]
+    (v/assert kb (list 'binary_predicate hasPet) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate person) 'CxUniverse)
+    (try (predall/specified-violations kb hasPet person 'CxUniverse pet)
+         (is false "a non-:second/:first arg-pos must refuse")
+         (catch clojure.lang.ExceptionInfo e
+           (is (= :bad-args (:type (ex-data e))) "typed, so a remote caller gets a 400")
+           (is (= pet (:arg-pos (ex-data e))) "and told what arrived in the slot")))))
+
+(tu/deftest-kb a-genlarg-typed-slot-audits-the-subtype-arm
+  ;; the derived contract has two arms: (arg p 2 t) asks membership, (genlArg p 2 t)
+  ;; asks subtypehood — the same split the assert-time checker runs.  A filler that is
+  ;; itself the constraint type passes reflexively (no genl self-edge is stored).
+  (tu/with-terms [governs meta_kind kind_a lone_individual]
+    (v/assert kb (list 'binary_predicate governs) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate meta_kind) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate kind_a) 'CxUniverse)
+    (v/assert kb (list 'genlArg governs 2 'thing) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified governs meta_kind) 'CxUniverse)
+    (tu/with-terms [M1 M2 M3]
+      (v/assert kb (list meta_kind M1) 'CxUniverse)
+      (v/assert kb (list meta_kind M2) 'CxUniverse)
+      (v/assert kb (list meta_kind M3) 'CxUniverse)
+      (v/assert kb (list 'genl kind_a 'thing) 'CxUniverse)
+      (v/assert kb (list governs M1 kind_a) 'CxUniverse)      ; a kind under thing — passes
+      (v/assert kb (list governs M2 'thing) 'CxUniverse)      ; the type itself
+      (v/assert kb (list governs M3 lone_individual) 'CxUniverse) ; no genl path to thing
+      (let [vs (:violations (predall/specified-violations kb governs meta_kind 'CxUniverse))]
+        (is (not (contains? vs M1)) "a filler with a genl path to the constraint type passes")
+        (is (v/ask? kb '(genl thing thing) 'CxUniverse)
+            "the genl closure ask answers is reflexive — the pass below is its, not a floor's")
+        (is (not (contains? vs M2)) "so the constraint type itself passes")
+        (is (contains? vs M3) "a filler with no visible path into the hierarchy violates")))))
+
+(tu/deftest-kb multiple-slot-constraints-compose-conjunctively
+  ;; two visible slot-2 constraints must BOTH be satisfied.  The division of labour the
+  ;; comment in `satisfies-typing?` describes shows up concretely here: a filler with
+  ;; visible evidence reaching the WRONG constraint is refused at assert by the checker
+  ;; (composition enforced at the entry point — there is no storable
+  ;; passes-one-fails-the-other case), so what the audit's conjunction meets on stored
+  ;; facts is the checker's open-world excuse: a filler with NO visible evidence stores
+  ;; fine and violates both derived constraints, and one under both passes.
+  (tu/with-terms [governs meta_kind vehicle_kind insured_kind car_kind mystery_kind M1 M2]
+    (v/assert kb (list 'binary_predicate governs) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate meta_kind) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate vehicle_kind) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate insured_kind) 'CxUniverse)
+    (v/assert kb (list 'genl vehicle_kind 'thing) 'CxUniverse)
+    (v/assert kb (list 'genl insured_kind 'thing) 'CxUniverse)
+    (v/assert kb (list 'genlArg governs 2 vehicle_kind) 'CxUniverse)
+    (v/assert kb (list 'genlArg governs 2 insured_kind) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified governs meta_kind) 'CxUniverse)
+    (v/assert kb (list meta_kind M1) 'CxUniverse)
+    (v/assert kb (list meta_kind M2) 'CxUniverse)
+    (v/assert kb (list 'genl car_kind vehicle_kind) 'CxUniverse)
+    (v/assert kb (list 'genl car_kind insured_kind) 'CxUniverse)  ; under both
+    (v/assert kb (list governs M1 car_kind) 'CxUniverse)
+    (v/assert kb (list governs M2 mystery_kind) 'CxUniverse)      ; no visible evidence
+    ;; the partially-conforming case is unstorable, which is itself worth pinning:
+    (tu/with-terms [boat_kind M3]
+      (v/assert kb (list meta_kind M3) 'CxUniverse)
+      (v/assert kb (list 'genl boat_kind vehicle_kind) 'CxUniverse)
+      (try (v/assert kb (list governs M3 boat_kind) 'CxUniverse)
+           (is false "a filler visibly under one constraint and not the other must refuse")
+           (catch clojure.lang.ExceptionInfo e
+             (is (= :arg-genl (:type (ex-data e)))
+                 "refused by the genlArg conviction specifically, not incidentally"))))
+    (let [vs (:violations (predall/specified-violations kb governs meta_kind 'CxUniverse))]
+      (is (not (contains? vs M1)) "car_kind satisfies both subtype constraints")
+      (is (contains? vs M2)
+          "an evidence-free filler the checker excused fails the audit's conjunction"))))
+
+(tu/deftest-kb argn-bridges-project-arg-in-both-directions
+  ;; all six bridge rules, a 3-position x 2-direction matrix: either spelling concludes
+  ;; the other, for each projected position — which is what lets a positional constraint
+  ;; stand in a binary declaration's subject position, and what a copy/paste slip in any
+  ;; one rule's position number would break.
+  (tu/with-terms [rel3 kind_a kind_b kind_c kind_d kind_e kind_f]
+    (doseq [k [kind_a kind_b kind_c kind_d kind_e kind_f]]
+      (v/assert kb (list 'unary_predicate k) 'CxUniverse))
+    (v/assert kb (list 'ternary_predicate rel3) 'CxUniverse)
+    (doseq [[binary-f n fwd-type bwd-type]
+            [['arg1 1 kind_a kind_b]
+             ['arg2 2 kind_c kind_d]
+             ['arg3 3 kind_e kind_f]]]
+      (v/assert kb (list binary-f rel3 fwd-type) 'CxUniverse)
+      (is (v/ask? kb (list 'arg rel3 n fwd-type) 'CxUniverse)
+          (str binary-f " concludes the ternary spelling at position " n))
+      (v/assert kb (list 'arg rel3 n bwd-type) 'CxUniverse)
+      (is (v/ask? kb (list binary-f rel3 bwd-type) 'CxUniverse)
+          (str "and the ternary spelling at position " n " concludes " binary-f)))))
+
+(tu/deftest-kb a-legacy-ternary-declaration-surfaces-from-the-sweep
+  ;; the bulk import path builds records without the assert-time checks, so a
+  ;; pre-migration dump's ternary declarations can load intact — modeled here by
+  ;; asserting into a coreless KB, where nothing classifies the functor's arity.
+  ;; Matching neither the binary ask pattern nor any audit, they would otherwise
+  ;; vanish and turn an unmigrated KB into a fake clean sweep; instead the sweep
+  ;; names each one, beside whatever live results the same sweep carries.
+  (let [kb (tu/isolated-fresh)]   ; isolated space — tu/fresh would clear the shared fixture KB
+    (tu/with-terms [hasPet person pet likes food]
+      (v/assert kb (list 'predAllSpecified hasPet person pet) 'CxUniverse)
+      (is (v/ask? kb (list 'predAllSpecified hasPet '?a '?b) 'CxUniverse)
+          "the coreless assert stands in for an imported ternary record")
+      (v/assert kb (list 'predAllSpecified likes food) 'CxUniverse)
+      (let [report (predall/all-specified-violations kb 'CxUniverse)]
+        (is (= {:status :gap :gap :legacy-ternary-declaration
+                :pred hasPet :sentence (list 'predAllSpecified hasPet person pet)}
+               (get report ['predAllSpecified hasPet person]))
+            "the stale sentex is named, never silently unswept")
+        (is (= {:status :gap :gap :missing-slot-typing :pred likes :position 2}
+               (get report ['predAllSpecified likes food]))
+            "and the same sweep carries the other gap kind beside it")))))
 
 (tu/deftest-kb pred-all-specified-treats-a-skolem-filler-as-indeterminate
   ;; the crux: a filler minted by head-existential skolemization is INDETERMINATE, so the
@@ -244,13 +523,15 @@
     (v/assert kb (list 'implies (list person '?x)
                        (list 'exists '?y (list 'and (list hasPet '?x '?y) (list pet '?y))))
               'CxUniverse)
-    (v/assert kb (list 'predAllSpecified hasPet person pet) 'CxUniverse)
+    (v/assert kb (list 'arg hasPet 2 pet) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified hasPet person) 'CxUniverse)
     (v/assert kb (list person Alice) 'CxUniverse)
     (let [filler (get (first (v/ask kb (list hasPet Alice '?y) 'CxUniverse)) '?y)]
       (is (some? filler) "Alice does have a skolem filler")
       (is (predall/indeterminate-term? kb filler 'CxUniverse)
           "which is an indeterminate (skolem) term"))
-    (is (contains? (predall/specified-violations kb hasPet person pet 'CxUniverse) Alice)
+    (is (contains? (:violations (predall/specified-violations kb hasPet person 'CxUniverse))
+                   Alice)
         "so Alice still violates predAllSpecified — a skolem filler is not determinate")))
 
 (tu/deftest-kb pred-all-specified-honours-an-extensible-indeterminate-kind
@@ -262,14 +543,16 @@
     (v/assert kb (list 'unary_predicate person) 'CxUniverse)
     (v/assert kb (list 'unary_predicate pet) 'CxUniverse)
     (v/assert kb (list 'genl vague_kind 'indeterminate_term) 'CxUniverse)  ; a future indeterminate kind
-    (v/assert kb (list 'predAllSpecified hasPet person pet) 'CxUniverse)
+    (v/assert kb (list 'arg hasPet 2 pet) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified hasPet person) 'CxUniverse)
     (v/assert kb (list person Alice) 'CxUniverse)
     (v/assert kb (list hasPet Alice Fuzzy) 'CxUniverse)
-    (v/assert kb (list pet Fuzzy) 'CxUniverse)     ; Fuzzy is in the required collection
+    (v/assert kb (list pet Fuzzy) 'CxUniverse)     ; Fuzzy satisfies the derived slot type
     (v/assert kb (list vague_kind Fuzzy) 'CxUniverse)   ; but it is an indeterminate_term member
     (is (predall/indeterminate-term? kb Fuzzy 'CxUniverse)
         "a member of a (genl _ indeterminate_term) kind is indeterminate")
-    (is (contains? (predall/specified-violations kb hasPet person pet 'CxUniverse) Alice)
+    (is (contains? (:violations (predall/specified-violations kb hasPet person 'CxUniverse))
+                   Alice)
         "so Alice's only filler is indeterminate and she violates the requirement")))
 
 (tu/deftest-kb an-exists-placeholder-satisfies-the-specified-requirement
@@ -282,12 +565,14 @@
     (v/assert kb (list 'unary_predicate person) 'CxUniverse)
     (v/assert kb (list 'unary_predicate dog) 'CxUniverse)
     (v/assert kb (list 'predAllExists owns person dog) 'CxUniverse)
-    (v/assert kb (list 'predAllSpecified owns person dog) 'CxUniverse)
+    (v/assert kb (list 'arg owns 2 dog) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified owns person) 'CxUniverse)
     (v/assert kb (list person Alice) 'CxUniverse)
     (let [p (list 'PredAllExistsFn owns person dog)]
       (v/assert kb (list dog p) 'CxUniverse)
       (v/assert kb (list owns Alice p) 'CxUniverse))
-    (is (empty? (predall/specified-violations kb owns person dog 'CxUniverse))
+    (is (= {:status :audited :violations #{}}
+           (predall/specified-violations kb owns person 'CxUniverse))
         "the author-asserted placeholder is a determinate filler, so nothing violates")))
 
 (tu/deftest-kb pred-specified-all-audits-the-first-position
@@ -296,14 +581,16 @@
     (v/assert kb (list 'binary_predicate managedBy) 'CxUniverse)
     (v/assert kb (list 'unary_predicate report) 'CxUniverse)
     (v/assert kb (list 'unary_predicate manager) 'CxUniverse)
-    ;; predSpecifiedAll ?pred ?dep ?indep : filler drawn from ?dep at position 1,
-    ;; quantified over ?indep at position 2
-    (v/assert kb (list 'predSpecifiedAll managedBy manager report) 'CxUniverse)
+    ;; binary twin: (predSpecifiedAll ?pred ?indep) — quantified over ?indep at ?pred's
+    ;; second position, filler audited at position 1 under the slot-1 derived contract
+    (v/assert kb (list 'arg managedBy 1 manager) 'CxUniverse)
+    (v/assert kb (list 'predSpecifiedAll managedBy report) 'CxUniverse)
     (v/assert kb (list report Carol) 'CxUniverse)
     (v/assert kb (list report Dan) 'CxUniverse)
     (v/assert kb (list managedBy Boss Carol) 'CxUniverse)  ; Boss manages Carol
     (v/assert kb (list manager Boss) 'CxUniverse)
-    (let [vs (predall/specified-violations kb managedBy report manager 'CxUniverse :first)]
+    (let [vs (:violations
+              (predall/specified-violations kb managedBy report 'CxUniverse :first))]
       (is (not (contains? vs Carol)) "Carol has a determinate manager")
       (is (contains? vs Dan) "Dan has none"))))
 
@@ -312,13 +599,46 @@
     (v/assert kb (list 'binary_predicate hasPet) 'CxUniverse)
     (v/assert kb (list 'unary_predicate person) 'CxUniverse)
     (v/assert kb (list 'unary_predicate pet) 'CxUniverse)
-    (v/assert kb (list 'predAllSpecified hasPet person pet) 'CxUniverse)
+    (v/assert kb (list 'arg hasPet 2 pet) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified hasPet person) 'CxUniverse)
     (v/assert kb (list person Bob) 'CxUniverse)
     (let [report (predall/all-specified-violations kb 'CxUniverse)]
-      (is (contains? report ['predAllSpecified hasPet person pet])
+      (is (contains? report ['predAllSpecified hasPet person])
           "the sweep names the violated declaration")
-      (is (contains? (get report ['predAllSpecified hasPet person pet]) Bob)
+      (is (contains? (:violations (get report ['predAllSpecified hasPet person])) Bob)
           "and carries its violating instances"))))
+
+;; ==== the acceptance fixture: Pace's KE packet, normalized ================
+;; The declarations from the 2026-09-04 predAllSpecified KE packet that survived the
+;; thread's rulings, normalized to the binary (pred, collection) form.  Parked lines are
+;; deliberately absent: the at_least_* collections (await the arity vocabulary lane), the
+;; all-functions fcp audit (known unreifiable noise), and the arityMin family (its own
+;; vocabulary-only PR).  What is pinned here is that each surviving declaration is
+;; assertable against the shipped core vocabulary and audits — deriving a real slot
+;; contract, not a gap.
+
+(tu/deftest-kb the-ke-packet-declarations-assert-and-audit-over-core
+  (doseq [[pred indep] [['arg1    'predicate]        ; every relation types argument 1
+                        ['result  'function]         ; every function types its result
+                        ['comment 'thing]            ; everything is documented
+                        ['genl    'unary_predicate]]] ; every type has a place in the hierarchy
+    (v/assert kb (list 'predAllSpecified pred indep) 'CxUniverse)
+    (let [r (predall/specified-violations kb pred indep 'CxUniverse)]
+      (is (= :audited (:status r))
+          (str "(predAllSpecified " pred " " indep ") derives a slot contract — "
+               pred "'s filler typing is visible to the audit"))))
+  ;; genl's slot 2 carries no arg/genlArg declaration on purpose (the root would fail
+  ;; it); its contract arrives through the type_relation_predicate arm, and the audit
+  ;; that rides it has CONTENT — a fresh type with no genl parent violates the genl
+  ;; declaration, and giving it one clears it, which no gap-suppression stub could fake.
+  (is (v/ask? kb '(type_relation_predicate genl) 'CxUniverse)
+      "the arm the genl declaration audits through is a believed membership")
+  ;; content of the type_relation_predicate arm is pinned in isolation by
+  ;; a-type-relation-slot-audits-the-type-position-arm; here the packet declaration
+  ;; only has to assert and audit rather than gap.
+  (is (= :audited (:status (predall/specified-violations kb 'genl 'unary_predicate
+                                                         'CxUniverse)))
+      "the genl declaration audits through the trp arm, not a gap"))
 
 ;; ==== the IndeterminateTerm identity exemption + the UNA matrix ============
 ;; The unique-name assumption applies to DETERMINATE terms (distinct names are provably
@@ -476,17 +796,21 @@
     (v/assert kb (list 'binary_predicate hasPet) 'CxUniverse)
     (v/assert kb (list 'unary_predicate person) 'CxUniverse)
     (v/assert kb (list 'unary_predicate pet) 'CxUniverse)
-    (v/assert kb (list 'predAllSpecified hasPet person pet) 'CxUniverse)
+    (v/assert kb (list 'arg hasPet 2 pet) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified hasPet person) 'CxUniverse)
     (v/assert kb (list person Alice) 'CxUniverse)
     (v/assert kb (list person Bob) 'CxUniverse)
     (v/assert kb (list pet Rex) 'CxUniverse)
     (v/assert kb (list hasPet Alice Rex) 'CxUniverse)
-    (is (= #{Bob} (v/specified-violations kb hasPet person pet 'CxUniverse))
+    (is (= {:status :audited :violations #{Bob}}
+           (v/specified-violations kb hasPet person 'CxUniverse))
         "Alice has a determinate pet; Bob has no filler at all")
-    (is (= #{Bob} (v/specified-violations kb hasPet person pet 'CxUniverse :second))
+    (is (= {:status :audited :violations #{Bob}}
+           (v/specified-violations kb hasPet person 'CxUniverse :second))
         "and :second is the default argument position, stated or not")
     (let [report (v/all-specified-violations kb 'CxUniverse)]
-      (is (= {['predAllSpecified hasPet person pet] #{Bob}} report)
+      (is (= {['predAllSpecified hasPet person] {:status :audited :violations #{Bob}}}
+             report)
           "the sweep reports the one declaration that does not hold, keyed by it"))
     (v/assert kb (list hasPet Bob Rex) 'CxUniverse)
     (is (= {} (v/all-specified-violations kb 'CxUniverse))

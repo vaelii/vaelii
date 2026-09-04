@@ -63,6 +63,30 @@
 (arg arg 1 predicate)
 (arg arg 2 positive_integer)
 (genlArg arg 3 thing)
+(comment arg1
+         "(arg1 ?predicate ?type) means that argument 1 of ?predicate must be of ?type — the binary projection of (arg ?predicate 1 ?type), created so a positional argument constraint can itself stand in the subject position of a binary declaration such as (predAllSpecified arg1 predicate). The two spellings are bridged by rules in both directions and held to the same declaration checks at assert, so either may be asserted and both STORED spellings are believed. The projection relates stored declarations only: a reading arg answers through genl generalization or super-predicate inheritance has no argN twin, so a generalized or inherited question must be asked of arg itself. arg2 and arg3 project positions 2 and 3 the same way.")
+(binary_predicate arg1)
+(arg arg1 1 predicate)
+(genlArg arg1 2 thing)
+(implies (and (arg1 ?reln ?type)) (arg ?reln 1 ?type))
+(implies (and (arg ?reln 1 ?type)) (arg1 ?reln ?type))
+
+(comment arg2
+         "(arg2 ?predicate ?type) is the binary projection of (arg ?predicate 2 ?type) — see arg1.")
+(binary_predicate arg2)
+(arg arg2 1 predicate)
+(genlArg arg2 2 thing)
+(implies (and (arg2 ?reln ?type)) (arg ?reln 2 ?type))
+(implies (and (arg ?reln 2 ?type)) (arg2 ?reln ?type))
+
+(comment arg3
+         "(arg3 ?predicate ?type) is the binary projection of (arg ?predicate 3 ?type) — see arg1.")
+(binary_predicate arg3)
+(arg arg3 1 predicate)
+(genlArg arg3 2 thing)
+(implies (and (arg3 ?reln ?type)) (arg ?reln 3 ?type))
+(implies (and (arg ?reln 3 ?type)) (arg3 ?reln ?type))
+
 ;; arg / genlArg / interArg generalize along genl on the query surface the way
 ;; check walks them internally — a stored subtype constraint answers its supertypes, and
 ;; interArg's trigger (arg 3), being an antecedent, answers its subtypes instead.
@@ -447,18 +471,16 @@
 ;; stamps no rule and concludes nothing on its own.
 
 (comment predAllSpecified
-         "(predAllSpecified ?pred ?indep ?dep) declares the integrity requirement that every instance of collection ?indep have a determinate ?dep filler at ?pred's second position: for all x in ?indep there is a believed (?pred x y) with y in ?dep and y determinate. An audit, not an inference — vaelii.core/specified-violations reads the declaration and returns the instances of ?indep with no determinate filler. Indeterminate terms are skolems plus any declared indeterminate_term kind (none ships by default); an author-asserted *Exists* placeholder is a determinate filler, so predAllSpecified is the antagonist of predAllExists. The declaration stamps no rule and concludes nothing.")
-(ternary_predicate predAllSpecified)
+         "(predAllSpecified ?pred ?indep) declares the integrity requirement that every instance of collection ?indep have a determinate filler at ?pred's second position: for all x in ?indep there is a believed (?pred x y) with y determinate and y satisfying ?pred's own slot-2 argument contract. The required filler type is DERIVED, never restated: every visible (arg ?pred 2 ?t) constrains y to be a member of ?t, every visible (genlArg ?pred 2 ?t) constrains y to be a subtype of ?t, and the constraints compose as the assert-time checker composes them. A ?pred with no visible slot-2 typing is a declaration-contract gap the audit reports explicitly — never silently audited unconstrained. An audit, not an inference — vaelii.core/specified-violations reads the declaration and returns the instances of ?indep with no determinate filler. Indeterminate terms are skolems plus any declared indeterminate_term kind (none ships by default); an author-asserted *Exists* placeholder is a determinate filler, so predAllSpecified is the antagonist of predAllExists. The declaration stamps no rule and concludes nothing.")
+(binary_predicate predAllSpecified)
 (arg predAllSpecified 1 binary_predicate)
 (genlArg predAllSpecified 2 thing)
-(genlArg predAllSpecified 3 thing)
 
 (comment predSpecifiedAll
-         "(predSpecifiedAll ?pred ?dep ?indep) is the argument-swapped twin of predAllSpecified: it requires that every instance of collection ?indep have a determinate ?dep filler at ?pred's FIRST position — for all x in ?indep there is a believed (?pred y x) with y in ?dep and y determinate. An audit read by vaelii.core/specified-violations with :first, not a stored rule (docs above).")
-(ternary_predicate predSpecifiedAll)
+         "(predSpecifiedAll ?pred ?indep) is the argument-swapped twin of predAllSpecified: it requires that every instance of collection ?indep have a determinate filler at ?pred's FIRST position — for all x in ?indep there is a believed (?pred y x) with y determinate and y satisfying ?pred's slot-1 argument contract, derived from the visible (arg ?pred 1 ?t) / (genlArg ?pred 1 ?t) declarations exactly as the twin derives slot 2. An audit read by vaelii.core/specified-violations with :first, not a stored rule (docs above).")
+(binary_predicate predSpecifiedAll)
 (arg predSpecifiedAll 1 binary_predicate)
 (genlArg predSpecifiedAll 2 thing)
-(genlArg predSpecifiedAll 3 thing)
 
 (comment evaluate
          "(evaluate ?result ?expression) means that ?result is the value of the symbolic ?expression. So (evaluate ?sum (+ 1 2)) binds ?sum to 3. A safe whitelist over +, -, *, /, mod, min, max, abs and expt rather than clojure eval, computed on demand and never stored.")
@@ -480,21 +502,21 @@
 (genl functional binary_predicate)
 
 (comment injection
-         "(injection ?predicate) means that ?predicate is an injective function: single-valued, one-to-one, and total on the type its first argument is declared to be. Declared once, it stands in for four claims the engine already reads. Two forward rules derive (functional ?predicate) and (functionalInArg ?predicate 1), each a real mark the engine enforces in turn: the merge/refuse rule over a shared first argument, and the same rule mirrored over a shared second. A second symbol filler on either side derives (equals V1 V2) and merges, while two non-symbols such as 1980 and 1990 are refused outright. A third rule reads the domain and the range off (arg ?predicate 1 ?d) and (arg ?predicate 2 ?r), and derives the integrity requirement (predAllSpecified ?predicate ?d ?r). That requirement is audited on demand by vaelii.core/specified-violations, which reports the domain members carrying no determinate filler. Totality is audited rather than enforced because an open world cannot refuse a write for a member whose filler has not arrived. A predicate declaring no arg pair gets the two enforced marks and no audit, since nothing states what the domain and range are. genlArg is not read, so a type_relation_predicate carries the enforced marks alone. A one-to-one relation that is not total is (functional P) beside (functionalInArg P 1), written directly. Also a type: (genl injection functional) classifies P as functional and so binary_predicate. Declared of a relation such as capitalCityOf, for instance. See docs/taxonomy.md.")
+         "(injection ?predicate) means that ?predicate is an injective function: single-valued, one-to-one, and total on the type its first argument is declared to be. Declared once, it stands in for four claims the engine already reads. Two forward rules derive (functional ?predicate) and (functionalInArg ?predicate 1), each a real mark the engine enforces in turn: the merge/refuse rule over a shared first argument, and the same rule mirrored over a shared second. A second symbol filler on either side derives (equals V1 V2) and merges, while two non-symbols such as 1980 and 1990 are refused outright. A third rule reads the domain off (arg ?predicate 1 ?d) and derives the binary integrity requirement (predAllSpecified ?predicate ?d); the required filler type is not restated — the audit derives it from ?predicate's own slot-2 contract at read time. That requirement is audited on demand by vaelii.core/specified-violations, which reports the domain members carrying no determinate filler. Totality is audited rather than enforced because an open world cannot refuse a write for a member whose filler has not arrived. A predicate with no arg 1 declaration gets the two enforced marks and no audit, since nothing states what the domain is; one typed at arg 1 but not at arg 2 concludes the requirement, and the audit reports the missing slot contract as an explicit gap rather than auditing unconstrained. A one-to-one relation that is not total is (functional P) beside (functionalInArg P 1), written directly. Also a type: (genl injection functional) classifies P as functional and so binary_predicate. Declared of a relation such as capitalCityOf, for instance. See docs/taxonomy.md.")
 (unary_predicate injection)
 (arg injection 1 predicate)
 (decontextualized_predicate injection)
 (genl injection functional)
 
 (comment surjection
-         "(surjection ?predicate) means that ?predicate is a surjective function: single-valued, total on the type its first argument is declared to be, and onto the type its second is. Declared once, it stands in for three claims. One forward rule derives (functional ?predicate), the mark the engine enforces by merging two symbol fillers for one first argument and refusing two it cannot merge. Two further rules read the domain and the range off (arg ?predicate 1 ?d) and (arg ?predicate 2 ?r), and derive (predAllSpecified ?predicate ?d ?r) for totality and (predSpecifiedAll ?predicate ?d ?r) for ontoness. Both are audited on demand by vaelii.core/specified-violations: the first reports the domain members with no determinate filler, the second the range members no determinate domain member reaches. Neither is enforced at a write, an open world having no ground to refuse a fact for a member nothing has reached yet. A predicate declaring no arg pair gets the enforced mark and no audit, and genlArg is not read. Nothing here says one-to-one, so a surjection may send two domain members to one range member; that is what separates it from bijection. Declared of a relation such as capitalCityOf over capital_city, for instance. See docs/taxonomy.md.")
+         "(surjection ?predicate) means that ?predicate is a surjective function: single-valued, total on the type its first argument is declared to be, and onto the type its second is. Declared once, it stands in for three claims. One forward rule derives (functional ?predicate), the mark the engine enforces by merging two symbol fillers for one first argument and refusing two it cannot merge. Two further rules read the domain off (arg ?predicate 1 ?d) and the range off (arg ?predicate 2 ?r), and derive (predAllSpecified ?predicate ?d) for totality and (predSpecifiedAll ?predicate ?r) for ontoness — each binary, the filler's type derived from the predicate's own slot contract at read time rather than restated. Both are audited on demand by vaelii.core/specified-violations: the first reports the domain members with no determinate filler, the second the range members no determinate domain member reaches. Neither is enforced at a write, an open world having no ground to refuse a fact for a member nothing has reached yet. A predicate whose quantified side is untyped concludes no requirement; an untyped filler side is reported by the audit as an explicit gap. Nothing here says one-to-one, so a surjection may send two domain members to one range member; that is what separates it from bijection. Declared of a relation such as capitalCityOf over capital_city, for instance. See docs/taxonomy.md.")
 (unary_predicate surjection)
 (arg surjection 1 predicate)
 (decontextualized_predicate surjection)
 (genl surjection functional)
 
 (comment bijection
-         "(bijection ?predicate) means that ?predicate is a bijective function: an injection and a surjection at once, so the two declared types are in one-to-one correspondence. Declared once, it stands in for the pair: two forward rules derive (injection ?predicate) and (surjection ?predicate), and each of those derives its own marks in turn, so the whole family reaches the engine through the two entries above rather than through anything keyed on this name. What lands is (functional ?predicate) and (functionalInArg ?predicate 1), enforced at the assert entry point, beside (predAllSpecified ?predicate ?d ?r) and (predSpecifiedAll ?predicate ?d ?r) over the arg-declared domain and range, audited on demand. The marks are materialized as stored sentexes rather than claimed by subsumption edges, for the reason equivalence_relation's entry gives: the rule's stored conclusion both classifies and enforces, where a genl-inherited membership never reaches the mark ingestion. Also a type: (genl bijection injection) and (genl bijection surjection) state the subsumption outright, and classify P as functional and so binary_predicate. Declared of a relation such as capitalCityOf over capital_city, for instance. See docs/taxonomy.md.")
+         "(bijection ?predicate) means that ?predicate is a bijective function: an injection and a surjection at once, so the two declared types are in one-to-one correspondence. Declared once, it stands in for the pair: two forward rules derive (injection ?predicate) and (surjection ?predicate), and each of those derives its own marks in turn, so the whole family reaches the engine through the two entries above rather than through anything keyed on this name. What lands is (functional ?predicate) and (functionalInArg ?predicate 1), enforced at the assert entry point, beside (predAllSpecified ?predicate ?d) over the arg-declared domain and (predSpecifiedAll ?predicate ?r) over the arg-declared range — binary, the filler types derived from the predicate's own slot contract at read time — audited on demand. The marks are materialized as stored sentexes rather than claimed by subsumption edges, for the reason equivalence_relation's entry gives: the rule's stored conclusion both classifies and enforces, where a genl-inherited membership never reaches the mark ingestion. Also a type: (genl bijection injection) and (genl bijection surjection) state the subsumption outright, and classify P as functional and so binary_predicate. Declared of a relation such as capitalCityOf over capital_city, for instance. See docs/taxonomy.md.")
 (unary_predicate bijection)
 (arg bijection 1 predicate)
 (decontextualized_predicate bijection)
@@ -509,12 +531,15 @@
 (implies (and (bijection ?p))  (injection ?p))
 (implies (and (bijection ?p))  (surjection ?p))
 
-;; The audited half. Totality and ontoness are claims about a domain and a range rather
-;; than about the predicate alone, and the arg declarations are where those two types are
-;; already stated, so the requirements are derived from them and audited on demand.
-(implies (and (injection ?p)  (arg ?p 1 ?d) (arg ?p 2 ?r)) (predAllSpecified ?p ?d ?r))
-(implies (and (surjection ?p) (arg ?p 1 ?d) (arg ?p 2 ?r)) (predAllSpecified ?p ?d ?r))
-(implies (and (surjection ?p) (arg ?p 1 ?d) (arg ?p 2 ?r)) (predSpecifiedAll ?p ?d ?r))
+;; The audited half. Totality quantifies over the domain and ontoness over the range, so
+;; each rule reads only the ONE arg declaration that names its quantified collection —
+;; the filler's own type is no longer restated anywhere, because the binary audit derives
+;; it from the predicate's slot contract at read time. A predicate whose quantified side
+;; is untyped concludes no requirement; one whose FILLER side is untyped concludes the
+;; requirement and the audit reports the missing slot contract as an explicit gap.
+(implies (and (injection ?p)  (arg ?p 1 ?d)) (predAllSpecified ?p ?d))
+(implies (and (surjection ?p) (arg ?p 1 ?d)) (predAllSpecified ?p ?d))
+(implies (and (surjection ?p) (arg ?p 2 ?r)) (predSpecifiedAll ?p ?r))
 
 (comment functionCorrespondingPredicate
          "(functionCorrespondingPredicate ?function ?predicate ?position) means that ?function and ?predicate state the same relationship: ?function maps some arguments to a value exactly when ?predicate holds of those same arguments with the value at ?position. So (functionCorrespondingPredicate MotherFn motherOf 2) makes (MotherFn Muffet) resolve to the Mary of a believed (motherOf Muffet Mary), and, where no mother is known, projects the placeholder constant it mints back onto motherOf so the placeholder still answers questions about who Muffet's mother is. Reading it both ways is what stops the function and the predicate from being one claim the KB can reason with only half of, and a value arriving after its application is equated with the placeholder, so the order the two are asserted in does not decide the answer. ?position is 1-based over ?predicate's arguments and may be omitted, which puts the value last — the shape nearly every correspondence has. Read only for a reifiable_function, an undeclared function having no application to reify. See docs/nat.md.")

@@ -4909,10 +4909,26 @@
   (settle/exposed-clashes kb))
 
 (defn specified-violations
-  "The instances of `indep` that break a `(predAllSpecified pred indep dep)` integrity
-  requirement in `context`: every member x of `indep` for which no believed `(pred x y)`
-  carries a **determinate** filler y in `dep`.  Returns a set of such x, empty where the
-  requirement holds.
+  "The audit result for one binary `(predAllSpecified pred indep)` integrity requirement
+  in `context`, always carrying a `:status`: `{:status :audited :violations #{x…}}` —
+  every member x of `indep` for which no believed `(pred x y)` carries a
+  **determinate** filler y satisfying `pred`'s derived slot contract, an empty set
+  where the requirement holds — or `{:status :gap :gap :missing-slot-typing …}` where
+  `pred` carries no visible slot typing at the audited position.  Discriminate on
+  `:status`, not on key presence: `(:violations gap-result)` is nil, and nil reads as
+  a clean audit to `empty?`/`seq` — exactly the silent pass the gap exists to prevent.
+  The gap is a declaration-contract diagnostic, reported explicitly rather than
+  silently audited unconstrained; it covers the denotation-typing declarations only
+  (`arg` / `genlArg` / a `type_relation_predicate` membership) — a slot typed solely
+  by `quotedArg`, the mention twin, still reads as untyped here.
+
+  The required filler type is **derived** from `pred`'s argument contract, never restated:
+  each visible `(arg cp n t)` — over every constraining predicate `cp`, `pred` plus the
+  super-predicates its `genl` closure reaches, the same union the assert-time checker
+  reads — requires membership in `t`, each visible `(genlArg cp n t)` requires being a
+  subtype of `t`, a `type_relation_predicate` membership requires the filler to be
+  visibly a type at every position, and the constraints compose conjunctively, as the
+  assert-time checker composes them.
 
   `arg-pos` selects the twin.  `:second` is `predAllSpecified`, whose audited filler sits
   at `pred`'s second position; `:first` is `predSpecifiedAll`, whose filler sits first and
@@ -4925,16 +4941,23 @@
 
   **Computed on demand and not filed.**  The declaration stamps no rule and fires nothing
   on assert, so a KB carrying one is audited when a caller asks and never otherwise.  Cost
-  is one read per member of `indep` plus one membership read per candidate filler, so this
-  is a sweep to run at a checkpoint rather than per write."
-  ([kb pred indep dep context] (specified-violations kb pred indep dep context :second))
-  ([kb pred indep dep context arg-pos]
-   (wiring/specified-violations kb pred indep dep context arg-pos)))
+  is the contract derivation once per call (two declaration reads per constraining
+  predicate, plus one membership read), then one read per member of `indep` plus one read
+  **per derived constraint** per candidate filler — the subtype arms walking the `genl`
+  closure, not a flat membership probe — so this is a sweep to run at a checkpoint rather
+  than per write."
+  ([kb pred indep context] (specified-violations kb pred indep context :second))
+  ([kb pred indep context arg-pos]
+   (wiring/specified-violations kb pred indep context arg-pos)))
 
 (defn all-specified-violations
-  "Audit every `predAllSpecified` and `predSpecifiedAll` declaration visible in `context`,
-  and return `{[functor pred indep dep] #{violating-instances…}}` — the declarations that
-  hold are omitted, so an empty map is a clean sweep.
+  "Audit every binary `predAllSpecified` and `predSpecifiedAll` declaration visible in
+  `context`, and return `{[functor pred indep] result…}` — each result carrying a
+  `:status`, either `{:status :audited :violations #{…}}` or a `{:status :gap …}`
+  diagnostic (`:missing-slot-typing`, or `:legacy-ternary-declaration` for a stored
+  pre-migration ternary sentex the bulk import path can carry past the assert-time
+  refusal).  Declarations that hold are omitted and gaps never are, so an empty map is
+  a clean sweep a gap cannot fake.
 
   The one call an integrity sweep makes; `specified-violations` is the per-declaration
   reader behind it, and carries what determinacy means."

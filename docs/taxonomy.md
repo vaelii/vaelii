@@ -1216,8 +1216,9 @@ maintained by `integrate-sentex`:
   enforces and audits. Each mark splits into two halves, and the split is what the family
   is for. The **enforced** half is `(functional P)` and `(functionalInArg P 1)`, merged or
   refused at the assert entry point exactly as a directly written mark is. The **audited**
-  half is `(predAllSpecified P D R)` for totality and `(predSpecifiedAll P D R)` for
-  ontoness, reported by `specified-violations` when a caller asks
+  half is the binary `(predAllSpecified P D)` for totality and `(predSpecifiedAll P R)`
+  for ontoness — each filler type derived from the predicate's own slot contract at
+  read time — reported by `specified-violations` when a caller asks
   ([predall.md](predall.md)).
 
   | mark | single-valued | one-to-one | total on `D` | onto `R` |
