@@ -312,6 +312,150 @@
 (genlArg defnIff 1 thing)
 (arg defnIff 2 thing)
 
+;; ---- the predAll / predExists / predInstance / predSpecified matrix -------
+;; A family of ternary relations that quantify one binary ?pred's two argument positions
+;; against a collection or an individual, and fix the other.  Each name reads its two
+;; positions in order — predAllInstance quantifies position 1 (All) and fixes position 2
+;; (Instance); predInstanceAll fixes 1 and quantifies 2 — so the four *Instance* / *All*
+;; combinations, the four *Exists* ones, and the *Specified* audit are one matrix.
+;;
+;; Unlike the defn* relations, these are NOT expanded into a single rule at assert: they
+;; are **rule generators** (docs/generators.md — a rule whose consequent is a rule).  The
+;; generator's antecedent grounds the predicate and the collection, and its firing stamps
+;; a concrete rule with those holes filled, so one generator ranges over a whole family of
+;; predicates while every rule the index keys carries a concrete functor.
+
+;; --- Instance class: rule generators, real inference ----------------------
+;; The quantified position ranges over a collection's members; the fixed position is a
+;; given filler.  Stamping (implies (?coll ?x) (?pred …)) is ordinary forward inference,
+;; so a member of the collection is concluded to bear ?pred to the fixed filler.
+
+(comment predAllInstance
+         "(predAllInstance ?pred ?indep ?fixed) means that every instance of collection ?indep bears ?pred to the fixed filler ?fixed at ?pred's first position: for all x in ?indep, (?pred x ?fixed). A rule generator (docs/generators.md), not a defn: it stamps the rule (implies (?indep ?x) (?pred ?x ?fixed)) — a defaultRule, bidirectional — with ?pred/?indep/?fixed ground, so a member arriving later fires it and the conclusion retracts and belief-follows like any derived fact. Forward, the stamped rule fires when membership is believed; backward, its antecedent is discharged inside a query/prove proof — including a bare literal's membership via the evaluative defnSufficient prover, so (predAllInstance sign negative_integer \"negative\") proves (sign -212 \"negative\") from the bare literal under query. Under ask the goal answers false by contract: the registry expands no rule (docs/levels.md).")
+(ternary_predicate predAllInstance)
+(arg predAllInstance 1 binary_predicate)
+(genlArg predAllInstance 2 thing)
+(arg predAllInstance 3 thing)
+(implies (predAllInstance ?pred ?indep ?fixed)
+         (set/defaultRule (implies (?indep ?x) (?pred ?x ?fixed))))
+
+(comment predInstanceAll
+         "(predInstanceAll ?pred ?fixed ?dep) means that the fixed filler ?fixed bears ?pred to every instance of collection ?dep at ?pred's second position: for all y in ?dep, (?pred ?fixed y). The argument-swapped twin of predAllInstance. A rule generator that stamps the bidirectional defaultRule (implies (?dep ?y) (?pred ?fixed ?y)) with the holes ground, so the descent to members is ordinary chain inference (docs/generators.md).")
+(ternary_predicate predInstanceAll)
+(arg predInstanceAll 1 binary_predicate)
+(arg predInstanceAll 2 thing)
+(genlArg predInstanceAll 3 thing)
+(implies (predInstanceAll ?pred ?fixed ?dep)
+         (set/defaultRule (implies (?dep ?y) (?pred ?fixed ?y))))
+
+;; --- Exists class: pure record, inferentially inert -----------------------
+;; Everything with "exist" in the name is INERT (Pace's ruling): the declaration is
+;; stored and queryable like any fact, and the engine draws no inference from it — no
+;; stamped rule, no skolemized witness, no defn ("skolems suck"), no materialized facts.
+;; What each cell contributes beyond the record is a sanctioned PLACEHOLDER functor an
+;; author MAY use to name the required-but-unnamed filler: a PER-CELL functor carrying
+;; that cell's FULL argument list — "kinda like a named skolem" (Pace) — deliberately
+;; DISTINCT per cell, because the markers are ontology now and eventually it will matter
+;; that they are different.  Asserting a placeholder into a sentence (its collection
+;; membership, its relation to a subject) is the author's act, not the engine's; when
+;; asserted, the placeholder is determinate — it satisfies a predAllSpecified audit —
+;; where a skolem witness would not be.  Each functor is unreifiable_function so its
+;; ground application stays a structural NAT, readable inside the sentence.
+;;
+;; Inertness is also what makes all FOUR cells expressible.  An earlier design stamped a
+;; rule per declaration via a generator; the two pure-existential cross-cells
+;; (predExistsInstance / predInstanceExists) have no universal to range over, so the
+;; generator form failed range restriction there, and the plain-rule form — a
+;; variable-functor consequent — filed in the concluding-rule catch-all and made the
+;; planner see a phantom rule for EVERY predicate (broke aggregate / STP / QCN /
+;; interval / distance reasoning KB-wide, verified).  An inert record stamps nothing,
+;; so there is nothing to fail and nothing to pollute: the asymmetry between the
+;; straight cells and the cross-cells dissolves with the inference.
+
+(comment PredAllExistsFn
+         "(PredAllExistsFn ?pred ?indep ?dep) denotes the sanctioned ontological placeholder for the required but unnamed ?dep filler of ?pred over ?indep — the term an author may use to speak of the filler a predAllExists declaration requires, without naming it. An unreifiable_function, so a ground application stays a structural NAT the reader keeps readable inside the sentence; per-cell and full-arg (\"kinda like a named skolem\"), distinct from the other Exists cells' placeholders. An ontological marker, deliberately NOT a skolem witness: the engine never asserts it anywhere — its uses are the author's — and when used it is determinate, so it satisfies a predAllSpecified audit. See docs/nat.md.")
+(unreifiable_function PredAllExistsFn)
+
+(comment PredExistsAllFn
+         "(PredExistsAllFn ?pred ?dep ?indep) denotes the sanctioned placeholder for the ?dep filler predExistsAll requires at ?pred's first position. An unreifiable_function; per-cell and full-arg, distinct from the other Exists cells' placeholders; never asserted by the engine. See docs/nat.md.")
+(unreifiable_function PredExistsAllFn)
+
+(comment PredExistsInstanceFn
+         "(PredExistsInstanceFn ?pred ?indep ?fixed) denotes the sanctioned placeholder for the ?indep member predExistsInstance requires at ?pred's first position, against the fixed filler ?fixed. An unreifiable_function; per-cell and full-arg, distinct from the other Exists cells' placeholders; never asserted by the engine. See docs/nat.md.")
+(unreifiable_function PredExistsInstanceFn)
+
+(comment PredInstanceExistsFn
+         "(PredInstanceExistsFn ?pred ?fixed ?dep) denotes the sanctioned placeholder for the ?dep member predInstanceExists requires at ?pred's second position, borne by the fixed subject ?fixed. An unreifiable_function; per-cell and full-arg, distinct from the other Exists cells' placeholders; never asserted by the engine. See docs/nat.md.")
+(unreifiable_function PredInstanceExistsFn)
+
+(comment predAllExists
+         "(predAllExists ?pred ?indep ?dep) means that every instance of collection ?indep bears ?pred, at position 1, to some member of collection ?dep: for all x in ?indep, exists y in ?dep, (?pred x y). Inferentially inert (see the Exists header): the declaration is a stored, queryable record and the engine derives nothing from it — no rule, no witness, no membership. (PredAllExistsFn ?pred ?indep ?dep) is the sanctioned placeholder an author may use to name the required filler.")
+(ternary_predicate predAllExists)
+(arg predAllExists 1 binary_predicate)
+(genlArg predAllExists 2 thing)
+(genlArg predAllExists 3 thing)
+
+(comment predExistsAll
+         "(predExistsAll ?pred ?dep ?indep) means that some member of collection ?dep bears ?pred, at position 1, to every instance of collection ?indep: exists y in ?dep such that for all x in ?indep, (?pred y x). The argument-swapped twin of predAllExists — the existential filler sits in ?pred's first position and the universal in its second. Inferentially inert like the whole Exists class; (PredExistsAllFn ?pred ?dep ?indep) is its sanctioned placeholder.")
+(ternary_predicate predExistsAll)
+(arg predExistsAll 1 binary_predicate)
+(genlArg predExistsAll 2 thing)
+(genlArg predExistsAll 3 thing)
+
+(comment predExistsInstance
+         "(predExistsInstance ?pred ?indep ?fixed) means that some member of collection ?indep bears ?pred, at position 1, to the fixed filler ?fixed: exists x in ?indep, (?pred x ?fixed). A pure existential — no universal to range over — expressible precisely because the Exists class is inert: a stored record, nothing derived. (PredExistsInstanceFn ?pred ?indep ?fixed) is its sanctioned placeholder.")
+(ternary_predicate predExistsInstance)
+(arg predExistsInstance 1 binary_predicate)
+(genlArg predExistsInstance 2 thing)
+(arg predExistsInstance 3 thing)
+
+(comment predInstanceExists
+         "(predInstanceExists ?pred ?fixed ?dep) means that the fixed subject ?fixed bears ?pred, at position 1, to some member of collection ?dep: exists y in ?dep, (?pred ?fixed y). The argument-swapped twin of predExistsInstance, inert like the whole class; (PredInstanceExistsFn ?pred ?fixed ?dep) is its sanctioned placeholder.")
+(ternary_predicate predInstanceExists)
+(arg predInstanceExists 1 binary_predicate)
+(arg predInstanceExists 2 thing)
+(genlArg predInstanceExists 3 thing)
+
+;; --- indeterminate_term: the determinacy category the Specified audit reads ---
+;; An EXTENSIBLE category of terms whose identity is not pinned down: a term that stands
+;; for some object without pinning down which.  It is what the *Specified* audit excludes
+;; (an indeterminate filler does not satisfy the requirement) and, in the same spirit, the
+;; category the unique-name assumption is suspended for — neither `equals` nor `different`
+;; is provable of a member against a determinate term until a `rewriteOf` pins it.  Skolem
+;; constants are the built-in first member: their membership is never a stored fact (they
+;; are minted dynamically), so it is read off their `SkolemFn` minting expression rather
+;; than through a collection query, while a further kind of indeterminate term is added
+;; with (genl NewKind indeterminate_term) and picked up through ordinary membership by both
+;; the audit (vaelii.impl.predall/indeterminate-term?) and the `different` prover.
+
+(comment indeterminate_term
+         "(indeterminate_term ?term) means that ?term is an indeterminate filler: it stands for some object without pinning down which, so it is not a determinate filler for a predAllSpecified audit, and the unique-name assumption is suspended for it — neither (equals ?term x) nor (different ?term x) is provable against a determinate term x until a rewriteOf pins it. An extensible category read by vaelii.impl.predall/indeterminate-term? and the different prover. Skolem constants are the built-in first member, detected by their SkolemFn minting expression rather than a stored membership; a further kind is added with (genl NewKind indeterminate_term). See docs/skolem.md.")
+(genl indeterminate_term thing)
+
+;; --- Specified class: integrity audit, no inference -----------------------
+;; The antagonist of the *Exists* class.  Where *Exists* mints a placeholder to stand for
+;; an unnamed filler, *Specified* asks whether every quantified instance has a DETERMINATE
+;; filler already — a believed (?pred x y) whose y is not an indeterminate term.  It is an
+;; audit that reports the instances with no determinate filler, run by the reader in
+;; vaelii.impl.predall (not a stored rule).  Indeterminate terms are skolems plus any declared indeterminate_term kind (none ships by default); skolem
+;; terms; a non-skolem NAT (a *Exists* placeholder among them) is treated as determinate,
+;; so the two classes are exact antagonists.  The declaration is a plain stored fact the
+;; audit reads; it stamps no rule and concludes nothing on its own.
+
+(comment predAllSpecified
+         "(predAllSpecified ?pred ?indep ?dep) declares the integrity requirement that every instance of collection ?indep have a determinate ?dep filler at ?pred's second position: for all x in ?indep there is a believed (?pred x y) with y in ?dep and y determinate. An audit, not an inference — vaelii.impl.predall/specified-violations reads the declaration and returns the instances of ?indep with no determinate filler. Indeterminate terms are skolems plus any declared indeterminate_term kind (none ships by default); an author-asserted *Exists* placeholder is a determinate filler, so predAllSpecified is the antagonist of predAllExists. The declaration stamps no rule and concludes nothing.")
+(ternary_predicate predAllSpecified)
+(arg predAllSpecified 1 binary_predicate)
+(genlArg predAllSpecified 2 thing)
+(genlArg predAllSpecified 3 thing)
+
+(comment predSpecifiedAll
+         "(predSpecifiedAll ?pred ?dep ?indep) is the argument-swapped twin of predAllSpecified: it requires that every instance of collection ?indep have a determinate ?dep filler at ?pred's FIRST position — for all x in ?indep there is a believed (?pred y x) with y in ?dep and y determinate. An audit read by vaelii.impl.predall/specified-violations, not a stored rule (docs above).")
+(ternary_predicate predSpecifiedAll)
+(arg predSpecifiedAll 1 binary_predicate)
+(genlArg predSpecifiedAll 2 thing)
+(genlArg predSpecifiedAll 3 thing)
+
 (comment evaluate
          "(evaluate ?result ?expression) means that ?result is the value of the symbolic ?expression. So (evaluate ?sum (+ 1 2)) binds ?sum to 3. A safe whitelist over +, -, *, /, mod, min, max, abs and expt rather than clojure eval, computed on demand and never stored.")
 (binary_predicate evaluate)

@@ -892,7 +892,108 @@
                           " design, so no regression reads its target.")}
              (str "the same pointing shape, truth-agnostic: it names a sentex neither"
                   " asserted true nor false, so it carries no provability obligation and no"
-                  " regression reads its target. Documentation only."))]])))
+                  " regression reads its target. Documentation only."))]
+
+     ;; ---- the predAll / predExists / predSpecified matrix ------------------
+     ;;
+     ;; Quantifier-family declarations (docs/generators.md).  The
+     ;; *Instance* and *Exists* relations are each declared beside a CxCore **rule
+     ;; generator** — a rule whose consequent is a rule — so their enforcement is generic
+     ;; forward chaining, keyed on nothing; like `equivalence_relation`, no arm reads the
+     ;; functor.  The *Specified* pair is an on-demand integrity audit in
+     ;; `vaelii.impl.predall`, which also owns the `indeterminate_term` membership read.
+     ['predAllInstance
+      (enforced {:shape {:args [:predicate :type :term]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "enforced by the generic chain, not by name: the CxCore"
+                             " generator beside the declaration stamps the concrete rule"
+                             " when the holes ground.")}
+                (str "generic rule generator (docs/generators.md): the CxCore generator"
+                     " beside it stamps (implies (?indep ?x) (?pred ?x ?fixed)) — chain"
+                     " inference concludes the fixed filler for every member"))]
+     ['predInstanceAll
+      (enforced {:shape {:args [:predicate :term :type]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes "the argument-swapped twin of predAllInstance, same generic chain."}
+                (str "generic rule generator: the CxCore generator stamps (implies (?dep ?y)"
+                     " (?pred ?fixed ?y)), the argument-swapped twin"))]
+     ['predAllExists
+      (inert {:shape {:args [:predicate :type :type]} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes (str "the whole Exists class is inferentially inert by ruling —"
+                          " a stored record plus a sanctioned per-cell placeholder"
+                          " functor for authors, nothing derived.")}
+             (str "an inert record: every ?indep member bears ?pred to some ?dep member,"
+                  " stated and stored, inferred from by nothing. (PredAllExistsFn ?pred"
+                  " ?indep ?dep) is the sanctioned placeholder an author may use for the"
+                  " unnamed filler."))]
+     ['predExistsAll
+      (inert {:shape {:args [:predicate :type :type]} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes "the argument-swapped twin of predAllExists, inert like the class."}
+             (str "an inert record, the argument-swapped twin: some ?dep member bears"
+                  " ?pred to every ?indep member. (PredExistsAllFn ?pred ?dep ?indep) is"
+                  " its sanctioned placeholder."))]
+     ['predExistsInstance
+      (inert {:shape {:args [:predicate :type :term]} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes (str "a pure existential — no universal to range over — expressible"
+                          " precisely because the class stamps nothing.")}
+             (str "an inert record: some ?indep member bears ?pred to the fixed filler."
+                  " (PredExistsInstanceFn ?pred ?indep ?fixed) is its sanctioned"
+                  " placeholder."))]
+     ['predInstanceExists
+      (inert {:shape {:args [:predicate :term :type]} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes "the argument-swapped twin of predExistsInstance."}
+             (str "an inert record: the fixed subject bears ?pred to some ?dep member."
+                  " (PredInstanceExistsFn ?pred ?fixed ?dep) is its sanctioned"
+                  " placeholder."))]
+     ['predAllSpecified
+      (enforced {:shape {:args [:predicate :type :type]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "an on-demand audit, not a stored constraint: nothing fires on"
+                             " assert, and the read is a function a caller invokes.")}
+                (str "vaelii.impl.predall/specified-violations — the on-demand integrity"
+                     " audit reads the declaration and returns the instances of ?indep with"
+                     " no determinate filler; stamps no rule"))]
+     ['predSpecifiedAll
+      (enforced {:shape {:args [:predicate :type :type]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes "the argument-swapped twin, auditing ?pred's first position."}
+                (str "vaelii.impl.predall/specified-violations with :first — audits ?pred's"
+                     " first position, the argument-swapped twin"))]
+     ['PredAllExistsFn
+      (enforced (collection :notes (str "a function constant, never a sentence functor; its"
+                                        " unreifiable_function mark keeps a ground"
+                                        " application a structural NAT. The engine never"
+                                        " asserts it — uses are the author's."))
+                (str "the predAllExists placeholder function; unreifiable_function keeps its"
+                     " application a structural NAT — per-cell and full-arg, an ontological"
+                     " marker rather than a skolem witness, and determinate for the"
+                     " predAllSpecified audit when an author uses it"))]
+     ['PredExistsAllFn
+      (enforced (collection :notes "the predExistsAll twin of PredAllExistsFn.")
+                (str "the predExistsAll placeholder function; unreifiable_function,"
+                     " per-cell and full-arg, distinct from the other Exists cells'"
+                     " placeholders"))]
+     ['PredExistsInstanceFn
+      (enforced (collection :notes "the predExistsInstance twin of PredAllExistsFn.")
+                (str "the predExistsInstance placeholder function; unreifiable_function,"
+                     " per-cell and full-arg, distinct from the other Exists cells'"
+                     " placeholders"))]
+     ['PredInstanceExistsFn
+      (enforced (collection :notes "the predInstanceExists twin of PredAllExistsFn.")
+                (str "the predInstanceExists placeholder function; unreifiable_function,"
+                     " per-cell and full-arg, distinct from the other Exists cells'"
+                     " placeholders"))]
+     ['indeterminate_term
+      (enforced (collection :notes (str "an extensible determinacy category: skolem is the"
+                                        " built-in first member, a future kind joins by"
+                                        " genl."))
+                (str "vaelii.impl.predall/indeterminate-term? and the different prover's"
+                     " identity exemption — a filler that is a member is not determinate"
+                     " and is exempt from the unique-name assumption"))]])))
 
 (defn- check-families
   "Refuse at load a declaration whose family or whose sweep is half-written, which is the

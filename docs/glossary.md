@@ -976,8 +976,9 @@ subtype fact satisfies the antecedent. See [inference.md](inference.md).
 
 **Unique-name assumption (UNA)** ![kb](../.github/badges/cat-kb.svg): Distinct
 symbols denote distinct things until an equality sentex says otherwise —
-preserved even under the equality closure and made provable by `different`. See
-[equality.md](equality.md).
+preserved even under the equality closure and made provable by `different`.
+Suspended for an unpinned indeterminate term (skolems and `indeterminate_term`
+members) until a `rewriteOf`/merge pins it. See [equality.md](equality.md).
 
 **`unknown`** ![inference](../.github/badges/cat-inference.svg): The negation-as-
 failure prover — `(unknown S)` holds iff `S` is not derivable over the level-6

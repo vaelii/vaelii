@@ -519,6 +519,44 @@
     (is (v/ask? kb '(instantBefore ThreeOClock SixOClock) N)
         "the walk did, and that is the ordering the clipped facts joined over")))
 
+;; ---- known gap: functionality does not reach the event-calculus lane ------
+;; `functional` is enforced by the equality closure over stored bare literals of the
+;; marked predicate.  A fact carried the Davidsonian way — a fluent under initiates /
+;; holdsAt — stores no bare literal of that predicate: the value lives inside a fluent
+;; NAT, the mark has nothing to attach to, and per-instant functionality ("at most one
+;; value at ?t") is enforced by nothing.  The control/gap pair below records both
+;; halves as executable fact; the gap test is the future per-instant repair's red test.
+
+(tu/deftest-kb control-two-bare-values-of-a-functional-predicate-merge
+  (tu/with-terms [primaryHostOf Svc BoxA BoxB]
+    (v/assert kb (list 'binary_predicate primaryHostOf) N)
+    (v/assert kb (list 'functional primaryHostOf) N)
+    (v/assert kb (list primaryHostOf Svc BoxA) N)
+    (v/assert kb (list primaryHostOf Svc BoxB) N)
+    (is (v/same-class? kb BoxA BoxB)
+        "two co-believed bare fillers of a functional predicate are one thing under two names")))
+
+(tu/deftest-kb known-gap-fluent-carried-values-of-a-functional-predicate-escape-the-closure
+  ;; the same two values, Davidsonian: each observation initiates a fluent carrying its
+  ;; value, neither clips the other, so BOTH hold at the later moment — and the fillers
+  ;; stay distinct, because no bare literal of the marked predicate was ever stored for
+  ;; the closure to see.  When a per-instant functionality check exists, the final
+  ;; assertion goes red: that is this test's purpose.
+  (tu/with-terms [primaryHostOf HostStateFn Svc BoxA BoxB SwapA SwapB]
+    (v/assert kb (list 'binary_predicate primaryHostOf) N)
+    (v/assert kb (list 'functional primaryHostOf) N)
+    (v/assert kb (list 'reifiable_function HostStateFn) N)
+    (v/assert kb (list 'result HostStateFn 'fluent) N)
+    (v/assert kb (list 'happens SwapA 'ThreeOClock) N)
+    (v/assert kb (list 'initiates SwapA (list HostStateFn Svc BoxA) 'ThreeOClock) N)
+    (v/assert kb (list 'happens SwapB 'FourOClock) N)
+    (v/assert kb (list 'initiates SwapB (list HostStateFn Svc BoxB) 'FourOClock) N)
+    (testing "both values hold at five — truthfully observed, never mutually clipped"
+      (is (holds-at? kb (list HostStateFn Svc BoxA) 'FiveOClock))
+      (is (holds-at? kb (list HostStateFn Svc BoxB) 'FiveOClock)))
+    (is (not (v/same-class? kb BoxA BoxB))
+        "and the fillers stay distinct — per-instant functionality is unenforced (known gap)")))
+
 (tu/deftest-kb a-fluent-nobody-terminated-still-holds
   ;; The cat was indoors before the afternoon began and nothing ever put it out, so it
   ;; is indoors at every moment of the afternoon — the whole of what inertia says, with

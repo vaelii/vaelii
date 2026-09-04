@@ -91,6 +91,7 @@ src/vaelii/impl/
   abduce.clj        abduction: the scratch-context lifecycle, the gate on what may be assumed, and the mint/re-prove loop over the dead ends `prove` reports
   wff.clj           well-formedness of genl / genlCx / disjoint / arg / the equality relations (symbols only, no rewriteOf cycle, `different` not assertible); stratification (no rule-graph cycle through negation)
   provers.clj       Prover protocol (est-bindings + cost tier + completeness) + fact/transitivity/disjointness/metadata/evaluable/quantity/NAF/aggregate/arg/belief-projection + the `ask` engine; the completeness contract and what may shadow what; exceptWhen evaluation + rule guards; `candidate-rules` and `parse-rule`, which the two backward chainers read.  **No member of it expands a rule**, so `ask` never opens a proof search
+  predall.clj       the predAll / predExists / predSpecified quantifier matrix's on-demand half: `specified-violations` (the *Specified* integrity audit — instances of the universal collection with no determinate filler, `indeterminate_term` members exempt) and `indeterminate-term?` (the extensible determinacy read the audit and the equality exemption share).  The *Instance* cells are CxCore rule generators and the *Exists* cells inert records — neither needs code here
   budget.clj        resource-bounded / anytime: bound a lazy answer stream (:max-ms/:max-results), the partial-result contract, the resumable tail
   plan.clj          conjunctive query planning: selectivity cost model + sideways information passing, with the cartesian factors (literals sharing no variable with the rest, and matching more than once, so they multiply it) held to the back on structure rather than on an estimate
   literal_cache.clj per-KB cache of matches-visible answers, keyed by the α-renamed (repetition-preserving) literal + context + retrieval strategy, stamped with the change clock; stores only what ran dry, so a bounded run leaves no prefix behind
@@ -172,7 +173,7 @@ resources/
 
 ## Not glossed above
 
-The map covers 112 of the 152 namespaces under `src/`. The other 40 are listed here by
+The map covers 113 of the 153 namespaces under `src/`. The other 40 are listed here by
 name rather than left out, and the two lists together are every one of them — `lein
 lint`'s **E18** fails on a file in neither and on a count that disagrees with them, so
 the number above stays a measurement. Named here: the engine's write path (`integrate`,

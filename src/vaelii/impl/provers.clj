@@ -989,6 +989,56 @@
 
 ;; ---- different: the unique-name assumption over the equality closure ----
 
+(declare believed-sentexes-with)                 ; defined below, beside ArgTypeProver
+
+;; The identity exemption for `indeterminate_term` members: the UNA is
+;; suspended for an indeterminate term — a term that stands for some object without pinning
+;; down which — so `(different indeterminate X)` is NOT provable against a determinate `X`
+;; until a `rewriteOf`/merge pins it (at which point `rep` lifts the exemption).  Gated on
+;; the extensible category, with the skolem constant its built-in first member: a skolem's
+;; membership is never a stored fact, so it is read off its `SkolemFn` `termOfUnit`
+;; expression, while a further kind added with `(genl NewKind indeterminate_term)` is picked
+;; up through ordinary membership.  `vaelii.impl.predall/indeterminate-term?` is the audit's
+;; twin of this; the two cannot share code (predall sits above the prover registry), so both
+;; read the one category.
+(defn- reified-nat-symbol? [term]
+  ;; a reified constant — a symbol in a reserved reified namespace; the cheap gate before
+  ;; the skolem `termOfUnit` read.  Master: `nat/reified-namespaces` (#{"nat" "cx"}) —
+  ;; copied because the provers layer cannot require nat without a cycle through kb; if
+  ;; the reserved set ever grows, this copy must move with it.
+  (and (symbol? term) (contains? #{"nat" "cx"} (namespace term))))
+
+(defn- skolem-indeterminate? [kb term context]
+  (and (reified-nat-symbol? term)
+       (boolean
+        ;; 'SkolemFn is skolem/skolem-function's value, copied for the same cycle reason
+        (some (fn [[_ b]] (let [e (get b '?e)]
+                            (and (sequential? e) (= 'SkolemFn (first e)))))
+              (res/matches-visible kb (list 'termOfUnit term '?e) context)))))
+
+(defn- category-indeterminate? [kb term context]
+  ;; a believed member of `indeterminate_term` or of a collection that genl-reaches it.
+  ;; The direct membership is one indexed point-read and is consulted unconditionally —
+  ;; gating it on declared subkinds made a direct member's exemption depend on an
+  ;; unrelated (genl _ indeterminate_term) declaration.  The membership SCAN stays
+  ;; gated: only walk the term's memberships when the category actually has extensions,
+  ;; so a KB that never uses subkinds pays one point-read plus one taxonomy read per
+  ;; `different` and no index scan.
+  (let [tax (:taxonomy kb)]
+    (or (boolean (seq (res/matches-visible kb (list 'indeterminate_term term) context)))
+        (and (> (count (tax/specs tax 'indeterminate_term context)) 1)
+             (boolean
+              (some (fn [s]
+                      (let [sen (:sentence s)]
+                        (and (sequential? sen) (= 2 (count sen)) (= term (nth sen 1))
+                             (symbol? (nth sen 0))
+                             (contains? (tax/genls tax (nth sen 0) context) 'indeterminate_term))))
+                    (believed-sentexes-with kb term context)))))))
+
+(defn- indeterminate-term-arg? [kb term context]
+  (or (skolem-indeterminate? kb term context)
+      (category-indeterminate? kb term context)))
+
 (defn- pairwise-distinct?
   "Do no two of `args` share an equivalence class?  A term is trivially in its own
   class, so `(different A A)` fails on the `=` arm without consulting the closure at
@@ -1001,14 +1051,21 @@
   Compound arguments normalize **recursively** (`res/representative-term`), which is what
   makes the answer congruence-consistent: the closure is keyed by symbol, so a flat
   lookup on `(QuantityFn 5 Kilogram)` returns it unchanged and would report it different
-  from `(QuantityFn 5 Kg)` with `(sameAs Kilogram Kg)` believed."
+  from `(QuantityFn 5 Kg)` with `(sameAs Kilogram Kg)` believed.
+
+  The UNA is **suspended** when any argument is an unpinned `indeterminate_term`: an
+  indeterminate term is not provably different from anything until a merge pins it, so the
+  whole difference goal is left unprovable (`rep` self-equal witnesses the unpinned state —
+  a `rewriteOf`/`equals` merge moves `rep` off the term and restores the UNA)."
   [kb context args]
-  (let [vis (res/visible-supporter-fn kb context)
-        rep #(res/representative-term kb vis %)
-        v   (vec args)]
-    (every? (fn [[a b]] (not (or (= a b) (= (rep a) (rep b)))))
-            (for [i (range (count v)), j (range (inc i) (count v))]
-              [(nth v i) (nth v j)]))))
+  (let [vis     (res/visible-supporter-fn kb context)
+        rep     #(res/representative-term kb vis %)
+        v       (vec args)
+        exempt? (fn [t] (and (= (rep t) t) (indeterminate-term-arg? kb t context)))]
+    (and (not-any? exempt? v)
+         (every? (fn [[a b]] (not (or (= a b) (= (rep a) (rep b)))))
+                 (for [i (range (count v)), j (range (inc i) (count v))]
+                   [(nth v i) (nth v j)])))))
 
 (defrecord DifferentProver []
   Prover

@@ -71,6 +71,13 @@ OWL drops UNA. We do not. `(different X Y)` is **provable exactly when the
 arguments lie in no shared equivalence class** — so distinct symbols denote
 distinct individuals until an equality sentex says otherwise.
 
+One carve-out: an **unpinned indeterminate term** — a skolem constant, or a
+believed member of the extensible `indeterminate_term` category — suspends the
+UNA for itself. It stands for some object without pinning down which, so
+neither `equals` nor `different` is provable between it and a determinate term
+until a `rewriteOf` or merge pins it, at which point its representative moves
+off it and the exemption lifts (`provers.clj`, `pairwise-distinct?`).
+
 This is negation as failure over the equality closure, and it is what keeps
 counting meaningful: counting distinct symbols stays correct except for terms
 somebody explicitly merged, so `count-with-arg` and friends do not acquire a

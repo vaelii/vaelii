@@ -14,11 +14,14 @@ name: test
 # 317s; deferring them here is only honest because deep.yml runs `:all`. If
 # that job is ever removed, this one has to become `:all`.
 #
-# No sharding, deliberately. The retired engine sharded a 162-namespace suite
-# four ways behind a `vaelii.tools.test-shard` runner and a `.test-timings.edn`
-# cache; none of that machinery exists here and the suite it was built for does
-# not either. Measure a real run before importing it — the whole `:default` pass
-# is ~2 minutes locally, and four shards of that is four JVM boots to save one.
+# The disk leg alone is sharded, across two RUNNER VMs, because a real run
+# measured it into its own timeout: ~21 minutes on develop and ~30 against the
+# 30-minute cap once the predall suite landed. This is not the same-host JVM
+# sharding scripts/test-parallel.sh refuses for durable backends — separate VMs
+# share neither a disk nor a registry, the same reason deep.yml runs nine
+# backends in parallel. The memory leg stays whole: ~2 minutes locally, and
+# shards of that is JVM boots to save nothing. Shards are whole namespaces
+# (a `:once` fixture is what tests in one file share), split alphabetically.
 #
 # Hermetic: no external service, no network call, and no LLM. `^:llm` is the one
 # mark `:all` does not select, and reaching a provider additionally needs
@@ -73,12 +76,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
-      # Run both to completion. A durability bug that shows up only under `disk`
-      # is exactly what this matrix is for, and cancelling it because the memory
-      # run went red first would hide it until the next push.
+      # A one-value matrix, kept as a matrix so the job's check name stays the
+      # bare `memory` (see the naming note above). The disk end of the axis runs
+      # in the sharded `disk-shard` legs below, reporting through the `disk`
+      # gate job so branch protection's required context is unchanged.
       fail-fast: false
       matrix:
-        backend: [memory, disk]
+        backend: [memory]
     steps:
       # No credentials left in .git/config: nothing here pushes, and a token
       # sitting in the workspace is reachable by anything the build runs.
@@ -130,16 +134,11 @@ jobs:
           # The matrix value is the CHECK name, and branch protection stores that:
           # `memory` and `disk` are required on `develop`, so a leg that changes
           # name stops reporting under the required one and leaves every pull
-          # request unmergeable. The name therefore says which END of the storage
-          # axis this leg is, and the `:backend` it selects is named here —
-          # `disk-log`, durable records under the write-ahead-logged index
-          # (docs/storage.md).
-          VAELII_TEST_BACKEND: ${{ matrix.backend == 'disk' && 'disk-log' || matrix.backend }}
+          # request unmergeable. The matrix value is the CHECK name; the disk
+          # end of the axis reports through the `disk` gate below.
+          VAELII_TEST_BACKEND: ${{ matrix.backend }}
         run: |
           set -o pipefail
-          if [ "${{ matrix.backend }}" = "disk" ]; then
-            export JVM_OPTS="-Dvaelii.disk.dir=$RUNNER_TEMP/vaelii-disk"
-          fi
           mkdir -p target/ci
           lein test 2>&1 | tee "target/ci/test-${{ matrix.backend }}.log"
 
@@ -160,6 +159,103 @@ jobs:
           path: target/ci/
           if-no-files-found: error
           retention-days: 7
+
+  # The disk end of the durability axis, split across two runner VMs. The leg
+  # grew into its 30-minute timeout (~21m on develop, ~30m with the predall
+  # suite); halving the namespaces halves the long pole, and separate VMs make
+  # it safe where scripts/test-parallel.sh's same-host durable-sharding refusal
+  # applies — no shared directory, no shared registry, no single-writer lock in
+  # common (deep.yml's matrix is the standing precedent). Shards are whole
+  # namespaces (a `:once` fixture is what tests in one file share), split
+  # alphabetically; `:default` pins the same selector the memory leg runs.
+  disk-shard:
+    name: disk-shard-${{ matrix.shard }}
+    if: github.event_name != 'schedule' || github.repository_owner == 'vaelii'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # Run both to completion: a durability bug living in one alphabetical half
+      # should not be hidden by the other half going red first.
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961  # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Leiningen
+        uses: DeLaGuardo/setup-clojure@4c7a6f613e5089821bb3bb2a33a3ee115578580d  # 13.6.1
+        with:
+          lein: 2.12.0  # 2.13.0's launcher self-installs an unpublished snapshot jar
+
+      - name: Cache Maven deps
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.m2
+          key: m2-${{ runner.os }}-jdk21-${{ hashFiles('project.clj') }}
+          restore-keys: |
+            m2-${{ runner.os }}-jdk21-
+
+      - name: Run the suite (disk-log, shard ${{ matrix.shard }} of 2)
+        id: suite
+        env:
+          # `disk-log`: durable records under the write-ahead-logged index
+          # (docs/storage.md) — the same end of the axis the retired single
+          # `disk` leg ran.
+          VAELII_TEST_BACKEND: disk-log
+        run: |
+          set -o pipefail
+          export JVM_OPTS="-Dvaelii.disk.dir=$RUNNER_TEMP/vaelii-disk"
+          mkdir -p target/ci
+          mapfile -t files < <(find test -name '*_test.clj' | sort)
+          half=$(( (${#files[@]} + 1) / 2 ))
+          if [ "${{ matrix.shard }}" = "1" ]; then
+            sel=("${files[@]:0:$half}")
+          else
+            sel=("${files[@]:$half}")
+          fi
+          nss=()
+          for f in "${sel[@]}"; do
+            ns=${f#test/}; ns=${ns%.clj}; ns=${ns//\//.}; ns=${ns//_/-}
+            nss+=("$ns")
+          done
+          echo "shard ${{ matrix.shard }}: ${#nss[@]} of ${#files[@]} test namespaces"
+          # Bare namespace args: the `:default` selector still applies (verified:
+          # a ^:slow test in a named namespace is excluded), while spelling the
+          # selector out alongside namespace args makes lein ignore the namespace
+          # filter and run the whole suite (verified the hard way).
+          lein test "${nss[@]}" 2>&1 | tee "target/ci/test-disk-shard-${{ matrix.shard }}.log"
+
+      - name: Upload failure logs
+        if: failure() && steps.suite.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: test-disk-shard-${{ matrix.shard }}-logs
+          path: target/ci/
+          if-no-files-found: error
+          retention-days: 7
+
+  # Branch protection on `develop` requires the bare `disk` context, so the two
+  # shard legs report through this gate rather than under their own names —
+  # renaming it strands every pull request (the naming note on `suite` says
+  # why). `always()` because a skipped job never reports, which a required
+  # check reads as missing, not as passed.
+  disk:
+    name: disk
+    needs: disk-shard
+    if: ${{ always() && (github.event_name != 'schedule' || github.repository_owner == 'vaelii') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: All disk shards green
+        run: |
+          [ "${{ needs.disk-shard.result }}" = "success" ]
 
   # The suite again, with an ANSWER SET SOLVER on the box. Without one, eight
   # test namespaces skip their bodies and still report as passing — every solver
