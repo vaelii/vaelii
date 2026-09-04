@@ -551,6 +551,20 @@
                                       " sweep that decides from one that only names.")}
                        (str "checks/arity-problem at the entry point, settle/report-arity-reach! over"
                             " content stored before it"))]
+     ['arityMin
+      (enforced {:shape {:args [:relation :integer]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "ordinary CxCore rules make exact arity entail the same minimum and"
+                             " derive the at_least_*_relation classifications. No WFF"
+                             " or constraint reader consumes the declaration.")}
+                "ordinary rule inference in CxCore; no WFF/constraint reader")]
+     ['admitsArgnum
+      (inert {:shape {:args [:relation :position]} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes (str "names whether one positive argument position exists in a"
+                          " well-formed application. No finite facts or parallel"
+                          " inference are installed; no WFF/query reader consumes it.")}
+             "documentary position question with no runtime reader")]
      ['functionalInArg {:shape   {:args [:predicate :position]}
                         :storage [:pred-position :functional-in-arg]
                         :checked true
@@ -846,11 +860,15 @@
     ;; ---- the hierarchy roots and the meta-level targets -------------------
     [['thing     (enforced (collection :notes "the hierarchy root the open-world floors test against by name.")
                            "checks — the hierarchy root the open-world floors test against by name")]
+     ['relation  (enforced (collection :notes "the common arg target for predicates and functions.")
+                           (str "generic: the common parent of predicate and function, and the"
+                                " arg target for relation-wide arity vocabulary"))]
      ['predicate (enforced (collection :notes "the arg target CxCore constrains its own meta-level with.")
-                           "generic: the arg target CxCore constrains its own meta-level with")]
+                           "generic: the predicate specialization of relation")]
      ['function  (enforced (collection :notes "the arg target the function-valued positions name.")
-                           (str "generic: the arg target the function-valued positions of result,"
-                                " genlResult and functionCorrespondingPredicate name"))]
+                           (str "generic: the function specialization of relation and the arg"
+                                " target the function-valued positions of result, genlResult"
+                                " and functionCorrespondingPredicate name"))]
 
      ;; ---- the predicate types --------------------------------------------
      ['unary_predicate   (enforced (collection :facets #{:convicts :reach}
@@ -871,6 +889,18 @@
                                    (str "checks/predicate-type-arities — the membership spelling of an arity;"
                                         " plus its disjointness with the other two classes, so a predicate is at"
                                         " most one of the three"))]
+     ['fixed_arity       (enforced (collection
+                                    :notes (str "classifies one exact argument policy without"
+                                                " inventing its numeric arity. No CxCore rule"
+                                                " derives this classification from arity; the two"
+                                                " declarations remain independent."))
+                                   "generic taxonomy classification; no keyed runtime reader")]
+     ['fixed_arity_predicate
+      (enforced (collection :notes "the predicate specialization of fixed_arity.")
+                "generic taxonomy classification under fixed_arity and predicate")]
+     ['fixed_arity_function
+      (enforced (collection :notes "the function specialization of fixed_arity.")
+                "generic taxonomy classification under fixed_arity and function")]
      ['variable_arity    (enforced (collection
                                     :notes (str "the one *exemption* from the arity check — it"
                                                 " un-convicts, which is why it carries no facet at"
@@ -878,6 +908,22 @@
                                                 " a term causes, and none names something it"
                                                 " prevents."))
                                    "checks/arity-problem — the one exemption from the arity check")]
+     ['variable_arity_predicate
+      (enforced (collection
+                 :notes (str "the predicate specialization of variable_arity; the arity"
+                             " check reads the generic superclass through taxonomy closure."))
+                "checks/arity-problem through inherited variable_arity membership")]
+     ['variable_arity_function
+      (enforced (collection
+                 :notes (str "the function specialization of variable_arity; it shares the"
+                             " relation-wide taxonomy. No function WFF reader consumes it."))
+                "generic taxonomy classification under variable_arity and function")]
+     ['at_least_binary_relation
+      (enforced (collection :notes "derived by a CxCore rule from arityMin greater than one.")
+                "ordinary CxCore rule inference from arityMin")]
+     ['at_least_ternary_relation
+      (enforced (collection :notes "derived by a CxCore rule from arityMin greater than two.")
+                "ordinary CxCore rule inference from arityMin")]
      ['relation_kind     (enforced (collection :notes "a disjoint_metatype, so its two members separate each other.")
                                    "generic: a disjoint_metatype, so its two members separate each other")]
      ['instance_relation_predicate

@@ -52,6 +52,30 @@ globally, and why: [below](#the-global-readers-and-who-may-use-one).
    materialize `(animal Muffet)`. `isa?` answers membership on demand.
 3. **(genlCx is the sibling relation over contexts — see contexts.md.)**
 
+### Relations and arity policy
+
+`relation` is the common parent of `predicate` and `function`: both can be applied to
+arguments, while only predicates hold or fail and only functions denote values. Arity
+policy is therefore relation-wide even though the current exact `arity` table remains
+predicate-typed.
+
+`fixed_arity` and `variable_arity` classify the two policies, with predicate and
+function specializations for each. `arityMin` states the lower bound of a
+variable-arity relation; every exact `(arity R N)` entails `(arityMin R N)`. Prefer
+variable arity for a repeatable, homogeneously typed argument role. A relation may
+explicitly define a bounded optional tail instead, as `functionCorrespondingPredicate`
+does.
+
+`at_least_binary_relation` and `at_least_ternary_relation` are generic derived
+classifications over `arityMin`; callers can conjoin them with `predicate` or `function`
+instead of maintaining duplicate predicate/function classes. `admitsArgnum` names the
+separate question of whether one positive argument position exists. No WFF/query reader
+currently consumes it, and no parallel finite position roster is inferred.
+
+No disjointness declaration currently separates the fixed and variable classes, and
+exact `arity` does not derive `fixed_arity`. This lets direct generic variable markers
+coexist with the new specializations without classifying the same relation both ways.
+
 ## The closures are derived state
 
 A cached closure is an optimization, and an optimization that disagrees with the

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Arity policy is vocabulary over every relation, not an overloaded exact-arity
+  flag.** `relation` is now the common parent of `predicate` and `function`.
+  `fixed_arity` / `variable_arity` each have predicate and function specializations;
+  `arityMin` states a variable relation's lower bound; exact `arity` entails the same
+  minimum; and generic `at_least_binary_relation` / `at_least_ternary_relation` classes
+  derive from it. `admitsArgnum` names the distinct positive-position question; no
+  WFF/query reader consumes it. The current four
+  variable-arity predicates are classified under `variable_arity_predicate`, including
+  `functionCorrespondingPredicate`'s explicitly modelled optional tail. This
+  slice does not declare fixed and variable disjoint or infer `fixed_arity` from exact
+  `arity`; those classifications remain independent. *Class:* **Additive**.
+  *Migration:* none.
+  [docs/taxonomy.md](docs/taxonomy.md#relations-and-arity-policy)
+
 - **`predAllSpecified` and `predSpecifiedAll` go binary: the filler type derives from
   the predicate's own slot contract.** The ternary forms restated in a third argument
   what `(arg P 2 R)` / `(genlArg P 2 R)` already say, and a restated type can disagree

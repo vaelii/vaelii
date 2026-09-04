@@ -78,6 +78,14 @@ a type whose genl closure reaches `type`. Open-world and context-scoped. See
 a `T` — and it reads open-world in *both* directions at once: an unestablished trigger
 leaves it dormant, an unreachable target convicts. See [argtypes.md](argtypes.md).
 
+**Arity vocabulary** ![kb](../.github/badges/cat-kb.svg): `fixed_arity` and
+`variable_arity` classify relation-wide argument policy, each with predicate and
+function specializations. `arity` states one exact predicate arity; `arityMin` states a
+variable relation's lower bound, and exact arity entails the same minimum.
+`at_least_binary_relation` / `at_least_ternary_relation` are derived minimum classes.
+`admitsArgnum` names whether one positive position exists; no WFF/query reader currently
+consumes it. See [taxonomy.md](taxonomy.md#relations-and-arity-policy).
+
 **Arm** ![kb](../.github/badges/cat-kb.svg): The function a table stores under a functor
 and a walk over that table invokes at one fixed point — `special/arms` holds an
 `:integrate`, a `:disintegrate`, a `:rebuild` and a `:wff` per interpreted predicate, and
@@ -827,6 +835,11 @@ nothing else. See [space.md](space.md).
 wholesale from the
 records, then recover — the repair for a stale on-disk index layout. See
 [indexing.md](indexing.md).
+
+**`relation`** ![kb](../.github/badges/cat-kb.svg): The common parent of
+`predicate` and `function` — every head that may be applied to arguments. The two
+specializations remain disjoint: a predicate holds or fails; a function denotes or
+evaluates to a value. See [taxonomy.md](taxonomy.md#relations-and-arity-policy).
 
 **Relation algebra** ![qr](../.github/badges/cat-qr.svg): `{:universe :identity
 :compose :converse}` — the base relations, the diagonal, the composition table

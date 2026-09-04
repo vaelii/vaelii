@@ -214,6 +214,7 @@
 (comment interArg
          "(interArg ?predicate ?position1 ?type1 ?position2 ?type2) means that whenever argument ?position1 of ?predicate is a ?type1, argument ?position2 must be a ?type2. The conditional argument constraint, and it says what arg cannot: (interArg eats 1 carnivore 2 meat) types the second argument only for the eaters that are carnivores, where (arg eats 2 meat) would demand meat of every eater. Open-world in both directions, and they point opposite ways — silence about the trigger argument's type leaves the constraint dormant rather than firing it, while silence about the target argument's is what convicts. Checked through genl transitivity from the writing context, like arg, and it entails the same way under assertive argument types.")
 (arity interArg 5)
+(fixed_arity_predicate interArg)
 (instance_relation_predicate interArg)
 (arg interArg 1 predicate)
 (arg interArg 2 positive_integer)
@@ -228,6 +229,48 @@
 (functional arity)
 (arg arity 1 predicate)
 (arg arity 2 non_negative_integer)
+
+(comment arityMin
+         "(arityMin ?relation ?n) means that ?relation requires at least ?n arguments. It is the numeric shape for a genuinely variable-arity relation: every further position normally repeats the same argument role rather than introducing an unnamed optional field. Every exact (arity R N) entails the matching minimum. No WFF reader consumes this declaration.")
+(binary_predicate arityMin)
+(instance_relation_predicate arityMin)
+(arg arityMin 1 relation)
+(arg arityMin 2 non_negative_integer)
+
+(implies
+ (and (arity ?relation ?arity))
+ (arityMin ?relation ?arity))
+
+(comment admitsArgnum
+         "(admitsArgnum ?relation ?argnum) means that positive argument position ?argnum exists in a well-formed application of ?relation. It asks about one position, not the application's total arity. No WFF or query reader consumes it.")
+(binary_predicate admitsArgnum)
+(instance_relation_predicate admitsArgnum)
+(arg admitsArgnum 1 relation)
+(arg admitsArgnum 2 positive_integer)
+
+(comment at_least_binary_relation
+         "The type of relations whose stated minimum arity is two or greater. Derived from arityMin, including the matching minimum entailed by an exact arity.")
+(unary_predicate at_least_binary_relation)
+(arg at_least_binary_relation 1 relation)
+(genl at_least_binary_relation relation)
+
+(comment at_least_ternary_relation
+         "The type of relations whose stated minimum arity is three or greater. Every such relation is also an at_least_binary_relation.")
+(unary_predicate at_least_ternary_relation)
+(arg at_least_ternary_relation 1 relation)
+(genl at_least_ternary_relation at_least_binary_relation)
+
+(implies
+ (and
+  (arityMin ?relation ?arity)
+  (greaterThan ?arity 1))
+ (at_least_binary_relation ?relation))
+
+(implies
+ (and
+  (arityMin ?relation ?arity)
+  (greaterThan ?arity 2))
+ (at_least_ternary_relation ?relation))
 
 ;; The meta-ontology rules below conclude into the ORDINARY placement — the maximal
 ;; context that sees the rule and the declaration — and not into a named one.  Every
@@ -545,6 +588,8 @@
          "(functionCorrespondingPredicate ?function ?predicate ?position) means that ?function and ?predicate state the same relationship: ?function maps some arguments to a value exactly when ?predicate holds of those same arguments with the value at ?position. So (functionCorrespondingPredicate MotherFn motherOf 2) makes (MotherFn Muffet) resolve to the Mary of a believed (motherOf Muffet Mary), and, where no mother is known, projects the placeholder constant it mints back onto motherOf so the placeholder still answers questions about who Muffet's mother is. Reading it both ways is what stops the function and the predicate from being one claim the KB can reason with only half of, and a value arriving after its application is equated with the placeholder, so the order the two are asserted in does not decide the answer. ?position is 1-based over ?predicate's arguments and may be omitted, which puts the value last — the shape nearly every correspondence has. Read only for a reifiable_function, an undeclared function having no application to reify. See docs/nat.md.")
 (binary_predicate functionCorrespondingPredicate)
 (variable_arity functionCorrespondingPredicate)
+(variable_arity_predicate functionCorrespondingPredicate)
+(arityMin functionCorrespondingPredicate 2)
 (arg functionCorrespondingPredicate 1 function)
 (arg functionCorrespondingPredicate 2 predicate)
 
@@ -637,7 +682,8 @@
 (instance_relation_predicate greaterThan)
 (arg greaterThan 1 thing)
 (arg greaterThan 2 thing)
-(variable_arity greaterThan)
+(variable_arity_predicate greaterThan)
+(arityMin greaterThan 2)
 
 (comment implies
          "(implies (and ?antecedent …) ?consequent) means the rule concluding ?consequent from those antecedents. A rule is a sentex like any other, so it gets a handle, truth maintenance and retraction for free, and it is indexed by its antecedent and its consequent predicates alike. Used forward and backward unless a set/*Rule wrapper narrows it. Range-restricted: every variable in the consequent must appear in an antecedent.")
@@ -672,7 +718,8 @@
 (instance_relation_predicate lessThan)
 (arg lessThan 1 thing)
 (arg lessThan 2 thing)
-(variable_arity lessThan)
+(variable_arity_predicate lessThan)
+(arityMin lessThan 2)
 
 (comment modal_predicate
          "(modal_predicate ?predicate) means that (?predicate ?agent ?sentence) is a belief-style projection: it holds when ?sentence holds in ?agent's context. A grant, and the only thing that turns projection on — an undeclared predicate is never projected, so the table is open (assert the marker to add knows / desires / intends) and closed by default to everything but what a context grants. Read scoped from the asking context, like abducible_predicate: which predicates a theory reads modally is a policy of the context that declares it, not a global switch. believes ships granted here.")
@@ -687,11 +734,14 @@
 (comment or
          "(or ?disjunct1 ?disjunct2 …) means the disjunction of the disjuncts inside an implies rule's antecedent. A syntactic connective rather than a predicate: it is never asserted on its own, and it never reaches a stored sentence — the rule is polycanonicalized into one rule per alternative, exactly as a conjunctive consequent is split into one rule per conjunct. A disjunctive conclusion is a choice rather than a derivation, and is written with set/assumptionRule instead. See docs/canonicalization.md.")
 
-(comment function            "The type of all functions — the reifiable and unreifiable heads a non-atomic term is built from. A function is a thing, and is not a predicate: it denotes or evaluates to a value where a predicate holds or fails.")
-(genl function thing)
+(comment relation            "The type of all predicates and functions — every head that may be applied to arguments. Its two specializations remain disjoint: a predicate holds or fails, while a function denotes or evaluates to a value.")
+(genl relation thing)
 
-(comment predicate           "The type of all predicates — the relations and types used in sentences. A predicate is a thing.")
-(genl predicate thing)
+(comment function            "The type of all functions — the reifiable and unreifiable heads a non-atomic term is built from. A function is a relation, and is not a predicate: it denotes or evaluates to a value where a predicate holds or fails.")
+(genl function relation)
+
+(comment predicate           "The type of all predicates — the relations and types used in sentences. A predicate is a relation.")
+(genl predicate relation)
 ;; What function's comment states in prose, as a fact the engine reads: the two are
 ;; separate kinds of thing. Every type is a unary_predicate and so a predicate, which is
 ;; what gives the separation its reach — a rule variable standing in a function-valued
@@ -870,10 +920,45 @@
 (arg typeToInstancePred 1 type_relation_predicate)
 (arg typeToInstancePred 2 instance_relation_predicate)
 
+(comment fixed_arity
+         "(fixed_arity ?relation) means that ?relation takes one exact number of arguments. Numeric exact arity is still stated separately; this type classifies the relation's argument policy without inventing a number.")
+(unary_predicate fixed_arity)
+(arg fixed_arity 1 relation)
+(genl fixed_arity relation)
+
+(comment fixed_arity_predicate
+         "The fixed_arity relations that are predicates.")
+(unary_predicate fixed_arity_predicate)
+(arg fixed_arity_predicate 1 predicate)
+(genl fixed_arity_predicate fixed_arity)
+(genl fixed_arity_predicate predicate)
+
+(comment fixed_arity_function
+         "The fixed_arity relations that are functions.")
+(unary_predicate fixed_arity_function)
+(arg fixed_arity_function 1 function)
+(genl fixed_arity_function fixed_arity)
+(genl fixed_arity_function function)
+
 (comment variable_arity
-         "(variable_arity ?predicate) means that ?predicate takes any number of arguments from its declared arity upward. The arity check does not hold it to one number, while its (arity ?predicate N) and N-ary predicate type still state the shape it reads as: lessThan is binary, and (lessThan 1 2 3) is the chain 1 < 2 < 3.")
+         "(variable_arity ?relation) means that ?relation does not take one exact number of arguments; arityMin states its lower bound. Prefer it for a repeatable, homogeneously typed argument role. A relation may explicitly define a bounded optional tail instead, as functionCorrespondingPredicate does. The arity check reads this generic type through specialization.")
 (unary_predicate variable_arity)
-(arg variable_arity 1 predicate)
+(arg variable_arity 1 relation)
+(genl variable_arity relation)
+
+(comment variable_arity_predicate
+         "The variable_arity relations that are predicates.")
+(unary_predicate variable_arity_predicate)
+(arg variable_arity_predicate 1 predicate)
+(genl variable_arity_predicate variable_arity)
+(genl variable_arity_predicate predicate)
+
+(comment variable_arity_function
+         "The variable_arity relations that are functions.")
+(unary_predicate variable_arity_function)
+(arg variable_arity_function 1 function)
+(genl variable_arity_function variable_arity)
+(genl variable_arity_function function)
 
 (comment unary_predicate      "A predicate of one argument: every type (a snake_case unary predicate) and every one-place property such as flies.")
 (genl unary_predicate predicate)
@@ -891,7 +976,8 @@
 (instance_relation_predicate termsRelated)
 (arg termsRelated 1 thing)
 (arg termsRelated 2 thing)
-(variable_arity termsRelated)
+(variable_arity_predicate termsRelated)
+(arityMin termsRelated 2)
 
 (comment seeAlso
          "(seeAlso ?term1 ?term2) means that ?term1 and ?term2 are worth reading together — an editorial 'see also' cross-reference between two terms. Directional: (seeAlso a b) points a reader from a to b, and the reverse is a separate assertion, not implied. Documentation only, like comment: nothing in the engine reads it and it draws no inference.")
