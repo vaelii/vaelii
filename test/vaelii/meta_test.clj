@@ -55,12 +55,12 @@
     (is (not (v/isa? kb 'dog 'binary_predicate)))
     (is (not (v/isa? kb 'siblingOf 'unary_predicate)))))
 
-(tu/deftest-kb arity-and-predicate-type-derive-each-other
-  ;; (arity P N) and the N-ary predicate-type membership conclude each other, each
+(tu/deftest-kb arity-and-relation-type-derive-each-other
+  ;; (arity R N) and the N-ary relation-type membership conclude each other, each
   ;; landing where the declaration it was read off lives — the ordinary placement.
   (testing "arity is itself a binary predicate"
     (is (v/isa? kb 'arity 'binary_predicate)))
-  (testing "an asserted predicate-type concludes the arity, in the declaration's context"
+  (testing "an asserted predicate specialization concludes the arity, in its context"
     (is (seq (v/sentexes-matching kb '(arity dog 1) 'CxCore)))        ; a type is unary
     (is (seq (v/sentexes-matching kb '(arity awake 1) 'CxLife)))      ; a one-place property
     (is (seq (v/sentexes-matching kb '(arity parentOf 2) 'CxLife)))
@@ -72,36 +72,39 @@
     (is (empty? (v/sentexes-matching kb '(arity parentOf 2) 'CxNaturalWorld)))
     (is (v/isa? kb 'parentOf 'binary_predicate 'CxNaturalWorld)
         "but a data context below Well still sees it, since it sees CxLife"))
-  (testing "an asserted arity concludes the predicate-type, hence a predicate"
-    (tu/with-terms [fooPred]
-      (v/assert kb (list 'arity fooPred 2) 'CxCore)
-      (is (v/isa? kb fooPred 'binary_predicate))
-      (is (v/isa? kb fooPred 'predicate))
-      (is (seq (v/sentexes-matching kb (list 'binary_predicate fooPred) 'CxCore)))))
+  (testing "an asserted arity concludes the relation-wide type and fixed policy"
+    (tu/with-terms [fooRelation]
+      (v/assert kb (list 'arity fooRelation 2) 'CxCore)
+      (is (v/isa? kb fooRelation 'binary))
+      (is (v/isa? kb fooRelation 'relation))
+      (is (v/isa? kb fooRelation 'fixed_arity))
+      (is (seq (v/sentexes-matching kb (list 'binary fooRelation) 'CxCore)))))
   (testing "the derived membership is justified by the arity fact and the rule"
-    (tu/with-terms [barPred]
-      (v/assert kb (list 'arity barPred 3) 'CxCore)
-      (let [h (v/handle-of kb (list 'ternary_predicate barPred) 'CxCore)
+    (tu/with-terms [barRelation]
+      (v/assert kb (list 'arity barRelation 3) 'CxCore)
+      (let [h (v/handle-of kb (list 'ternary barRelation) 'CxCore)
             d (first (v/supporting-justifications kb h))]
-        (is (some #(= (list 'arity barPred 3) (:sentence (v/sentex kb %)))
+        (is (some #(= (list 'arity barRelation 3) (:sentence (v/sentex kb %)))
                   (:antecedents d)))))))
 
 (tu/deftest-kb arity-cycle-is-self-preserving-only-with-an-asserted-member
-  ;; the two directions form a positive cycle: (arity P N) <-> (N-ary predicate P).
+  ;; the two directions form a positive cycle: (arity R N) <-> (N-ary relation R).
   ;; A member asserted as a premise grounds the whole cycle; the derived twin cannot
   ;; ground itself, so retracting the sole premise collapses both (well-founded).
   (testing "asserting the arity keeps both the arity and the type believed"
-    (tu/with-terms [pPred]
-      (let [h (v/assert kb (list 'arity pPred 2) 'CxCore)]
-        (is (seq (v/sentexes-matching kb (list 'arity pPred 2) 'CxCore)))
-        (is (seq (v/sentexes-matching kb (list 'binary_predicate pPred) 'CxCore)))
+    (tu/with-terms [binaryRelation]
+      (let [h (v/assert kb (list 'arity binaryRelation 2) 'CxCore)]
+        (is (seq (v/sentexes-matching kb (list 'arity binaryRelation 2) 'CxCore)))
+        (is (seq (v/sentexes-matching kb (list 'binary binaryRelation) 'CxCore)))
         (testing "retracting the sole premise collapses the whole cycle"
           (v/retract! kb h)
-          (is (empty? (v/sentexes-matching kb (list 'binary_predicate pPred) 'CxCore)))
-          (is (empty? (v/sentexes-matching kb (list 'arity pPred 2) 'CxCore)))))))
-  (testing "asserting the type keeps both the type and the arity believed"
+          (is (empty? (v/sentexes-matching kb (list 'binary binaryRelation) 'CxCore)))
+          (is (empty? (v/sentexes-matching kb (list 'arity binaryRelation 2) 'CxCore)))))))
+  (testing "a specialized predicate witness keeps its type, arity, and predicate policy"
     (tu/with-terms [qPred]
       (let [h (v/assert kb (list 'unary_predicate qPred) 'CxCore)]
+        (is (v/isa? kb qPred 'unary))
+        (is (v/isa? kb qPred 'fixed_arity_predicate))
         (is (seq (v/sentexes-matching kb (list 'arity qPred 1) 'CxCore)))
         (testing "and retracting it collapses the derived arity"
           (v/retract! kb h)

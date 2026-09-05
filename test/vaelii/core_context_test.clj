@@ -56,14 +56,14 @@
                  (v/assert kb (list 'arity rel 7) 'CxCore)))))
 
 (tu/deftest-kb the-core-vocabulary-is-the-size-docs-kbs-says
-  ;; A bound, not a pin.  docs/kbs.md's row says "~562", and the exact number moves
+  ;; A bound, not a pin.  docs/kbs.md's row says "~920", and the exact number moves
   ;; whenever CxCore gains a term on purpose — which made an equality here pure churn:
   ;; it failed on every deliberate change and caught nothing else, because
   ;; `vocabulary-audit` already fails a functor nobody classified.  What a count *can*
   ;; catch is the load going wrong in bulk — an empty classpath, a file read twice — so
   ;; that is what this asserts.
   (let [n (v/sentex-count kb)]
-    (is (< 300 n 700)
-        (str "CxCore loaded " n " sentexes; docs/kbs.md's Core vocabulary row says ~562."
+    (is (< 500 n 1800)
+        (str "CxCore loaded " n " sentexes; docs/kbs.md's Core vocabulary row says ~920."
              "  A number outside this band means the load is wrong, not that the"
              "  vocabulary grew — check the classpath before touching the row."))))

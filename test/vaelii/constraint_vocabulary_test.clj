@@ -96,7 +96,7 @@
     (is (= [(list relOf A B C)] (:sample (get (arity-entries kb) relOf))))))
 
 (tu/deftest-kb a-variableArity-predicate-is-exempt-on-the-retroactive-path-too
-  ;; The exemption is the declaration's whole point (`lessThan` is declared binary *and*
+  ;; The exemption is the declaration's whole point (`lessThan` has a binary floor and
   ;; reads a chain), and it is read by one `arity-problem` — so it must hold whichever
   ;; direction the check is asked from.
   (tu/with-terms [chainOf A B C]

@@ -279,7 +279,7 @@
       (is (= :arity (ex-type #(v/assert kb (list rel a) 'CxUniverse)))))))
 
 (tu/deftest-kb a-variableArity-predicate-is-exempt
-  ;; lessThan is declared binary and reads a chain of any length; the declaration says so
+  ;; lessThan has a binary floor and reads a chain of any length; the declaration says so
   (let [rel (tu/tmp-pred) a (tu/tmp-ind) b (tu/tmp-ind)]
     (v/assert kb (list 'binary_predicate rel) 'CxUniverse)
     (is (= :arity (ex-type #(v/assert kb (list rel a b (tu/tmp-ind)) 'CxUniverse))))

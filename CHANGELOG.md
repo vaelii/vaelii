@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Arity policy is vocabulary over every relation.** `relation` is now the common
+  parent of `predicate` and `function`. Unsuffixed `unary` / `binary` / `ternary` are
+  the relation-wide exact classes, with predicate and function specializations;
+  `relationTypeByArity` owns their shared numeric mapping. Exact `arity` is fixed-only,
+  while `arityMin` states a variable relation's lower bound and derives the generic
+  `at_least_binary_relation` / `at_least_ternary_relation` floors. `fixed_arity` and
+  `variable_arity` are disjoint, and every shipped relation is classified in exactly
+  one. `admitsArgnum` remains documentary. *Class:* **Additive**.
+  *Migration:* none.
+  [docs/taxonomy.md](docs/taxonomy.md#relations-and-arity-policy)
+
 - **`predAllSpecified` and `predSpecifiedAll` go binary: the filler type derives from
   the predicate's own slot contract.** The ternary forms restated in a third argument
   what `(arg P 2 R)` / `(genlArg P 2 R)` already say, and a restated type can disagree
