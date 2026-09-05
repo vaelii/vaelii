@@ -122,6 +122,7 @@
 (comment DayFn
          "(DayFn ?year ?month ?day) means the calendar day, as an interval — so (DayFn 2000 1 15) is the fifteenth of January 2000. An unreifiable_function application like YearFn and MonthFn: it stays structural, so the three fields are readable inside the term and a reader can see that the day sits inside its month. One field per argument, coarsest first, so the arity is the precision. See docs/context-nat.md.")
 (unreifiable_function DayFn)
+(ternary_function DayFn)
 (result DayFn temporal_thing)
 
 (comment during
@@ -211,6 +212,7 @@
 (comment InstantFn
          "(InstantFn ?year ?month ?day ?hour ?minute ?second) means the moment those six calendar fields name, so (InstantFn 2000 1 1 0 0 0) is midnight at the start of 2000. A time_point and not a temporal_thing: YearFn, MonthFn and DayFn name stretches, and this names the moments one of them lies between. Six fields always — its arity is not its precision — so every moment has exactly one spelling, which is what makes the end of one year and the start of the next the same term. An unreifiable_function application like the calendar constructors, structural so the fields stay readable. What startOf and endOf answer for a calendar term, computed and never stored. See docs/time.md.")
 (unreifiable_function InstantFn)
+(fixed_arity_function InstantFn)
 (result InstantFn time_point)
 
 (comment instantNotAfter
@@ -265,6 +267,7 @@
 (comment MonthFn
          "(MonthFn ?year ?month) means the calendar month, as an interval — so (MonthFn 2000 1) is January 2000, and ?month is 1 through 12. An unreifiable_function application like YearFn and DayFn, structural so the ordering can read its fields: January 2000 is inside 2000, and February is inside neither January nor itself twice over. See docs/context-nat.md.")
 (unreifiable_function MonthFn)
+(binary_function MonthFn)
 (result MonthFn temporal_thing)
 
 (comment overlapDuration
@@ -375,4 +378,5 @@
 (comment YearFn
          "(YearFn ?year) means the calendar year, as an interval — so (YearFn 2000) is the whole of 2000. The coarsest of the three calendar constructors (with MonthFn and DayFn beneath it), and an unreifiable_function application: it stays structural rather than minting a constant, because its one field is what says which years contain which. A calendar term and the reduced-precision ISO string naming the same interval denote the same interval and order against each other. See docs/context-nat.md.")
 (unreifiable_function YearFn)
+(unary_function YearFn)
 (result YearFn temporal_thing)

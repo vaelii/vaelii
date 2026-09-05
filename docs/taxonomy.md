@@ -56,12 +56,14 @@ globally, and why: [below](#the-global-readers-and-who-may-use-one).
 
 `relation` is the common parent of `predicate` and `function`: both can be applied to
 arguments, while only predicates hold or fail and only functions denote values. Arity
-policy is therefore relation-wide even though the current exact `arity` table remains
-predicate-typed.
+policy and the exact `arity` table are therefore relation-wide.
 
-`fixed_arity` and `variable_arity` classify the two policies, with predicate and
-function specializations for each. `arityMin` states the lower bound of a
-variable-arity relation; every exact `(arity R N)` entails `(arityMin R N)`. Prefer
+`fixed_arity` and `variable_arity` classify two disjoint policies, with predicate and
+function specializations for each. Unsuffixed `unary`, `binary` and `ternary` classify
+exact relations; `unary_predicate` / `unary_function` and their binary and ternary peers
+specialize those relation-wide classes. `relationTypeByArity` owns the shared mapping,
+while `predicateTypeByArity` and `functionTypeByArity` specialize it without parallel
+rule families. `arityMin` states the lower bound of a variable-arity relation. Prefer
 variable arity for a repeatable, homogeneously typed argument role. A relation may
 explicitly define a bounded optional tail instead, as `functionCorrespondingPredicate`
 does.
@@ -72,9 +74,9 @@ instead of maintaining duplicate predicate/function classes. `admitsArgnum` name
 separate question of whether one positive argument position exists. No WFF/query reader
 currently consumes it, and no parallel finite position roster is inferred.
 
-No disjointness declaration currently separates the fixed and variable classes, and
-exact `arity` does not derive `fixed_arity`. This lets direct generic variable markers
-coexist with the new specializations without classifying the same relation both ways.
+Exact `(arity R N)` entails `fixed_arity`; it is not also an `arityMin` floor. The four
+shipped variable predicates state their lower bound with `arityMin` instead of carrying
+an exact binary classification.
 
 ## The closures are derived state
 
@@ -1429,7 +1431,7 @@ classification never lands to derive a second value. The **top literal only**, e
 not. Open-world in the same shape — a predicate the KB has never declared can be used
 at any arity, since the declaration may simply not have arrived.
 
-`(variable_arity P)` exempts a predicate outright. `lessThan` is declared binary *and*
+`(variable_arity P)` exempts a predicate outright. `lessThan` has `arityMin` two and
 reads a chain of any length (`(lessThan 1 2 3)` is `1 < 2 < 3`); the declaration is what
 says so, rather than the check carrying a roster of predicates it quietly skips.
 

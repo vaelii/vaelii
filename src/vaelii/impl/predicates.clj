@@ -554,10 +554,25 @@
      ['arityMin
       (enforced {:shape {:args [:relation :integer]} :storage [:none] :checked false
                  :family nil :facets #{}
-                 :notes (str "ordinary CxCore rules make exact arity entail the same minimum and"
-                             " derive the at_least_*_relation classifications. No WFF"
+                 :notes (str "ordinary CxCore rules derive the at_least_*_relation"
+                             " classifications. No WFF"
                              " or constraint reader consumes the declaration.")}
                 "ordinary rule inference in CxCore; no WFF/constraint reader")]
+     ['relationTypeByArity
+      (enforced {:shape {:args [:type :integer]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes "the three relation-wide mappings are the premises of the shared exact-arity rules."}
+                "ordinary CxCore rules map exact arities to relation-wide types and back")]
+     ['predicateTypeByArity
+      (enforced {:shape {:args [:type :integer]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes "ordinary CxCore inference projects this predicate-specific mapping into relationTypeByArity."}
+                "ordinary CxCore specialization rule into relationTypeByArity")]
+     ['functionTypeByArity
+      (enforced {:shape {:args [:type :integer]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes "ordinary CxCore inference projects this function-specific mapping into relationTypeByArity."}
+                "ordinary CxCore specialization rule into relationTypeByArity")]
      ['admitsArgnum
       (inert {:shape {:args [:relation :position]} :storage [:none] :checked false
               :family nil :facets #{}
@@ -870,6 +885,13 @@
                                 " target the function-valued positions of result, genlResult"
                                 " and functionCorrespondingPredicate name"))]
 
+     ['unary   (enforced (collection :notes "the relation-wide exact-one-argument type.")
+                         "ordinary CxCore relationTypeByArity rules")]
+     ['binary  (enforced (collection :notes "the relation-wide exact-two-argument type.")
+                         "ordinary CxCore relationTypeByArity rules")]
+     ['ternary (enforced (collection :notes "the relation-wide exact-three-argument type.")
+                         "ordinary CxCore relationTypeByArity rules")]
+
      ;; ---- the predicate types --------------------------------------------
      ['unary_predicate   (enforced (collection :facets #{:convicts :reach}
                                                :notes (str "the membership spelling of an arity —"
@@ -889,12 +911,20 @@
                                    (str "checks/predicate-type-arities — the membership spelling of an arity;"
                                         " plus its disjointness with the other two classes, so a predicate is at"
                                         " most one of the three"))]
+     ['unary_function
+      (enforced (collection :notes "the function specialization of unary.")
+                "generic taxonomy classification under unary and function")]
+     ['binary_function
+      (enforced (collection :notes "the function specialization of binary.")
+                "generic taxonomy classification under binary and function")]
+     ['ternary_function
+      (enforced (collection :notes "the function specialization of ternary.")
+                "generic taxonomy classification under ternary and function")]
      ['fixed_arity       (enforced (collection
-                                    :notes (str "classifies one exact argument policy without"
-                                                " inventing its numeric arity. No CxCore rule"
-                                                " derives this classification from arity; the two"
-                                                " declarations remain independent."))
-                                   "generic taxonomy classification; no keyed runtime reader")]
+                                    :notes (str "classifies one exact argument policy; exact"
+                                                " arity declarations and the unary/binary/ternary"
+                                                " families specialize it."))
+                                   "generic taxonomy classification and ordinary CxCore arity rule")]
      ['fixed_arity_predicate
       (enforced (collection :notes "the predicate specialization of fixed_arity.")
                 "generic taxonomy classification under fixed_arity and predicate")]

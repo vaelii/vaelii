@@ -807,8 +807,8 @@
 
   Open-world in the same shape as `arg`: a predicate the KB has never declared can
   be used at any arity, since the declaration may simply not have arrived.  A
-  `variable_arity` predicate is exempt outright — `lessThan` is declared binary *and*
-  reads a chain of any length, and the declaration is what says so.
+  `variable_arity` predicate is exempt outright — `lessThan` has a binary floor and
+  reads a chain of any length, and the declarations are what say so.
 
   The binding arity **descends the predicate hierarchy** where the predicate declares
   none of its own (`inherited-arity`): a `fatherOf` tuple is a `parentOf` tuple, so its

@@ -145,6 +145,7 @@
 (comment QuantityFn
          "(QuantityFn ?magnitude ?unit) means the measure of ?magnitude ?unit. So (QuantityFn 5 Kilogram) is five kilograms. An unreifiable_function application, a structural NAT: it stays structural instead of being minted into an opaque constant, so the magnitude and the unit are still readable inside the sentence, and the quantity provers normalize it through the dimensionOf and conversionFactor facts.")
 (unreifiable_function QuantityFn)
+(binary_function QuantityFn)
 
 (comment quantityGreaterThan
          "(quantityGreaterThan ?measure1 ?measure2) means that ?measure1 is greater than ?measure2 once both are normalized to their dimension's base unit. Necessarily greater, so for intervals all of ?measure1 must lie strictly above all of ?measure2. Computed by a prover and never stored; two measures of different dimensions are not comparable rather than unequal.")
@@ -163,6 +164,7 @@
 (comment QuantityIntervalFn
          "(QuantityIntervalFn ?lo ?hi ?unit) means the measure lying somewhere between ?lo and ?hi ?unit. So (QuantityIntervalFn 1 2 Meter) is between one and two metres. An unreifiable_function application like QuantityFn, and compared under the necessary reading: a claim holds of the interval only when it holds of every value in it.")
 (unreifiable_function QuantityIntervalFn)
+(ternary_function QuantityIntervalFn)
 
 (comment quantityLessThan
          "(quantityLessThan ?measure1 ?measure2) means that ?measure1 is less than ?measure2 once both are normalized to their dimension's base unit. Necessarily less, so for intervals all of ?measure1 must lie strictly below all of ?measure2. Computed by a prover and never stored; two measures of different dimensions are not comparable rather than unequal.")
