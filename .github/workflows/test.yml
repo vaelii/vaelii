@@ -14,14 +14,22 @@ name: test
 # 317s; deferring them here is only honest because deep.yml runs `:all`. If
 # that job is ever removed, this one has to become `:all`.
 #
-# The disk leg alone is sharded, across two RUNNER VMs, because a real run
-# measured it into its own timeout: ~21 minutes on develop and ~30 against the
-# 30-minute cap once the predall suite landed. This is not the same-host JVM
-# sharding scripts/test-parallel.sh refuses for durable backends — separate VMs
-# share neither a disk nor a registry, the same reason deep.yml runs nine
-# backends in parallel. The memory leg stays whole: ~2 minutes locally, and
-# shards of that is JVM boots to save nothing. Shards are whole namespaces
-# (a `:once` fixture is what tests in one file share), split alphabetically.
+# BOTH LEGS ARE SHARDED ACROSS RUNNER VMs, the memory leg three ways and the
+# disk-log leg four. In run 33979380791 the memory leg ran 24m08s in one job and
+# the slower of the two disk jobs 17m48s, both against a 30-minute timeout. Split
+# this way each memory runner carries 467s of namespaces and each disk runner
+# 438s, and the workflow answers in about nine minutes. This is not the same-host
+# JVM sharding scripts/test-parallel.sh refuses for durable backends — separate
+# VMs share neither a disk nor a registry, the same reason deep.yml runs nine
+# backends in parallel. Shards are whole namespaces (a `:once` fixture is what
+# tests in one file share), and `scripts/ci-shard.sh` decides which namespaces
+# each shard gets: it packs them by measured time, because an equal count of
+# files is not an equal amount of work. The alphabetical halves it replaced put
+# 752s on one disk runner and 1060s on the other.
+#
+# The shard COUNT is the length of each job's matrix, read back as
+# `strategy.job-total`. Both matrices have one dimension, so adding a value to
+# `shard:` is the whole of adding a shard.
 #
 # Hermetic: no external service, no network call, and no LLM. `^:llm` is the one
 # mark `:all` does not select, and reaching a provider additionally needs
@@ -48,41 +56,39 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  suite:
-    # The check name is derived from this `name:`, so renaming either value
-    # silently drops it from any branch protection that names it. Branch
-    # protection stores the JOB name, so the contexts are the bare `memory` and
-    # `disk` — the `test / memory` spelling is the pull-request UI's, and typing
-    # that into a required-checks list names a check that never reports.
-    #
-    # `memory` and `disk` are REQUIRED checks on `develop`, and what makes that
-    # safe is that this workflow carries no path filter: it runs on every pull
-    # request, so both jobs always report. DO NOT ADD A `paths-ignore` here. A
-    # workflow skipped by a path filter never reports at all — not as passed,
-    # not as skipped — so a required check that names it leaves every pull
-    # request the filter matched unmergeable forever. The two are one decision.
-    #
-    # A doc-only change runs the suite and passes it, and that is the price of
-    # the two being a gate rather than a reading. `docs/**` is not inert with
-    # respect to the suite anyway: config_surface_test reads docs/operations.md
-    # and holds its configuration table to every switch the tree reads, and
-    # scripts/check-doc-drift.py stands aside on that one file because the test
-    # covers it.
-    name: ${{ matrix.backend }}
+  # The in-RAM end of the durability axis, split across three runner VMs, each
+  # reporting under its own name and all three gated by the `memory` job below.
+  #
+  # `memory` and `disk` are REQUIRED checks on `develop`, and what makes that
+  # safe is that this workflow carries no path filter: it runs on every pull
+  # request, so both gates always report. DO NOT ADD A `paths-ignore` here. A
+  # workflow skipped by a path filter never reports at all — not as passed,
+  # not as skipped — so a required check that names it leaves every pull
+  # request the filter matched unmergeable forever. The two are one decision.
+  #
+  # A doc-only change runs the suite and passes it, and that is the price of
+  # the gate being a gate rather than a reading. `docs/**` is not inert with
+  # respect to the suite anyway: config_surface_test reads docs/operations.md
+  # and holds its configuration table to every switch the tree reads, and
+  # scripts/check-doc-drift.py stands aside on that one file because the test
+  # covers it.
+  memory-shard:
+    name: memory-shard-${{ matrix.shard }}
     # A scheduled run does work only where Actions minutes are free. Push and
     # pull_request are untouched: this job is the gate, and a gate that skips is
     # not one. deep.yml carries the long form of the argument.
     if: github.event_name != 'schedule' || github.repository_owner == 'vaelii'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Twice the 8m50s a balanced shard is predicted to take. A shard that grows
+    # into this has grown by more than 100%, which is a change to investigate
+    # rather than a slow runner to wait out.
+    timeout-minutes: 20
     strategy:
-      # A one-value matrix, kept as a matrix so the job's check name stays the
-      # bare `memory` (see the naming note above). The disk end of the axis runs
-      # in the sharded `disk-shard` legs below, reporting through the `disk`
-      # gate job so branch protection's required context is unchanged.
+      # Run every shard to completion: a bug living in one shard's namespaces
+      # should not be hidden by another shard going red first.
       fail-fast: false
       matrix:
-        backend: [memory]
+        shard: [1, 2, 3]
     steps:
       # No credentials left in .git/config: nothing here pushes, and a token
       # sitting in the workspace is reachable by anything the build runs.
@@ -114,33 +120,37 @@ jobs:
 
       # The suite owns space numbers 14-15 and clears them; the foreign-reader
       # plugin owns 8-11, which is what lets both run at once on one machine.
-      # Nothing is set here because each matrix leg is its own runner VM, so the
+      # Nothing is set here because each shard is its own runner VM, so the
       # default block is already unshared — the convention matters to a developer
       # running two suites locally, and `VAELII_TEST_SPACE` is how they move it.
       #
-      # A durable run derives its store path from `vaelii.disk.dir`, so it gets a
-      # scratch directory of its own; a RAM-only run reads no directory and is
-      # given no `-D` at all. Same shape as scripts/test-backends.sh, which is
-      # the local spelling of this job.
+      # A RAM-only run reads no directory and is given no `-D` at all; the
+      # disk-log shards below point `vaelii.disk.dir` at scratch space of their
+      # own. Same shape as scripts/test-backends.sh, the local spelling of this.
       #
       # `tee` so the run streams into the job log AND leaves a file for the
       # upload below — `lein test` writes no log of its own (`lein gate` is what
       # fills target/gate/, and this job does not run it). `set -o pipefail` is
       # what keeps the pipe honest: without it the step's status is `tee`'s,
       # which is always 0, so a red suite would report green.
-      - name: Run the suite (${{ matrix.backend }})
+      #
+      # `$nss` is unquoted because the shard script prints a namespace per line
+      # and `lein test` wants them as separate arguments.
+      - name: Run the suite (memory, shard ${{ matrix.shard }} of ${{ strategy.job-total }})
         id: suite
         env:
-          # The matrix value is the CHECK name, and branch protection stores that:
-          # `memory` and `disk` are required on `develop`, so a leg that changes
-          # name stops reporting under the required one and leaves every pull
-          # request unmergeable. The matrix value is the CHECK name; the disk
-          # end of the axis reports through the `disk` gate below.
-          VAELII_TEST_BACKEND: ${{ matrix.backend }}
+          VAELII_TEST_BACKEND: memory
         run: |
           set -o pipefail
           mkdir -p target/ci
-          lein test 2>&1 | tee "target/ci/test-${{ matrix.backend }}.log"
+          nss=$(scripts/ci-shard.sh "${{ matrix.shard }}" "${{ strategy.job-total }}")
+          [ -n "$nss" ]
+          # Bare namespace args: the `:default` selector still applies (verified:
+          # a ^:slow test in a named namespace is excluded), while spelling the
+          # selector out alongside namespace args makes lein ignore the namespace
+          # filter and run the whole suite (verified the hard way).
+          # shellcheck disable=SC2086
+          lein test $nss 2>&1 | tee "target/ci/test-memory-shard-${{ matrix.shard }}.log"
 
       # The log is the answer to "why did it fail", and a red run is exactly when
       # nobody can reproduce it locally. `if: failure()` so a green run uploads
@@ -155,30 +165,41 @@ jobs:
         if: failure() && steps.suite.outcome == 'failure'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          name: test-${{ matrix.backend }}-logs
+          name: test-memory-shard-${{ matrix.shard }}-logs
           path: target/ci/
           if-no-files-found: error
           retention-days: 7
 
-  # The disk end of the durability axis, split across two runner VMs. The leg
-  # grew into its 30-minute timeout (~21m on develop, ~30m with the predall
-  # suite); halving the namespaces halves the long pole, and separate VMs make
-  # it safe where scripts/test-parallel.sh's same-host durable-sharding refusal
-  # applies — no shared directory, no shared registry, no single-writer lock in
-  # common (deep.yml's matrix is the standing precedent). Shards are whole
-  # namespaces (a `:once` fixture is what tests in one file share), split
-  # alphabetically; `:default` pins the same selector the memory leg runs.
+  # Branch protection on `develop` requires the bare `memory` context, so the
+  # shard legs report through this gate rather than under their own names.
+  # Branch protection stores the JOB name, so the context is the bare `memory` —
+  # the `test / memory` spelling is the pull-request UI's, and typing that into a
+  # required-checks list names a check that never reports. Renaming this job
+  # strands every pull request. `always()` because a skipped job never reports,
+  # which a required check reads as missing rather than as passed.
+  memory:
+    name: memory
+    needs: memory-shard
+    if: ${{ always() && (github.event_name != 'schedule' || github.repository_owner == 'vaelii') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: All memory shards green
+        run: |
+          [ "${{ needs.memory-shard.result }}" = "success" ]
+
+  # The disk end of the durability axis, split across four runner VMs. The leg
+  # carries more namespace time than the memory one — 1752s against 1388s over
+  # the same 320 namespaces, the same work through a durable record store — so it
+  # is split one way further to keep the two legs finishing together.
   disk-shard:
     name: disk-shard-${{ matrix.shard }}
     if: github.event_name != 'schedule' || github.repository_owner == 'vaelii'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     strategy:
-      # Run both to completion: a durability bug living in one alphabetical half
-      # should not be hidden by the other half going red first.
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -203,7 +224,7 @@ jobs:
           restore-keys: |
             m2-${{ runner.os }}-jdk21-
 
-      - name: Run the suite (disk-log, shard ${{ matrix.shard }} of 2)
+      - name: Run the suite (disk-log, shard ${{ matrix.shard }} of ${{ strategy.job-total }})
         id: suite
         env:
           # `disk-log`: durable records under the write-ahead-logged index
@@ -214,35 +235,10 @@ jobs:
           set -o pipefail
           export JVM_OPTS="-Dvaelii.disk.dir=$RUNNER_TEMP/vaelii-disk"
           mkdir -p target/ci
-          mapfile -t files < <(find test -name '*_test.clj' | sort)
-          # The shards are a FILENAME split; `lein test` selects by namespace. Nothing
-          # keeps the two in step, so a test file the glob misses is run by neither shard
-          # and both stay green. Refuse instead: every file defining a top-level `deftest`
-          # (or `tu/deftest-kb`) has to end in `_test.clj`, which is what the glob reads.
-          missed=$(grep -rlE '^\((clojure\.test/)?deftest|^\(tu/deftest-kb' \
-                     --include='*.clj' --include='*.cljc' test | grep -v '_test\.clj$' || true)
-          if [ -n "$missed" ]; then
-            echo "::error::test file(s) outside the *_test.clj glob the shards split on:"
-            echo "$missed"
-            exit 1
-          fi
-          half=$(( (${#files[@]} + 1) / 2 ))
-          if [ "${{ matrix.shard }}" = "1" ]; then
-            sel=("${files[@]:0:$half}")
-          else
-            sel=("${files[@]:$half}")
-          fi
-          nss=()
-          for f in "${sel[@]}"; do
-            ns=${f#test/}; ns=${ns%.clj}; ns=${ns//\//.}; ns=${ns//_/-}
-            nss+=("$ns")
-          done
-          echo "shard ${{ matrix.shard }}: ${#nss[@]} of ${#files[@]} test namespaces"
-          # Bare namespace args: the `:default` selector still applies (verified:
-          # a ^:slow test in a named namespace is excluded), while spelling the
-          # selector out alongside namespace args makes lein ignore the namespace
-          # filter and run the whole suite (verified the hard way).
-          lein test "${nss[@]}" 2>&1 | tee "target/ci/test-disk-shard-${{ matrix.shard }}.log"
+          nss=$(scripts/ci-shard.sh "${{ matrix.shard }}" "${{ strategy.job-total }}")
+          [ -n "$nss" ]
+          # shellcheck disable=SC2086
+          lein test $nss 2>&1 | tee "target/ci/test-disk-shard-${{ matrix.shard }}.log"
 
       - name: Upload failure logs
         if: failure() && steps.suite.outcome == 'failure'
@@ -253,9 +249,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # Branch protection on `develop` requires the bare `disk` context, so the two
+  # Branch protection on `develop` requires the bare `disk` context, so the four
   # shard legs report through this gate rather than under their own names —
-  # renaming it strands every pull request (the naming note on `suite` says
+  # renaming it strands every pull request (the naming note on `memory` says
   # why). `always()` because a skipped job never reports, which a required
   # check reads as missing, not as passed.
   disk:
@@ -315,7 +311,7 @@ jobs:
   # 33930657662).
   asp:
     name: asp
-    # as `suite` above: scheduled runs only where the minutes are free
+    # as the shard legs above: scheduled runs only where the minutes are free
     if: github.event_name != 'schedule' || github.repository_owner == 'vaelii'
     runs-on: ubuntu-latest
     timeout-minutes: 30
