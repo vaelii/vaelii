@@ -34,6 +34,7 @@ SCRIPTS=(
   scripts/lint-shellcheck.sh
   scripts/lint-conflict-markers.sh
   scripts/check-reflection.sh
+  scripts/asp-namespaces.sh
   scripts/check-breaking-siblings.sh
   scripts/coverage.sh
   scripts/gate.sh

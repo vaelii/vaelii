@@ -297,11 +297,22 @@ jobs:
   # clingo for small programs and clasp for large ones, so an unpinned leg would
   # silently change what it tests the day a runner image ships libclingo.
   #
-  # The whole `:default` selector, not a namespace list. Eight namespaces gate on
-  # the solver today — the three `asp_*`, plus labeling, solve-context, and the
-  # constraint / sudoku / tsp solve tests — and a ninth added later would silently
-  # go uncovered by a list. Running everything costs a second JVM boot and is
-  # robust to that.
+  # The solver-gated namespaces, not the whole `:default` selector. Ten namespaces
+  # gate on the solver today — the four `asp_*`, plus labeling, solve-context,
+  # koinii-schedule and the constraint / sudoku / tsp solve tests — and the other
+  # 314 answer the same on this leg as on `memory`, which already ran them.
+  #
+  # A hand-written list goes stale, and this one had: the comment said "eight" while
+  # the tree held ten. So the list is DERIVED — `scripts/asp-namespaces.sh`
+  # greps `test/` for the gate on every run, so a namespace that starts reading
+  # `solver/available?` is covered the day it lands. `vaelii.asp-roster-test` pins the
+  # same scan against a committed roster, so the set changing is a red suite and a
+  # diff a reviewer sees rather than a silent widening of what this job runs.
+  #
+  # Measured: the gated bodies are 298 assertions of the suite's 156,412, and the ten
+  # namespaces run in 11s locally against 27.4 minutes for the whole suite — which is
+  # what put this job over its 30-minute limit on 2026-09-04 (runs 33926520569,
+  # 33930657662).
   asp:
     name: asp
     # as `suite` above: scheduled runs only where the minutes are free
@@ -356,14 +367,23 @@ jobs:
           lein run -m clojure.main -e "(require '[vaelii.impl.asp.clasp :as clasp]) (when-not (clasp/available?) (System/exit 1))"
           echo "clasp/available? is true"
 
-      - name: Run the suite (with clasp)
+      # The roster test first and on its own: it is what says the list below is the
+      # whole of what gates on the solver, so a scan that has stopped matching must
+      # fail here rather than quietly hand `lein test` a short list.
+      - name: The solver-gated roster is current
+        run: lein test vaelii.asp-roster-test
+
+      - name: Run the solver-gated namespaces (with clasp)
         id: suite
         env:
           VAELII_ASP_SOLVER: clasp
         run: |
           set -o pipefail
           mkdir -p target/ci
-          lein test 2>&1 | tee target/ci/test-asp.log
+          namespaces="$(./scripts/asp-namespaces.sh | tr '\n' ' ')"
+          echo "solver-gated namespaces: $namespaces"
+          [ -n "$namespaces" ]
+          lein test $namespaces 2>&1 | tee target/ci/test-asp.log
 
       - name: Upload failure logs
         if: failure() && steps.suite.outcome == 'failure'
