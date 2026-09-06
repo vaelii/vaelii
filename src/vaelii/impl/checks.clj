@@ -583,16 +583,49 @@
   forcing it in would put that difference inside every reader of this map."
   '{arg genlArg, genlArg arg})
 
-(def predicate-type-arities
-  "What each predicate-type membership says the arity is.  The `arity` sentexes and
+(def exact-arity-classes
+  "What each exact-arity class membership says the arity is.  The `arity` sentexes and
   these memberships derive each other through the CxCore rules, so a declared
-  predicate normally has both — but a `{:chain? false}` assert or a KB loaded without
+  relation normally has both — but a `{:chain? false}` assert or a KB loaded without
   the rules has only what was written, so both spellings are read.
+
+  **Nine spellings, because CxCore ships nine classes.**  `unary` / `binary` / `ternary`
+  are the relation-wide ones and the other six specialize them by kind, so a KB may write
+  the arity of a function as `(binary_function F)` exactly as it writes a predicate's as
+  `(binary_predicate P)`.  The relation-wide three alone would answer `membered-arity`,
+  which reads the term's whole `genl` closure — but `arity-declaration-handle` looks for
+  a **stored** sentex to name in a refusal, and what a KB stored is whichever of the nine
+  its author wrote.
+
+  The three arities never disagree across the spellings one term holds: a class and its
+  specializations map to one number, and `(disjoint unary binary)` and its two peers
+  separate the relation-wide three, which the six inherit through their `genl` edges.
 
   Public because `settle`'s retroactive arity report triggers on an arriving *arity
   declaration*, and these memberships are the second way to write one — a roster read
   twice is a roster that drifts."
-  '{unary_predicate 1 binary_predicate 2 ternary_predicate 3})
+  '{unary 1 binary 2 ternary 3
+    unary_predicate 1 binary_predicate 2 ternary_predicate 3
+    unary_function 1 binary_function 2 ternary_function 3})
+
+(def exact-arity-class-gates
+  "The `exact-arity-classes` keys a KB can hold a membership of **without** CxCore, which
+  is the question `settle/any-arity-declared?` asks the index — one `stored-count-with-functor`
+  per class, per assert, on a KB whose `(arity P n)` table is empty.
+
+  Three of the nine, and the other six are left out on a measurement.  `unary` / `binary`
+  / `ternary` and the three function classes are CxCore's own vocabulary: a KB holding one
+  holds CxCore, whose rules put an `(arity P n)` sentex in the table for it, and the
+  table is the gate's first branch — so asking the index about them adds six reads per
+  assert (`assert_cost_test`'s `functor-root` budget) to answer what the branch above
+  already answered.  What the six lose is the retroactive *report* in a KB that has
+  CxCore's class names and not its rules; the entry point still refuses a wrong-length
+  fact under all nine, `declared-arity` reading the roster rather than this.
+
+  A **vector**, in arity order: the reader walks it until one class has a stored member,
+  so the order decides how many index reads a KB with no arity at all pays, and a set
+  would make that number a hash order rather than a decision."
+  '[unary_predicate binary_predicate ternary_predicate])
 
 (defn- tabled-arity
   "The arity the `(arity P n)` **table** gives `pred` from `context`, or nil.
@@ -609,19 +642,20 @@
     (when (and (integer? n) (pos? n)) n)))
 
 (defn- membered-arity
-  "The arity `pred`'s own predicate-type membership gives it, or nil — the second
+  "The arity `pred`'s own exact-class membership gives it, or nil — the second
   spelling, read off the predicate's types (`types`, the shared per-assert reader), so it
   costs the retrieval `arg` already needs for its arguments rather than one of its
   own.  A retrieval where `tabled-arity` is a map read, which is the whole of why the two
   are separate functions rather than one `or`: a caller asking about several predicates
   wants the cheap half of the question asked of all of them first.
 
-  `first` over the roster is exact wherever CxCore is loaded: it declares the three
-  classes pairwise `disjoint`, so a predicate holds at most one of them and the first hit
-  is the only hit."
+  `first` over the roster is exact wherever CxCore is loaded: `(disjoint unary binary)`
+  and its two peers separate the relation-wide three and the six kind specializations
+  inherit that separation through their `genl` edges, so a relation reaches one number
+  however many of the nine spellings its closure holds."
   [types pred]
   (let [cs (:closures (types pred))]
-    (first (for [[t n] predicate-type-arities
+    (first (for [[t n] exact-arity-classes
                  :when (kb/isa-among? cs t)]
              n))))
 
@@ -684,7 +718,7 @@
   one closure read, already memoized by the argument-constraint reader beside it.
 
   **Both spellings, like `own-arity`** — the `(arity P n)` table first, since it is a map
-  read where the predicate-type membership is a retrieval, and the membership after it
+  read where the exact-class membership is a retrieval, and the membership after it
   for a super the table does not name.  A KB loaded with CxCore's rules has both for
   every declared predicate, because the rules derive each from the other; a KB loaded
   without them, or one written with `{:chain? false}`, has only what somebody typed, and
@@ -778,8 +812,8 @@
   from `context` — the sentex a wrong-arity sentence convicts *against*.
 
   Two spellings declare it and `own-arity` reads both, so both are looked for: the
-  `(arity P n)` sentex, and failing that the predicate-type membership `(binary_predicate
-  P)` that says the same thing.  `via` is the predicate the binding arity was read off,
+  `(arity P n)` sentex, and failing that the exact-class membership `(binary_predicate P)`
+  — or `(binary F)`, or `(binary_function F)` — that says the same thing.  `via` is the predicate the binding arity was read off,
   which is the sentence's own for a locally declared one and a super-predicate for an
   inherited one — so a refusal through the hierarchy names the declaration that convicted
   rather than looking for one the sentence's predicate never had.  Asked only once a
@@ -790,7 +824,9 @@
   ;; between the two *spellings* is this `or`, and stays content-ordered by construction.
   (or (let [target (list 'arity via declared)]
         (handle-naming (res/matches-visible kb target context) target))
-      (first (for [[t n] predicate-type-arities
+      ;; sorted, so which of the nine spellings a refusal names is decided by the roster's
+      ;; content and not by a map's iteration order — the reason `membership-arity` sorts
+      (first (for [[t n] (sort-by key exact-arity-classes)
                    :when (= n declared)
                    :let  [target (list t via)
                           h (handle-naming (res/matches-visible kb target context) target)]
@@ -1005,9 +1041,9 @@
 
 (defn membership-arity
   "The arity a one-place membership functor `f` declares of its argument, or nil — one of
-  the three spellings itself, or a collection the taxonomy makes a `genl` of one.
+  the nine spellings itself, or a collection the taxonomy makes a `genl` of one.
 
-  Public for the reason `predicate-type-arities` is, and in its place: `settle`'s
+  Public for the reason `exact-arity-classes` is, and in its place: `settle`'s
   retroactive arity report triggers on an arriving declaration and has to recognise the
   same ones this entry point does.  Reading the raw map there and the closure here is the drift
   its own docstring warns about, so the closure read is the shared one.
@@ -1015,25 +1051,25 @@
   **Read through the closure because the readers read through one.**  `membered-arity`
   answers off `(:closures (types pred))`, so `(genl myBinPred binary_predicate)` beside
   `(myBinPred fatherOf)` makes `fatherOf` binary to everything that *reads* a declaration.
-  Matching the three literal functors here made the *writer* of one blind to exactly that
-  spelling: the disagreeing edge lands, and the reader then convicts facts under it.  A
+  Matching the roster's own functors and nothing else here made the *writer* of one blind
+  to exactly that spelling: the disagreeing edge lands, and the reader then convicts facts under it.  A
   roster read twice is a roster that drifts, and these are its two reads.
 
   The literal is asked first and answers all but the unusual case; only a one-place
-  sentence whose functor is not already one of the three pays the cached `genls` behind
-  it.  Content-ordered, so a functor made a `genl` of two of them — itself incoherent —
-  picks the same one every run."
+  sentence whose functor is not already one of the nine pays the cached `genls` behind
+  it.  Content-ordered, so a functor made a `genl` of two that disagree — itself
+  incoherent — picks the same one every run."
   [kb f context]
-  (or (predicate-type-arities f)
+  (or (exact-arity-classes f)
       (let [supers (tax/genls (:taxonomy kb) f context)]
-        (first (for [[t n] (sort-by key predicate-type-arities)
+        (first (for [[t n] (sort-by key exact-arity-classes)
                      :when (contains? supers t)]
                  n)))))
 
 (defn- arity-declared-by
   "The `[pred n]` an arriving sentence declares an arity of, or nil — both spellings,
-  `(arity P n)` and the `unary_predicate` / `binary_predicate` / `ternary_predicate`
-  membership that says the same thing.  The gate on the arm below: nothing else can
+  `(arity P n)` and the exact-class membership (`binary_predicate`, `binary`,
+  `binary_function`, …) that says the same thing.  The gate on the arm below: nothing else can
   put a predicate in disagreement with one a `genl` edge already relates it to."
   [kb sentence context]
   (let [f  (nm/functor sentence)
@@ -1203,7 +1239,7 @@
 ;; class to compare.  Those stay refusals.
 ;;
 ;; `arity` **does** name a second sentex — the `(arity P n)` declaration, or the
-;; predicate-type membership saying the same thing — and is still not arbitrable, which is
+;; exact-class membership saying the same thing — and is still not arbitrable, which is
 ;; the case worth naming because the pair looks so much like the three above it.  The
 ;; sentex it names is the *vocabulary entry the conviction is read through*: `declared-arity`
 ;; answers from the taxonomy's arity table, which follows belief, so a nogood that defeated
@@ -2134,9 +2170,12 @@
   (config/assertive-arg-types?))
 
 (def ^:private universal-context
-  "The one context every other sees.  A declaration stated there speaks for every
-  context, so it entails locally wherever it is visible; `special/universal-context` is
-  the same symbol, named there for the lift."
+  "The context every context below the spindle joint sees.  A declaration stated there
+  speaks for all of them, so it entails locally wherever it is visible.  The upper
+  spindle sits above the joint and does not see CxUniverse — CxCore is the head every
+  context reaches, and a declaration written there constrains everywhere while entailing
+  only in CxCore itself (docs/contexts.md).  `special/universal-context` is the same
+  symbol, named there for the lift."
   'CxUniverse)
 
 (defn- mintable-type?
@@ -2944,11 +2983,21 @@
   super-predicate names the predicate it was written of, exactly as `args-problem` does.
 
   Walked in `in-content-order`, so which declaration a refusal names is decided by what
-  the KB says rather than by how the retrieval happened to enumerate."
+  the KB says rather than by how the retrieval happened to enumerate.
+
+  A literal whose **functor is itself a variable** contributes nothing.  `?pred` names no
+  predicate, so `declaration-reader` reads it as a match pattern and every `(arg P n T)`
+  in the KB comes back — `(arg typeToInstancePred 2 instance_relation_predicate)` beside
+  `(genlArg arg1 2 thing)` — and the conjunction of two unrelated predicates' position 2
+  is a demand no term meets.  A variable functor is refused `:not-indexable` where it
+  stands as a top-level antecedent (`rules.clj`) and is filled by a generator's hole
+  otherwise, so the declarations that bind it are the stamped rule's, read when the
+  functor is ground."
   [kb lit context]
   (let [pred (nm/functor lit)
         as   (vec (nm/args lit))]
-    (when (and (sequential? lit) (symbol? pred) (some sx/variable? as))
+    (when (and (sequential? lit) (symbol? pred) (not (sx/variable? pred))
+               (some sx/variable? as))
       (let [decls    (declaration-reader kb pred context)
             type-rel (seq (res/matches-visible kb (list 'type_relation_predicate pred) context))
             of-kind  (fn [kind mk]

@@ -4071,7 +4071,7 @@
   the subtree the report below has to sweep.
 
   Three spellings, because `checks/declared-arity` reads three things.  Two **declare** a
-  length: `(arity P n)`, and the predicate-type membership `(binary_predicate P)` that says
+  length: `(arity P n)`, and the exact-class membership `(binary_predicate P)` that says
   the same thing.  The third **inherits** one: `(genl sub super)` binds `sub` to whatever
   length `super` was declared with (`checks/inherited-arity`), so an edge is the third
   ingredient of a wrong-arity finding exactly as it is the third ingredient of an
@@ -4164,9 +4164,11 @@
   makes the pass below free for a KB that has not?
 
   The taxonomy's arity table alone is not the answer: it holds the `(arity P n)` sentexes,
-  and a KB loaded without CxCore's derivation rules has only the predicate-type
-  membership, which `checks/declared-arity` reads and this table never sees.  So the three
-  memberships are asked too, as index cardinalities.
+  and a KB loaded without CxCore's derivation rules has only the exact-class
+  membership, which `checks/declared-arity` reads and this table never sees.  So the
+  memberships a KB can hold without CxCore are asked too, as index cardinalities —
+  `checks/exact-arity-class-gates`, which says why the other six of the nine spellings are
+  not asked about here.
 
   **Each membership's sub-collections with it**, since `checks/membership-arity` reads the
   spelling through the `genl` closure: a KB writing `(myBinPred fatherOf)` under `(genl
@@ -4180,7 +4182,7 @@
         (boolean (some (fn [t]
                          (some #(pos? (reads/stored-count-with-functor (:index kb) %))
                                (tax/specs-global tax t)))
-                       (keys checks/predicate-type-arities))))))
+                       checks/exact-arity-class-gates)))))
 
 (def ^:private max-arity-findings
   "How many per-predicate `:arity` entries one pass of the report below may file.

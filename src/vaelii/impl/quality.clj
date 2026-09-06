@@ -395,9 +395,14 @@
   counts it and `:islands` is exactly the edged types outside the root's ancestor set."
   [kb pass progress!]
   (let [taxo  (:taxonomy kb)
-        type-candidate? (fn [name]
-                          (let [arity (tax/declared-arity taxo name)]
-                            (or (nil? arity) (= 1 arity))))
+        ;; Memoized: the reach walk below asks this once per node AND once per ancestor
+        ;; of every node, which on the 124k-type conversion above is a few million calls
+        ;; over a name set two orders of magnitude smaller.  Each call reads the
+        ;; taxonomy atom and allocates, and the answer cannot move inside one reading.
+        type-candidate? (memoize
+                         (fn [name]
+                           (let [arity (tax/declared-arity taxo name)]
+                             (or (nil? arity) (= 1 arity)))))
         nodes (into #{} (filter type-candidate?) (tax/types taxo))
         named (into #{} (filter type-candidate?) (:type-names pass))]
     (progress! {:phase :taxonomy :done 0 :total (count nodes)})
@@ -976,10 +981,11 @@
   reads, asked of a *literal* rather than of the store.
 
   `(arity ?p n)` says it outright.  A unary `(T ?p)` says it whenever `T` reaches one of
-  the three predicate-arity classes up `genl`, which is what makes `(symmetric ?p)` a
-  claim of arity 2: `symmetric` is a kind of `binary_predicate`.  The roster is
-  `checks/predicate-type-arities`, read here rather than copied, since a roster read twice
-  is a roster that drifts."
+  the exact-arity classes up `genl`, which is what makes `(symmetric ?p)` a claim of arity
+  2: `symmetric` is a kind of `binary_predicate`.  The roster is
+  `checks/exact-arity-classes`, read here rather than copied, since a roster read twice
+  is a roster that drifts, and read in key order so a term reaching two that disagree —
+  itself incoherent — reports the same one every run."
   [tax lit context]
   (let [f (nm/functor lit)]
     (when (and (symbol? f) (not (sx/variable? f)))
@@ -990,13 +996,13 @@
         (= 1 (nm/arity lit))
         (let [supers (tax/genls tax f context)]
           (some (fn [[t n]] (when (contains? supers t) n))
-                checks/predicate-type-arities))))))
+                (sort-by key checks/exact-arity-classes)))))))
 
 (defn- arity-conflicted?
   "Do two of these literals bind one term to two arities?  A predicate takes one number of
-  arguments — `(functional arity)` says so of the table, and the three classes are
-  pairwise `disjoint` (docs/taxonomy.md) — so no term satisfies both, whichever of the two
-  spellings each literal used.  `(arity ?p 1)` beside `(arity ?p 2)`, and `(arity ?p 1)`
+  arguments — `(functional arity)` says so of the table, and the relation-wide classes are
+  pairwise `disjoint`, which their kind specializations inherit (docs/taxonomy.md) — so no
+  term satisfies both, whichever of the two spellings each literal used.  `(arity ?p 1)` beside `(arity ?p 2)`, and `(arity ?p 1)`
   beside `(equivalence_relation ?p)`, are the same finding read two ways.
 
   A declaration read, not an inference: nothing is derived and no fact is consulted, the

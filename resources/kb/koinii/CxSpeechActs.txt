@@ -50,9 +50,8 @@
 ;; ---- response acts: meta-sentexes on their target, target_following_predicate ----
 
 (comment answers
-         "(answers ?agent ?content (sentexHandle ?target)) is ?agent's answer ?content to the query sentex ?target, a META-SENTEX naming ?target by handle. Declared target_following_predicate: retract ?target and this answer is torn down with it. The answerer's identity comes from THIS sentex's context and provenance, not from the query it answers. ?content is the answer term, left untyped; the handle arg is left untyped since the target can be any sentex.")
+         "(answers ?agent ?content (sentexHandle ?target)) is ?agent's answer ?content to the query sentex ?target, a META-SENTEX naming ?target by handle. Declared target_following_predicate: retract ?target and this answer is torn down with it. The answerer's identity comes from THIS sentex's context and provenance, not from the query it answers. ?content is the answer term, left untyped; the handle arg is left untyped since the target can be any sentex. Carries no relation_kind mark: instance_relation_predicate classifies a two-place claim between individuals (CxCore), and this is three-place over an agent, a term and a handle.")
 (ternary_predicate answers)
-(instance_relation_predicate answers)
 (arg answers 1 agent)
 (target_following_predicate answers)
 
@@ -71,9 +70,8 @@
 (target_following_predicate endorses)
 
 (comment justifies
-         "(justifies ?agent ?ground (sentexHandle ?target)) records that ?agent offers ?ground as a reason for the claim ?target, a META-SENTEX naming ?target by handle. Declared target_following_predicate. ?ground is the reason (a term or another sentex handle), left untyped. Represents the move only: nothing weighs a justification, and no rule reads one.")
+         "(justifies ?agent ?ground (sentexHandle ?target)) records that ?agent offers ?ground as a reason for the claim ?target, a META-SENTEX naming ?target by handle. Declared target_following_predicate. ?ground is the reason (a term or another sentex handle), left untyped. Represents the move only: nothing weighs a justification, and no rule reads one. Carries no relation_kind mark, for answers' reason.")
 (ternary_predicate justifies)
-(instance_relation_predicate justifies)
 (arg justifies 1 agent)
 (target_following_predicate justifies)
 

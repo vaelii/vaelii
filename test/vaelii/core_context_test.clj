@@ -69,9 +69,11 @@
       (is (true? (v/ask? kb declaration 'CxCore))))))
 
 (tu/deftest-kb arity-is-declared-functional
-  ;; a predicate has one arity, and the two spellings derive each other — so a second,
-  ;; different (arity P N) is a clash rather than a second belief.  Two numbers can
-  ;; never merge into one thing, so this is the hard rejection, not an equality.
+  ;; a relation has one arity, and the arity and its relation-wide exact class derive
+  ;; each other — so a second, different (arity R N) is a clash rather than a second
+  ;; belief.  Two numbers can never merge into one thing, so this is the hard rejection,
+  ;; not an equality.  Two convictions reach it: (functional arity) on the table, and
+  ;; (disjoint binary ternary) on the classes the two numbers derive.
   (is (v/has-prop? kb :functional 'arity))
   (let [rel (tu/tmp-pred)]
     (v/assert kb (list 'binary_predicate rel) 'CxCore)
@@ -89,7 +91,7 @@
         (is (not (v/isa? kb freshRelation 'fixed_arity 'CxCore)))))))
 
 (tu/deftest-kb the-core-vocabulary-is-the-size-docs-kbs-says
-  ;; A bound, not a pin.  docs/kbs.md's row says "~920", and the exact number moves
+  ;; A bound, not a pin.  docs/kbs.md's row says "~998", and the exact number moves
   ;; whenever CxCore gains a term on purpose — which made an equality here pure churn:
   ;; it failed on every deliberate change and caught nothing else, because
   ;; `vocabulary-audit` already fails a functor nobody classified.  What a count *can*
@@ -97,6 +99,6 @@
   ;; that is what this asserts.
   (let [n (v/sentex-count kb)]
     (is (< 500 n 1800)
-        (str "CxCore loaded " n " sentexes; docs/kbs.md's Core vocabulary row says ~920."
+        (str "CxCore loaded " n " sentexes; docs/kbs.md's Core vocabulary row says ~998."
              "  A number outside this band means the load is wrong, not that the"
              "  vocabulary grew — check the classpath before touching the row."))))

@@ -334,3 +334,33 @@
       (v/assert kb (list d both) 'CxUniverse)
       (v/assert kb (list 'genl both 'thing) 'CxUniverse)
       (is (= [] (v/check kb (list sub both 'thing) 'CxUniverse))))))
+
+(tu/deftest-kb a-variable-functor-carries-no-argument-constraints
+  ;; `?pred` names no predicate, so nothing declares its positions.  Reading it as one
+  ;; hands `declaration-reader` a match pattern instead of a name and EVERY (arg P n T)
+  ;; in the KB comes back, so a variadic rule collects two unrelated predicates' demands
+  ;; on one variable — (arg typeToInstancePred 2 instance_relation_predicate) beside
+  ;; (genlArg arg1 2 thing) — and is refused for a clash neither declaration is about.
+  ;; CxCore ships exactly such a rule.
+  (testing "the shipped ist lifting rule checks clean"
+    (is (= [] (v/check kb '(set/inertRule
+                            (implies (?pred . ?args) (ist CxUniverse (?pred . ?args))))
+                       'CxCore))))
+  (testing "a bare variadic rule keeps its OWN refusal and loses only the spurious one"
+    ;; :not-indexable is the right refusal for a variable functor in an antecedent, and
+    ;; it stands; what goes is the :arg-variable clash read off other predicates
+    (let [found (v/check kb '(implies (?pred ?a ?b) (?pred ?b ?a)) 'CxUniverse)]
+      (is (some #(= :not-indexable (:type %)) found))
+      (is (not-any? #(= :arg-variable (:type %)) found))))
+  (testing "while a CONCRETE functor still convicts a variable its own positions clash on"
+    (tu/with-terms [narrowOf lithe_thing squat_thing A]
+      (v/assert kb (list 'genl lithe_thing 'thing) 'CxUniverse)
+      (v/assert kb (list 'genl squat_thing 'thing) 'CxUniverse)
+      (v/assert kb (list 'disjoint lithe_thing squat_thing) 'CxUniverse)
+      (v/assert kb (list 'binary_predicate narrowOf) 'CxUniverse)
+      (v/assert kb (list 'arg narrowOf 1 lithe_thing) 'CxUniverse)
+      (v/assert kb (list 'arg narrowOf 2 squat_thing) 'CxUniverse)
+      (let [found (v/check kb (list 'implies (list narrowOf '?x '?x) (list 'thing A))
+                           'CxUniverse)]
+        (is (some #(= :arg-variable (:type %)) found)
+            "a real predicate's own two disjoint positions still convict one variable")))))

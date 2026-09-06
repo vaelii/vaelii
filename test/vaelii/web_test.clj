@@ -112,9 +112,12 @@
     (testing "the stated root is on the page, open"
       (is (re-find #"<details open=\"open\"><summary><a[^>]*href=\"/term\?q=thing\"" body)))
     (testing "a node with subtypes is a disclosure that fetches its own children"
-      ;; `spatial_thing` is a direct subtype of `thing`, so it is on the first level, and
-      ;; it has `physical_object` under it, so it is a node with children rather than a leaf
-      (is (re-find #"<details[^>]*hx-get=\"/tree/rows\?rel=genl&amp;node=spatial_thing" body)))
+      ;; `formula` is a direct subtype of `thing`, so it is on the first level, and it has
+      ;; `atomic_formula` under it, so it is a node with children rather than a leaf.  It
+      ;; also sorts early: the first level is paged at 50, and a node late in the
+      ;; alphabet falls off that page whenever the vocabulary grows a direct subtype —
+      ;; which `VAELII_ASSERTIVE_ARG_TYPES=1` does by minting one per declared type
+      (is (re-find #"<details[^>]*hx-get=\"/tree/rows\?rel=genl&amp;node=formula" body)))
     (testing "and it selects nothing out of what it fetches"
       ;; `hx-select="#main"` is on the body and inherited; against a fragment of bare
       ;; rows it selects nothing, so an open would swap in nothing.  This is invisible
@@ -273,23 +276,23 @@
     ;; claim is that this context leads the ranking, and a fixed 400 makes that a bet
     ;; on the shipped ontology staying smaller than it — which CxCore, carrying an
     ;; argument declaration for every position of every predicate, does not.
-    (let [n (max 1000 (+ 50 (apply max 0 (map #(v/count-in-context kb %) (v/contexts kb)))))]
+    (let [n (+ 50 (apply max 0 (map #(v/count-in-context kb %) (v/contexts kb))))]
       (v/assert-many kb (for [i (range n)] (list heldBy (symbol (str "TmpBig" i))))
                      CxBiggest {:chain? false})
+      ;; `web/commas` renders a count in the DEFAULT locale, and a thousands separator
+      ;; is a comma, a period or a non-breaking space depending on which one that is.
+      ;; The expectation is built with the same `format` call rather than by pinning
+      ;; `Locale/US`, which would be a JVM-global write for the length of a render.
       (let [cap  (ns-resolve 'vaelii.impl.web 'lattice-cap)
-            locale (java.util.Locale/getDefault)
-            body (try
-                   (java.util.Locale/setDefault java.util.Locale/US)
-                   (with-redefs-fn {cap 0}             ; no lattice to draw, at any size
-                     #(:body (GET "/")))
-                   (finally (java.util.Locale/setDefault locale)))
+            shown (format "%,d" (long n))
+            body (with-redefs-fn {cap 0}               ; no lattice to draw, at any size
+                   #(:body (GET "/")))
             seg  (segment body "holding the most" 4000)
-            ns'  (mapv #(Long/parseLong (str/replace (second %) "," ""))
-                       (re-seq #" — (\d{1,3}(?:,\d{3})*|\d+) sentexes" seg))]
-        (is (= locale (java.util.Locale/getDefault)) "rendering restores the default locale")
+            ns'  (mapv #(Long/parseLong (str/replace (second %) #"\D" ""))
+                       (re-seq #" — (\d[\d,.\u00a0\u202f ]*) sentexes" seg))]
         (is (some? seg) "the fallback says what it is showing instead")
         (is (re-find (re-pattern (str ">" CxBiggest "</a><span class=\"muted\"> — "
-                                      (String/format java.util.Locale/US "%,d" (to-array [n]))
+                                      (java.util.regex.Pattern/quote shown)
                                       " sentexes"))
                      seg)
             "the biggest context, named with what it holds")

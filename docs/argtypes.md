@@ -21,6 +21,69 @@ not by recursively checking every input against that function's declarations.
 Recursive function-input enforcement is follow-up runtime work, not supplied by the
 vocabulary generalization.
 
+### A unary predicate declares a position only when its `genl` parent does not imply it
+
+An `arg` declaration on a unary predicate and a `genl` edge above it can say the same
+thing, and which of the two is right turns on where the parent sits relative to the type
+the declaration names.
+
+`fixed_arity` carries `(arg fixed_arity 1 relation)` and `(genl fixed_arity relation)`
+names that same type. The edge concludes `(relation 5)` from `(fixed_arity 5)` and
+nothing is disjoint from `relation` for a number, so the declaration is the only refusal
+there is; drop it and `(fixed_arity 5)` is accepted. `variable_arity` and the function
+marks are in the same position and keep theirs.
+
+`instance_relation_predicate` is the other case. Its parent is `binary_predicate`, which
+sits **below** `predicate`, so `(arg instance_relation_predicate 1 predicate)` restated
+in a weaker form what the edge already concludes, and turned that conclusion into a
+precondition — the declaration demanded of the argument the very type the assertion
+supplies:
+
+```clojure
+(assert kb '(arity pairOf 2) 'CxUniverse)
+(assert kb '(instance_relation_predicate pairOf) 'CxUniverse)  ; was :arg-type
+```
+
+`(arity R 2)` derives `fixed_arity` and the relation-wide `binary`, so `R` is a
+`relation`; it says nothing about predicate or function, two arguments being a shape
+either kind has. `outside-declared-type?` convicts an argument whose closure reaches
+`thing` and does not reach the declared type, so the classification was refused for a
+kind it had not yet stated — while the same pair written in the other order was accepted.
+
+That asymmetry is not by itself the argument for dropping the row. The refusal half is
+order-sensitive wherever a declaration narrows a type the argument already holds, by the
+design stated below under "Three directions": it convicts on an absence, so a KB given
+`(arg ownsGadget 1 gadget)`, `(artifact Widget)` and `(ownsGadget Widget Widget)` in
+different orders holds different facts, and no change here alters that. What these six
+marks had on top of it is a declared type their own `genl` parent already supplies — the
+declaration demanded its own conclusion — so the six declare no position:
+`instance_relation_predicate`, `type_relation_predicate`, `equivalence_relation`,
+`injection`, `surjection` and `bijection`.
+
+Both refusals the rows carried survive the drop, and one of them sharpens:
+
+| argument | with the row | without it |
+|---|---|---|
+| a term reaching only `thing`, or a number | `:arg-type` | `:arg-type`, through the `(arg fixed_arity 1 relation)` floor the mark inherits |
+| a `function` | `:arg-type: must be a predicate` | `:disjoint: cannot be both instance_relation_predicate and function` |
+| a relation whose kind is not yet stated | `:arg-type` | accepted, and the mark supplies the kind |
+
+`arity_vocabulary_test/a-predicate-only-classification-is-order-independent-of-the-arity`
+compares the two orders on the whole closure rather than on an acceptance, and
+`an-arity-alone-leaves-the-relation-kind-open` asserts the two refusals that remain.
+
+### The policy classes declare one position and their specializations declare none
+
+`fixed_arity` and `variable_arity` each carry `(arg C 1 relation)`. Nothing below them
+carries one. The parent's declaration descends the predicate hierarchy, so
+`(fixed_arity_predicate Fred)` with `Fred` a person is refused `:arg-type` all the same,
+while a narrower `(arg fixed_arity_predicate 1 predicate)` would refuse the wrong thing:
+a relation whose only stated type is `variable_arity` reaches `relation` and not
+`predicate`, so `(binary_predicate P)` written after `(variable_arity P)` would report the
+argument's type where the contradiction is the arity policy. The two are one
+contradiction and report `:disjoint` in either order. A relation classified into the
+wrong kind is caught by `(disjoint predicate function)` through the `genl` edges.
+
 ## Constraint and entailment readings
 
 `(arg parentOf 1 animal)` says the first argument of `parentOf` is an animal. Assert

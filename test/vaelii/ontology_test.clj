@@ -140,13 +140,17 @@
         (str "shipped facts their own declarations convict: " (vec guilty)))))
 
 (def ^:private untyped-positions
-  "The argument positions the shipped text contexts leave undeclared, each with the
-  reason no `arg` / `genlArg` / `quotedArg` can name it.  A position that is not here
-  and not declared fails the test below; a position here that gains a declaration
-  fails it too, so the roster stays a list of reasons rather than a list of debts."
+  "The argument positions of arity **2 and up** that the shipped text contexts leave
+  undeclared, each with the reason no `arg` / `genlArg` / `quotedArg` can name it.  A
+  position that is not here and not declared fails the test below; a position here that
+  gains a declaration fails it too, so the roster stays a list of reasons rather than a
+  list of debts.
+
+  A **unary** predicate's one position is exempt as a class and is not rostered — see
+  the test."
   (merge
-   {'[genl 2]  "the root: (genlArg genl 2 thing) would entail (genl thing thing), refused as irreflexive"
-    '[not 1]   "a sentence, canonicalized into the record's polarity slot; no argument type names one"}
+   {'[genl 1]  "predicate specializations: (genlArg genl 1 thing) is false of (genl predicateTypeByArity relationTypeByArity), whose ends are binary predicates"
+    '[genl 2]  "the root: (genlArg genl 2 thing) would entail (genl thing thing), refused as irreflexive"}
    ;; the five aggregation operators: a result variable, a census variable, a sentence body
    (into {} (for [op '[agg/count agg/sum agg/avg agg/min agg/max] i [1 2 3]]
               [[op i] "an operator slot — a variable, a variable and a sentence body"]))
@@ -155,15 +159,26 @@
    ;; convict every meta-sentex the app writes
    (into {} (for [[p i] '[[asserts 2] [queries 2] [answers 2] [answers 3] [justifies 2]
                           [justifies 3] [disputes 2] [endorses 2] [refuse 2] [retracts 2]
-                          [votesFor 2] [votesAgainst 2] [notUnderstood 2] [contested 1]]]
+                          [votesFor 2] [votesAgainst 2] [notUnderstood 2]]]
               [[p i] "a sentex handle or a proposition, a mention no argument type names"]))))
 
-(deftest every-position-of-a-shipped-arity-is-typed-or-excused
+(deftest every-position-of-a-shipped-arity-above-one-is-typed-or-excused
   ;; Read off the text files rather than a loaded KB, because the claim is about what the
-  ;; contexts *write*: an author declaring (arity P n), or a class that fixes n, owes a
-  ;; type for every one of the n positions — `check` reads only what is declared, so an
-  ;; undeclared position admits any term and a bad index or a wrong-kinded argument
-  ;; stores clean.  Every kb/*.txt is read, the app's koinii contexts included.
+  ;; contexts *write*: an author declaring (arity P n) for n above 1, or a class that
+  ;; fixes such an n, owes a type for every one of the n positions — `check` reads only
+  ;; what is declared, so an undeclared position admits any term and a bad index or a
+  ;; wrong-kinded argument stores clean.  Every kb/*.txt is read, the app's koinii
+  ;; contexts included.
+  ;;
+  ;; **A unary predicate owes nothing here.**  Its one position is its membership, so
+  ;; `(arg P 1 T)` says what `(genl P T)` says of the same extent — one per instance
+  ;; against one edge — and for the terms the engine interprets the shape in
+  ;; `vaelii.impl.predicates` refuses a wrong argument before any declaration is read
+  ;; (`(symmetric Fred)` is `:not-well-formed`, not `:arg-type`).  A declaration that
+  ;; convicts nothing and mints a record per instance under `*assertive-arg-types?*` is
+  ;; not a debt to collect, so the demand stops at arity 2 (docs/argtypes.md).  A unary
+  ;; predicate whose position is the only check it has still declares one — the eight
+  ;; state predicates in CxLife and CxTime do — and this test does not ask it to.
   (let [files    (->> (file-seq (io/file "resources/kb"))
                       (filter #(.endsWith (.getName ^java.io.File %) ".txt")))
         sents    (mapcat text/read-forms files)
@@ -174,7 +189,11 @@
                         (into {} (for [s (of '#{arity})] [(second s) (nth s 2)])))
         declared (set (for [s (of '#{arg genlArg quotedArg}) :when (integer? (nth s 2))]
                         [(second s) (nth s 2)]))
-        gaps     (set (for [[p n] arities i (range 1 (inc n)) :when (not (declared [p i]))] [p i]))
+        gaps     (set (for [[p n] arities
+                            :when (and (integer? n) (< 1 n))
+                            i    (range 1 (inc n))
+                            :when (not (declared [p i]))]
+                        [p i]))
         excused  (set (keys untyped-positions))]
     (is (seq arities) "the text contexts were found and read")
     (is (empty? (remove excused gaps))
@@ -273,48 +292,29 @@
 
 ;; ---- the shipped rules, read against each other --------------------------
 
-(defn- arity-rule [type arity]
-  (list 'implies (list type '?relation) (list 'arity '?relation arity)))
+(tu/deftest-kb no-shipped-rule-is-covered-by-another
+  ;; `kb-quality`'s subsumption reading over the shipped schema and the test-world's
+  ;; fables.  Zero is the claim: nothing here fires wherever another rule fires and
+  ;; concludes no more than it does, so no rule in the ontology is carrying its weight
+  ;; only because somebody wrote it twice at two levels of the hierarchy.
+  ;;
+  ;; The arity generator is the case that tests the claim.  It stamps one rule per
+  ;; `relationTypeByArity` fact, and CxCore ships three — over `unary`, `binary` and
+  ;; `ternary`.  A `(predicateTypeByArity unary_predicate 1)` fact beside them would
+  ;; stamp a fourth firing wherever the first already fires, since `unary_predicate`
+  ;; is a `unary`; CxCore states that membership with a `genl` edge instead, so the
+  ;; reading stays at zero and a mapping table that grew a redundant member would
+  ;; show up here.
+  (let [q (:subsumption (v/kb-quality kb {:limit 100}))]
+    (is (pos? (:total q)) "the reading ran over rules rather than over nothing")
+    (is (not (:truncated? q)) "and over all of them")
+    (is (zero? (:subsumed-count q))
+        (str "covered: " (pr-str (mapv (juxt :by-sentence :sentence) (:subsumed q)))))))
 
-(defn- generated-arity-pairs [kb]
-  ;; Temporary, exact exception until generators decline subsumed rules. No general
-  ;; exemption for generated rules: the provenance and complete pair set are tested.
-  (set (for [[general arity specializations]
-             '[[unary 1 [unary_predicate unary_function]]
-               [binary 2 [binary_predicate binary_function]]
-               [ternary 3 [ternary_predicate ternary_function]]]
-             specialized specializations]
-         [(v/handle-of kb (arity-rule general arity) 'CxCore)
-          (v/handle-of kb (arity-rule specialized arity) 'CxCore)])))
-
-(defn- unexpected-subsumptions [expected reading]
-  (remove #(contains? expected [(:by %) (:subsumed %)]) (:subsumed reading)))
-
-(tu/deftest-kb no-shipped-rule-is-covered-except-the-exact-generated-arity-pairs
-  (let [q (:subsumption (v/kb-quality kb {:limit 100}))
-        expected (generated-arity-pairs kb)
-        generator (v/handle-of kb
-                               '(implies (relationTypeByArity ?type ?arity)
-                                         (implies (?type ?relation) (arity ?relation ?arity)))
-                               'CxCore)]
-    (is (pos? (:total q)))
-    (is (not (:truncated? q)))
-    (is (= 6 (count expected)))
-    (is (some? generator))
-    (doseq [h (set (mapcat identity expected))]
-      (is (some? h))
-      (is (not (v/premise? kb h)) "the exception cannot cover a hand-written rule")
-      (is (some #(some #{generator} (:antecedents %))
-                (v/supporting-justifications kb h))
-          "each rule is actually stamped by the arity generator"))
-    (is (= expected (set (map (juxt :by :subsumed) (:subsumed q))))
-        "the exception must be removed when its motivating redundancies disappear")
-    (is (empty? (unexpected-subsumptions expected q))
-        (str "unexpected covered rules: "
-             (pr-str (mapv (juxt :by-sentence :sentence)
-                           (unexpected-subsumptions expected q)))))))
-
-(tu/deftest-kb unexpected-generated-subsumption-is-not-exempt
+(tu/deftest-kb a-generated-rule-is-not-exempt-from-the-subsumption-reading
+  ;; The reading does not spare a rule for having been stamped by a generator: a
+  ;; mapping fact over a type and a second over its subtype mint two rules, and the
+  ;; narrower one fires nowhere the broader does not.
   (tu/with-terms [broad_type narrow_type outcome_type generatesType]
     (v/assert kb (list 'genl broad_type 'thing) 'CxCore)
     (v/assert kb (list 'genl narrow_type broad_type) 'CxCore)
@@ -327,11 +327,10 @@
           pair [(v/handle-of kb (rule broad_type) 'CxCore)
                 (v/handle-of kb (rule narrow_type) 'CxCore)]
           q (:subsumption (v/kb-quality kb {:limit 100}))]
-      (is (every? some? pair))
+      (is (every? some? pair) "both rules are stamped")
       (is (not (:truncated? q)))
-      (is (some #(= pair [(:by %) (:subsumed %)])
-                (unexpected-subsumptions (generated-arity-pairs kb) q))
-          "even another generated subtype pair must still fail the gate"))))
+      (is (some #(= pair [(:by %) (:subsumed %)]) (:subsumed q))
+          "the narrower generated rule is reported as covered"))))
 
 (tu/deftest-kb every-negated-conclusion-the-ontology-can-clash-with-is-stated-as-an-exception
   ;; The other rule-hygiene reading, and the structure of what it finds here is the finding.
@@ -350,12 +349,11 @@
     (is (every? :excepted pairs)
         "a conclusion contradicting another outright is always the exception's own case")))
 
-(tu/deftest-kb the-arity-cycle-clashes-with-itself-in-neither-direction
-  ;; The reading's own half of the arity separation, and both directions of the cycle are
-  ;; asked because they are excluded for two different reasons.  Class-to-arity is the
-  ;; disjointness on the antecedents; arity-to-class is one term bound to two arities,
-  ;; which is `(functional arity)` plus the same disjointness read off the classes the
-  ;; two rules conclude.  Either way no `?p` satisfies both antecedents, so the pair is
+(tu/deftest-kb the-arity-rules-clash-with-each-other-in-neither-direction
+  ;; The reading's own half of the arity separation.  The generator stamps one rule per
+  ;; exact class, and two of them conclude two arities for one relation only where the
+  ;; relation holds both classes — which `(disjoint unary binary)` and its two peers
+  ;; refuse on the antecedents.  No `?relation` satisfies two of them, so the pair is
   ;; unreachable rather than unstated (docs/quality.md).
   (let [pairs   (:pairs (:clashes (v/kb-quality kb {:limit 100})))
         about   (fn [f] (filter (fn [p] (some #(some #{f} (flatten %)) (:sentences p)))

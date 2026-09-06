@@ -81,8 +81,8 @@ leaves it dormant, an unreachable target convicts. See [argtypes.md](argtypes.md
 **Arity vocabulary** ![kb](../.github/badges/cat-kb.svg): `fixed_arity` and
 `variable_arity` are disjoint relation-wide argument policies. Unsuffixed `unary`,
 `binary` and `ternary` are the exact relation classes, each with predicate and function
-specializations. `arity` states one exact relation arity; `arityMin` states a variable
-relation's lower bound.
+specializations. `arity` states one exact relation arity and derives its exact
+class, which derives the arity back; `arityMin` states a variable relation's lower bound.
 `at_least_binary_relation` / `at_least_ternary_relation` are derived minimum classes.
 `admitsArgnum` names whether one positive position exists; no WFF/query reader currently
 consumes it. See [taxonomy.md](taxonomy.md#relations-and-arity-policy).

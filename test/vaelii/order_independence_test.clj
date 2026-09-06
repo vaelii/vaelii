@@ -1631,3 +1631,68 @@
           (is (= '#{PrA PrB PrC} (:whole result))
               "while the uncapped run still reaches every witness")))))
   (tu/clear-kb! (tu/test-kb)))
+
+;; ---- a generator's stamped rules -----------------------------------------
+
+(deftest a-generator-and-its-stamped-rules-are-order-independent
+  ;; The shape CxCore's arity vocabulary uses (docs/generators.md), stated over a
+  ;; miniature so the scenario is the mechanism and not the ontology: one rule whose
+  ;; consequent is itself a rule, a mapping fact that fills the hole, and members of the
+  ;; type the hole names.  A stamped rule is minted when its mapping fact arrives and
+  ;; may therefore arrive after the members it fires on, before them, or between two of
+  ;; them.  120 orderings.
+  (let [ops [#(v/assert % '(implies (typeArity ?type ?n)
+                                    (implies (?type ?relation) (arity ?relation ?n)))
+                        'CxUniverse)
+             #(v/assert % '(typeArity binary_thing 2) 'CxUniverse)
+             #(v/assert % '(typeArity ternary_thing 3) 'CxUniverse)
+             #(v/assert % '(binary_thing pairOf) 'CxUniverse)
+             #(v/assert % '(ternary_thing tripleOf) 'CxUniverse)]
+        observe (fn [kb]
+                  {:pair   (boolean (seq (v/sentexes-matching kb '(arity pairOf 2) 'CxUniverse)))
+                   :triple (boolean (seq (v/sentexes-matching kb '(arity tripleOf 3) 'CxUniverse)))
+                   ;; the hole is filled per mapping fact, so one type's rule must not
+                   ;; conclude for a member of the other
+                   :crossed (boolean (seq (v/sentexes-matching kb '(arity pairOf 3) 'CxUniverse)))
+                   :rows    (count (v/sentexes-matching kb '(arity ?r ?n) 'CxUniverse))
+                   :conflicts (count (v/conflicts kb))})
+        result (one-outcome! "generator stamping" ops observe)]
+    (testing "and the one reading is one arity per member, from its own type's rule"
+      (is (true? (:pair result)))
+      (is (true? (:triple result)))
+      (is (false? (:crossed result)))
+      (is (= 2 (:rows result)))
+      (is (zero? (:conflicts result))))
+    (tu/clear-kb! (tu/test-kb))))
+
+(deftest withdrawing-a-generators-premise-is-order-independent
+  ;; The withdrawal half.  A stamped rule is justified by the fact that minted it, so
+  ;; retracting the fact must take the rule's conclusions with it and leave every other
+  ;; type's alone — whenever in the sequence the retraction lands.  The retract names the
+  ;; handle its own assert allocated, so the two are one chain; 5!/2! = 60 orderings.
+  (let [handle (volatile! nil)
+        chains [[#(v/assert % '(implies (typeArity ?type ?n)
+                                        (implies (?type ?relation) (arity ?relation ?n)))
+                            'CxUniverse)]
+                [#(vreset! handle (v/assert % '(typeArity binary_thing 2) 'CxUniverse))
+                 #(v/retract! % @handle)]
+                [#(v/assert % '(typeArity ternary_thing 3) 'CxUniverse)]
+                [#(v/assert % '(binary_thing pairOf) 'CxUniverse)]
+                [#(v/assert % '(ternary_thing tripleOf) 'CxUniverse)]]
+        observe (fn [kb]
+                  {:pair    (boolean (seq (v/sentexes-matching kb '(arity pairOf 2) 'CxUniverse)))
+                   :triple  (boolean (seq (v/sentexes-matching kb '(arity tripleOf 3) 'CxUniverse)))
+                   :member  (boolean (seq (v/sentexes-matching kb '(binary_thing pairOf) 'CxUniverse)))
+                   :mapping (boolean (seq (v/sentexes-matching kb '(typeArity binary_thing 2)
+                                                               'CxUniverse)))
+                   :rows    (count (v/sentexes-matching kb '(arity ?r ?n) 'CxUniverse))
+                   :conflicts (count (v/conflicts kb))})
+        result (one-outcome-under! "generator withdrawal" chains observe)]
+    (testing "the withdrawn fact takes its own conclusion and nothing else"
+      (is (false? (:pair result)) "the stamped rule's conclusion goes with its premise")
+      (is (false? (:mapping result)))
+      (is (true? (:member result)) "the membership was asserted and stands on its own")
+      (is (true? (:triple result)) "the other type's rule is untouched")
+      (is (= 1 (:rows result)))
+      (is (zero? (:conflicts result))))
+    (tu/clear-kb! (tu/test-kb))))

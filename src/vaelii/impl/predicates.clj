@@ -385,6 +385,13 @@
   [spec why]
   (assoc spec :facets #{:inert} :inert why))
 
+(def ^:private arity-note
+  "The clause every exact-arity class's note ends with — nine classes say one thing, and
+  a sentence written nine times is a sentence that drifts in eight of them."
+  (str " — checks/exact-arity-classes — plus the disjointness that separates the"
+       " relation-wide three, which the kind specializations inherit through their genl"
+       " edges. Reaches through settle's arity report, not through the clash rosters."))
+
 ;; ---- the entries ---------------------------------------------------------
 
 (def entries
@@ -566,12 +573,18 @@
      ['predicateTypeByArity
       (enforced {:shape {:args [:type :integer]} :storage [:none] :checked false
                  :family nil :facets #{}
-                 :notes "a genl specialization of relationTypeByArity; its facts are relationTypeByArity facts by ordinary CxCore inference."}
+                 :notes (str "a genl specialization of relationTypeByArity; a fact of"
+                             " its own is a relationTypeByArity fact by ordinary CxCore"
+                             " inference, and CxCore ships none — the shipped predicate"
+                             " types reach the relation-wide mapping by genl instead.")}
                 "genl specialization of relationTypeByArity")]
      ['functionTypeByArity
       (enforced {:shape {:args [:type :integer]} :storage [:none] :checked false
                  :family nil :facets #{}
-                 :notes "a genl specialization of relationTypeByArity; its facts are relationTypeByArity facts by ordinary CxCore inference."}
+                 :notes (str "a genl specialization of relationTypeByArity; a fact of"
+                             " its own is a relationTypeByArity fact by ordinary CxCore"
+                             " inference, and CxCore ships none — the shipped function"
+                             " types reach the relation-wide mapping by genl instead.")}
                 "genl specialization of relationTypeByArity")]
      ['admitsArgnum
       (inert {:shape {:args [:relation :position]} :storage [:none] :checked false
@@ -885,41 +898,45 @@
                                 " target the function-valued positions of result, genlResult"
                                 " and functionCorrespondingPredicate name"))]
 
-     ['unary   (enforced (collection :notes "the relation-wide exact-one-argument type.")
-                         "ordinary CxCore relationTypeByArity rules")]
-     ['binary  (enforced (collection :notes "the relation-wide exact-two-argument type.")
-                         "ordinary CxCore relationTypeByArity rules")]
-     ['ternary (enforced (collection :notes "the relation-wide exact-three-argument type.")
-                         "ordinary CxCore relationTypeByArity rules")]
+     ['unary   (enforced (collection :facets #{:convicts :reach}
+                                     :notes (str "the relation-wide exact-one-argument type, and"
+                                                 " the membership spelling of an arity"
+                                                 arity-note))
+                         "checks/exact-arity-classes — the relation-wide membership spelling of an arity")]
+     ['binary  (enforced (collection :facets #{:convicts :reach}
+                                     :notes (str "the same, at two" arity-note))
+                         "checks/exact-arity-classes — the relation-wide membership spelling of an arity")]
+     ['ternary (enforced (collection :facets #{:convicts :reach}
+                                     :notes (str "the same, at three" arity-note))
+                         "checks/exact-arity-classes — the relation-wide membership spelling of an arity")]
 
      ;; ---- the predicate types --------------------------------------------
      ['unary_predicate   (enforced (collection :facets #{:convicts :reach}
-                                               :notes (str "the membership spelling of an arity —"
-                                                           " checks/predicate-type-arities — plus"
-                                                           " disjointness with the other two, so a"
-                                                           " predicate is at most one of the three."
-                                                           " Reaches through settle's arity report,"
-                                                           " not through the clash rosters."))
-                                   (str "checks/predicate-type-arities — the membership spelling of an arity;"
-                                        " plus its disjointness with the other two classes, so a predicate is at"
-                                        " most one of the three"))]
-     ['binary_predicate  (enforced (collection :facets #{:convicts :reach} :notes "the same, at two.")
-                                   (str "checks/predicate-type-arities — the membership spelling of an arity;"
-                                        " plus its disjointness with the other two classes, so a predicate is at"
-                                        " most one of the three"))]
-     ['ternary_predicate (enforced (collection :facets #{:convicts :reach} :notes "the same, at three.")
-                                   (str "checks/predicate-type-arities — the membership spelling of an arity;"
-                                        " plus its disjointness with the other two classes, so a predicate is at"
-                                        " most one of the three"))]
+                                               :notes (str "a predicate's membership spelling of an"
+                                                           " arity" arity-note))
+                                   (str "checks/exact-arity-classes — a predicate's membership spelling of"
+                                        " an arity"))]
+     ['binary_predicate  (enforced (collection :facets #{:convicts :reach}
+                                               :notes (str "the same, at two" arity-note))
+                                   (str "checks/exact-arity-classes — a predicate's membership spelling of"
+                                        " an arity"))]
+     ['ternary_predicate (enforced (collection :facets #{:convicts :reach}
+                                               :notes (str "the same, at three" arity-note))
+                                   (str "checks/exact-arity-classes — a predicate's membership spelling of"
+                                        " an arity"))]
      ['unary_function
-      (enforced (collection :notes "the function specialization of unary.")
-                "generic taxonomy classification under unary and function")]
+      (enforced (collection :facets #{:convicts :reach}
+                            :notes (str "the function specialization of unary, and a"
+                                        " function's spelling of an arity" arity-note))
+                "checks/exact-arity-classes — a function's membership spelling of an arity")]
      ['binary_function
-      (enforced (collection :notes "the function specialization of binary.")
-                "generic taxonomy classification under binary and function")]
+      (enforced (collection :facets #{:convicts :reach}
+                            :notes (str "the same, at two" arity-note))
+                "checks/exact-arity-classes — a function's membership spelling of an arity")]
      ['ternary_function
-      (enforced (collection :notes "the function specialization of ternary.")
-                "generic taxonomy classification under ternary and function")]
+      (enforced (collection :facets #{:convicts :reach}
+                            :notes (str "the same, at three" arity-note))
+                "checks/exact-arity-classes — a function's membership spelling of an arity")]
      ['fixed_arity       (enforced (collection
                                     :notes (str "classifies one exact argument policy; exact"
                                                 " arity declarations and the unary/binary/ternary"

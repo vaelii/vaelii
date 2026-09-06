@@ -508,10 +508,12 @@ stated meet in the target as a violation nothing reports:
 ;; CxT now believes Rex is both, and no check ever considered the pair
 ```
 
-CxUniverse is the target that closes this, because it is the one context every
-context sees: the first copy is visible to the *next* assert, so the ordinary
-context-scoped check catches the clash at its source, and the second assert is refused
-where it is made. That is not a lucky property of a well-known context — it is the
+CxUniverse is the target that closes this, because every context that lifts sees it:
+the middle spindle and the data contexts below the joint all reach CxUniverse, so the
+first copy is visible to the *next* assert, the ordinary context-scoped check catches
+the clash at its source, and the second assert is refused where it is made. The upper
+spindle sits above the joint and reaches CxCore instead, which is why a declaration
+written in CxCore constrains every context in the tree. That is not a lucky property of a well-known context — it is the
 whole reason the target is fixed.
 
 The residual case is a context wired outside the spindle, which sees neither its

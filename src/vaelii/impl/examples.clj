@@ -87,14 +87,19 @@
                ['(genl symmetric binary_predicate) 'CxCore]]
     :goal '(binary_predicate friendOf) :context 'CxWell :expect :yes}
 
-   {:id "arity-cycle" :group "Predicates about predicates"
-    :title "Two rules that derive each other"
-    :shows "The arity and the predicate-type membership each conclude the other, so
-            asserting either keeps the whole cycle believed. Positive recursion is
-            ordinary — it is a cycle through negation that the stratification check
-            refuses."
+   {:id "arity-by-class" :group "Predicates about predicates"
+    :title "One generator stamps the arity rule for every exact class"
+    :shows "CxCore maps each relation-wide exact class to its number —
+            (relationTypeByArity binary 2) — and one generator turns each such fact into
+            the rule concluding that arity for the relations the class holds of.
+            largerThan is declared a binary_predicate, which is a binary through
+            (genl binary_predicate binary), so the stamped rule answers its arity. A
+            second generator runs the mapping the other way, so an asserted (arity R 2)
+            concludes (binary R) and the two spellings keep each other believed."
     :rests-on [['(binary_predicate largerThan) 'CxAbstract]
-               ['(implies (and (binary_predicate ?p)) (arity ?p 2)) 'CxCore]]
+               ['(relationTypeByArity binary 2) 'CxCore]
+               ['(genl binary_predicate binary) 'CxCore]
+               ['(implies (binary ?relation) (arity ?relation 2)) 'CxCore]]
     :goal '(arity largerThan 2) :context 'CxWell :expect :yes}
 
    {:id "type-level" :group "Predicates about predicates"

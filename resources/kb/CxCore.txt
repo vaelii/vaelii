@@ -215,12 +215,38 @@
          "(interArg ?relation ?position1 ?type1 ?position2 ?type2) means that whenever argument ?position1 of ?relation is a ?type1, argument ?position2 must be a ?type2. The conditional argument constraint, and it says what arg cannot: (interArg eats 1 carnivore 2 meat) types the second argument only for the eaters that are carnivores, where (arg eats 2 meat) would demand meat of every eater. Open-world in both directions, and they point opposite ways — silence about the trigger argument's type leaves the constraint dormant rather than firing it, while silence about the target argument's is what convicts. Checked through genl transitivity from the writing context, like arg, and it entails the same way under assertive argument types. Relation-wide vocabulary; the current function-input enforcement boundary is documented in docs/argtypes.md.")
 (arity interArg 5)
 (fixed_arity_predicate interArg)
-(instance_relation_predicate interArg)
 (arg interArg 1 relation)
 (arg interArg 2 positive_integer)
 (arg interArg 3 unary_predicate)
 (arg interArg 4 positive_integer)
 (arg interArg 5 unary_predicate)
+
+;; `fixed_arity` and `variable_arity` each declare their one argument position, and
+;; nothing below them declares one.  Two things make that the right split.  The parent's
+;; declaration already descends the predicate hierarchy, so (fixed_arity_predicate Fred)
+;; with Fred a person is refused :arg-type by (arg fixed_arity 1 relation).  And a
+;; NARROWER declaration below — (arg fixed_arity_predicate 1 predicate) — refuses the
+;; wrong thing: a relation whose only stated type is variable_arity reaches relation and
+;; not predicate, so (binary_predicate P) after (variable_arity P) reads as :arg-type
+;; "expected predicate" where the contradiction is the arity policy, which the
+;; disjointness below reports as :disjoint.  A relation classified into the wrong kind is
+;; caught by (disjoint predicate function) through the genl edges instead.
+;;
+;; The rule that split states, in general: a unary predicate declares its one argument
+;; position when the type it would declare is NOT already implied by its own genl parent,
+;; and declares none when the parent sits below that type.  fixed_arity is the first case.
+;; (genl fixed_arity relation) concludes (relation 5) from (fixed_arity 5), nothing is
+;; disjoint from relation for a number, and so the declaration is the only refusal there
+;; is.  instance_relation_predicate is the second.  Its parent is binary_predicate, which
+;; is below predicate, so (arg instance_relation_predicate 1 predicate) restates what the
+;; edge already concludes and turns that conclusion into a precondition: it refuses
+;; (instance_relation_predicate P) stated after (arity P 2) because P is not yet a
+;; predicate, when the assertion supplies predicate-hood through the edge.  Six marks are
+;; in that second case and declare no position — equivalence_relation, injection,
+;; surjection, bijection and the two relation_kind marks.  Each still refuses a term
+;; outside the relation hierarchy through the (arg fixed_arity 1 relation) floor it
+;; inherits, and refuses a function :disjoint through (disjoint predicate function), which
+;; names the contradiction an argument declaration reported as a missing type.
 
 (comment fixed_arity
          "(fixed_arity ?relation) means that ?relation takes one exact number of arguments. Exact arity classes and numeric arity declarations specialize this relation-wide policy.")
@@ -231,14 +257,12 @@
 (comment fixed_arity_predicate
          "The fixed_arity relations that are predicates.")
 (unary_predicate fixed_arity_predicate)
-(arg fixed_arity_predicate 1 predicate)
 (genl fixed_arity_predicate fixed_arity)
 (genl fixed_arity_predicate predicate)
 
 (comment fixed_arity_function
          "The fixed_arity relations that are functions.")
 (unary_predicate fixed_arity_function)
-(arg fixed_arity_function 1 function)
 (genl fixed_arity_function fixed_arity)
 (genl fixed_arity_function function)
 
@@ -251,14 +275,12 @@
 (comment variable_arity_predicate
          "The variable_arity relations that are predicates.")
 (unary_predicate variable_arity_predicate)
-(arg variable_arity_predicate 1 predicate)
 (genl variable_arity_predicate variable_arity)
 (genl variable_arity_predicate predicate)
 
 (comment variable_arity_function
          "The variable_arity relations that are functions.")
 (unary_predicate variable_arity_function)
-(arg variable_arity_function 1 function)
 (genl variable_arity_function variable_arity)
 (genl variable_arity_function function)
 
@@ -266,32 +288,26 @@
 
 (comment unary "A relation of exactly one argument.")
 (unary_predicate unary)
-(arg unary 1 relation)
 (genl unary fixed_arity)
 
 (comment binary "A relation of exactly two arguments.")
 (unary_predicate binary)
-(arg binary 1 relation)
 (genl binary fixed_arity)
 
 (comment ternary "A relation of exactly three arguments.")
 (unary_predicate ternary)
-(arg ternary 1 relation)
 (genl ternary fixed_arity)
 
 (comment unary_function "A function of exactly one argument.")
 (unary_predicate unary_function)
-(arg unary_function 1 function)
 (genl unary_function unary)
 
 (comment binary_function "A function of exactly two arguments.")
 (unary_predicate binary_function)
-(arg binary_function 1 function)
 (genl binary_function binary)
 
 (comment ternary_function "A function of exactly three arguments.")
 (unary_predicate ternary_function)
-(arg ternary_function 1 function)
 (genl ternary_function ternary)
 
 (comment relationTypeByArity
@@ -319,12 +335,6 @@
 (relationTypeByArity unary 1)
 (relationTypeByArity binary 2)
 (relationTypeByArity ternary 3)
-(predicateTypeByArity unary_predicate 1)
-(predicateTypeByArity binary_predicate 2)
-(predicateTypeByArity ternary_predicate 3)
-(functionTypeByArity unary_function 1)
-(functionTypeByArity binary_function 2)
-(functionTypeByArity ternary_function 3)
 
 ;; The predicate and function mappings are specializations of the relation-wide mapping:
 ;; a genl edge between the predicates says so once, and every predicateTypeByArity or
@@ -333,8 +343,17 @@
 (genl predicateTypeByArity relationTypeByArity)
 (genl functionTypeByArity relationTypeByArity)
 
+;; The three relation-wide mappings are the only ones SHIPPED, and the predicate and
+;; function members are mapped by their genl edges rather than by six more facts.
+;; (predicateTypeByArity unary_predicate 1) would stamp (implies (unary_predicate ?r)
+;; (arity ?r 1)) beside the (unary ?r) rule that already fires on every unary_predicate
+;; membership through (genl unary_predicate unary): two rules concluding one arity, and
+;; `ontology_test`'s subsumption reading finds six such pairs.  The two specialization
+;; predicates stay declared for a KB that maps an arity the relation-wide table has no
+;; class for.
+
 (comment arity
-         "(arity ?relation ?n) means that ?relation takes exactly ?n arguments and is fixed_arity. One maps to unary, two to binary and three to ternary; predicate and function specializations inherit those relation-wide classes.")
+         "(arity ?relation ?n) means that ?relation takes exactly ?n arguments and is fixed_arity. One maps to unary, two to binary and three to ternary, and the arity and that relation-wide class derive each other, so asserting either keeps both believed and retracting the one that was asserted collapses the pair. Predicate and function specializations inherit those classes; the cycle stops at the relation-wide class because an arity says how many arguments, not whether the relation holds or denotes.")
 (binary_predicate arity)
 (instance_relation_predicate arity)
 (functional arity)
@@ -366,7 +385,6 @@
 (comment at_least_ternary_relation
          "The type of relations whose stated minimum arity is three or greater. Every such relation is also an at_least_binary_relation.")
 (unary_predicate at_least_ternary_relation)
-(arg at_least_ternary_relation 1 relation)
 (genl at_least_ternary_relation at_least_binary_relation)
 
 (implies
@@ -396,10 +414,21 @@
 ;; rule index is keyed by predicate, so (?type ?relation) cannot stand as a top-level
 ;; antecedent, but as a hole the enclosing antecedent fills it is ground before the
 ;; per-type rule is stamped — one minted rule per mapping fact, justified by that fact
-;; and withdrawn with it.  The converse (an exact arity classifying the relation under
-;; the type) is not stated; exact arity is declared through the type.
+;; and withdrawn with it.
 (implies (relationTypeByArity ?type ?arity)
          (implies (?type ?relation) (arity ?relation ?arity)))
+
+;; The converse, stamped the same way: an exact arity classifies the relation under the
+;; type that maps to it, so the two spellings derive each other and asserting either
+;; keeps both believed.  RELATION-WIDE, and it has to be — arity covers functions, so a
+;; rule concluding (binary_predicate ?r) from (arity ?r 2) would make every shipped
+;; binary function a predicate and clash with (disjoint predicate function); (binary ?r)
+;; carries no kind and is what the arity actually says.  A positive cycle, and a
+;; well-founded one: the derived twin cannot ground itself, so retracting whichever
+;; spelling was asserted collapses both.  An arity no class maps to concludes nothing —
+;; (arity InstantFn 6) leaves InstantFn fixed_arity_function by its own declaration.
+(implies (relationTypeByArity ?type ?arity)
+         (implies (arity ?relation ?arity) (?type ?relation)))
 
 ;; The three relation-wide classifications separate each other: a relation takes ONE
 ;; exact number of arguments, so a second classification is a contradiction rather than
@@ -657,21 +686,18 @@
 (comment injection
          "(injection ?predicate) means that ?predicate is an injective function: single-valued, one-to-one, and total on the type its first argument is declared to be. Declared once, it stands in for four claims the engine already reads. Two forward rules derive (functional ?predicate) and (functionalInArg ?predicate 1), each a real mark the engine enforces in turn: the merge/refuse rule over a shared first argument, and the same rule mirrored over a shared second. A second symbol filler on either side derives (equals V1 V2) and merges, while two non-symbols such as 1980 and 1990 are refused outright. A third rule reads the domain off (arg ?predicate 1 ?d) and derives the binary integrity requirement (predAllSpecified ?predicate ?d); the required filler type is not restated — the audit derives it from ?predicate's own slot-2 contract at read time. That requirement is audited on demand by vaelii.core/specified-violations, which reports the domain members carrying no determinate filler. Totality is audited rather than enforced because an open world cannot refuse a write for a member whose filler has not arrived. A predicate with no arg 1 declaration gets the two enforced marks and no audit, since nothing states what the domain is; one typed at arg 1 but not at arg 2 concludes the requirement, and the audit reports the missing slot contract as an explicit gap rather than auditing unconstrained. A one-to-one relation that is not total is (functional P) beside (functionalInArg P 1), written directly. Also a type: (genl injection functional) classifies P as functional and so binary_predicate. Declared of a relation such as capitalCityOf, for instance. See docs/taxonomy.md.")
 (unary_predicate injection)
-(arg injection 1 predicate)
 (decontextualized_predicate injection)
 (genl injection functional)
 
 (comment surjection
          "(surjection ?predicate) means that ?predicate is a surjective function: single-valued, total on the type its first argument is declared to be, and onto the type its second is. Declared once, it stands in for three claims. One forward rule derives (functional ?predicate), the mark the engine enforces by merging two symbol fillers for one first argument and refusing two it cannot merge. Two further rules read the domain off (arg ?predicate 1 ?d) and the range off (arg ?predicate 2 ?r), and derive (predAllSpecified ?predicate ?d) for totality and (predSpecifiedAll ?predicate ?r) for ontoness — each binary, the filler's type derived from the predicate's own slot contract at read time rather than restated. Both are audited on demand by vaelii.core/specified-violations: the first reports the domain members with no determinate filler, the second the range members no determinate domain member reaches. Neither is enforced at a write, an open world having no ground to refuse a fact for a member nothing has reached yet. A predicate whose quantified side is untyped concludes no requirement; an untyped filler side is reported by the audit as an explicit gap. Nothing here says one-to-one, so a surjection may send two domain members to one range member; that is what separates it from bijection. Declared of a relation such as capitalCityOf over capital_city, for instance. See docs/taxonomy.md.")
 (unary_predicate surjection)
-(arg surjection 1 predicate)
 (decontextualized_predicate surjection)
 (genl surjection functional)
 
 (comment bijection
          "(bijection ?predicate) means that ?predicate is a bijective function: an injection and a surjection at once, so the two declared types are in one-to-one correspondence. Declared once, it stands in for the pair: two forward rules derive (injection ?predicate) and (surjection ?predicate), and each of those derives its own marks in turn, so the whole family reaches the engine through the two entries above rather than through anything keyed on this name. What lands is (functional ?predicate) and (functionalInArg ?predicate 1), enforced at the assert entry point, beside (predAllSpecified ?predicate ?d) over the arg-declared domain and (predSpecifiedAll ?predicate ?r) over the arg-declared range — binary, the filler types derived from the predicate's own slot contract at read time — audited on demand. The marks are materialized as stored sentexes rather than claimed by subsumption edges, for the reason equivalence_relation's entry gives: the rule's stored conclusion both classifies and enforces, where a genl-inherited membership never reaches the mark ingestion. Also a type: (genl bijection injection) and (genl bijection surjection) state the subsumption outright, and classify P as functional and so binary_predicate. Declared of a relation such as capitalCityOf over capital_city, for instance. See docs/taxonomy.md.")
 (unary_predicate bijection)
-(arg bijection 1 predicate)
 (decontextualized_predicate bijection)
 (genl bijection injection)
 (genl bijection surjection)
@@ -696,25 +722,31 @@
 
 (comment functionCorrespondingPredicate
          "(functionCorrespondingPredicate ?function ?predicate ?position) means that ?function and ?predicate state the same relationship: ?function maps some arguments to a value exactly when ?predicate holds of those same arguments with the value at ?position. So (functionCorrespondingPredicate MotherFn motherOf 2) makes (MotherFn Muffet) resolve to the Mary of a believed (motherOf Muffet Mary), and, where no mother is known, projects the placeholder constant it mints back onto motherOf so the placeholder still answers questions about who Muffet's mother is. Reading it both ways is what stops the function and the predicate from being one claim the KB can reason with only half of, and a value arriving after its application is equated with the placeholder, so the order the two are asserted in does not decide the answer. ?position is 1-based over ?predicate's arguments and may be omitted, which puts the value last — the shape nearly every correspondence has. Read only for a reifiable_function, an undeclared function having no application to reify. See docs/nat.md.")
-(variable_arity functionCorrespondingPredicate)
 (variable_arity_predicate functionCorrespondingPredicate)
 (arityMin functionCorrespondingPredicate 2)
 (arg functionCorrespondingPredicate 1 function)
 (arg functionCorrespondingPredicate 2 predicate)
 
 (comment genl
-         "(genl ?subtype ?supertype) means that every ?subtype is a ?supertype. Transitive, and cached as a closure rather than run as a rule, since transitivity is the lifeblood of common sense and far too hot to chain. The hierarchy it builds is rooted at thing. Types are unary predicates, so membership is written (dog Muffet) and never (isa Muffet Dog).")
+         "(genl ?subtype ?supertype) means that every ?subtype is a ?supertype. Transitive, and cached as a closure rather than run as a rule, since transitivity is the lifeblood of common sense and far too hot to chain. The type hierarchy it builds is rooted at thing. Types are unary predicates, so membership is written (dog Muffet) and never (isa Muffet Dog). The same relation relates predicate specializations of any arity: every tuple of the subtype is a tuple of the supertype, which is what a type reading of it is the unary case of, so neither argument is declared a subtype of thing.")
 (binary_predicate genl)
 (type_relation_predicate genl)
-(genlArg genl 1 thing)
-;; Argument 2 is left undeclared, and it is the one position deliberately left so.
+;; NEITHER position is declared, and both are left so deliberately.
+;; (genlArg genl 1 thing) reads "the subtype is a subtype of thing", which is false of
+;; the predicate specializations genl also relates: (genl predicateTypeByArity
+;; relationTypeByArity) puts one binary predicate under another, and neither end is
+;; under the root. Under the assertive reading the declaration entails (genl
+;; predicateTypeByArity thing) from that edge, which the arity descension check refuses
+;; because a binary predicate's tuples are not a unary type's.
 ;; (genlArg genl 2 thing) reads "the supertype is a subtype of thing", which the root
 ;; cannot satisfy: genl is irreflexive here, so (genl thing thing) is refused as
-;; not-well-formed. Under the assertive reading the declaration would therefore entail
-;; a conclusion the KB drops, once per genl edge naming thing. A constraint the root
-;; fails is the wrong constraint, not a missing one. The position is not thereby
-;; unconstrained: genl is a type_relation_predicate, which says of every one of its
-;; positions what genlArg says of one, and the rule-variable check reads it that way.
+;; not-well-formed, once per genl edge naming thing.
+;; A constraint the predicate's own arguments fail is the wrong constraint, not a missing
+;; one, and the positions are not thereby unconstrained: an individual at
+;; either end is refused not-well-formed by wff/genl-problems, a disagreeing arity by
+;; the descension check, and genl is a type_relation_predicate, which says of every one
+;; of its positions what genlArg says of one, and the rule-variable check reads it that
+;; way.
 
 (comment reifiable_function
          "(reifiable_function ?function) means that ?function denotes an object. A ground application of it is a non-atomic term, and reifies to an opaque nat/-namespaced constant before it reaches the index, so it autoindexes like an atomic symbol while every page still renders it as the expression it was minted from. Declare it when the applications are BOUNDED — one value per argument tuple, over a domain that does not run away: (FatherFn Muffet) is one constant per animal, and an AdultFn one per individual. That is the criterion the two marks are chosen by, reification storing a constant per distinct application and keeping it. Also a type: (reifiable_function F) classifies F as a function, so a KB can be queried for the functions it holds. See docs/nat.md.")
@@ -787,7 +819,6 @@
 
 (comment greaterThan
          "(greaterThan ?number1 ?number2 …) means that the numbers descend. Variable arity, so (greaterThan 3 2 1) is indistinguishable from the chain 3 > 2 > 1. Evaluable: computed on demand from ground numbers, never stored. Canonicalizes to lessThan with the arguments reversed, so only the < direction is ever stored and a greaterThan goal is still answerable.")
-(instance_relation_predicate greaterThan)
 (arg greaterThan 1 thing)
 (arg greaterThan 2 thing)
 (variable_arity_predicate greaterThan)
@@ -800,10 +831,9 @@
 (arg implies 2 thing)
 
 (comment instance_relation_predicate
-         "(instance_relation_predicate ?predicate) means that ?predicate relates individuals rather than kinds. So (?predicate x y) is a ground fact between two specific things. The default classification for an extracted binary predicate, and one half of the relation_kind metatype.")
+         "(instance_relation_predicate ?predicate) means that ?predicate relates individuals rather than kinds. So (?predicate x y) is a ground fact between two specific things. A binary_predicate, which is what makes the pairing with type_relation_predicate mean anything: partOf holds between two individuals where partType holds between two kinds, and typeToInstancePred links the pair. The default classification for an extracted binary predicate, and one half of the relation_kind metatype. A relation of any other arity carries neither mark and declares its argument types directly — lessThan reads a chain and interArg has five positions, so neither is the two-place claim this classifies.")
 (unary_predicate instance_relation_predicate)
-(arg instance_relation_predicate 1 predicate)
-(genl instance_relation_predicate predicate)
+(genl instance_relation_predicate binary_predicate)
 
 (comment inverse
          "(inverse ?predicate1 ?predicate2) means that ?predicate1 and ?predicate2 are inverse relations, so (?predicate1 a b) holds exactly when (?predicate2 b a) does. Declared of parentOf and childOf, for instance. Answered by a prover that hands the swapped goal back to the engine rather than matching raw facts, so an inverse composes with its partner's transitivity.")
@@ -822,7 +852,6 @@
 
 (comment lessThan
          "(lessThan ?number1 ?number2 …) means that the numbers ascend. Variable arity, so (lessThan 1 2 3) is indistinguishable from the chain 1 < 2 < 3. Evaluable: computed on demand from ground arguments, never stored and never forward-chained. Chained comparisons in a rule collapse into one literal, so (lessThan ?a ?b) beside (lessThan ?b ?c) becomes (lessThan ?a ?b ?c).")
-(instance_relation_predicate lessThan)
 (arg lessThan 1 thing)
 (arg lessThan 2 thing)
 (variable_arity_predicate lessThan)
@@ -985,7 +1014,6 @@
 (comment equivalence_relation
          "(equivalence_relation ?predicate) means that ?predicate is reflexive, symmetric and transitive at once — an equivalence. Declared once, it stands in for the three: forward rules derive (symmetric ?p), (transitive ?p) and (reflexive ?p), each a real mark the engine enforces in turn — the symmetric canonical-order fold, the transitive closure prover, the reflexive prover. A subsumption edge such as (genl equivalence_relation symmetric) would classify P as symmetric for a query but would not set the :symmetric property the engine reads to enforce, since a genl-inherited membership is not a stored (symmetric P) sentex and never reaches the mark ingestion; the rule materializes that sentex, which both classifies and enforces, so the rules are the minimal correct expression and the subsumption edges would be redundant with them. Also a type: (equivalence_relation P) classifies P as a binary_predicate. Declared of a relation such as sameAgeAs, for instance.")
 (unary_predicate equivalence_relation)
-(arg equivalence_relation 1 predicate)
 (decontextualized_predicate equivalence_relation)
 (genl equivalence_relation binary_predicate)
 
@@ -1014,10 +1042,9 @@
 (disjoint transitive anti_transitive)
 
 (comment type_relation_predicate
-         "(type_relation_predicate ?predicate) means that ?predicate relates types rather than individuals. So (?predicate T1 T2) is a claim between two categories, and such a ground fact is replaced by one of the relation-pattern meta-predicates to pin down which quantifier reading is meant. The other half of the relation_kind metatype.")
+         "(type_relation_predicate ?predicate) means that ?predicate relates types rather than individuals. So (?predicate T1 T2) is a claim between two categories, and such a ground fact is replaced by one of the relation-pattern meta-predicates to pin down which quantifier reading is meant. A binary_predicate, for instance_relation_predicate's reason. The other half of the relation_kind metatype.")
 (unary_predicate type_relation_predicate)
-(arg type_relation_predicate 1 predicate)
-(genl type_relation_predicate predicate)
+(genl type_relation_predicate binary_predicate)
 
 (comment typeToInstancePred
          "(typeToInstancePred ?typePredicate ?instancePredicate) means that ?typePredicate and ?instancePredicate are the type-level and instance-level readings of one underlying relation. Declared of partType and partOf, for instance. A link rather than a rule: moving a claim from one level to the other needs a quantifier reading that nothing here fixes.")
@@ -1039,6 +1066,18 @@
 (genl binary_function fixed_arity_function)
 (genl ternary_function fixed_arity_function)
 
+;; The six exact classes derive DOWNWARD only, through the genl edges above: a
+;; binary_predicate is binary and is a predicate, and nothing says that a relation which
+;; is binary and a predicate is a binary_predicate.  The upward half is not stated,
+;; because the engine reads the relation-wide class and the intersection would be paid
+;; by every load: a (defnSufficient binary_predicate (and (arity ?x 2) (predicate ?x)))
+;; matches every class membership of every predicate by subsumption, once per genl route
+;; between the two, so the six of them add 36 memberships to the shipped starter and 748
+;; justifications to carry them, and lengthen the load by 600 ms of 3.2 s.  The
+;; arity is answered without them — checks/exact-arity-classes reads unary / binary /
+;; ternary, which the relation-wide converse rule above concludes from (arity ?r ?n) —
+;; and a KB wanting the membership as well writes the defnSufficient itself.
+
 ;; ---- curation cross-reference --------------------------------------------
 ;; Documentation vocabulary beside `comment`: relations a KB curator writes to point a
 ;; reader from one term to others.  Read like `comment` — by a browser rendering a term
@@ -1048,7 +1087,6 @@
 
 (comment termsRelated
          "(termsRelated ?term1 ?term2 …) means that the named terms form a related cluster — a curation grouping among vocabulary terms, so a reader meeting one is pointed at the rest. Variable arity, like lessThan: (termsRelated positiveExample negativeExample borderlineExample) groups the three example predicates as one family. Documentation only — nothing in the engine reads it and it draws no inference, the grouping being for a reader as comment's prose is.")
-(instance_relation_predicate termsRelated)
 (arg termsRelated 1 thing)
 (arg termsRelated 2 thing)
 (variable_arity_predicate termsRelated)

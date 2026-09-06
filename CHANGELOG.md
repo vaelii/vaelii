@@ -2,28 +2,129 @@
 
 ## Unreleased
 
+- **A unary predicate declares its one argument position only when its own `genl` parent
+  does not already imply the type.** Six marks whose parent sits *below* the type they
+  declared — `instance_relation_predicate`, `type_relation_predicate`,
+  `equivalence_relation`, `injection`, `surjection` and `bijection`, each of which genls
+  `binary_predicate` or `functional` — drop `(arg X 1 predicate)`. The declaration
+  restated in a weaker form what the edge already concludes and turned that conclusion
+  into a precondition: `(instance_relation_predicate P)` stated after `(arity P 2)` was
+  refused `:arg-type` for P not yet being a predicate, when the assertion supplies
+  predicate-hood through the edge, while the same pair in the other order was accepted.
+  A declaration that demands its own conclusion is the reason for the drop; the
+  ordering asymmetry it removes is the consequence. `arg`'s refusal half convicts on an
+  absence and is scoped out of the order-independence invariant by design
+  ([docs/argtypes.md](docs/argtypes.md), "Three directions"), so a KB given a narrowing
+  declaration and its fact in different orders still holds different facts — what these
+  six had on top of that is a declared type their own parent already supplies.
+  `arity_vocabulary_test/a-predicate-only-classification-is-order-independent-of-the-arity`
+  compares the two orders on the whole closure rather than on acceptances. The refusals the rows carried
+  are both retained and one of them is sharpened: a term outside the relation hierarchy
+  is still `:arg-type` through the `(arg fixed_arity 1 relation)` floor the marks
+  inherit, and a **function** is now `:disjoint — cannot be both
+  instance_relation_predicate and function` where it read `:arg-type: must be a
+  predicate`, which names the contradiction instead of a missing type. A unary
+  position is exempt as a class rather than by name as a result, so `ontology_test`'s
+  demand stops at arity 2 and `[not 1]` and `[contested 1]` leave its excused roster. `fixed_arity`,
+  `variable_arity` and the seven function marks keep their declarations, because their
+  parent *is* the type they declare and the edge alone refuses nothing there.
+  *Class:* **Fix** — the engine did not hold an invariant it documents; a caller relying
+  on the refusal keyword for the function case reads `:disjoint` instead of `:arg-type`.
+  [docs/argtypes.md](docs/argtypes.md)
+
+- **The exact arity classes derive downward only, and the nine spellings of an arity are
+  the nine the checks read.** Every `genl` edge on them runs one way — a
+  `binary_predicate` is `binary` and is a `predicate` — and CxCore states no converse:
+  the six `defnSufficient` facts that did (`(defnSufficient binary_predicate (and (arity
+  ?x 2) (predicate ?x)))`) are not shipped. `(predicate ?x)` matches every class
+  membership of every predicate by subsumption, once per `genl` route between the two, so
+  the six cost **748 justifications and 600 ms of a 3.2 s starter load for 36
+  memberships**, and a firing re-derived through a route that appeared after it left the
+  KB's justification set depending on arrival order — 50 namespaces failed
+  `test-util`'s net-neutrality check under `VAELII_ASSERTIVE_ARG_TYPES=1`, where a minted
+  `(genl instance_relation_predicate predicate)` is the shorter route.
+
+  What the classification was wanted for is the **arity**, and that is answered without
+  it: `checks/exact-arity-classes` holds all nine — the relation-wide `unary` / `binary` / `ternary` beside the six predicate and
+  function specializations — so `(binary R)` and `(binary_function F)` declare a length
+  the assert check enforces, `settle`'s retroactive report triggers on, and a refusal
+  names as its `:opposing-handle`, exactly as `(binary_predicate P)` always did. The six
+  new spellings gain `#{:convicts :reach}` in `vaelii.impl.predicates`, and the roster is
+  read in key order wherever a term could hold two, so which spelling a refusal names is
+  content and not a map's iteration order. A KB wanting the kind membership as well
+  writes the `defnSufficient` in its own context.
+  *Class:* **Additive** — three relation-wide and three function spellings the checks did
+  not read before; nothing that was refused is now accepted.
+  *Migration:* none. A KB that wrote `(binary_function F)` and relied on the arity check
+  ignoring it now has that length enforced.
+  [docs/taxonomy.md](docs/taxonomy.md#relations-and-arity-policy)
+
+- **`genl` declares neither argument position.** `(genlArg genl 1 thing)` read "the
+  subtype is a subtype of `thing`", which stopped being true when `genl` gained predicate
+  specializations of other arities: `(genl predicateTypeByArity relationTypeByArity)`
+  relates two binary predicates and neither end is under the root. Under
+  `VAELII_ASSERTIVE_ARG_TYPES=1` the declaration entailed `(genl predicateTypeByArity
+  thing)` from that edge, which the arity descension check refused — two dropped
+  conclusions and two `:arity` ledger entries on every load of the shipped KB, plus the
+  `ontology_test` and `starter_test` sweeps that read them. Position 2 was already
+  undeclared for the neighbouring reason (`(genl thing thing)` is not well-formed), and
+  the comment now covers both. Neither position is thereby unconstrained: an individual at
+  either end is `:not-well-formed` through `wff/genl-problems`, a disagreeing arity is
+  refused by the descension check, and `(type_relation_predicate genl)` says of every
+  position what a `genlArg` says of one.
+  *Class:* **Refusal** (one withdrawn). *Migration:* a KB relying on `:arg-type` for a
+  `genl` whose subtype argument has a visible place outside the `thing` hierarchy no
+  longer gets one — that argument is now a legitimate predicate specialization.
+  [docs/taxonomy.md](docs/taxonomy.md#genl-the-type-hierarchy)
+
+  *Breaks:* `(genlArg genl 1 thing)`
+
 - **Starter loading preserves non-unary predicate specialization.** The starter
   assigns `unary_predicate` only to the `thing` subtype hierarchy, not every `genl`
   node. Binary mapping predicates retain their declared arity. Exact `arity` derives
   `fixed_arity` even when argument-type entailment is disabled. Taxonomy coverage
   excludes declared non-unary predicates without hiding unknown type islands.
   Argument metadata (`arg` and its projections, `genlArg`, `quotedArg`, `interArg`)
-  accepts relations, including functions; `InstantFn` declares its six existing
-  integer-field contracts. Recursive function-input enforcement remains follow-up
-  work, documented in [docs/argtypes.md](docs/argtypes.md#relation-wide-declarations-and-the-runtime-boundary).
+  accepts relations, including functions, which is what lets a function carry one at
+  all: `InstantFn` gains `(arity InstantFn 6)` and the six `(arg InstantFn N integer)`
+  declarations its calendar fields never had, and `YearFn`, `MonthFn`, `DayFn`,
+  `QuantityFn` and `QuantityIntervalFn` gain their exact classes. Recursive
+  function-input enforcement remains follow-up work, documented in
+  [docs/argtypes.md](docs/argtypes.md#relation-wide-declarations-and-the-runtime-boundary).
   *Class:* **Fix**.
   [docs/taxonomy.md](docs/taxonomy.md#relations-and-arity-policy)
 
 - **Arity policy is vocabulary over every relation.** `relation` is now the common
   parent of `predicate` and `function`. Unsuffixed `unary` / `binary` / `ternary` are
   the relation-wide exact classes, with predicate and function specializations;
-  `relationTypeByArity` owns their shared numeric mapping. Exact `arity` is fixed-only,
+  `relationTypeByArity` owns their shared numeric mapping, and its two generators run the
+  cycle both ways: `(arity R 2)` and `(binary R)` derive each other, well-founded, so
+  retracting whichever was asserted collapses both. The cycle stops at the relation-wide
+  class because `arity` covers functions — concluding `(binary_predicate R)` would make
+  every shipped binary function a predicate. Exact `arity` is fixed-only,
   while `arityMin` states a variable relation's lower bound and derives the generic
   `at_least_binary_relation` / `at_least_ternary_relation` floors. `fixed_arity` and
   `variable_arity` are disjoint, and every shipped relation is classified in exactly
-  one. `admitsArgnum` remains documentary. *Class:* **Additive**.
-  *Migration:* none.
+  one. `admitsArgnum` remains documentary. The vocabulary takes CxCore to 998 sentexes
+  and the starter to 3,310 stored, so `docs/kbs.md`'s two rows, `vaelii.starter`'s
+  docstring, `catalog`'s blurb and `core_context_test`'s band now read those numbers.
+
+  An exact predicate type beside `variable_arity` is refused as a result, `(disjoint
+  fixed_arity variable_arity)` closing under the `genl` edges that put `unary_predicate`
+  and its peers below `fixed_arity`. CxCore itself shipped that pair for `lessThan`,
+  `greaterThan`, `termsRelated` and `functionCorrespondingPredicate`, and the four now
+  carry `variable_arity_predicate` with an `arityMin` floor instead. The refusal is
+  `:disjoint` whichever of the two is written first: the policy classes declare their
+  one argument position on `fixed_arity` and `variable_arity` alone, because a narrower
+  `(arg fixed_arity_predicate 1 predicate)` below them convicts a relation whose only
+  stated type is `variable_arity` for its argument's type rather than for the policy it
+  contradicts. *Class:* **Refusal**. *Migration:* a KB declaring both an exact predicate
+  type and `variable_arity` for one predicate replaces the exact type with `arityMin`;
+  the arity check reads `variable_arity` and exempts the predicate exactly as before,
+  and `arityMin` is documentary, so nothing else changes.
   [docs/taxonomy.md](docs/taxonomy.md#relations-and-arity-policy)
+
+  *Breaks:* `(binary_predicate P)` beside `(variable_arity P)`
 
 - **`predAllSpecified` and `predSpecifiedAll` go binary: the filler type derives from
   the predicate's own slot contract.** The ternary forms restated in a third argument

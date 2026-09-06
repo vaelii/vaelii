@@ -150,7 +150,7 @@
       ;; premise. The argument constraints reach through `special/entail-existing`, which
       ;; *mints* rather than convicting, being open-world, and is gated on
       ;; `checks/*assertive-arg-types?*`.
-      (is (= (into '#{arity arg genlArg interArg} (keys checks/predicate-type-arities))
+      (is (= (into '#{arity arg genlArg interArg} (keys checks/exact-arity-classes))
              (set/difference (pr/by-facet :reach) clash))))))
 
 (deftest the-declaration-writes-settles-three-questions
