@@ -37,6 +37,21 @@ checked at the same boundaries. `:max-results` caps findings. Reaching any bound
 fills all three when the map is absent, clamps callers to its ceilings, and refuses an
 over-ceiling request by type before acquiring the operation's work.
 
+Work and time are cooperative, not preemptive hard ceilings. The sweep checks immediately
+before and after every prover selection/dispatch callback and every result-stream pull.
+An opaque callback—or a chunked lazy stream that computes several answers in one pull—may
+overrun until it returns; the following checkpoint then truncates before another callback
+or pull begins. Changing the public `Prover` SPI to require one-answer yielding is outside
+this sweep. `:max-results` is different: it is an absolute bound on findings returned,
+including snapshots truncated for work or time.
+
+The definition pass performs one unavoidable open census of visible `defnSufficient`
+declarations because callers intentionally supply terms, not collection names. It then
+validates one collection and one ground candidate at a time. The specified pass likewise
+uses small declaration censuses only to identify its finite worklist, then audits each
+declared predicate independently. These focused units are where cooperative checkpoints
+and partial-result preservation sit.
+
 An explicit `nil` options value means the same thing as omitting the options arity,
 in-process and through the generated daemon clients. The daemon still supplies its own
 ceilings before dispatching either spelling.

@@ -3,9 +3,10 @@
 (ns vaelii.impl.integrity
   "Bounded, read-only KB integrity reporting.
 
-  This namespace sits below `vaelii.core`, which requires it: the aggregate composes the
-  `predall` specified audit and the `provers` definition pass, both of which sit below
-  core themselves, so every call here points downward."
+  This namespace sits below `vaelii.core`, which requires it: the aggregate reads the
+  `predall` specified audit's focused per-declaration units and the `provers` definition
+  pass, both of which sit below core themselves, so every call here points downward and
+  the internal units stay off the public API."
   (:require [vaelii.impl.integrity-budget :as integrity-budget]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.opts :as opts]
@@ -36,10 +37,34 @@
     (seq specified)   (assoc :all-specified-violations specified)
     (seq definitions) (assoc :definition-inconsistencies definitions)))
 
-(defn- truncate-report [candidate-count reason meter definitions specified]
+(defn- bounded-categories [definitions specified max-results]
+  (if (nil? max-results)
+    (categories definitions specified)
+    (let [definitions (vec (take max-results definitions))
+          remaining   (- max-results (count definitions))
+          specified   (into {} (take remaining (sort-by (comp nm/print-key key) specified)))]
+      (categories definitions specified))))
+
+(defn- truncate-report [candidate-count reason meter definitions specified max-results]
   (merge {:status :truncated :reason reason :candidate-count candidate-count}
          (integrity-budget/snapshot meter)
-         (categories definitions specified)))
+         (bounded-categories definitions specified max-results)))
+
+(defn- specified-findings
+  "Audit one declared predicate at a time, stopping after the first finding beyond
+  `remaining` proves that the result bound truncated the sweep."
+  [kb context remaining]
+  (loop [audits (predall/specified-declaration-audits kb context)
+         findings {}]
+    (if-let [[declaration result] (first audits)]
+      (if (or (= :gap (:status result)) (seq (:violations result)))
+        (if (and remaining (>= (count findings) remaining))
+          {:status :truncated :reason :max-results :findings findings}
+          (do
+            (integrity-budget/record-specified! declaration result)
+            (recur (rest audits) (assoc findings declaration result))))
+        (recur (rest audits) findings))
+      {:status :complete :findings findings})))
 
 (defn kb-integrity
   "Run the bounded integrity sweep in `context` over `candidate-terms`.
@@ -75,15 +100,16 @@
                definitions (:findings definition-result)]
            (swap! progress assoc :definitions definitions)
            (if (= :truncated (:status definition-result))
-             (truncate-report candidate-count (:reason definition-result) meter definitions {})
-             (let [specified (predall/all-specified-violations kb context)
-                   remaining (when-let [limit (:max-results options)]
+             (truncate-report candidate-count (:reason definition-result) meter definitions {}
+                              (:max-results options))
+             (let [remaining (when-let [limit (:max-results options)]
                                (- limit (count definitions)))
-                   ordered   (sort-by (comp nm/print-key key) specified)
-                   kept      (if remaining (into {} (take remaining ordered)) specified)]
-               (swap! progress assoc :specified kept)
-               (if (and remaining (> (count specified) remaining))
-                 (truncate-report candidate-count :max-results meter definitions kept)
+                   specified-result (specified-findings kb context remaining)
+                   specified (:findings specified-result)]
+               (swap! progress assoc :specified specified)
+               (if (= :truncated (:status specified-result))
+                 (truncate-report candidate-count :max-results meter definitions specified
+                                  (:max-results options))
                  (let [findings (categories definitions specified)]
                    (integrity-budget/spend!)
                    (merge {:status (if (seq findings) :gap :audited)
@@ -93,5 +119,5 @@
            (if-let [reason (integrity-budget/exhausted e)]
              (let [{:keys [definitions specified]} @progress]
                (truncate-report candidate-count reason meter
-                                definitions specified))
+                                definitions specified (:max-results options)))
              (throw e))))))))
