@@ -134,6 +134,7 @@ src/vaelii/impl/
   abduce.clj        abduction: the scratch-context lifecycle, the gate on what may be assumed, and the mint/re-prove loop over the dead ends `prove` reports
   wff.clj           well-formedness of genl / genlCx / disjoint / arg / the equality relations (symbols only, no rewriteOf cycle, `different` not assertible); stratification (no rule-graph cycle through negation)
   provers.clj       Prover protocol (est-bindings + cost tier + completeness) + fact/transitivity/disjointness/metadata/evaluable/quantity/NAF/aggregate/arg/belief-projection + the `ask` engine; the completeness contract and what may shadow what; exceptWhen evaluation + rule guards; `candidate-rules` and `parse-rule`, which the two backward chainers read.  **No member of it expands a rule**, so `ask` never opens a proof search. Nothing here is declared per predicate and the registry is unreachable from `predicates`: `applicable?` reads a goal's shape rather than a functor's name, `add-prover` registers with no declaration entry at all, and `sole-prover` answers the coordination question as a question about the KB. A prover's shape table stays with the prover; its enrolment is the declaration's ([predicates.md](predicates.md))
+  integrity.clj     the bounded read-only `kb-integrity` aggregate, **below** `vaelii.core` and required by it: composes the complete specified-declaration audit (`predall`) with the definition prover's finite witness pass (`provers`) over the caller's ground candidate set, so both reads point downward ([integrity.md](integrity.md))
   predall.clj       the predAll / predExists / predSpecified quantifier matrix's on-demand half, **below** `vaelii.core` and required by it: `specified-violations` (the *Specified* integrity audit — `{:status :audited :violations …}` naming the instances with no determinate, contract-satisfying filler, or a `{:status :gap …}` declaration-contract diagnostic; the filler contract derived from the predicate's slot typing over its constraining predicates) and `indeterminate-term?`, which delegates to the `provers` implementation the equality exemption reads, so an audit and a `different` cannot disagree about a term.  The audit reads through `provers/ask` with each goal prepared as the public read prepares it (`quasiquote/prepare-goal-for-read`), so `vaelii.core`'s two audit entry points are thin downward delegations rather than a layering inversion.  The *Instance* cells are CxCore rule generators and the *Exists* cells inert records — neither needs code here (docs/predall.md)
   fluent.clj        the per-instant functionality audit, **below** `vaelii.core` and required by it: `functional-at-instant-violations` reports a moment where two fluent values of one subject hold — a merge for two symbols, a contradiction for two numbers — the fluent-lane counterpart of the bare `functional` closure, read on demand because the overlap follows from the clipping closure, with `all-functional-at-instant-violations` the whole-KB sweep over every declaration.  The fact reads run through `provers/ask`; the one rule read, `holdsAt`, runs the node engine `inference/solutions` at a bounded depth, so `vaelii.core`'s two entry points are thin downward delegations rather than a layering inversion (docs/time.md, docs/equality.md)
   budget.clj        resource-bounded / anytime: bound a lazy answer stream (:max-ms/:max-results), the partial-result contract, the resumable tail
@@ -238,7 +239,7 @@ resources/
 
 ## Not glossed above
 
-The map covers 150 of the 174 namespaces under `src/`. The other 24 are listed here by
+The map covers 151 of the 175 namespaces under `src/`. The other 24 are listed here by
 name rather than left out, and the two lists together are every one of them — `lein
 lint`'s **E18** fails on a file in neither and on a count that disagrees with them, so
 the number above stays a measurement. Named here: the engine's write path (`integrate`,
@@ -318,9 +319,11 @@ behind `vaelii.core/recover`, moved below `vaelii.core`), and `impl/predall.clj`
 `quasiquote/prepare-goal-for-read`. `impl/fluent.clj` runs the `functional_at_instant` audit
 the same way: its fact reads go through `impl/provers.clj`, and the one rule read it needs —
 `holdsAt`, which the registry does not expand — runs the node engine `impl/inference.clj` at
-a bounded depth, the below-`vaelii.core` form of `vaelii.core/query`. All three sit below
-`vaelii.core`, which requires them, and `vaelii.core/import!` / `specified-violations` /
-`functional-at-instant-violations` are thin downward delegations.
+a bounded depth, the below-`vaelii.core` form of `vaelii.core/query`. `impl/integrity.clj`
+composes the `predall` audit with the definition pass in `impl/provers.clj`, so it sits below
+both of them. All four sit below `vaelii.core`, which requires them, and
+`vaelii.core/import!` / `specified-violations` / `functional-at-instant-violations` /
+`kb-integrity` are thin downward delegations.
 
 - **`subsumption-statuses`** / **`subsumption-status`** / **`disjointness-audit`** — the
   genl-hierarchy audit family, all in `vaelii.core` with no delegation.

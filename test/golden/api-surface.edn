@@ -80,6 +80,7 @@
   isa? "[[conn x t] [conn x t context]]",
   justification "[[conn jid]]",
   kb-diff "[[conn b]]",
+  kb-integrity "[[conn candidate-terms context]]",
   kb-quality "[[conn] [conn opts]]",
   last-program "[[conn]]",
   levels "[[conn]]",
@@ -251,6 +252,7 @@
   ist "[[kb ctx s]]",
   justification "[[kb jid]]",
   kb-diff "[[a b]]",
+  kb-integrity "[[kb candidate-terms context]]",
   kb-quality "[[kb] [kb opts]]",
   last-program "[[kb]]",
   levels "[[]]",
@@ -407,6 +409,7 @@
    :isa?
    :justification
    :kb-diff
+   :kb-integrity
    :kb-quality
    :last-program
    :levels
@@ -523,6 +526,7 @@
    :isa?
    :justification
    :kb-diff
+   :kb-integrity
    :kb-quality
    :last-program
    :levels

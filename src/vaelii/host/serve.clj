@@ -353,6 +353,7 @@
     ;; over every believed `time_point`, like the pair above (docs/time.md)
     :functional-at-instant-violations     (op v/functional-at-instant-violations)
     :all-functional-at-instant-violations (op v/all-functional-at-instant-violations)
+    :kb-integrity             (op v/kb-integrity)
     ;; how a goal would be answered: the provers bearing on it with their estimates, or
     ;; for a conjunction the join order and the counts behind it
     :query-plan   (op v/query-plan)

@@ -416,8 +416,10 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   second answer ([anytime.md](anytime.md)). The boolean is there rather than the key
   simply omitted, because the documented `(when (:resume r) …)` loop would otherwise read
   every partial as complete and stop one step in.
-- **The knowledge readings are served** (`:kb-quality`, `:quality-report`, `:argue`,
-  `:vocabulary-audit`, `:settle-stats`, `:provenance`, `:add-provenance`).
+- **The knowledge readings are served** (`:kb-quality`, `:kb-integrity`,
+  `:quality-report`, `:argue`, `:vocabulary-audit`, `:settle-stats`, `:provenance`,
+  `:add-provenance`). `:kb-integrity` takes its finite candidate set over the wire as an
+  EDN set ([integrity.md](integrity.md)).
   `:quality-report` takes the **map**, not the KB, so a client renders a reading it
   already holds; `:kb-quality`'s `:on-progress` is a function and does not cross, so a
   census over a large KB reports nothing until it answers ([quality.md](quality.md)).

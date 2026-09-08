@@ -41,6 +41,7 @@
             [vaelii.impl.foreign :as foreign]
             [vaelii.impl.inference :as inference]
             [vaelii.impl.integrate :as integrate]
+            [vaelii.impl.integrity :as integrity]
             [vaelii.impl.io.export :as export]
             [vaelii.impl.io.import :as io-import]
             [vaelii.impl.io.text :as text]
@@ -5299,6 +5300,23 @@
   [kb context]
   (fluent/all-functional-at-instant-violations kb context))
 
+(defn kb-integrity
+  "Run the bounded, read-only integrity sweep in `context`.
+
+  `candidate-terms` is a finite set of ground terms.  For those terms the sweep reports
+  query-time definitional inconsistencies: a collection whose sufficient definition
+  passes while its necessary definition fails, so both `(Coll term)` and
+  `(not (Coll term))` are definition-provable.  It also composes the complete visible
+  `predAllSpecified` / `predSpecifiedAll` audit.  It does not enumerate the domain,
+  broaden `contradictions`, or repair/file anything.
+
+  A clean result is `{:status :audited :candidate-count n}`.  Findings change `:status`
+  to `:gap` and add either or both sparse keys `:all-specified-violations` and
+  `:definition-inconsistencies`.  Inspect `:status`; it makes a successful audit and a
+  report with gaps different shapes by construction."
+  [kb candidate-terms context]
+  (integrity/kb-integrity kb candidate-terms context))
+
 (defn chain-stats
   "Chaining-run instrumentation: `{:runs n :last {:derived n :truncated? bool}}`.
 
@@ -8170,7 +8188,8 @@
     :explain-levels :export! :export-text! :exposed-clashes :find-sentexes
     :find-sentexes-all :find-terms :functional-at-instant-violations :genl? :genls
     :handle-of :handles :has-prop? :in? :inverse-of :isa? :ist :justification
-    :kb-quality :last-program :lookup :metatype-members :possible-relations
+    :kb-integrity :kb-quality :last-program :lookup :metatype-members
+    :possible-relations
     :premise? :props :provable? :prove :prove-within :provenance
     :qualitative-network :qualitative-scenario :qualitative-scenarios :query
     :query-plan :query-status :query? :representative :same-class? :search-tree
