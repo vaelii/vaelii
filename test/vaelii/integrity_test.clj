@@ -9,6 +9,12 @@
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
 
+(defn- state-snapshot [kb]
+  (let [handles (tu/sentex-ids kb)]
+    {:sentexes handles
+     :belief  (into {} (map (fn [h] [h (v/believed? kb h 'CxUniverse)])) handles)
+     :violations (v/violations kb)}))
+
 (tu/deftest-kb a-passing-sufficient-and-failing-necessary-is-reported
   (tu/with-terms [widget qualifies required]
     (v/add-evaluatable kb qualifies (constantly true))
@@ -102,6 +108,76 @@
     (is (= {:status :audited :candidate-count 1}
            (v/kb-integrity kb #{7} CxRight))
         "a sibling context cannot leak another theory's definitions into its report")))
+
+(tu/deftest-kb aggregate-errors-raised-by-the-audit-stay-local
+  (tu/with-terms [widget valueOf Subject BadValue]
+    (v/assert kb (list valueOf Subject BadValue) 'CxUniverse)
+    ;; The aggregate binds the definition member ?x, but reducing a symbol as a sum is
+    ;; an aggregate violation and therefore no sufficient answer.
+    (v/assert kb (list 'defnSufficient widget
+                       (list 'agg/sum '?x '?v (list valueOf Subject '?v)))
+              'CxUniverse)
+    (v/clear-violations! kb)
+    (let [before (state-snapshot kb)
+          report (v/kb-integrity kb #{7} 'CxUniverse)]
+      (is (= :audited (:status report)))
+      (is (= before (state-snapshot kb))
+          "sentexes, contextual belief, and the live violations ledger are unchanged")
+      (is (empty? (v/violations kb)) "the aggregate diagnostic was audit-local"))))
+
+(tu/deftest-kb witness-vectors-include-every-and-only-matching-definition
+  (tu/with-terms [animal dog cat ownPass dogPassA dogPassB catMiss
+                  needFailA needFailB needPass]
+    (doseq [[pred answer] [[ownPass true] [dogPassA true] [dogPassB true]
+                           [catMiss false] [needFailA false] [needFailB false]
+                           [needPass true]]]
+      (v/add-evaluatable kb pred (constantly answer)))
+    (v/assert kb (list 'genl dog animal) 'CxUniverse)
+    (v/assert kb (list 'genl cat animal) 'CxUniverse)
+    (doseq [[coll pred] [[animal ownPass] [dog dogPassA] [dog dogPassB] [cat catMiss]]]
+      (v/assert kb (list 'defnSufficient coll (list pred '?x)) 'CxUniverse))
+    (doseq [pred [needFailA needFailB needPass]]
+      (v/assert kb (list 'defnNecessary animal (list pred '?x)) 'CxUniverse))
+    (let [finding (first (filter #(= animal (:collection %))
+                                 (:definition-inconsistencies
+                                  (v/kb-integrity kb #{7} 'CxUniverse))))]
+      (is (= [{:defined-collection animal :condition (list ownPass '?x)}
+              {:defined-collection dog :condition (list dogPassA '?x)}
+              {:defined-collection dog :condition (list dogPassB '?x)}]
+             (:passing-sufficient finding))
+          "all passing own/inherited sufficients are present; the failing cat one is absent")
+      (is (= [{:defined-collection animal :condition (list needFailA '?x)}
+              {:defined-collection animal :condition (list needFailB '?x)}]
+             (:failing-necessary finding))
+          "all failing necessaries are present; the passing one is absent"))))
+
+(tu/deftest-kb exhausted-bounds-never-answer-audited
+  (tu/with-terms [widget qualifies required]
+    (v/add-evaluatable kb qualifies (constantly true))
+    (v/add-evaluatable kb required (constantly false))
+    (v/assert kb (list 'defnSufficient widget (list qualifies '?x)) 'CxUniverse)
+    (v/assert kb (list 'defnNecessary widget (list required '?x)) 'CxUniverse)
+    (doseq [[options reason] [[{:max-work 0} :max-work]
+                              [{:max-ms 0} :max-ms]
+                              [{:max-results 0} :max-results]]]
+      (let [report (v/kb-integrity kb #{7} 'CxUniverse options)]
+        (is (= :truncated (:status report)) (pr-str options))
+        (is (= reason (:reason report)) (pr-str options))
+        (is (not= :audited (:status report)))))))
+
+(tu/deftest-kb work-budget-reaches-inside-an-aggregate-condition
+  (tu/with-terms [sized valueOf Subject]
+    (doseq [n (range 100)]
+      (v/assert kb (list valueOf Subject n) 'CxUniverse))
+    (v/assert kb (list 'defnSufficient sized
+                       (list 'agg/count '?x '?v (list valueOf Subject '?v)))
+              'CxUniverse)
+    (let [report (v/kb-integrity kb #{100} 'CxUniverse {:max-work 20})]
+      (is (= :truncated (:status report)))
+      (is (= :max-work (:reason report)))
+      (is (= 1 (:candidate-count report))
+          "one candidate still carries KB-owned aggregate extent cost")
+      (is (= 20 (:work report)) "the cooperative meter stops at the exact bound"))))
 
 (tu/deftest-kb specified-gaps-compose-with-definition-findings
   (tu/with-terms [widget qualifies required likes person Alice]

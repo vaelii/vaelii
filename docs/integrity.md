@@ -15,6 +15,11 @@
 ```clojure
 (v/kb-integrity kb #{-212 0 212} 'CxUniverse)
 ;; => {:status :audited :candidate-count 3}
+
+(v/kb-integrity kb candidates 'CxUniverse
+                {:max-work 10000 :max-ms 1000 :max-results 100})
+;; => {:status :truncated :reason :max-work :candidate-count 500
+;;     :work 10000 :elapsed-ms 37.2 ...partial finding categories...}
 ```
 
 The candidate argument must be a set, and every member must be ground. This is the cost
@@ -23,6 +28,14 @@ never turns the audit into an open term enumerator. Collections need not be repe
 The sweep derives its finite collection population from visible `defnSufficient`
 declarations and their `genl` ancestors, exactly the population the positive definition
 prover can reach.
+
+The optional budget has three independent bounds. `:max-work` meters direct audit rows,
+prover dispatches, and prover results, so a one-term candidate set cannot hide the cost
+of an aggregate condition over a large KB extent. `:max-ms` is a cooperative wall clock,
+checked at the same boundaries. `:max-results` caps findings. Reaching any bound returns
+`:status :truncated` with a reason and never labels a partial sweep `:audited`. The daemon
+fills all three when the map is absent, clamps callers to its ceilings, and refuses an
+over-ceiling request by type before acquiring the operation's work.
 
 A finding changes the top-level status and adds only the populated categories:
 
@@ -61,5 +74,7 @@ definition condition is evaluated only when queried, so its latent clash has no 
 pair for `contradictions` to enumerate. `kb-integrity` asks the bounded definition
 question without changing the meaning or cost of the existing reader.
 
-The sweep stores and files nothing. It identifies gaps; remediation remains a separate,
-explicit write.
+The sweep stores and files nothing. Aggregate diagnostics raised only because a
+definition condition was evaluated are redirected to an audit-local sink, preserving
+the condition's truth without changing the live violations ledger or logs. It identifies
+gaps; remediation remains a separate, explicit write.

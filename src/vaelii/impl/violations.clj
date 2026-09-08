@@ -32,6 +32,15 @@
   it so a pathological load cannot grow it unbounded — newest entries win."
   1000)
 
+(def ^:dynamic *report-sink*
+  "When bound to an atom, reports accumulate there instead of in the KB ledger or logs.
+  Read-only audits use this so evaluative conditions keep their ordinary truth value
+  without making merely asking the question mutate live diagnostics."
+  nil)
+
+(defn- report-target [kb]
+  (or *report-sink* (reasoning/violations kb)))
+
 (defn- newest
   "The ledger `v` cut to its newest `max-violations` entries."
   [v]
@@ -128,12 +137,15 @@
   (when (seq entries)
     (let [run     (:runs @(reasoning/chain-stats kb))
           stamped (mapv #(assoc % :run run) entries)]
-      (doseq [e stamped]
-        (trove/log! {:level :warn :id ::dropped-conclusion :data e})
-        (when (:rule e)
-          (trove/log! {:level :debug :id ::dropping-rule :data (dropping-rule kb e)})))
-      (note-batch! stamped)
-      (swap! (reasoning/violations kb) #(newest (into % stamped))))))
+      (if *report-sink*
+        (swap! *report-sink* #(newest (into % stamped)))
+        (do
+          (doseq [e stamped]
+            (trove/log! {:level :warn :id ::dropped-conclusion :data e})
+            (when (:rule e)
+              (trove/log! {:level :debug :id ::dropping-rule :data (dropping-rule kb e)})))
+          (note-batch! stamped)
+          (swap! (reasoning/violations kb) #(newest (into % stamped))))))))
 
 (defn report-unstamped
   "Append one entry to the ledger as it is, with no chaining-run stamp and no log line:
@@ -141,9 +153,11 @@
   qualitative, metric and sign calculi file their inconsistencies here and log them
   themselves.  A KB with no ledger answers nil."
   [kb entry]
-  (when-let [v (reasoning/violations kb)]
-    (note-batch! [entry])
-    (swap! v #(newest (conj % entry)))))
+  (if *report-sink*
+    (swap! *report-sink* #(newest (conj % entry)))
+    (when-let [v (reasoning/violations kb)]
+      (note-batch! [entry])
+      (swap! v #(newest (conj % entry))))))
 
 (defn report-once
   "`report` one entry, unless an entry equal to it (`:run` aside) already stands in the
@@ -156,7 +170,7 @@
   derivation-path drops it exists to report.  `:run` is ignored in the comparison because
   a later run meeting the same defect is the same defect, not a second one."
   [kb entry]
-  (when-not (some #(= (dissoc % :run) entry) (some-> (reasoning/violations kb) deref))
+  (when-not (some #(= (dissoc % :run) entry) (some-> (report-target kb) deref))
     (report kb [entry]))
   nil)
 
