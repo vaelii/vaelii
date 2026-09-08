@@ -66,6 +66,7 @@
          local-reports   (atom [])
          progress        (atom {:definitions [] :specified {}})]
      (binding [integrity-budget/*meter* meter
+               integrity-budget/*progress* progress
                violations/*report-sink* local-reports]
        (try
          (let [definition-result

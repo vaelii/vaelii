@@ -37,6 +37,10 @@ checked at the same boundaries. `:max-results` caps findings. Reaching any bound
 fills all three when the map is absent, clamps callers to its ceilings, and refuses an
 over-ceiling request by type before acquiring the operation's work.
 
+An explicit `nil` options value means the same thing as omitting the options arity,
+in-process and through the generated daemon clients. The daemon still supplies its own
+ceilings before dispatching either spelling.
+
 A finding changes the top-level status and adds only the populated categories:
 
 ```clojure
