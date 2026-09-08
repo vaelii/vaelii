@@ -163,23 +163,28 @@
   the arity that has a map, with `vaelii.core`'s own default for each argument in
   between, and `under-ceiling` then fills the clock in.
 
-  Only the four search entry points, and only their one intervening argument — the context,
-  whose default is `?ctx` at each of them. An entry point added here owes the same reading of its
-  own arglists."
-  {:ask       ['?ctx]
-   :ask?      ['?ctx]
-   :prove     ['?ctx]
-   :provable? ['?ctx]
-   :kb-integrity []})
+  The four search entry points fill their one intervening context argument with `?ctx`;
+  `kb-integrity` has no intervening default. `:option-arity` distinguishes an omitted
+  options map from an explicit nil already occupying that arity, which is normalized to
+  the same empty map. An entry point added here owes the same reading of its own arglists."
+  {:ask         {:fill ['?ctx] :option-arity 3}
+   :ask?        {:fill ['?ctx] :option-arity 3}
+   :prove       {:fill ['?ctx] :option-arity 3}
+   :provable?   {:fill ['?ctx] :option-arity 3}
+   :kb-integrity {:fill [] :option-arity 3}})
 
 (defn- with-opts-map
   "`args` padded out to the arity whose last argument is the option map: nothing to do
   when the caller already sent one (or sent nothing at all, which is an arity refusal the
   op itself owes), else the tail of `fill` the call is short by, and then an empty map for
   `under-ceiling` to write the clock into."
-  [args fill]
-  (if (or (empty? args) (map? (peek args)))
-    args
+  [args {:keys [fill option-arity]}]
+  (cond
+    (empty? args) args
+    (map? (peek args)) args
+    (and (= option-arity (count args)) (nil? (peek args)))
+    (assoc args (dec option-arity) {})
+    :else
     (conj (into args (subvec fill (min (count fill) (dec (count args))))) {})))
 
 (defn- ceiling-for

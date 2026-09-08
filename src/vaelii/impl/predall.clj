@@ -28,6 +28,7 @@
   all treated as determinate here, which is what makes `predAllSpecified` the exact
   antagonist of `predAllExists`."
   (:require [vaelii.core :as v]
+            [vaelii.impl.integrity-budget :as integrity-budget]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.resolution :as res]))
 
@@ -233,9 +234,10 @@
                [pred indep] (declaration-args kb functor ctx)
                :let [r (specified-violations kb pred indep ctx arg-pos)]
                :when (or (= :gap (:status r)) (seq (:violations r)))]
-           [[functor pred indep] r])
+           (integrity-budget/record-specified! [functor pred indep] r))
          (for [functor '[predAllSpecified predSpecifiedAll]
                [pred a b] (legacy-ternary-declarations kb functor ctx)]
-           [[functor pred a b]
+           (integrity-budget/record-specified!
+            [functor pred a b]
             {:status :gap :gap :legacy-ternary-declaration
-             :pred pred :sentence (list functor pred a b)}])]))
+             :pred pred :sentence (list functor pred a b)}))]))

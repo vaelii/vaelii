@@ -285,10 +285,14 @@
   stable and the estimate is a function of the goal and the KB, so a tie still breaks
   on registry order and not on when the comparison happened."
   [kb applicable goal context]
-  (when (empty? (shadowing-channels kb goal context))
+  (when (empty? (integrity-budget/checked-call
+                 (fn [] (shadowing-channels kb goal context))))
     (->> applicable
-         (filter #(>= (completeness % kb goal context) 100))
-         (map (juxt identity #(est-bindings % kb goal context)))
+         (filter #(>= (integrity-budget/checked-call
+                       (fn [] (completeness % kb goal context)))
+                      100))
+         (map (juxt identity #(integrity-budget/checked-call
+                               (fn [] (est-bindings % kb goal context)))))
          (sort-by second)
          ffirst)))
 
@@ -2033,7 +2037,9 @@
           (if-let [finding (definition-inconsistency kb coll member context)]
             (if (and max-results (>= (count findings) max-results))
               {:status :truncated :reason :max-results :findings findings}
-              (recur (next pairs) (conj findings finding)))
+              (let [findings' (conj findings finding)]
+                (integrity-budget/record-definition! finding)
+                (recur (next pairs) findings')))
             (recur (next pairs) findings)))
         {:status :complete :findings findings}))))
 
@@ -2619,7 +2625,9 @@
   reports both — so a sweep that drifted between them would make the diagnostic lie
   about the dispatch it is there to explain."
   [kb provers goal context]
-  (filterv #(applicable? % kb goal context) provers))
+  (filterv #(integrity-budget/checked-call
+             (fn [] (applicable? % kb goal context)))
+           provers))
 
 ;; Membership tests for the lookup-to-query stack (vaelii.impl.levels), which runs
 ;; the engine over a *subset* of the registry: level 5 with the transitive provers
@@ -2724,7 +2732,9 @@
                       preds)]
        (tax/meet-closure (:taxonomy kb) held)))))
 
-(defn- goal-cost-rank [pr kb goal context] (cost-rank (cost pr kb goal context)))
+(defn- goal-cost-rank [pr kb goal context]
+  (cost-rank (integrity-budget/checked-call
+              (fn [] (cost pr kb goal context)))))
 
 (defn- dispatch-provers
   "The prover dispatch itself, with `run` saying what one prover's answers look like:
@@ -2737,11 +2747,8 @@
   exactly what `run` carries."
   [kb provers goal context run]
   (let [run        (fn [prover]
-                     (integrity-budget/spend!)
-                     (res/lazy-mapcat (fn [answer]
-                                        (integrity-budget/spend!)
-                                        (list answer))
-                                      (run prover)))
+                     (let [answers (integrity-budget/checked-call #(run prover))]
+                       (integrity-budget/checked-seq answers)))
         applicable (applicable-provers kb provers goal context)
         complete   (sole-prover kb applicable goal context)]
     (if complete

@@ -7,6 +7,10 @@
   "The current sweep's meter atom, or nil outside a bounded integrity read."
   nil)
 
+(def ^:dynamic *progress*
+  "The current sweep's completed sparse findings, or nil outside an integrity read."
+  nil)
+
 (defn meter
   "A new meter for `opts`, stamped with its start and optional deadline."
   [opts]
@@ -40,3 +44,32 @@
 
         :else
         (swap! m update :work inc)))))
+
+(defn checked-call
+  "Call `f` between cooperative checkpoints and return its result.
+
+  A callback itself remains cooperative: a deadline reached while it runs is observed
+  immediately after it returns, before dispatch selection advances to another callback."
+  [f]
+  (spend!)
+  (let [result (f)]
+    (spend!)
+    result))
+
+(defn checked-seq
+  "Lazily realize `xs`, checkpointing immediately before and after each answer."
+  [xs]
+  (lazy-seq
+   (spend!)
+   (when-let [s (seq xs)]
+     (let [answer (first s)]
+       (spend!)
+       (cons answer (checked-seq (rest s)))))))
+
+(defn record-definition! [finding]
+  (when *progress* (swap! *progress* update :definitions conj finding))
+  finding)
+
+(defn record-specified! [declaration result]
+  (when *progress* (swap! *progress* assoc-in [:specified declaration] result))
+  [declaration result])

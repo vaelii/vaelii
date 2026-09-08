@@ -571,10 +571,15 @@
       (v/assert kb (list 'defnSufficient widget (list slowEnough '?x)) CxServe)
       (v/assert kb (list 'defnNecessary widget (list required '?x)) CxServe)
       (let [handler (open-app kb)]
-        (with-redefs [serve/integrity-max-work 130
+        (testing "explicit nil options are the same request at every local/daemon arity"
+          (let [local    (v/kb-integrity kb #{7} CxServe nil)
+                omitted (:result (post-op handler :kb-integrity [#{7} CxServe]))
+                explicit (:result (post-op handler :kb-integrity [#{7} CxServe nil]))]
+            (is (= local omitted explicit))))
+        (with-redefs [serve/integrity-max-work 1000
                       serve/integrity-max-results 20]
           (testing "a caller may lower but not raise either daemon-owned ceiling"
-            (doseq [[option value] [[:max-work 131] [:max-results 21]]]
+            (doseq [[option value] [[:max-work 1001] [:max-results 21]]]
               (let [r (post-op handler :kb-integrity
                                [#{7} CxServe {option value :max-ms 1000}])]
                 (is (false? (:ok r)))
@@ -692,6 +697,9 @@
             (is (nat-int? (client/assert conn (list bird Tweety) CxWire)))
             (let [rs (client/sentexes-matching conn (list bird '?x) CxWire)]
               (is (= (list bird Tweety) (:sentence (first rs))))))
+          (testing "explicit nil integrity options match local and daemon defaults"
+            (is (= (v/kb-integrity kb #{} CxWire nil)
+                   (client/kb-integrity conn #{} CxWire nil))))
           (testing "a forward rule fires server-side and the derived fact is asked back"
             (client/assert-rule conn [(list bird '?b)] (list flies '?b) CxWire)
             (is (client/ask? conn (list flies Tweety) CxWire)))

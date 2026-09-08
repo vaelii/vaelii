@@ -5,6 +5,7 @@
   query-only definition clashes over a caller-owned finite ground term set."
   (:require [clojure.test :refer [is use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.provers :as provers]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -14,6 +15,28 @@
     {:sentexes handles
      :belief  (into {} (map (fn [h] [h (v/believed? kb h 'CxUniverse)])) handles)
      :violations (v/violations kb)}))
+
+(defn- blocking-applicability-prover [block? entered release]
+  (reify provers/Prover
+    (applicable? [_ _ goal _]
+      (when (block? goal)
+        (deliver entered true)
+        @release)
+      false)
+    (est-bindings [_ _ _ _] 0)
+    (cost [_ _ _ _] :lookup)
+    (completeness [_ _ _ _] 0)
+    (solve [_ _ _ _] [])))
+
+(defn- observing-applicability-prover [observe? observed]
+  (reify provers/Prover
+    (applicable? [_ _ goal _]
+      (when (observe? goal) (swap! observed inc))
+      false)
+    (est-bindings [_ _ _ _] 0)
+    (cost [_ _ _ _] :lookup)
+    (completeness [_ _ _ _] 0)
+    (solve [_ _ _ _] [])))
 
 (tu/deftest-kb a-passing-sufficient-and-failing-necessary-is-reported
   (tu/with-terms [widget qualifies required]
@@ -178,6 +201,83 @@
       (is (= 1 (:candidate-count report))
           "one candidate still carries KB-owned aggregate extent cost")
       (is (= 20 (:work report)) "the cooperative meter stops at the exact bound"))))
+
+(tu/deftest-kb elapsed-applicability-stops-traversal-and-keeps-completed-definitions
+  (tu/with-terms [widget qualifies required]
+    (let [entered  (promise)
+          release  (promise)
+          observed (atom 0)
+          second-candidate? #(and (= qualifies (first %)) (= 8 (second %)))]
+      (v/add-evaluatable kb qualifies (constantly true))
+      (v/add-evaluatable kb required (constantly false))
+      (v/assert kb (list 'defnSufficient widget (list qualifies '?x)) 'CxUniverse)
+      (v/assert kb (list 'defnNecessary widget (list required '?x)) 'CxUniverse)
+      (v/add-prover kb (blocking-applicability-prover second-candidate? entered release))
+      (v/add-prover kb (observing-applicability-prover second-candidate? observed))
+      (let [audit (future (v/kb-integrity kb #{7 8} 'CxUniverse {:max-ms 200}))]
+        (try
+          (is (= true (deref entered 2000 ::timeout))
+              "the deliberately slow applicable? callback was reached")
+          (Thread/sleep 220)
+          (finally (deliver release true)))
+        (let [report (deref audit 2000 ::timeout)]
+          (is (not= ::timeout report))
+          (is (= :truncated (:status report)))
+          (is (= :max-ms (:reason report)))
+          (is (= [[widget 7]]
+                 (mapv (juxt :collection :term)
+                       (:definition-inconsistencies report)))
+              "the first candidate's completed finding survives the second's timeout")
+          (is (zero? @observed)
+              "dispatch traversal stopped before the prover after the elapsed callback"))))))
+
+(tu/deftest-kb result-exhaustion-keeps-completed-definition-findings
+  (tu/with-terms [widget qualifies required]
+    (v/add-evaluatable kb qualifies (constantly true))
+    (v/add-evaluatable kb required (constantly false))
+    (v/assert kb (list 'defnSufficient widget (list qualifies '?x)) 'CxUniverse)
+    (v/assert kb (list 'defnNecessary widget (list required '?x)) 'CxUniverse)
+    (let [report (v/kb-integrity kb #{7 8} 'CxUniverse {:max-results 1})]
+      (is (= :truncated (:status report)))
+      (is (= :max-results (:reason report)))
+      (is (= [[widget 7]]
+             (mapv (juxt :collection :term) (:definition-inconsistencies report)))))))
+
+(tu/deftest-kb elapsed-specified-audit-keeps-earlier-declaration-gaps
+  (tu/with-terms [likesUntyped peopleA likesTyped peopleB person Alice]
+    (let [entered (promise)
+          release (promise)]
+      (v/assert kb (list 'binary_predicate likesUntyped) 'CxUniverse)
+      (v/assert kb (list 'binary_predicate likesTyped) 'CxUniverse)
+      (v/assert kb (list 'unary_predicate peopleA) 'CxUniverse)
+      (v/assert kb (list 'unary_predicate peopleB) 'CxUniverse)
+      (v/assert kb (list 'predAllSpecified likesUntyped peopleA) 'CxUniverse)
+      (v/assert kb (list 'predAllSpecified likesTyped peopleB) 'CxUniverse)
+      ;; Learn the audit's own stable declaration order, then make its first row a gap
+      ;; and its second row enter the timed callback. The oracle is about preservation,
+      ;; not an incidental index insertion order.
+      (let [[[first-pred first-indep] [second-pred second-indep]]
+            (mapv (juxt '?pred '?indep)
+                  (v/ask kb '(predAllSpecified ?pred ?indep) 'CxUniverse))
+            second-declaration? #(= second-indep (first %))]
+        (v/assert kb (list 'unary_predicate person) 'CxUniverse)
+        (v/assert kb (list 'arg second-pred 2 person) 'CxUniverse)
+        (v/assert kb (list second-indep Alice) 'CxUniverse)
+        (v/add-prover kb (blocking-applicability-prover second-declaration? entered release))
+        (let [audit (future (v/kb-integrity kb #{} 'CxUniverse {:max-ms 200}))]
+          (try
+            (is (= true (deref entered 2000 ::timeout)))
+            (Thread/sleep 220)
+            (finally (deliver release true)))
+          (let [report (deref audit 2000 ::timeout)]
+            (is (not= ::timeout report))
+            (is (= :truncated (:status report)))
+            (is (= :max-ms (:reason report)))
+            (is (= {['predAllSpecified first-pred first-indep]
+                    {:status :gap :gap :missing-slot-typing
+                     :pred first-pred :position 2}}
+                   (:all-specified-violations report))
+                "the completed first declaration survives exhaustion in the second")))))))
 
 (tu/deftest-kb specified-gaps-compose-with-definition-findings
   (tu/with-terms [widget qualifies required likes person Alice]
