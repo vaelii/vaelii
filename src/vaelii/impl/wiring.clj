@@ -40,10 +40,12 @@
     reported violations a scoped read would not have is worse than no audit, so the
     reader asks through the public read path and the delegation points up to reach it.
 
-    `kb-integrity` — `vaelii.impl.integrity` sits above `vaelii.core` because its
-    aggregate composes the public `all-specified-violations` audit.  Core exposes the
-    aggregate beside `kb-quality`, so this delegation is the same explicit layering
-    inversion rather than a hidden require cycle.
+    `kb-integrity` — `vaelii.impl.integrity` sits above `vaelii.core`; it consumes
+    `predall`'s lazy internal stream one declaration at a time so budgets and partial
+    findings have a boundary between focused audits. `all-specified-violations` folds
+    that same stream into its public complete map, so the two surfaces remain equivalent
+    without the integrity sweep calling the monolithic public aggregate. Core exposes
+    the checkpoint beside `kb-quality`, through this explicit layering inversion.
 
   The first two are genuine mutual recursion: the cycle is in the **behaviour**, neither
   is a misplaced function, and no arrangement of the code removes either.  The last three
@@ -98,6 +100,9 @@
 (def ^:private predall-all-specified-violations
   (delay (requiring-resolve 'vaelii.impl.predall/all-specified-violations)))
 
+(def ^:private predall-specified-declaration-audits
+  (delay (requiring-resolve 'vaelii.impl.predall/specified-declaration-audits)))
+
 (def ^:private integrity-kb-integrity
   (delay (requiring-resolve 'vaelii.impl.integrity/kb-integrity)))
 
@@ -135,6 +140,11 @@
   docstring for why this is not a require."
   [kb context]
   (@predall-all-specified-violations kb context))
+
+(defn specified-declaration-audits
+  "The specified audit's lazy, per-declaration internal units. Not a public core API."
+  [kb context]
+  (@predall-specified-declaration-audits kb context))
 
 (defn kb-integrity
   "`vaelii.impl.integrity/kb-integrity` — the bounded aggregate integrity sweep.

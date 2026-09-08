@@ -57,7 +57,10 @@
     result))
 
 (defn checked-seq
-  "Lazily realize `xs`, checkpointing immediately before and after each answer."
+  "Lazily realize `xs`, checkpointing immediately before and after each source pull.
+
+  An opaque chunked source may produce its whole chunk during one pull. The meter is
+  cooperative and observes that overrun after control returns; it does not preempt it."
   [xs]
   (lazy-seq
    (spend!)

@@ -28,7 +28,6 @@
   all treated as determinate here, which is what makes `predAllSpecified` the exact
   antagonist of `predAllExists`."
   (:require [vaelii.core :as v]
-            [vaelii.impl.integrity-budget :as integrity-budget]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.resolution :as res]))
 
@@ -210,6 +209,32 @@
   (for [b (v/ask kb (list functor '?pred '?a '?b) ctx)]
     [(get b '?pred) (get b '?a) (get b '?b)]))
 
+(defn specified-declaration-audits
+  "Every declaration audit as a lazy stream of `[declaration result]` entries.
+
+  The open reads are only the unavoidable declaration censuses. Each expensive audit
+  after that is focused on one declared predicate and independent collection. Keeping
+  the units lazy lets the integrity sweep checkpoint and retain progress between them."
+  [kb ctx]
+  (concat
+   (res/lazy-mapcat
+    (fn [[functor arg-pos]]
+      (res/lazy-mapcat
+       (fn [[pred indep]]
+         (list [[functor pred indep]
+                (specified-violations kb pred indep ctx arg-pos)]))
+       (declaration-args kb functor ctx)))
+    [['predAllSpecified :second] ['predSpecifiedAll :first]])
+   (res/lazy-mapcat
+    (fn [functor]
+      (res/lazy-mapcat
+       (fn [[pred a b]]
+         (list [[functor pred a b]
+                {:status :gap :gap :legacy-ternary-declaration
+                 :pred pred :sentence (list functor pred a b)}]))
+       (legacy-ternary-declarations kb functor ctx)))
+    '[predAllSpecified predSpecifiedAll])))
+
 (defn all-specified-violations
   "Audit every `predAllSpecified` and `predSpecifiedAll` declaration visible in `ctx`
   and return `{[functor pred indep] result …}` — each result carrying a `:status`:
@@ -223,21 +248,10 @@
   predicate: an unmigrated KB carries both spellings at once, and a key off the
   first two arguments alone let the stale one replace the migrated declaration's
   violation set.  Declarations that hold are omitted; a gap never is, so a clean
-  sweep is an empty map and a gap cannot pass as one.  The one call an integrity
-  sweep makes; `specified-violations` is the per-declaration reader it is built
-  from."
+  sweep is an empty map and a gap cannot pass as one.  This public aggregate and
+  `kb-integrity` both fold the same focused per-declaration audit stream; only this
+  function returns its complete aggregate map."
   [kb ctx]
   (into {}
-        cat
-        [(for [[functor arg-pos] [['predAllSpecified :second]
-                                  ['predSpecifiedAll :first]]
-               [pred indep] (declaration-args kb functor ctx)
-               :let [r (specified-violations kb pred indep ctx arg-pos)]
-               :when (or (= :gap (:status r)) (seq (:violations r)))]
-           (integrity-budget/record-specified! [functor pred indep] r))
-         (for [functor '[predAllSpecified predSpecifiedAll]
-               [pred a b] (legacy-ternary-declarations kb functor ctx)]
-           (integrity-budget/record-specified!
-            [functor pred a b]
-            {:status :gap :gap :legacy-ternary-declaration
-             :pred pred :sentence (list functor pred a b)}))]))
+        (filter (fn [[_ r]] (or (= :gap (:status r)) (seq (:violations r)))))
+        (specified-declaration-audits kb ctx)))

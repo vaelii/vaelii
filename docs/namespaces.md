@@ -91,7 +91,7 @@ src/vaelii/impl/
   abduce.clj        abduction: the scratch-context lifecycle, the gate on what may be assumed, and the mint/re-prove loop over the dead ends `prove` reports
   wff.clj           well-formedness of genl / genlCx / disjoint / arg / the equality relations (symbols only, no rewriteOf cycle, `different` not assertible); stratification (no rule-graph cycle through negation)
   provers.clj       Prover protocol (est-bindings + cost tier + completeness) + fact/transitivity/disjointness/metadata/evaluable/quantity/NAF/aggregate/arg/belief-projection + the `ask` engine; the completeness contract and what may shadow what; exceptWhen evaluation + rule guards; `candidate-rules` and `parse-rule`, which the two backward chainers read.  **No member of it expands a rule**, so `ask` never opens a proof search. Nothing here is declared per predicate and the registry is unreachable from `predicates`: `applicable?` reads a goal's shape rather than a functor's name, `add-prover` registers with no declaration entry at all, and `sole-prover` answers the coordination question as a question about the KB. A prover's shape table stays with the prover; its enrolment is the declaration's ([predicates.md](predicates.md))
-  integrity.clj     the bounded read-only `kb-integrity` aggregate above `vaelii.core`: composes the public complete specified-declaration audit with the definition prover's finite witness pass over the caller's ground candidate set; reached back down through `wiring` ([integrity.md](integrity.md))
+  integrity.clj     the bounded read-only `kb-integrity` aggregate above `vaelii.core`: consumes `predall`'s focused internal per-declaration stream plus the definition prover's finite witness pass over the caller's ground candidate set; the public complete specified audit folds the same stream, so their findings remain equivalent without a monolithic call; reached back down through `wiring` ([integrity.md](integrity.md))
   integrity_budget.clj the leaf cooperative work/deadline meter bound only around `kb-integrity`; prover dispatch/results and direct audit rows spend against it
   predall.clj       the predAll / predExists / predSpecified quantifier matrix's on-demand half, above `vaelii.core` and reached back down through `wiring`: `specified-violations` (the *Specified* integrity audit — `{:status :audited :violations …}` naming the instances with no determinate, contract-satisfying filler, or a `{:status :gap …}` declaration-contract diagnostic; the filler contract derived from the predicate's slot typing over its constraining predicates) and `indeterminate-term?`, which delegates to the `provers` implementation the equality exemption reads, so an audit and a `different` cannot disagree about a term.  The *Instance* cells are CxCore rule generators and the *Exists* cells inert records — neither needs code here (docs/predall.md)
   budget.clj        resource-bounded / anytime: bound a lazy answer stream (:max-ms/:max-results), the partial-result contract, the resumable tail
@@ -247,10 +247,13 @@ them ([why they live here](defenses.md#the-layering-inversions-live-in-wiringclj
   so a goal answered below it would see neither the context's `genlCx` ancestor set nor
   the preparation a public read runs. The reader asks through the public read path, and
   the delegation points up to reach it ([predall.md](predall.md)).
-- **`kb-integrity`** — `impl/integrity.clj` sits above `vaelii.core` because it composes
-  the public complete specified audit with the definition-prover witness pass. Core owns
-  the public checkpoint surface beside `kb-quality`, so the delegation points up for the
-  same explicit reason ([integrity.md](integrity.md)).
+- **`kb-integrity`** — `impl/integrity.clj` sits above `vaelii.core` and consumes
+  `impl/predall.clj`'s lazy internal stream one focused declaration audit at a time,
+  alongside the definition-prover witness pass. `all-specified-violations` folds the
+  same stream into its public complete map, preserving equivalence without making the
+  integrity sweep call that monolithic aggregate. Core owns the public checkpoint beside
+  `kb-quality`, so the delegation points up for the same explicit reason
+  ([integrity.md](integrity.md)).
 
 `lein lint`'s **E8** fails a literal `requiring-resolve` anywhere else under `src/`,
 excepting the keyword-dispatch registries it names.

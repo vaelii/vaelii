@@ -1992,6 +1992,23 @@
              :passing-sufficient passing
              :failing-necessary own-failing}))))))
 
+(defn- sufficient-definition-collections
+  "The finite visible collection population the positive definition prover can reach.
+
+  This is the sweep's one unavoidable open definition census: callers bound ground
+  candidate terms but deliberately do not restate collection names. Every validation
+  after this census is focused on one collection and one ground candidate."
+  [kb context]
+  (let [tx (:taxonomy kb)
+        declared
+        (into #{}
+              (map (fn [match]
+                     (integrity-budget/spend!)
+                     (get (second match) '?collection)))
+              (res/matches-visible
+               kb '(defnSufficient ?collection ?condition) context))]
+    (into #{} (mapcat #(tax/genls tx % context)) declared)))
+
 (defn definition-inconsistencies
   "Query-only definitional inconsistencies over the finite ground `candidate-terms`.
 
@@ -2018,15 +2035,7 @@
     (throw (ex-info "definition-inconsistencies candidate-terms must all be ground"
                     {:type :bad-args :op 'definition-inconsistencies
                      :arg :candidate-terms :term term})))
-  (let [tx (:taxonomy kb)
-        sufficient-colls
-        (into #{}
-              (map (fn [match]
-                     (integrity-budget/spend!)
-                     (get (second match) '?collection)))
-              (res/matches-visible
-               kb '(defnSufficient ?collection ?condition) context))
-        query-colls (into #{} (mapcat #(tax/genls tx % context)) sufficient-colls)]
+  (let [query-colls (sufficient-definition-collections kb context)]
     (loop [pairs (seq (for [coll   (sort-by nm/print-key query-colls)
                             member (sort-by nm/print-key candidate-terms)]
                         [coll member]))

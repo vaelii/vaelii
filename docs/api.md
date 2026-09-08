@@ -142,7 +142,10 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; :status :gap plus sparse :all-specified-violations and/or
                                                 ; :definition-inconsistencies. opts may bound :max-work,
                                                 ; :max-ms and :max-results; exhaustion is :truncated,
-                                                ; never :audited. The opts map is optional. Reads only
+                                                ; never :audited. Work/time check between opaque callbacks
+                                                ; and result pulls (one callback/chunk may overrun);
+                                                ; :max-results absolutely caps returned findings.
+                                                ; The opts map is optional. Reads only
                                                 ; (docs/integrity.md)
 (last-program kb)                              ; the last edge Program solved — the tie, before belief erased it
 (set-solver kb :asp)                           ; the real answer-set backend, by name (:stub is the default)

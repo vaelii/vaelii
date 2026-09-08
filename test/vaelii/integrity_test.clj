@@ -5,7 +5,11 @@
   query-only definition clashes over a caller-owned finite ground term set."
   (:require [clojure.test :refer [is use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.predall :as predall]
             [vaelii.impl.provers :as provers]
+            [vaelii.impl.resolution :as res]
+            [vaelii.impl.sentex :as sx]
+            [vaelii.impl.wiring :as wiring]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -37,6 +41,21 @@
     (cost [_ _ _ _] :lookup)
     (completeness [_ _ _ _] 0)
     (solve [_ _ _ _] [])))
+
+(defn- chunked-answer-prover [pred entered release produced]
+  (reify provers/Prover
+    (applicable? [_ _ goal _] (= pred (first goal)))
+    (est-bindings [_ _ _ _] 32)
+    (cost [_ _ _ _] :lookup)
+    (completeness [_ _ _ _] 100)
+    (solve [_ _ _ _]
+      (map (fn [n]
+             (when (zero? n)
+               (deliver entered true)
+               @release)
+             (swap! produced inc)
+             {})
+           (range 32)))))
 
 (tu/deftest-kb a-passing-sufficient-and-failing-necessary-is-reported
   (tu/with-terms [widget qualifies required]
@@ -214,7 +233,8 @@
       (v/assert kb (list 'defnNecessary widget (list required '?x)) 'CxUniverse)
       (v/add-prover kb (blocking-applicability-prover second-candidate? entered release))
       (v/add-prover kb (observing-applicability-prover second-candidate? observed))
-      (let [audit (future (v/kb-integrity kb #{7 8} 'CxUniverse {:max-ms 200}))]
+      (let [audit (future (v/kb-integrity kb #{7 8} 'CxUniverse
+                                          {:max-results 1 :max-ms 200}))]
         (try
           (is (= true (deref entered 2000 ::timeout))
               "the deliberately slow applicable? callback was reached")
@@ -228,6 +248,8 @@
                  (mapv (juxt :collection :term)
                        (:definition-inconsistencies report)))
               "the first candidate's completed finding survives the second's timeout")
+          (is (= 1 (count (:definition-inconsistencies report)))
+              "time exhaustion cannot leak progress beyond the full result allowance")
           (is (zero? @observed)
               "dispatch traversal stopped before the prover after the elapsed callback"))))))
 
@@ -242,6 +264,138 @@
       (is (= :max-results (:reason report)))
       (is (= [[widget 7]]
              (mapv (juxt :collection :term) (:definition-inconsistencies report)))))))
+
+(tu/deftest-kb a-clean-sweep-at-zero-results-is-complete
+  (is (= {:status :audited :candidate-count 0}
+         (v/kb-integrity kb #{} 'CxUniverse {:max-results 0}))
+      "an empty result allowance is not exhaustion when the sweep finds nothing"))
+
+(tu/deftest-kb an-exact-definition-result-cap-is-complete
+  (tu/with-terms [widget qualifies required]
+    (v/add-evaluatable kb qualifies (constantly true))
+    (v/add-evaluatable kb required (constantly false))
+    (v/assert kb (list 'defnSufficient widget (list qualifies '?x)) 'CxUniverse)
+    (v/assert kb (list 'defnNecessary widget (list required '?x)) 'CxUniverse)
+    (let [report (v/kb-integrity kb #{7} 'CxUniverse {:max-results 1})]
+      (is (= :gap (:status report)))
+      (is (= [[widget 7]]
+             (mapv (juxt :collection :term) (:definition-inconsistencies report)))))))
+
+(tu/deftest-kb an-exact-specified-result-cap-is-complete
+  (tu/with-terms [likes person]
+    (v/assert kb (list 'binary_predicate likes) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate person) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified likes person) 'CxUniverse)
+    (let [report (v/kb-integrity kb #{} 'CxUniverse {:max-results 1})]
+      (is (= :gap (:status report)))
+      (is (= #{['predAllSpecified likes person]}
+             (set (keys (:all-specified-violations report))))))))
+
+(tu/deftest-kb opaque-chunk-overrun-is-observed-before-another-pull
+  (tu/with-terms [widget chunkAnswers required]
+    (let [entered  (promise)
+          release  (promise)
+          produced (atom 0)]
+      (v/add-prover kb (chunked-answer-prover chunkAnswers entered release produced))
+      (v/add-evaluatable kb required (constantly false))
+      (v/assert kb (list 'defnSufficient widget (list chunkAnswers '?x)) 'CxUniverse)
+      (v/assert kb (list 'defnNecessary widget (list required '?x)) 'CxUniverse)
+      (let [audit (future (v/kb-integrity kb #{7} 'CxUniverse {:max-ms 200}))]
+        (try
+          (is (= true (deref entered 2000 ::timeout)))
+          (Thread/sleep 220)
+          (finally (deliver release true)))
+        (let [report (deref audit 2000 ::timeout)]
+          (is (not= ::timeout report))
+          (is (= :truncated (:status report)))
+          (is (= :max-ms (:reason report)))
+          (is (= 32 @produced)
+              "one opaque chunk is one cooperative pull and may overrun before returning")
+          (is (empty? (:definition-inconsistencies report []))
+              "the elapsed post-pull checkpoint returns no unaudited answer"))))))
+
+(tu/deftest-kb sweep-decomposes-global-censuses-into-focused-audits
+  (tu/with-terms [widget qualifies required likes person]
+    (v/add-evaluatable kb qualifies (constantly true))
+    (v/add-evaluatable kb required (constantly false))
+    (v/assert kb (list 'defnSufficient widget (list qualifies '?x)) 'CxUniverse)
+    (v/assert kb (list 'defnNecessary widget (list required '?x)) 'CxUniverse)
+    (v/assert kb (list 'binary_predicate likes) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate person) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified likes person) 'CxUniverse)
+    (let [original @#'res/matches-visible
+          defn-queries (atom [])]
+      (with-redefs [v/all-specified-violations
+                    (fn [& _] (throw (ex-info "monolithic audit called" {})))
+                    res/matches-visible
+                    (fn [& args]
+                      (let [sentence (second args)]
+                        (when (#{'defnSufficient 'defnNecessary} (first sentence))
+                          (swap! defn-queries conj sentence)))
+                      (apply original args))]
+        (let [report (v/kb-integrity kb #{7} 'CxUniverse)]
+          (is (= :gap (:status report)))
+          (is (contains? report :definition-inconsistencies))
+          (is (contains? report :all-specified-violations))))
+      (is (= #{'(defnSufficient ?collection ?condition)}
+             (set (filter #(sx/variable? (second %)) @defn-queries)))
+          (str "only the unavoidable collection census leaves the collection open: "
+               (pr-str @defn-queries)))
+      (is (every? #(or (= '(defnSufficient ?collection ?condition) %)
+                       (not (sx/variable? (second %))))
+                  @defn-queries)
+          "every definition validation after the census names one collection"))))
+
+(tu/deftest-kb specified-audit-stream-pulls-one-declaration-at-a-time
+  (tu/with-terms [likesA peopleA likesB peopleB]
+    (doseq [pred [likesA likesB]]
+      (v/assert kb (list 'binary_predicate pred) 'CxUniverse))
+    (doseq [coll [peopleA peopleB]]
+      (v/assert kb (list 'unary_predicate coll) 'CxUniverse))
+    (v/assert kb (list 'predAllSpecified likesA peopleA) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified likesB peopleB) 'CxUniverse)
+    (let [original @#'predall/specified-violations
+          calls    (atom [])]
+      (with-redefs [predall/specified-violations
+                    (fn [& args]
+                      (swap! calls conj [(second args) (nth args 2)])
+                      (apply original args))]
+        (let [audits (wiring/specified-declaration-audits kb 'CxUniverse)]
+          (is (some? (first audits)))
+          (is (= 1 (count @calls)) "the first pull performs exactly one focused audit")
+          (is (some? (first (rest audits))))
+          (is (= 2 (count @calls)) "the second audit waits for the second pull"))))))
+
+(tu/deftest-kb mixed-bounds-stop-after-the-first-over-cap-audit
+  (tu/with-terms [likesA peopleA likesB peopleB likesC peopleC]
+    (doseq [pred [likesA likesB likesC]]
+      (v/assert kb (list 'binary_predicate pred) 'CxUniverse))
+    (doseq [coll [peopleA peopleB peopleC]]
+      (v/assert kb (list 'unary_predicate coll) 'CxUniverse))
+    (v/assert kb (list 'predAllSpecified likesA peopleA) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified likesB peopleB) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified likesC peopleC) 'CxUniverse)
+    (let [[[first-pred first-indep]]
+          (mapv (juxt '?pred '?indep)
+                (v/ask kb '(predAllSpecified ?pred ?indep) 'CxUniverse))
+          original @#'predall/specified-violations
+          calls    (atom [])]
+      (with-redefs [predall/specified-violations
+                    (fn [& args]
+                      (swap! calls conj [(second args) (nth args 2)])
+                      (apply original args))]
+        (let [report (v/kb-integrity kb #{} 'CxUniverse
+                                     {:max-results 1 :max-work 10000 :max-ms 1000})]
+          (is (= :truncated (:status report)))
+          (is (= :max-results (:reason report)))
+          (is (= {['predAllSpecified first-pred first-indep]
+                  {:status :gap :gap :missing-slot-typing
+                   :pred first-pred :position 2}}
+                 (:all-specified-violations report)))
+          (is (= 1 (count (:all-specified-violations report)))
+              "the work and time options do not weaken the absolute result cap")
+          (is (= 2 (count @calls))
+              "the first over-cap audit is performed but not retained; the third never runs"))))))
 
 (tu/deftest-kb elapsed-specified-audit-keeps-earlier-declaration-gaps
   (tu/with-terms [likesUntyped peopleA likesTyped peopleB person Alice]
