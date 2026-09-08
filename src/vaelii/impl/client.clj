@@ -539,6 +539,11 @@
   [conn b]
   (call conn :kb-diff [b]))
 
+(defn kb-integrity
+  "Run the bounded, read-only integrity sweep in `context`."
+  [conn candidate-terms context]
+  (call conn :kb-integrity [candidate-terms context]))
+
 (defn kb-quality
   "Seven readings about the **knowledge** — one map, seven keys, each a distribution rather
   than a number:"

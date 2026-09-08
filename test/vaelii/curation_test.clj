@@ -199,9 +199,14 @@
 ;; ---- kb-has-integrity: the umbrella the scope card checks against ---------
 
 (tu/deftest-kb kb-has-integrity
-  ;; The KB-integrity umbrella.  Currently just the believed-example sweep; two more
-  ;; integrity checks are planned to join it, so the namespace is staked out now.
-  (every-believed-example-holds-as-stated))
+  ;; The KB-integrity umbrella.  Examples retain their independent oracle above; the
+  ;; public sweep composes the declared-population audit with the bounded query-only
+  ;; definition check.  These are known ground candidates exercised by CxCore's numeric
+  ;; definitions, not a request for the query engine to enumerate a domain.
+  (every-believed-example-holds-as-stated)
+  (let [report (v/kb-integrity kb #{-212 0 212} 'CxUniverse)]
+    (is (= :audited (:status report)) (pr-str report))
+    (is (= 3 (:candidate-count report)))))
 
 ;; ---- borderline carries no obligation ------------------------------------
 

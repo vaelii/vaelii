@@ -114,6 +114,9 @@
   ;; into `violations`.  Computed on demand, so a caller asks for it rather than
   ;; receiving it, and a remote one pays a round trip for the pass
   exposed-clashes
+  ;; the bounded checkpoint sweep: declared-population gaps plus query-only definition
+  ;; clashes over the caller's explicit finite ground candidate set
+  kb-integrity
   ;; qualitative constraint reasoning: the network a context's facts constrain, the
   ;; relations still possible between two terms, and one arrangement out of it
   qualitative-network possible-relations qualitative-scenario qualitative-scenarios

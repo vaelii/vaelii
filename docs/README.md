@@ -59,6 +59,7 @@ page costs a sentence rather than a section.
 - [troubleshooting.md](troubleshooting.md) — indexed by symptom rather than subsystem: an empty query, a rule that will not fire, a refused `assert`, a KB holding facts nobody asserted.
 - [glossary.md](glossary.md) — every term used across these docs and the code, tagged by subsystem.
 - [commonsense.md](commonsense.md) — the questions this KB is asked, one per reasoning subsystem, what the schema had to grow to answer them, and the outside judge that reads the answers back.
+- [integrity.md](integrity.md) — the bounded read-only checkpoint sweep: declared-population gaps and query-only definition clashes over a caller-owned finite ground term set.
 - [arriving.md](arriving.md) — the way in for a reader with a prior: which orientation page belongs to which background, and the facts that hold whatever you arrived from.
 
 ## Arriving from another system

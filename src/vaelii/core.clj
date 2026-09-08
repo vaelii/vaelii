@@ -4967,6 +4967,23 @@
   [kb context]
   (wiring/all-specified-violations kb context))
 
+(defn kb-integrity
+  "Run the bounded, read-only integrity sweep in `context`.
+
+  `candidate-terms` is a finite set of ground terms.  For those terms the sweep reports
+  query-time definitional inconsistencies: a collection whose sufficient definition
+  passes while its necessary definition fails, so both `(Coll term)` and
+  `(not (Coll term))` are definition-provable.  It also composes the complete visible
+  `predAllSpecified` / `predSpecifiedAll` audit.  It does not enumerate the domain,
+  broaden `contradictions`, or repair/file anything.
+
+  A clean result is `{:status :audited :candidate-count n}`.  Findings change `:status`
+  to `:gap` and add either or both sparse keys `:all-specified-violations` and
+  `:definition-inconsistencies`.  Inspect `:status`; it makes a successful audit and a
+  report with gaps different shapes by construction."
+  [kb candidate-terms context]
+  (wiring/kb-integrity kb candidate-terms context))
+
 (defn chain-stats
   "Chaining-run instrumentation: `{:runs n :last {:derived n :truncated? bool}}`.
 

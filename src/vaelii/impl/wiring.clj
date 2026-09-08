@@ -22,7 +22,7 @@
     argument, so negation-as-failure is mutually recursive with the chainer that asked
     for it (docs/naf.md).
 
-  Two further calls run the other way for a different reason:
+  Three further calls run the other way for a different reason:
 
     `import-dump` — `vaelii.impl.io.import` sits *above* `vaelii.core` and requires it,
     because reading a dump is asserting: it re-canonicalizes records, reindexes and
@@ -40,8 +40,13 @@
     reported violations a scoped read would not have is worse than no audit, so the
     reader asks through the public read path and the delegation points up to reach it.
 
+    `kb-integrity` — `vaelii.impl.integrity` sits above `vaelii.core` because its
+    aggregate composes the public `all-specified-violations` audit.  Core exposes the
+    aggregate beside `kb-quality`, so this delegation is the same explicit layering
+    inversion rather than a hidden require cycle.
+
   The first two are genuine mutual recursion: the cycle is in the **behaviour**, neither
-  is a misplaced function, and no arrangement of the code removes either.  The last two
+  is a misplaced function, and no arrangement of the code removes either.  The last three
   are layering inversions rather than recursions, and are kept here for the same reason —
   a call the require graph cannot express belongs in the one file that inventories them.
   Why they are gathered here rather than left at their call sites, what `lein lint`'s
@@ -93,6 +98,9 @@
 (def ^:private predall-all-specified-violations
   (delay (requiring-resolve 'vaelii.impl.predall/all-specified-violations)))
 
+(def ^:private integrity-kb-integrity
+  (delay (requiring-resolve 'vaelii.impl.integrity/kb-integrity)))
+
 (defn assert-sentence
   "`vaelii.core/assert` — store `sentence` in `context` under `opts`, returning its handle.
   See the namespace docstring for why this is not a require."
@@ -127,3 +135,9 @@
   docstring for why this is not a require."
   [kb context]
   (@predall-all-specified-violations kb context))
+
+(defn kb-integrity
+  "`vaelii.impl.integrity/kb-integrity` — the bounded aggregate integrity sweep.
+  See the namespace docstring for why this is not a require."
+  [kb candidate-terms context]
+  (@integrity-kb-integrity kb candidate-terms context))

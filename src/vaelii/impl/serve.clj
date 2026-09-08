@@ -322,6 +322,7 @@
     ;; audited collection, which is the caller's to spend (docs/predall.md)
     :specified-violations     (op v/specified-violations)
     :all-specified-violations (op v/all-specified-violations)
+    :kb-integrity             (op v/kb-integrity)
     ;; how a goal would be answered: the provers bearing on it with their estimates, or
     ;; for a conjunction the join order and the counts behind it
     :query-plan   (op v/query-plan)

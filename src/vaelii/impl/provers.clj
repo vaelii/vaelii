@@ -1941,6 +1941,87 @@
   (mapcat #(defn-conditions kb 'defnNecessary % context)
           (tax/genls (:taxonomy kb) coll context)))
 
+(defn- definition-entries
+  "The visible `(pred coll condition)` declarations as witness maps.  Keeping the
+  declaring collection beside the condition matters to an integrity report: a
+  sufficient inherited from a spec is evidence about a different declaration than
+  the queried collection's own necessary."
+  [kb pred coll context]
+  (for [declaring-coll coll
+        [_ bindings _] (res/matches-visible
+                        kb (list pred declaring-coll '?condition) context)]
+    {:defined-collection declaring-coll
+     :condition          (get bindings '?condition)}))
+
+(defn- definition-inconsistency
+  "The definitional clash witness for one ground `(coll member)`, or nil."
+  [kb coll member context]
+  (binding [*defn-stack* (conj *defn-stack* coll)]
+    (let [tx (:taxonomy kb)
+          strict-failing?
+          (some (fn [ancestor]
+                  (some #(not (condition-holds? kb (:condition %) member context))
+                        (definition-entries kb 'defnNecessary [ancestor] context)))
+                (most-general-first tx context
+                                    (disj (tax/genls tx coll context) coll)))]
+      ;; Match the positive prover's short-circuit: once a strict ancestor excludes the
+      ;; member, its sufficient conditions are not evaluated at all.
+      (when-not strict-failing?
+        (let [passing
+              (->> (definition-entries kb 'defnSufficient
+                     (tax/specs tx coll context) context)
+                   (filter #(condition-holds? kb (:condition %) member context))
+                   (sort-by (juxt (comp nm/print-key :defined-collection)
+                                  (comp nm/print-key :condition)))
+                   vec)
+              own-failing
+              (->> (definition-entries kb 'defnNecessary [coll] context)
+                   (remove #(condition-holds? kb (:condition %) member context))
+                   (sort-by (comp nm/print-key :condition))
+                   vec)]
+          (when (and (seq passing) (seq own-failing))
+            {:collection coll
+             :term member
+             :passing-sufficient passing
+             :failing-necessary own-failing}))))))
+
+(defn definition-inconsistencies
+  "Query-only definitional inconsistencies over the finite ground `candidate-terms`.
+
+  Returns one witness per `[collection term]` for which the definition provers can
+  answer both `(collection term)` and `(not (collection term))`: some own-or-spec
+  sufficient condition passes, the collection's own necessary condition fails, and
+  no strict-genl necessary fast-fails the positive query.  Each witness carries every
+  passing sufficient and failing necessary declaration involved.
+
+  Collections are not supplied or guessed.  They are the finite visible population
+  induced by `defnSufficient` declarations and their `genl` ancestors, exactly the
+  collections the positive prover can reach.  The caller supplies the term bound; it
+  must be a set, so an accidental lazy or unbounded enumerator is refused before any
+  query work begins.  Reads only; stores and belief are untouched."
+  [kb candidate-terms context]
+  (when-not (set? candidate-terms)
+    (throw (ex-info "definition-inconsistencies candidate-terms must be a finite set"
+                    {:type :bad-args :op 'definition-inconsistencies
+                     :arg :candidate-terms})))
+  (when-let [term (first (remove sx/ground-term? candidate-terms))]
+    (throw (ex-info "definition-inconsistencies candidate-terms must all be ground"
+                    {:type :bad-args :op 'definition-inconsistencies
+                     :arg :candidate-terms :term term})))
+  (let [tx (:taxonomy kb)
+        sufficient-colls
+        (into #{}
+              (map #(get (second %) '?collection))
+              (res/matches-visible
+               kb '(defnSufficient ?collection ?condition) context))
+        query-colls (into #{} (mapcat #(tax/genls tx % context)) sufficient-colls)]
+    (into []
+          (keep (fn [[coll member]]
+                  (definition-inconsistency kb coll member context)))
+          (for [coll   (sort-by nm/print-key query-colls)
+                member (sort-by nm/print-key candidate-terms)]
+            [coll member]))))
+
 (defrecord DefnNecessaryNegationProver []
   Prover
   ;; A ground `(not (Coll x))` for a `Coll` whose reflexive genl ancestor set carries a visible
