@@ -134,12 +134,16 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; omitted and the gaps never, so an empty map is a clean
                                                 ; sweep. A legacy-ternary gap keys by its whole stale
                                                 ; tuple [functor pred a b], displacing nothing
-(kb-integrity kb candidate-terms ctx)            ; the bounded checkpoint sweep: the complete specified
+(kb-integrity kb candidate-terms ctx)
+(kb-integrity kb candidate-terms ctx opts)       ; the bounded checkpoint sweep: the complete specified
                                                 ; audit above plus query-only definition clashes over an
                                                 ; explicit finite set of ground terms. Returns
                                                 ; {:status :audited :candidate-count n} when clean, or
                                                 ; :status :gap plus sparse :all-specified-violations and/or
-                                                ; :definition-inconsistencies. Reads only (docs/integrity.md)
+                                                ; :definition-inconsistencies. opts may bound :max-work,
+                                                ; :max-ms and :max-results; exhaustion is :truncated,
+                                                ; never :audited. The opts map is optional. Reads only
+                                                ; (docs/integrity.md)
 (last-program kb)                              ; the last edge Program solved — the tie, before belief erased it
 (set-solver kb :asp)                           ; the real answer-set backend, by name (:stub is the default)
 (set-solver kb solver)                         ; or any vaelii.impl.solve/Solver value

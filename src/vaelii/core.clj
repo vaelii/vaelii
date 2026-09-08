@@ -4980,9 +4980,16 @@
   A clean result is `{:status :audited :candidate-count n}`.  Findings change `:status`
   to `:gap` and add either or both sparse keys `:all-specified-violations` and
   `:definition-inconsistencies`.  Inspect `:status`; it makes a successful audit and a
-  report with gaps different shapes by construction."
-  [kb candidate-terms context]
-  (wiring/kb-integrity kb candidate-terms context))
+  report with gaps different shapes by construction.
+
+  Optional `options` bounds cooperative query work, elapsed time and returned findings:
+  `{:max-work n :max-ms n :max-results n}`. Exhaustion returns `:status :truncated`
+  with its `:reason`, never an `:audited` prefix. The daemon supplies and clamps all
+  three bounds even when a remote caller omits the map."
+  ([kb candidate-terms context]
+   (wiring/kb-integrity kb candidate-terms context nil))
+  ([kb candidate-terms context options]
+   (wiring/kb-integrity kb candidate-terms context options)))
 
 (defn chain-stats
   "Chaining-run instrumentation: `{:runs n :last {:derived n :truncated? bool}}`.

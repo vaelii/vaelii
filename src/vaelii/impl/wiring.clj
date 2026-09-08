@@ -139,5 +139,5 @@
 (defn kb-integrity
   "`vaelii.impl.integrity/kb-integrity` — the bounded aggregate integrity sweep.
   See the namespace docstring for why this is not a require."
-  [kb candidate-terms context]
-  (@integrity-kb-integrity kb candidate-terms context))
+  [kb candidate-terms context options]
+  (@integrity-kb-integrity kb candidate-terms context options))

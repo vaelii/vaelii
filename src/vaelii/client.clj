@@ -532,8 +532,8 @@
 
 (defn kb-integrity
   "Run the bounded, read-only integrity sweep in `context`."
-  [conn candidate-terms context]
-  (c/kb-integrity conn candidate-terms context))
+  ([conn candidate-terms context] (c/kb-integrity conn candidate-terms context))
+  ([conn candidate-terms context options] (c/kb-integrity conn candidate-terms context options)))
 
 (defn kb-quality
   "Seven readings about the **knowledge** — one map, seven keys, each a distribution rather

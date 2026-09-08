@@ -140,7 +140,16 @@
    :prove              #{:max-depth :max-ms}
    :provable?          #{:max-depth :max-ms}
    :ask-within         #{:max-ms}
-   :prove-within       #{:max-depth :max-ms}})
+   :prove-within       #{:max-depth :max-ms}
+   :kb-integrity       #{:max-ms :max-work :max-results}})
+
+(def integrity-max-work
+  "The most cooperative query units one daemon integrity request may spend."
+  10000)
+
+(def integrity-max-results
+  "The most findings one daemon integrity response may carry."
+  1000)
 
 (def ^:private clock-fill
   "The ops whose ceiling has to reach a caller who sent **no option map at all**, and the
@@ -160,7 +169,8 @@
   {:ask       ['?ctx]
    :ask?      ['?ctx]
    :prove     ['?ctx]
-   :provable? ['?ctx]})
+   :provable? ['?ctx]
+   :kb-integrity []})
 
 (defn- with-opts-map
   "`args` padded out to the arity whose last argument is the option map: nothing to do
@@ -177,7 +187,9 @@
   [k]
   (let [n (case k
             :max-ms    (config/max-query-ms)
-            :max-depth (config/max-query-depth))]
+            :max-depth (config/max-query-depth)
+            :max-work integrity-max-work
+            :max-results integrity-max-results)]
     (when (pos? n) n)))
 
 (defn- under-ceiling
@@ -209,7 +221,8 @@
                               " holds every other caller behind it")
                          {:type :over-ceiling :op op :option k :requested v
                           :ceiling ceiling}))
-         (and (= :max-ms k) (nil? v))       (assoc m k ceiling)
+         (and (#{:max-ms :max-work :max-results} k) (nil? v))
+         (assoc m k ceiling)
          :else                              m)))
    opts
    ks))

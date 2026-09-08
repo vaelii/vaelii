@@ -76,7 +76,8 @@
   isa? "[[conn x t] [conn x t context]]",
   justification "[[conn jid]]",
   kb-diff "[[conn b]]",
-  kb-integrity "[[conn candidate-terms context]]",
+  kb-integrity
+  "[[conn candidate-terms context] [conn candidate-terms context options]]",
   kb-quality "[[conn] [conn opts]]",
   levels "[[conn]]",
   lookup "[[conn level goal] [conn level goal context]]",
@@ -227,7 +228,8 @@
   ist "[[kb ctx s]]",
   justification "[[kb jid]]",
   kb-diff "[[a b]]",
-  kb-integrity "[[kb candidate-terms context]]",
+  kb-integrity
+  "[[kb candidate-terms context] [kb candidate-terms context options]]",
   kb-quality "[[kb] [kb opts]]",
   last-program "[[kb]]",
   levels "[[]]",

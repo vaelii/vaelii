@@ -31,6 +31,15 @@
   it so a pathological load cannot grow it unbounded — newest entries win."
   1000)
 
+(def ^:dynamic *report-sink*
+  "When bound to an atom, reports accumulate there instead of in the KB ledger or logs.
+  Read-only audits use this so evaluative conditions keep their ordinary truth value
+  without making merely asking the question mutate live diagnostics."
+  nil)
+
+(defn- report-target [kb]
+  (or *report-sink* (:violations kb)))
+
 (defn- dropping-rule
   "The rule an entry blames, as the sentence its author wrote — variable names restored,
   since a rule is stored canonically numbered.  Nil for an entry that names no rule and
@@ -75,11 +84,12 @@
   (when (seq entries)
     (let [run     (:runs @(:chain-stats kb))
           stamped (mapv #(assoc % :run run) entries)]
-      (doseq [e stamped]
-        (trove/log! {:level :warn :id ::dropped-conclusion :data e})
-        (when (:rule e)
-          (trove/log! {:level :debug :id ::dropping-rule :data (dropping-rule kb e)})))
-      (swap! (:violations kb)
+      (when-not *report-sink*
+        (doseq [e stamped]
+          (trove/log! {:level :warn :id ::dropped-conclusion :data e})
+          (when (:rule e)
+            (trove/log! {:level :debug :id ::dropping-rule :data (dropping-rule kb e)}))))
+      (swap! (report-target kb)
              (fn [v]
                (let [v' (into v stamped)
                      n  (count v')]
@@ -102,6 +112,6 @@
   derivation-path drops it exists to report.  `:run` is ignored in the comparison because
   a later run meeting the same defect is the same defect, not a second one."
   [kb entry]
-  (when-not (some #(= (dissoc % :run) entry) (some-> (:violations kb) deref))
+  (when-not (some #(= (dissoc % :run) entry) @(report-target kb))
     (report kb [entry]))
   nil)

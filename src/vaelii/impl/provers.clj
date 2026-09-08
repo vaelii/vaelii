@@ -75,6 +75,7 @@
   (:require [vaelii.impl.caches :as caches]
             [vaelii.impl.datetime :as datetime]
             [vaelii.impl.inherit :as inherit]
+            [vaelii.impl.integrity-budget :as integrity-budget]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.modal :as modal]
             [vaelii.impl.naming :as nm]
@@ -1950,8 +1951,10 @@
   (for [declaring-coll coll
         [_ bindings _] (res/matches-visible
                         kb (list pred declaring-coll '?condition) context)]
-    {:defined-collection declaring-coll
-     :condition          (get bindings '?condition)}))
+    (do
+      (integrity-budget/spend!)
+      {:defined-collection declaring-coll
+       :condition          (get bindings '?condition)})))
 
 (defn- definition-inconsistency
   "The definitional clash witness for one ground `(coll member)`, or nil."
@@ -1999,28 +2002,40 @@
   collections the positive prover can reach.  The caller supplies the term bound; it
   must be a set, so an accidental lazy or unbounded enumerator is refused before any
   query work begins.  Reads only; stores and belief are untouched."
-  [kb candidate-terms context]
+  [kb candidate-terms context max-results]
   (when-not (set? candidate-terms)
     (throw (ex-info "definition-inconsistencies candidate-terms must be a finite set"
                     {:type :bad-args :op 'definition-inconsistencies
                      :arg :candidate-terms})))
-  (when-let [term (first (remove sx/ground-term? candidate-terms))]
+  (when-let [term (first (remove (fn [term]
+                                   (integrity-budget/spend!)
+                                   (sx/ground-term? term))
+                                 candidate-terms))]
     (throw (ex-info "definition-inconsistencies candidate-terms must all be ground"
                     {:type :bad-args :op 'definition-inconsistencies
                      :arg :candidate-terms :term term})))
   (let [tx (:taxonomy kb)
         sufficient-colls
         (into #{}
-              (map #(get (second %) '?collection))
+              (map (fn [match]
+                     (integrity-budget/spend!)
+                     (get (second match) '?collection)))
               (res/matches-visible
                kb '(defnSufficient ?collection ?condition) context))
         query-colls (into #{} (mapcat #(tax/genls tx % context)) sufficient-colls)]
-    (into []
-          (keep (fn [[coll member]]
-                  (definition-inconsistency kb coll member context)))
-          (for [coll   (sort-by nm/print-key query-colls)
-                member (sort-by nm/print-key candidate-terms)]
-            [coll member]))))
+    (loop [pairs (seq (for [coll   (sort-by nm/print-key query-colls)
+                            member (sort-by nm/print-key candidate-terms)]
+                        [coll member]))
+           findings []]
+      (if-let [[coll member] (first pairs)]
+        (do
+          (integrity-budget/spend!)
+          (if-let [finding (definition-inconsistency kb coll member context)]
+            (if (and max-results (>= (count findings) max-results))
+              {:status :truncated :reason :max-results :findings findings}
+              (recur (next pairs) (conj findings finding)))
+            (recur (next pairs) findings)))
+        {:status :complete :findings findings}))))
 
 (defrecord DefnNecessaryNegationProver []
   Prover
@@ -2721,7 +2736,13 @@
   agreeing.  What differs between the callers is only the structure of an answer, which is
   exactly what `run` carries."
   [kb provers goal context run]
-  (let [applicable (applicable-provers kb provers goal context)
+  (let [run        (fn [prover]
+                     (integrity-budget/spend!)
+                     (res/lazy-mapcat (fn [answer]
+                                        (integrity-budget/spend!)
+                                        (list answer))
+                                      (run prover)))
+        applicable (applicable-provers kb provers goal context)
         complete   (sole-prover kb applicable goal context)]
     (if complete
       (run complete)

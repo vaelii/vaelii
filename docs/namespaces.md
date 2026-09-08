@@ -92,6 +92,7 @@ src/vaelii/impl/
   wff.clj           well-formedness of genl / genlCx / disjoint / arg / the equality relations (symbols only, no rewriteOf cycle, `different` not assertible); stratification (no rule-graph cycle through negation)
   provers.clj       Prover protocol (est-bindings + cost tier + completeness) + fact/transitivity/disjointness/metadata/evaluable/quantity/NAF/aggregate/arg/belief-projection + the `ask` engine; the completeness contract and what may shadow what; exceptWhen evaluation + rule guards; `candidate-rules` and `parse-rule`, which the two backward chainers read.  **No member of it expands a rule**, so `ask` never opens a proof search. Nothing here is declared per predicate and the registry is unreachable from `predicates`: `applicable?` reads a goal's shape rather than a functor's name, `add-prover` registers with no declaration entry at all, and `sole-prover` answers the coordination question as a question about the KB. A prover's shape table stays with the prover; its enrolment is the declaration's ([predicates.md](predicates.md))
   integrity.clj     the bounded read-only `kb-integrity` aggregate above `vaelii.core`: composes the public complete specified-declaration audit with the definition prover's finite witness pass over the caller's ground candidate set; reached back down through `wiring` ([integrity.md](integrity.md))
+  integrity_budget.clj the leaf cooperative work/deadline meter bound only around `kb-integrity`; prover dispatch/results and direct audit rows spend against it
   predall.clj       the predAll / predExists / predSpecified quantifier matrix's on-demand half, above `vaelii.core` and reached back down through `wiring`: `specified-violations` (the *Specified* integrity audit — `{:status :audited :violations …}` naming the instances with no determinate, contract-satisfying filler, or a `{:status :gap …}` declaration-contract diagnostic; the filler contract derived from the predicate's slot typing over its constraining predicates) and `indeterminate-term?`, which delegates to the `provers` implementation the equality exemption reads, so an audit and a `different` cannot disagree about a term.  The *Instance* cells are CxCore rule generators and the *Exists* cells inert records — neither needs code here (docs/predall.md)
   budget.clj        resource-bounded / anytime: bound a lazy answer stream (:max-ms/:max-results), the partial-result contract, the resumable tail
   plan.clj          conjunctive query planning: selectivity cost model + sideways information passing, with the cartesian factors (literals sharing no variable with the rest, and matching more than once, so they multiply it) held to the back on structure rather than on an estimate
@@ -174,7 +175,7 @@ resources/
 
 ## Not glossed above
 
-The map covers 114 of the 154 namespaces under `src/`. The other 40 are listed here by
+The map covers 115 of the 155 namespaces under `src/`. The other 40 are listed here by
 name rather than left out, and the two lists together are every one of them — `lein
 lint`'s **E18** fails on a file in neither and on a count that disagrees with them, so
 the number above stays a measurement. Named here: the engine's write path (`integrate`,
