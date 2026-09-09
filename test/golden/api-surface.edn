@@ -285,6 +285,7 @@
   "[[kb pred indep context] [kb pred indep context arg-pos]]",
   specs "[[kb t] [kb t context]]",
   subsumption-status "[[kb a b]]",
+  subsumption-statuses "[[kb a b]]",
   supporting-justifications "[[kb handle]]",
   term-count "[[kb]]",
   term-expression "[[kb term]]",
