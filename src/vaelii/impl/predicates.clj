@@ -1239,6 +1239,22 @@
      ;; like any fact and read for inference by nothing.  Inert is the decision rather than
      ;; the omission — the grammar documents itself in its own representation, and a
      ;; cross-reference earns a stored sentex whether or not a check ever keys on it.
+     ['genlInverse
+      (inert {:shape {:args [:term :term]} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes (str "inverse-genl between binary predicates — (genlInverse ?spec ?genl-inv)"
+                          " means (?spec ?x ?y) entails (?genl-inv ?y ?x). Not yet engine-enforced;"
+                          " aspirational ontology predicate from Lacuna proposals.")}
+             (str "aspirational: records that one binary predicate specialises the"
+                  " argument-reversed reading of another. No inference path."))]
+     ['typeGenl
+      (inert {:shape {:args [:term :term]} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes (str "higher-order genl: (typeGenl ?classifier ?genl) means every instance"
+                          " of ?classifier genls to ?genl. Not yet engine-enforced; intended to"
+                          " derive (genl ?x ?genl) from (?classifier ?x) once rule support lands.")}
+             (str "aspirational: a higher-order genl constraint whose rule-based derivation"
+                  " depends on engine support for higher-order patterns. No inference path."))]
      ['termsRelated
       (inert {:shape {:args [] :variadic :term} :storage [:none] :checked false
               :family nil :facets #{}

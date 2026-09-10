@@ -1,0 +1,8 @@
+;; CxUniverse — the collector of the upper spindle.  Sees every upper member
+;; (CxAbstract, CxOrganism, CxSociety, CxLife, CxMeasure, CxSpace, CxTime),
+;; so cross-member disjointness assertions that require both sides visible
+;; live here rather than in CxCore (which cannot see the members) or in one
+;; member (which cannot see the other).
+
+;; --- cross-member disjointness (upper spindle) ---
+(disjoint organization animal)

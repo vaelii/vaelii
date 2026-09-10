@@ -83,7 +83,9 @@
       (is (re-find #"animal" (:body r)))
       (is (re-find #"CxCore" (:body r)))
       (is (re-find #"Core predicates" (:body r)))
-      (is (re-find #"⊥" (:body r))))
+      (is (or (re-find #"⊥" (:body r))
+              (re-find #"disjoint from" (:body r)))
+          "disjointness renders — as pairs (⊥) when ≤ front-cap, as type summaries above it"))
     (testing "the header carries a menubar to the top-level tools"
       (is (re-find #"class=\"menubar\"" (:body r)))
       (is (re-find #">Ontology<" (:body r)))
@@ -182,10 +184,18 @@
                       (= 'disjoint pred) (conj self)))]
       (let [r (GET "/")]
         (is (= 200 (:status r)))
-        (is (re-find #">nothing</a> ⊥ <a[^>]*>nothing</a>" (:body r))
-            "both sides, not one term with the other silently missing"))
+        ;; When pairs ≤ front-cap the front page renders `X ⊥ Y` rows.  When pairs
+        ;; exceed it (as they do after the upper-ontology overhaul), it renders type
+        ;; summaries and the individual pairs live on the continuation.
+        (is (or (re-find #">nothing</a> ⊥ <a[^>]*>nothing</a>" (:body r))
+                (re-find #"separated pairs" (:body r)))
+            "the front page renders — either as pairs or as summary"))
       (testing "and so does the continuation that pages the same list"
-        (is (= 200 (:status (GET "/front/rows" "section=disjoint&offset=0"))))))))
+        (is (= 200 (:status (GET "/front/rows" "section=disjoint&offset=0"))))
+        (let [deep (GET "/front/rows" (str "section=disjoint&offset=50"))]
+          (is (= 200 (:status deep)))
+          (is (re-find #">nothing</a> ⊥ <a[^>]*>nothing</a>" (:body deep))
+              "the self-disjoint pair renders on a deeper page"))))))
 
 (deftest a-term-page-survives-a-compound-in-the-taxonomy
   ;; The second half of the same story as the test above: a **type node need not be a
