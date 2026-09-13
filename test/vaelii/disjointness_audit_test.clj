@@ -109,3 +109,23 @@
 ;; `wff` refuses at assertion. It appears only from a belief-state cycle or an equality
 ;; merge, neither of which a net-neutral fixture stages safely, so it has no constructive
 ;; case here; the allowed-status assertion above pins it as a legal outcome.
+
+;; ---- coverage ratchet -------------------------------------------------------
+;;
+;; Every PR either maintains or improves the disjointness coverage of the starter
+;; KB.  These thresholds are the floor locked in after vaelii#94 (25%→64% disjoint).
+;; Raise them when new disjoint declarations land; never lower them
+;; unless it's to add legitimately orthogonal collections to the upper ontology.
+
+(tu/deftest-kb disjointness-coverage-ratchet
+  (let [a          (v/disjointness-audit kb)
+        pairs      (:pairs a)
+        by-status  (:by-status a)
+        disjoint   (get by-status :disjoint 0)
+        unknown    (get by-status :unknown 0)
+        disjoint-% (* 100.0 (/ disjoint pairs))
+        unknown-%  (* 100.0 (/ unknown pairs))]
+    (is (>= disjoint-% 63.0)
+        (format "disjoint coverage must not regress below 63%% (got %.1f%%)" disjoint-%))
+    (is (<= unknown-% 29.0)
+        (format "unknown pairs must not grow above 29%% (got %.1f%%)" unknown-%))))
