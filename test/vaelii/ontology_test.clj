@@ -84,8 +84,10 @@
   (testing "the member's flight is derived, and it is a record"
     (is (v/ask? kb '(hasCapability Sam flying) N))
     (is (seq (v/sentexes-matching kb '(hasCapability Sam flying) N))))
-  (testing "the consequence rests on it and is a record too, so the cascade is visible"
-    (is (seq (v/sentexes-matching kb '(hasCapability Sam travelling) N))))
+  (testing "travelling follows from the hierarchy, not a stored forward-rule conclusion"
+    (is (v/ask? kb '(hasCapability Sam travelling) N))
+    (is (empty? (v/sentexes-matching kb '(hasCapability Sam travelling) N))
+        "answered by transitiveInArgInverse, not stored — no redundant rule"))
   (testing "and the flightless member gets neither"
     (is (not (v/ask? kb '(hasCapability Tweety flying) N)))
     (is (empty? (v/sentexes-matching kb '(hasCapability Tweety travelling) N)))))

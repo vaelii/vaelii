@@ -134,14 +134,16 @@
 ;; ---- defaults, and taking one back --------------------------------------
 
 (tu/deftest-kb a-default-conclusion-feeds-a-further-rule
-  ;; flying ⇒ can travel (strict). An eagle flies by default, so it can travel;
-  ;; a penguin's flight is defeated, so the downstream conclusion never holds.
+  ;; flying ⇒ can travel via the capability hierarchy: (genl flying travelling) +
+  ;; (transitiveInArgInverse hasCapability 2 genl).  An eagle flies by default, so it
+  ;; can travel; a penguin's flight is defeated, so the downstream query returns nothing.
+  ;; No stored forward-rule conclusion — the hierarchy answers at retrieval.
   (testing "the eagle inherits can-travel through the flight default"
     (is (v/ask? kb '(hasCapability Sam flying)))
-    (is (seq (v/sentexes-matching kb '(hasCapability Sam travelling) 'CxNaturalWorld))))
+    (is (v/ask? kb '(hasCapability Sam travelling))))
   (testing "the penguin, defeated on flight, does not get can-travel"
-    (is (empty? (v/sentexes-matching kb '(hasCapability Tweety flying) 'CxNaturalWorld)))
-    (is (empty? (v/sentexes-matching kb '(hasCapability Tweety travelling) 'CxNaturalWorld)))))
+    (is (not (v/ask? kb '(hasCapability Tweety flying))))
+    (is (not (v/ask? kb '(hasCapability Tweety travelling))))))
 
 (tu/deftest-kb being-told-an-animal-is-asleep-takes-back-what-was-assumed
   ;; Every animal is awake by default, which is the reading a story assumes without

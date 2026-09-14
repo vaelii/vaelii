@@ -74,18 +74,12 @@
 (exceptWhen (penguin ?x)
   (set/defaultRule (set/forwardRule (implies (and (bird ?x)) (hasCapability ?x flying)))))
 
-;; Travelling is concluded by a rule rather than left to the capability hierarchy alone.
-;; (transitiveInArgInverse hasCapability 2 genl) already ANSWERS it — flying is a kind of
-;; travelling, so whatever flies travels — but preservation is a reach taken at retrieval
-;; and stores nothing, and what rests on a conclusion is only visible as a cascade if it
-;; is a record with a justification. The rule is what makes the consequence go out with
-;; its ground and come back re-derived, which is the whole of what the walkthrough shows.
-;;
-;; At the KIND level there is no such rule, and the asymmetry is the point: nothing there
-;; rests on the conclusion, so capabilityType's own transitiveInArgInverse is left to answer
-;; it at retrieval.  A kind-level rule would store a record per kind to say what the
-;; declaration already says.
-(set/forwardRule (implies (and (hasCapability ?x flying)) (hasCapability ?x travelling)))
+;; Travelling follows from flying via the capability hierarchy:
+;; (transitiveInArgInverse hasCapability 2 genl) + (genl flying travelling) answers
+;; (hasCapability ?x travelling) at retrieval for anything that flies.  No forward rule
+;; needed: if flying is defeated, the retrieval premise is gone and travelling is
+;; unreachable.  A stored forward-rule conclusion was redundant with the hierarchy and
+;; created an unnecessary JTMS record.  Removed S261 (2026-09-13).
 
 ;; And the negative, which is not the same statement as the blocked default: the rule
 ;; above declines to conclude for a penguin, while this concludes something — that this
