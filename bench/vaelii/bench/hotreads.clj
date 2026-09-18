@@ -51,7 +51,8 @@
             [vaelii.impl.protocols :as p]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
-            [vaelii.impl.taxonomy :as tax]))
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 (def ^:private defaults
   {:facts     400
@@ -315,7 +316,7 @@
           leaf0  (- types leaves)
           kb     (est-kb d branching false)
           _      (load-instances! kb facts leaf0 leaves {:chain? false})
-          specs  (count (tax/specs (:taxonomy kb) (type-name 0) est-ctx))
+          specs  (count (tax/specs (reasoning/taxonomy kb) (type-name 0) est-ctx))
           est-ns (per-call #(plan/est-matches kb '(hr_t0 ?x) #{} {:context est-ctx})
                            samples)
           ord-ns (per-call #(plan/order kb ['(hr_t0 ?x) '(hrRel ?x ?y) '(hr_tag ?y)]
@@ -377,7 +378,7 @@
     (let [leaves (long (Math/pow branching (dec d)))
           leaf0  (- (tree-size d branching) leaves)
           specs  (let [kb (est-kb d branching false)]
-                   (count (tax/specs (:taxonomy kb) (type-name 0) est-ctx)))
+                   (count (tax/specs (reasoning/taxonomy kb) (type-name 0) est-ctx)))
           rows   [["forward chaining (writes)"
                    (fan-share #(est-kb d branching true)
                               #(load-instances! % facts leaf0 leaves nil))]

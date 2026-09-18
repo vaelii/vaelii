@@ -36,7 +36,8 @@
             [vaelii.core :as v]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.protocols :as p]
-            [vaelii.impl.settle-phases :as phases]))
+            [vaelii.impl.settle-phases :as phases]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 ;; ---- generation (well-formed for the real assert path) ------------------
 ;; The additive load fires one forward rule per `relA` fact and sprinkles a fixed,
@@ -154,7 +155,7 @@
     (println (format "    stored: %,d sentexes, %,d justifications, %,d JTMS nodes"
                      (count (p/sentex-ids (:records kb)))
                      (count (p/justification-ids (:records kb)))
-                     (count (jtms/datums (:tms kb)))))
+                     (count (jtms/datums (reasoning/tms kb)))))
     ;; ---- the replay shape: recover the loaded store ----
     (println (format "### recovering (replay, no chaining)…"))
     (if dir

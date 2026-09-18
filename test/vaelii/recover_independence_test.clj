@@ -30,6 +30,7 @@
             [vaelii.core :as v]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -66,7 +67,7 @@
     ;; `cat_t` joins the metatype by inference alone — nothing states `(species cat_t)`
     (v/assert kb (list 'implies (list seedOf '?x) (list species '?x)) 'CxUniverse {:direction :forward})
     (v/assert kb (list seedOf cat_t) 'CxUniverse)
-    (let [observe (fn [k] {:members  (tax/metatype-members (:taxonomy k) species)
+    (let [observe (fn [k] {:members  (tax/metatype-members (reasoning/taxonomy k) species)
                            :disjoint (v/disjoint? k dog_t cat_t)
                            :stored   (boolean (seq (v/sentexes-matching k (list species cat_t) '?c)))})
           reading (one-reading! "a rule-derived metatype member" kb observe)]

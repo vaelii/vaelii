@@ -12,8 +12,8 @@
   commit does, which is the whole claim the proposal panel rests on."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
+            [vaelii.browser.web :as web]
             [vaelii.core :as v]
-            [vaelii.host.web :as web]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded tu/load-starter!))

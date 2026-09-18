@@ -19,9 +19,9 @@
   page promises it is not doing."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
+            [vaelii.browser.sandbox :as sandbox]
+            [vaelii.browser.web :as web]
             [vaelii.core :as v]
-            [vaelii.host.sandbox :as sandbox]
-            [vaelii.host.web :as web]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded tu/load-starter!))

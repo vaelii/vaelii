@@ -25,6 +25,7 @@
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.protocols :as p]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (defn- fixpoint-content
@@ -33,7 +34,7 @@
   consequence, informant and antecedents mapped from handles to [sentence context]."
   [kb]
   (let [recs (:records kb)
-        tms  (:tms kb)
+        tms  (reasoning/tms kb)
         sent (fn [h] (let [s (p/get-sentex recs h)] [(v/sentence-of s) (:context s)]))]
     {:sentexes
      (sort-by pr-str
@@ -95,9 +96,9 @@
               h2 (kb/find-sentex-handle kb (list spans A C) CxStory)]
           (is (some? h1) "the two-witness conclusion is derived")
           (is (some? h2) "and carries the rule above it")
-          (is (= 2 (count (jtms/supports (:tms kb) h1)))
+          (is (= 2 (count (jtms/supports (reasoning/tms kb) h1)))
               "one justification per distinct witness — suppression drops neither")
-          (is (= 1 (count (jtms/supports (:tms kb) h2)))
+          (is (= 1 (count (jtms/supports (reasoning/tms kb) h2)))
               "and exactly one where there is one witness"))))))
 
 ;; ---- a fact that fills two positions of one rule ------------------------
@@ -214,16 +215,16 @@
         (is (seq (v/sentexes-matching kb conclusion CxStory))
             "the settle's own re-seed derives the conclusion")
         (let [h (kb/find-sentex-handle kb conclusion CxStory)]
-          (is (= 1 (count (jtms/supports (:tms kb) h)))
+          (is (= 1 (count (jtms/supports (reasoning/tms kb) h)))
               "on exactly one justification, naming both antecedents")
           (is (= #{[(list pa X Z) CxStory] [(list qa Z Y) CxStory]}
                  (into #{}
-                       (comp (map #(jtms/justification (:tms kb) %))
+                       (comp (map #(jtms/justification (reasoning/tms kb) %))
                              (mapcat :antecedents)
                              (keep #(p/get-sentex (:records kb) %))
                              (remove :antecedent)      ; the rule handle is in there too
                              (map (juxt v/sentence-of :context)))
-                       (jtms/supports (:tms kb) h)))
+                       (jtms/supports (reasoning/tms kb) h)))
               "and those antecedents are the two facts")))
       (agree (both-ways load!) "an assert/defeat/undefeat sequence"))))
 
@@ -296,11 +297,11 @@
         (v/assert kb f CxStory {:strength :monotonic :chain? false}))
       (v/forward-chain kb)
       (let [h (kb/find-sentex-handle kb (list reaches A C) CxStory)]
-        (is (= 2 (count (jtms/supports (:tms kb) h))) "two witnesses to begin with")
+        (is (= 2 (count (jtms/supports (reasoning/tms kb) h))) "two witnesses to begin with")
         (v/retract! kb (kb/find-sentex-handle kb (list leadsTo B C) CxStory))
         (is (seq (v/sentexes-matching kb (list reaches A C) CxStory))
             "the conclusion stands on the witness that is left")
-        (is (= 1 (count (jtms/supports (:tms kb)
+        (is (= 1 (count (jtms/supports (reasoning/tms kb)
                                        (kb/find-sentex-handle kb (list reaches A C)
                                                               CxStory))))
             "on one justification")))))

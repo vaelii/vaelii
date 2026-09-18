@@ -28,6 +28,7 @@
             [vaelii.koinii.catchup :as cu]
             [vaelii.koinii.channel :as ch]
             [vaelii.koinii.speech-acts :as sa]
+            [vaelii.koinii.types :as koinii-types]
             [vaelii.test-util :as tu])
   (:import [java.util.concurrent CountDownLatch TimeUnit]
            [org.eclipse.jetty.server Server]))
@@ -115,7 +116,7 @@
   medium's business and reaching one is the test's own bug."
   [script]
   #_{:clj-kondo/ignore [:missing-protocol-method]}
-  (reify ch/Medium
+  (reify koinii-types/Medium
     (-feed-open [_ _goal _ctx] ((:open script)))
     (-query [_ _goal _ctx] ((:query script)))
     (-feed-poll [_ token cursor _opts] ((:poll script) token cursor))))
@@ -126,7 +127,7 @@
   ([] (recording-store (fn [])))
   ([on-read]
    (let [a (atom nil)]
-     (reify cu/CursorStore
+     (reify koinii-types/CursorStore
        (read-position [_] (on-read) @a)
        (write-position! [_ p] (reset! a p) p)))))
 
@@ -142,7 +143,7 @@
                  :query (fn [] [])
                  :poll  (fn [_ _] (throw (ex-info "the proxy hung up" {})))})
         c      (cu/open {:medium medium} goal 'CxDeploy store #{'(queries Ava Q1)})]
-    (cu/write-position! store {:token "T" :cursor 7})       ; a consumer mid-stream
+    (koinii-types/write-position! store {:token "T" :cursor 7})       ; a consumer mid-stream
     (testing "an exception with no :type is reported, not swallowed"
       (let [e (try (cu/sync! c) nil (catch clojure.lang.ExceptionInfo e e))]
         (is (some? e) "sync! reported the error")
@@ -162,7 +163,7 @@
                                     (catch clojure.lang.ExceptionInfo e e)))))
             "the transport's own refusal rides out, the default only standing in for none")))
     (testing "and the cursor is left where it was — never advanced past a poll that failed"
-      (is (= {:token "T" :cursor 7} (cu/read-position store))))
+      (is (= {:token "T" :cursor 7} (koinii-types/read-position store))))
     (testing "the view is untouched too"
       (is (= #{'(queries Ava Q1)} (cu/view-of c))))))
 
@@ -254,11 +255,11 @@
                              {:events [] :cursor n :lagged (max 0 (- 4 n))}))})
         store   (recording-store)
         c       (cu/open {:medium medium} goal 'CxDeploy store)]
-    (cu/write-position! store {:token "T" :cursor 7})        ; a consumer mid-stream
+    (koinii-types/write-position! store {:token "T" :cursor 7})        ; a consumer mid-stream
     (testing "one pass re-snapshots on each lag and returns the complete view"
       (is (= #{(q 'Q1) (q 'Q2)} (cu/sync! c)))
       (is (< 1 @queries) "a later lag re-read current state rather than being carried silently")
-      (is (= {:token "T" :cursor 4} (cu/read-position store))
+      (is (= {:token "T" :cursor 4} (koinii-types/read-position store))
           "ending drained to the head, with the position persisted"))))
 
 (deftest a-consumer-that-never-stops-lagging-is-told-not-silently-stalled
@@ -271,7 +272,7 @@
                  :poll  (fn [_ _] {:events [] :cursor 1 :lagged 5})})     ; always lagging
         store  (recording-store)
         c      (cu/open {:medium medium} goal 'CxDeploy store)]
-    (cu/write-position! store {:token "T" :cursor 7})
+    (koinii-types/write-position! store {:token "T" :cursor 7})
     (is (thrown-with-msg? clojure.lang.ExceptionInfo #"not keeping up"
                           (cu/sync! c)))))
 
@@ -296,7 +297,7 @@
                  :poll  (fn [_ _] (throw (ex-info "gone" {:type :unknown-subscription})))})
         store  (recording-store)
         c      (cu/open {:medium medium} goal 'CxDeploy store)]
-    (cu/write-position! store {:token "T" :cursor 7})         ; a consumer mid-stream
+    (koinii-types/write-position! store {:token "T" :cursor 7})         ; a consumer mid-stream
     (let [e (try (cu/sync! c) nil (catch clojure.lang.ExceptionInfo e e))
           d (ex-data e)]
       (is (= :koinii/catchup-thrashing (:type d))
@@ -310,7 +311,7 @@
       (is (= @#'cu/max-catchup-snapshots (:snapshots d))
           "and says how much of it went"))
     (testing "the cursor is left where it was — never advanced past a stream that stopped"
-      (is (= {:token "T" :cursor 7} (cu/read-position store))))))
+      (is (= {:token "T" :cursor 7} (koinii-types/read-position store))))))
 
 (deftest a-poll-that-answers-without-a-cursor-is-refused-not-stored
   ;; The other half of `a-poll-that-throws-without-a-type-is-still-a-failure`: a poll that
@@ -325,13 +326,13 @@
                  :query (fn [] [])
                  :poll  (fn [_ _] {:events [] :cursor nil})})
         c      (cu/open {:medium medium} goal 'CxDeploy store #{'(queries Ava Q1)})]
-    (cu/write-position! store {:token "T" :cursor 7})        ; a consumer mid-stream
+    (koinii-types/write-position! store {:token "T" :cursor 7})        ; a consumer mid-stream
     (let [d (try (cu/sync! c) nil (catch clojure.lang.ExceptionInfo e (ex-data e)))]
       (is (= :koinii/no-cursor (:type d))
           "a reply with no position to resume from is refused by name")
       (is (= ["T" nil] [(:token d) (:cursor d)])
           "naming the subscription it came back on and what it answered with"))
     (testing "and nothing of the consumer moved"
-      (is (= {:token "T" :cursor 7} (cu/read-position store))
+      (is (= {:token "T" :cursor 7} (koinii-types/read-position store))
           "the stored position stands, so the next sync! resumes rather than bootstraps")
       (is (= #{'(queries Ava Q1)} (cu/view-of c)) "and the view is untouched"))))

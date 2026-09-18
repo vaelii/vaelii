@@ -20,6 +20,7 @@
             [vaelii.impl.plan :as plan]
             [vaelii.impl.point :as point]
             [vaelii.impl.provers :as provers]
+            [vaelii.impl.types.prover :as prover-types]
             [vaelii.test-util :as tu]))
 
 ;; A fresh KB per test: the CxCore grammar, the CxTime vocabulary the goals are written in
@@ -202,7 +203,7 @@
 
 (tu/deftest-kb a-computed-answer-rests-on-nothing-stored
   (testing "the prover reports no support, which is the claim that no retraction reaches it"
-    (is (not (satisfies? provers/SupportingProver (cal/calendar-prover))))
+    (is (not (satisfies? prover-types/SupportingProver (cal/calendar-prover))))
     (is (= [#{}] (mapv second (provers/solve-goal-with-support
                                kb '(during (MonthFn 2000 3) (YearFn 2000)) C)))))
   (testing "and there is no sentex to have a handle — the fixture's net-neutrality check

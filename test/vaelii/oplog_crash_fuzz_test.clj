@@ -19,8 +19,9 @@
   never crashed, where `n` is the number of frames the restore replayed.  A restore that
   declines leaves a directory whose next open believes what a rebuild from its records
   believes: the images it keeps are ones the open refuses, or ones that describe the
-  records.  A throw carrying no `:type`, a hang, and a restored KB that differs from its
-  reference are failures.
+  records.  An open of the cut directory may refuse with a `:type`, which counts as a
+  decline.  A throw from `restore!` once the open succeeded, a throw carrying no `:type`,
+  a hang, and a restored KB that differs from its reference are failures.
 
   The `^:fuzz` test walks every offset; the unmarked one walks a seeded sample, so the
   harness runs on every commit (`vaelii.truncation-fuzz-test` states the rule)."
@@ -153,32 +154,42 @@
   60000)
 
 (defn- rebuilt-view
-  "The view of `dir` opened with no images: a copy with `index/` and `belief/` removed,
+  "The view of `dir` opened with no images: a copy with `index/` and `reasoning/` removed,
   so the open rebuilds both from the records."
   [^String dir]
   (let [copy (tmpdir)]
     (try
       (copy-dir! dir copy)
       (rm-rf! (str copy "/index"))
-      (rm-rf! (str copy "/belief"))
+      (rm-rf! (str copy "/reasoning"))
       (let [kb (open copy {:recover? :auto})]
         (try (view kb) (finally (v/close! kb))))
       (finally (backend/close-dir! copy) (rm-rf! copy)))))
 
 (defn- restore-outcome
   "What restoring `dir` did: `{:restored n}`, `{:declined reason}`, `{:wrong …}`,
-  `{:refused type}`, `{:untyped …}`, `{:threw …}` or `{:hang true}`."
+  `{:restore-threw …}`, `{:refused type}`, `{:untyped …}`, `{:threw …}` or
+  `{:hang true}`.  `:refused` is a typed throw from the open, before `restore!` runs."
   [^String dir reference]
   (let [f (future
             (try
               (let [kb (open dir)
-                    r  (seal/restore! kb)]
-                (if (:restored r)
+                    r  (try (seal/restore! kb)
+                            (catch Throwable t
+                              {::threw (str (.getName (class t)) ": " (ex-message t) " "
+                                            (pr-str (ex-data t)))}))]
+                (cond
+                  (::threw r)
+                  (do (v/close! kb) {:restore-threw (::threw r)})
+
+                  (:restored r)
                   (let [n    (:frames r)
                         got  (try (view (:kb r)) (finally (v/close! (:kb r))))
                         want (reference n)]
                     (if (= want got) {:restored n} {:wrong n :missing (remove got want)
                                                     :extra (remove want got)}))
+
+                  :else
                   (do (v/close! kb)
                       (let [got (let [kb2 (open dir {:recover? :auto})]
                                   (try (view kb2) (finally (v/close! kb2))))
@@ -232,7 +243,8 @@
                     (cond-> (update acc :offsets inc)
                       (:restored r) (update :restored inc)
                       (or (contains? r :declined) (:refused r)) (update :declined inc)
-                      (some r [:wrong :untyped :threw :hang]) (update :bad conj [rel k r]))))
+                      (some r [:wrong :restore-threw :untyped :threw :hang])
+                      (update :bad conj [rel k r]))))
                 {:offsets 0 :restored 0 :declined 0 :bad []}
                 (cuts shape sample)))
       (finally (backend/close-dir! dir) (rm-rf! dir) (rm-rf! crash)))))

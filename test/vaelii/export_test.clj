@@ -15,8 +15,8 @@
   reader cannot walk fails here rather than in a year's time."
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
+            [vaelii.browser.catalog :as catalog]
             [vaelii.core :as v]
-            [vaelii.host.catalog :as catalog]
             [vaelii.impl.disk.backend :as backend]
             [vaelii.impl.io.export :as export]
             [vaelii.impl.io.frames :as fr]
@@ -24,6 +24,7 @@
             [vaelii.impl.protocols :as p]
             [vaelii.impl.rules :as vr]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.types.sentex :as sentex-types]
             [vaelii.test-util :as tu])
   (:import (java.io File)
            (java.nio.file Files)
@@ -410,8 +411,8 @@
     (justification-ids [_] #{})
     (get-sentex [_ id]
       (vswap! fetches inc)
-      (sx/->LiteralSentex (list 'synthetic (symbol (str "Ind" id))) 'CxSynthetic
-                          id nil))
+      (sentex-types/->LiteralSentex (list 'synthetic (symbol (str "Ind" id))) 'CxSynthetic
+                                    id nil))
     (get-provenance [_ _] nil)))
 
 (deftest ^:slow the-writer-never-runs-more-than-a-chunk-ahead-of-what-it-has-written

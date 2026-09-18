@@ -30,11 +30,12 @@
             [vaelii.impl.dense-kv :as dense]
             [vaelii.impl.dense-roots :as dr]
             [vaelii.impl.disk.kv :as dkv]
-            [vaelii.impl.kv :as kv]
             [vaelii.impl.memory :as mem]
             [vaelii.impl.overlay.frozen :as frozen]
             [vaelii.impl.overlay.kv :as okv]
-            [vaelii.impl.tokens :as tok])
+            [vaelii.impl.protocols :as p]
+            [vaelii.impl.tokens :as tok]
+            [vaelii.impl.types.postings :as postings])
   (:import [java.nio.file Files]
            [java.nio.file.attribute FileAttribute]))
 
@@ -44,9 +45,9 @@
   "The property, for one backend over `ks` × `ms`."
   [b label ks ms]
   (doseq [k ks]
-    (let [s (kv/kv-members b k)]
+    (let [s (p/kv-members b k)]
       (doseq [m ms]
-        (is (= (contains? s m) (boolean (kv/kv-member? b k m)))
+        (is (= (contains? s m) (boolean (p/kv-member? b k m)))
             (str label ": " (pr-str k) " ∋ " (pr-str m)
                  " — members says " (contains? s m)))))))
 
@@ -84,30 +85,30 @@
       (let [r (.nextInt rng 100)]
         (cond
           (< r 50) (let [k (pick handle-keys) m (.nextInt rng 300)]
-                     (doseq [b backends] (kv/kv-add-to-set b k m)))
+                     (doseq [b backends] (p/kv-add-to-set b k m)))
           (< r 70) (let [k (pick handle-keys) m (.nextInt rng 300)]
-                     (doseq [b backends] (kv/kv-remove-from-set b k m)))
+                     (doseq [b backends] (p/kv-remove-from-set b k m)))
           (< r 90) (let [k (pick label-keys)
                          m (if (< (.nextDouble rng) 0.5)
                              (symbol (str "s" (.nextInt rng 40)))
                              (long (.nextInt rng 2000)))]
-                     (doseq [b backends] (kv/kv-add-to-set b k m)))
+                     (doseq [b backends] (p/kv-add-to-set b k m)))
           :else    (let [k (pick label-keys) m (symbol (str "s" (.nextInt rng 40)))]
-                     (doseq [b backends] (kv/kv-remove-from-set b k m))))))))
+                     (doseq [b backends] (p/kv-remove-from-set b k m))))))))
 
 (defn- check-probe
   "Churn `b` and then hold it to the property on both key families."
   [b label]
-  (kv/kv-clear! b)
+  (p/kv-clear! b)
   (churn! [b] 4242 6000)
   (probe-agrees b label handle-keys handle-probes)
   (probe-agrees b label label-keys  label-probes)
   (testing (str label ": an emptied key holds nothing")
-    (doseq [m (kv/kv-members b [:functor-root 'p0])]
-      (kv/kv-remove-from-set b [:functor-root 'p0] m))
-    (is (not (kv/kv-member? b [:functor-root 'p0] 1))))
+    (doseq [m (p/kv-members b [:functor-root 'p0])]
+      (p/kv-remove-from-set b [:functor-root 'p0] m))
+    (is (not (p/kv-member? b [:functor-root 'p0] 1))))
   (testing (str label ": and a cleared store holds nothing")
-    (kv/kv-clear! b)
+    (p/kv-clear! b)
     (probe-agrees b label handle-keys [0 1 199])))
 
 ;; ---- the plain backends ---------------------------------------------------
@@ -121,20 +122,20 @@
   ;; builds a Clojure set
   (let [b (dense/dense-kv-backend {:space [::member-dense]})]
     (check-probe b "dense")
-    (kv/kv-clear! b)
+    (p/kv-clear! b)
     (testing "past the int[] → RoaringBitmap promotion, where the probe switches structure"
-      (dotimes [i (* 4 dense/promote)] (kv/kv-add-to-set b [:functor-root 'hot] (* 2 i)))
-      (is (> (kv/kv-count b [:functor-root 'hot]) dense/promote) "the posting is a bitmap")
+      (dotimes [i (* 4 postings/promote)] (p/kv-add-to-set b [:functor-root 'hot] (* 2 i)))
+      (is (> (p/kv-count b [:functor-root 'hot]) postings/promote) "the posting is a bitmap")
       (probe-agrees b "dense/roaring" [[:functor-root 'hot]]
-                    (vec (range 0 (* 8 dense/promote) 7))))
-    (kv/kv-clear! b)))
+                    (vec (range 0 (* 8 postings/promote) 7))))
+    (p/kv-clear! b)))
 
 (deftest dense-roots-probe-agrees-with-its-sets
   ;; every routed family, plus the fallback the label keys land in — and a term the shared
   ;; dictionary has never interned, which has no posting to probe at all
   (let [b (dr/dense-roots (tok/token-dict))]
     (check-probe b "dense-roots")
-    (is (not (kv/kv-member? b [:term-index 'NeverInterned] 1))
+    (is (not (p/kv-member? b [:term-index 'NeverInterned] 1))
         "an unknown term is a false, not a lookup")))
 
 (deftest disk-backend-probe-agrees-with-its-sets
@@ -160,12 +161,12 @@
   "`(base(K) ∪ overlay(K)) − removed(K)`, with `base(K)` empty when K is tombstoned or the
   whole overlay is cleared."
   [ov base k]
-  (let [own (kv/kv-members ov k)]
-    (if (or (some? (kv/kv-get ov cleared-key))
-            (contains? (kv/kv-members ov deleted-keys-key) k))
+  (let [own (p/kv-members ov k)]
+    (if (or (some? (p/kv-get ov cleared-key))
+            (contains? (p/kv-members ov deleted-keys-key) k))
       own
-      (set/difference (into (kv/kv-members base k) own)
-                      (kv/kv-members ov (removed-key k))))))
+      (set/difference (into (p/kv-members base k) own)
+                      (p/kv-members ov (removed-key k))))))
 
 (def ^:private base-content
   '{[:functor-root untouched]  #{1 2 3}          ; inherited whole, never touched by the fork
@@ -188,21 +189,21 @@
 (defn- edit-fork!
   "One edit of every shape the merge rule distinguishes."
   [f]
-  (kv/kv-add-to-set      f '[:functor-root extended] 12)
-  (kv/kv-remove-from-set f '[:functor-root partial] 21)
-  (doseq [m [30 31]] (kv/kv-remove-from-set f '[:functor-root emptied] m))
-  (kv/kv-delete          f '[:functor-root tombed])
-  (kv/kv-delete          f '[:functor-root readded])
-  (kv/kv-add-to-set      f '[:functor-root readded] 55)
-  (kv/kv-remove-from-set f '[:functor-root roundtrip] 60)
-  (kv/kv-add-to-set      f '[:functor-root roundtrip] 60)   ; the removal record empties again
-  (kv/kv-remove-from-set f '[:functor-root shareda] 20)     ; narrows the overlap to {40}
-  (kv/kv-add-to-set      f '[:functor-root sharedb] 60)     ; and widens it back to {40 60}
-  (kv/kv-add-to-set      f '[:functor-root forkonly] 80)
-  (kv/kv-remove-from-set f '[:exception-index :rules] 70)
-  (kv/kv-add-to-set      f '[:exception-index :rules] 72)
-  (kv/kv-add-to-set      f '[:trie :children [p0]] 'tok2)
-  (kv/kv-remove-from-set f '[:trie :children [p0]] 'tok0))
+  (p/kv-add-to-set      f '[:functor-root extended] 12)
+  (p/kv-remove-from-set f '[:functor-root partial] 21)
+  (doseq [m [30 31]] (p/kv-remove-from-set f '[:functor-root emptied] m))
+  (p/kv-delete          f '[:functor-root tombed])
+  (p/kv-delete          f '[:functor-root readded])
+  (p/kv-add-to-set      f '[:functor-root readded] 55)
+  (p/kv-remove-from-set f '[:functor-root roundtrip] 60)
+  (p/kv-add-to-set      f '[:functor-root roundtrip] 60)   ; the removal record empties again
+  (p/kv-remove-from-set f '[:functor-root shareda] 20)     ; narrows the overlap to {40}
+  (p/kv-add-to-set      f '[:functor-root sharedb] 60)     ; and widens it back to {40 60}
+  (p/kv-add-to-set      f '[:functor-root forkonly] 80)
+  (p/kv-remove-from-set f '[:exception-index :rules] 70)
+  (p/kv-add-to-set      f '[:exception-index :rules] 72)
+  (p/kv-add-to-set      f '[:trie :children [p0]] 'tok2)
+  (p/kv-remove-from-set f '[:trie :children [p0]] 'tok0))
 
 (def ^:private intersect-combos
   "Key groups a fork narrows over — `sentexes-with-args` intersects the
@@ -231,7 +232,7 @@
   [f ov base label]
   (doseq [combo intersect-combos]
     (is (= (reduce set/intersection (map #(ref-members ov base %) combo))
-           (kv/kv-intersect f combo))
+           (p/kv-intersect f combo))
         (str label ": intersect " (pr-str combo)))))
 
 (defn- check-merged
@@ -239,18 +240,18 @@
   [f ov base label ks]
   (doseq [k ks]
     (let [expect (ref-members ov base k)]
-      (is (= expect (kv/kv-members f k)) (str label ": members " (pr-str k)))
-      (is (= (count expect) (kv/kv-count f k)) (str label ": count " (pr-str k)))
+      (is (= expect (p/kv-members f k)) (str label ": members " (pr-str k)))
+      (is (= (count expect) (p/kv-count f k)) (str label ": count " (pr-str k)))
       (doseq [m (if (= '[:trie :children [p0]] k)
                   '[tok0 tok1 tok2 tok9]
                   [1 2 3 10 11 12 20 21 22 30 31 40 41 50 51 55 60 61 70 71 72 80 99])]
-        (is (= (contains? expect m) (boolean (kv/kv-member? f k m)))
+        (is (= (contains? expect m) (boolean (p/kv-member? f k m)))
             (str label ": " (pr-str k) " ∋ " (pr-str m)))))))
 
 (defn- run-overlay-arm [raw-base label]
-  (kv/kv-clear! raw-base)
-  (doseq [[k ms] base-content, m ms] (kv/kv-add-to-set raw-base k m))
-  (let [ov   (doto (mem/memory-kv-backend {:space [::member-fork]}) (kv/kv-clear!))
+  (p/kv-clear! raw-base)
+  (doseq [[k ms] base-content, m ms] (p/kv-add-to-set raw-base k m))
+  (let [ov   (doto (mem/memory-kv-backend {:space [::member-fork]}) (p/kv-clear!))
         base (frozen/frozen-kv raw-base)
         f    (okv/overlay-kv ov base)]
     (testing (str label ": a fork that has written nothing is its base, exactly")
@@ -261,14 +262,14 @@
       (check-merged f ov base label fork-keys)
       (check-intersections f ov base label))
     (testing (str label ": a wholesale clear hides the base without emptying it")
-      (kv/kv-clear! f)
+      (p/kv-clear! f)
       (check-merged f ov base label fork-keys)
-      (kv/kv-add-to-set f '[:functor-root untouched] 7)      ; usable again, base still hidden
-      (kv/kv-add-to-set f '[:exception-index :rules] 73)
+      (p/kv-add-to-set f '[:functor-root untouched] 7)      ; usable again, base still hidden
+      (p/kv-add-to-set f '[:exception-index :rules] 73)
       (check-merged f ov base label fork-keys)
       (check-intersections f ov base label))
-    (kv/kv-clear! ov)
-    (kv/kv-clear! raw-base)))
+    (p/kv-clear! ov)
+    (p/kv-clear! raw-base)))
 
 (deftest a-fork-over-a-flat-map-base-merges-and-probes-by-the-rule
   (run-overlay-arm (mem/memory-kv-backend {:space [::member-ovbase]}) "overlay/memory"))
@@ -284,20 +285,20 @@
   ;; The fast-path claim itself, stated behaviourally: on a key the fork has never touched
   ;; the merged answer is the base's own, member for member and count for count — including
   ;; the roster, which is what `exception-rule?` probes through the protocol.
-  (let [raw  (doto (dense/dense-kv-backend {:space [::member-inherit]}) (kv/kv-clear!))
-        _    (doseq [i (range 400)] (kv/kv-add-to-set raw [:functor-root 'wide] i))
-        _    (doseq [i (range 5)]   (kv/kv-add-to-set raw [:exception-index :rules] i))
-        ov   (doto (mem/memory-kv-backend {:space [::member-inherit-fork]}) (kv/kv-clear!))
+  (let [raw  (doto (dense/dense-kv-backend {:space [::member-inherit]}) (p/kv-clear!))
+        _    (doseq [i (range 400)] (p/kv-add-to-set raw [:functor-root 'wide] i))
+        _    (doseq [i (range 5)]   (p/kv-add-to-set raw [:exception-index :rules] i))
+        ov   (doto (mem/memory-kv-backend {:space [::member-inherit-fork]}) (p/kv-clear!))
         base (frozen/frozen-kv raw)
         f    (okv/overlay-kv ov base)]
-    (is (= 400 (kv/kv-count f [:functor-root 'wide])))
-    (is (= (kv/kv-members raw [:functor-root 'wide]) (kv/kv-members f [:functor-root 'wide])))
-    (is (kv/kv-member? f [:exception-index :rules] 3))
-    (is (not (kv/kv-member? f [:exception-index :rules] 9)))
+    (is (= 400 (p/kv-count f [:functor-root 'wide])))
+    (is (= (p/kv-members raw [:functor-root 'wide]) (p/kv-members f [:functor-root 'wide])))
+    (is (p/kv-member? f [:exception-index :rules] 3))
+    (is (not (p/kv-member? f [:exception-index :rules] 9)))
     (testing "and one write to the key does not change any of those answers"
-      (kv/kv-add-to-set f [:functor-root 'wide] 1000)
-      (is (= 401 (kv/kv-count f [:functor-root 'wide])))
-      (is (kv/kv-member? f [:functor-root 'wide] 1000))
-      (is (kv/kv-member? f [:functor-root 'wide] 399)))
-    (kv/kv-clear! ov)
-    (kv/kv-clear! raw)))
+      (p/kv-add-to-set f [:functor-root 'wide] 1000)
+      (is (= 401 (p/kv-count f [:functor-root 'wide])))
+      (is (p/kv-member? f [:functor-root 'wide] 1000))
+      (is (p/kv-member? f [:functor-root 'wide] 399)))
+    (p/kv-clear! ov)
+    (p/kv-clear! raw)))

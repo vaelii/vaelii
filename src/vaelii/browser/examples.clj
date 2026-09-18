@@ -1,6 +1,6 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
-(ns vaelii.host.examples
+(ns vaelii.browser.examples
   "Worked examples of the reasoning the shipped ontology actually does — the data, and
   the one function that runs one.
 
@@ -26,7 +26,7 @@
 
   `:expect` is what the ontology is supposed to answer, and `examples_test` asserts
   every one of them — so the page cannot drift away from the KB it describes."
-  (:require [vaelii.host.access :as v]))
+  (:require [vaelii.browser.access :as v]))
 
 ;; ---- the table ----------------------------------------------------------
 

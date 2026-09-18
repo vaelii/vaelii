@@ -21,8 +21,13 @@
   `vaelii.txt` and `expected/a_ext.sha1`) and is required — see `corpus-dir`.
 
   Run: VAELII_PYRAMID_CORPUS=<corpus>/join.1k \\
-       lein update-in :jvm-opts conj '\"-XX:TieredStopAtLevel=4\"' -- \\
-         with-profile +bench run -m vaelii.bench.pyramid time 3
+       lein with-profile +bench run -m vaelii.bench.pyramid time 3
+
+  The reading needs C2, and project.clj's top-level `:jvm-opts` declares it:
+  leiningen's `:base` profile caps a project JVM at `-XX:TieredStopAtLevel=1`
+  when LEIN_JVM_OPTS names \"Tiered\", and the declared vector replaces `:base`'s
+  copy.  A run that names `-XX:TieredStopAtLevel=4` by hand no longer changes the
+  compiler level.
 
   Heap: join.1k's fixpoint is ~400 MB resident (the `heap-used-mb` figure each
   `time` line prints).  join.10k derives ~2.7M `a` pairs plus intermediates and its
@@ -37,7 +42,8 @@
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.protocols :as p]
-            [vaelii.impl.rete :as rete])
+            [vaelii.impl.rete :as rete]
+            [vaelii.impl.types.reasoning :as reasoning])
   (:import (java.security MessageDigest)))
 
 (defn- corpus-dir
@@ -121,7 +127,7 @@
   file whatever handles they allocated."
   [kb]
   (let [recs (:records kb)
-        tms  (:tms kb)
+        tms  (reasoning/tms kb)
         sent (fn [h] (let [s (p/get-sentex recs h)] [(:sentence s) (:context s)]))
         sxs  (sort-by pr-str
                       (map (fn [id]

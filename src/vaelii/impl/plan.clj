@@ -191,7 +191,8 @@
   execution rather than belief."
   (:require [vaelii.impl.reads :as reads]
             [vaelii.impl.sentex :as sx]
-            [vaelii.impl.taxonomy :as tax]))
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 ;; ---- the cost model -----------------------------------------------------
 
@@ -445,7 +446,7 @@
        (let [[t a] goal
              ;; the same scoped fan the matcher will walk (`res/sub-predicates`): an
              ;; invisible subtype contributes no matches, so it must contribute no cost
-             specs (tax/specs (:taxonomy kb) t context)]
+             specs (tax/specs (reasoning/taxonomy kb) t context)]
          (min unbounded
               (if (open-atom? a bound)
                 (fan-of-roots ix specs count-at)
@@ -653,7 +654,7 @@
                (unary-literal? goal)
                (let [[t a] goal
                      parts (mapv #(prefix-summary ix (list % a) count-at count-children)
-                                 (tax/specs (:taxonomy kb) t context))
+                                 (tax/specs (reasoning/taxonomy kb) t context))
                      rows  (min (double unbounded) (reduce + 0.0 (map :rows parts)))]
                  {:rows rows
                   :distinct (cap-distinct (apply merge-with + {} (map :distinct parts)) rows)})

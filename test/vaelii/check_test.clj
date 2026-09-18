@@ -471,8 +471,8 @@
           (is (empty? (v/sentexes-matching kb (list dog '?x) CxIst))))))))
 
 (deftest ist-reads-nothing-so-it-is-refused-anywhere-it-would-have-to
-  ;; `ist` places: `assert` finds-or-creates in Ctx, a consequent names where its
-  ;; conclusion lands.  Put one where a rule *reads* and it is indexed and matched under
+  ;; `ist` names a context at the `assert` and read entry points.  Put one where a rule
+  ;; *reads* and it is indexed and matched under
   ;; the functor `ist`, which no sentex carries — so it satisfies nothing, and the rule
   ;; decides itself on a context it never consulted.  Four layers already read the frame
   ;; as meaningful (the naming check descends the context slot, range restriction counts
@@ -509,9 +509,13 @@
                                               'CxUniverse)))]
             (is (re-find #"decontextualized_predicate" msg))
             (is (re-find #"genlCx" msg))))
-        (testing "an ist consequent is untouched — it is the placement escape hatch"
-          (is (= [] (v/check kb (list 'implies (list dog '?x) (list 'ist CxIst (list barks '?x)))
-                             'CxUniverse))))
+        (testing "an ist consequent is refused too: it would place the conclusion in a
+                  context that need not see the rule or the facts"
+          (let [placing (list 'implies (list dog '?x) (list 'ist CxIst (list barks '?x)))]
+            (is (= #{:not-well-formed} (types-of-check kb placing 'CxUniverse)))
+            (is (= :not-well-formed (assert-type kb placing 'CxUniverse)))
+            (is (re-find #"decontextualized_predicate"
+                         (:message (first (v/check kb placing 'CxUniverse)))))))
         (testing "and nothing any of it named was stored"
           (is (= before (v/sentex-count kb))))))))
 

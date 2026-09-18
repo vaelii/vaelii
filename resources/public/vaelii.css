@@ -1,151 +1,172 @@
-/* vaelii — the KB browser (vaelii.host.web).
+/* vaelii — the KB browser (vaelii.browser.web).
 
-   Two typefaces, split by what the text *is*:
+   Two typefaces, one job each.  Hasklig sets everything the KB stores or the terminal
+   draws: sentences, terms, handles, index keys, frame titles, tables, buttons and the
+   editor.  Atkinson Hyperlegible Next sets English written for a reader: a paragraph,
+   a hint, a `comment` string off the KB.  `font-weight: 600` on a title, a type term or
+   a table head is the browser synthesizing a heavier level, which is what declaring only
+   400 keeps on — a `font-weight: 400 700` range would claim a face covers bold and the
+   emphasis would flatten instead.
 
-     • Hasklig (monospace) — the formal content: sentences, terms, handles, index
-       keys, query inputs.  A knowledge base reads like code, so it is set like code.
-     • Atkinson Hyperlegible Next (proportional) — natural-language text only:
-       headings, prose, section labels, the predicate comments.  Proportional is
-       reserved for prose; it never touches a sentence.
-
-   **One weight per family.**  Two files is the whole webfont budget — a page of
-   sentences is one typeface used well, not four cuts of it — so each family ships
-   its regular and the browser synthesizes the heavier levels (`font-weight: 600` on
-   the wordmark, a type term, an active menubar link, a table head).  Nothing here
-   asks for italic.  Declaring only 400 per family is what keeps synthesis on: a
-   `font-weight: 400 700` range would claim the face covers bold and emphasis would
-   flatten instead.
+   The page is a **terminal**: a dark ground, square frames around every region, a title
+   set into the top border of the frame it names, and the region's own numbers at the
+   right of that border.  Light mode inverts the ground and nothing else.
 
    Terms inside a sentence are colour-coded by their naming role (type / individual /
    predicate / context / number / variable), and a sentex's handle is shown as a
    colour-coded badge encoding its kind, direction, origin, and belief.  See docs/web.md. */
 
 @font-face {
-  font-family: "Atkinson Hyperlegible Next";
-  src: url("/font/AtkinsonHyperlegibleNext-Regular.woff2") format("woff2");
-  font-weight: 400; font-style: normal; font-display: swap;
-}
-@font-face {
   font-family: "Hasklig";
   src: url("/font/Hasklig-Regular.woff2") format("woff2");
   font-weight: 400; font-style: normal; font-display: swap;
 }
 
-:root {
-  color-scheme: light dark;
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  src: url("/font/AtkinsonHyperlegibleNext-Regular.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
 
-  --prose: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+:root {
+  color-scheme: dark light;
+
+  /* --mono is what the KB stores and what the terminal draws; --prose is English
+     written for a reader, which Atkinson Hyperlegible Next sets at a wider aperture. */
   --mono:  "Hasklig", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --prose: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif;
+
+  /* The x-height both faces are drawn to here.  Hasklig's own is .486em and Atkinson's
+     .496em, and at one px size the monospace face still reads a step smaller, because
+     its glyphs are narrower and lighter.  .535 puts Hasklig ~10% up, which is where a
+     sentence set in it lines up with the prose around it.  It is `font-size-adjust`
+     rather than a second px size because it adjusts the **used** size and leaves the
+     computed one alone: a rule that scales its subtree with `em` still scales it, and a
+     mono span inside a mono span does not compound. */
+  --x-height: .535;
+
+  /* the node labels in a term page's concept graph.  `vaelii.browser.svg/char-w` is this
+     size times Hasklig's .6em advance and --x-height, so the two must move together. */
+  --g-label:  13.5px;
+  --g-edge:   12px;
 
   /* ---- colour palette -------------------------------------------------- */
-  /* The accent pair every themed surface derives from, picked by a
-     `data-palette` on <html> (the header's palette dot).  --accent is the fill
-     and the emphasis hue, --accent-2 its deeper/pressed partner, --accent-b the
-     second tone the palette dot's gradient runs to, and --on-accent the text a
-     filled --accent surface carries.  The values are vaelii.com's, so the
-     browser and the site read as one system.
-     Light mode's side is picked here, dark mode's in the block below. */
-  --accent:    var(--lt-accent);
-  --accent-2:  var(--lt-accent-2);
-  --accent-b:  var(--lt-accent-b);
-  --rainbow:   var(--lt-rainbow);
-  --on-accent: #fff;
+  /* The accent pair every themed surface derives from, picked by a `data-palette` on
+     <html> (the header's palette dot).  --accent is the fill and the emphasis hue,
+     --accent-2 its deeper/pressed partner, --accent-b the second tone the palette dot's
+     gradient runs to, and --on-accent the text a filled --accent surface carries.
+     Dark mode's side is picked here, light mode's in the block below. */
+  --accent:    var(--dk-accent);
+  --accent-2:  var(--dk-accent-2);
+  --accent-b:  var(--dk-accent-b);
+  --rainbow:   var(--dk-rainbow);
+  --on-accent: #0b0c10;
 
-  /* ---- light mode surfaces -------------------------------------------- */
-  /* The dark override below flips these and the accent pair above, and nothing
-     else, so the two modes never drift out of parity (docs/web.md). */
-  --bg:         #fff;      /* page background (propagates to the viewport)  */
-  --ink:        #222;      /* body text                                     */
-  --muted:      #888;      /* secondary text, hints, faint labels           */
-  --link:       #06c;
-  --edge:       #eee;      /* the header rule, subtle separators            */
-  --card:       #fff;      /* the action bar / editor / popovers            */
-  --card-edge:  #ddd;
-  --code-bg:    #f4f4f4;
-  --field-bg:   #fafafa;   /* inputs and the textarea                       */
-  --field-edge: #ccc;
-  --btn-bg:     #f4f4f4;
-  --btn-hover:  #e8e8e8;
-  --shadow:     rgba(0, 0, 0, .16);
-  --belief-bg:  #faf7f2;
-  --err-bg:     #fdeceb;
-  --err-ink:    #c0392b;
+  /* ---- dark surfaces, the base ---------------------------------------- */
+  /* The light override below flips these and the accent pair above, and nothing else,
+     so the two modes never drift out of parity (docs/web.md). */
+  --bg:         #0c0d11;   /* page background (propagates to the viewport)   */
+  --panel:      #101219;   /* inside a frame, one step off the ground        */
+  --ink:        #c7cad3;   /* body text                                      */
+  --title:      #e7e9f0;   /* a frame's title, the one brighter level        */
+  --muted:      #656b7b;   /* secondary text, hints, faint labels            */
+  --link:       #7fb0e8;
+  --edge:       #272a35;   /* every frame, rule and separator                */
+  --card:       #101219;   /* a framed region's own ground                   */
+  --card-edge:  #2f3342;
+  --code-bg:    #161922;
+  --field-bg:   #0a0b0e;   /* inputs and the textarea: below the ground      */
+  --field-edge: #2f3342;
+  --btn-bg:     #161922;
+  --btn-hover:  #1e222e;
+  --shadow:     rgba(0, 0, 0, .65);
+  --belief-bg:  #17140e;
+  --err-bg:     #1e1113;
+  --err-ink:    #e06c6c;
 
-  --badge-fact:    #6a4bbd;
-  --badge-derived: #0f766e;
-  --badge-rule:    #4f46e5;
+  /* the term roles, on btop's own spread: green for a type, magenta for an individual,
+     blue for a predicate, amber for a context, red for a number */
+  --t-type:    #7ec87e;
+  --t-ind:     #c792ea;
+  --t-pred:    #7fb0e8;
+  --t-context: #e0a566;
+  --t-num:     #e0796a;
+  --t-var:     #6b7183;
 
-  --t-type:    #0a7d5a;
-  --t-ind:     #8a2be2;
-  --t-pred:    #0645ad;
-  --t-context: #b5651d;
-  --t-num:     #cc3300;
-  --t-var:     #999;
-
-  /* derived from --accent (+ mode), so a palette change ripples automatically:
-     the wordmark, the selected-row tint/edge, and the marquee all follow the hue.
-     --brand takes the deeper partner on the light ground and the accent itself on
-     the dark one, which is the shade that reads on each. */
-  --brand:    var(--accent-2);
-  --sel-bg:   color-mix(in srgb, var(--accent) 13%, var(--card));
-  --sel-edge: color-mix(in srgb, var(--accent) 48%, var(--card));
-  --marquee:  color-mix(in srgb, var(--accent) 16%, transparent);
+  /* derived from --accent (+ mode), so a palette change ripples automatically: the
+     wordmark and the selected-card tint/edge follow the hue. */
+  --brand:    var(--accent);
+  --sel-bg:   color-mix(in srgb, var(--accent) 14%, var(--card));
+  --sel-edge: color-mix(in srgb, var(--accent) 52%, var(--card));
 }
 
 /* ---- the four palettes (data-palette, cycled by the header's palette dot) --- */
-/* Each declares both modes' values in one place; the light/dark switch picks a
-   side.  Violet is the default, and rainbow keeps violet's accents — it is the
-   gradient treatments further down that make it a distinct palette. */
+/* Each declares both modes' values in one place; the light/dark switch picks a side.
+   Violet is the default, and rainbow keeps violet's accents — it is the gradient
+   treatments further down that make it a distinct palette. */
 :root {
-  --lt-accent: #7c3aed; --lt-accent-2: #6d28d9; --lt-accent-b: #0f766e;
+  --lt-accent: #6d28d9; --lt-accent-2: #5b21b6; --lt-accent-b: #0f766e;
   --dk-accent: #a78bfa; --dk-accent-2: #c4b5fd; --dk-accent-b: #5eead4;
-  --lt-rainbow: linear-gradient(110deg,#dc2626 0%,#d97706 25%,#16a34a 50%,#0d9488 75%,#7c3aed 100%);
-  --dk-rainbow: linear-gradient(110deg,#f0857a 0%,#fbbf24 25%,#4ade80 50%,#5eead4 75%,#a78bfa 100%);
-}
-/* cyan against the warm accent, amber against the cool one: a cross-temperature
-   pair reads as two tones rather than one hue twice */
-:root[data-palette="red"] {
-  --lt-accent: #dc2626; --lt-accent-2: #b91c1c; --lt-accent-b: #0e7490;
-  --dk-accent: #f0857a; --dk-accent-2: #fca5a5; --dk-accent-b: #67e8f9;
-}
-:root[data-palette="green"] {
-  --lt-accent: #16a34a; --lt-accent-2: #15803d; --lt-accent-b: #b45309;
-  --dk-accent: #4ade80; --dk-accent-2: #86efac; --dk-accent-b: #fbbf24;
+  --lt-rainbow: linear-gradient(110deg, var(--rb1) 0%, var(--rb3) 25%, var(--rb5) 50%,
+                                var(--rb7) 75%, var(--rb9) 100%);
+  --dk-rainbow: var(--lt-rainbow);
 }
 
-/* ---- dark mode ------------------------------------------------------- */
-/* The @media form is the default, and it needs no JS: with no `data-theme` the
-   page follows the OS.  The [data-theme] forms are the explicit choice the
-   header's theme dot pins — the same variables, so a pinned theme can never
-   disagree with the OS-following one.  The accent pair flips to its dark side
-   here, and --on-accent with it: a dark-mode accent is a pastel, so the text on
-   a filled one is near-black rather than white.  sel-bg / sel-edge / marquee
-   re-derive on their own, since they mix with --card. */
-@media (prefers-color-scheme: dark) {
+/* ---- the spectrum ---------------------------------------------------- */
+/* vaelii.com's nine-step scale, in its order: red, orange, amber, green, teal, cyan,
+   blue, violet, pink.  Nesting depth, a graph's series and the paren colours all count
+   along it from --rb1, so red is what a reader meets first at every one of them. */
+:root {
+  --rb1:#ed5565; --rb2:#fc6e51; --rb3:#ffce54; --rb4:#a0d468; --rb5:#48cfad;
+  --rb6:#4fc1e9; --rb7:#5d9cec; --rb8:#ac92ec; --rb9:#ec87c0;
+}
+/* cyan against the warm accent, amber against the cool one: a cross-temperature pair
+   reads as two tones rather than one hue twice */
+:root[data-palette="red"] {
+  --lt-accent: #b91c1c; --lt-accent-2: #991b1b; --lt-accent-b: #0e7490;
+  --dk-accent: #e06c6c; --dk-accent-2: #f0a0a0; --dk-accent-b: #67e8f9;
+}
+:root[data-palette="green"] {
+  --lt-accent: #15803d; --lt-accent-2: #166534; --lt-accent-b: #b45309;
+  --dk-accent: #7ec87e; --dk-accent-2: #a6dfa6; --dk-accent-b: #e0a566;
+}
+
+/* ---- light mode ------------------------------------------------------ */
+/* The @media form needs no JS: with no `data-theme` the page follows the OS.  The
+   [data-theme="light"] form is the explicit choice the header's theme dot pins — the
+   same variables, so a pinned theme can never disagree with the OS-following one.  The
+   accent pair flips to its light side here, and --on-accent with it: a light-mode accent
+   is deep, so the text on a filled one is white rather than near-black.  sel-bg /
+   sel-edge re-derive on their own, since they mix with --card. */
+@media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
-    --bg:#14151b; --ink:#d7d8e0; --muted:#8b8e9c; --link:#79b8ff; --edge:#262735;
-    --card:#1b1c25; --card-edge:#343546; --code-bg:#21232e;
-    --field-bg:#1b1c25; --field-edge:#3a3b47; --btn-bg:#2a2b3a; --btn-hover:#343548;
-    --shadow:rgba(0,0,0,.5); --belief-bg:#1f1a12; --err-bg:#2b1512; --err-ink:#ff8f80;
-    --badge-fact:#8b6ee0; --badge-derived:#17a394; --badge-rule:#6c63ff;
-    --t-type:#45d18a; --t-ind:#c792ea; --t-pred:#79b8ff; --t-context:#e0a566;
-    --t-num:#ff9478; --t-var:#7f8494;
-    --accent: var(--dk-accent); --accent-2: var(--dk-accent-2);
-    --accent-b: var(--dk-accent-b); --rainbow: var(--dk-rainbow);
-    --on-accent:#15131f; --brand: var(--accent);
+    --bg:#f6f6f2; --panel:#fdfdfa; --ink:#2b2d33; --title:#14151a; --muted:#7a7f8c;
+    --link:#0b5fbd; --edge:#d8d8cf; --card:#fdfdfa; --card-edge:#c9c9bf;
+    --code-bg:#ecece4; --field-bg:#fff; --field-edge:#c9c9bf;
+    --btn-bg:#ecece4; --btn-hover:#e0e0d6; --shadow:rgba(0,0,0,.18);
+    --belief-bg:#faf7f2; --err-bg:#fdeceb; --err-ink:#c0392b;
+    --t-type:#0a7d5a; --t-ind:#8a2be2; --t-pred:#0645ad;
+    --t-context:#a1571a; --t-num:#c0392b; --t-var:#8b8f99;
+    --rb1:#c21527; --rb2:#d32704; --rb3:#d69900; --rb4:#6da72f; --rb5:#2daa8a;
+    --rb6:#1893be; --rb7:#1661c0; --rb8:#4b20b6; --rb9:#b91d75;
+    --accent: var(--lt-accent); --accent-2: var(--lt-accent-2);
+    --accent-b: var(--lt-accent-b); --rainbow: var(--lt-rainbow);
+    --on-accent:#fff; --brand: var(--accent-2);
   }
 }
-:root[data-theme="dark"] {
-  --bg:#14151b; --ink:#d7d8e0; --muted:#8b8e9c; --link:#79b8ff; --edge:#262735;
-  --card:#1b1c25; --card-edge:#343546; --code-bg:#21232e;
-  --field-bg:#1b1c25; --field-edge:#3a3b47; --btn-bg:#2a2b3a; --btn-hover:#343548;
-  --shadow:rgba(0,0,0,.5); --belief-bg:#1f1a12; --err-bg:#2b1512; --err-ink:#ff8f80;
-  --badge-fact:#8b6ee0; --badge-derived:#17a394; --badge-rule:#6c63ff;
-  --t-type:#45d18a; --t-ind:#c792ea; --t-pred:#79b8ff; --t-context:#e0a566;
-  --t-num:#ff9478; --t-var:#7f8494;
-  --accent: var(--dk-accent); --accent-2: var(--dk-accent-2);
-  --accent-b: var(--dk-accent-b); --rainbow: var(--dk-rainbow);
-  --on-accent:#15131f; --brand: var(--accent);
+:root[data-theme="light"] {
+  --bg:#f6f6f2; --panel:#fdfdfa; --ink:#2b2d33; --title:#14151a; --muted:#7a7f8c;
+  --link:#0b5fbd; --edge:#d8d8cf; --card:#fdfdfa; --card-edge:#c9c9bf;
+  --code-bg:#ecece4; --field-bg:#fff; --field-edge:#c9c9bf;
+  --btn-bg:#ecece4; --btn-hover:#e0e0d6; --shadow:rgba(0,0,0,.18);
+  --belief-bg:#faf7f2; --err-bg:#fdeceb; --err-ink:#c0392b;
+  --t-type:#0a7d5a; --t-ind:#8a2be2; --t-pred:#0645ad;
+  --t-context:#a1571a; --t-num:#c0392b; --t-var:#8b8f99;
+  --rb1:#c21527; --rb2:#d32704; --rb3:#d69900; --rb4:#6da72f; --rb5:#2daa8a;
+  --rb6:#1893be; --rb7:#1661c0; --rb8:#4b20b6; --rb9:#b91d75;
+  --accent: var(--lt-accent); --accent-2: var(--lt-accent-2);
+  --accent-b: var(--lt-accent-b); --rainbow: var(--lt-rainbow);
+  --on-accent:#fff; --brand: var(--accent-2);
 }
 
 /* ---- what the rainbow palette adds ----------------------------------- */
@@ -160,149 +181,274 @@
 }
 :root[data-palette="rainbow"] header.site { border-image: var(--rainbow) 1; }
 
-/* natural-language text is proportional */
+/* ---- the ground ------------------------------------------------------ */
+
 body {
-  font: 16px/1.55 var(--prose);
-  max-width: 62rem;
-  margin: 0 auto 3rem;
-  padding: 0 1rem;
+  font: 13.5px/1.45 var(--mono);
+  font-size-adjust: var(--x-height);
+  max-width: 96rem;
+  margin: 0 auto 2rem;
+  padding: 0 .75rem;
   background: var(--bg);
   color: var(--ink);
 }
 
-/* form controls do not inherit page colours — theme them explicitly, or a dark
-   page would show white inputs */
+/* English written for a reader is set in --prose; everything the KB stores or the
+   terminal draws keeps --mono, including whatever a paragraph quotes.  Body copy is the
+   only place the two meet, so the second rule names what mono survives inside it. */
+p, .muted, .legend, .lede, dd, figcaption, blockquote, .comment {
+  font-family: var(--prose);
+  font-size-adjust: none;
+}
+.sx, .nat, .t-var, code, pre, kbd, samp, .badge, .tag, .chip,
+input, textarea, select, button {
+  font-family: var(--mono);
+  font-size-adjust: var(--x-height);
+}
+
+/* form controls do not inherit page colours — theme them explicitly, or a light page
+   would show dark inputs */
 input, textarea, select, button { color: var(--ink); }
 
-/* headings sit at the regular weight and take their hierarchy from size and space,
-   not from a heavier cut */
-h1, h2, h3, h4 { font-family: var(--prose); font-weight: 400; line-height: 1.25; }
-h2 { margin-top: 1.6rem; }
-h3 { margin-top: 1.2rem; }
+/* One control shape for the whole page: a square frame around a label, filled only when
+   the control is the one that writes.  Every page used to restate this rule; they do not
+   any more, so a new control takes the page's shape by being a <button>. */
+button, .kb-actions .button {
+  font: inherit;
+  font-size: .9em;
+  padding: .1em .7em;
+  border: 1px solid var(--field-edge);
+  background: var(--btn-bg);
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+}
+button:hover, .kb-actions .button:hover { background: var(--btn-hover); border-color: var(--accent); }
+button[disabled] { opacity: .45; cursor: not-allowed; }
+button[disabled]:hover { background: var(--btn-bg); border-color: var(--field-edge); }
+/* the one that writes wears the accent as an outline, and fills on hover */
+button.primary        { border-color: var(--accent); color: var(--accent); }
+button.primary:hover  { background: var(--accent); color: var(--on-accent); }
+/* the one that tears down says so in the error colour */
+button.danger         { border-color: var(--err-ink); color: var(--err-ink); }
+button.danger:hover   { background: var(--err-ink); color: #fff; border-color: var(--err-ink); }
+
+/* A heading is a frame title: the name, then a rule running to the right edge, the way
+   btop sets a panel's own title into the top of its box.  A heading inside a `.panel`
+   is drawn by the frame instead (below), so these are the ones standing on their own. */
+h1, h2, h3, h4 {
+  font-family: var(--mono);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--title);
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+}
+h1::after, h2::after, h3::after, h4::after {
+  content: "";
+  flex: 1 1 auto;
+  border-top: 1px solid var(--edge);
+}
+h1 { font-size: 1.25rem; margin: 1rem 0 .6rem; }
+h2 { font-size: 1.1rem;  margin: 1.5rem 0 .5rem; }
+h3 { font-size: 1rem;    margin: 1.1rem 0 .4rem; }
+h4 { font-size: .95rem;  margin: .9rem 0 .3rem; }
+/* a heading's own trailing note keeps the title's colour off it */
+h2 .muted, h3 .muted, h4 .muted { font-weight: 400; }
 
 a       { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-/* formal content is monospace */
-.sx, code, .ref, .badge, .q input, .search {
-  font-family: var(--mono);
-}
+p { margin: .5rem 0; }
 
 code {
   background: var(--code-bg);
-  padding: .1em .3em;
-  border-radius: 3px;
+  padding: 0 .3em;
 }
 
-ul     { margin: .3rem 0; }
+/* a list marker is a dim square, so a row of sentences reads as a listing rather than
+   as prose and the marker never competes with the colour-coded terms beside it */
+ul { margin: .25rem 0; padding-left: 1.4rem; list-style: square; }
+li::marker { color: var(--edge); }
 .muted { color: var(--muted); }
 
+/* Nothing on a terminal is rounded.  One reset rather than a zero per rule, so a
+   component added later takes the page's shape without having to remember to. */
+* { border-radius: 0; }
+
+/* ---- a framed region ------------------------------------------------- */
+/* btop's box: a square frame, its title set into the top border with the ground showing
+   through behind the letters, and the region's own counts at the right of that border.
+   `.panel` is the explicit wrapper; the containers that already existed take the same
+   frame further down, so the page is one shape repeated rather than two. */
+
+.panel {
+  position: relative;
+  border: 1px solid var(--edge);
+  background: var(--panel);
+  padding: .85rem .7rem .6rem;
+  margin: 1.1rem 0;
+}
+.panel > :first-child { margin-top: 0; }
+.panel > :last-child  { margin-bottom: 0; }
+
+/* the title, sitting on the top border */
+.panel-title {
+  position: absolute;
+  top: -.72em;
+  left: .6rem;
+  display: flex;
+  align-items: baseline;
+  gap: .4rem;
+  margin: 0;
+  padding: 0 .45rem;
+  background: var(--bg);
+  font-size: .95rem;
+  font-weight: 600;
+  color: var(--title);
+  line-height: 1.2;
+}
+.panel-title::after { content: none; }          /* the frame is the rule */
+.panel-title .muted { font-weight: 400; }
+/* the region's index, the way btop numbers a box for its hotkey — and, as there, the
+   control that folds the region away.  Its key is the digit it shows. */
+button.panel-n {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: .78em;
+  line-height: 1;
+  vertical-align: super;
+  cursor: pointer;
+}
+button.panel-n:hover { background: none; color: var(--accent-2); }
+
+/* Folded: the frame stays, holding its title and nothing else, so the same digit
+   unfolds it where it stands. */
+[data-folded] > :not(.panel-title):not(h4) { display: none; }
+[data-folded] { padding-top: .1rem; padding-bottom: .1rem; min-height: .7rem; }
+
 /* ---- header ---------------------------------------------------------- */
+/* btop's top bar: one framed strip across the page holding the brand, the tools, the
+   search and the two colour dots.  It is the first frame on every page, so it is drawn
+   as one rather than as a rule under a row of links. */
 
 header.site {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: .8rem;
-  padding: .9rem 0;
-  margin-bottom: 1.2rem;
-  border-bottom: 1px solid var(--edge);
+  gap: .5rem .75rem;
+  padding: .4rem .6rem;
+  margin: .6rem 0 1.4rem;
+  border: 1px solid var(--edge);
+  background: var(--panel);
 }
-.brand { display: inline-flex; align-items: center; gap: .55rem; color: var(--ink); }
+.brand { display: inline-flex; align-items: center; gap: .45rem; color: var(--title); }
 .brand:hover { text-decoration: none; }
-.brand .logo { display: block; }
+.brand .logo { display: block; width: 18px; height: 18px; }
 .wordmark {
   font-family: var(--mono);
-  font-size: 1.4rem;
+  font-size: 1.05rem;
   font-weight: 600;
   color: var(--brand);
   letter-spacing: -.01em;
 }
 
 /* the top menubar — links to the top-level tools, pushed to the right */
-.menubar { display: inline-flex; align-items: center; gap: .2rem; flex-wrap: wrap; margin-left: auto; }
+.menubar { display: inline-flex; align-items: center; gap: .1rem; flex-wrap: wrap; margin-left: auto; }
 .menubar a {
-  padding: .3em .7em;
-  border-radius: 7px;
+  padding: .1em .5em;
+  border: 1px solid transparent;
   color: var(--ink);
-  font-size: .95rem;
+  font-size: .92rem;
 }
-.menubar a:hover { background: var(--code-bg); text-decoration: none; }
+.menubar a:hover { background: var(--btn-hover); text-decoration: none; }
 .menubar a.active {
-  background: color-mix(in srgb, var(--accent) 16%, var(--card));
-  color: var(--brand);
+  border-color: var(--accent);
+  color: var(--accent);
   font-weight: 600;
 }
 .search {
-  font-size: .95rem;
-  padding: .38em .7em;
-  min-width: 15rem;
+  font: inherit;
+  font-family: var(--mono);
+  font-size: .92rem;
+  padding: .15em .45em;
+  min-width: 14rem;
   border: 1px solid var(--field-edge);
-  border-radius: 999px;
   background: var(--field-bg);
 }
-.search:focus { outline: none; border-color: var(--accent); background: var(--card); }
+.search:focus { outline: none; border-color: var(--accent); }
 
-/* the two colour controls, dots rather than labels (vaelii.com's, so the two
-   surfaces read as one): the palette dot cycles the accent pair and is painted
-   in it, and the theme dot flips light against dark and shows both grounds. */
-.theme-controls { display: inline-flex; align-items: center; gap: .5rem; }
+/* the two colour controls, dots rather than labels (vaelii.com's, so the two surfaces
+   read as one): the palette dot cycles the accent pair and is painted in it, and the
+   theme dot flips light against dark and shows both grounds. */
+.theme-controls { display: inline-flex; align-items: center; gap: .4rem; }
 .palette-btn, .theme-btn {
-  width: 18px;
-  height: 18px;
+  width: 13px;
+  height: 13px;
   padding: 0;
-  border-radius: 50%;
   border: 1px solid var(--card-edge);
   cursor: pointer;
-  transition: transform .15s ease, border-color .15s ease;
+  transition: border-color .15s ease;
 }
 .palette-btn { background: linear-gradient(110deg, var(--accent) 45%, var(--accent-b) 55%); }
 :root[data-palette="rainbow"] .palette-btn { background-image: var(--rainbow); }
 .theme-btn { background: linear-gradient(90deg, var(--ink) 50%, var(--bg) 50%); }
-.palette-btn:hover, .theme-btn:hover { border-color: var(--accent); transform: scale(1.15); }
-
+.palette-btn:hover, .theme-btn:hover { border-color: var(--accent); }
 /* ---- sentex handle badge --------------------------------------------- */
-/* Replaces the bare "#id" that used to precede a sentence.  Colour encodes the
-   kind and origin; the glyph encodes direction (rules) or polarity (facts);
-   modifiers encode defeasibility and belief.  `title` carries the handle + a
-   plain reading, so the number is a hover away.
+/* One circle before a sentence, standing in for the bare "#id" that used to.  Colour is
+   the whole of what it says, on one scale a reader learns once:
 
-     colour   indigo = rule · violet = asserted fact · teal = derived fact
-     glyph    → forward · ← backward · ↔ both · · inert · • fact · ¬ negation
-     dashed   defeasible (a default rule)
-     dimmed   stored but not believed (OUT) */
+     red      a negation, whatever else the sentex is
+     white    a monotonic fact — known true
+     yellow   a default fact — true unless something says otherwise
+     green    a fact the engine derived rather than was told
+     blue     a forward rule · purple a backward rule · both halves when it runs both ways
+     black    an inert rule — stored, and chaining in neither direction
+
+   Filled means asserted; a ring means derived.  Dimmed means stored and not believed.
+   `title` carries the handle and a plain reading, so the number is a hover away. */
 
 .badge-link { text-decoration: none; }
 .badge-link:hover { text-decoration: none; }
 .badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.45em;
-  height: 1.45em;
-  margin-right: .4em;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  font-size: .78em;
-  line-height: 1;
-  color: #fff;
-  vertical-align: middle;
+  display: inline-block;
+  width: .68em;
+  height: .68em;
+  margin-right: .45em;
+  border: 1px solid var(--badge-c, var(--muted));
+  border-radius: 50%;
+  background: var(--badge-c, var(--muted));
+  vertical-align: .04em;
   user-select: none;
 }
-.badge-link:hover .badge { filter: brightness(1.12); }
-.badge-fact       { background: var(--badge-fact); }     /* an asserted (premise) fact */
-.badge-derived    { background: var(--badge-derived); }  /* a derived fact             */
-.badge-rule       { background: var(--badge-rule); }     /* a rule (any direction)     */
-.badge-defeasible { border-color: rgba(255, 255, 255, .85); border-style: dashed; }
-.badge-out        { opacity: .4; filter: grayscale(1); }  /* stored, not believed */
+.badge-link:hover .badge { filter: brightness(1.25); }
 
-/* a small pill for a sentex's assumption strength / defeat class, rule flag, etc. */
+.badge-neg       { --badge-c: var(--rb1); }
+.badge-monotonic { --badge-c: var(--title); }
+.badge-default   { --badge-c: var(--rb3); }
+.badge-derived   { --badge-c: var(--rb4); }
+.badge-forward   { --badge-c: var(--rb7); }
+.badge-backward  { --badge-c: var(--rb8); }
+/* the one circle with no hue: an inert rule chains in neither direction, and the page
+   says so by leaving it unlit.  Its border is what keeps it visible on either ground */
+.badge-inert     { --badge-c: #000; border-color: var(--muted); }
+/* a rule that runs both ways is both colours, split down the middle */
+.badge-both      { --badge-c: var(--rb8); background: linear-gradient(90deg, var(--rb7) 50%, var(--rb8) 50%); }
+/* derived, so the engine worked it out: the outline without the fill.  Two pixels of it,
+   because one at this diameter carries too little of the hue to read as a colour */
+.badge-open      { background: none; border-width: 2px; }
+.badge-out       { opacity: .4; filter: grayscale(1); }  /* stored, not believed */
+
+/* a small tag for a sentex's assumption strength / defeat class, rule flag, etc. */
 .tag {
-  font-size: .8em;
+  font-size: .78em;
   color: #fff;
   background: #888;
-  border-radius: 3px;
-  padding: .05em .4em;
+  padding: 0 .4em;
   margin-left: .3em;
 }
 
@@ -319,17 +465,40 @@ header.site {
 /* the "why not believed" detail box on the sentex page */
 .belief {
   margin: .5rem 0;
-  padding: .4rem .8rem;
+  padding: .35rem .7rem;
   background: var(--belief-bg);
-  border-left: 3px solid var(--t-context);
-  border-radius: 3px;
+  border: 1px solid var(--edge);
+  border-left: 2px solid var(--t-context);
 }
 .belief p:first-child { margin-top: .2rem; }
 .belief ul            { margin: .2rem 0; }
 
-/* index-organized groups on the term page */
-.idxgrp    { margin: .5rem 0; }
-.idxgrp h4 { margin: .5rem 0 .1rem; font-size: .95em; font-weight: 600; }
+/* An index group on the term page is a framed region, and its heading is the title set
+   into the top border — the same shape `.panel` draws, on the container that already
+   existed. */
+.idxgrp {
+  position: relative;
+  border: 1px solid var(--edge);
+  background: var(--panel);
+  padding: .8rem .6rem .5rem;
+  margin: 1.1rem 0;
+}
+.idxgrp h4 {
+  position: absolute;
+  top: -.72em;
+  left: .6rem;
+  display: flex;
+  align-items: baseline;
+  gap: .4rem;
+  margin: 0;
+  padding: 0 .45rem;
+  background: var(--bg);
+  font-size: .92rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.idxgrp h4::after { content: none; }            /* the frame is the rule */
+.idxgrp h4 .muted { font-weight: 400; }
 
 /* the "#id (gone)" placeholder for a retracted handle */
 .ref { color: var(--muted); font-size: .85em; margin-right: .2em; }
@@ -356,25 +525,32 @@ a.nat-paren:hover { color: var(--accent); text-decoration: none; }
 
 /* ---- the stats page -------------------------------------------------- */
 
-.stats-grid { display: flex; flex-wrap: wrap; gap: .8rem; margin: 1rem 0 1.5rem; }
+.stats-grid { display: flex; flex-wrap: wrap; gap: .5rem; margin: .8rem 0 1.2rem; }
 .stat {
   display: inline-flex;
   flex-direction: column;
-  min-width: 7rem;
-  padding: .7rem .9rem;
-  background: var(--card);
-  border: 1px solid var(--card-edge);
-  border-radius: 10px;
+  min-width: 8rem;
+  padding: .35rem .6rem .3rem;
+  background: var(--panel);
+  border: 1px solid var(--edge);
   color: var(--ink);
 }
 a.stat:hover { border-color: var(--accent); text-decoration: none; }
-.stat-n { font-family: var(--mono); font-size: 1.7rem; line-height: 1.1; color: var(--brand); }
-.stat-l { font-size: .82rem; color: var(--muted); margin-top: .2rem; }
+/* the number leads, the way a btop readout does: bright and tabular, its label under it
+   at the dim level */
+.stat-n { font-family: var(--mono); font-size: 1.35rem; line-height: 1.15;
+          color: var(--brand); font-variant-numeric: tabular-nums; }
+.stat-l { font-size: .8rem; color: var(--muted); text-transform: lowercase; }
 
-.stats-table { border-collapse: collapse; margin: .4rem 0 1rem; }
-.stats-table th, .stats-table td { text-align: left; padding: .18rem 1.2rem .18rem 0; }
-.stats-table .num { text-align: right; font-family: var(--mono); }
-.stats-table thead th { border-bottom: 1px solid var(--edge); font-weight: 600; }
+/* a table is a terminal listing: a dim rule under the head, a dim rule between rows,
+   numbers right-aligned and tabular so columns line up down the page */
+.stats-table { border-collapse: collapse; margin: .3rem 0 1rem; width: 100%; }
+.stats-table th, .stats-table td { text-align: left; padding: .12rem 1.1rem .12rem 0; }
+.stats-table .num { text-align: right; font-family: var(--mono);
+                    font-variant-numeric: tabular-nums; }
+.stats-table thead th { border-bottom: 1px solid var(--edge); font-weight: 600;
+                        color: var(--title); }
+.stats-table tbody tr:hover { background: var(--btn-hover); }
 
 /* ---- dashboard: health cards, table scroll, funnel card-list -------- */
 
@@ -419,7 +595,7 @@ a.stat:hover { border-color: var(--accent); text-decoration: none; }
 .search-tree .est-line     { font-family: var(--mono); font-size: .82em; color: var(--muted); margin: .15rem 0 .3rem; }
 
 /* the "same answers across every tactician" verdict — the property this page verifies */
-.verdict { padding: .5rem .85rem; border-radius: 6px; margin: .7rem 0; border-left: 3px solid; background: var(--belief-bg); }
+.verdict { padding: .5rem .85rem; margin: .7rem 0; border-left: 3px solid; background: var(--belief-bg); }
 .verdict p:first-child { margin: 0; }
 .verdict-agree    { border-color: #0a7d5a; }
 .verdict-disagree { border-color: #c0392b; }
@@ -428,155 +604,164 @@ a.stat:hover { border-color: var(--accent); text-decoration: none; }
 .find-hits { columns: 3 12rem; margin: .5rem 0; padding-left: 1.2rem; }
 .find-hits li { break-inside: avoid; }
 
-/* ---- drag-selection + the editor ------------------------------------- */
+/* ---- sentex rows + the editor ---------------------------------------- */
 
 .hidden { display: none !important; }
 
-/* a grid of selectable sentex rows.  No list marker: the row already opens with a
-   checkbox and a handle badge, and a disc in front of those is a third glyph saying
-   nothing.  Dropping the marker's indent too, so a row starts where the surrounding
-   text does. */
+/* a list of sentex rows.  No list marker: the row already opens with a handle badge,
+   and a disc in front of it is a second glyph saying nothing.  Dropping the marker's
+   indent too, so a row starts where the surrounding text does. */
 .sx-list {
   list-style: none;
   padding-left: 0;
 }
 
-/* a selectable sentex row (select.js).  Text is non-selectable so a press-drag
-   marks rows instead of selecting text. */
+/* A sentex row is text.  It carries no script and no selected state, so a press-drag
+   across it selects the sentence the way a press-drag across any other text does. */
 .sx-item {
-  user-select: none;
-  border-radius: 4px;
   padding: .05rem .3rem;
   margin: 0 -.3rem;
-  transition: background .06s;
-}
-.sx-item.selected { background: var(--sel-bg); box-shadow: inset 0 0 0 1px var(--sel-edge); }
-body.sx-dragging { cursor: crosshair; user-select: none; }
-
-/* the keyboard's place in the list: one row carries tabindex 0 (select.js), so Tab
-   reaches the list once and the arrows move inside it.  The ring has to be visible —
-   it is the only thing saying where the next space/enter lands. */
-.sx-item:focus         { outline: none; }
-.sx-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-
-/* the toggle affordance: a checkbox that is drawn, not native, because the row it
-   sits in is a grid row whose selected state ARIA already carries (aria-selected).
-   It is the unambiguous click target — the rest of the row toggles too, but a link
-   inside it still navigates. */
-.sx-check {
-  display: inline-block;
-  width: .8em;
-  height: .8em;
-  margin-right: .45em;
-  vertical-align: baseline;
-  border: 1px solid var(--field-edge);
-  border-radius: 3px;
-  background: var(--field-bg);
-  cursor: pointer;
-}
-.sx-item:hover .sx-check    { border-color: var(--accent); }
-.sx-item.selected .sx-check { background: var(--accent); border-color: var(--accent); }
-.sx-item.selected .sx-check::after {
-  content: "";
-  display: block;
-  width: .22em;
-  height: .45em;
-  margin: -.02em auto 0 .22em;
-  border: solid var(--on-accent);
-  border-width: 0 1.5px 1.5px 0;
-  transform: rotate(42deg);
 }
 
-/* the per-group select-all control, in a group's heading */
-button.sx-all {
+/* the row's way into the editor.  It is shown on hover or keyboard focus, so a page of
+   rows reads as sentences rather than as a column of controls, and it holds its space
+   either way, so nothing reflows when the pointer crosses a row. */
+button.sx-edit {
   font: inherit;
-  font-size: .78em;
-  padding: .05em .6em;
-  margin-left: .3em;
-  vertical-align: 1px;
-  border: 1px solid var(--field-edge);
-  border-radius: 999px;
-  background: var(--btn-bg);
+  font-family: var(--mono);
+  font-size: .82em;
+  padding: 0 .2em;
+  border: 0;
+  background: none;
   color: var(--muted);
   cursor: pointer;
+  opacity: 0;
 }
-button.sx-all:hover                    { background: var(--btn-hover); color: var(--ink); }
-button.sx-all[aria-pressed="true"]     { border-color: var(--accent); color: var(--accent); }
-.sx-head { margin: .2rem 0 0; }
+button.sx-edit::before { content: "["; }
+button.sx-edit::after  { content: "]"; }
+.sx-item:hover button.sx-edit,
+button.sx-edit:focus-visible { opacity: 1; }
+button.sx-edit:hover { color: var(--accent); }
 
-/* the rubber-band rectangle drawn during a drag */
-.sx-marquee {
-  position: fixed;
-  z-index: 40;
-  pointer-events: none;
-  border: 1px dashed var(--accent);
-  background: var(--marquee);
-  border-radius: 2px;
-}
 
-/* the action bar, shown once ≥1 sentex is selected */
-#sx-bar {
+/* the editor panel — a framed box pinned to the bottom of the viewport, over whatever
+   page the row was on */
+.editor {
   position: fixed;
   bottom: 1rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 50;
-  display: flex;
-  align-items: center;
-  gap: .6rem;
-  padding: .5rem .8rem;
-  background: var(--card);
-  border: 1px solid var(--card-edge);
-  border-radius: 999px;
-  box-shadow: 0 4px 16px var(--shadow);
-}
-#sx-bar #sx-count { font-size: .9rem; color: var(--muted); }
-
-#sx-bar button, .editor button {
-  font: inherit;
-  font-size: .9rem;
-  padding: .3em .9em;
-  border: 1px solid var(--field-edge);
-  border-radius: 999px;
-  background: var(--btn-bg);
-  cursor: pointer;
-}
-#sx-bar button:hover, .editor button:hover { background: var(--btn-hover); }
-button.primary { background: var(--accent) !important; color: var(--on-accent); border-color: var(--accent) !important; }
-button.primary:hover { filter: brightness(1.1); }
-
-/* the editor panel — floats above the action bar */
-.editor {
-  position: fixed;
-  bottom: 4.4rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 50;
-  width: min(48rem, 92vw);
-  max-height: 60vh;
+  width: min(64rem, 96vw);
+  max-height: 70vh;
   overflow: auto;
-  padding: .8rem 1rem 1rem;
-  background: var(--card);
-  border: 1px solid var(--card-edge);
-  border-radius: 10px;
+  padding: .7rem .8rem .8rem;
+  background: var(--panel);
+  border: 1px solid var(--accent);
   box-shadow: 0 8px 28px var(--shadow);
 }
-.editor h3 { margin: .1rem 0 .6rem; }
-.editor textarea {
-  width: 100%;
-  box-sizing: border-box;
+.editor h3 { margin: 0 0 .5rem; font-size: .95rem; }
+.editor .hint { font-size: .82em; color: var(--muted); margin: .4rem 0 .6rem; }
+
+/* ---- the sentence editor (/edit, /assert, /levels) -------------------- */
+/* Three elements over one value: the <textarea> holds the text and takes the keys, the
+   <pre> behind it carries the coloured copy, and the <ul> drops the completions under
+   the field.  The two text layers must agree to the pixel — same family, same size, same
+   line height, same padding, same `white-space` — or the colour slides off the
+   characters it is colouring. */
+
+.ed { position: relative; border: 1px solid var(--field-edge); background: var(--field-bg); }
+.ed:focus-within { border-color: var(--accent); }
+
+.ed-hl, .ed-in {
+  margin: 0;
+  padding: .4rem .5rem;
+  font: inherit;
   font-family: var(--mono);
   font-size: .95em;
   line-height: 1.5;
-  padding: .5rem .6rem;
-  background: var(--field-bg);
+  white-space: pre;
+  tab-size: 2;
+  border: 0;
+}
+.ed-hl {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
   color: var(--ink);
-  border: 1px solid var(--field-edge);
-  border-radius: 6px;
+}
+/* the layer is a <pre><code>, so the page's own `code` rule would give it a background
+   and a horizontal padding — which would tint the text and slide it off the characters
+   it is colouring */
+.ed-hl code { background: none; padding: 0; font: inherit; }
+.ed-in {
+  position: relative;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--ink);
   resize: vertical;
 }
-.editor textarea:focus { outline: none; border-color: var(--accent); }
-.editor .hint { font-size: .82em; color: var(--muted); margin: .4rem 0 .6rem; }
+.ed-in:focus       { outline: none; }
+/* !important because the text under it must stay invisible: a `.some-form textarea`
+   rule outranks this class, and the one that did painted the value back over the
+   coloured layer it exists to reveal */
+.ed .ed-in         { color: transparent !important; }
+.ed-in::placeholder { color: var(--muted); }
+/* the textarea's own text is transparent, so a selection is the band and the layer under it */
+.ed-in::selection  { background: var(--sel-edge); }
+.ed-1 .ed-in       { resize: none; }
+
+/* Rainbow parens: the depth's step along the spectrum, cycling through six, and the
+   error colour for a delimiter with nothing to close.  Depth 0 is --rb1, so the
+   outermost paren of every sentence is red. */
+.ed-p0  { color: var(--rb1); }
+.ed-p1  { color: var(--rb2); }
+.ed-p2  { color: var(--rb3); }
+.ed-p3  { color: var(--rb5); }
+.ed-p4  { color: var(--rb7); }
+.ed-p5  { color: var(--rb8); }
+.ed-bad { color: var(--err-ink); text-decoration: underline wavy; }
+.ed-str { color: var(--t-context); }
+.ed-num { color: var(--t-num); }
+.ed-var { color: var(--t-var); }
+.ed-kw  { color: var(--t-pred); }
+.ed-cmt { color: var(--muted); }
+.ed-sym { color: var(--ink); }
+/* a symbol standing alone at the top level is a context line */
+.ed-ctx { color: var(--t-context); font-weight: 600; }
+
+/* the completion list sits under the field rather than under the caret: tracking the
+   caret needs a mirror of the text to measure against, and the field is one line tall
+   where the list matters most */
+.ed-complete {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  transform: translateY(100%);
+  z-index: 60;
+  margin: 0;
+  padding: 0;
+  max-height: 14rem;
+  overflow: auto;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+}
+.ed-complete li { padding: .05rem .5rem; cursor: pointer; }
+.ed-complete li.on, .ed-complete li:hover { background: var(--sel-bg); }
+
+/* the lookahead: what the open save would do, under the controls that would do it */
+.ed-preview:not(:empty) { margin-top: .7rem; border-top: 1px solid var(--edge); padding-top: .5rem; }
+
+/* a term's own [edit] stands on a heading, where there is no row to hover */
+h2 button.sx-edit { opacity: .55; font-size: .7em; }
+h2 button.sx-edit:hover { opacity: 1; }
 .editor-actions { display: flex; gap: .5rem; }
 .edit-errors {
   margin: .2rem 0 .6rem;
@@ -585,31 +770,20 @@ button.primary:hover { filter: brightness(1.1); }
   color: var(--err-ink);
   background: var(--err-bg);
   border-left: 3px solid var(--err-ink);
-  border-radius: 4px;
   font-size: .88em;
 }
 
-/* the goal box on /levels */
-.q        { margin: 1rem 0; }
+/* the goal box on /levels: the editor at one line, beside the context field */
+.q        { display: flex; align-items: flex-start; gap: .3rem; margin: 1rem 0; }
+.q .ed    { flex: 1 1 28rem; }
 .q input  {
   font: inherit;
   font-family: var(--mono);
   padding: .3em .4em;
   background: var(--field-bg);
   border: 1px solid var(--field-edge);
-  border-radius: 3px;
-  margin-right: .3rem;
 }
 .q input:focus { outline: none; border-color: var(--accent); }
-.q button {
-  font: inherit;
-  padding: .3em .9em;
-  border: 1px solid var(--field-edge);
-  border-radius: 3px;
-  background: var(--btn-bg);
-  cursor: pointer;
-}
-.q button:hover { background: var(--btn-hover); }
 
 /* the request indicator — htmx marks it .htmx-request for the life of a request, so a
    slow page says so instead of looking dead.  A hairline bar across the top, animated
@@ -650,35 +824,21 @@ tr.more { cursor: pointer; }
 tr.more:hover span { color: var(--accent); }
 .more-td { padding-top: .35rem; }
 .more-cell:focus         { outline: none; }
-.more-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.more-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---- asserting, retracting, chaining, and the proof tree -------------- */
 
 /* the inline "do a thing from here" link on the home / term / sentex pages */
 a.action { font-weight: 600; }
+/* the front page's four destinations, on one line: the page each opens says what it is
+   for, so this one only has to name it */
+.actions { display: flex; flex-wrap: wrap; gap: .3rem .55rem; align-items: baseline; }
 
 /* the new-sentex form (/assert) */
 .assert-form { margin: 1rem 0; max-width: 48rem; }
 .assert-form label      { display: inline-block; font-size: .88rem; color: var(--muted); }
-.assert-form textarea {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  margin-top: .2rem;
-  font-family: var(--mono);
-  font-size: .95em;
-  line-height: 1.5;
-  padding: .5rem .6rem;
-  background: var(--field-bg);
-  color: var(--ink);
-  border: 1px solid var(--field-edge);
-  border-radius: 6px;
-  resize: vertical;
-}
-.assert-form textarea:focus, .assert-form input[type="text"]:focus {
-  outline: none;
-  border-color: var(--accent);
-}
+.assert-form .ed { margin-top: .2rem; }
+.assert-form input[type="text"]:focus { outline: none; border-color: var(--accent); }
 .assert-form input[type="text"] {
   font-family: var(--mono);
   font-size: .95em;
@@ -686,44 +846,51 @@ a.action { font-weight: 600; }
   background: var(--field-bg);
   color: var(--ink);
   border: 1px solid var(--field-edge);
-  border-radius: 6px;
 }
 .assert-row  { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .6rem 0; }
 .assert-form .hint { font-size: .82em; color: var(--muted); margin: .4rem 0 .6rem; }
 label.check  { display: inline-flex; align-items: center; gap: .3em; }
-.assert-form button { font: inherit; font-size: .9rem; padding: .3em .9em;
-                      border: 1px solid var(--field-edge); border-radius: 999px;
-                      background: var(--btn-bg); cursor: pointer; }
 
-/* the retract confirmation: destructive, and it says so */
-button.danger { background: var(--err-ink); color: #fff; border-color: var(--err-ink) !important; }
-button.danger:hover { filter: brightness(1.1); }
+/* the retract confirmation: destructive, and its button says so with `.danger` */
 .retract-list { margin: .2rem 0 .6rem; max-height: 12rem; overflow: auto; }
 .editor h4    { margin: .6rem 0 .1rem; font-size: .9em; }
 
 /* the forward-chaining control on /stats, and what a run reported */
 .chain-form  { display: flex; align-items: center; gap: .5rem; margin: .6rem 0 1.2rem; }
-.chain-form button { font: inherit; font-size: .9rem; padding: .3em .9em;
-                     border: 1px solid var(--field-edge); border-radius: 999px;
-                     background: var(--btn-bg); cursor: pointer; }
 .chain-note {
   margin: .6rem 0;
   padding: .4rem .8rem;
   background: var(--belief-bg);
   border-left: 3px solid var(--accent);
-  border-radius: 3px;
 }
 
-/* the hierarchy trees (/): one <details> per node with subtypes, its children
-   fetched the first time it is opened.  A leaf is a bare <li>, so the marker is
-   what distinguishes "has more below" from "this is the bottom" — which is a real
-   claim about the KB, not decoration. */
+/* The hierarchy trees (/): a node with subtypes carries its own caret, and its children
+   are fetched the first time the caret is opened.  A leaf has no caret, so the caret is
+   what distinguishes "has more below" from "this is the bottom" — which is a real claim
+   about the KB, not decoration.
+
+   The caret is a checkbox and its label, not a <details>/<summary>.  A <summary>
+   swallows the click on whatever it contains, so the term inside one never reached the
+   term's page; here the term beside the caret is an ordinary link and goes where every
+   other term on the page goes. */
 ul.tree, ul.tree-kids   { list-style: none; padding-left: 1.1rem; margin: .1rem 0; }
 ul.tree > li            { margin: .12rem 0; }
-ul.tree summary         { cursor: pointer; list-style-position: outside; }
-ul.tree summary::marker { color: var(--muted); }
-ul.tree summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 ul.tree li.more         { list-style: none; }
+
+.tree-tog               { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.tree-tog-l {
+  display: inline-block;
+  width: 1em;
+  margin-left: -1em;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.tree-tog-l::before                    { content: "\25b8"; }   /* ▸ closed */
+.tree-tog:checked ~ .tree-tog-l::before { content: "\25be"; }   /* ▾ open   */
+.tree-tog-l:hover                      { color: var(--accent); }
+.tree-tog:focus-visible ~ .tree-tog-l  { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tree-tog:not(:checked) ~ ul.tree-kids { display: none; }
 
 /* the proof tree (/why): one <details> per derived node, its justifications nested */
 ul.why          { list-style: none; padding-left: 1.1rem; margin: .1rem 0; }
@@ -747,7 +914,6 @@ ul.why summary:focus-visible { outline: 2px solid var(--accent); outline-offset:
   padding: .6rem .8rem;
   background: var(--card);
   border: 1px solid var(--card-edge);
-  border-radius: 8px;
 }
 .kb-card.kb-on      { border-color: var(--sel-edge); background: var(--sel-bg); }
 .kb-card.kb-failed  { border-color: var(--err-ink); }
@@ -758,24 +924,9 @@ ul.why summary:focus-visible { outline: 2px solid var(--accent); outline-offset:
 .kb-key             { font-family: var(--mono); font-size: .8em; margin-left: auto; }
 .kb-path            { font-family: var(--mono); font-size: .82em; color: var(--muted); }
 .kb-error           { color: var(--err-ink); background: var(--err-bg);
-                      padding: .3rem .5rem; border-radius: 4px; }
+                      padding: .3rem .5rem; }
 .kb-actions         { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
 .kb-action          { display: inline; }
-.kb-actions button, .kb-load button {
-  font: inherit; font-size: .9rem; padding: .3em .9em;
-  border: 1px solid var(--field-edge); border-radius: 999px;
-  background: var(--btn-bg); color: var(--ink); cursor: pointer;
-}
-.kb-actions button:hover, .kb-load button:hover { background: var(--btn-hover); }
-/* a link that acts like one of those buttons — a finished job's way to its result */
-.kb-actions .button {
-  font-size: .9rem; padding: .3em .9em;
-  border: 1px solid var(--field-edge); border-radius: 999px;
-  background: var(--btn-bg); color: var(--ink); text-decoration: none;
-}
-.kb-actions .button:hover { background: var(--btn-hover); }
-.kb-load button[disabled] { opacity: .5; cursor: not-allowed; }
-button.primary      { border-color: var(--accent); }
 
 /* the state pills reuse the belief-tag shapes; these are the five states a job has,
    and an entry wears its load's (docs/web.md, "Long work as jobs") */
@@ -789,7 +940,7 @@ button.primary      { border-color: var(--accent); }
    is painted only when it has a number in it */
 .job-count-on {
   font-family: var(--mono); font-size: .8em;
-  padding: 0 .35em; border-radius: 999px;
+  padding: 0 .35em;
   background: var(--accent); color: var(--on-accent);
 }
 /* an entry card's link to the job that filled it — the key sits at the right margin,
@@ -802,9 +953,9 @@ button.primary      { border-color: var(--accent); }
 .kb-progress .bar {
   height: 8px; margin: .4rem 0 .2rem;
   background: var(--code-bg);
-  border-radius: 999px; overflow: hidden;
+ overflow: hidden;
 }
-.bar-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px;
+.bar-fill { display: block; height: 100%; background: var(--accent);
             transition: width .4s ease; }
 .bar-fill.indeterminate {
   width: 35%;
@@ -829,7 +980,6 @@ button.primary      { border-color: var(--accent); }
   background: var(--sel-bg);
   border: 1px solid var(--sel-edge);
   border-left-width: 4px;
-  border-radius: 6px;
 }
 .kb-caveat-failed, .kb-caveat-cancelled { border-color: var(--err-ink); }
 .kb-caveat-line     { margin: 0; }
@@ -849,16 +999,16 @@ button.primary      { border-color: var(--accent); }
    is inferred never reads like one that was measured. */
 .kb-memory {
   margin: .6rem 0; padding: .5rem .8rem;
-  background: var(--card); border: 1px solid var(--card-edge); border-radius: 8px;
+  background: var(--card); border: 1px solid var(--card-edge);
 }
 .kb-memory .bar       { height: 6px; margin: .35rem 0 .1rem;
-                        background: var(--code-bg); border-radius: 999px; overflow: hidden; }
+                        background: var(--code-bg); overflow: hidden; }
 .kb-mem-line          { display: flex; align-items: baseline; flex-wrap: wrap; gap: .4rem;
                         cursor: pointer; }
 .kb-mem-line:hover .kb-mem-more   { text-decoration: underline; }
 .kb-mem-line:focus                { outline: none; }
 .kb-mem-line:focus-visible        { outline: 2px solid var(--accent); outline-offset: 2px;
-                                    border-radius: 3px; }
+ }
 .kb-mem-more          { margin-left: auto; font-size: .82em; color: var(--accent); }
 .kb-mem-detail        { margin-top: .6rem; }
 .kb-mem-table         { border-collapse: collapse; width: 100%; font-size: .88em; }
@@ -870,7 +1020,7 @@ button.primary      { border-color: var(--accent); }
    the reset inside it is the page's only irreversible control, so it names its cost. */
 .sbx-panel {
   margin: 1rem 0; padding: .6rem .9rem;
-  background: var(--card); border: 1px solid var(--card-edge); border-radius: 8px;
+  background: var(--card); border: 1px solid var(--card-edge);
 }
 .sbx-panel p         { margin: .25rem 0; }
 .sbx-panel form      { margin-top: .5rem; }
@@ -886,7 +1036,7 @@ button.primary      { border-color: var(--accent); }
 .demo-step.is-next { opacity: .5; }
 .demo-mark {
   flex: 0 0 1.5rem; text-align: center; font-family: var(--mono); font-size: .8rem;
-  line-height: 1.5rem; border-radius: 50%; background: var(--card);
+  line-height: 1.5rem; background: var(--card);
   border: 1px solid var(--card-edge); color: var(--muted);
 }
 .demo-step.is-now  .demo-mark { background: var(--brand); border-color: var(--brand);
@@ -902,7 +1052,6 @@ button.primary      { border-color: var(--accent); }
 .demo-point {
   margin: .6rem 0 .2rem; padding: .5rem .7rem;
   background: var(--card); border-left: 3px solid var(--badge-derived);
-  border-radius: 0 6px 6px 0;
 }
 
 .demo-facts  { list-style: none; margin: .6rem 0; padding: 0; }
@@ -917,7 +1066,7 @@ button.primary      { border-color: var(--accent); }
 .ex-group { margin-top: 2rem; }
 .ex-card {
   margin: 1rem 0; padding: .75rem 1rem;
-  background: var(--card); border: 1px solid var(--card-edge); border-radius: 8px;
+  background: var(--card); border: 1px solid var(--card-edge);
 }
 .ex-card h3   { margin: 0 0 .35rem; }
 .ex-card > p  { margin: .35rem 0; }
@@ -931,7 +1080,6 @@ button.primary      { border-color: var(--accent); }
 .ex-verdict {
   margin: .4rem 0 .1rem; padding: .5rem .7rem;
   background: var(--belief-bg); border-left: 3px solid var(--badge-derived);
-  border-radius: 0 6px 6px 0;
 }
 .ex-verdict p:first-child { margin-top: 0; }
 .ex-verdict p:last-child  { margin-bottom: 0; }
@@ -943,7 +1091,6 @@ button.primary      { border-color: var(--accent); }
 .callout {
   margin: 1rem 0; padding: .6rem .9rem;
   background: var(--belief-bg); border-left: 3px solid var(--badge-derived);
-  border-radius: 0 6px 6px 0;
 }
 .callout h4           { margin: 0 0 .4rem; font-weight: 400; }
 .callout-list         { list-style: none; margin: 0; padding: 0; }
@@ -960,7 +1107,7 @@ button.primary      { border-color: var(--accent); }
 .kb-opt select, .kb-opt input[type="text"], .kb-opt input[type="number"] {
   font: inherit; font-size: .9em; padding: .2rem .4rem;
   background: var(--field-bg); color: var(--ink);
-  border: 1px solid var(--field-edge); border-radius: 5px;
+  border: 1px solid var(--field-edge);
 }
 .knob      { display: grid; grid-template-columns: 11rem 1fr 7rem; align-items: center;
              gap: .5rem; margin: .25rem 0; }
@@ -992,7 +1139,6 @@ button.primary      { border-color: var(--accent); }
   padding: .7rem .9rem .9rem;
   background: var(--card);
   border: 1px solid var(--card-edge);
-  border-radius: 8px;
 }
 .propose h3   { margin: .1rem 0 .5rem; }
 .propose .hint { font-size: .82em; color: var(--muted); margin: .4rem 0 0; }
@@ -1007,17 +1153,11 @@ button.primary      { border-color: var(--accent); }
   background: var(--field-bg);
   color: var(--ink);
   border: 1px solid var(--field-edge);
-  border-radius: 6px;
   resize: vertical;
 }
 .propose-form textarea:focus { outline: none; border-color: var(--accent); }
+.propose-form button[disabled] { cursor: progress; }
 .propose-form .editor-actions { margin-top: .5rem; }
-.propose-form button {
-  font: inherit; font-size: .9rem; padding: .3em .9em;
-  border: 1px solid var(--field-edge); border-radius: 999px;
-  background: var(--btn-bg); color: var(--ink); cursor: pointer;
-}
-.propose-form button[disabled] { opacity: .5; cursor: progress; }
 
 .propose-answer { margin-top: .8rem; border-top: 1px solid var(--edge); padding-top: .6rem; }
 .propose-lines  { list-style: none; padding-left: 0; margin: .4rem 0; }
@@ -1053,7 +1193,7 @@ button.primary      { border-color: var(--accent); }
   display: inline-flex; align-items: baseline; gap: .25em;
   font-size: .75rem; line-height: 1.5;
   padding: 0 .5em;
-  border: 1px solid var(--field-edge); border-radius: 999px;
+  border: 1px solid var(--field-edge);
   background: var(--btn-bg); color: var(--ink);
   white-space: nowrap; cursor: help;
 }
@@ -1075,7 +1215,7 @@ button.primary      { border-color: var(--accent); }
 .p-why summary  {
   display: inline-block; list-style: none;
   width: 1.2rem; text-align: center;
-  color: var(--muted); cursor: pointer; border-radius: 3px;
+  color: var(--muted); cursor: pointer;
 }
 .p-why summary::-webkit-details-marker { display: none; }
 .p-why summary:hover        { color: var(--accent); }
@@ -1087,7 +1227,6 @@ button.primary      { border-color: var(--accent); }
   font-size: .86em;
   background: var(--code-bg);
   border-left: 2px solid var(--edge);
-  border-radius: 4px;
 }
 .p-why-body p { margin: .2rem 0; }
 
@@ -1099,7 +1238,7 @@ button.primary      { border-color: var(--accent); }
 .p-level {
   font: inherit; font-size: .82em;
   padding: .1rem .5rem; cursor: pointer;
-  background: var(--btn-bg); border: 1px solid var(--field-edge); border-radius: 3px;
+  background: var(--btn-bg); border: 1px solid var(--field-edge);
 }
 .p-level:hover { background: var(--btn-hover); }
 .p-level.on {
@@ -1126,7 +1265,7 @@ button.primary      { border-color: var(--accent); }
    writes.  A row under the keyboard shows it — the reader's place has to be visible
    when the hands never leave the home row. */
 .p-line:focus         { outline: none; }
-.p-line:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
+.p-line:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .p-accepted { background: var(--sel-bg); box-shadow: inset 2px 0 0 #0a7d5a; }
 .p-rejected { opacity: .45; }
 .p-rejected .p-chips, .p-rejected .p-opts { visibility: hidden; }
@@ -1136,7 +1275,7 @@ button.primary      { border-color: var(--accent); }
 .p-opt, .p-accept, .p-reject {
   font: inherit; font-size: .75rem; line-height: 1.4;
   min-width: 1.5em; padding: 0 .35em;
-  border: 1px solid var(--field-edge); border-radius: 4px;
+  border: 1px solid var(--field-edge);
   background: var(--btn-bg); color: var(--ink); cursor: pointer;
 }
 .p-opt:hover, .p-accept:hover, .p-reject:hover { background: var(--btn-hover); }
@@ -1153,7 +1292,7 @@ button.primary      { border-color: var(--accent); }
 .p-preview {
   margin: .7rem 0 .2rem;
   padding: .5rem .7rem;
-  border: 1px solid var(--edge); border-radius: 6px;
+  border: 1px solid var(--edge);
   background: var(--code-bg);
 }
 .p-preview > p:first-child, .p-preview > p:last-child { margin: 0; }
@@ -1161,7 +1300,6 @@ button.primary      { border-color: var(--accent); }
 .p-cons { margin: .15rem 0; }
 .p-cons summary {
   cursor: pointer; font-size: .9rem; padding: .1rem 0;
-  border-radius: 3px;
 }
 .p-cons summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .p-cons-add  summary b { color: #0a7d5a; }
@@ -1177,15 +1315,9 @@ button.primary      { border-color: var(--accent); }
 .p-preview .hint { margin: .35rem 0 0; }
 
 .p-commit { display: flex; align-items: center; gap: .6rem; margin: .7rem 0 .2rem; }
-.p-commit button {
-  font: inherit; font-size: .9rem; padding: .3em .9em;
-  border: 1px solid var(--field-edge); border-radius: 999px;
-  background: var(--btn-bg); color: var(--ink); cursor: pointer;
-}
-.p-commit button[disabled] { opacity: .45; cursor: not-allowed; }
 .propose-answer kbd {
   font-family: var(--mono); font-size: .85em;
-  padding: 0 .3em; border: 1px solid var(--field-edge); border-radius: 3px;
+  padding: 0 .3em; border: 1px solid var(--field-edge);
   background: var(--code-bg);
 }
 .propose-answer h4 { margin: .2rem 0 .4rem; }
@@ -1196,7 +1328,7 @@ button.primary      { border-color: var(--accent); }
   white-space: pre-wrap; word-break: break-word;
   max-height: 12rem; overflow: auto;
   padding: .4rem .6rem; margin: .3rem 0;
-  background: var(--code-bg); border-radius: 5px;
+  background: var(--code-bg);
 }
 
 /* ---- the qualitative constraint network (/network) -------------------- */
@@ -1231,8 +1363,13 @@ button.primary      { border-color: var(--accent); }
    viewBox is cropped to what was drawn, so height is capped here rather than
    in the markup and a wide graph scrolls inside its own box. */
 
-.kb-graph-fig { margin: .2rem 0 1rem; overflow-x: auto; overscroll-behavior-x: contain; }
-.kb-graph { display: block; margin-inline: auto; height: auto; max-height: 22rem; }
+/* The picture is **never scaled**: one user unit is one CSS pixel, so its labels are the
+   size the sheet set and not whatever a fit-to-height left of them.  A picture bigger than
+   its box scrolls inside the box instead, which is what `overflow` and the height cap here
+   do; `max-height` on the <svg> scaled the whole scene down and took the text with it. */
+.kb-graph-fig { margin: .2rem 0 1rem; }
+.kb-graph-box { max-height: 28rem; overflow: auto; overscroll-behavior: contain; }
+.kb-graph { display: block; margin-inline: auto; }
 .kb-graph-fig figcaption { font-size: .86em; margin-top: .1rem; }
 
 /* ---- redesign: collapsible proof, sticky/overflow safety --------------- */
@@ -1261,8 +1398,8 @@ button.primary      { border-color: var(--accent); }
 ul.why > li .tag       { white-space: nowrap; }
 
 .g-pill { fill: var(--card); stroke: currentColor; stroke-width: 1; }
-.g-label { font-size: 12.5px; fill: currentColor;
-           font-family: ui-sans-serif, system-ui, sans-serif; }
+.g-label { font-size: var(--g-label); fill: currentColor;
+           font-family: var(--mono); font-size-adjust: var(--x-height); }
 .g-node { color: var(--t-pred); }
 .g-node.t-type    { color: var(--t-type); }
 .g-node.t-ind     { color: var(--t-ind); }
@@ -1277,5 +1414,5 @@ a:hover > .g-node .g-pill { fill: var(--btn-hover); }
 .g-edge line { stroke: var(--muted); stroke-width: 1.2; fill: none; }
 .g-edge.g-genlCx line { stroke-dasharray: 5 3; }
 .g-arrowhead { fill: var(--muted); }
-.g-edge-label { font-size: 10.5px; fill: var(--muted);
-                font-family: ui-sans-serif, system-ui, sans-serif; }
+.g-edge-label { font-size: var(--g-edge); fill: var(--muted);
+                font-family: var(--mono); font-size-adjust: var(--x-height); }

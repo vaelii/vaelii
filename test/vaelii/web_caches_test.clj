@@ -8,11 +8,11 @@
   `/stats`, `/kbs` and `/jobs` are asserted here rather than left to review."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
+            [vaelii.browser.catalog :as catalog]
+            [vaelii.browser.jobs :as jobs]
+            [vaelii.browser.web :as web]
             [vaelii.core :as v]
-            [vaelii.host.catalog :as catalog]
             [vaelii.host.core-context :as core-context]
-            [vaelii.host.jobs :as jobs]
-            [vaelii.host.web :as web]
             [vaelii.impl.caches :as caches]
             [vaelii.impl.config :as config]
             [vaelii.test-util :as tu]))

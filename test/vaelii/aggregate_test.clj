@@ -13,9 +13,9 @@
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
-            [vaelii.impl.provers :as provers]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.types.prover :as prover-types]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded tu/load-starter!))
@@ -999,7 +999,7 @@
   built-in `EvaluateProver`, so this is the only prover that runs on the goal and its
   solutions are exactly the ones below."
   [pred]
-  (reify provers/Prover
+  (reify prover-types/Prover
     (applicable? [_ _ goal _]
       (and (sequential? goal) (= 3 (count goal)) (= 'evaluate (first goal))
            (sequential? (nth goal 2)) (= ambiguity-marker (last (nth goal 2)))))

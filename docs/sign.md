@@ -144,7 +144,7 @@ costs a fixpoint and `wff` runs per assert, and the prover is opt-in.
 
 ## What a derived sign rests on
 
-`SignProver` implements `provers/SupportingProver`, so each answer comes back with the
+`SignProver` implements `prover-types/SupportingProver`, so each answer comes back with the
 handles behind it and a forward rule joining on a derived sign is an ordinary firing that
 the JTMS withdraws when one of them goes.
 

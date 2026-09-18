@@ -24,6 +24,7 @@
   makes (docs/qcn.md) and the same one `exceptWhen` revival makes."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded tu/load-starter!))
@@ -189,7 +190,7 @@
     (let [a (v/assert kb (list 'genl fatherOf parentOf) 'CxUniverse)
           b (v/assert kb (list 'genl fatherOf parentOf) 'CxUniverse)
           c (v/assert kb (list 'genl fatherOf parentOf) 'CxCore)
-          support (get-in @(:taxonomy kb) [:genl :support [fatherOf parentOf]])]
+          support (get-in @(reasoning/taxonomy kb) [:genl :support [fatherOf parentOf]])]
       (is (= a b) "one sentence in one context is one sentex, however often it is asserted")
       (is (not= a c) "a second context is a second sentex, and a second supporter")
       (is (= #{a c} (set (keys support))) "so the edge has exactly the two supporters")
@@ -327,23 +328,6 @@
     (v/assert kb (list 'implies (list parentOf '?x '?y) (list ancestorOf '?x '?y)) CxB {:direction :forward})
     (v/assert kb (list fatherOf Tom Bob) CxB)
     (is (= [CxB] (mapv :context (v/sentexes-matching kb (list ancestorOf Tom Bob) '?ctx))))))
-
-(tu/deftest-kb an-ist-consequent-is-still-held-to-its-own-subsumption
-  ;; the escape hatch is a *named* target, so there is nothing to derive and nothing to
-  ;; lower: it places where the author said, or not at all.
-  (tu/with-terms [fatherOf parentOf ancestorOf Tom Bob
-                  CxA CxB CxSaga]
-    (lattice! kb CxA CxB CxSaga)
-    (v/assert kb (list 'genl fatherOf parentOf) CxA)
-    (v/assert kb (list 'implies (list parentOf '?x '?y)
-                       (list 'ist CxB (list ancestorOf '?x '?y)))
-              'CxUniverse {:direction :forward})
-    (v/assert kb (list fatherOf Tom Bob) CxB)
-    (is (empty? (v/sentexes-matching kb (list ancestorOf Tom Bob) '?ctx))
-        "B cannot see A's edge, and an ist target is not lowered to somewhere that can")
-    (v/assert kb (list 'genl fatherOf parentOf) 'CxUniverse)
-    (is (= [CxB] (mapv :context (v/sentexes-matching kb (list ancestorOf Tom Bob) '?ctx)))
-        "with a witness B can see, the named target takes it")))
 
 ;; ---- the witness is the placement's, and it is a function of content ------
 

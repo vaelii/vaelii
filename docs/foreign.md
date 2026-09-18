@@ -144,7 +144,7 @@ Two callers, and neither holds more than a resolve:
   anything else goes to `:engine-dump`, resolved **once per import** rather than per
   frame. A build with no such plugin refuses the dump with `:type :no-foreign-reader`
   instead of misreading it.
-* `vaelii.host.catalog` — `:corpus` loads through `:cyc-corpus`. A found KB is still
+* `vaelii.browser.catalog` — `:corpus` loads through `:cyc-corpus`. A found KB is still
   *offered* whether or not a reader is present: the honest answer to "I cannot read this"
   is a load that fails saying so, not a KB that silently stops being listed.
 

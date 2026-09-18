@@ -22,6 +22,7 @@
             [vaelii.koinii.channel :as ch]
             [vaelii.koinii.identity :as id]
             [vaelii.koinii.speech-acts :as sa]
+            [vaelii.koinii.types :as koinii-types]
             [vaelii.test-util :as tu])
   (:import [org.eclipse.jetty.server Server]))
 
@@ -379,9 +380,9 @@
             the raw feed primitives rather than pretend to resume"
     (let [m (ch/local kb)
           refusal (fn [f] (try (f) nil (catch clojure.lang.ExceptionInfo e (ex-data e))))]
-      (is (= :koinii/no-wire-feed (:type (refusal #(ch/-feed-open m nil 'CxDeploy))))
+      (is (= :koinii/no-wire-feed (:type (refusal #(koinii-types/-feed-open m nil 'CxDeploy))))
           "opening a feed on a medium that issues no cursor")
-      (is (= :koinii/no-wire-feed (:type (refusal #(ch/-feed-poll m nil nil nil))))
+      (is (= :koinii/no-wire-feed (:type (refusal #(koinii-types/-feed-poll m nil nil nil))))
           "and resuming from one it never issued"))))
 
 ;; ---- the two entry points that nil-punned: a bad handle, and a bad stance -------
@@ -455,7 +456,7 @@
                                  ([_ _ _] {:token "T" :cursor 0}))
                     vc/unwatch (fn [_ _] true)
                     vc/poll    poll]
-        (let [sub (ch/-subscribe medium nil 'CxDeploy (fn [_]) nil)]
+        (let [sub (koinii-types/-subscribe medium nil 'CxDeploy (fn [_]) nil)]
           (is (stopped? sub) "the dead subscription reads stopped, not live")
           (is (some #{[:error ::ch/subscription-failed]} @logged)
               "and the failure was logged at :error rather than swallowed")))
@@ -470,8 +471,8 @@
                                  ([_ _ _] {:token "T" :cursor 0}))
                     vc/unwatch (fn [_ _] true)
                     vc/poll    poll]
-        (let [sub (ch/-subscribe medium nil 'CxDeploy (fn [_])
-                                 {:on-error #(swap! seen conj %)})]
+        (let [sub (koinii-types/-subscribe medium nil 'CxDeploy (fn [_])
+                                           {:on-error #(swap! seen conj %)})]
           (is (stopped? sub))
           (is (= 1 (count @seen)) ":on-error was told")
           (is (= "the proxy hung up" (ex-message (first @seen))))
@@ -493,7 +494,7 @@
                                  ([_ _ _] {:token "T" :cursor 0}))
                     vc/unwatch (fn [_ _] true)
                     vc/poll    poll]
-        (let [sub (ch/-subscribe medium nil 'CxDeploy (fn [_]) nil)]
+        (let [sub (koinii-types/-subscribe medium nil 'CxDeploy (fn [_]) nil)]
           (is (stopped? sub) "the reaped subscription reads stopped too, and quietly")
           (is (some #{[:warn ::ch/subscription-lagged]} @logged)
               "the dropped count was reported")
@@ -513,8 +514,8 @@
                                  ([_ _ _] {:token "T" :cursor 0}))
                     vc/unwatch (fn [_ _] true)
                     vc/poll    poll]
-        (let [sub (ch/-subscribe medium nil 'CxDeploy (fn [_])
-                                 {:on-lagged #(swap! drops conj %)})]
+        (let [sub (koinii-types/-subscribe medium nil 'CxDeploy (fn [_])
+                                           {:on-lagged #(swap! drops conj %)})]
           (is (stopped? sub))
           (is (= [3] @drops) ":on-lagged was told the count")
           (is (not-any? #{[:warn ::ch/subscription-lagged]} @logged))))

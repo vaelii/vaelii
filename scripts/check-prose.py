@@ -51,14 +51,17 @@ SELF = os.path.abspath(__file__)
 BASELINE = os.path.join(ROOT, "scripts", "prose-baseline.txt")
 
 # Directories scanned, and the extensions scanned inside them.
-SCAN_DIRS = ["src", "test", "bench", "docs", "scripts", "resources/kb"]
+SCAN_DIRS = ["src", "test", "bench", "docs", "scripts", "resources/kb", "tools"]
 SCAN_EXT = (".clj", ".cljc", ".cljs", ".md", ".py", ".sh", ".txt", ".edn")
 # Directory names never descended into, wherever they appear: build output, vendored
 # code, and the large gitignored working directories a bench tree keeps. A sibling
-# repo's copy of this script keeps the same list, so one walk cannot be cheap here and
-# a 500 GB traversal there.
+# repo's copy of this script carries the same list for the entries its own tree can
+# hit, so one walk cannot be cheap here and a 500 GB traversal there. `.venv` and
+# `__pycache__` are this repo's: tools/vaelii-top keeps a gitignored virtualenv of
+# ~30,000 vendored files beside ~1,800 lines of its own.
 SKIP_DIRNAMES = {".git", "target", "node_modules", ".clj-kondo", "build",
-                 "scratch", "corpus", "checkouts", "pdfs", "findings"}
+                 "scratch", "corpus", "checkouts", "pdfs", "findings",
+                 ".venv", "venv", "__pycache__"}
 # A generated artifact larger than this is data, not prose: reading it costs more than
 # any finding in it is worth.
 MAX_BYTES = 2 * 1024 * 1024

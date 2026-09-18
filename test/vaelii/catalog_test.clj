@@ -8,13 +8,14 @@
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
+            [vaelii.browser.catalog :as cat]
+            [vaelii.browser.jobs :as jobs]
             [vaelii.core :as v]
-            [vaelii.host.catalog :as cat]
-            [vaelii.host.jobs :as jobs]
             [vaelii.impl.disk.backend :as disk]
             [vaelii.impl.io.import :as import]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.protocols :as p]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 ;; The catalog is process-global (one registry, one active KB), so every test starts and
@@ -350,8 +351,8 @@
       ;; to build it from
       (v/assert-inert kb '(dog Muffet) 'CxUniverse)
       (v/recover kb)
-      (is (seq (jtms/datums (:tms kb))) "the rebuild gave the stored record a node")
-      (is (empty? (jtms/in-datums (:tms kb))) "and nothing grounds it, so it is OUT")
+      (is (seq (jtms/datums (reasoning/tms kb))) "the rebuild gave the stored record a node")
+      (is (empty? (jtms/in-datums (reasoning/tms kb))) "and nothing grounds it, so it is OUT")
       (cat/register! "all-out" "Recovered from a store that grounds nothing" kb)
       (is (cat/activate "all-out"))
       (let [c (cat/active-caveat)]
@@ -518,12 +519,16 @@
           unthawable #_{:clj-kondo/ignore [:missing-protocol-method]}
           (reify p/RecordStore
             (sentex-ids [_] (p/sentex-ids real))
+            (premise-ids [_] #{})
+            (justification-ids [_] #{})
             (get-sentex [_ _id]
               {:nippy/unthawable {:type :record
-                                  :class-name "vaelii.impl.sentex.LiteralSentex"}}))
+                                  :class-name "vaelii.impl.types.sentex.LiteralSentex"}}))
           nothing-stored #_{:clj-kondo/ignore [:missing-protocol-method]}
           (reify p/RecordStore
             (sentex-ids [_] #{})
+            (premise-ids [_] #{})
+            (justification-ids [_] #{})
             (get-sentex [_ _id] nil))]
       (is (nil? (#'cat/check-readable! kb "/a/store/this/build/reads"))
           "the KB's own records come back as sentexes")
@@ -830,7 +835,7 @@
 (deftest an-export-refuses-what-it-cannot-be-a-dump-of
   (tu/with-cleared-kb [kb tu/fresh]
     (cat/register! "mine" "My KB" kb {:where {:backend :memory}})
-    ;; how `vaelii.host.web`'s `--attach` files a daemon: an entry like any other, whose
+    ;; how `vaelii.browser.web`'s `--attach` files a daemon: an entry like any other, whose
     ;; KB is in another process
     (cat/register! "daemon" "Daemon host:4200" {:mode :remote :conn ::stub})
     (testing "a destination is not optional — there is nowhere for a dump to go"
@@ -860,7 +865,7 @@
   (tu/with-cleared-kb [kb tu/fresh]
     (v/assert kb '(genl tmp_export_refusal_type thing) 'CxUniverse)
     (cat/register! "mine" "My KB" kb {:where {:backend :memory}})
-    ;; how `vaelii.host.web`'s `--attach` files a daemon: an entry like any other, whose
+    ;; how `vaelii.browser.web`'s `--attach` files a daemon: an entry like any other, whose
     ;; KB is in another process
     (cat/register! "daemon" "Daemon host:4200" {:mode :remote :conn ::stub})
     ;; a directory no walk reaches: every refusal below runs before the destination is

@@ -60,7 +60,9 @@
             [vaelii.impl.observe :as observe]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.resolution :as res]
-            [vaelii.impl.sentex :as sx]))
+            [vaelii.impl.sentex :as sx]
+            [vaelii.impl.types.prover :as prover-types]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 ;; =========================================================================
 ;; THE ALGORITHM — pure data in, pure data out.  No KB, no context, no belief.
@@ -700,7 +702,7 @@
   shape `vaelii.impl.violations` keeps, without its chaining-run stamp: nothing here is
   reached from a firing, so there is no run to name."
   [kb entry]
-  (when-let [v (:violations kb)]
+  (when-let [v (reasoning/violations kb)]
     (swap! v (fn [entries]
                (let [e' (conj entries entry) n (count e')]
                  (if (> n 1000) (vec (subvec e' (- n 1000))) e'))))))
@@ -783,10 +785,10 @@
   rule joining a metric antecedent over many bindings reads the KB once rather than once
   per binding — and so does a settle re-checking one firing after another."
   [kb context]
-  (let [prob (observe/cached (:qcn kb) [::problem context]
+  (let [prob (observe/cached (reasoning/qcn kb) [::problem context]
                              (fn [_stale] (build-problem kb context)))]
     (if-let [dims (:mixed prob)]
-      (do (when (observe/newly-seen? (:qcn kb) [::reported-mixed context] dims)
+      (do (when (observe/newly-seen? (reasoning/qcn kb) [::reported-mixed context] dims)
             (report-mixed-dimensions! kb context dims))
           nil)
       prob)))
@@ -795,11 +797,12 @@
 
 (def ^:private closure-cache-limit 256)
 
-(def ^:private closure-cache
-  "The closed network, keyed on the network *value* and the tolerance its verdict was read
+(defonce ^{:private true
+           :doc "The closed network, keyed on the network *value* and the tolerance its verdict was read
   to (`closure`).  Sound across queries because the network is derived from the believed
   facts: any change to them yields a different map and so a different key.  Bounded and
-  cleared wholesale when full, like the other caches here."
+  cleared wholesale when full, like the other caches here."}
+  closure-cache
   (atom {}))
 
 (defn- report-inconsistency!
@@ -854,7 +857,7 @@
   resident for this context falls straight through to the content-keyed memo, and so is
   answered about the network it actually asked about."
   [kb k net build]
-  (let [entry (observe/cached (:qcn kb) k (fn [stale] {:for net :result (build stale)}))]
+  (let [entry (observe/cached (reasoning/qcn kb) k (fn [stale] {:for net :result (build stale)}))]
     (if (identical? net (:for entry)) (:result entry) (build nil))))
 
 (defn- cycle-nodes-of
@@ -914,7 +917,7 @@
                         (close-state net all)))))))
         result (if (map? state) (:net state) state)]
     (when (and (= :inconsistent result)
-               (observe/newly-seen? (:qcn kb) [::reported context] net))
+               (observe/newly-seen? (reasoning/qcn kb) [::reported context] net))
       (report-inconsistency! kb context prob (cycle-nodes-of net)))
     result))
 
@@ -950,14 +953,15 @@
 ;; the piece a justification needs — every handle named was really read into this network,
 ;; and the reported set is enough to have produced the bound on its own.
 
-(def ^:private via-cache
-  "The closed distance matrix's **reconstruction table**, keyed on the network value alone.
+(defonce ^{:private true
+           :doc "The closed distance matrix's **reconstruction table**, keyed on the network value alone.
 
   Its own cache, separate from `closure-cache`, because support is asked for rarely: every
   metric goal would otherwise pay to allocate and fill an `int[n²]` that nothing reads.
   The key omits the tolerance `closure`'s carries, and correctly — `shortest-paths!` reads
   no tolerance, so the table is a function of the network and nothing else; the two
-  verdicts that *do* read one are `close`'s, on the other cache."
+  verdicts that *do* read one are `close`'s, on the other cache."}
+  via-cache
   (atom {}))
 
 (defn- reconstruction
@@ -1215,7 +1219,7 @@
   (or (sx/variable? m) (provers/measure? m)))
 
 (defrecord TemporalDistanceProver []
-  provers/Prover
+  prover-types/Prover
   (applicable? [_ _ goal _]
     (and (sequential? goal) (= 4 (count goal))
          (contains? stp-predicates (first goal))
@@ -1234,7 +1238,7 @@
   (completeness [_ _ _ _] 100)
   (solve [_ kb goal context] (solve-distance kb goal context))
 
-  provers/SupportingProver
+  prover-types/SupportingProver
   (support-functors [_] stp-predicates)
   ;; The constraints themselves, and the unit table their magnitudes convert through — the
   ;; two reads `stated-constraints` makes.  `startOf` / `endOf` are deliberately absent:

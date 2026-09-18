@@ -51,6 +51,8 @@
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.rules :as vr]
             [vaelii.impl.solve :as solve]
+            [vaelii.impl.types.reasoning :as reasoning]
+            [vaelii.impl.types.solve :as solve-types]
             [vaelii.test-util :as tu]))
 
 (def ^:private asp? (solver/available?))
@@ -60,9 +62,9 @@
 
 (defn- check-tms [kb c]
   (testing "cautious beliefs are all believed"
-    (is (every? #(jtms/in? (:tms kb) %) (:true c))))
+    (is (every? #(jtms/in? (reasoning/tms kb) %) (:true c))))
   (testing "excluded beliefs are believed by nothing"
-    (is (not-any? #(jtms/in? (:tms kb) %) (:false c)))))
+    (is (not-any? #(jtms/in? (reasoning/tms kb) %) (:false c)))))
 
 (defn- nixon-diamond
   "Assert the canonical rebutting dilemma on gensym'd terms: two equally-specific
@@ -183,7 +185,7 @@
           (is (empty? (:true c)))
           (is (empty? (:false c))))
         (testing "which agrees with belief, since the engine holds both"
-          (is (every? #(jtms/in? (:tms kb) %) (:supportable c)))
+          (is (every? #(jtms/in? (reasoning/tms kb) %) (:supportable c)))
           (check-tms kb c))))))
 
 (deftest a-contradiction-settled-by-strength-never-reaches-the-solver
@@ -365,7 +367,7 @@
         (v/assert kb (list happy tom) 'CxUniverse {:strength :monotonic})
         (let [monotonic (v/handle-of kb (list happy tom) 'CxUniverse)]
           (v/set-solver kb
-                        (reify solve/Solver
+                        (reify solve-types/Solver
                           (solve [_ {:keys [assumptions]}]
                             (swap! called inc)
                             {:defeat (conj (set (take 1 (sort assumptions))) monotonic)
@@ -376,7 +378,7 @@
               (is (nil? (v/last-program kb))))
             (testing "so the known-true belief stands, never having been at risk"
               (is (seq (v/sentexes-matching kb (list happy tom) 'CxUniverse)))
-              (is (jtms/in? (:tms kb) monotonic)))
+              (is (jtms/in? (reasoning/tms kb) monotonic)))
             (testing "and both sides of the dilemma stand, undecided by the plugin"
               (is (true? (v/in? kb pos)))
               (is (true? (v/in? kb neg)))

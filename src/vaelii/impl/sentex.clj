@@ -48,132 +48,97 @@
   `RuleSentex` (an implication) — so a literal sentex does not carry the rule-only slots
   (there are 100M+ of them), and each still round-trips through nippy with its type intact."
   (:refer-clojure :exclude [name])
-  (:require [vaelii.impl.caches :as caches])
+  (:require [vaelii.impl.caches :as caches]
+            [vaelii.impl.types.sentex :as sentex-types])
   (:import [java.util.concurrent ConcurrentHashMap]))
 
-;; Two records, split so a literal sentex does not carry the seven rule-only slots
-;; (facts are the 100M+ case).  Both share the scalar core:
-;;   context     the context symbol it holds in
-;;   id          the integer handle, nil until the record store assigns one
-;;   strength    :monotonic | :default | nil    (the assumption strength when the
-;;               sentex is asserted as a premise; nil for a purely-derived one)
-;;
-;; A `LiteralSentex` is a literal — a fact or its negation, a metadata declaration, or a
-;; query pattern: one signed predicate application, ground or holding variables.  It adds
-;; `sentence` to the core — the canonical, readable form, `(not S)` for a negative
-;; literal, which display and matching read — and reading any rule-only key off it
-;; returns nil, so `(some? (:antecedent sx))` is the literal-vs-rule discriminant
-;; everywhere.
-;;
-;; The sign is **the sentence's own head**, not a slot: a negative literal's sentence is
-;; `(not S)`, and `negative?` reads that.  Which literal a sentex is says nothing about
-;; belief — whether the KB *holds* it is `jtms/in?`, which reads a handle.  A negative
-;; literal the JTMS believes is a believed denial, and a positive one it does not is a
-;; defeated positive; the two axes are independent.
-(defrecord LiteralSentex [sentence context id strength])
-;;
-;; A `RuleSentex` is an implication.  Beyond the core it carries the decomposition the
-;; connectives and `set/*` wrappers canonicalize into:
-;;   antecedent  [pattern ...]          (the antecedents — the sentence's `and` body)
-;;   consequent  pattern                (the consequent)
-;;   varmap      {?var0 ?x, …} | nil    (canonical variable -> the author's name)
-;;   direction   :forward | :backward | :both | :forward-only | :inert   (from its
-;;               set/*Rule wrapper; :backward for a bare implies — the tractable default,
-;;               since forward chaining materializes a conclusion per match.  :forward and
-;;               :both mean forward + backward (`rules/backward?`), so a set/forwardRule
-;;               rule answers backward goals too; :forward-only (set/forwardOnlyRule)
-;;               forward-chains but never backward — a tests-only mode the ontology never
-;;               uses; a generator stays forward even bare)
-;;   defeasible  true | nil             (a set/defaultRule rule: its conclusions are
-;;               defeasible and fire from the one agenda like any other rule's;
-;;               `settle` decides which of them survive a clash, from recomputed
-;;               belief — docs/defenses.md)
-;;   assumption  true | nil             (a set/assumptionRule: the rule's head is a
-;;               *choice* for a solve, not a derived truth.  It never forward-chains
-;;               into belief; a solve grounds it (docs/solving.md).  It is part of the
-;;               rule's identity — in the trie key — so a choice rule and its bare twin
-;;               are different sentexes)
-;;   constraint  :hard | :soft | nil    (a set/hardConstraint / set/softConstraint rule:
-;;               the head is a *contradiction marker*, and the rule's body is a
-;;               conjunctive nogood mixing background facts and choice-head patterns.
-;;               Like an assumptionRule it never forward-chains; a solve grounds its body
-;;               into nogoods (soft) or integrity constraints (hard).  Part of the rule's
-;;               identity — in the trie key — so a constraint rule and its bare twin are
-;;               different sentexes.  See docs/solving.md)
-;;
-;; An `exceptWhen` exception is **not** a Rule field: it is a separate belief-following
-;; meta-sentex `(exceptWhen <query> (sentexHandle <rule-id>))` naming the rule it
-;; qualifies (`exceptWhen-meta`), so a rule and its unexcepted twin share one handle
-;; and asserting or retracting an exception amends the rule in place.  The engine reads
-;; a rule's exceptions from those meta-sentexes (`provers/rule-exceptions`), never off
-;; the record.
-;;
-;; A rule holds **no sentence**.  `antecedent` and `consequent` are the form its readers
-;; use — the chainers, the indexers, the checks — and `sentence-of` builds the
-;; `(implies …)` form from them for the few that want it whole (the trie key, display).
-(defrecord RuleSentex [context id antecedent consequent strength varmap direction
-                       defeasible assumption constraint])
-
 (def ^:dynamic *symbol-pool-limit*
-  "The most distinct symbols the pool holds before it is cleared wholesale.  Sized well
-  above any real *vocabulary* — the shipped ontology plus the whole of OpenCyc is ~188k
-  constants — so a KB that only ever names things never reaches it and keeps every name
-  shared, which is the entire point of the pool.  A cap a normal load could touch would
-  throw away the sharing it exists for; this one is reached only by a minter running per
-  fact.  Dynamic for the reason `taxonomy/*scoped-memo-budget*` is: the only way to
-  exercise the flush is to make it happen."
+  "The most entries the pool holds across its two generations; each generation holds at
+  most half.  Sized well above the shipped ontology plus the whole of OpenCyc (~188k
+  constants), so a KB of that vocabulary never rotates a generation and keeps every name
+  shared.  A store whose vocabulary is larger, or a minter running per fact, rotates the
+  generations: a name mentioned since the previous rotation stays pooled, and a name not
+  mentioned for two rotations leaves.  Dynamic for the reason `taxonomy/*scoped-memo-budget*`
+  is: a test exercises the rotation by binding a small limit."
   1000000)
 
-(def ^:private symbol-pool
-  "Interns the symbols sentences are built from, so the same predicate, individual,
+(defonce ^{:private true
+           :doc "Interns the symbols sentences are built from, so the same predicate, individual,
   type, context, or variable name is a single shared object across every sentex that
   mentions it — the sharing a `parentOf` repeated through 100M+ facts buys, which
-  dwarfs the pool's own footprint.  A `ConcurrentHashMap` because readers may intern
-  beside the single writer.
+  dwarfs the pool's own footprint.  An atom over `[current previous]`, two
+  `ConcurrentHashMap`s, because readers may intern beside the single writer.
 
   What bounds it is **not** the vocabulary.  A KB that only names things holds one entry
   per distinct name and is ontology-sized, but three writers mint a *fresh* symbol per
   fact: NAT reification (`nat/constant-for`, one content-named `nat/a…` per reified
   non-atomic term), head-existential skolemization (`skolem/skolemize-conclusion`, one witness per
-  existential per firing frontier) and abduction (one scratch context each).
-  Under any of those the pool grows with the fact count rather than with the ontology,
-  and nothing hands an entry back: it is static, process-wide and shared by every KB in
-  it, so `retract!`, the store clears, `core/clear!`, a KB close and a catalog switch all
-  leave it exactly as large as it was.
+  existential per firing frontier) and abduction (one scratch context each).  A disk store
+  can also name more than the limit outright: its index snapshot's token dictionary interns
+  every token it holds when the store opens, and a 12M-sentex store holds several million.
+  Nothing hands an entry back on its own: the pool is static, process-wide and shared by
+  every KB in it, so `retract!`, the store clears, `core/clear!`, a KB close and a catalog
+  switch all leave it exactly as large as it was.
 
-  So it is capped at `*symbol-pool-limit*` and cleared **wholesale** when full, the shape
-  the other bounded caches here take (`taxonomy/*scoped-memo-budget*`,
-  `observe/resident-limit`, `stp/closure-cache-limit`).  A clear can change no answer,
-  only a footprint: interning changes identity and never equality, so the symbols already
-  stored stay alive in the records holding them, keep comparing and hashing exactly as
-  they did, and are re-pooled on their next mention.  What it costs is the sharing for
-  the names minted before it — which is the trade a pool that cannot be emptied does not
-  get to make."
-  (ConcurrentHashMap.))
+  So it holds two generations.  A lookup reads `current`, then `previous`, and a name found
+  in `previous` is put into `current`.  When `current` reaches half of `*symbol-pool-limit*`
+  it becomes `previous`, and the old `previous` is dropped.  A name read at least once per
+  generation therefore keeps one shared object for as long as it is read, while the pool
+  never holds more than the limit.  A rotation changes no answer, only a footprint:
+  interning changes identity and never equality, so a dropped symbol stays alive in the
+  records holding it, compares and hashes exactly as before, and is re-pooled on its next
+  mention."}
+  symbol-pool-generations
+  (atom [(ConcurrentHashMap.) (ConcurrentHashMap.)]))
+
+(defn- generation-limit
+  "The entries `current` holds before it rotates: half of `*symbol-pool-limit*`, at least 1."
+  ^long []
+  (max 1 (quot (long *symbol-pool-limit*) 2)))
+
+(defn- rotate!
+  "Make `gens`' `current` the `previous`, dropping the old `previous`, and answer the
+  generations in force afterwards.  A lost compare-and-set means another thread rotated
+  first, and its generations are answered instead of rotating a second time."
+  [gens]
+  (let [gens' [(ConcurrentHashMap.) (nth gens 0)]]
+    (if (compare-and-set! symbol-pool-generations gens gens')
+      gens'
+      @symbol-pool-generations)))
+
+(defn- pool-size
+  "The entries in both generations.  A name moved out of `previous` is counted in both
+  until `previous` is dropped, so this counts slots, which is what the footprint follows."
+  ^long []
+  (let [[^ConcurrentHashMap cur ^ConcurrentHashMap prev] @symbol-pool-generations]
+    (+ (.size cur) (.size prev))))
 
 (defn intern-sym
   "The pooled instance of symbol `s` (or `s` unchanged when it is not a symbol).
   Interning changes identity, never equality, so a pooled `?var0` still matches a
   fresh one as a binding key.
 
-  The size check rides the **miss** path, so a repeated name pays a bare `.get` and only
-  a genuinely new one consults the count.  A reader whose `.get` loses a race with a
-  concurrent clear falls back to its own instance: a missed sharing, never a wrong
-  symbol, which is the same reason the wholesale clear is safe at all."
+  A hit in `current` pays one `.get`.  A miss reads `previous`, rotates when `current` is
+  full, and puts the symbol into `current`, as `previous`'s instance when `previous` held
+  one.  A thread racing a rotation can put into the map that has just become `previous`;
+  the entry stays findable there, so the race costs at most a missed sharing and never a
+  wrong symbol."
   [s]
   (if (symbol? s)
-    (let [^ConcurrentHashMap p symbol-pool]
-      (or (.get p s)
-          (do (when (<= (long *symbol-pool-limit*) (.size p)) (.clear p))
-              (.putIfAbsent p s s)
-              (or (.get p s) s))))
+    (let [gens @symbol-pool-generations]
+      (or (.get ^ConcurrentHashMap (nth gens 0) s)
+          (let [s    (or (.get ^ConcurrentHashMap (nth gens 1) s) s)
+                gens (if (<= (generation-limit) (.size ^ConcurrentHashMap (nth gens 0)))
+                       (rotate! gens)
+                       gens)]
+            (or (.putIfAbsent ^ConcurrentHashMap (nth gens 0) s s) s))))
     s))
 
 ;; No `:clear`, and the pool is the one cache here where that is a decision rather than
 ;; an omission: dropping it changes no answer (interning moves identity, never equality)
 ;; but throws away the sharing every symbol minted before it was paying for, and buys no
-;; measurement in return — nothing counts a pool hit.  The wholesale clear at the limit
-;; is a footprint ceiling, not an instrument.
+;; measurement in return — nothing counts a pool hit.  The rotation at the limit is a
+;; footprint ceiling, not an instrument.
 (caches/register-cache
  {:cache    :symbol-pool
   :label    "Symbol pool"
@@ -184,15 +149,15 @@
   :limit    (fn [] *symbol-pool-limit*)
   :counters nil
   :note     (str "One shared object per distinct predicate, individual, type, context "
-                 "or variable name, across every KB in this process. Bounded by the "
-                 "vocabulary until something mints a symbol per fact — reification, "
-                 "skolemization, an abduction's scratch context — after which it grows "
-                 "with the fact count and nothing hands an entry back.")
-  :read     (fn [_] {:entries (.size ^ConcurrentHashMap symbol-pool)})})
+                 "or variable name, across every KB in this process, held in two "
+                 "generations. At the limit the older generation is dropped, so a name "
+                 "read since the last rotation stays pooled and a name unread for two "
+                 "rotations leaves.")
+  :read     (fn [_] {:entries (pool-size)})})
 
 (defn canon
   "Canonicalize a sentence to a single sequential representation (PersistentList,
-  recursively), interning every symbol through `symbol-pool` on the way.  Substitution
+  recursively), interning every symbol through `symbol-pool-generations` on the way.  Substitution
   and reads produce lazy seqs / vectors that are `=` but freeze to *different* nippy
   bytes; canonicalizing before anything reaches a key or value keeps trie keys and
   dedup stable, and the interning collapses the repeated vocabulary to shared objects
@@ -226,19 +191,10 @@
     (sequential? x) (apply list (map intern-deep x))
     :else           x))
 
-(defn variable?
-  "A pattern variable is a symbol whose name starts with '?', plus the anonymous
-  wildcard _.  Variables act as wildcards during index lookup and as logic
-  variables during unification."
-  [x]
-  (and (symbol? x)
-       ;; hinted explicitly rather than left to inference off `name`'s own `^String`:
-       ;; this is the engine's most-called predicate (`substitute` calls it per term),
-       ;; and a rewriter that reaches the form without the inference — cloverage's
-       ;; instrumentation does — turns the interop into a reflective `getMethods` copy
-       ;; per call.  The hint is what makes the dispatch direct no matter who reads it.
-       (let [^String n (clojure.core/name x)]
-         (or (= n "_") (.startsWith n "?")))))
+(def variable?
+  "A pattern variable: a symbol whose name starts with `?`, or `_`
+  (`vaelii.impl.types.sentex/variable?`, which the columnar trie calls)."
+  sentex-types/variable?)
 
 (defn- form-vars
   "Every variable anywhere in a form, in order of occurrence."
@@ -1924,11 +1880,11 @@
                                  " — a rule record holds no sign; negate its consequent"
                                  " instead")
                             {:type :not-well-formed :sentence sentence})))
-          (->RuleSentex ctx nil antes conseq nil varmap dir* def? assum con)))
+          (sentex-types/->RuleSentex ctx nil antes conseq nil varmap dir* def? assum con)))
       (let [b      (normalize-literal body symmetric?)
             stored (if (= polarity :negative) (list not-functor b) b)]
         ;; a wrapper on a non-rule is meaningless; it is stripped and ignored
-        (->LiteralSentex stored ctx nil nil)))))
+        (sentex-types/->LiteralSentex stored ctx nil nil)))))
 
 (defn sentex
   "Construct a sentex — a `LiteralSentex` or a `RuleSentex` — canonicalizing the structural
@@ -1949,7 +1905,7 @@
    ;; handle.  Its query holds the rule's canonical variables, so it is a non-ground
    ;; Literal — exempt from the ground-fact check by the assert layer.
    (if (exceptWhen-meta? sentence)
-     (->LiteralSentex (canon sentence) (intern-sym context) nil nil)
+     (sentex-types/->LiteralSentex (canon sentence) (intern-sym context) nil nil)
      (constructed-sentex sentence context symmetric?))))
 
 (defn body
@@ -1981,33 +1937,39 @@
   [sentence]
   (second (peel-not (canon sentence))))
 
-(defn- ist-read-problem
-  "The refusal an `(ist Ctx S)` in antecedent or exception position carries.
+(defn- ist-rule-problem
+  "The refusal an `(ist Ctx S)` in any rule position carries.
 
-  `ist` **places**: `assert` finds-or-creates S in Ctx, and a rule consequent names
-  where its conclusion lands.  Nothing reads through it.  The literal is indexed and
-  matched under the functor `ist` (`rules/antecedent-predicates`, `res/match-pattern`),
-  which no sentex is ever stored with, so it satisfies nothing and no arriving datum
-  triggers it.
+  `ist` names the context a caller asserts a sentence into or asks it in, at the
+  `assert` and read entry points.  A rule is refused one in every position, and the
+  reason differs by position.
 
-  Which way that falls out depends on the frame, and **every** way is a rule deciding
-  itself on a context it never read: a positive antecedent is never satisfied, so the
-  rule cannot fire; an `exceptWhen` query never matches, so the guard never guards and
-  the conclusion it was written to block stands believed; and an `(unknown (ist …))` is
-  satisfied by the same emptiness, so the rule fires unconditionally.  The middle two
-  are why this is refused rather than left inert — a rule that does nothing is visible,
-  and a guard that passes everything is not.
+  In antecedent or exception position the literal is indexed and matched under the
+  functor `ist` (`rules/antecedent-predicates`, `res/match-pattern`), which no sentex is
+  ever stored with, so it satisfies nothing and no arriving datum triggers it.  A
+  positive antecedent is never satisfied, so the rule cannot fire.  An `exceptWhen`
+  query never matches, so the guard never blocks the conclusion it was written to
+  block.  An `(unknown (ist …))` is satisfied by the same emptiness, so the rule fires
+  unconditionally.
 
-  What such an author wants is for S to be **visible** where the rule is, and there are
-  two ways to say that: `(decontextualized_predicate P)` takes every `(P ...)` into
-  CxUniverse, which every context sees, and a `genlCx` edge puts Ctx in the
-  rule's own ancestor set.  Under either the literal is written plainly, and belief no longer
-  turns on a frame the matcher cannot honor."
+  In consequent position the frame would place the conclusion in `Ctx` whether or not
+  `Ctx` sees the rule or the facts the firing rests on.  `Ctx` would believe a sentex
+  whose support it cannot read.  The rule's `exceptWhen` query would run in `Ctx` and
+  miss the facts stated where the rule is.  The backward chainers read only the rules
+  the asking context sees, so they would not reproduce the conclusion.
+
+  The author wants `S` to be **visible** in some context, and two mechanisms state
+  that: `(decontextualized_predicate P)` takes every `(P ...)` into CxUniverse, which
+  every context sees, and a `genlCx` edge puts one context in another's ancestor set.
+  Under either the literal is written plainly."
   [role]
-  (str "ist places a conclusion and reads nothing: an (ist Ctx S) "
-       (clojure.core/name role) " matches no stored sentex, so it decides the rule"
-       " without ever consulting Ctx — make S visible with (decontextualized_predicate P)"
-       " or a genlCx edge, and write S plainly"))
+  (if (= :consequent role)
+    (str "an (ist Ctx S) consequent places the conclusion in Ctx whether or not Ctx sees"
+         " the rule and the facts it rests on — conclude S plainly, and make it visible"
+         " with (decontextualized_predicate P) or a genlCx edge")
+    (str "an (ist Ctx S) " (clojure.core/name role) " matches no stored sentex, so the"
+         " rule never consults Ctx — make S visible with (decontextualized_predicate P)"
+         " or a genlCx edge, and write S plainly")))
 
 (defn connective-problems
   "Structural problems with `sentence`'s connective frames, as strings (empty if OK) —
@@ -2022,8 +1984,9 @@
     antecedent or consequent position matches nothing and checks as nothing;
   * a head existential outside consequent position — `exists` marks a consequent
     variable for skolemization and is not a predicate;
-  * an `(ist Ctx S)` in antecedent or exception position — `ist` places and never
-    reads, so the literal matches nothing (`ist-read-problem`);
+  * an `(ist Ctx S)` in any rule position — as a read the literal matches nothing, and
+    as a consequent it places a conclusion where the rule and its facts need not be
+    visible (`ist-rule-problem`);
   * a nested `implies` anywhere but a rule's consequent — a rule is a sentence, not a
     literal, and consequent position is the one place it means something else: a
     **generator**, whose firing stamps the inner rule out (docs/generators.md).  The
@@ -2080,7 +2043,7 @@
               :else (walk role (second form)))
             (= h ist-functor)
             (cond
-              (contains? #{:antecedent :exception} role) [(ist-read-problem role)]
+              (contains? #{:antecedent :exception :consequent} role) [(ist-rule-problem role)]
               (= 3 n)        (walk role (nth form 2))
               (= :sentence role) []  ; the top-level ist arity has its own `:shape` contract
               :else [(str "ist takes a context and a sentence, got arity " (dec n))])
@@ -2115,7 +2078,7 @@
                     (clojure.core/name role) " position")])
             ;; A NAF body is a query standing in its literal's own position, so it is
             ;; checked in that role — an `(unknown (ist …))` is refused exactly as the
-            ;; bare literal is, and for the sharper reason (`ist-read-problem`).  Only
+            ;; bare literal is, and for the sharper reason (`ist-rule-problem`).  Only
             ;; where `unknown` means anything: it is an antecedent/exception construct,
             ;; and a top-level one is not a sentence this check is owed an opinion on.
             (and (unknown? form) (not= :sentence role)) (walk role (second form))
@@ -2231,15 +2194,11 @@
 ;; and `lookup` treats such a list as a single opaque form, so those keys are
 ;; unchanged: only positive-fact keys linearize.
 
-(def ^:private subterm-tag
-  "The head of a structural arity marker — namespaced so it can never be a stored
-  token (symbols, numbers, strings, and the `:false` / `:rule` / context slots are
-  all type- or value-distinct from `[::subterm k]`)."
-  ::subterm)
-
-(defn subterm-mark  [k] [subterm-tag k])
-(defn subterm-mark? [x] (and (vector? x) (= subterm-tag (nth x 0 nil))))
-(defn subterm-arity [m] (nth m 1))
+;; The tag and the three marker functions are `vaelii.impl.types.sentex`, which the
+;; columnar trie calls.
+(def subterm-mark  "An arity marker for a `k`-element subterm." sentex-types/subterm-mark)
+(def subterm-mark? "Is `x` an arity marker?" sentex-types/subterm-mark?)
+(def subterm-arity "The element count an arity marker carries." sentex-types/subterm-arity)
 
 (defn- linearize
   "A term's preorder token stream: a compound `(F c…)` becomes an arity marker

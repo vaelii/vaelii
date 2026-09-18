@@ -13,6 +13,7 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]
             [vaelii.world :as world]))
 
@@ -28,7 +29,7 @@
     (is (seq (v/sentexes-matching kb '(genlCx CxWell CxBiology) '?ctx))))
   (testing "there is no direct Well→Core edge, but Core is transitively visible from Well"
     (is (empty? (v/sentexes-matching kb '(genlCx CxWell CxCore) '?ctx)))
-    (is (tax/sees? (:taxonomy kb) 'CxWell 'CxCore)))
+    (is (tax/sees? (reasoning/taxonomy kb) 'CxWell 'CxCore)))
   (testing "CxCore vocabulary is visible from the collector and the data contexts"
     (is (v/ask? kb '(binary_predicate genl) 'CxUniverse))
     (is (v/ask? kb '(binary_predicate parentOf) 'CxNaturalWorld)))
@@ -185,10 +186,6 @@
 ;; checks are context-scoped and run where the fact is stated, so a target the stating
 ;; context cannot see is a place those checks never look — two facts, each admissible
 ;; where it was stated, could meet there as a disjointness violation nothing reports.
-
-(tu/deftest-kb the-lift-is-documented-as-an-inert-dotted-rule
-  (testing "the dotted rule the code implements is stored (as documentation)"
-    (is (seq (v/sentexes-matching kb '(implies (?pred . ?args) (ist CxUniverse (?pred . ?args))) 'CxCore)))))
 
 (tu/deftest-kb a-decontextualized-fact-reaches-the-universe
   ;; Declaration first, then the fact — the forward path, where the lift runs as the

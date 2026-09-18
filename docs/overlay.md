@@ -112,7 +112,7 @@ durable as the fork is and a remount needs no separate recovery step.
 
 **`kv-count` answers the merged cardinality**, never the overlay's. The count-aware trie
 is a selectivity structure — `plan/order` costs every conjunct off `count-at`, divides by
-the fan-out at a position off `count-children`, and `provers/est-bindings` reads the
+the fan-out at a position off `count-children`, and `prover-types/est-bindings` reads the
 functor root — so a base-blind count would not be a wrong answer, it would be a silently
 wrong *plan* for every query touching inherited content. `kv-intersect` merges for the
 same reason: `sentexes-with-args` intersects the predicate-scoped argument roots, and it

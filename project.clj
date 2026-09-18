@@ -1,4 +1,4 @@
-(defproject com.vaelii/vaelii "0.19.1"
+(defproject com.vaelii/vaelii "0.20.0"
   :description "Vaelii — a contextualized common-sense knowledge base with a
                 count-aware trie index, forward/backward inference,
                 and JTMS truth maintenance, over an in-memory or on-disk store."
@@ -82,6 +82,23 @@
                    :multi-jvm (fn [m & _] (boolean (:multi-jvm m)))
                    :fuzz      (fn [m & _] (boolean (:fuzz m)))
                    :all       (fn [m & _] (not (or (:llm m) (:multi-jvm m) (:fuzz m))))}
+  ;; Leiningen's `:base` profile supplies the project JVM's `:jvm-opts` when the
+  ;; project sets none, and `:base` appends `-XX:+TieredCompilation
+  ;; -XX:TieredStopAtLevel=1` whenever the LEIN_JVM_OPTS environment variable
+  ;; contains "Tiered" (leiningen.core.project/tiered-jvm-opts). That variable is
+  ;; set to shorten leiningen's OWN startup, and leiningen passes the cap on to
+  ;; every JVM it forks for the project, so `lein test`, `lein perf` and `lein run`
+  ;; compiled the engine with C1 alone and never reached C2. Declaring the vector
+  ;; here replaces `:base`'s copy, which carries `^:displace`, and the tiered pair
+  ;; stops reaching a project JVM. `-XX:-OmitStackTraceInFastThrow` is `:base`'s
+  ;; other entry and is restored here because replacing the vector drops it too:
+  ;; the flag reads backwards and KEEPS the stack trace on a repeated implicit
+  ;; throw, which a test failure needs to name its site.
+  ;;
+  ;; No heap size and no collector flag: sizing and `-XX:+UseZGC` stay in the
+  ;; profiles that ask for them (`:bench`, `:zgc`), and a profile's `:jvm-opts`
+  ;; concatenates onto this vector rather than replacing it.
+  :jvm-opts ["-XX:-OmitStackTraceInFastThrow"]
   :profiles {;; `:aot :all` plus a no-op SLF4J binding: silences Jetty's "no providers"
              ;; line inside the standalone jar. Not top-level `:dependencies` — that would
              ;; make it a transitive dependency of every application that depends on
@@ -115,12 +132,14 @@
              ;; deploy` declare it but a consumer's tooling never resolves it
              ;; transitively — docs/operations.md, "Neither server logs a request".
              :dev {:dependencies [[org.slf4j/slf4j-nop "2.0.19"]
-                                   ;; dev-only hot reload: `wrap-reload` reloads changed
-                                   ;; source files from disk before each request, so an edit
-                                   ;; shows on refresh with no restart (web/hot-reloading,
-                                   ;; gated by :reload? / VAELII_DEV).  Never in the jar —
-                                   ;; like the profiler, a dev/repl-profile dependency.
-                                   [ring/ring-devel "1.15.5"]]
+                                  ;; dev-only hot reload: `vaelii.browser.reload` reads the
+                                  ;; watched sources' ns forms and dependency graph with
+                                  ;; tools.namespace and reloads the changed namespaces before
+                                  ;; each request (web/hot-reloading, on only under
+                                  ;; scripts/start-vaelii-dev.sh, which sets VAELII_DEV).
+                                  ;; Never in the jar — like the profiler, a dev/repl-profile
+                                  ;; dependency.
+                                  [org.clojure/tools.namespace "1.5.0"]]
                    :plugins [[dev.weavejester/lein-cljfmt "0.16.5"]
                              [lein-shell "0.5.0"]
                              [lein-cloverage "1.2.4"]]}
@@ -189,7 +208,10 @@
                                     [org.roaringbitmap/RoaringBitmap "1.6.23"]
                                     [it.unimi.dsi/fastutil-core "8.5.19"]]
                      :jvm-opts ["-Xmx6g" "--add-opens=java.base/java.lang=ALL-UNNAMED"
-                                "-Djdk.attach.allowAttachSelf=true"]
+                                "-Djdk.attach.allowAttachSelf=true"
+                                ;; jol sizes a hidden class (a lambda) without Unsafe's
+                                ;; field offsets, which a JDK 17+ refuses for one
+                                "-Djol.magicFieldOffset=true"]
                      :injections
                      [(require 'vaelii.impl.logging)
                       ((resolve 'vaelii.impl.logging/set-level)
@@ -199,7 +221,7 @@
              ;; an nREPL is a remote shell (CONTRIBUTING.md §6).
              :browser {:repl-options
                        {:host "127.0.0.1"
-                        :init (do ((requiring-resolve 'vaelii.host.web/dev-repl)) nil)}}
+                        :init (do ((requiring-resolve 'vaelii.browser.web/dev-repl)) nil)}}
              ;; generational ZGC, asked for per task: `lein with-profile +zgc <task>`.
              ;;
              ;; Detected off the running JDK rather than written as a static vector,
@@ -274,6 +296,7 @@
             ;; the prose budget: metaphor and aphorism against scripts/prose-baseline.txt.
             ;; `lein lint-prose -- --update` lowers a stale budget; it never raises one
             "lint-prose"      ["shell" "python3" "scripts/check-prose.py"]
+            "lint-tools"      ["shell" "bash" "scripts/lint-tools.sh"]
             ;; the `authorship` CI gate's rules, against synthetic commits — the gate
             ;; runs only on a pull request, so this is where they are exercised first
             ;; lint, the suite and the perf claims in one run, not fail-fast
@@ -304,13 +327,16 @@
             ;; opt-in, so `lein test`, `lein test :all` and the gate all pass over
             ;; them.  An alias because a selector nothing types is a selector nothing
             ;; runs: this is the name `deep.yml` and a reviewer both reach for.
-            "test-multi-jvm"  ["test" ":multi-jvm"]
+            ;; through scripts/test-selector.sh, so a selector no gate reaches still
+            ;; leaves a report and a row in the run ledger — a run nothing recorded is
+            ;; one nobody can say happened, which for these two is the whole question
+            "test-multi-jvm"  ["shell" "bash" "scripts/test-selector.sh" ":multi-jvm"]
             ;; the exhaustive truncation sweep, opt-in for a different reason than
             ;; `:multi-jvm`: it is not that no other selector *can* run it, it is that
             ;; no configuration *varies* it — the sweep names its own four backends, so
             ;; a matrix row would repeat identical work.  Once, not once per row.  Set
             ;; `VAELII_TEST_TMPDIR` to a tmpfs: a couple of minutes rather than ten.
-            "test-fuzz"       ["test" ":fuzz"]
+            "test-fuzz"       ["shell" "bash" "scripts/test-selector.sh" ":fuzz"]
             ;; feeds the README deps badge, via scripts/update-badges.sh --deps
             "antq"            ["with-profile" "+antq" "run" "-m" "antq.core" "--skip=pom"]
             ;; the whole suite once per backend — seven record×index pairs plus the
@@ -330,7 +356,9 @@
             ;; ...and both at once, one JVM per configuration, as many at a time as
             ;; the box has cores for: ~13 minutes against the ~55 the two scripts
             ;; above take in sequence, and the one to run when a change owes the
-            ;; matrix (scripts/test-matrix.sh)
+            ;; matrix (scripts/test-matrix.sh).  The launch order is shuffled and the
+            ;; seed printed, so a run stopped early covers a random subset of the
+            ;; roster; `--ordered` schedules the longest configuration first instead
             "test-matrix"     ["shell" "bash" "scripts/test-matrix.sh"
                                ~(if (System/console) "--tty" "--no-tty")]
             ;; the whole matrix in a random order, memory first, stopping at the
@@ -415,10 +443,27 @@
             ;; scripts/link-checkouts.sh first (docs/foreign.md).
             "bench-caches"    ["with-profile" "+bench" "run" "-m" "vaelii.bench.caches"]
             ;; the performance *gate*, as against the bench-* reports above: scaling
-            ;; claims as growth ratios, non-zero exit on a regression
-            "perf"            ["with-profile" "+bench" "run" "-m" "vaelii.bench.perf"]
+            ;; claims as growth ratios, non-zero exit on a regression.  Behind a
+            ;; script rather than pointing straight at the harness so the report is
+            ;; kept and one row lands in the run ledger — scripts/perf.sh says why
+            ;; the ledger writer is shell for every runner and not Clojure for this
+            ;; one.  Arguments pass through: `lein perf --quick`, `--only <name>`,
+            ;; `--tolerance <x>` are unchanged
+            "perf"            ["shell" "bash" "scripts/perf.sh"]
             "browser"         ["with-profile" "+browser" "repl"]
             ;; the daemon and the CLI (docs/operations.md)
             "serve"           ["run" "-m" "vaelii.serve"]
             "cli"             ["run" "-m" "vaelii.cli"]}
-  :repl-options {:init-ns vaelii.core})
+  ;; `:timeout` is how many milliseconds `lein repl` waits for the project JVM to ack
+  ;; its nREPL server, and leiningen's default is 60000. The `:init` form runs BEFORE
+  ;; `nrepl.server/start-server` in that JVM — leiningen.repl/server-forms hands the
+  ;; form to `eval-in-project` as the init argument, which `eval-in-project` evaluates
+  ;; ahead of the body — so `lein browser`'s whole boot is counted against the wait:
+  ;; `vaelii.browser.web/dev-repl` opens the KB and then `load-kb-dir` loads
+  ;; VAELII_KB_DIR. A disk KB whose recover runs past 60 s therefore aborts the client
+  ;; with "REPL server launch timed out", and the project JVM it abandons keeps running
+  ;; and keeps the single-writer lock, so the retry then fails on the lock as well.
+  ;; `lein browser :headless` and a CIDER jack-in take the headless branch, which blocks
+  ;; before the ack wait and never reads this key.
+  :repl-options {:init-ns vaelii.core
+                 :timeout 600000})

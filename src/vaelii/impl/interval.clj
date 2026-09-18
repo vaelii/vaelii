@@ -301,7 +301,7 @@
 (defn allen-predicates
   "Every predicate the Allen calculus reads — the thirteen base relations and the seven
   derived ones.  What a caller whose answer depends on the interval network names as its
-  sources (`provers/SupportingProver`)."
+  sources (`prover-types/SupportingProver`)."
   []
   (:predicates allen))
 

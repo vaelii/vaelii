@@ -17,6 +17,7 @@
             [clojure.test :refer [deftest is use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.settle :as settle]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.vocabulary :as vocab]
             [vaelii.test-util :as tu]))
 
@@ -111,7 +112,7 @@
   ;; anything about them.
   (doseq [[functor _] @#'settle/definitional-marks]
     (tu/with-terms [CxMark holdsFor]
-      (let [before (#'settle/clash-vocabulary (:taxonomy kb))]
+      (let [before (#'settle/clash-vocabulary (reasoning/taxonomy kb))]
         (v/assert kb (list functor holdsFor) CxMark)
-        (is (not= before (#'settle/clash-vocabulary (:taxonomy kb)))
+        (is (not= before (#'settle/clash-vocabulary (reasoning/taxonomy kb)))
             (str functor " must move the clash-vocabulary fingerprint"))))))

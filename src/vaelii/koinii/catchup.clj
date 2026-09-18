@@ -33,7 +33,8 @@
   Additive: requires only koinii `channel` and `clojure.walk`.  Nothing under
   `vaelii.impl`, and nothing in core loads it."
   (:require [clojure.walk :as walk]
-            [vaelii.koinii.channel :as ch]))
+            [vaelii.koinii.channel :as ch]
+            [vaelii.koinii.types :as koinii-types :refer [read-position write-position!]]))
 
 (def ^:private ^:const max-catchup-snapshots
   "How many times one `sync!` pass will re-snapshot before giving up.  Each re-snapshot
@@ -54,20 +55,10 @@
 
 ;; ---- D6/D7: the client-side durable cursor -------------------------------
 
-(defprotocol CursorStore
-  "Where an agent keeps 'the last feed position I processed' — `{:token :cursor}` — so a
-  restart RESUMES the stream rather than re-reading everything.  Deliberately CLIENT-SIDE
-  (D7): a cursor in a KB context would be self-describing but would write to the shared
-  truth on every poll, turning a read loop into a write loop through the single writer.  A
-  deployment backs this with a file, the agent's own store, or a row — anything durable and
-  local; the atom store below is the in-memory default."
-  (read-position [store] "The stored `{:token :cursor}`, or nil if none.")
-  (write-position! [store position] "Persist `{:token :cursor}`; returns it."))
-
 (defrecord AtomStore [a]
-  CursorStore
-  (read-position [_] @a)
-  (write-position! [_ p] (reset! a p) p))
+  koinii-types/CursorStore
+  (read-position [{:keys [a]}] @a)
+  (write-position! [{:keys [a]} p] (reset! a p) p))
 
 (defn atom-store
   "An in-memory `CursorStore` over an atom — the default and the test extension point.  A durable
@@ -180,12 +171,12 @@
       (let [pos0 (read-position store)]
         (loop [pos     (or pos0
                            ;; bootstrap: open a subscription, snapshot, tail from it
-                           (let [{:keys [token cursor]} (ch/-feed-open m goal context)]
+                           (let [{:keys [token cursor]} (koinii-types/-feed-open m goal context)]
                              (snapshot!)
                              {:token token :cursor cursor}))
                snaps (if (nil? pos0) 1 0)]          ; snapshots taken THIS pass (bounds re-snap)
           (let [{:keys [token cursor]} pos
-                result   (try {:ok (ch/-feed-poll m token cursor nil)}
+                result   (try {:ok (koinii-types/-feed-poll m token cursor nil)}
                               (catch Exception e {:err e}))
                 err      (:err result)
                 ;; nil for anything that is not a typed refusal, which is why the arms
@@ -201,7 +192,7 @@
               ;; exists to refuse, arrived at by the other road.
               (= :unknown-subscription err-type)
               (if (< snaps max-catchup-snapshots)
-                (let [{re-token :token re-cursor :cursor} (ch/-feed-open m goal context)]
+                (let [{re-token :token re-cursor :cursor} (koinii-types/-feed-open m goal context)]
                   (snapshot!)
                   (recur {:token re-token :cursor re-cursor} (inc snaps)))
                 (throw (ex-info (str "koinii: catch-up lost its subscription again after "

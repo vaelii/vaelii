@@ -170,7 +170,7 @@ gram is declared a thousandth of a kilogram. In a backward query that is a detai
 other antecedent of the rule names the `conversionFactor` row. A firing that omitted it
 would keep the conclusion after the row was retracted.
 
-`QuantityProver` therefore implements `provers/SupportingProver`: `solve-with-support`
+`QuantityProver` therefore implements `prover-types/SupportingProver`: `solve-with-support`
 answers the same comparisons `solve` does, each paired with the `dimensionOf` and
 `conversionFactor` handles both sides normalized through. The forward join adds them to the
 firing's antecedents, so retraction reaches them, `why` names them, and placement requires

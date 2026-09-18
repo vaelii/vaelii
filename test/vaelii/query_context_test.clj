@@ -451,18 +451,20 @@
       (is (= #{B} reach)
           "and the ordinary read that followed it does not inherit the unbelieved walk"))))
 
-(tu/deftest-kb a-rule-cannot-fire-a-conclusion-into-a-query-context
-  ;; Every write entry point refuses one; this is the entry point that *fires* rather than asserts.  An
-  ;; `(ist Cx S)` consequent names its own placement, and `nm/context?` says yes to all
-  ;; three query contexts — so the chainer was the one way to store into CxNothing.
+(tu/deftest-kb a-rule-cannot-name-a-query-context-as-its-target
+  ;; Every write entry point refuses a query context.  A rule names no target at all: an
+  ;; `(ist Cx S)` consequent is refused whatever `Cx` is, so the chainer places only into
+  ;; the maximal contexts that see the rule and its facts, and a query context is never one.
   (tu/with-terms [CxA p1 p2 Ind1]
     (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
-    (v/assert-rule kb [(list p1 '?x)] (list 'ist 'CxNothing (list p2 '?x)) CxA {:chain? true})
+    (is (= :not-well-formed
+           (try (v/assert-rule kb [(list p1 '?x)] (list 'ist 'CxNothing (list p2 '?x)) CxA
+                               {:chain? true})
+                nil
+                (catch clojure.lang.ExceptionInfo e (:type (ex-data e))))))
     (v/assert kb (list p1 Ind1) CxA {:chain? true})
-    (is (empty? (v/query kb (list p2 '?x) 'CxNothing))
-        "CxNothing sees nothing because nothing can be put there")
     (is (empty? (v/sentexes-matching kb (list p2 '?x) 'CxEverything))
-        "and the conclusion was dropped, not merely hidden")))
+        "and nothing was stored")))
 
 (tu/deftest-kb the-records-read-stays-lazy-when-no-context-is-named
   ;; `sentexes-matching` promises a seq that fetches what it is asked for, and making the

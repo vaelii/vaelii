@@ -617,20 +617,20 @@ over different directories one shared index whenever they took the default. If t
 are emptied out from under it, the leftover index is dropped on the next open rather than
 left describing records that no longer exist.
 
-#### The belief image
+#### The reasoning image
 
 The index image is one half of a `:disk-snapshot` cold open; `recover` is the other. A
-`:disk-snapshot` KB on the dense network writes its whole belief state to `<dir>/belief/`,
-and the next open installs it in place of the recover (`vaelii.impl.belief-image`):
+`:disk-snapshot` KB on the dense network writes its whole reasoning state to `<dir>/reasoning/`,
+and the next open installs it in place of the recover (`vaelii.impl.reasoning-image`):
 
 - `network.bin` — the dense network: every node, justification column, label,
   defeat-class, defeat, block and supersession (`dense-jtms/write-image`), keys in sorted
   order so two images of one network are equal bytes;
 - `state.nippy` — the taxonomy's relations and caches, and the KB atoms recovery fills or
-  the closing settle leaves (`belief-image/state-atoms`);
+  the closing settle leaves (`reasoning-image/state-atoms`);
 - `manifest.edn` — the stamp, written last, so a directory with no manifest holds no image.
 
-**The stamp** holds the two layout numbers, the records' `record-store/belief-fingerprint`,
+**The stamp** holds the two layout numbers, the records' `record-store/reasoning-fingerprint`,
 the **source identity** of the engine code that derived the belief
 ([glossary.md](glossary.md)), and the two policies that move belief (`checks/arbitrating?`
 and `VAELII_ASSERTIVE_ARG_TYPES`). The records fingerprint reads the justifications kind's
@@ -646,7 +646,15 @@ source identity does not cover — and both sections read in full into a scratch
 before anything moves into the KB's own. Any mismatch, a registered prover, or a torn
 section leaves the KB to the full recover, which then writes a fresh image. A declined image
 costs the recover and never an answer, because the recover it falls back to is the path an
-open without an image runs.
+open without an image runs. `lein cli upgrade --dir <path>` (and `scripts/upgrade-kb.sh`)
+performs that open and a close for a store, so the recover a changed engine owes is paid
+once, ahead of the next open ([operations.md](operations.md)). Its `--verify` recovers
+anyway and compares the new image's believed sets with the old one's.
+
+Nothing installs an image whose source digest differs from the running engine's. A caller
+that believes a particular source change moves no belief has no way to say so, by design:
+the digest is the only check standing between an engine edit and belief computed under
+the code before it, and the identity has been wrong in that direction before.
 
 **An image is written** after a full recover, and when the directory closes if the records
 moved since the image on disk was written. The records fingerprint is read before and after
@@ -656,26 +664,54 @@ belief assert by assert and never recovers. A KB whose network holds fewer nodes
 stored sentexes — a loader filled it and skipped the recover, or it holds `assert-inert`
 sentexes — writes none, and recovers at its next open.
 
+**Rebuilding behind an image.** `open-kb` with `:recover? :background` installs an image
+whose stamp differs from the KB's only in its source digest, which is the image an earlier
+engine build wrote over the same records under the same policies. The open then returns,
+and the KB answers from that image. Belief is rebuilt under the running build on a daemon
+thread, over a second KB (`kb/rebuild-kb`). The second KB takes the records, the index,
+the provers, the solver, the naming policy and the constraints from the open KB
+(`kb/rebuild-shared`). It holds its own directory fields, operation log, change feed and
+hazard record (`kb/rebuild-own`), and starts with an empty `Reasoning` value
+(`kb/empty-reasoning`).
+A KB field named in none of the three is not copied, and `background_rebuild_test` fails
+on one. When the rebuild finishes, its belief replaces the installed belief: a KB holds its
+network, taxonomy and derived atoms as one `Reasoning` value in a volatile
+(`vaelii.impl.types.reasoning`), and the install is one `vreset!` of it. The image is then
+rewritten under the running source, and the change feed receives the handles whose belief
+the replacement moved (`dense/moved-between`). Until then the KB
+reports `{:stale-belief true}` from `write-hazards`, and every write entry point refuses
+with `:unrecovered-kb`, `*write-unrecovered?*` included: a write would be checked against
+the earlier build's belief, and the rebuild might not see its record. While the install is
+pending, every public read entry point in `vaelii.core` runs against `kb/read-view`, a copy
+of the KB holding the belief the read began with. A read that begins before the install
+reads the installed belief to its end, and a lazy sequence it returns reads that belief
+when realized; no public read sees the network of one belief beside the taxonomy of the
+other. A KB with no install pending is passed through unchanged after one atom read. The rebuild stops at a check that precedes every record write,
+when `close!` closes the directory or `recover` is called; `recover` then runs the rebuild
+on the calling thread. An image declined for its records, its layout or its policies is not
+installed, and the open recovers as `:auto` does. The browser opens a store with belief this
+way (docs/web.md).
+
 Measured on a large `:disk-snapshot` store by `lein bench-recoverphase beliefimage <dir>`:
 the open that installed the image took under a tenth of the time of the open that ran a
 full recover and wrote it, and writing the image took under 3% of that recover. The two
 opens agreed on `in?` for every handle and held the same clash pairs.
 
-**A dump carries one too.** `export!` writes the same three files under `<dump>/belief/`
+**A dump carries one too.** `export!` writes the same three files under `<dump>/reasoning/`
 by default (`:belief? false` omits them), and `import!` with `{:belief? true}` installs
 them in place of the recover it would otherwise run. The records half of a dump image's
 stamp is content rather than slots, because a dump lands in a different store: the export
 folds `fingerprint/record-hash` over the sentex frames and `fingerprint/justification-hash`
 over the justification frames it writes, and the import folds the same two over the
 records it lands. The import tries the image only when it kept every handle the dump
-gave, since the network names its nodes by handle; the summary's `:belief-image` reports
+gave, since the network names its nodes by handle; the summary's `:reasoning-image` reports
 `{:belief :installed}` or `{:belief :recovered :reason r}`.
 
 An installed image is the state of the KB that wrote it: its labels, which equal a recover's
 because belief is order independent, and its derivation depths and settle readings, which a
 recover rebuilds from the records instead of reading. Why an image is installed whole or
 discarded whole, and never reconciled against the records:
-[defenses.md](defenses.md#a-belief-image-is-installed-whole-or-not-at-all).
+[defenses.md](defenses.md#a-reasoning-image-is-installed-whole-or-not-at-all).
 
 ### The index is written once — `KvBackend`
 
@@ -692,7 +728,7 @@ backend supplies only that adapter:
 - `DiskKvBackend` (`vaelii.impl.disk.kv`) — the same in-RAM map, durable behind a
   write-ahead log (below).
 
-There is a **second, optional protocol beside it**: `kv/ArgColumns`, four descent reads
+There is a **second, optional protocol beside it**: `vaelii.impl.protocols/ArgColumns`, four descent reads
 over that argument-root family (`arg-scoped-members` / `arg-scoped-intersect` /
 `arg-agnostic-members` / `arg-agnostic-count`). It carries an `Object` default that
 rebuilds the four-part vector keys and folds the generic set ops, so a backend that
@@ -1102,7 +1138,7 @@ has a domain in `vaelii.impl.config`, and a value outside it is refused with
 `:unknown-option` naming the property, the value and the legal spellings.
 `vaelii.index.snapshot` and `vaelii.belief.snapshot` have an empty domain and are refused at
 every spelling, naming `{:backend :disk-snapshot}` instead: the mapped index image and the
-belief image are what that backend reads on open, and a representation belongs in the opts
+reasoning image are what that backend reads on open, and a representation belongs in the opts
 map where the KB's own configuration records it.
 `open-kb` reads the lot before it opens anything (`config/check!`), which is the earliest
 entry point: two of them are read per fsync tick, where a throw is a log line nobody can
@@ -1346,7 +1382,7 @@ the `sentex` constructor), and `kv/term-key` canonicalizes lookup terms too (via
 ## Symbol interning
 
 `canon` also **interns** every symbol it canonicalizes, through a process-wide pool
-(`sentex/symbol-pool`, a `ConcurrentHashMap`), so a predicate, type, individual,
+(`sentex/symbol-pool-generations`, two `ConcurrentHashMap`s), so a predicate, type, individual,
 context, or variable name is a **single shared object** across every sentex that
 mentions it, so the sharing it buys dwarfs its own footprint: a `parentOf` or `dog` in
 millions of facts is one symbol, not one per fact. The trie key gets the sharing for
@@ -1358,12 +1394,16 @@ What bounds the pool is **not** the vocabulary. A KB that only names things hold
 entry per distinct name, but three writers mint a fresh symbol per *fact* — NAT
 reification (`nat/fresh-constant`), head-existential skolemization
 (`skolem/skolemize-conclusion`) and abduction's scratch contexts — and the pool is
-static, process-wide and shared by every KB, so nothing hands an entry back. So it is
-capped at `sentex/*symbol-pool-limit*` (1M, several times any real vocabulary: the
-shipped ontology plus the whole of OpenCyc is ~188k constants) and cleared **wholesale**
-when full, the form the other bounded caches take. A clear costs the sharing for the
-names minted before it and can change no answer, since identity was never what anything
-read.
+static, process-wide and shared by every KB, so nothing hands an entry back. A disk
+store's index snapshot also interns every token of its dictionary at open, which on a
+12M-sentex store is several million names. So the pool is capped at
+`sentex/*symbol-pool-limit*` (1M, several times the shipped ontology plus the whole of
+OpenCyc, ~188k constants) and held in two generations. A lookup reads the current
+generation, then the previous one, and a name found in the previous one moves into the
+current one. When the current generation reaches half the limit it becomes the previous
+one, and the old previous generation is dropped. A name read at least once per generation
+keeps one shared object; a name unread for two rotations leaves the pool. A rotation can
+change no answer, since identity was never what anything read.
 
 ## Persistence & recovery
 
@@ -1371,7 +1411,9 @@ The record store, trie, term index, and rule index all persist — durably acros
 restart on `:disk-log`, and within the JVM on `:memory` (the space-number
 registry). The **taxonomy** and **JTMS graph** are in-memory, so a KB constructed
 against an existing store has to rebuild them. `open-kb`'s `:recover? :auto` default
-does it at construction (`true` is an alias for it); `:warn` leaves them empty and says
+does it at construction (`true` is an alias for it); `:background` does the same except
+over a reasoning image an earlier engine build wrote, which it installs and rebuilds behind
+("Rebuilding behind an image"); `:warn` leaves them empty and says
 so, `false` leaves them empty in silence, and both leave the repair to a `core/recover`
 call of the caller's own. Nothing else is a setting — a value `recover-modes` does not
 name is refused (`:unknown-option`) rather than read as the warn branch, since a KB that

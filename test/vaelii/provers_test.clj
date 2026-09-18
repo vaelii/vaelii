@@ -9,6 +9,8 @@
             [vaelii.impl.plan :as plan]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.prover :as prover-types]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 ;; `rule-planning-costs-antecedents-by-the-registry-and-memoizes-it` counts registry
@@ -100,7 +102,7 @@
     (v/assert kb (list p a b) 'CxFam)
     (testing "no shipped prover claims the search tier"
       (is (= #{:lookup :compute}
-             (set (map #(provers/cost % kb goal 'CxFam) (provers/registry kb))))
+             (set (map #(prover-types/cost % kb goal 'CxFam) (provers/registry kb))))
           "a :search member would be backward chaining inside every closed-world read"))
     (testing "so the two upper ceilings cannot narrow the registry differently"
       (is (= (provers/cost-capped-provers kb goal 'CxFam :compute)
@@ -152,7 +154,7 @@
 ;; ---- different: the unique-name assumption ------------------------------
 
 (defn- different-prover-applicable? [kb goal context]
-  (provers/applicable? (provers/->DifferentProver) kb goal context))
+  (prover-types/applicable? (provers/->DifferentProver) kb goal context))
 
 (defn- plan-provers [kb goal context]
   (set (map :prover (v/query-plan kb goal context))))
@@ -201,7 +203,7 @@
 (tu/deftest-kb different-reads-the-equality-closure
   (tu/with-terms [Obama BarackObama Bush]
     (v/assert kb (list 'sameAs Obama BarackObama) 'CxUniverse)
-    (is (tax/same-class? (:taxonomy kb) Obama BarackObama)
+    (is (tax/same-class? (reasoning/taxonomy kb) Obama BarackObama)
         "asserting `sameAs` merges — everything below reads the class it built")
     (testing "merged terms are not different"
       (is (not (v/ask? kb (list 'different Obama BarackObama) 'CxUniverse)))
@@ -246,7 +248,7 @@
 (tu/deftest-kb custom-prover-is-pluggable
   ;; a trivial prover that always yields one empty solution for goals it likes
   (defrecord AlwaysProver []
-    provers/Prover
+    prover-types/Prover
     (applicable?  [_ _ goal _] (= 'magic (first goal)))
     (est-bindings [_ _ _ _] 1)
     (cost         [_ _ _ _] :lookup)

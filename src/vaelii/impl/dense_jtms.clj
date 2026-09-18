@@ -97,16 +97,18 @@
   churn past 2^31 pins `{:tms :reference}`, whose `Long`-keyed persistent maps have no
   such ceiling.  This is measured in density.md."
   (:require [taoensso.nippy :as nippy]
-            [vaelii.impl.dense-kv :as dense]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.jtms-protocol :refer [Tms]]
             [vaelii.impl.observe :as observe]
-            [vaelii.impl.strength :as strength])
+            [vaelii.impl.strength :as strength]
+            [vaelii.impl.types.postings :as postings]
+            [vaelii.impl.types.tms :as tms-types])
   (:import [it.unimi.dsi.fastutil.ints Int2IntOpenHashMap Int2ObjectOpenHashMap]
            [java.io DataInput DataOutput]
            [java.util Arrays]
            [java.util.concurrent.locks StampedLock]
-           [org.roaringbitmap RoaringBitmap]))
+           [org.roaringbitmap RoaringBitmap]
+           [vaelii.impl.types.tms HeapColumns TmsColumns]))
 
 ;; ---- bitmap helpers -----------------------------------------------------
 
@@ -169,85 +171,17 @@
 
 ;; ---- the columns: depth, adjacency and the justification columns ---------
 ;;
-;; `TmsColumns` is every read and write the network makes of its six fact-scaled
-;; structures.  Adjacency maps a datum to the justification ids touching it: `supports`
-;; lists the ones concluding it, `dependents` the ones citing it as an antecedent or as
-;; their rule.  The justification columns map an id to its consequence, its informant
-;; when that is a handle, and its antecedents.
-;;
-;; Every read is total over an id the columns do not hold: no adjacency, depth 0,
-;; consequence -1, the `no-informant` marker, and no antecedents.  An adjacency read
-;; returns a fresh `int[]`, so a caller may walk it while writing the same posting.  A
-;; posting emptied by a removal is dropped, so a torn-down node leaves no entry.
-
-(definterface TmsColumns
-  (^ints supportsOf [^int d])
-  (^ints dependentsOf [^int d])
-  (addSupport [^int d ^int jid])
-  (addDependent [^int d ^int jid])
-  (removeSupport [^int d ^int jid])
-  (removeDependent [^int d ^int jid])
-  (^int depthOf [^int d])
-  (setDepth [^int d ^int depth])
-  (dropNode [^int d])
-  (^long consequenceOf [^int jid])
-  (^int informantOf [^int jid])
-  (^ints antecedentsOf [^int jid])
-  (putJustification [^int jid ^int consequence ^int informant ^ints antecedents])
-  (dropJustification [^int jid]))
-
-(def ^:private ^ints no-ids (int-array 0))
-
-(defn- posting-ints ^ints [^Int2ObjectOpenHashMap m d]
-  (if-let [p (.get m (int d))] (dense/pints p) (int-array 0)))
-
-(defn- posting-add! [^Int2ObjectOpenHashMap m d jid]
-  (let [k (int d)
-        p (or (.get m k) (let [fresh (dense/int-postings)] (.put m k fresh) fresh))]
-    (dense/padd! p jid)
-    nil))
-
-(defn- posting-rem! [^Int2ObjectOpenHashMap m d jid]
-  (when-let [p (.get m (int d))]
-    (dense/prem! p jid)
-    (when (zero? (long (dense/pcard p))) (.remove m (int d))))
-  nil)
-
-(deftype HeapColumns [^Int2IntOpenHashMap depths
-                      ^Int2ObjectOpenHashMap supports
-                      ^Int2ObjectOpenHashMap conseqs
-                      ^Int2IntOpenHashMap j-conseq
-                      ^Int2IntOpenHashMap j-inf
-                      ^Int2ObjectOpenHashMap j-antes]
-  TmsColumns
-  (supportsOf [_ d] (posting-ints supports d))
-  (dependentsOf [_ d] (posting-ints conseqs d))
-  (addSupport [_ d jid] (posting-add! supports d jid))
-  (addDependent [_ d jid] (posting-add! conseqs d jid))
-  (removeSupport [_ d jid] (posting-rem! supports d jid))
-  (removeDependent [_ d jid] (posting-rem! conseqs d jid))
-  (depthOf [_ d] (.get depths d))
-  (setDepth [_ d depth] (.put depths d depth) nil)
-  (dropNode [_ d] (.remove depths d) (.remove supports d) (.remove conseqs d) nil)
-  (consequenceOf [_ jid] (if (.containsKey j-conseq jid) (long (.get j-conseq jid)) -1))
-  (informantOf [_ jid] (.get j-inf jid))
-  (antecedentsOf [_ jid] (or (.get j-antes jid) no-ids))
-  (putJustification [_ jid consequence informant antecedents]
-    (.put j-conseq jid consequence)
-    (.put j-inf jid informant)
-    (.put j-antes jid antecedents)
-    nil)
-  (dropJustification [_ jid]
-    (.remove j-conseq jid) (.remove j-inf jid) (.remove j-antes jid) nil))
+;; `TmsColumns` and its heap implementation, `HeapColumns`, are `vaelii.impl.types.tms`,
+;; which states the columns' contract.
 
 (defn- heap-columns
   "Empty `HeapColumns`.  The informant column answers an absent id with `no-informant`,
   never with handle 0."
   ^HeapColumns []
-  (->HeapColumns (Int2IntOpenHashMap.) (Int2ObjectOpenHashMap.) (Int2ObjectOpenHashMap.)
-                 (Int2IntOpenHashMap.)
-                 (doto (Int2IntOpenHashMap.) (.defaultReturnValue (int no-informant)))
-                 (Int2ObjectOpenHashMap.)))
+  (tms-types/->HeapColumns (Int2IntOpenHashMap.) (Int2ObjectOpenHashMap.) (Int2ObjectOpenHashMap.)
+                           (Int2IntOpenHashMap.)
+                           (doto (Int2IntOpenHashMap.) (.defaultReturnValue (int no-informant)))
+                           (Int2ObjectOpenHashMap.)))
 
 (defn- ints-set
   "An ascending `int[]` of ids as a Clojure set of Longs, the engine's handle type."
@@ -304,11 +238,11 @@
            r#
            (with-read l# ~@body))))))
 
+;; ---- the `Tms` methods -------------------------------------------------
+
 ;; The deftype's methods call the operations below, and those need the type itself for
 ;; their hints — a genuine in-file cycle, so the entry points are declared ahead of it.
-(declare ensure! ensure-noop? premise! suspend-premise! add-just! restrength-informant!
-         defeat! clear-defeats! relabel-all! set-blocked! retract-datum! sweep-from!
-         snapshot just-record)
+(declare add-just! clear-defeats! defeat! ensure! ensure-noop? just-record premise! relabel-all! restrength-informant! retract-datum! set-blocked! snapshot suspend-premise! sweep-from!)
 
 (deftype DenseTms [^StampedLock lock
                    ^RoaringBitmap nodes
@@ -330,12 +264,13 @@
                    ^RoaringBitmap touched-new
                    ^RoaringBitmap mono
                    ^clojure.lang.Atom superseded]
-
   ;; `@tms` yields the canonical map the reference stores natively — materialized, so
-  ;; this is a testing and debugging read, never an engine path.
+  ;; this is a testing and debugging read, never an engine path.  It takes the shared read
+  ;; stamp `-snapshot` takes: the map is built field by field, and a writer that sweeps a
+  ;; datum between the `:nodes` read and the `:in` read leaves the snapshot holding belief
+  ;; in a datum with no node (`vaelii.jtms-concurrency-test`).
   clojure.lang.IDeref
   (deref [this] (with-read lock (snapshot this)))
-
   Tms
   (-believed? [_ datum]
     (opt-read lock (and (rb-has? in datum) (not (contains? @superseded datum)))))
@@ -445,7 +380,7 @@
   keeps the graph and the record store keeps the record (`jtms/graph-just`).  Nothing
   on a relabel path calls this — the fixpoints read the columns directly."
   [^DenseTms this jid]
-  (jtms/->Justification
+  (tms-types/->Justification
    (long jid)
    (j-informant this jid)
    (into [] (map long) (j-antecedents this jid))
@@ -919,7 +854,7 @@
 ;;
 ;; The whole network as bytes, written between operations and read back into an empty
 ;; network with no relabel: every label, class, block, defeat and supersession is read,
-;; not recomputed.  `vaelii.impl.belief-image` is the caller, and decides whether an
+;; not recomputed.  `vaelii.impl.reasoning-image` is the caller, and decides whether an
 ;; image may be installed at all; this section only writes and reads one.
 ;;
 ;; The touched window is not written.  An image is taken between operations, and a
@@ -982,7 +917,7 @@
     (.writeInt o (alength ks))
     (dotimes [k (alength ks)]
       (let [key (aget ks k)
-            s   (dense/pseed (.get m key))]
+            s   (postings/pseed (.get m key))]
         (.writeInt o key)
         (if (instance? RoaringBitmap s)
           (do (.writeByte o 1) (write-bitmap! o s))
@@ -996,8 +931,8 @@
   (dotimes [_ (.readInt i)]
     (let [key (.readInt i)]
       (.put m key (if (== 1 (.readByte i))
-                    (dense/->IntPostings nil (doto (RoaringBitmap.) (.deserialize i)))
-                    (dense/->IntPostings (read-ints i) nil))))))
+                    (postings/->IntPostings nil (doto (RoaringBitmap.) (.deserialize i)))
+                    (postings/->IntPostings (read-ints i) nil))))))
 
 (defn- write-arrays! [^DataOutput o ^Int2ObjectOpenHashMap m]
   (let [ks (sorted-keys m)]
@@ -1053,7 +988,7 @@
   "Read an image `write-image` wrote from `i` into dense network `t`, which must hold no
   node.  Throws `IllegalStateException` for a populated `t` and
   `IllegalArgumentException` for bytes that are not an image of `image-version`; both are
-  a caller's error rather than a state of the KB, since `vaelii.impl.belief-image` checks
+  a caller's error rather than a state of the KB, since `vaelii.impl.reasoning-image` checks
   the manifest before it reads a byte."
   [^DenseTms t ^DataInput i]
   (with-write (.-lock t)
@@ -1082,6 +1017,25 @@
   ^long [^DenseTms t]
   (with-read (.-lock t) (.getLongCardinality ^RoaringBitmap (.-nodes t))))
 
+(defn- copy-structures!
+  "Copy every structure of dense network `src` into `target`, whose write stamp the caller
+  holds.  The postings `src`'s maps hold are shared with `target`, not copied, so `src` is
+  not written afterwards."
+  [^DenseTms target ^DenseTms src]
+  (run! (fn [[^RoaringBitmap t ^RoaringBitmap s]] (.or t s))
+        (map vector (image-bitmaps target) (image-bitmaps src)))
+  (let [tc (heap-cols target)
+        sc (heap-cols src)]
+    (.putAll ^Int2IntOpenHashMap (.-depths tc) ^Int2IntOpenHashMap (.-depths sc))
+    (.putAll ^Int2IntOpenHashMap (.-j-conseq tc) ^Int2IntOpenHashMap (.-j-conseq sc))
+    (.putAll ^Int2IntOpenHashMap (.-j-inf tc) ^Int2IntOpenHashMap (.-j-inf sc))
+    (doseq [[^Int2ObjectOpenHashMap t ^Int2ObjectOpenHashMap s]
+            [[(.-supports tc) (.-supports sc)] [(.-conseqs tc) (.-conseqs sc)]
+             [(.-j-antes tc) (.-j-antes sc)]
+             [(.-j-inf-sym target) (.-j-inf-sym src)]]]
+      (.putAll t s)))
+  (reset! (.-superseded target) @(.-superseded src)))
+
 (defn copy-into!
   "Copy every structure of dense network `src` into `target`, which must hold no node,
   under `target`'s write stamp.  `read-image!` reads into a fresh network and this moves
@@ -1092,20 +1046,22 @@
   (with-write (.-lock target)
     (when-not (.isEmpty ^RoaringBitmap (.-nodes target))
       (throw (IllegalStateException. "copy-into! needs an empty network")))
-    (run! (fn [[^RoaringBitmap t ^RoaringBitmap s]] (.or t s))
-          (map vector (image-bitmaps target) (image-bitmaps src)))
-    (let [tc (heap-cols target)
-          sc (heap-cols src)]
-      (.putAll ^Int2IntOpenHashMap (.-depths tc) ^Int2IntOpenHashMap (.-depths sc))
-      (.putAll ^Int2IntOpenHashMap (.-j-conseq tc) ^Int2IntOpenHashMap (.-j-conseq sc))
-      (.putAll ^Int2IntOpenHashMap (.-j-inf tc) ^Int2IntOpenHashMap (.-j-inf sc))
-      (doseq [[^Int2ObjectOpenHashMap t ^Int2ObjectOpenHashMap s]
-              [[(.-supports tc) (.-supports sc)] [(.-conseqs tc) (.-conseqs sc)]
-               [(.-j-antes tc) (.-j-antes sc)]
-               [(.-j-inf-sym target) (.-j-inf-sym src)]]]
-        (.putAll t s)))
-    (reset! (.-superseded target) @(.-superseded src)))
+    (copy-structures! target src))
   target)
+
+(defn moved-between
+  "What replacing dense network `a` with `b` moves, as `{:moved bitmap :was-in bitmap}`.
+  `:moved` holds the handles with a node or an IN label in one network and not the other,
+  and `:was-in` holds those of them IN in `a`.  Each network is read under its own read
+  stamp."
+  [^DenseTms a ^DenseTms b]
+  (let [snap (fn [^DenseTms t]
+               (with-read (.-lock t)
+                 [(.clone ^RoaringBitmap (.-in t)) (.clone ^RoaringBitmap (.-nodes t))]))
+        [^RoaringBitmap a-in ^RoaringBitmap a-nodes] (snap a)
+        [^RoaringBitmap b-in ^RoaringBitmap b-nodes] (snap b)
+        moved (RoaringBitmap/or (RoaringBitmap/xor a-in b-in) (RoaringBitmap/xor a-nodes b-nodes))]
+    {:moved moved :was-in (RoaringBitmap/and moved a-in)}))
 
 ;; ---- the canonical snapshot ---------------------------------------------
 

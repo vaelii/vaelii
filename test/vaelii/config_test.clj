@@ -15,12 +15,12 @@
   covered where the coverage is honest: through `prop-bool`, which is the whole of each
   accessor's body."
   (:require [clojure.test :refer [deftest is testing]]
+            [vaelii.browser.catalog :as catalog]
+            [vaelii.browser.web :as web]
             [vaelii.core :as v]
-            [vaelii.host.catalog :as catalog]
             [vaelii.host.guard :as guard]
             [vaelii.host.llm.ollama :as ollama]
             [vaelii.host.llm.provider :as provider]
-            [vaelii.host.web :as web]
             [vaelii.impl.config :as config]
             [vaelii.impl.disk.backend :as backend]
             [vaelii.impl.disk.files :as f]))
@@ -81,7 +81,7 @@
    ;; did nothing is the failure the refusal exists to close
    ["vaelii.index.snapshot" "enabled"]
    ["vaelii.index.snapshot" "true"]
-   ;; likewise the belief image, which a `{:backend :disk-snapshot}` KB writes and installs
+   ;; likewise the reasoning image, which a `{:backend :disk-snapshot}` KB writes and installs
    ;; with no switch, so every spelling is refused
    ["vaelii.belief.snapshot" "enabled"]
    ["vaelii.belief.snapshot" "true"]
@@ -106,6 +106,7 @@
               d (ex-data e)]
           (is (= :unknown-option (:type d)))
           (is (= nm (:property d)) "the refusal names the switch")
+          (is (= nm (:switch d)) "under :switch as well as the older :property")
           (is (= value (:value d)) "and the value it was given")
           (is (re-find (re-pattern (str nm "=" value)) (ex-message e))
               "the message names both, since a log line is all an operator has"))))))

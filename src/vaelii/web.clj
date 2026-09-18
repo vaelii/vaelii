@@ -5,12 +5,12 @@
   justifications, all cross-linked.
 
   Public because it is a documented entry point — `lein browser`, or
-  `lein run -m vaelii.web`.  The implementation is `vaelii.host.web`, which is free to
+  `lein run -m vaelii.web`.  The implementation is `vaelii.browser.web`, which is free to
   change; the dev-only affordances (`dev-repl`, `dev-stop`) stay there.
 
   It binds loopback and authenticates nobody; read `.github/SECURITY.md` before
   `--listen` names an address."
-  (:require [vaelii.host.web :as web]))
+  (:require [vaelii.browser.web :as web]))
 
 (defn handler
   "The ring handler for `target` — a KB, an access value, or a catalog holder —
@@ -21,8 +21,8 @@
 
 (defn start
   "Start a Jetty server for `target` and return it (non-blocking).  Opts: `:port`
-  (default 3000), `:host` (default loopback), and `:reload?` to re-resolve the handler
-  per request so a namespace reload reaches the running server."
+  (default 3000) and `:host` (default loopback).  `:reload?` is refused: a served browser
+  never reloads, and `scripts/start-vaelii-dev.sh` runs the one that does."
   [target opts]
   (web/start target opts))
 

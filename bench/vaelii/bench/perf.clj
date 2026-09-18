@@ -810,10 +810,10 @@
   base and linear over that one, and only the second says whether the *code* merges."
   [n]
   (let [base (dense/dense-kv-backend {:space [::ovbase]})]
-    (kv/kv-clear! base)
-    (doseq [i (range n)] (kv/kv-add-to-set base [:functor-root 'povl] i))
+    (p/kv-clear! base)
+    (doseq [i (range n)] (p/kv-add-to-set base [:functor-root 'povl] i))
     (let [own (mem/memory-kv-backend {:space [::ovfork]})
-          _   (kv/kv-clear! own)
+          _   (p/kv-clear! own)
           st  (kv/->KvIndexStore (okv/overlay-kv own (frozen/frozen-kv base)))]
       (doall
        (for [_ (range 200)]
@@ -839,9 +839,9 @@
   construction, so it cannot see the difference."
   [n]
   (let [b (dense/dense-kv-backend {:space [::inter]})]
-    (kv/kv-clear! b)
-    (doseq [i (range n)] (kv/kv-add-to-set b [:argument-root 'pint 2 'PIB] i))
-    (doseq [i (range 4)] (kv/kv-add-to-set b [:argument-root 'pint 1 'PIA] (* 7 i)))
+    (p/kv-clear! b)
+    (doseq [i (range n)] (p/kv-add-to-set b [:argument-root 'pint 2 'PIB] i))
+    (doseq [i (range 4)] (p/kv-add-to-set b [:argument-root 'pint 1 'PIA] (* 7 i)))
     (let [st (kv/->KvIndexStore b)]
       (doall
        (for [_ (range 200)]

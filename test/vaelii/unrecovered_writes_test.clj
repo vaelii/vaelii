@@ -24,8 +24,8 @@
   property of how a KB was opened, which a shared fixture cannot hand out."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
+            [vaelii.browser.web :as web]
             [vaelii.core :as v]
-            [vaelii.host.web :as web]
             [vaelii.impl.disk.backend :as backend]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.protocols :as p]

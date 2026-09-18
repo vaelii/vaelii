@@ -16,8 +16,12 @@
   itself, printing the alias expansion — the flag never reaches this namespace through
   the alias, though it does through the full `lein run -m vaelii.host.cli --help`.
 
-  **Backend.**  `--dir <path>` uses the durable `:disk-log` backend (recovered on open, so
-  a fact asserted in one invocation is there in the next); with no `--dir` the KB is
+  **Backend.**  `--dir <path>` opens the store there under the backend its files were
+  written by (`v/store-backend`), or a new durable `:disk-log` store when it holds none —
+  recovered on open, so a fact asserted in one invocation is there in the next.
+  `upgrade` opens a store, brings its reasoning image and index image up to this build, and
+  closes it (`upgrade!`); `--verify` recovers anyway and compares the two images.
+  With no `--dir` the KB is
   in-memory and lives only for the process — useful for `repl` or a single compound
   session, pointless across one-shot commands.  `--starter` loads the shipped schema
   (types, contexts, relation rules) so you can explore the ontology.  `--strength
@@ -35,8 +39,9 @@
             [clojure.string :as str]
             [vaelii.core :as v]
             [vaelii.host.starter :as starter]
-            [vaelii.impl.naming :as nm])
-  (:import [java.io PushbackReader StringReader]))
+            [vaelii.impl.naming :as nm]
+            [vaelii.impl.reasoning-image :as ri])
+  (:import [java.io File PushbackReader StringReader]))
 
 ;; ---- arg + option parsing ------------------------------------------------
 
@@ -50,10 +55,13 @@
   #{"--dir" "--strength" "--depth" "--variant" "--compression" "--format"
     "--context" "--nearest"})
 
+(def ^:private bare-flags
+  "Every flag spelling the driver binds to `true`, taking no value."
+  #{"--help" "--memory" "--starter" "--verify"})
+
 (defn parse-opts
-  "Split raw args into `[positionals opts]`.  `--k v` becomes `{:k v}`, a bare
-  `--memory` / `--starter` becomes `{:flag true}`; everything else is a positional,
-  in order.
+  "Split raw args into `[positionals opts]`.  `--k v` becomes `{:k v}`, a bare flag
+  (`bare-flags`) becomes `{:flag true}`; everything else is a positional, in order.
 
   A value-taking flag with no value is refused (`:unknown-option`) rather than bound
   nil: `assert … --strength` with nothing after it would otherwise store at `:default`
@@ -67,12 +75,11 @@
       (let [a (first as)]
         (cond
           (not (str/starts-with? a "--")) (recur (rest as) (conj pos a) opts)
-          (#{"--help" "--memory" "--starter"} a)
+          (bare-flags a)
           (recur (rest as) pos (assoc opts (keyword (subs a 2)) true))
           (not (value-flags a))
           (throw (ex-info (str "unknown flag: " a " — the driver reads "
-                               (str/join ", " (sort (into #{"--help" "--memory" "--starter"}
-                                                          value-flags)))
+                               (str/join ", " (sort (into bare-flags value-flags)))
                                ", and a command reads only its own of those")
                           {:type :unknown-option :mismatch :unknown-key :flag a}))
           :else (let [v (second as)]
@@ -142,6 +149,7 @@
    ["load"        1 1   "<path>"                        "assert a text KB: a Cx*.txt file, or a directory of them"]
    ["export"      1 1   "<dest>"                        "write a dump (--variant, --compression), or a text KB (--format text)"]
    ["diff"        2 2   "<a> <b>"                       "what two text KBs disagree about, as content"]
+   ["upgrade"     0 0   ""                              "bring the --dir store's reasoning and index images up to this build"]
    ["repl"        0 0   ""                              "the interactive loop"]])
 
 (def commands
@@ -199,7 +207,8 @@
    "query?"      #{:depth}
    "export"      #{:variant :compression :format}
    "describe"    #{:context}
-   "why-not"     #{:nearest}})
+   "why-not"     #{:nearest}
+   "upgrade"     #{:verify}})
 
 (defn- flag-names [ks] (str/join ", " (map #(str "--" (name %)) (sort ks))))
 
@@ -247,7 +256,8 @@
                           "   " gloss)))
          "\n\nOptions.  The first three name the KB and go with any command; the rest"
          " belong to\nthe commands named beside them, and are refused elsewhere:\n"
-         "  --dir <path>          the durable :disk-log KB (recovered on open); absent, in-memory\n"
+         "  --dir <path>          the store there, under its own backend, or a new :disk-log\n"
+         "                        store (recovered on open); absent, in-memory\n"
          "  --memory              the in-memory KB, said explicitly\n"
          "  --starter             load the shipped starter schema\n"
          "  --strength <s>        assert, assert-rule: :monotonic instead of :default\n"
@@ -259,7 +269,8 @@
          "  --context <CxName>    describe: the vantage to read from; absent, every context\n"
          "  --nearest <n>         why-not: run a bounded search and name the n rules that\n"
          "                        came closest, with the antecedent each is missing\n"
-         "  (repl takes all seven — its options are fixed at start and each line reuses them)\n")))
+         "  --verify              upgrade: recover anyway, and report whether belief changed\n"
+         "  (repl takes all six — its options are fixed at start and each line reuses them)\n")))
 
 (defn- in-content-order
   "An answer **set**, in a printed content order.
@@ -376,6 +387,13 @@
       ;; own.  Keyed on content, so two exports of one KB taken at different handles diff
       ;; empty and a `diff` of the output means something (docs/api.md)
       "diff"        (v/kb-diff (str (nth args 0)) (str (nth args 1)))
+      ;; `upgrade` opens and closes the store itself (`upgrade!`), so `-main` runs it before
+      ;; opening any KB.  Here a KB is already open, and two KBs over one directory share
+      ;; its stores, so the close would close the store under the caller.
+      "upgrade"     (throw (ex-info (str "upgrade opens and closes its own KB — run `lein cli"
+                                         " upgrade --dir <path>` from the shell, not inside"
+                                         " the repl")
+                                    {:type :unknown-command :cmd cmd :commands commands}))
       (throw (ex-info (str "unknown command: " cmd " — want one of "
                            (str/join ", " commands))
                       {:type :unknown-command :cmd cmd :commands commands})))))
@@ -394,10 +412,87 @@
                          " (or neither) for the in-process one.")
                     {:type :unknown-option :mismatch :conflict :flags ["--memory" "--dir"]})))
   (let [kb (if dir
-             (v/open-kb {:backend :disk-log :dir dir :recover? :auto})
+             (v/open-kb {:backend (or (v/store-backend dir) :disk-log) :dir dir :recover? :auto})
              (v/open-kb {}))]
     (when starter (starter/load-into kb))
     kb))
+
+(defn upgrade!
+  "Bring the store in `dir` up to this build, and report what that took.  Opens the store
+  under the backend its files were written by, with `:recover? :auto`: a reasoning image this
+  build can install is installed, and one written under another image layout, other engine
+  source or other policies is declined, belief is recovered from the records, and the
+  recover writes a new image.  Closing the store then writes the index image a rebuilt
+  index leaves due.  Returns
+
+    {:dir :backend
+     :reasoning :current | :rebuilt | :written | :no-image
+     :image  {:format :network :written-at :source}   ; the stamp now on disk, :source cut to 12
+     :index  :current | :rewritten | :no-image
+     :verify …}                                       ; with :verify only
+
+  `:current` is an image the open installed and left as it was; `:rebuilt` is one the open
+  declined and replaced; `:written` is the first image of a store that held none;
+  `:no-image` is a backend that keeps none (`:disk-log`, `:disk-columnar`).  The records
+  are read and never rewritten.
+
+  One option changes what happens to an image written under other engine source:
+
+  - `:verify` moves the image to `reasoning.prev/` before the open, so the open recovers from
+    the records and writes a new image.  Then it compares the two
+    (`reasoning-image/compare-images`) and deletes the old one.  `:verify` in the result is
+    `{:against source :labels :network :state}`, or one keyword when the two cannot be
+    compared: `:no-previous-image`, `:no-image`, `:layout-changed` or `:records-moved`.
+    When the open writes no image, the old one is moved back.
+
+  A directory holding no store is refused (`:unknown-source`) rather than creating an empty
+  one there.  `!` because the image it replaces cannot be read back."
+  ([dir] (upgrade! dir {}))
+  ([dir {:keys [verify]}]
+   (let [backend   (or (v/store-backend dir)
+                       (throw (ex-info (str "no store at " dir " — upgrade opens an existing"
+                                            " store and creates none")
+                                       {:type :unknown-source :path (str dir)})))
+         bdir      (File. (str dir) ^String ri/dir-name)
+         prev      (File. (str dir) (str ri/dir-name ".prev"))
+         manifest  (File. bdir "manifest.edn")
+         index     (File. (str dir) "index/snapshot.meta")
+         text      (fn [^File f] (when (.exists f) (slurp f)))
+         mtime     (fn [^File f] (when (.exists f) (.lastModified f)))
+         short     (fn [^String s] (some-> s (subs 0 (min 12 (count s)))))
+         old       (ri/read-manifest bdir)
+         b0        (text manifest)
+         i0        (mtime index)]
+     (when verify
+       ;; a `reasoning.prev/` left by an interrupted --verify holds an image this build declined
+       (ri/delete-image! prev)
+       (ri/move-image! bdir prev))
+     (v/close! (v/open-kb {:backend backend :dir (str dir) :recover? :auto}))
+     (let [b1       (text manifest)
+           i1       (mtime index)
+           stamp    (some-> b1 edn/read-string)
+           verified (when verify
+                      (let [r (cond
+                                (nil? old)   :no-previous-image
+                                (nil? stamp) :no-image
+                                (not= (select-keys old [:format :network])
+                                      (select-keys stamp [:format :network])) :layout-changed
+                                (not= (:records old) (:records stamp))    :records-moved
+                                :else (assoc (ri/compare-images prev bdir)
+                                             :against (short (:source old))))]
+                        (if stamp (ri/delete-image! prev) (ri/move-image! prev bdir))
+                        r))]
+       (cond-> {:dir     (str dir)
+                :backend backend
+                :reasoning (cond (nil? b1) :no-image
+                                 (nil? b0) :written
+                                 (= b0 b1) :current
+                                 :else     :rebuilt)
+                :image   (some-> stamp
+                                 (select-keys [:format :network :written-at])
+                                 (assoc :source (short (:source stamp))))
+                :index   (cond (nil? i1) :no-image (= i0 i1) :current :else :rewritten)}
+         verify (assoc :verify verified))))))
 
 ;; ---- the shell -----------------------------------------------------------
 
@@ -463,6 +558,25 @@
                 (catch clojure.lang.ExceptionInfo e
                   (err! "error:" (.getMessage e))
                   (System/exit 1)))
+        ;; `upgrade` opens and closes its own KB (`upgrade!`), so it runs here, before the
+        ;; open below would take the directory's lock for a KB it does not use
+        _  (when (= cmd "upgrade")
+             (try (check-arity! cmd args)
+                  (cond
+                    (nil? (:dir opts))
+                    (throw (ex-info "upgrade needs --dir <path>, the store to bring up to this build"
+                                    {:type :unknown-option :mismatch :missing-value :flag "--dir"}))
+                    (or (:memory opts) (:starter opts))
+                    (throw (ex-info (str "upgrade reads --dir alone — --memory and --starter"
+                                         " name a KB it does not open")
+                                    {:type :unknown-option :mismatch :conflict
+                                     :flags (vec (keep #(when (% opts) (str "--" (name %)))
+                                                       [:memory :starter]))})))
+                  (show (upgrade! (:dir opts) (select-keys opts [:verify])))
+                  (catch Throwable e
+                    (err! "error:" (or (ex-message e) (.getName (class e))))
+                    (System/exit 1)))
+             (System/exit 0))
         kb (try (open-kb-from opts)
                 ;; Throwable, matching the command arm below: an unwritable --dir or a
                 ;; corrupt log throws a plain IOException, and a stack trace is not the

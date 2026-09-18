@@ -12,7 +12,8 @@
             [vaelii.impl.disk.codec :as codec]
             [vaelii.impl.disk.tokens :as dtok]
             [vaelii.impl.jtms :as jtms]
-            [vaelii.impl.sentex :as sx]))
+            [vaelii.impl.sentex :as sx]
+            [vaelii.impl.types.sentex :as sentex-types]))
 
 (defn- round-trip
   "Freeze the encoded form, thaw it, decode it — the whole path a record takes to the
@@ -24,34 +25,34 @@
 (def ^:private d-trip  #(round-trip codec/encode-justification codec/decode-justification %))
 
 (deftest literal-round-trips
-  (doseq [a [(sx/->LiteralSentex '(dog Muffet) 'C 7 :monotonic)
-             (sx/->LiteralSentex '(bornIn Tom 1970) 'CxWell 12 nil)
-             (sx/->LiteralSentex '(likes Ann (mother (father Bob))) 'C 3 :default)
-             (sx/->LiteralSentex '(exceptWhen (penguin ?var0) (sentexHandle 9)) 'C 4 nil)
+  (doseq [a [(sentex-types/->LiteralSentex '(dog Muffet) 'C 7 :monotonic)
+             (sentex-types/->LiteralSentex '(bornIn Tom 1970) 'CxWell 12 nil)
+             (sentex-types/->LiteralSentex '(likes Ann (mother (father Bob))) 'C 3 :default)
+             (sentex-types/->LiteralSentex '(exceptWhen (penguin ?var0) (sentexHandle 9)) 'C 4 nil)
              ;; every nil-able field nil at once — the form a bare derived fact has
-             (sx/->LiteralSentex '(p A) 'C nil nil)]]
+             (sentex-types/->LiteralSentex '(p A) 'C nil nil)]]
     (testing (str "literal " (:sentence a))
       (let [r (sx-trip a)]
         (is (= a r) "equal")
-        (is (instance? vaelii.impl.sentex.LiteralSentex r) "and still a Literal")
+        (is (instance? vaelii.impl.types.sentex.LiteralSentex r) "and still a Literal")
         (is (nil? (:antecedent r)) "a rule-only key still reads nil off it")))))
 
 (deftest rule-round-trips
-  (doseq [r [(sx/->RuleSentex 'C 8
-                              '[(dog ?var0)] '(mammal ?var0) :monotonic '{?var0 ?x}
-                              :forward true nil nil)
+  (doseq [r [(sentex-types/->RuleSentex 'C 8
+                                        '[(dog ?var0)] '(mammal ?var0) :monotonic '{?var0 ?x}
+                                        :forward true nil nil)
              ;; multi-antecedent, every optional field set
-             (sx/->RuleSentex 'CxKinship 9
-                              '[(parentOf ?var0 ?var1) (parentOf ?var1 ?var2)]
-                              '(grandparentOf ?var0 ?var2) :default '{?var0 ?a ?var1 ?b ?var2 ?c}
-                              :backward true true :hard)
+             (sentex-types/->RuleSentex 'CxKinship 9
+                                        '[(parentOf ?var0 ?var1) (parentOf ?var1 ?var2)]
+                                        '(grandparentOf ?var0 ?var2) :default '{?var0 ?a ?var1 ?b ?var2 ?c}
+                                        :backward true true :hard)
              ;; and with every optional field nil
-             (sx/->RuleSentex 'C 10
-                              '[(p ?var0)] '(q ?var0) nil nil nil nil nil nil)]]
+             (sentex-types/->RuleSentex 'C 10
+                                        '[(p ?var0)] '(q ?var0) nil nil nil nil nil nil)]]
     (testing (str "rule " (:consequent r))
       (let [t (sx-trip r)]
         (is (= r t) "equal")
-        (is (instance? vaelii.impl.sentex.RuleSentex t) "and still a Rule")
+        (is (instance? vaelii.impl.types.sentex.RuleSentex t) "and still a Rule")
         (is (vector? (:antecedent t))
             "the antecedent is still a VECTOR — decoding must not flatten it to a list")
         (is (= (:varmap r) (:varmap t)) "and the varmap survives as a map")))))
@@ -62,7 +63,7 @@
              (jtms/->just 22 9 [1 9] 5 nil :default)]]
     (let [t (d-trip d)]
       (is (= d t))
-      (is (instance? vaelii.impl.jtms.Justification t)))))
+      (is (instance? vaelii.impl.types.tms.Justification t)))))
 
 (deftest a-seven-element-frame-decodes-to-the-six-field-record
   ;; A store can hold frames with an always-empty `:out` set in the last position and a
@@ -77,7 +78,7 @@
 (deftest decoding-interns-the-vocabulary
   ;; a record paged off disk must share the one pooled object per name, or every fetch
   ;; mints its own copies and the hot cache retains them
-  (let [a (sx/->LiteralSentex (list 'parentOf 'Tom 'Ann) 'CxWell 1 nil)
+  (let [a (sentex-types/->LiteralSentex (list 'parentOf 'Tom 'Ann) 'CxWell 1 nil)
         r (sx-trip a)]
     (is (identical? (sx/intern-sym 'parentOf) (first (:sentence r))))
     (is (identical? (sx/intern-sym 'Tom) (second (:sentence r))))
@@ -94,9 +95,9 @@
   ;; the durable stores hold nippy-frozen RECORDS.  `decode` dispatches on the thawed
   ;; frame's shape, so those frames must come back unchanged — this is what keeps an
   ;; existing store readable rather than needing a rewrite.
-  (let [a      (sx/->LiteralSentex '(dog Muffet) 'C 7 :monotonic)
-        r      (sx/->RuleSentex 'C 8
-                                '[(p ?var0)] '(q ?var0) nil nil :forward nil nil nil)
+  (let [a      (sentex-types/->LiteralSentex '(dog Muffet) 'C 7 :monotonic)
+        r      (sentex-types/->RuleSentex 'C 8
+                                          '[(p ?var0)] '(q ?var0) nil nil :forward nil nil nil)
         d      (jtms/->just 20 :rule [1 2] 3 nil :monotonic)
         plain  (fn [x] (nippy/thaw (nippy/freeze x)))]        ; no encode — a bare nippy frame
     (is (= a (codec/decode-sentex (plain a))))
@@ -111,18 +112,18 @@
   ;; Tags 0 and 1 carry a polarity after the id.  The sentence's head `not` states the
   ;; sign, so decoding reads past the field, and a record nippy froze whole drops its
   ;; `:polarity` key.
-  (is (= (sx/->LiteralSentex '(not (dog Muffet)) 'C 7 :monotonic)
+  (is (= (sentex-types/->LiteralSentex '(not (dog Muffet)) 'C 7 :monotonic)
          (codec/decode-sentex [0 '(not (dog Muffet)) 'C 7 :negative :monotonic])))
-  (is (= (sx/->RuleSentex 'C 8 '[(p ?var0)] '(q ?var0) nil nil :forward nil nil nil)
+  (is (= (sentex-types/->RuleSentex 'C 8 '[(p ?var0)] '(q ?var0) nil nil :forward nil nil nil)
          (codec/decode-sentex [1 '(implies (p ?var0) (q ?var0)) 'C 8 :positive
                                '[(p ?var0)] '(q ?var0) nil nil :forward nil nil nil])))
   (testing "tag 5 carries the rule's sentence and no polarity; decoding reads past it"
-    (is (= (sx/->RuleSentex 'C 8 '[(p ?var0)] '(q ?var0) nil nil :forward nil nil nil)
+    (is (= (sentex-types/->RuleSentex 'C 8 '[(p ?var0)] '(q ?var0) nil nil :forward nil nil nil)
            (codec/decode-sentex [5 '(implies (p ?var0) (q ?var0)) 'C 8
                                  '[(p ?var0)] '(q ?var0) nil nil :forward nil nil nil]))))
-  (let [r (codec/decode-sentex (assoc (sx/->LiteralSentex '(dog Muffet) 'C 7 nil)
+  (let [r (codec/decode-sentex (assoc (sentex-types/->LiteralSentex '(dog Muffet) 'C 7 nil)
                                       :polarity :positive))]
-    (is (= (sx/->LiteralSentex '(dog Muffet) 'C 7 nil) r))
+    (is (= (sentex-types/->LiteralSentex '(dog Muffet) 'C 7 nil) r))
     (is (not (contains? r :polarity)))))
 
 (deftest a-frame-tag-this-build-does-not-read-is-refused-by-name
@@ -140,7 +141,7 @@
 (deftest the-codec-is-what-shrinks-the-frame
   ;; the point of the codec, asserted rather than assumed: a positional frame is
   ;; materially smaller than the record frame it replaces
-  (let [a     (sx/->LiteralSentex '(parentOf Tom Ann) 'CxNaturalWorld 7 :monotonic)
+  (let [a     (sentex-types/->LiteralSentex '(parentOf Tom Ann) 'CxNaturalWorld 7 :monotonic)
         rec-b (alength ^bytes (nippy/freeze a))
         pos-b (alength ^bytes (nippy/freeze (codec/encode-sentex a)))]
     (is (< pos-b rec-b)
@@ -161,20 +162,20 @@
                   (doseq [x (reverse (file-seq (java.io.File. dir)))] (.delete ^java.io.File x))))))
 
 (def ^:private shapes
-  [(sx/->LiteralSentex '(dog Muffet) 'C 7 :monotonic)
-   (sx/->LiteralSentex '(bornIn Tom 1970) 'CxWell 12 nil)
-   (sx/->LiteralSentex '(comment dog "a domestic canine") 'CxCore 13 :default)
-   (sx/->LiteralSentex '(likes Ann (mother (father Bob))) 'C 3 :default)
-   (sx/->LiteralSentex '(measures Rod 1.5) 'C 14 nil)
-   (sx/->LiteralSentex '(p A) 'C nil nil)
-   (sx/->RuleSentex 'C 8
-                    '[(dog ?var0)] '(mammal ?var0) :monotonic '{?var0 ?x} :forward true nil nil)
-   (sx/->RuleSentex 'CxKinship 9
-                    '[(parentOf ?var0 ?var1) (parentOf ?var1 ?var2)]
-                    '(grandparentOf ?var0 ?var2) :default '{?var0 ?a ?var1 ?b ?var2 ?c}
-                    :backward true true :hard)
-   (sx/->RuleSentex 'C 10
-                    '[(p ?var0)] '(q ?var0) nil nil nil nil nil nil)])
+  [(sentex-types/->LiteralSentex '(dog Muffet) 'C 7 :monotonic)
+   (sentex-types/->LiteralSentex '(bornIn Tom 1970) 'CxWell 12 nil)
+   (sentex-types/->LiteralSentex '(comment dog "a domestic canine") 'CxCore 13 :default)
+   (sentex-types/->LiteralSentex '(likes Ann (mother (father Bob))) 'C 3 :default)
+   (sentex-types/->LiteralSentex '(measures Rod 1.5) 'C 14 nil)
+   (sentex-types/->LiteralSentex '(p A) 'C nil nil)
+   (sentex-types/->RuleSentex 'C 8
+                              '[(dog ?var0)] '(mammal ?var0) :monotonic '{?var0 ?x} :forward true nil nil)
+   (sentex-types/->RuleSentex 'CxKinship 9
+                              '[(parentOf ?var0 ?var1) (parentOf ?var1 ?var2)]
+                              '(grandparentOf ?var0 ?var2) :default '{?var0 ?a ?var1 ?b ?var2 ?c}
+                              :backward true true :hard)
+   (sentex-types/->RuleSentex 'C 10
+                              '[(p ?var0)] '(q ?var0) nil nil nil nil nil nil)])
 
 (deftest tokenized-bodies-round-trip
   (with-dict
@@ -203,9 +204,9 @@
             ;; tag 7: the rule's sentence leads the body, and no polarity follows it
             [sb sl]       (body ['(implies (p ?var0) (q ?var0)) 'C '[(p ?var0)]
                                  '(q ?var0) nil nil :forward nil nil nil])
-            want          (sx/->RuleSentex 'C 8 '[(p ?var0)] '(q ?var0)
-                                           nil nil :forward nil nil nil)]
-        (is (= (sx/->LiteralSentex '(not (dog Muffet)) 'C 7 :monotonic)
+            want          (sentex-types/->RuleSentex 'C 8 '[(p ?var0)] '(q ?var0)
+                                                     nil nil :forward nil nil nil)]
+        (is (= (sentex-types/->LiteralSentex '(not (dog Muffet)) 'C 7 :monotonic)
                (dec (nippy/thaw (nippy/freeze [2 lb ll 7])))))
         (is (= want (dec (nippy/thaw (nippy/freeze [3 rb rl 8])))))
         (is (= want (dec (nippy/thaw (nippy/freeze [7 sb sl 8])))))))))
@@ -214,7 +215,7 @@
   (with-dict
     (fn [d _]
       (let [tok  (get (codec/by-kind d true) "sentexes")
-            a    (sx/->LiteralSentex '(parentOf Tom Ann) 'CxNaturalWorld 7 :monotonic)
+            a    (sentex-types/->LiteralSentex '(parentOf Tom Ann) 'CxNaturalWorld 7 :monotonic)
             rec-b (alength ^bytes (nippy/freeze a))
             pos-b (alength ^bytes (nippy/freeze (codec/encode-sentex a)))
             tok-b (alength ^bytes (nippy/freeze ((:enc tok) a)))]
@@ -229,11 +230,11 @@
       (let [{:keys [enc dec]} (get (codec/by-kind d true) "sentexes")
             before (dtok/token-count d)]
         (doseq [i (range 50)]
-          (enc (sx/->LiteralSentex (list 'measured 'Rod (+ 1000 i) (str "run-" i)) 'C i nil)))
+          (enc (sentex-types/->LiteralSentex (list 'measured 'Rod (+ 1000 i) (str "run-" i)) 'C i nil)))
         (is (= (+ before 3) (dtok/token-count d))
             "only measured / Rod / C entered the dictionary — not the 100 literals")
         ;; and they still come back
-        (let [s (sx/->LiteralSentex '(measured Rod 1042 "run-42") 'C 42 nil)]
+        (let [s (sentex-types/->LiteralSentex '(measured Rod 1042 "run-42") 'C 42 nil)]
           (is (= s (dec (nippy/thaw (nippy/freeze (enc s)))))))))))
 
 (deftest the-dictionary-keys-by-clojure-equality
@@ -282,7 +283,7 @@
     (fn [d _]
       (let [on  (get (codec/by-kind d true) "sentexes")
             off (get (codec/by-kind d false) "sentexes")
-            a   (sx/->LiteralSentex '(dog Muffet) 'C 7 :monotonic)
+            a   (sentex-types/->LiteralSentex '(dog Muffet) 'C 7 :monotonic)
             plain (nippy/freeze ((:enc off) a))
             toked (nippy/freeze ((:enc on) a))]
         (is (= a ((:dec on) (nippy/thaw plain))) "tokenizing store reads a plain frame")
@@ -294,7 +295,7 @@
   (with-dict
     (fn [d _]
       (let [{:keys [enc dec]} (get (codec/by-kind d true) "sentexes")
-            frame (nippy/thaw (nippy/freeze (enc (sx/->LiteralSentex '(dog Muffet) 'C 7 nil))))]
+            frame (nippy/thaw (nippy/freeze (enc (sentex-types/->LiteralSentex '(dog Muffet) 'C 7 nil))))]
         (is (codec/tokenized-frame? frame))
         ;; a dictionary that never saw those tokens cannot decode the frame
         (with-dict
@@ -322,7 +323,7 @@
   (with-dict
     (fn [d _]
       (let [{:keys [enc dec]} (get (codec/by-kind d true) "sentexes")
-            frame   (enc (sx/->LiteralSentex '(dog Muffet) 'C 7 nil))
+            frame   (enc (sentex-types/->LiteralSentex '(dog Muffet) 'C 7 nil))
             ;; -11 is one past the codec's lowest control code; its zigzag varint is
             ;; the single byte 21 — a body no writer of this format produces
             corrupt (assoc frame 1 (byte-array [(byte 21)]))

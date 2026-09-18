@@ -1,6 +1,6 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
-(ns vaelii.host.web
+(ns vaelii.browser.web
   "A small reitit-ring web browser over a KB:
 
     /                 the upper ontology (contexts, types, core predicates, disjointness)
@@ -15,7 +15,7 @@
     /edit             the multi-sentex editor (GET seeds it, POST saves) — a fragment
     /{term,find,levels}/rows   one more page of a capped list, as bare rows
 
-  Run it with `lein run -m vaelii.host.web` (serves a starter-loaded KB on :3000).
+  Run it with `lein run -m vaelii.browser.web` (serves a starter-loaded KB on :3000).
   Handlers are pure `request -> response`, so they are testable without a server.
 
   Every page is answered twice over: as a whole document, and — when htmx asks, which
@@ -37,22 +37,28 @@
             ;; read surface the browser uses but dispatches each KB read to an
             ;; in-process KB *or* a remote daemon, so `app` runs against either.  Every
             ;; `v/…` call here is still a public read — just target-polymorphic.
-            [vaelii.host.access :as v]
+            [vaelii.browser.access :as v]
             ;; the KB catalog: what this process can load, what it has loaded, and which
             ;; of those is active.  The browser is the thing that drives it (`/kbs`), and
             ;; reads the active KB through a holder rather than holding one itself.
-            [vaelii.host.catalog :as catalog]
-            [vaelii.host.examples :as ex]
+            [vaelii.browser.catalog :as catalog]
+            [vaelii.browser.examples :as ex]
+            ;; the registry every long operation runs in — a load, an export, a chaining
+            ;; run.  Process state rather than a KB read, so it is not a hole in the ledger
+            ;; below: it reads no KB and writes none.
+            [vaelii.browser.jobs :as jobs]
+            [vaelii.browser.reload :as reload]
+            [vaelii.browser.sandbox :as sandbox]
+            ;; the inline-SVG primitives the term page's concept graph is drawn with.
+            ;; Pure geometry — it takes no KB and reads nothing, so it is not a hole in
+            ;; the ledger below either.
+            [vaelii.browser.svg :as svg]
             ;; English composed from the KB's own comments, for the guided level.  Like
             ;; `llm` below it is an application over the engine rather than an internal —
             ;; and unlike it, it reaches no model at all.
             [vaelii.host.gloss :as gloss]
             ;; the origin/Host checks this page and the daemon both hold to
             [vaelii.host.guard :as guard]
-            ;; the registry every long operation runs in — a load, an export, a chaining
-            ;; run.  Process state rather than a KB read, so it is not a hole in the ledger
-            ;; below: it reads no KB and writes none.
-            [vaelii.host.jobs :as jobs]
             ;; the proposal panel on a term page.  `llm` is an application over the
             ;; engine exactly as this namespace is — a peer, not an internal — so
             ;; reaching it is not a hole in the ledger below; it never writes, and it
@@ -63,43 +69,18 @@
             [vaelii.host.llm.selection :as selection]
             [vaelii.host.llm.session :as llm]
             [vaelii.host.llm.verdict :as verdict]
-            [vaelii.host.sandbox :as sandbox]
+            [vaelii.host.serve :as serve]
             [vaelii.host.starter :as starter]
-            ;; the inline-SVG primitives the term page's concept graph is drawn with.
-            ;; Pure geometry — it takes no KB and reads nothing, so it is not a hole in
-            ;; the ledger below either.
-            [vaelii.host.svg :as svg]
-            ;; the build's switches, read against their domains — `VAELII_DEV` here
-            [vaelii.impl.config :as config]
-            ;; one read, `write-hazards`: whether the KB on screen is one whose belief was
-            ;; never built, which the write guard below refuses on and `active-caveat`
-            ;; already reports the read half of
-            [vaelii.impl.jtms :as jtms]
-            [vaelii.impl.kb :as kb]
-            ;; one read, `query-contexts`: the three reading modes that wear a context's
-            ;; spelling, so the refusal a page owes for one names them off the roster
-            ;; rather than restating it.  A spelling roster and no KB read, so it is not
-            ;; a hole in the ledger below either
-            [vaelii.impl.naming :as nm]
-            ;; one read, `assertable?`: the strength class the assert form's control is
-            ;; held to, so the page refuses what `core/assert` would refuse rather than
-            ;; reading any value at all as "known-true"
-            [vaelii.impl.sentex :as sx]
-            [vaelii.impl.strength :as strength]))
+            [vaelii.host.subscribe :as sub]))
 
-;; The browser reads the KB through `vaelii.core` alone — it reaches into **zero**
-;; engine internals, so it is the standing proof that the public surface is complete
-;; enough to build a real client on.  The reads it once took from `impl` are now public:
-;;
-;;   `term-role`         the naming role of a term, for coloring (was naming/*)
-;;   `readable-sentence` a stored rule with the author's variable names (was sentex/originalize)
-;;   `indexable-terms`   a sentex's findable subterms (was sentex/index-terms)
-;;   `disjoint-metatypes` / `metatype-members`  the induced disjointness (was taxonomy/*)
-;;   `clear!`            the backend-agnostic store wipe `fresh-starter-kb!` needs (was protocols/*)
-;;
-;; The one `impl` require left is `starter` — the demo ontology `-main` loads.  That is
-;; *content*, not engine, so it is not a hole; a different app would load its own.  Keep
-;; this ledger honest: a new `impl` reach here is a new gap in `vaelii.core` to close.
+;; The browser reads the KB through `vaelii.core` alone, by way of `access`, and requires no
+;; `vaelii.impl` namespace; `public_api_test/browser-reaches-into-no-impl` fails on one.  A
+;; read the page needs and the API does not publish is published in `vaelii.core` first.
+;; The browser's `vaelii.host` requires are peers: the guard, the LLM stack, `gloss`, the
+;; loaders (`starter`, and `core-context` and `io.generate` through `catalog`), and the
+;; daemon's op table and client through `access`.  Those peers do reach into the engine,
+;; and the check above does not read them, so a KB read added to one of them for the
+;; browser's sake goes around the check.  Publish such a read in `vaelii.core` instead.
 
 ;; ---- rendering ----------------------------------------------------------
 ;;
@@ -123,7 +104,7 @@
   editing it shows on a refresh, no restart) and nothing is cached by the browser;
   otherwise each is read once and served with a cache header, so a pageview is not a
   file read and a repeat visit is not a download."
-  (config/web-dev?))
+  (v/switch-value "VAELII_DEV"))
 
 (def ^:private static-cache-control
   (if dev? "no-cache" "public, max-age=3600"))
@@ -148,7 +129,7 @@
   OS — a stuck light page rather than an OS-following one.  Same discipline for the
   palette, where the cost is only the wrong hue.
 
-  Runs synchronously in <head>; the two dots that change these live in select.js.  It is
+  Runs synchronously in <head>; the two dots that change these live in vaelii.js.  It is
   the one node rendered raw (`h/raw`, in `page`) — a `<script>` body is not markup, so
   escaping it would emit the source as text instead of running it."
   (str "(function(){var d=document.documentElement,s;try{s=localStorage}catch(e){return}"
@@ -159,7 +140,7 @@
 
 (defn current
   "The KB a request reads.  A **holder** (anything deref-able —
-  `vaelii.host.catalog/holder`) yields whichever KB is active right now; a KB or an
+  `vaelii.browser.catalog/holder`) yields whichever KB is active right now; a KB or an
   access value is itself.  Every handler goes through here, which is what lets the
   browser switch KBs under a running server."
   [target]
@@ -201,7 +182,7 @@
   term-search box, and the colour controls at the right.  The search is an htmx
   active-search — a debounced `hx-get` to /find swaps just the `#main` region out of
   the answer.  The palette dot (cycling the four accent pairs) and the theme dot
-  (flipping light against dark) are wired by select.js and persisted in localStorage
+  (flipping light against dark) are wired by vaelii.js and persisted in localStorage
   (docs/web.md)."
   []
   [:header.site
@@ -212,7 +193,7 @@
    [:a.brand {:href "/"}
     [:img.logo {:src "/logo.svg" :width 30 :height 30 :alt ""}]
     [:span.wordmark "Vaelii"]]
-   ;; top-level tools; select.js marks the one matching the current path active
+   ;; top-level tools; vaelii.js marks the one matching the current path active
    [:nav.menubar
     [:a {:href "/"} "Ontology"]
     [:a {:href "/reasoning"} "Reasoning"]
@@ -238,13 +219,25 @@
                    :hx-swap "outerHTML" :hx-push-url "true"
                    :hx-trigger "keyup changed delay:400ms, search"}]
    ;; each dot is painted in what it controls, so neither needs a label beside it:
-   ;; select.js keeps the titles saying which value is live
+   ;; vaelii.js keeps the titles saying which value is live
    [:div.theme-controls
     [:button#palette-dot.palette-btn {:type "button" :aria-label "switch colour palette"
                                       :title "Switch colour palette"}]
     [:button#theme-dot.theme-btn {:type "button"
                                   :aria-label "toggle light or dark theme"
                                   :title "Toggle light or dark theme"}]]])
+
+(defn- restart-notice
+  "The notice every page carries while a held namespace, or a protocol, record or type,
+  has changed on disk since the process started (`vaelii.browser.reload/restart-owed`), or
+  nil.  The running process still runs the definitions it loaded, so those edits take a
+  restart."
+  []
+  (when-some [nss (seq (reload/restart-owed))]
+    [:div.callout {:role "status"}
+     [:strong "Restart to load " (str/join ", " nss) "."]
+     " The reloader does not redefine a protocol, record or type, or re-evaluate a held"
+     " namespace, under a loaded KB (docs/web.md)."]))
 
 (defn- page
   "A whole HTML5 document.  `{:mode :html}` is what makes void elements render as
@@ -265,17 +258,17 @@
       [:link {:rel "icon" :href "/favicon.svg" :type "image/svg+xml"}]
       [:link {:rel "stylesheet" :href stylesheet-uri}]
       ;; htmx drives the interactive bits (active search, boosted navigation, the
-      ;; editor's load/save) declaratively; select.js is the small hand-written module
-      ;; for what htmx cannot express — a pointer drag-selection, the colour-mode and
-      ;; theme toggles, and the active menubar link (docs/web.md).
+      ;; editor's load/save) declaratively; vaelii.js is the small hand-written module
+      ;; for what htmx cannot express — the colour-mode and theme toggles, the active
+      ;; menubar link, and the sentex editor's own keys (docs/web.md).
       [:script {:src "/htmx.min.js" :defer true}]
-      [:script {:src "/select.js" :defer true}]]
+      [:script {:src "/vaelii.js" :defer true}]]
      ;; hx-boost turns every in-page link and form into an ajax swap with history, so
      ;; ordinary navigation is snappy without a line of JS; it degrades to plain links
      ;; when htmx is absent.  The swap is scoped to `#main`, which is what makes the
-     ;; fragment answer possible: the header, the selection bar, and the editor sit
-     ;; outside it and are never torn down, so a navigation keeps the search box's focus
-     ;; and an open editor, and the server sends only what actually lands.
+     ;; fragment answer possible: the header and the editor sit outside it and are never
+     ;; torn down, so a navigation keeps the search box's focus and an open editor, and
+     ;; the server sends only what actually lands.
      ;;
      ;; `show:window:top` is not decoration.  A boosted swap whose target is not the body
      ;; scrolls that target into view, so scoping the swap to `#main` would land every
@@ -286,24 +279,9 @@
              :hx-swap "outerHTML show:window:top"
              :hx-indicator "#page-indicator"}
       (header)
-      [:main#main body]
-      ;; the selection action bar (shown by select.js once ≥1 sentex is selected)
-      ;; and the panel the editor form is swapped into — both outside #main so a
-      ;; navigation/search swap does not tear them down mid-edit.
-      [:div#sx-bar.hidden {:role "toolbar" :aria-label "selection actions"}
-       ;; a live region: the count changes without the page moving, so it has to
-       ;; announce itself for a reader who cannot see the rows tint
-       [:span#sx-count {:role "status" :aria-live "polite" :aria-atomic "true"} "0 selected"]
-       [:input#sx-handles {:type "hidden" :name "handles"}]
-       ;; neither panel is a page: each swaps into #editor and takes the whole answer,
-       ;; so both opt out of the #main selection the body sets for boosted navigation.
-       ;; `/retract` GET only *previews* the teardown — the write is its POST.
-       [:button.primary {:type "button" :hx-get "/edit" :hx-include "#sx-handles"
-                         :hx-target "#editor" :hx-select "unset" :hx-swap "innerHTML"} "Edit"]
-       [:button#sx-retract {:type "button" :hx-get "/retract" :hx-include "#sx-handles"
-                            :hx-target "#editor" :hx-select "unset" :hx-swap "innerHTML"}
-        "Retract…"]
-       [:button#sx-clear {:type "button"} "Clear"]]
+      [:main#main (restart-notice) body]
+      ;; the panel the editor form is swapped into, outside #main so a navigation or
+      ;; search swap does not tear it down mid-edit.  A row's [edit] link fills it.
       [:div#editor]]])))
 
 (defn- resp [body]
@@ -468,22 +446,25 @@
   reader completeness, while *no belief* silently empties every believed answer and can
   outlive the load that explains it (a store opened without `:recover?`)."
   []
-  (let [{:keys [name status progress belief? recoverable?]} (catalog/active-caveat)
+  (let [{:keys [name status progress belief? recoverable? rebuilding?]} (catalog/active-caveat)
         loading? (= :running status)]
     [:div#kb-caveat
      (cond-> {}
-       loading? (merge (polling "/kbs/banner" "2s")))
+       ;; a rebuild polls too, so the banner leaves the page when the rebuilt belief lands
+       (or loading? rebuilding?) (merge (polling "/kbs/banner" "2s")))
      (when status
-       (let [[lead tail] (case status
-                           :running    ["Loading "     " — you are reading it as it arrives."]
-                           :cancelling ["Stopping "    " — you are reading what has landed."]
-                           :cancelled  ["Stopped part-way: " " — you are reading what had landed."]
-                           :failed     ["Load failed: " " — you are reading what had landed."]
-                           ;; :done reaches here only for the beliefless case, where the
-                           ;; load is not the story and the bullet below it is — but the
-                           ;; line still has to say which KB, and a bare name is not a
-                           ;; sentence
-                           ["Reading "   " — and it is stored, not merely missing."])]
+       (let [[lead tail] (if (and rebuilding? (= :done status))
+                           ["Reading " " — its belief is being rebuilt under this build."]
+                           (case status
+                             :running    ["Loading "     " — you are reading it as it arrives."]
+                             :cancelling ["Stopping "    " — you are reading what has landed."]
+                             :cancelled  ["Stopped part-way: " " — you are reading what had landed."]
+                             :failed     ["Load failed: " " — you are reading what had landed."]
+                             ;; :done reaches here only for the beliefless case, where the
+                             ;; load is not the story and the bullet below it is — but the
+                             ;; line still has to say which KB, and a bare name is not a
+                             ;; sentence
+                             ["Reading "   " — and it is stored, not merely missing."]))]
          [:div.kb-caveat {:class (str "kb-caveat-" (clojure.core/name status))}
           [:p.kb-caveat-line
            (when (seq lead) [:b lead])
@@ -498,6 +479,11 @@
              [:li "Writing is on hold: a load is this process's one writer, so this KB can "
               "be read while it fills up but not changed. Cancel it, or switch to another "
               "KB, to write again."])
+           (when rebuilding?
+             [:li [:b "Belief is the image an earlier engine build wrote."] " A rebuild "
+              "under this build replaces it when it finishes, and this page updates then. "
+              "Until then an answer can differ from the rebuilt belief wherever the engine "
+              "change moved belief, and writing is refused."])
            (when-not belief?
              [:li [:b "Belief and the taxonomy are not built."] " Everything is stored and "
               "findable — the term pages, the extents, the raw index levels — but with no "
@@ -563,7 +549,7 @@
   the diagonal out — a stated `(disjoint A A)` is content and is shown."
   [kb]
   (let [declared (into #{} (keep (fn [s] (let [[_ a b] (:sentence s)]
-                                           (when (and a b (not (sx/negative? s)))
+                                           (when (and a b (not (v/negative? s)))
                                              (disjoint-pair a b)))))
                        ;; the functor root rather than `(disjoint ?a ?b)`: a pattern with
                        ;; no ground argument gives the trie nothing to narrow on and fans
@@ -705,43 +691,49 @@
 (defn- justification-link [jid] [:a {:href (str "/justification/" jid)} "justification #" jid])
 
 (defn- badge
-  "The colour-coded badge that stands in for a sentex's bare handle before its
-  sentence.  At a glance it says what the handle *is*:
+  "The circle that stands in for a sentex's bare handle before its sentence.  Its colour
+  is the whole of what it says, and one scale carries every case:
 
-    colour   indigo = a rule · violet = an asserted (premise) fact · teal = a derived fact
-    glyph    → forward · ← backward · ↔ both · · inert (a rule's direction)
-             • a positive fact · ¬ a negative literal
-    dashed   a defeasible (default) rule
-    dimmed   stored but not believed (OUT)
+    red      a negation
+    white    a monotonic fact · yellow a default fact · green a derived one
+    blue     a forward rule · purple a backward rule · both halves for a rule running both ways
+    black    an inert rule — stored, and chaining in neither direction
 
-  It links to the sentex page, and its `title` carries the handle and a plain-English
-  reading, so the number is one hover away.  It keys only on the record `s` the caller
-  already fetched, plus belief — every field survives the daemon's sentex→map
+  Filled means asserted, a ring means derived, and a dimmed circle is stored and not
+  believed (OUT).  It links to the sentex page, and its `title` carries the handle and a
+  plain-English reading, so the number is one hover away.  It keys only on the record `s`
+  the caller already fetched, plus belief — every field survives the daemon's sentex→map
   projection, so a remote-attached browser badges identically."
   [view s]
   (let [h         (:id s)
         rule?     (some? (:antecedent s))
-        neg?      (sx/negative? s)
-        asserted? (some? (:strength s))
+        neg?      (v/negative? s)
+        strength  (:strength s)
+        asserted? (some? strength)
         in?       (believed? view h)
-        dir       (:direction s)
-        glyph     (cond rule? (case dir :forward-only "→" :backward "←" :inert "·" "↔")
-                        neg?  "¬"
-                        :else "•")
-        classes   (cond-> ["badge"]
-                    rule?                             (conj "badge-rule")
-                    (and rule? (:defeasible s))       (conj "badge-defeasible")
-                    (and (not rule?) asserted?)       (conj "badge-fact")
-                    (and (not rule?) (not asserted?)) (conj "badge-derived")
-                    (not in?)                         (conj "badge-out"))
+        dir       (or (:direction s) :backward)
+        ;; negation is read off the sentence, so it outranks every other case: a reader
+        ;; who misses a `not` has the sentex backwards, and no other confusion costs that
+        hue       (cond neg?  "badge-neg"
+                        rule? (case dir
+                                :forward-only "badge-forward"
+                                :backward     "badge-backward"
+                                :inert        "badge-inert"
+                                "badge-both")
+                        (= :monotonic strength) "badge-monotonic"
+                        (= :default strength)   "badge-default"
+                        :else                   "badge-derived")
+        classes   (cond-> ["badge" hue]
+                    (not asserted?) (conj "badge-open")
+                    (not in?)       (conj "badge-out"))
         label     (str (if rule?
-                         (str (name (or dir :backward)) " rule"
+                         (str (name dir) " rule"
                               (when (:defeasible s) ", defeasible"))
-                         (str (if asserted? "asserted" "derived")
+                         (str (if asserted? (str (name strength) " asserted") "derived")
                               (if neg? " negative fact" " fact")))
                        " · #" h (when-not in? " · out"))]
     [:a.badge-link {:href (str "/sentex/" h) :title label}
-     [:span {:class (str/join " " classes)} glyph]]))
+     [:span {:class (str/join " " classes)}]]))
 
 (defn- sentex-ref
   "A colour-coded handle badge (see `badge`) placed BEFORE the sentence, then the
@@ -772,47 +764,97 @@
     (let [r (name (:reason (v/why-not kb h)))]
       [:span.tag {:class (str "tag-" r)} r])))
 
+(defn- edit-link
+  "A way into the editor: an htmx GET of `/edit`, swapped into the `#editor` panel.  A
+  button rather than a link, so `hx-boost` leaves it alone and a press on the sentence
+  beside it is an ordinary text selection.
+
+  `query` is `handles=<h>` for one row, or `q=<term>` for a term — which opens on the
+  sentexes the term's most direct index reaches (`term-main-handles`)."
+  [query label]
+  [:button.sx-edit {:type "button" :hx-get (str "/edit?" query)
+                    :hx-target "#editor" :hx-select "unset" :hx-swap "innerHTML"
+                    :aria-label label} "edit"])
+
 (defn- sentex-row
-  "One selectable sentex row: a toggle affordance, the handle badge, the sentence, and
-  its context.  `data-h` is what select.js selects by *and* what an out-of-band swap
-  addresses after a save, so a row can be replaced where it sits.
+  "One sentex row: the handle badge, the sentence, its context, and the control that
+  opens the editor on it.  `data-h` is what an out-of-band swap addresses after a save,
+  so a row can be replaced where it sits.
 
-  The row is a `role=\"row\"` of a single-column ARIA **grid** (`sx-list` below): it
-  carries `aria-selected`, and select.js roves `tabindex` across the rows so the list is
-  one Tab stop with arrow keys inside it.  A grid rather than a listbox because a row is
-  made of links, which a listbox option may not contain."
+  The row carries no selection state and no script.  A sentence is text a reader copies,
+  so a press-drag across it selects that text; editing is the row's own `[edit]`."
   [view s]
-  [:li {:data-h (:id s) :class "sx-item" :role "row"
-        :aria-selected "false" :tabindex "-1"}
-   [:span {:role "gridcell"}
-    [:span.sx-check {:aria-hidden "true"}]
-    (sentex-ref view s) " @ " (term-link view (:context s))
-    ;; the handle badge dims an OUT row; the reason pill says WHY it is out
-    ;; (superseded / defeated / unsupported) — shown only when not believed, so a
-    ;; believed row stays clean.  Its proof is a click away on the sentex page.
-    (when-not (believed? view (:id s)) (list " " (state-tag view (:id s))))]])
-
-(defn- select-all
-  "A group's select-all control.  It reads its own state back — once everything in the
-  group is selected the same button clears it — and select.js finds the rows through
-  the enclosing `.sx-group`."
-  [label]
-  [:button.sx-all {:type "button" :data-select-all "" :aria-pressed "false"
-                   :aria-label (str "select every sentex " label)} "Select all"])
+  [:li {:data-h (:id s) :class "sx-item"}
+   (sentex-ref view s) " @ " (term-link view (:context s))
+   ;; the handle badge dims an OUT row; the reason pill says WHY it is out
+   ;; (superseded / defeated / unsupported) — shown only when not believed, so a
+   ;; believed row stays clean.  Its proof is a click away on the sentex page.
+   (when-not (believed? view (:id s)) (list " " (state-tag view (:id s))))
+   " " (edit-link (str "handles=" (:id s)) (str "edit sentex " (:id s)))])
 
 (defn- sx-list
-  "A selectable list of rows, with the ARIA a multi-selection needs: a single-column
-  grid, labelled, plus the group control that takes the whole list at once."
+  "A list of sentex rows, labelled for a reader who arrives at it out of context."
   [label & rows]
-  [:ul.sx-list {:role "grid" :aria-multiselectable "true" :aria-label label} rows])
+  [:ul.sx-list {:aria-label label} rows])
+
+(def ^:private complete-cap
+  "How many completions a keystroke asks for.  A list longer than a reader takes in at a
+  glance is one they read instead of one they pick from."
+  12)
+
+(def ^:private complete-q-cap
+  "The longest prefix `/complete` answers.  The route is reachable per keystroke and,
+  through the daemon, by whoever can reach it, so the prefix is bounded like every other
+  untrusted read on this page."
+  128)
+
+(defn- code-area
+  "A sentence editor: the `<textarea>` that holds the text, the highlight layer
+  vaelii.js paints behind it (rainbow parens by depth, strings, numbers, variables), and
+  the list it drops under the caret from `/complete`.  Indentation is computed from the
+  open parens to the left of the caret, so Enter lands under the form's first argument
+  and Tab re-indents the line it is on.
+
+  The textarea is the element that holds the value and takes the keys; everything else is
+  drawn behind or below it, so the field submits exactly as a bare textarea would and a
+  page with no script is still an editable one."
+  [{:keys [name id rows value placeholder submit?]}]
+  [:div.ed (cond-> {:data-ed ""}
+             submit?      (assoc :data-ed-submit "")
+             (= 1 rows)   (assoc :class "ed ed-1"))
+   [:pre.ed-hl {:aria-hidden "true"} [:code.ed-code]]
+   [:textarea (cond-> {:class "ed-in" :name name :rows (or rows 6) :spellcheck "false"
+                       :autocomplete "off" :autocapitalize "off" :wrap "off"}
+                id          (assoc :id id)
+                placeholder (assoc :placeholder placeholder))
+    value]
+   [:ul.ed-complete {:role "listbox" :aria-label "term completions" :hidden "hidden"}]])
+
+(defn- fold-button
+  "A region's index, and the control that folds the region away — shown in the top
+  border the way a terminal monitor numbers a box for its hotkey, and answering both the
+  click on the number and the digit `n` pressed anywhere off a text field.  The region it
+  folds is the nearest `[data-panel]` ancestor, so one script serves every framed region
+  without knowing which page drew it."
+  [n]
+  [:button.panel-n {:type "button" :aria-expanded "true"
+                    :title (str "fold this region away — or press " n)} n])
+
+(defn- panel
+  "One framed region: a square box whose title sits in its top border, carrying the
+  index the page counts it by.  `n` is that index, shown before the title and doubling as
+  the fold control; `title` is the rest of the heading, and everything after it is the
+  region's content."
+  [n title & body]
+  [:section.panel (when n {:data-panel n})
+   [:h2.panel-title (when n (fold-button n)) title]
+   body])
 
 (defn- sentex-list [view sentexes]
   (let [ss (sort-by :id sentexes)]
     (prime-belief! view (map :id ss))
     (if (seq ss)
-      [:div.sx-group
-       [:p.sx-head (select-all "in this list")]
-       (sx-list "sentexes" (for [s ss] (sentex-row view s)))]
+      (sx-list "sentexes" (for [s ss] (sentex-row view s)))
       [:p.muted "none"])))
 
 (defn- justification-list [view justifications]
@@ -826,19 +868,21 @@
       [:p.muted "none"])))
 
 (def ^:private legend
-  [:p.legend "Terms are colored by role: "
+  [:p.legend "Terms: "
    [:a.sx.t-type "type"] " · " [:a.sx.t-ind "individual"] " · "
    [:a.sx.t-pred "predicate"] " · " [:a.sx.t-context "context"] " · "
    [:a.sx.t-num "number"] " · " [:span.t-var "?variable"] "."])
 
 (def ^:private badge-legend
-  [:p.legend "Each sentence carries a handle badge: "
-   [:span.badge.badge-rule "→"] "rule (the arrow is its direction) · "
-   [:span.badge.badge-fact "•"] "asserted fact · "
-   [:span.badge.badge-derived "•"] "derived fact · "
-   [:span.badge.badge-fact "¬"] "negation · "
-   [:span.badge.badge-rule.badge-defeasible "↔"] "defeasible rule · "
-   [:span.badge.badge-out "•"] "not believed."])
+  [:p.legend "The circle before a sentence: "
+   [:span.badge.badge-monotonic] "monotonic · "
+   [:span.badge.badge-default] "default · "
+   [:span.badge.badge-neg] "negation · "
+   [:span.badge.badge-derived.badge-open] "derived · "
+   [:span.badge.badge-forward] "forward rule · "
+   [:span.badge.badge-backward] "backward rule · "
+   [:span.badge.badge-inert] "inert rule · "
+   [:span.badge.badge-default.badge-out] "not believed."])
 
 ;; ---- belief state (the sentex page) -------------------------------------
 
@@ -894,25 +938,21 @@
   nobody scrolls to adds no work; `click` is the same request for a reader who would
   rather ask, and for a viewport too tall to scroll; Enter is that reader's keyboard.
 
-  `row?` says the sentinel is ending a **grid** of selectable rows (`sx-list`), whose
-  children must all be rows — the term page's index groups.  `tr?` says it is ending a
-  real `<table>`, whose `<tbody>` may hold nothing but `<tr>`, so the sentinel is one
-  spanning the columns.  The `/find` and `/levels` lists are ordinary lists and take the
-  plain shape."
+  `tr?` says the sentinel is ending a real `<table>`, whose `<tbody>` may hold nothing
+  but `<tr>`, so the sentinel is one spanning the columns.  Every other list — the term
+  page's index groups, `/find`, `/levels` — takes the plain `<li>` shape."
   ([href label] (more-rows href label nil))
-  ([href label {:keys [row? tr?]}]
+  ([href label {:keys [tr?]}]
    ;; `hx-target`/`hx-select` are set on the body so every boosted link swaps #main, and
    ;; they are inherited — so a sentinel says explicitly that it replaces *itself* with
    ;; the rows it fetched, and selects nothing out of them
    (let [attrs {:hx-get href :hx-trigger "revealed, click, keyup[key=='Enter']"
                 :hx-target "this" :hx-select "unset" :hx-swap "outerHTML"
                 :hx-indicator "#page-indicator"}
-         cell  [:span.more-cell {:role (if row? "gridcell" "button") :tabindex "0"}
-                [:span.muted label]]]
-     (cond
-       tr?  [:tr.more attrs [:td.more-td {:colspan "2"} cell]]
-       row? [:li.more (assoc attrs :role "row") cell]
-       :else [:li.more attrs cell]))))
+         cell  [:span.more-cell {:role "button" :tabindex "0"} [:span.muted label]]]
+     (if tr?
+       [:tr.more attrs [:td.more-td {:colspan "2"} cell]]
+       [:li.more attrs cell]))))
 
 (defn- fact-body
   "The positive body of a stored fact sentence — `(P a b)` unchanged, `(not (P a b))`
@@ -922,19 +962,47 @@
     (second sent)
     sent))
 
+(def ^:private arg-position-cap
+  "The highest argument position a term page asks about.  The roots are maintained per
+  1-based position, so the positions a term sits at are found by asking each in turn —
+  which is only bounded because a stored predicate's arity is.  Twelve is past the widest
+  arity the shipped vocabulary declares, and a term sitting deeper than that is in the
+  term index either way, so it reaches the page through the remainder groups."
+  12)
+
+(def ^:private remainder-scan
+  "How many of a term's index entries are walked to work out what the roots did not
+  claim.  A root's extent has an O(1) count, and the remainder has none: the only way to
+  know a sentex is not in a root is to look at it.  Fifty thousand is two orders past the
+  widest term the shipped ontology reaches (`ExceptWhen`, 28,579) and costs ~0.4 s at the
+  walk's measured rate, against 18 s for the 2.4M `genl` reaches.  A term the walk runs
+  out on gets no remainder groups and a line saying the page did not look."
+  50000)
+
+(def ^:private group-sort-cap
+  "How many sentexes a group orders by context before it pages in the index's own order
+  instead.  The order costs a `pr-str` of a context per member plus the sort, and the page
+  shows sixty rows of it: at `genl`'s 2.4M functor group that was 129 s, twice per page.
+  Past the cap the group pages in the order the index read it in, which is reproducible
+  for an unchanged store — the one property paging needs — and is the order
+  `comment-rows` already pages the functor roots in."
+  20000)
+
 (defn- direct-arg-positions
   "The 1-based argument positions at which `term` sits directly in some stored fact —
   exactly the positions the predicate-scoped argument roots (`[:argument-root pred pos
-  term]`) maintain for it.  Rules are excluded (they are not in the argument roots)."
-  [term sentexes]
+  term]`) maintain for it.  Rules are excluded (they are not in the argument roots).
+
+  **Asked of the counts, not of the records.**  `count-with-arg` is one O(1) set-size
+  read per predicate declaring an argument at the slot, so twelve of them answer this
+  without fetching anything.  Reading it off the term's own sentexes instead meant
+  walking its whole extent and looking at every argument of every one: 17 s at `genl`,
+  whose extent is 2.4M, against 0 ms here."
+  [kb term]
   (into (sorted-set)
-        (for [s sentexes
-              :when (not (:antecedent s))
-              :let [body (fact-body (:sentence s))]
-              :when (sequential? body)
-              [i a] (map-indexed vector (rest body))
-              :when (= term a)]
-          (inc i))))
+        (for [p    (range 1 (inc arg-position-cap))
+              :when (pos? (v/count-with-arg kb p term))]
+          p)))
 
 (defn- term-index-groups
   "Every stored sentex containing `term`, grouped by the **index** that reaches it,
@@ -949,12 +1017,18 @@
   `text` is how the term is *written* in the key each group displays — the page's own
   spelling, so a reified term's key names the expression the rest of the page shows
   rather than the opaque constant nothing else on it mentions.  The key shape is the
-  real one either way; what is substituted is only the term's rendering."
+  real one either way; what is substituted is only the term's rendering.
+
+  Answers `{:groups :remainder?}`.  The two remainder groups are the term index **minus**
+  what a root claimed, which no count answers — the only way to know a sentex is not in a
+  root is to look at it.  So the term index is walked for at most `remainder-scan` records
+  and `:remainder?` says whether the walk finished: on a term the walk ran out on, the
+  page offers no remainder groups and says it did not look, rather than showing an empty
+  one and implying there is nothing there."
   ([kb term] (term-index-groups kb term (pr-str term)))
   ([kb term text]
-   (let [fs        (v/find-sentexes kb term)
-         functor   (v/sentexes-with-functor kb term)
-         positions (direct-arg-positions term fs)
+   (let [functor   (v/sentexes-with-functor kb term)
+         positions (direct-arg-positions kb term)
          arg-grps  (for [p positions
                          :let [ss (v/sentexes-with-arg kb p term)]
                          :when (seq ss)]
@@ -964,25 +1038,49 @@
                      {:label (str "In argument position " p)
                       :idx (str "[:argument-slot " p " " text "]")
                       :pos p :count (v/count-with-arg kb p term) :sentexes ss})
-         ctx-ss    (when (= :context (v/term-role term)) (v/sentexes-in-context kb term))
-         claimed   (set (map :id (concat functor (mapcat :sentexes arg-grps) ctx-ss)))
-         remainder (remove #(claimed (:id %)) fs)
+         ctx?      (= :context (v/term-role term))
+         ctx-ss    (when ctx? (v/sentexes-in-context kb term))
+         ;; a root's claim is decided per record rather than against a set of every id a
+         ;; root holds: building that set is the extent read the walk below is bounded to
+         ;; avoid, and `genl` holds 2.4M of them.  An argument claims a record only at a
+         ;; position `direct-arg-positions` probes, so a deeper one stays in the remainder
+         claimed?  (fn [s]
+                     (let [body (fact-body (:sentence s))]
+                       (or (and (sequential? body) (= term (first body)))
+                           (and (not (:antecedent s))
+                                (sequential? body)
+                                (boolean (some #(= term %) (take arg-position-cap (rest body)))))
+                           (and ctx? (= term (:context s))))))
+         ;; a lower bound on the term index, out of counts already in hand: every sentex
+         ;; a root holds contains the term, so the widest root is at least that many
+         ;; entries.  Past the scan the walk is going to be truncated, and this is how the
+         ;; page knows that without paying for the walk to find out — the `genl` term
+         ;; index costs ~750 ms to begin reading whatever is taken off it.  The context
+         ;; root is **not** in the bound: a sentex asserted in a context does not mention
+         ;; it, so the term index need not hold one
+         floor     (reduce max 0 (cons (v/count-with-functor kb term) (map :count arg-grps)))
+         scanned   (when (<= floor remainder-scan)
+                     (into [] (take (inc remainder-scan)) (v/find-sentexes kb term)))
+         whole?    (and (<= floor remainder-scan) (<= (count scanned) remainder-scan))
+         remainder (when whole? (remove claimed? scanned))
          rules     (filter :antecedent remainder)
          nested    (remove :antecedent remainder)]
-     (concat
-      (when (seq functor)
-        [{:label "As predicate" :idx (str "[:functor-root " text "]")
-          :count (v/count-with-functor kb term) :sentexes functor}])
-      arg-grps
-      (when (seq ctx-ss)
-        [{:label "As context" :idx (str "[:context-root " text "]")
-          :count (v/count-in-context kb term) :sentexes ctx-ss}])
-      (when (seq rules)
-        [{:label "In rules" :idx "[:rule-index] · [:term-index]"
-          :count (count rules) :sentexes rules}])
-      (when (seq nested)
-        [{:label "Nested elsewhere" :idx (str "[:term-index " text "]")
-          :count (count nested) :sentexes nested}])))))
+     {:remainder? whole?
+      :groups
+      (concat
+       (when (seq functor)
+         [{:label "As predicate" :idx (str "[:functor-root " text "]")
+           :count (v/count-with-functor kb term) :sentexes functor}])
+       arg-grps
+       (when (seq ctx-ss)
+         [{:label "As context" :idx (str "[:context-root " text "]")
+           :count (v/count-in-context kb term) :sentexes ctx-ss}])
+       (when (seq rules)
+         [{:label "In rules" :idx "[:rule-index] · [:term-index]"
+           :count (count rules) :sentexes rules}])
+       (when (seq nested)
+         [{:label "Nested elsewhere" :idx (str "[:term-index " text "]")
+           :count (count nested) :sentexes nested}]))})))
 
 ;; ---- ordering what a page lists ------------------------------------------
 ;;
@@ -1017,9 +1115,16 @@
   past an offset would then see a row twice or not at all.  Two things it is not: a
   *ranking* — the earliest-asserted sentex is not the most important one — and a *cap*.
   Nothing is dropped by it.  `group-rows`' sentinel walks the whole group a page at a time,
-  and the count beside the heading is the group's stored total rather than the page's."
-  [sentexes]
-  (sort-by (juxt (comp print-key :context) :id) sentexes))
+  and the count beside the heading is the group's stored total rather than the page's.
+
+  `n` is the group's stored count, and a group past `group-sort-cap` is **not** ordered
+  here: it pages in the order the index read it in, which is reproducible for an unchanged
+  store and is what paging actually needs.  Ordering it would mean realizing the whole
+  extent and printing a context per member to show sixty rows."
+  [sentexes n]
+  (if (<= (long n) group-sort-cap)
+    (sort-by (juxt (comp print-key :context) :id) sentexes)
+    sentexes))
 
 (defn- group-rows
   "One page of a group's rows, plus the sentinel that fetches the next page when it is
@@ -1027,24 +1132,40 @@
   rows costs one belief read rather than 60.  `total` is the group's stored count, so
   the sentinel still says how many are behind it."
   [view term g offset total sentexes]
-  (let [rows (into [] (take (inc group-cap)) (drop offset (group-order sentexes)))
+  (let [rows (into [] (take (inc group-cap)) (drop offset (group-order sentexes total)))
         page (take group-cap rows)]
     (prime-belief! view (map :id page))
-    ;; data-h + .sx-item make the row drag-selectable (select.js); the handle badge
-    ;; dims an OUT sentex and `sentex-row` names the reason it is out
+    ;; data-h is what a save's out-of-band swap addresses; the handle badge dims an
+    ;; OUT sentex and `sentex-row` names the reason it is out
     (list (map #(sentex-row view %) page)
           (when (> (count rows) group-cap)
             (more-rows (str "/term/rows?q=" (url-enc (pr-str term))
                             "&g=" g "&offset=" (+ offset group-cap))
-                       (str "show " (max 0 (- total offset group-cap)) " more")
-                       {:row? true})))))
+                       (str "show " (max 0 (- total offset group-cap)) " more"))))))
+
+(def ^:private term-edit-cap
+  "How many of a term's sentexes its `[edit]` opens the editor on.  A textarea holding a
+  term's whole extent is not an editor — `isa` reaches 115 sentexes at its first index
+  alone — so the control takes the head of the most direct group and the page keeps the
+  rest, each row with its own `[edit]`."
+  20)
+
+(defn- term-main-handles
+  "The handles a term's `[edit]` opens the editor on: the head of its **most direct**
+  index group, which is the group the term page renders first.  Empty for a term the KB
+  does not reach."
+  [{:keys [kb]} term]
+  (if (nil? term)
+    []
+    (let [{:keys [sentexes] n :count} (first (:groups (term-index-groups kb term)))]
+      (into [] (comp (take term-edit-cap) (map :id)) (group-order sentexes n)))))
 
 (defn- index-group
-  "Render one index group: its name, the index key it reads, its stored count, then its
-  sentexes a page at a time — with the control that selects the whole group at once."
+  "Render one index group as a framed region: its number, its name, the index key it
+  reads and its stored count in the top border, then its sentexes a page at a time."
   [view term [g {:keys [label idx count sentexes]}]]
-  [:div.idxgrp.sx-group
-   [:h4 label " " [:code idx] " " [:span.muted "· " count " stored"] " " (select-all label)]
+  [:div.idxgrp {:data-panel (inc g)}
+   [:h4 (fold-button (inc g)) label " " [:code idx] " " [:span.muted "· " count " stored"]]
    (sx-list label (group-rows view term g 0 count sentexes))])
 
 ;; ---- proposing knowledge: the model, on a term page ---------------------
@@ -1573,15 +1694,16 @@
       :where "a conclusion"})))
 
 (defn- consequence-panel
-  "What accepting the currently-accepted lines would do, as `v/preview` answers it.
+  "What a batch would do, as `v/preview` answers it.  `heading` names the batch, since
+  the same panel reads an accepted proposal and an open edit.
 
   The refused group leads and opens itself: it is the one a reader must not miss, and it
   is what catches a stratification cycle or a disjointness clash *before* anything is
   stored.  The other two are counts until asked for."
-  [view n {:keys [believed-added believed-removed contradictions bounded?] :as result}]
+  [view heading {:keys [believed-added believed-removed contradictions bounded?] :as result}]
   (let [bad (refusal-items result)]
     (list
-     [:h5.p-cons-head "Consequences of accepting " n (if (= 1 n) " line" " lines")]
+     [:h5.p-cons-head heading]
      (when (seq bad)
        [:details.p-cons.p-cons-bad {:open "open"}
         [:summary [:b "⚠"] " " (count bad) " refused"]
@@ -1608,7 +1730,7 @@
                               :items believed-removed})
      (when (and (empty? bad) (empty? contradictions)
                 (empty? believed-added) (empty? believed-removed))
-       [:p.muted "Nothing follows: the accepted lines add no belief and withdraw none."])
+       [:p.muted "Nothing follows: this adds no belief and withdraws none."])
      (when bounded?
        [:p.hint "This preview was cut short at " preview-max-results
         " lines per group — there is more than is shown."])
@@ -1689,7 +1811,7 @@
   `remote?` is the one state the panel cannot serve: a proposal reads the term's
   neighbourhood, its vocabulary and its checks through dozens of KB calls, which is not
   something to run a round-trip at a time against a daemon."
-  [view term ctx {:keys [remote?]}]
+  [term ctx {:keys [remote?]}]
   (let [kind (or (llm-provider/configured) :stub)]
     [:div#propose.propose
      [:h3 "Propose knowledge " [:span.muted "· " (name kind)
@@ -1707,9 +1829,7 @@
          [:textarea#propose-message {:name "message" :rows 2 :spellcheck "false"
                                      :placeholder "flesh out where it lives and what it eats"}]
          [:div.editor-actions [:button.primary {:type "submit"} "Propose"]]]
-        [:p.hint "The model is shown this page's sentexes and the vocabulary "
-         (term-link view term) "'s type neighbourhood licenses, and answers with "
-         "type-level knowledge. It writes nothing: every line comes back for review."]))
+        [:p.hint "It writes nothing: every line comes back for review."]))
      [:div#propose-result]]))
 
 (defn propose-post
@@ -1844,7 +1964,9 @@
              " report-only and left out — the commit refuses them."])
           (if (empty? ok)
             [:p.muted "Nothing left to preview."]
-            (consequence-panel view (count ok)
+            (consequence-panel view
+                               (str "Consequences of accepting " (count ok)
+                                    (if (= 1 (count ok)) " line" " lines"))
                                (v/preview kb {:add ok}
                                           {:max-results preview-max-results})))))))))
 
@@ -1892,8 +2014,8 @@
           ;; two supertypes the same distance up are ordered by something a reader can
           ;; account for rather than by where the closure set happens to hold them.  The
           ;; list is capped, so the tie decides which claims are shown
-          super (nm/sort-by-content-key (juxt #(- (count (v/genls kb %))) print-key)
-                                        compare (v/genls kb t))
+          super (v/sort-by-content (juxt #(- (count (v/genls kb %))) print-key)
+                                   compare (v/genls kb t))
           :let  [claim (list super x)]
           :when (and (not= super t) (not= 'thing super) (not (stated claim)))]
       {:sentence claim :context (:context sx) :type t :individual x})))
@@ -2064,6 +2186,24 @@
   [kb t]
   (pos? (v/count-with-arg kb 2 t)))
 
+(defn- tree-caret
+  "The control that opens a node's children, and the id it is addressed by.  A checkbox
+  and its label, not a `<details>`/`<summary>`: a summary swallows the click on whatever
+  it contains, so a term inside one toggled the disclosure instead of going to the term's
+  page.  Here the caret is the only thing that toggles, and the term beside it is an
+  ordinary link.
+
+  `attrs` is what the caret fetches, empty for a node whose children are already on the
+  page.  CSS hides `ul.tree-kids` until the box is checked, so a reader with no script
+  still opens and closes the level.  The id keys on the edge (`pred`, `node`), which is
+  what the disclosure *is* — a type reachable by two parents is a different disclosure
+  under each."
+  [pred node attrs]
+  (let [id (str "tg" (Math/abs ^int (hash [pred node])))]
+    (list
+     [:input.tree-tog (merge {:type "checkbox" :id id} attrs)]
+     [:label.tree-tog-l {:for id :title (str "subterms of " (pr-str node))}])))
+
 (defn- tree-rows
   "One level of a hierarchy: `node`'s direct children from `offset`, each either a leaf
   or a disclosure that fetches its own children the first time it is opened.  Bare
@@ -2087,13 +2227,13 @@
        (if (expandable? kb t)
          ;; `hx-select="#main"` is set on the body so every boosted link swaps the main
          ;; column, and it is **inherited** — against a fragment of bare rows it selects
-         ;; nothing and the open would swap in nothing.  So a disclosure says explicitly
-         ;; that it selects nothing out of what it fetched, exactly as a sentinel does.
-         [:li [:details {:hx-get (href t 0) :hx-trigger "toggle once"
-                         :hx-target "find ul.tree-kids" :hx-select "unset"
-                         :hx-swap "innerHTML" :hx-indicator "#page-indicator"}
-               [:summary (term-link view t)]
-               [:ul.tree-kids [:li.muted "…"]]]]
+         ;; nothing and the open would swap in nothing.  So a caret says explicitly that
+         ;; it selects nothing out of what it fetched, exactly as a sentinel does.
+         [:li (tree-caret pred t {:hx-get (href t 0) :hx-trigger "change once"
+                                  :hx-target "next ul.tree-kids" :hx-select "unset"
+                                  :hx-swap "innerHTML" :hx-indicator "#page-indicator"})
+          (term-link view t)
+          [:ul.tree-kids [:li.muted "…"]]]
          [:li (term-link view t)]))
      (when (> (count shown) tree-cap)
        ;; a count only where one was paid for.  Unsorted, `kids` was never realized and
@@ -2120,6 +2260,12 @@
   [shown total note]
   [:p.muted "showing " shown " of " total (when note (str " — " note))])
 
+(def ^:private gloss-cap
+  "How much of a term's comment the front page's list shows.  Fifty rows of a complete
+  first sentence is a page of prose with the terms buried in it; fifty rows of one clause
+  is a list.  The whole text hovers as a `title` and is on the term's own page."
+  72)
+
 (defn- first-sentence
   "A scannable one-line gloss of a comment for a flat list — its first sentence, or a
   hard-capped head when the first sentence runs long.  The whole text is a click away on
@@ -2129,9 +2275,9 @@
   (let [t   (str/trim (str text))
         dot (str/index-of t ". ")]
     (cond
-      (and dot (<= (inc dot) 160)) (subs t 0 (inc dot))     ; a complete first sentence
-      (<= (count t) 160)           t                        ; a short comment, whole
-      :else                        (str (str/trimr (subs t 0 160)) "…"))))
+      (and dot (<= (inc dot) gloss-cap)) (subs t 0 (inc dot))   ; a complete first sentence
+      (<= (count t) gloss-cap)           t                      ; a short comment, whole
+      :else                              (str (str/trimr (subs t 0 gloss-cap)) "…"))))
 
 (defn- comment-rows
   "One page of the core-predicate list, from `offset`, with the sentinel that fetches the
@@ -2158,7 +2304,7 @@
     (prime-belief! view (map :id page))
     (list
      (for [s     page
-           :when (and (not (sx/negative? s)) (believed? view (:id s)))
+           :when (and (not (v/negative? s)) (believed? view (:id s)))
            :let  [[_ term text] (:sentence s)]]
        ;; name prominent, first-sentence gloss muted; the whole comment hovers as a
        ;; title and is on the term's own page — the front page stays scannable
@@ -2258,80 +2404,80 @@
         ctx-count (count (v/contexts kb))
         pairs     (disjoint-pairs kb)]
     (render view "upper ontology"
-            [:p.muted "A contextualized common-sense knowledge base."]
             ;; what this KB *is*, before anything it contains.  Four O(1) reads, and the
             ;; question a reader landing on an unfamiliar corpus asks first — which is why
             ;; it belongs here and not only on the stats page
-            [:div.stats-grid
-             (stat-card "Sentexes" (v/sentex-count kb))
-             (stat-card "Types" (count @types))
-             (stat-card "Contexts" ctx-count)
-             (stat-card "Terms" (v/term-count kb))]
-            [:p [:a.action {:href "/demo"} "Watch belief change"]
-             [:span.muted " — a conclusion believed, then not, then believed again, in "
-              "three clicks. The thing a database cannot do."]]
-            [:p [:a.action {:href "/reasoning"} "What this ontology can work out"]
-             [:span.muted " — every kind of inference it does, each as a live question "
-              "over the sentexes it reasons from."]]
-            [:p [:a {:href "/levels"} "Lookup-to-query stack"]
-             [:span.muted " — trace a goal through the eight levels of inference."]]
-            [:p [:a.action {:href "/assert"} "Assert a sentex"]
-             [:span.muted " — add knowledge; every line is checked before anything is stored."]]
-            legend
-            badge-legend
-            [:h2 "Contexts " [:span.muted "(genlCx)"]]
-            (if roots
-              [:ul.tree (for [r roots]
-                          (if (expandable? kb r)
-                            [:li [:details {:open "open"}
-                                  [:summary (term-link view r)]
-                                  [:ul.tree-kids (tree-rows view 'genlCx r 0)]]]
-                            [:li (term-link view r)]))]
-              ;; no lattice to draw, so the question changes from "how do they nest" to
-              ;; "where is the knowledge" — which the sizes answer and an alphabetical
-              ;; first-fifty never did
-              (let [ranked (contexts-by-size kb)]
-                (list
-                 [:p.muted "Too many genlCx edges to root a lattice — the contexts "
-                  "holding the most, instead."]
-                 (if ranked
-                   (list
-                    [:ul (for [[c n] (take summary-cap ranked)]
-                           [:li (term-link view c)
-                            [:span.muted " — " (commas n) " sentexes"]])]
-                    [:p.muted (commas (count ranked)) " of " (commas ctx-count)
-                     " contexts hold something. " [:a {:href "/stats"} "All of them by size"]
-                     ", or search from the header."])
-                   [:p.muted (commas ctx-count) " contexts — too many to size. "
-                    "Search from the header."]))))
-            [:h2 "Types " [:span.muted "(genl, rooted at thing)"]]
-            ;; the root is drawn open, as the context roots are: the heading names it, and
-            ;; a tree whose stated root is not on the page is indistinguishable from a list of orphans
-            [:ul.tree [:li [:details {:open "open"}
-                            [:summary (term-link view 'thing)]
-                            [:ul.tree-kids (tree-rows view 'genl 'thing 0)]]]]
-            [:p.muted (commas genls) " genl edges — a subtype list opens when you open its node."]
+            ;; the four destinations on one line, each named by what it does.  The page
+            ;; each one opens says what it is for; saying it twice is the text a reader
+            ;; scrolls past to reach the ontology this page is about
+            (panel 1 "This knowledge base"
+                   [:div.stats-grid
+                    (stat-card "Sentexes" (v/sentex-count kb))
+                    (stat-card "Types" (count @types))
+                    (stat-card "Contexts" ctx-count)
+                    (stat-card "Terms" (v/term-count kb))]
+                   [:p.actions
+                    [:a.action {:href "/demo"} "Watch belief change"] " · "
+                    [:a.action {:href "/reasoning"} "What this ontology can work out"] " · "
+                    [:a {:href "/levels"} "Lookup-to-query stack"] " · "
+                    [:a.action {:href "/assert"} "Assert a sentex"]]
+                   legend
+                   badge-legend)
+            (panel 2 (list "Contexts " [:span.muted "(genlCx)"])
+                   (if roots
+                     [:ul.tree (for [r roots]
+                                 (if (expandable? kb r)
+                                   ;; the root's children are already on the page, so its
+                                   ;; caret opens the level rather than fetching it
+                                   [:li (tree-caret 'genlCx r {:checked "checked"})
+                                    (term-link view r)
+                                    [:ul.tree-kids (tree-rows view 'genlCx r 0)]]
+                                   [:li (term-link view r)]))]
+                     ;; no lattice to draw, so the question changes from "how do they nest" to
+                     ;; "where is the knowledge" — which the sizes answer and an alphabetical
+                     ;; first-fifty never did
+                     (let [ranked (contexts-by-size kb)]
+                       (list
+                        [:p.muted "Too many genlCx edges to root a lattice — the contexts "
+                         "holding the most, instead."]
+                        (if ranked
+                          (list
+                           [:ul (for [[c n] (take summary-cap ranked)]
+                                  [:li (term-link view c)
+                                   [:span.muted " — " (commas n) " sentexes"]])]
+                           [:p.muted (commas (count ranked)) " of " (commas ctx-count)
+                            " contexts hold something. " [:a {:href "/stats"} "All of them by size"]
+                            ", or search from the header."])
+                          [:p.muted (commas ctx-count) " contexts — too many to size. "
+                           "Search from the header."])))))
+            (panel 3 (list "Types " [:span.muted "(genl, rooted at thing)"])
+                   ;; the root is drawn open, as the context roots are: the heading names it, and
+                   ;; a tree whose stated root is not on the page is indistinguishable from a list of orphans
+                   [:ul.tree [:li (tree-caret 'genl 'thing {:checked "checked"})
+                              (term-link view 'thing)
+                              [:ul.tree-kids (tree-rows view 'genl 'thing 0)]]]
+                   [:p.muted (commas genls) " genl edges — a subtype list opens when you open its node."])
             ;; titled by what it is.  On the shipped schema every commented term is engine
             ;; vocabulary; on an imported corpus there are 105,882 of them and calling that
             ;; "core predicates" is a claim the page cannot make
-            [:h2 (if (> comments sortable-cap) "Documented terms" "Core predicates")]
-            [:ul (comment-rows view 0)]
-            (when (> comments sortable-cap)
-              [:p.muted (commas comments) " terms carry a " [:code "comment"]
-               " — index order, too many to sort. Search from the header for one."])
-            [:h2 "Disjointness"]
-            (if (<= (count pairs) front-cap)
-              [:ul (disjoint-rows view pairs 0)]
-              (let [{:keys [distinct top]} (separating-types pairs)]
-                (list
-                 [:p.muted (commas (count pairs)) " separated pairs, declared and "
-                  "metatype-induced, over " (commas distinct) " types — too many to read as "
-                  "pairs, so: the types separated from the most. Any type's own separations "
-                  "are on its page."]
-                 [:ul (for [[t n] top]
-                        [:li (term-link view t)
-                         [:span.muted " — disjoint from " (commas n)
-                          (if (= 1 n) " type" " types")]])]))))))
+            (panel 4 (if (> comments sortable-cap) "Documented terms" "Core predicates")
+                   [:ul (comment-rows view 0)]
+                   (when (> comments sortable-cap)
+                     [:p.muted (commas comments) " terms carry a " [:code "comment"]
+                      " — index order, too many to sort. Search from the header for one."]))
+            (panel 5 "Disjointness"
+                   (if (<= (count pairs) front-cap)
+                     [:ul (disjoint-rows view pairs 0)]
+                     (let [{:keys [distinct top]} (separating-types pairs)]
+                       (list
+                        [:p.muted (commas (count pairs)) " separated pairs, declared and "
+                         "metatype-induced, over " (commas distinct) " types — too many to read as "
+                         "pairs, so: the types separated from the most. Any type's own separations "
+                         "are on its page."]
+                        [:ul (for [[t n] top]
+                               [:li (term-link view t)
+                                [:span.muted " — disjoint from " (commas n)
+                                 (if (= 1 n) " type" " types")]])])))))))
 
 (defn tree-rows-page
   "One node's children, as bare rows — what a disclosure fetches when it is opened, and
@@ -2654,6 +2800,25 @@
   each, and the only reads the radial view makes."
   3)
 
+(def ^:private ego-expand-cap
+  "How wide a neighbour may be and still have its own relations read for the outer arc.
+
+  The second hop is `(?p N ?y)` with the functor open, which the index answers by unioning
+  the scoped roots over `[:argument-slot 1 N]`.  Building that union is what the read
+  costs, and a prefix of the answer does not make it cheaper: at `isa`, whose neighbours
+  are themselves hubs, one of these took 851 ms.  A neighbour past this cap is drawn on the
+  inner ring and not expanded — its arc would be eight of tens of thousands, which is a
+  sample the picture cannot caption anyway.  The count is `count-with-arg`, one O(1) read
+  per predicate at the slot, which is the same read the expansion would have begun with."
+  2000)
+
+(def ^:private ego-scan
+  "How many matches the radial view's second hop reads before ordering them.  Five hundred
+  is sixty times the eight it places, so the order is a claim about a sample rather than
+  about the first few the index happened to hand back — and it is a fixed read, where the
+  neighbour's own extent is not."
+  500)
+
 (def ^:private graph-flank-scan
   "How many of a group's sentexes the ego edges are read out of, **per argument position**.
   The groups are already realized by the page, so this costs no read of its own — what it
@@ -2678,11 +2843,16 @@
   `access` and does not require the taxonomy for it.)"
   '#{genl genlCx})
 
-;; layout, in the flat user space `vaelii.host.svg` crops to what is drawn
+;; layout, in the flat user space `vaelii.browser.svg` crops to what is drawn
 (def ^:private graph-level 76)
 (def ^:private graph-row-gap 20)
 (def ^:private graph-flank-gap 12)
 (def ^:private graph-flank-offset 96)
+(def ^:private graph-ring-r 150)
+;; the clear space between the inner ring's boxes and an outer arc's, so the arc's radius
+;; is derived from the two widths rather than being a number that holds until a label
+;; gets longer
+(def ^:private graph-arc-gap 28)
 
 (defn- graph-node
   "A node of the picture: the term, the **same role class its links use** (so the graph
@@ -2807,16 +2977,23 @@
   `llm/page`'s `scanned` treats its own scan the same way and for the same reason.
 
   The records are already in hand — `term-index-groups` fetched them for the rows — so the
-  order costs a sort over handles rather than a read."
-  [sentexes]
-  (take graph-flank-scan (sort-by :id sentexes)))
+  order costs a sort over handles rather than a read.
+
+  Past `group-sort-cap` it costs a sort over the whole extent instead, which at a hub is
+  millions of records to pick forty.  The window is then the index's own first forty.  A
+  group that wide is already over `graph-flank-scan`, so `flank-reach` is already
+  reporting the reach as a bound rather than a census."
+  [sentexes n]
+  (if (<= (long n) group-sort-cap)
+    (take graph-flank-scan (sort-by :id sentexes))
+    (into [] (take graph-flank-scan) sentexes)))
 
 (defn- flank-handles
   "The handles the ego edges will ask the belief of, so the graph rides the page's **one**
   batched belief read instead of adding a read per node."
   [groups]
-  (for [{:keys [pos sentexes]} groups :when pos
-        s (flank-scan sentexes)]
+  (for [{:keys [pos sentexes] n :count} groups :when pos
+        s (flank-scan sentexes n)]
     (:id s)))
 
 (defn- flank-edges
@@ -2842,10 +3019,10 @@
   and folded by `merge-neighbours`, which is deduping by term anyway — a stateful filter
   over a *lazy* seq would answer differently the second time anything read it."
   [view term groups]
-  (for [{:keys [pos sentexes]} groups
+  (for [{:keys [pos sentexes] n :count} groups
         :when (and pos (<= pos 2))
-        s     (flank-scan sentexes)
-        :when (and (nil? (:antecedent s)) (not (sx/negative? s)) (believed? view (:id s)))
+        s     (flank-scan sentexes n)
+        :when (and (nil? (:antecedent s)) (not (v/negative? s)) (believed? view (:id s)))
         :let  [sent (:sentence s)]
         :when (and (sequential? sent) (= 3 (count sent)))
         :let  [[p a b] sent
@@ -2913,9 +3090,10 @@
   **Ordered by handle before the cap cuts**, for `flank-scan`'s reason: a read that
   promises a set promises nothing about which of it comes first, so a window off it as it
   arrives draws one picture for a KB and another for the same knowledge asserted in another
-  order.  The order is paid for by realizing the match rather than a prefix of it, which is
-  what keeps this a claim about the *term* — the radial view expands `graph-ego-expand`
-  neighbours, so it is that many matches, each the neighbour's own extent."
+  order.  The order is over `ego-scan` matches rather than over the whole match, which is
+  what bounds it: the radial view expands `graph-ego-expand` neighbours, each of them a
+  hub in its own right, and realizing a hub's extent to place eight nodes off it was 1.5 s
+  of a term page."
   [kb t cap]
   (let [pull (fn [pattern out?]
                (into []
@@ -2927,7 +3105,7 @@
                                                 (not= :variable (v/term-role other)))
                                        {:term other :pred p :out? out?}))))
                            (take cap))
-                     (sort-by :id (v/sentexes-matching kb pattern '?ctx))))]
+                     (sort-by :id (into [] (take ego-scan) (v/sentexes-matching kb pattern '?ctx)))))]
     (concat (pull (list '?p t '?y) true)
             (pull (list '?p '?y t) false))))
 
@@ -3000,15 +3178,29 @@
   [{:keys [kb] :as view} term neighbours]
   (let [centre (graph-node view term {:x 0 :y 0 :class (str (term-class view term) " g-centre")})
         inner  (into [] (take graph-ego-cap) neighbours)
-        ring   (svg/ring (map #(graph-node view (:term %)) inner) 0 0 150 (- (/ Math/PI 2)))
+        ring   (svg/ring (map #(graph-node view (:term %)) inner) 0 0 graph-ring-r
+                         (- (/ Math/PI 2)))
         pairs  (mapv vector ring inner)
+        ;; `ring` picks its own radius off the widest box it was given, so the arc outside
+        ;; it reads that back rather than assuming the minimum: a cluster placed at a fixed
+        ;; radius overlaps the ring as soon as either side's labels grow
+        ring-r (if-let [n (first ring)] (Math/hypot (double (:x n)) (double (:y n)))
+                       (double graph-ring-r))
+        ring-w (reduce max 0 (map :w ring))
+        wide?  (fn [t] (> (+ (v/count-with-arg kb 1 t) (v/count-with-arg kb 2 t))
+                          ego-expand-cap))
         out    (reduce (fn [{:keys [nodes edges drawn] :as acc} [n _]]
                          (let [kids   (into [] (comp (remove #(drawn (:term %)))
                                                      (take graph-spread))
-                                            (merge-neighbours
-                                             (ego-neighbours kb (:term n) graph-ego-cap)))
-                               placed (svg/arc (map #(graph-node view (:term %)) kids)
-                                               0 0 300 (:angle n))]
+                                            (when-not (wide? (:term n))
+                                              (merge-neighbours
+                                               (ego-neighbours kb (:term n) graph-ego-cap))))
+                               boxes  (mapv #(graph-node view (:term %)) kids)
+                               placed (svg/arc boxes 0 0
+                                               (+ ring-r graph-arc-gap
+                                                  (/ (+ ring-w (reduce max 0 (map :w boxes)))
+                                                     2.0))
+                                               (:angle n))]
                            (-> acc
                                (assoc :drawn (into drawn (map :term) kids))
                                (assoc :nodes (concat nodes placed))
@@ -3066,7 +3258,11 @@
                                         "; the same terms are listed below as text")))]
     ;; a caller may hand one note or several; either way an absent one is not a bullet
     (let [notes (seq (remove nil? (if (string? notes) [notes] notes)))]
-      [:figure.kb-graph-fig svg
+      ;; the picture scrolls inside its own box and the caption sits under the box rather
+      ;; than inside it — a caption that scrolls out of view with the thing it describes
+      ;; is a caption a reader does not have
+      [:figure.kb-graph-fig
+       [:div.kb-graph-box svg]
        [:figcaption.muted legend (when notes (list " · " (str/join " · " notes)))]])))
 
 (defn- term-graph
@@ -3145,13 +3341,19 @@
         sps    (:terms (:specs about))
         djs    (:disjoint about)
         text   (term-text view term)
-        groups (vec (term-index-groups kb term text))]
+        {:keys [groups remainder?]} (term-index-groups kb term text)
+        groups (vec groups)]
     ;; one belief read for the whole page: every group's first page of rows, **and** the
     ;; sentexes the graph reads its ego edges out of, in the same batch
-    (prime-belief! view (concat (mapcat #(map :id (take group-cap (group-order (:sentexes %)))) groups)
+    (prime-belief! view (concat (mapcat #(map :id (take group-cap (group-order (:sentexes %) (:count %)))) groups)
                                 (flank-handles groups)))
     (render view (str "term " text)
-            [:h2 "Term " (term-link view term)]
+            [:h2 "Term " (term-link view term) " "
+             ;; the label does not name the term: a reified one prints as the opaque
+             ;; constant the page exists not to show (`nat-ref`), and the heading beside
+             ;; this already says which term it is about
+             (edit-link (str "q=" (url-enc (pr-str term)))
+                        "edit what this term is most directly in")]
             ;; the picture goes above everything the page says in prose, and the prose
             ;; below is unchanged: the type lines are the accessible equivalent and the
             ;; exact answer this approximates
@@ -3164,21 +3366,24 @@
                (type-line view "Subtypes" (:specs about))
                (type-line view "Disjoint with" djs)])
             [:h3 "Sentexes by index "
-             [:span.muted "(grouped by the index root that reaches the term, most direct "
-              "first — a dimmed badge is not believed, and its pill says why)"]]
+             [:span.muted "(most direct first)"]]
+            (when-not remainder?
+              [:p.muted "This term reaches more than " (commas remainder-scan)
+               " sentexes, so the page did not walk the term index for what the roots "
+               "below do not claim. The groups it does show are complete."])
             (if (seq groups)
               (map-indexed #(index-group view term [%1 %2]) groups)
               [:p.muted "none"])
             ;; last on the page, and deliberately: what the KB holds is the page, and
             ;; what a model would add is a question to ask after reading it
-            (propose-panel view term nil {:remote? (nil? (v/local-kb kb))}))))
+            (propose-panel term nil {:remote? (nil? (v/local-kb kb))}))))
 
 (defn term-rows-page
   "One more page of rows for index group `g` of `term` — what a group's continuation
   sentinel fetches.  The groups are recomputed and indexed the same way the page built
   them, so `g` names the same group it did then."
   [{:keys [kb] :as view} term g offset]
-  (let [groups (vec (term-index-groups kb term))]
+  (let [groups (vec (:groups (term-index-groups kb term)))]
     (frag (if-let [grp (get groups g)]
             (group-rows view term g offset (:count grp) (:sentexes grp))
             ""))))
@@ -3495,8 +3700,8 @@
              "one mechanism to the one below, so a result that appears at level n and not "
              "at n-1 is attributable to that mechanism."]
             [:form.q {:method "get" :action "/levels"}
-             [:input {:type "text" :name "q" :size 44 :placeholder "(animal ?x)"
-                      :value (when goal (pr-str goal))}]
+             (code-area {:name "q" :rows 1 :submit? true :placeholder "(animal ?x)"
+                         :value (when goal (pr-str goal))})
              [:input {:type "text" :name "ctx" :size 18 :placeholder "?ctx"
                       :value (when (and ctx (not= '?ctx ctx)) (pr-str ctx))}]
              [:button {:type "submit"} "run"]]
@@ -3976,7 +4181,7 @@
   (if-let [d (v/justification kb jid)]
     (let [antes    (:antecedents d)
           ;; the antecedents plus the rule: what validity reads, so what can be OUT
-          grounds  (jtms/rests-on d)
+          grounds  (v/rests-on d)
           conc     (:consequence d)
           ;; one batched read; sentex-list below re-uses the same primed cache
           _        (prime-belief! view (conj grounds conc))
@@ -4409,7 +4614,8 @@
    [:span.tag (name (or type :error))] " " message])
 
 (defn- assert-form
-  "The new-sentex form: one sentence per line, a context, and the known-true switch.
+  "The new-sentex form: the sentences, a context, and the known-true switch.  The text is
+  read as successive **forms**, so a rule may be laid out over as many lines as it needs.
   `state` carries back what the reader typed and whatever `check` said about it."
   [{:keys [text ctx monotonic? problems sandbox]}]
   [:form.assert-form {:method "post" :action "/assert"
@@ -4417,9 +4623,9 @@
                       :hx-swap "outerHTML"}
    (when (seq problems)
      [:ul.edit-errors (map problem-line problems)])
-   [:label {:for "assert-text"} "Sentences " [:span.muted "(one per line)"]]
-   [:textarea#assert-text {:name "text" :rows 6 :spellcheck "false"
-                           :placeholder "(dog Muffet)"} text]
+   [:label {:for "assert-text"} "Sentences " [:span.muted "(a context line switches context)"]]
+   (code-area {:name "text" :id "assert-text" :rows 6 :value text
+               :placeholder "(dog Muffet)"})
    [:div.assert-row
     [:label {:for "assert-ctx"} "Context"]
     [:input#assert-ctx {:type "text" :name "ctx" :size 24 :autocomplete "off"
@@ -4431,8 +4637,10 @@
                            monotonic? (assoc :checked "checked"))]
      " known-true " [:code "{:strength :monotonic}"]]]
    [:p.hint "A fact is ground — " [:code "(dog Muffet)"] ". A rule is a universal — "
-    [:code "(implies (dog ?x) (animal ?x))"] ". Every line is checked before anything "
-    "is written, and the whole form is one settle — one bad line stores none of it."]
+    [:code "(implies (dog ?x) (animal ?x))"] ". A sentence may take as many lines as it "
+    "needs, and a bare context term on a line of its own moves everything under it into "
+    "that context. Every sentence is checked before anything is written, and the whole "
+    "form is one settle — one bad sentence stores none of it."]
    [:div.editor-actions [:button.primary {:type "submit"} "Assert"]]])
 
 (defn- assert-seed
@@ -4687,7 +4895,7 @@
                              (remove doomed)
                              (remove #(v/premise? kb %))
                              (filter (fn [c]
-                                       (every? #(some doomed (jtms/rests-on %))
+                                       (every? #(some doomed (v/rests-on %))
                                                (v/supporting-justifications kb c)))))
                        (v/dependent-justifications kb h))]
         (recur (into doomed gone) (into (pop frontier) gone) (into extra gone))))))
@@ -4922,11 +5130,12 @@
              "shown still holds against current belief — retract what blocks it and the "
              "rule is owed its conclusion."])))
 
-;; ---- multi-sentex editing (drag-select → textarea → one settle) ---------
-;; Selection is client-side (select.js, the one bit of JS); the server renders the
-;; editable text for a set of handles and applies the save.  Save is `vaelii.core/edit!`
-;; reached through the access facade, so it retracts the changed/removed sentexes and
-;; asserts the new lines in **one settle**, in-process or against a live daemon alike.
+;; ---- sentex editing (a row's [edit] → textarea → one settle) ------------
+;; A row opens the editor on its own handle, and the panel takes a set of them, so a
+;; batch arrives by handing `/edit` a comma-separated list.  The server renders the
+;; editable text and applies the save.  Save is `vaelii.core/edit!` reached through the
+;; access facade, so it retracts the changed/removed sentexes and asserts the new lines
+;; in **one settle**, in-process or against a live daemon alike.
 
 (defn- ->long [s] (try (Long/parseLong (str s)) (catch Exception _ nil)))
 
@@ -4943,6 +5152,55 @@
   [s]
   (try (edn/read-string (str s)) (catch Throwable _ nil)))
 
+(defn- skip-to-form!
+  "Advance `rdr` past whitespace and `;` comments, and answer the 0-based line the next
+  form opens on — nil at end of input.  `edn/read` skips that same run itself, but it
+  answers a value and not where the value started, and a problem has to name the line
+  there is to go and fix."
+  [^java.io.PushbackReader rdr ^java.io.LineNumberReader lnr]
+  (loop []
+    (let [c (.read rdr)]
+      (cond
+        (neg? c)                   nil
+        (Character/isWhitespace c) (recur)
+        (= (char c) \;)            (do (loop []
+                                         (let [d (.read rdr)]
+                                           (when (and (not (neg? d)) (not= (char d) \newline))
+                                             (recur))))
+                                       (recur))
+        :else                      (do (.unread rdr c) (.getLineNumber lnr))))))
+
+(defn- read-forms
+  "Read a textarea's content as successive EDN **forms** rather than as lines, so one
+  sentence may be laid out over as many lines as it needs.  Answers
+  `{:forms [{:pos i :line n :form v} …] :problem p|nil}` — `pos` is the form's position
+  in the text, which is what a save pairs a form with its handle by, and `line` is the
+  0-based line it opens on, which is what a message names.
+
+  Reading stops at the first form that does not read, and that form is the only problem
+  reported: everything after an unbalanced one is *inside* it, so going on would report
+  one mistake many times."
+  [text]
+  (let [lnr (java.io.LineNumberReader. (java.io.StringReader. (str text)))
+        rdr (java.io.PushbackReader. lnr)
+        eof (Object.)]
+    (loop [forms []]
+      (if-let [line (skip-to-form! rdr lnr)]
+        ;; `Throwable` for `->form`'s reason: a nested-enough form overflows the reader's
+        ;; stack, and that form is a problem to report rather than a 500
+        (let [v (try {:ok (edn/read {:eof eof} rdr)}
+                     (catch Throwable e {:bad (.getMessage e)}))]
+          (cond
+            (:bad v)                 {:forms forms
+                                      :problem {:line line :type :unreadable
+                                                :message (str "does not read as EDN: "
+                                                              (:bad v))}}
+            (identical? eof (:ok v)) {:forms forms :problem nil}
+            :else                    (recur (conj forms {:pos  (count forms)
+                                                         :line line
+                                                         :form (:ok v)}))))
+        {:forms forms :problem nil}))))
+
 ;; The editable line format is `vaelii.host.llm.selection`'s, not a second copy of it:
 ;; the model's proposal lands back in this editor's textarea and is diffed against these
 ;; lines by content, so a byte of drift between the two spellings turns every unchanged
@@ -4951,43 +5209,121 @@
 (defn- parse-handles [csv]
   (->> (str/split (str csv) #",") (map str/trim) (remove str/blank?) (keep ->long) distinct vec))
 
+(defn- read-entries
+  "Read an editor's text: **contexts and sentences interleaved**.  A bare symbol on a
+  line of its own sets the context every sentence under it is in, a map sets the options
+  they carry (`{:strength :monotonic}`, `{}` to go back to the default), and every list
+  is a sentence in whatever is current.  Answers
+
+    {:entries  [{:pos i :line n :entry [sentence context opts?] :key [sentence context]} …]
+     :problems [{:line n :type … :message …} …]}
+
+  `pos` counts **sentences**, which is what a save pairs with a handle; `line` is the
+  line the sentence opens on, which is what a message names.  `start` seeds the context
+  and the options, for the `/assert` form, where a field already names one.
+
+  A context on its own line rather than a bracket around every sentence: a page of one
+  context's facts says that context once, and moving a sentence to another context is
+  moving one line."
+  ([text] (read-entries text nil))
+  ([text {:keys [ctx opts]}]
+   (let [{:keys [forms problem]} (read-forms text)]
+     (loop [[{:keys [line form] :as f} & more] forms
+            cx ctx, op opts, entries [], problems []]
+       (cond
+         (nil? f)       {:entries  entries
+                         :problems (cond-> problems problem (conj problem))}
+         (symbol? form) (recur more form op entries problems)
+         (map? form)    (recur more cx (not-empty form) entries problems)
+         (seq? form)    (if (nil? cx)
+                          (recur more cx op entries
+                                 (conj problems
+                                       {:line line :type :shape
+                                        :message (str "no context yet — write a context "
+                                                      "term on a line above this sentence")}))
+                          (recur more cx op
+                                 (conj entries {:pos   (count entries)
+                                                :line  line
+                                                :key   [form cx]
+                                                :entry (if op [form cx op] [form cx])})
+                                 problems))
+         :else          (recur more cx op entries
+                               (conj problems
+                                     {:line line :type :shape
+                                      :message (str "expected a sentence, a context term "
+                                                    "or an options map — got "
+                                                    (pr-str form))})))))))
+
+(defn- seed-text
+  "The editor's text for a set of sentexes, in the order the handles name them: a context
+  on its own line, then its sentences, then the next context — and an options map where
+  the strength changes.  A blank line before each new context group, so the reader sees
+  the grouping before reading it.
+
+  Print vars are bound off for `edit-line`'s reason: the text is read back and diffed by
+  content, and an ambient `*print-length*` would elide a long sentence into legal EDN
+  that no longer matches its own sentex — so saving an untouched panel would retract the
+  real fact and store the mutilated one."
+  [kb handles]
+  (binding [*print-length* nil *print-level* nil *print-meta* false]
+    (->> (keep #(v/sentex kb %) handles)
+         (reduce (fn [{:keys [cx op lines]} sx]
+                   (let [c (:context sx)
+                         o (when (= :monotonic (:strength sx)) {:strength :monotonic})]
+                     {:cx c :op o
+                      :lines (cond-> lines
+                               (and (not= c cx) (seq lines)) (conj "")
+                               (not= c cx)                   (conj (pr-str c))
+                               (not= o op)                   (conj (pr-str (or o {})))
+                               :always (conj (pr-str (selection/wrapped-sentence sx))))}))
+                 {:cx nil :op nil :lines []})
+         :lines
+         (str/join "\n"))))
+
 (defn- edit-panel
-  "The editor form for a set of handles: a textarea seeded with one editable
-  `[sentence context]` line per still-present handle, above Save / Cancel.  `problems`
-  and `text` are supplied when re-rendering after a save that would not have gone
-  through — each problem naming the line it is about."
+  "The editor form for a set of handles: a `code-area` seeded with the still-present
+  ones as contexts and sentences interleaved (`seed-text`), above Save / Retract /
+  Cancel, and the lookahead panel that says what the save would do.  `problems` and
+  `text` are supplied when re-rendering after a save that would not have gone through —
+  each problem naming the line it is about.
+
+  The lookahead posts to `/edit/preview` on a pause in the typing, the way the proposal
+  panel's consequence preview posts on a change of the accepted set: `v/preview` hands
+  the KB back at the same handles, so it is a read and can run while the caret is still
+  in the form that caused it.
+
+  `/retract` GET only **previews** the teardown; its POST is the write."
   [{:keys [kb]} handles & [{:keys [text problems]}]]
-  (let [entries (for [h handles :let [s (v/sentex kb h)] :when s]
-                  {:h h :line (selection/edit-line s)})]
-    (if (empty? entries)
+  (let [live (into [] (filter #(v/sentex kb %)) handles)
+        csv  (str/join "," live)]
+    (if (empty? live)
       [:span]
       [:div.editor
-       [:h3 "Edit " (count entries) " sentex" (when (not= 1 (count entries)) "es")]
+       [:h3 "Edit " (count live) " sentex" (when (not= 1 (count live)) "es")]
        (when (seq problems) [:ul.edit-errors (map problem-line problems)])
-       [:form {:hx-post "/edit" :hx-target "#editor" :hx-select "unset" :hx-swap "innerHTML"}
-        [:input {:type "hidden" :name "handles" :value (str/join "," (map :h entries))}]
-        [:textarea {:name "text" :rows (max 4 (inc (count entries))) :spellcheck "false"}
-         (or text (str/join "\n" (map :line entries)))]
-        [:p.hint "One " [:code "[sentence context]"] " per line, checked before anything is "
-         "written. Save retracts what you changed and asserts the new lines in one settle; "
-         "an unchanged line touches nothing. Editing a rule drops any "
-         [:code "exceptWhen"] " guard it carries."]
+       [:form.edit-form {:hx-post "/edit" :hx-target "#editor" :hx-select "unset"
+                         :hx-swap "innerHTML"}
+        [:input {:type "hidden" :name "handles" :value csv}]
+        (code-area {:name "text" :rows (max 5 (+ 2 (count live)))
+                    :value (or text (seed-text kb live))})
+        [:p.hint "A context on a line of its own, then the sentences in it — each may "
+         "take as many lines as it needs. A map (" [:code "{:strength :monotonic}"]
+         ") sets what the sentences under it carry. Save retracts what you changed and "
+         "asserts the new sentences in one settle; an unchanged sentence touches "
+         "nothing. Editing a rule drops any " [:code "exceptWhen"] " guard it carries."]
         [:div.editor-actions
          [:button.primary {:type "submit"} "Save"]
-         [:button#sx-cancel {:type "button"} "Cancel"]]]])))
-
-(defn- parse-edit-line
-  "Parse one edited line to `{:key [sentence context] :entry [sentence context opts?]}`,
-  or `{:error <msg>}` — the `:key` is the content used to diff against what is stored."
-  [line]
-  ;; `Throwable` for `->form`'s reason: a nested-enough line is a `StackOverflowError`,
-  ;; and an unreadable line is this function's ordinary answer rather than a 500
-  (let [v (try (edn/read-string line) (catch Throwable e {::bad (.getMessage e)}))]
-    (cond
-      (and (map? v) (::bad v)) {:error (str "unparseable: " (::bad v) " — " line)}
-      (and (vector? v) (<= 2 (count v) 3) (some? (first v)) (some? (second v)))
-      {:key [(first v) (second v)] :entry (vec v)}
-      :else {:error (str "expected [sentence context] — got " (pr-str v))})))
+         [:button#sx-retract {:type "button"
+                              :hx-get (str "/retract?handles=" csv)
+                              :hx-target "#editor" :hx-select "unset" :hx-swap "innerHTML"}
+          "Retract…"]
+         [:button#sx-cancel {:type "button"} "Cancel"]]
+        ;; the lookahead: what this save would do, recomputed on a pause rather than on
+        ;; a keystroke, and posting the very fields the Save button would post
+        [:div.ed-preview {:hx-post "/edit/preview"
+                          :hx-trigger "keyup changed delay:600ms from:closest form"
+                          :hx-include "closest form" :hx-target "this"
+                          :hx-select "unset" :hx-swap "innerHTML" :aria-live "polite"}]]])))
 
 (defn- oob
   "Mark a rendered element as an out-of-band swap addressing every row for `handle`.
@@ -4999,17 +5335,17 @@
 
 (defn- saved-rows
   "The out-of-band swaps a successful save sends in place of reloading the page: each
-  retracted handle's row is replaced by the row its line became, or deleted when the
-  line was deleted.
+  retracted handle's row is replaced by the row its form became, or deleted when the
+  form was deleted.
 
-  A line and its handle are paired **by position** — the textarea is seeded one line per
-  selected handle, so the n-th line is the n-th handle's, and a line rewritten in place
+  A form and its handle are paired **by position** — the textarea is seeded one form per
+  named handle, so the n-th form is the n-th handle's, and a form rewritten in place
   retracts at that position and asserts at it.  Only that exact coincidence pairs; a
-  line the reader appended, or one whose handle has no line left, is unpaired and shows
+  form the reader appended, or one whose handle has no form left, is unpaired and shows
   up in the result panel instead of pretending to replace a row."
-  [{:keys [kb] :as view} removals by-line]
-  (for [{:keys [h line]} removals
-        :let [replacement (some->> (get by-line line) (v/sentex kb))]]
+  [{:keys [kb] :as view} removals by-pos]
+  (for [{:keys [h pos]} removals
+        :let [replacement (some->> (get by-pos pos) (v/sentex kb))]]
     (if replacement
       (oob "outerHTML" h (sentex-row view replacement))
       (oob "delete" h [:li {:data-h h}]))))
@@ -5018,13 +5354,13 @@
   "What lands in the editor panel after a save: the tally, the sentexes that were added
   without replacing a row (a line the reader appended has no row to swap, so this is
   where it becomes visible and linkable), and a Close button — `#sx-cancel`, which
-  select.js already wires to close the editor."
+  vaelii.js already wires to close the editor."
   [view unpaired n-added n-removed]
   [:div.editor
    [:h3 "Saved"]
    [:p.muted n-added " asserted · " n-removed " retracted · one settle."]
    ;; plain rows, not `sentex-row`: these sit in the editor panel rather than in a
-   ;; listing, so they are not part of the page's selectable set
+   ;; listing, so they carry no [edit] of their own
    (when (seq unpaired)
      [:ul (for [s unpaired]
             [:li (sentex-ref view s) " @ " (term-link view (:context s))])])
@@ -5044,10 +5380,12 @@
       (= :add (:in p)) (assoc :line (:line (nth additions (:index p) nil))))))
 
 (defn- edit-post
-  "Apply a save: diff the edited lines against the selected handles **by content**,
-  check the batch that diff produces, then `edit` — retract the handles whose line
-  changed or was deleted, assert the lines that are new; an unchanged line touches
-  nothing (no handle churn).
+  "Apply a save: diff the edited **sentences** against the named handles by content,
+  check the batch that diff produces, then `edit` — retract the handles whose sentence
+  changed or was deleted, assert the sentences that are new; an unchanged one touches
+  nothing (no handle churn).  The text is read as contexts and sentences interleaved
+  (`read-entries`), so a rule may be laid out over as many lines as it needs and a
+  context is named once for every sentence under it.
 
   The answer **re-renders what changed** rather than reloading: the rows of the
   retracted handles are swapped out of band (replaced by their new row, or deleted),
@@ -5056,15 +5394,12 @@
   comes back as a message beside the line with the user's text intact."
   [{:keys [kb] :as view} handles-csv text]
   (let [handles (parse-handles handles-csv)
-        lines   (->> (str/split-lines (str text)) (map str/trim) (remove str/blank?))
-        parsed  (vec (map-indexed (fn [i p] (assoc (parse-edit-line p) :line i)) lines))
-        unread  (for [{:keys [error line]} parsed :when error]
-                  {:line line :type :unreadable :message error})]
+        {parsed :entries unread :problems} (read-entries text)]
     (if (seq unread)
       (frag (edit-panel view handles {:text text :problems unread}))
       (let [orig      (vec (for [[i h] (map-indexed vector handles)
                                  :let  [s (v/sentex kb h)] :when s]
-                             {:h h :line i :key [(selection/wrapped-sentence s) (:context s)]}))
+                             {:h h :pos i :key [(selection/wrapped-sentence s) (:context s)]}))
             orig-keys (set (map :key orig))
             new-keys  (set (map :key parsed))
             removals  (vec (remove #(new-keys (:key %)) orig))
@@ -5074,24 +5409,72 @@
         (if (seq problems)
           (frag (edit-panel view handles {:text text :problems problems}))
           (let [{:keys [added]} (v/edit! kb batch)
-                ;; line index -> the handle the line became, for the positional pairing.
-                ;; An entry is `assert`-shaped, so a line concluding a conjunction became
+                ;; position -> the handle the form became, for the positional pairing.
+                ;; An entry is `assert`-shaped, so a form concluding a conjunction became
                 ;; a *vector* of handles — no single row replaces the old one, so it
-                ;; stays unpaired and surfaces in the result panel like an appended line
-                by-line   (into {} (map-indexed (fn [k a]
+                ;; stays unpaired and surfaces in the result panel like an appended form
+                by-pos    (into {} (map-indexed (fn [k a]
                                                   (let [h (nth added k nil)]
-                                                    [(:line a) (when-not (vector? h) h)])))
+                                                    [(:pos a) (when-not (vector? h) h)])))
                                 additions)
                 stored    (flatten added)
-                paired    (set (keep #(get by-line (:line %)) removals))
-                unpaired  (into [] (comp (remove paired) (keep #(v/sentex kb %))) stored)
-                remaining (- (count handles) (count removals))]
+                paired    (set (keep #(get by-pos (:pos %)) removals))
+                unpaired  (into [] (comp (remove paired) (keep #(v/sentex kb %))) stored)]
             (prime-belief! view (concat stored (map :id unpaired)))
             (frag (list (save-result view unpaired (count stored) (count removals))
-                        (saved-rows view removals by-line)
-                        ;; the selection chrome: the retracted handles are gone from the
-                        ;; page, so the count they were part of is stale
-                        [:span#sx-count {:hx-swap-oob "innerHTML"} remaining " selected"]))))))))
+                        (saved-rows view removals by-pos)))))))))
+
+(defn edit-preview-post
+  "What this save would do, without doing it: the same diff `edit-post` computes, read
+  through `v/preview` instead of `v/edit!`.  `preview` hands the KB back at the same
+  handles, so this is a read and can run on a pause in the typing rather than behind a
+  confirmation.
+
+  A form that does not read is reported here too, which is what makes the panel a
+  lookahead rather than a second opinion: the reader is told while the caret is still in
+  the form that caused it, instead of on the far side of a save that did not go through."
+  [{:keys [kb] :as view} handles-csv text]
+  (frag
+   (let [local   (v/local-kb kb)
+         handles (parse-handles handles-csv)
+         {parsed :entries unread :problems} (read-entries text)]
+     (cond
+       (nil? local) [:p.muted "A preview runs inference, so it needs the KB in this process."]
+       (seq unread) [:ul.edit-errors (map problem-line unread)]
+       :else
+       (let [orig      (vec (for [h handles :let [s (v/sentex kb h)] :when s]
+                              {:h h :key [(selection/wrapped-sentence s) (:context s)]}))
+             orig-keys (set (map :key orig))
+             new-keys  (set (map :key parsed))
+             removals  (mapv :h (remove #(new-keys (:key %)) orig))
+             additions (mapv :entry (remove #(orig-keys (:key %)) parsed))]
+         (if (and (empty? removals) (empty? additions))
+           [:p.muted "Nothing has changed yet."]
+           (consequence-panel view
+                              (str "This save: " (count additions)
+                                   (if (= 1 (count additions)) " asserted · " " asserted · ")
+                                   (count removals) " retracted")
+                              (v/preview kb {:add additions :remove removals}
+                                         {:max-results preview-max-results}))))))))
+
+(defn completions-page
+  "The terms a prefix could become, as the list the editor drops under the caret.  It is
+  `v/find-terms`' **prefix** match over the term roster, so a keystroke costs the size of
+  the vocabulary and never a scan of the KB, and each hit carries the role colour its
+  term page and every sentence on the page already give it.
+
+  A blank prefix answers nothing rather than the first twelve terms in the KB, and one
+  past `complete-q-cap` answers nothing rather than scanning on behalf of whoever sent
+  it — the route is reachable per keystroke and, through the daemon, by anyone who can
+  reach the daemon."
+  [{:keys [kb] :as view} q]
+  (frag
+   (let [q (str q)]
+     (when (and (not (str/blank? q)) (<= (count q) complete-q-cap))
+       (for [t (v/find-terms kb q {:match :prefix :case-sensitive? false
+                                   :limit complete-cap})]
+         [:li {:role "option" :data-t (str t) :class (str "sx " (term-class view t))}
+          (str t)])))))
 
 ;; ---- the assert / retract / chain writes --------------------------------
 ;; Each goes through `vaelii.core/edit!` (or `forward-chain`) via the access facade, so
@@ -5099,26 +5482,12 @@
 ;; every one of them is one settle.
 
 (defn- assert-lines
-  "Read the new-sentex textarea: one **sentence** per line (the context is its own
-  field), as `[{:line i :entry [sentence context opts]}]` or a problem per unreadable
-  line."
+  "Read the new-sentex textarea the editor panel's way: contexts and sentences
+  interleaved (`read-entries`).  The form's **context field** and its known-true switch
+  seed the first sentence, so a box holding nothing but sentences asserts them all where
+  the field says; a context written in the box takes over from that line down."
   [text ctx opts]
-  (let [lines (->> (str/split-lines (str text)) (map str/trim) (remove str/blank?))]
-    (reduce (fn [acc [i line]]
-              ;; `Throwable` for `->form`'s reason: a nested-enough line overflows the
-              ;; reader's stack, and that line is a problem to report, not a 500
-              (let [form (try {:ok (edn/read-string line)}
-                              (catch Throwable e {:bad (.getMessage e)}))]
-                (if (:bad form)
-                  (update acc :problems conj
-                          {:line i :type :unreadable
-                           :message (str "does not read as EDN: " (:bad form))})
-                  (update acc :entries conj
-                          {:line i :entry (if opts
-                                            [(:ok form) ctx opts]
-                                            [(:ok form) ctx])}))))
-            {:entries [] :problems []}
-            (map-indexed vector lines))))
+  (read-entries text {:ctx ctx :opts opts}))
 
 (defn assert-post
   "Assert what the new-sentex form holds: read the lines, check them all against the
@@ -5167,14 +5536,13 @@
                    [:p.muted "The sweep took " (- (count gone) (count handles))
                     " derived sentexes with them."])
                  [:div.editor-actions [:button#sx-cancel.primary {:type "button"} "Close"]]]
-                (for [h gone] (oob "delete" h [:li {:data-h h}]))
-                [:span#sx-count {:hx-swap-oob "innerHTML"} "0 selected"]))))
+                (for [h gone] (oob "delete" h [:li {:data-h h}]))))))
 
 (defn retract-post
-  "Retract the selected handles through `edit` — one settle for the whole selection,
-  the same write path the editor's save takes.  The answer deletes every row that is
-  actually gone out of band (the selection *and* whatever the dependency-directed sweep
-  took with it), so the page corrects itself instead of reloading.
+  "Retract the named handles through `edit` — one settle for the whole batch, the same
+  write path the editor's save takes.  The answer deletes every row that is actually
+  gone out of band (the named handles *and* whatever the dependency-directed sweep took
+  with them), so the page corrects itself instead of reloading.
 
   The write is preceded by the `check-edit` round-trip every other write post makes
   (docs/operations.md): a stale handle — retracted out from under the page since it
@@ -5204,7 +5572,7 @@
 (defn- slider-pos
   "Where a knob's default sits on its 0–1000 track.  A count that ranges to millions is
   useless on a linear track — every interesting value is in the first pixel — so those
-  knobs are marked `:scale :log` and mapped logarithmically here and in select.js, which
+  knobs are marked `:scale :log` and mapped logarithmically here and in vaelii.js, which
   does the inverse when the reader drags."
   [v lo hi scale]
   (let [v (double (max lo (min hi (or v lo))))]
@@ -5562,7 +5930,7 @@
 ;; ---- long work, watched: the jobs screen --------------------------------
 ;;
 ;; Three operations here take minutes rather than milliseconds — a load, an export, and a
-;; chaining run — and they are one mechanism (`vaelii.host.jobs`) with one status
+;; chaining run — and they are one mechanism (`vaelii.browser.jobs`) with one status
 ;; vocabulary.  This screen is that registry rendered: every job this process has run
 ;; recently, what it is doing, and the one control that stops it.  The `/kbs` panels are
 ;; the same registry filtered to the two kinds that belong beside a KB, which is why
@@ -5691,12 +6059,12 @@
 
   Bare, not `!`: it starts a server and destroys nothing.  Called by both entry points,
   so the variable means the same thing to `lein browser` as to `lein run -m
-  vaelii.host.web`; only the first has the dependency, which is what the second one's
+  vaelii.browser.web`; only the first has the dependency, which is what the second one's
   log line says."
   []
-  (when (and (config/profiler?) (compare-and-set! profiler-state nil ::starting))
+  (when (and (v/switch-value "VAELII_PROFILER") (compare-and-set! profiler-state nil ::starting))
     (if-let [serve-ui (profiler-serve-ui)]
-      (let [port (config/profiler-port)]
+      (let [port (v/switch-value "VAELII_PROFILER_PORT")]
         (try
           (serve-ui port)
           (reset! profiler-state {:port port})
@@ -5706,7 +6074,7 @@
             (reset! profiler-state nil)
             (trove/log! {:level :warn :id ::profiler
                          :msg (str "profiler UI would not start on port "
-                                   (config/profiler-port) ": " (.getMessage t))}))))
+                                   (v/switch-value "VAELII_PROFILER_PORT") ": " (.getMessage t))}))))
       (do
         (reset! profiler-state nil)
         (trove/log! {:level :warn :id ::profiler
@@ -6020,7 +6388,7 @@
                  [:p "The " [:code "ctx"] " parameter names a reading rather than a place: "
                   [:code (pr-str ctx)] "."]
                  [:p.muted "This page asks what a context holds, so it needs a context that "
-                  "holds something. " (str/join ", " (sort (map str nm/query-contexts)))
+                  "holds something. " (str/join ", " (sort (map str v/query-contexts)))
                   " are the three that do not: each is a way of reading the whole KB, and "
                   "only " [:code "query"] ", " [:code "ask"] ", " [:code "prove"] " and "
                   [:code "sentexes-matching"] " resolve one. Leave it blank for "
@@ -6066,7 +6434,7 @@
   [raw]
   (cond
     (nil? raw)                                                nil
-    (and (string? raw) (strength/assertable? (keyword raw)))  (keyword raw)
+    (and (string? raw) (v/assertable-strengths (keyword raw)))  (keyword raw)
     :else                                                     unreadable))
 
 (defonce ^:private ^Object write-monitor
@@ -6178,20 +6546,28 @@
     ;; Asked only of an in-process KB: an attached daemon has none of this to report,
     ;; exactly as `catalog/active-caveat` has nothing to say about one.
     :else
-    (when-let [hz (when (:records kb) (not-empty (kb/write-hazards kb)))]
-      (render (view kb req) "not recovered"
-              [:h2 "Nothing was written"]
-              [:p [:b (kb-name kb)] " is stored but not built: "
-               (if (:no-index hz)
-                 "neither its belief network nor its index was rebuilt from the records"
-                 "its belief network was never rebuilt from the records")
-               " — so every definitional check would match nothing and pass, and this KB "
-               "would keep a fact it would otherwise refuse."]
-              [:p.muted "Reading it is fine, which is what the banner above is about. To "
-               "make it writable, run "
-               [:code (if (:no-index hz) "(reindex kb)" "(recover kb)")]
-               " against it, or load it again with belief on from the "
-               [:a {:href "/kbs"} "knowledge bases"] " page."]))))
+    (when-let [hz (when (:records kb) (not-empty (v/write-hazards kb)))]
+      (if (:stale-belief hz)
+        (render (view kb req) "rebuilding belief"
+                [:h2 "Nothing was written"]
+                [:p [:b (kb-name kb)] " answers from the reasoning image an earlier engine build "
+                 "wrote while its belief is rebuilt under this build, and a write now would "
+                 "be checked against the earlier build's belief."]
+                [:p.muted "Writing resumes when the rebuild finishes, and the banner above "
+                 "leaves the page then."])
+        (render (view kb req) "not recovered"
+                [:h2 "Nothing was written"]
+                [:p [:b (kb-name kb)] " is stored but not built: "
+                 (if (:no-index hz)
+                   "neither its belief network nor its index was rebuilt from the records"
+                   "its belief network was never rebuilt from the records")
+                 " — so every definitional check would match nothing and pass, and this KB "
+                 "would keep a fact it would otherwise refuse."]
+                [:p.muted "Reading it is fine, which is what the banner above is about. To "
+                 "make it writable, run "
+                 [:code (if (:no-index hz) "(reindex kb)" "(recover kb)")]
+                 " against it, or load it again with belief on from the "
+                 [:a {:href "/kbs"} "knowledge bases"] " page."])))))
 
 (defn- writing
   "The guard every synchronous write to a KB's *content* goes through: `write-refusal`,
@@ -6319,12 +6695,62 @@
                                               " <VAELII_API_TOKEN>")}))
     served))
 
+(defonce ^:private op-registry
+  ;; The change-feed subscriptions `POST /op` issues.  One registry for the process, as
+  ;; `write-monitor` is one monitor for it: a feed token names a subscription held by this
+  ;; process.  `defonce` keeps the subscriptions a client holds across a namespace reload,
+  ;; which rebuilds `app` and would otherwise drop them.
+  (sub/registry))
+
+(defn- edn-reply
+  "An EDN response in the daemon's reply shape."
+  [status m]
+  {:status status :headers {"content-type" "application/edn"} :body (pr-str m)})
+
+(defn- op-post
+  "Answer `POST /op` over the active KB with the daemon's own handler (`serve/handle-op`):
+  the same op table, guards, ceilings and refusals, run under this process's
+  `write-monitor` instead of a daemon's.  A native client therefore reads and writes the
+  KB this browser shows without a second process holding the store.
+
+  The holder is dereferenced once, as `writing` does, and three states refuse before the
+  op runs:
+
+    404 :not-found        the browser reads a remote daemon (`--attach`); the op belongs
+                          at that daemon, which owns the KB
+    409 :still-loading    a job is filling this KB; the job writes without the monitor
+                          an op takes, so an op beside it would be a second writer
+    409 :still-exporting  an export walks the records with no snapshot
+
+  The two 409s refuse reads as well as writes, because the op table does not mark which
+  ops write."
+  [target req]
+  (let [kb (v/local-kb (current target))]
+    (cond
+      (nil? kb)
+      (edn-reply 404 {:ok false :type :not-found
+                      :error (str "this browser reads a remote daemon (--attach); "
+                                  "send POST /op to that daemon")})
+
+      (catalog/write-blocked? kb)
+      (edn-reply 409 {:ok false :type :still-loading
+                      :error (str (kb-name kb) " is being written by a job; "
+                                  "retry when the job finishes")})
+
+      (catalog/exporting-kb? kb)
+      (edn-reply 409 {:ok false :type :still-exporting
+                      :error (str (kb-name kb) " is being exported; "
+                                  "retry when the export finishes")})
+
+      :else
+      (serve/handle-op kb op-registry write-monitor req))))
+
 (defn app
   "The ring handler for a KB.  Pure `request -> response`.
 
   `target` is what each page reads: a KB, an access value (`v/local` / `v/remote`), or a
   **holder** — anything deref-able, yielding whichever of those is current
-  (`vaelii.host.catalog/holder`).  A holder is what makes the KB switchable: every
+  (`vaelii.browser.catalog/holder`).  A holder is what makes the KB switchable: every
   handler resolves it per request, so activating another entry re-points the whole
   browser without rebuilding the handler.
 
@@ -6334,6 +6760,10 @@
   (-> (ring/ring-handler
        (ring/router
         [["/"           {:get (fn [req] (default-page (view (current target) req)))}]
+         ;; the daemon protocol, over the active KB (`op-post`), so a native client
+         ;; connects to this browser as it would to `vaelii.serve`
+         ["/health"     {:get (fn [_] (edn-reply 200 {:ok true}))}]
+         ["/op"         {:post (fn [req] (op-post target req))}]
          ["/stats"      {:get (fn [req]
                                 (stats-page (view (current target) req) nil
                                             (some? (get-in req [:query-params "clashes"]))))}]
@@ -6553,7 +6983,7 @@
                                       ctx (or (when-let [c (get-in req [:query-params "ctx"])]
                                                 (when (seq c) (->form c)))
                                               '?ctx)]
-                                  (if (nm/query-context? ctx)
+                                  (if (v/query-contexts ctx)
                                     (unsupported-context (view (current target) req) ctx)
                                     (levels-page (view (current target) req)
                                                  (when (seq q) (->form q))
@@ -6582,7 +7012,7 @@
                                        ctx (or (->form (get-in req [:query-params "ctx"])) '?ctx)
                                        lvl (->long (get-in req [:query-params "level"]))]
                                    (cond
-                                     (nm/query-context? ctx)
+                                     (v/query-contexts ctx)
                                      (unsupported-context (view (current target) req) ctx)
 
                                      (and (sequential? q) (some? lvl))
@@ -6613,9 +7043,28 @@
          ;; the editor: GET renders the textarea for the selected handles, POST applies
          ;; the save (both htmx fragments swapped into #editor).  POST is the one route
          ;; that writes, so it is the one that checks the caller's origin.
+         ;; the terms a prefix could become, for the editor's completion list.  A read
+         ;; off the term roster, and bounded like every other untrusted read here.
+         ["/complete" {:get (fn [req]
+                              (completions-page (view (current target) req)
+                                                (get-in req [:params "q"])))}]
+         ;; what an open edit would do, through `preview` — a read, so it runs on a pause
+         ;; in the typing.  It goes through `writing` because a preview holds the single
+         ;; writer for its duration, exactly as the proposal panel's does.
+         ["/edit/preview" {:post (fn [req]
+                                   (writing target req
+                                            (fn [kb]
+                                              (edit-preview-post (view kb req)
+                                                                 (get-in req [:params "handles"])
+                                                                 (get-in req [:params "text"])))))}]
          ["/edit" {:get  (fn [req]
-                           (let [hs (parse-handles (get-in req [:params "handles"]))]
-                             (if (seq hs) (frag (edit-panel (view (current target) req) hs)) (frag ""))))
+                           (let [vw (view (current target) req)
+                                 hs (or (seq (parse-handles (get-in req [:params "handles"])))
+                                        ;; `?q=` opens the editor on a *term*: the sentexes
+                                        ;; its most direct index reaches, which is what the
+                                        ;; term page shows first
+                                        (seq (term-main-handles vw (->form (get-in req [:params "q"])))))]
+                             (if (seq hs) (frag (edit-panel vw hs)) (frag ""))))
                    :post (fn [req]
                            (writing target req
                                     (fn [kb]
@@ -6639,7 +7088,7 @@
                                (if (= unreadable s)
                                  (bad-parameter (view (current target) req) "strength" raw
                                                 (str "one of "
-                                                     (str/join ", " (sort (map name strength/assertable)))
+                                                     (str/join ", " (sort (map name v/assertable-strengths)))
                                                      " — the classes an assertion may carry"))
                                  (writing target req
                                           (fn [kb]
@@ -6692,7 +7141,7 @@
                                     ctx (->form (get-in req [:params "ctx"]))
                                     kb  (current target)]
                                 (if (symbol? q)
-                                  (frag (propose-panel (view kb req) q ctx
+                                  (frag (propose-panel q ctx
                                                        {:remote? (nil? (v/local-kb kb))}))
                                   (frag ""))))
                       :post (fn [req]
@@ -6813,16 +7262,16 @@
   `app` changes and reused whenever it does not.
 
   A ring handler is a value, and Jetty holds the one it was started with — so
-  `(require 'vaelii.host.web :reload)` would redefine every var on this page and change
+  `(require 'vaelii.browser.web :reload)` would redefine every var on this page and change
   nothing about what is served, which is the failure mode that looks like the reload
   silently not working.  Reading `#'app` per request is what closes it: a reload gives
   the var a new function object, the identity check misses once, the routes are rebuilt
   from the reloaded namespace, and every request after that is the new code.  A
   namespace this one merely *calls* needs no help at all — those calls already go
-  through vars, so reloading `vaelii.host.svg` takes effect on the next request with
+  through vars, so reloading `vaelii.browser.svg` takes effect on the next request with
   nothing rebuilt.
 
-  `start` uses it only when asked.  A handler that re-resolves a var per request is
+  `dev-repl` serves it; `start` and `-main` do not.  A handler that re-resolves a var per request is
   paying, forever, for a reload that a served process will never do."
   [target]
   (let [built (atom nil)]                                   ; [the app fn, the handler it made]
@@ -6832,36 +7281,52 @@
           (reset! built [f (f target)]))
         ((second @built) req)))))
 
-(defn- hot-reloading
-  "Wrap a dev handler so editing a source file under `src` shows on the next request with
-  no REPL and no restart: ring/ring-devel's `wrap-reload` reloads the changed namespaces
-  from disk, and `reloading-handler`'s per-request `#'app` read then serves the rebuilt
-  routes.  Resolved lazily — ring-devel ships in the `:dev`/`:repl` profiles only, never in
-  the standalone jar, exactly like the profiler.
+(def ^:private hot-reload-dirs
+  "The directory `hot-reloading` watches: all of `src`, engine included.
 
-  Absent — a served/uberjar classpath with `VAELII_DEV` set — the `requiring-resolve`
-  throws `FileNotFoundException`.  A hot-reload switch that read as set and killed the
-  start would be the very failure the `config` namespace exists to prevent (as
+  `vaelii.browser.reload` reloads a changed namespace and every loaded namespace that
+  requires it, never redefines a protocol, record or type that exists, and never
+  re-evaluates a held namespace.  So an `impl/` edit reaches a running browser without
+  disturbing a loaded KB (`the-engine-survives-a-reload` checks every watched file), and
+  an edit to a record's definition or a held namespace takes a restart, which every page
+  names (`restart-notice`)."
+  ["src"])
+
+(defn- hot-reloading
+  "Wrap a dev handler so editing a source file under `hot-reload-dirs` shows on the next
+  request with no REPL and no restart: `vaelii.browser.reload/wrap-reload` reloads the
+  changed namespaces from disk, and `reloading-handler`'s per-request `#'app` read then
+  serves the rebuilt routes.  The reloader reads the sources' dependency graph with
+  tools.namespace, which ships in the `:dev` profile only, never in the standalone jar,
+  exactly like the profiler.
+
+  Absent — a classpath without the `:dev` profile — building the reloader throws
+  `FileNotFoundException`.  A hot-reload switch that read as set and killed the start
+  would be the very failure the `config` namespace exists to prevent (as
   `start-profiler` avoids for its own dependency), so it degrades to `h` and logs the
-  reason: `reloading-handler` needs no ring-devel of its own — it re-reads `#'app` — so
-  live routes survive, and only `wrap-reload`'s file-watching is lost."
+  reason: `reloading-handler` needs no tools.namespace of its own — it re-reads `#'app` —
+  so live routes survive, and only the file watching is lost."
   [h]
-  (try ((requiring-resolve 'ring.middleware.reload/wrap-reload) h {:dirs ["src"]})
+  (try (reload/wrap-reload h {:dirs hot-reload-dirs})
        (catch Throwable t
          (trove/log! {:level :warn :id ::hot-reload
-                      :msg (str "VAELII_DEV is set but ring-devel is not on the classpath — "
-                                "serving without hot reload (it ships in the :dev/:repl "
-                                "profiles, which `lein browser` activates and a served jar "
-                                "does not): " (.getMessage t))})
+                      :msg (str "hot reload is on but tools.namespace is not on the classpath — "
+                                "serving without hot reload (it ships in the :dev profile, "
+                                "which `lein browser` activates and a served jar does not): "
+                                (.getMessage t))})
          h)))
 
 (defn start
   "Start a Jetty server for `target` (a KB, an access value, or a catalog holder).
   Returns the server (non-blocking).  `:host` defaults to loopback; pass an address
-  (`\"0.0.0.0\"`) to bind publicly.  `:reload?` serves through `reloading-handler`, so a
-  namespace reload reaches the running server — what `lein browser` starts with."
-  [target {:keys [port host reload?] :or {port 3000 host loopback}}]
-  (jetty/run-jetty (with-host (if reload? (hot-reloading (reloading-handler target)) (app target)) host)
+  (`\"0.0.0.0\"`) to bind publicly.  It serves `app` as built: a reload does not reach
+  it (`dev-repl` is the server that follows one), and `:reload?` is refused."
+  [target {:keys [port host] :or {port 3000 host loopback} :as opts}]
+  (when (contains? opts :reload?)
+    (throw (ex-info (str "start takes no :reload? — a served browser never reloads; "
+                         "scripts/start-vaelii-dev.sh runs the one that does")
+                    {:type :unknown-option :mismatch :unknown-key :unknown [:reload?] :options [:host :port]})))
+  (jetty/run-jetty (with-host (app target) host)
                    {:port port :host host :join? false}))
 
 (defn warm-model
@@ -6920,7 +7385,7 @@
 (defn- default-port
   "The port to bind when nothing on the command line names one: `VAELII_WEB_PORT`, else
   the `vaelii.web.port` system property, else 3000.  Read by `-main` and `dev-repl`
-  alike, so the variable means the same thing to `lein run -m vaelii.host.web` as it does
+  alike, so the variable means the same thing to `lein run -m vaelii.browser.web` as it does
   to `lein browser` — a variable that moved the page for one and was ignored by the other
   is one that reads as set and lands on 3000 anyway.
 
@@ -6937,6 +7402,29 @@
     (or (num (System/getenv "VAELII_WEB_PORT"))
         (num (System/getProperty "vaelii.web.port"))
         3000)))
+
+(defn- load-kb-dir
+  "Start loading the KB directory `VAELII_KB_DIR` names, with belief recovered, as a
+  catalog job that becomes the active KB when it finishes.  Returns the entry key, or nil
+  when the variable is unset or blank.
+
+  The browser opens on the starter and serves while the load runs, so `/kbs` shows the
+  load's progress.  A path holding no KB is logged at `:warn` and the browser stays on the
+  starter, since a startup variable naming the wrong directory should not stop the browser
+  from starting."
+  []
+  (when-let [dir (some-> (System/getenv "VAELII_KB_DIR") str/trim not-empty)]
+    (try
+      (let [key (catalog/load-dir dir {:recover? true})]
+        (trove/log! {:level :info :id ::kb-dir
+                     :msg (str "loading " dir " (VAELII_KB_DIR) as " key)
+                     :data {:dir dir :key key}})
+        key)
+      (catch clojure.lang.ExceptionInfo e
+        (trove/log! {:level :warn :id ::kb-dir
+                     :msg (str "VAELII_KB_DIR " dir " was not loaded: " (ex-message e))
+                     :data (assoc (ex-data e) :dir dir)})
+        nil))))
 
 (defn- parse-args
   "`-main`'s options, in any order:
@@ -6989,7 +7477,7 @@
 ;; `lein browser` is `lein repl` with the browser already running: a prompt, a page, and
 ;; a **reload channel** — nREPL's, on loopback, so an editor or another process can
 ;; reload a namespace into the running server through `.nrepl-port`.  `lein run -m
-;; vaelii.host.web` gives no such channel: it starts no nREPL, and even attached to one
+;; vaelii.browser.web` gives no such channel: it starts no nREPL, and even attached to one
 ;; it serves a handler value Jetty already holds, which is why `start` takes `:reload?`.
 ;;
 ;; Both halves bind the **loopback interface**.  The browser has a write route and no
@@ -7014,6 +7502,15 @@
     (reset! dev-instance nil)
     :stopped))
 
+(defn- dev-handler
+  "What `dev-repl` serves: `reloading-handler`, so a namespace reloaded through the nREPL
+  reaches the server, and with `VAELII_DEV` set — which only `scripts/start-vaelii-dev.sh`
+  sets — the file-watching reloader over it (`hot-reloading`).  Nothing else turns hot
+  reload on: `start` and `-main` serve `app` as built."
+  [target]
+  (cond-> (reloading-handler target)
+    (v/switch-value "VAELII_DEV") hot-reloading))
+
 (defn dev-repl
   "Start the browser for a REPL session and hand the prompt straight back.
 
@@ -7032,27 +7529,31 @@
     ;; the class, and the caches page links to whatever it started
     (start-profiler)
     (try
-      (reset! dev-instance (start target {:port port :reload? true}))
+      (reset! dev-instance
+              (jetty/run-jetty (with-host (dev-handler target) loopback)
+                               {:port port :host loopback :join? false}))
+      (load-kb-dir)
       (println (str "\n  vaelii browser  http://" loopback ":" port
                     "  (loopback only)\n"
-                    "  edit any source file and refresh — the change is served,"
-                    " no restart\n"
-                    "  stop it with    (vaelii.host.web/dev-stop)\n"))
+                    (if (v/switch-value "VAELII_DEV")
+                      "  edit a file under src and refresh — the change is served, no restart\n"
+                      "  hot reload is off (scripts/start-vaelii-dev.sh turns it on)\n")
+                    "  stop it with    (vaelii.browser.web/dev-stop)\n"))
       (catch java.io.IOException e
         (println (str "\n  the browser did not start on " loopback ":" port
                       " — " (ex-message e) "\n"
                       "  the REPL is yours regardless; retry with"
-                      " (vaelii.host.web/dev-repl) on a free port"
+                      " (vaelii.browser.web/dev-repl) on a free port"
                       " (VAELII_WEB_PORT).\n"))
         nil))))
 
 (defn -main
   "Serve the browser.
 
-    lein run -m vaelii.host.web                            ; a fresh starter-loaded in-process KB
-    lein run -m vaelii.host.web --port 8080
-    lein run -m vaelii.host.web --listen 0.0.0.0           ; reachable off-machine (opt-in)
-    lein run -m vaelii.host.web --attach HOST PORT [WEBPORT]
+    lein run -m vaelii.browser.web                            ; a fresh starter-loaded in-process KB
+    lein run -m vaelii.browser.web --port 8080
+    lein run -m vaelii.browser.web --listen 0.0.0.0           ; reachable off-machine (opt-in)
+    lein run -m vaelii.browser.web --attach HOST PORT [WEBPORT]
 
   `--attach` points the browser at a running daemon (`vaelii.host.serve`) and renders
   the KB it owns *over the API* — the way to inspect a live daemon whose single-writer
@@ -7125,11 +7626,10 @@
     ;; shrink the derived caches when the heap fills and grow them back as it frees, over
     ;; every KB this process has open (`catalog/live-kbs`)
     (catalog/install-memory-guard!)
-    ;; a development server (`VAELII_DEV`) serves through the hot-reload path — an edit to
-    ;; any source file shows on the next refresh with no restart; a plain served process
-    ;; pays nothing for a reload it will never do, so it keeps the static handler.
-    (let [served (if (config/web-dev?)
-                   (hot-reloading (reloading-handler target))
-                   (app target))]
+    ;; the KB directory `VAELII_KB_DIR` names loads as a job while the starter serves
+    (load-kb-dir)
+    ;; a served process never reloads: hot reload is `dev-repl`'s, under
+    ;; `scripts/start-vaelii-dev.sh`, and this handler pays nothing for one
+    (let [served (app target)]
       (jetty/run-jetty (with-token (with-host served host) host token)
                        {:port port :host host :join? true}))))

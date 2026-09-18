@@ -40,6 +40,8 @@
             [vaelii.core :as v]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.prover :as prover-types]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -70,14 +72,14 @@
   "Every type the taxonomy knows, filtered by `disjoint?` — the answer to
   `(disjoint a ?t)` computed the way the prover does not."
   [kb a ctx]
-  (let [tx (:taxonomy kb)]
+  (let [tx (reasoning/taxonomy kb)]
     (into #{} (filter #(tax/disjoint? tx a % ctx)) (tax/types tx))))
 
 (defn- scan-pairs
   "The same scan for both arguments open: every ordered pair of types the predicate
   convicts."
   [kb ctx]
-  (let [tx (:taxonomy kb)
+  (let [tx (reasoning/taxonomy kb)
         ts (tax/types tx)]
     (into #{} (for [x ts, y ts :when (tax/disjoint? tx x y ctx)] [x y]))))
 
@@ -136,8 +138,8 @@
         ;; asked of the prover rather than of `ask`, which dedups on the way out: the
         ;; enumeration walks one closure per partner and they overlap here by
         ;; construction, so this is the prover's own `distinct` and nothing else
-        (let [sols (provers/solve (provers/->DisjointnessProver)
-                                  kb (list 'disjoint (root 0) '?t) CxOracle)]
+        (let [sols (prover-types/solve (provers/->DisjointnessProver)
+                                       kb (list 'disjoint (root 0) '?t) CxOracle)]
           (is (seq sols))
           (is (= (count sols) (count (set sols)))))))))
 

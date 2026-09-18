@@ -311,9 +311,11 @@
     ;; rosters — pinning it as a public promise would make koinii's own development churn
     ;; the engine's contract. The other direction is what keeps it honest:
     ;; `koinii-reaches-into-no-impl` below.
+    ;; `browser/` is the second application, excluded for the same reason; its own check
+    ;; is `browser-reaches-into-no-impl` below.
     ;; `host/` is private too: the tooling above core (the servers, the CLI, the loaders,
-    ;; the LLM stack) that requires core and reaches into the engine, fronted by the five
-    ;; thin entry points (docs/namespaces.md). It is not a public promise, so it is out.
+    ;; the LLM stack) that requires core and reaches into the engine, fronted by four of the
+    ;; five thin entry points (docs/namespaces.md). It is not a public promise, so it is out.
     (is (= #{"vaelii.core" "vaelii.client" "vaelii.starter"
              "vaelii.web" "vaelii.serve" "vaelii.cli"}
            (->> (file-seq (java.io.File. "src/vaelii"))
@@ -322,13 +324,14 @@
                 (remove #(.contains (.getPath ^java.io.File %) "/impl/"))
                 (remove #(.contains (.getPath ^java.io.File %) "/host/"))
                 (remove #(.contains (.getPath ^java.io.File %) "/koinii/"))
+                (remove #(.contains (.getPath ^java.io.File %) "/browser/"))
                 (map #(-> (.getPath ^java.io.File %)
                           (subs (count "src/"))
                           (subs 0 (- (count (subs (.getPath ^java.io.File %) (count "src/"))) 4))
                           (.replace "/" ".")
                           (.replace "_" "-")))
                 set))
-        "a new namespace outside impl/, host/ and koinii/ is a new public promise — add it here on purpose")))
+        "a new namespace outside impl/, host/, koinii/ and browser/ is a new public promise — add it here on purpose")))
 
 (defn- impl-symbols-in
   "Every `vaelii.impl…` symbol in `file`'s CODE — read, not grepped.
@@ -338,7 +341,7 @@
   docstrings do, legitimately, eight times), and it misses every spelling that is a
   dependency but not the shape it matched: the plain-symbol libspec
   `(:require vaelii.impl.naming)`, the prefix list `(:require [vaelii.impl [naming :as
-  nm]])`, an `(:import (vaelii.impl.sentex LiteralSentex))`, a `requiring-resolve` on a
+  nm]])`, an `(:import (vaelii.impl.types.sentex LiteralSentex))`, a `requiring-resolve` on a
   quoted symbol, and — the one that needs no require at all — a bare
   `(vaelii.impl.naming/sort-by-content-key …)` call, which resolves at runtime because
   `vaelii.core` has already loaded the namespace.  Reading the file and walking the forms
@@ -363,7 +366,7 @@
 
 (deftest koinii-reaches-into-no-impl
   ;; The claim koinii's exclusion above rests on, checked rather than asserted. koinii is
-  ;; the one application shipped in this tree, and it earns its place outside `impl/` by
+  ;; one of the two applications shipped in this tree, and it earns its place outside `impl/` by
   ;; consuming the same six namespaces an outside consumer gets: a `vaelii.impl.*` symbol
   ;; appearing here means either koinii went around the API, or the API is missing
   ;; something koinii needs and the answer is to publish it — never to reach past it.
@@ -373,14 +376,107 @@
                    sort)]
     ;; An empty or renamed directory would pass the check below vacuously, which is the
     ;; failure mode a roster test is for.
-    (is (= 8 (count files))
-        "koinii's eight modules live at src/vaelii/koinii — moving them moves this test")
+    (is (= 9 (count files))
+        "koinii's nine modules live at src/vaelii/koinii — moving them moves this test")
     (let [offenders (into {} (keep (fn [^java.io.File f]
                                      (when-some [hits (seq (impl-symbols-in f))]
                                        [(.getPath f) (vec hits)])))
                           files)]
       (is (= {} offenders)
           "koinii is an app on the public API — publish what it needs from vaelii.core"))))
+
+(deftest browser-reaches-into-no-impl
+  ;; The browser is an application over `vaelii.core`, as koinii is: every KB read it makes
+  ;; goes through the public API, so a `vaelii.impl.*` symbol here is a read the API does
+  ;; not publish yet. Publish it in `vaelii.core` and call that. The browser may require
+  ;; `vaelii.host.*` peers (the guard, the LLM stack, the loaders); this checks the engine
+  ;; half only.
+  (let [files (->> (file-seq (java.io.File. "src/vaelii/browser"))
+                   (filter #(.isFile ^java.io.File %))
+                   (filter #(.endsWith (.getName ^java.io.File %) ".clj"))
+                   sort)]
+    (is (= 8 (count files))
+        "the browser's eight modules live at src/vaelii/browser — moving them moves this test")
+    (let [offenders (into {} (keep (fn [^java.io.File f]
+                                     (when-some [hits (seq (impl-symbols-in f))]
+                                       [(.getPath f) (vec hits)])))
+                          files)]
+      (is (= {} offenders)
+          "the browser is an app on the public API — publish what it needs from vaelii.core"))))
+
+(def ^:private held-namespaces
+  "The namespaces the development browser's reloader never re-evaluates, named here so that
+  holding one more is an edit to this set rather than a side effect of its ns form."
+  '#{vaelii.host.llm.protocol
+     vaelii.impl.jtms-protocol
+     vaelii.impl.protocols
+     vaelii.impl.roster
+     vaelii.impl.settle-phases
+     vaelii.impl.tokens
+     vaelii.impl.types.dense-roots
+     vaelii.impl.types.kb
+     vaelii.impl.types.postings
+     vaelii.impl.types.prover
+     vaelii.impl.types.qcn
+     vaelii.impl.types.reasoning
+     vaelii.impl.types.sentex
+     vaelii.impl.types.snapshot
+     vaelii.impl.types.solve
+     vaelii.impl.types.store
+     vaelii.impl.types.tms
+     vaelii.impl.types.trie
+     vaelii.koinii.types})
+
+(deftest the-engine-survives-a-reload
+  ;; The development browser reloads every changed file under
+  ;; `vaelii.browser.web/hot-reload-dirs`, with every loaded namespace that requires it,
+  ;; while a KB is loaded. Reloading re-evaluates each top-level form except one that
+  ;; defines a protocol, record, type or interface that already exists
+  ;; (`vaelii.browser.reload`), so those may sit in any watched file. A plain `def` of an
+  ;; atom, a volatile, a ref, an agent or a constructed object resets that state. A held
+  ;; namespace is never re-evaluated, and it requires only held namespaces, so an edit
+  ;; elsewhere never reloads it as a dependent. The files are read from the watched
+  ;; directories, so a widened watch brings the new files under this check.
+  (let [dirs     @(requiring-resolve 'vaelii.browser.web/hot-reload-dirs)
+        entries  ((requiring-resolve 'vaelii.browser.reload/scan) dirs)
+        held     (into #{} (comp (filter :held?) (map :ns)) (vals entries))
+        known    (into #{} (map :ns) (vals entries))
+        files    (->> entries (remove (comp :held? val)) keys (sort-by #(.getPath ^java.io.File %)))
+        resolver (reify clojure.lang.LispReader$Resolver
+                   (currentNS [_] 'user)
+                   (resolveClass [_ s] s)
+                   (resolveAlias [_ s] s)
+                   (resolveVar [_ s] s))
+        stateful '#{atom volatile! ref agent}
+        breaks   (fn [form]
+                   (when (seq? form)
+                     (let [head (first form) value (last form)]
+                       (when
+                        (and (= 'def head) (> (count form) 2) (seq? value)
+                             (symbol? (first value))
+                             (or (stateful (first value))
+                                 (str/ends-with? (str (first value)) ".")))
+                         (str "def " (second form) " holds " (first value))))))]
+    (is (seq files) "hot-reload-dirs names no directory with a source file in it")
+    (let [offenders (into {} (keep (fn [^java.io.File f]
+                                     (let [forms (binding [*read-eval*       false
+                                                           *reader-resolver* resolver]
+                                                   (read-string (str "[" (slurp f) "]")))]
+                                       (when-some [hits (seq (keep breaks forms))]
+                                         [(.getPath f) (vec hits)]))))
+                          files)]
+      (is (= {} offenders)
+          "a reloaded file must not reset state — use defonce"))
+    (testing "the held namespaces are the named ones"
+      (is (= held-namespaces held)
+          "a namespace's ns symbol carries :clojure.tools.namespace.repl/load false exactly when `held-namespaces` names it"))
+    (testing "a held namespace requires only held namespaces, so no edit elsewhere reloads it"
+      (let [strays (into {} (keep (fn [{n :ns deps :deps held? :held?}]
+                                    (when held?
+                                      (when-some [s (seq (remove held (filter known deps)))]
+                                        [n (set s)]))))
+                         (vals entries))]
+        (is (= {} strays))))))
 
 ;; ---- the extent fns refuse an option nothing reads ----------------------
 

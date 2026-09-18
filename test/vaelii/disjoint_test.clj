@@ -5,6 +5,7 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -58,7 +59,7 @@
   ;; reconcile.  Gated on belief instead, the same four facts would separate the pair in
   ;; one arrival order and not the other.
   (let [species (tu/tmp-pred) dog (tu/tmp-type) cat (tu/tmp-type)
-        t (:taxonomy kb)]
+        t (reasoning/taxonomy kb)]
     (v/assert kb (list 'disjoint_metatype species) 'CxUniverse)
     (v/assert kb (list species dog) 'CxUniverse)
     (let [neg (v/assert kb (list 'not (list 'disjoint_metatype species)) 'CxUniverse
@@ -77,7 +78,7 @@
 
 (tu/deftest-kb a-member-retracted-while-the-mark-is-defeated-leaves-no-support
   (let [species (tu/tmp-pred) dog (tu/tmp-type) cat (tu/tmp-type)
-        t (:taxonomy kb)]
+        t (reasoning/taxonomy kb)]
     (v/assert kb (list 'disjoint_metatype species) 'CxUniverse)
     (v/assert kb (list species dog) 'CxUniverse)
     (let [hcat (v/assert kb (list species cat) 'CxUniverse)
@@ -97,7 +98,7 @@
   ;; `rebuild-taxonomy`'s member pass walks every stored mark, so a restart yields the
   ;; members the live arm recorded — including one stated while the mark was defeated.
   (let [species (tu/tmp-pred) dog (tu/tmp-type) cat (tu/tmp-type)
-        t (:taxonomy kb)]
+        t (reasoning/taxonomy kb)]
     (v/assert kb (list 'disjoint_metatype species) 'CxUniverse)
     (v/assert kb (list species dog) 'CxUniverse)
     (let [neg (v/assert kb (list 'not (list 'disjoint_metatype species)) 'CxUniverse
@@ -118,7 +119,7 @@
   ;; restart had replayed it: the running KB and the recovered one disagreeing about one
   ;; store, which is the one thing a derivation-path integration exists to prevent.
   (let [species (tu/tmp-pred) dog (tu/tmp-type) cat (tu/tmp-type) seed (tu/tmp-pred)
-        Kim (tu/tmp-ind) t (:taxonomy kb)]
+        Kim (tu/tmp-ind) t (reasoning/taxonomy kb)]
     (v/assert kb (list 'genlCx 'CxNaturalWorld 'CxUniverse) 'CxUniverse)
     (v/assert kb (list 'disjoint_metatype species) 'CxUniverse)
     (v/assert kb (list species dog) 'CxUniverse)

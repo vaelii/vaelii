@@ -51,7 +51,8 @@
         opts   (when defer? {:chain? false})]
     (when prover? (v/add-prover kb (space/spatial-prover)))
     (when rule?
-      (v/assert-rule kb [(list 'properPartOfRegion '?x '?y)] (list 'contained '?x) ctx))
+      (v/assert-rule kb [(list 'properPartOfRegion '?x '?y)] (list 'contained '?x) ctx
+                     {:direction :forward}))
     (cond-> (ms #(doseq [i (range 1 n)]
                    (v/assert kb (list 'nonTangentialProperPart (node i) (node (parent i)))
                              ctx opts)))

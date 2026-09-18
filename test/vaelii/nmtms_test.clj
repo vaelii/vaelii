@@ -18,6 +18,7 @@
             [vaelii.impl.rules :as vr]
             [vaelii.impl.settle :as settle]
             [vaelii.impl.solve :as solve]
+            [vaelii.impl.types.solve :as solve-types]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -229,7 +230,7 @@
     (v/assert kb (default-rule [(list quaker '?x)]     (list pacifist '?x))       'CxUniverse)
     (v/assert kb (default-rule [(list republican '?x)] (list 'not (list pacifist '?x))) 'CxUniverse)
     (v/set-solver kb
-                  (reify vaelii.impl.solve/Solver
+                  (reify vaelii.impl.types.solve/Solver
                     (solve [_ {:keys [assumptions contradictions]}]
                       (swap! called inc)
                       {:defeat (into #{} (comp (mapcat :nogood)

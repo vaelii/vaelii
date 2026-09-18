@@ -70,10 +70,11 @@
   latter."
   64)
 
-(def ^:private dispatch
-  "A `(fn [kb region was-in])` that renders the region and calls the listeners, or nil.
+(defonce ^{:private true
+           :doc "A `(fn [kb region was-in])` that renders the region and calls the listeners, or nil.
   Installed by `vaelii.core` at load; nil means nothing above this layer has claimed
-  the registry, and `deliver!` is a single deref."
+  the registry, and `deliver!` is a single deref."}
+  dispatch
   (atom nil))
 
 (defn install-dispatch!

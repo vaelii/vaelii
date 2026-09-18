@@ -8,8 +8,10 @@
   [llm.md](llm.md).
 - **Assumes:** sentex, context, handle, justification → [glossary.md](glossary.md).
 
-`vaelii.host.web`. A small [reitit](https://github.com/metosin/reitit)-ring browser for
-inspecting a KB. Run it with `lein run -m vaelii.web` (serves a starter-loaded KB
+`vaelii.browser.web`. A small [reitit](https://github.com/metosin/reitit)-ring browser for
+inspecting a KB. The browser is an application over the public API: the namespaces under
+`src/vaelii/browser/` require no `vaelii.impl` namespace, and
+`public_api_test/browser-reaches-into-no-impl` fails on one. Run it with `lein run -m vaelii.web` (serves a starter-loaded KB
 on `http://127.0.0.1:3000`).
 
 ```
@@ -21,7 +23,25 @@ lein run -m vaelii.web --attach HOST PORT [WEBPORT]
 lein browser                                           # ...or a REPL with it running in it
 VAELII_WEB_PORT=3010 lein browser
 VAELII_WEB_PORT=3010 lein run -m vaelii.web            # the variable moves either one
+
+scripts/start-vaelii-dev.sh [KB-DIR]                   # lein browser headless, profiler on :8080
+scripts/start-vaelii.sh [KB-DIR] [--port N]            # the browser alone
+scripts/start-vaelii-server.sh [KB-DIR] [PORT]         # the daemon, token required, no dev profile
 ```
+
+**`VAELII_KB_DIR` names a KB directory to load at startup.** The browser opens on the
+starter, loads the directory as a catalog job with belief recovered (`catalog/load-dir`),
+and makes it the active KB when the load finishes; `/kbs` shows the progress until then.
+A store is opened with `:recover? :background` **under `VAELII_DEV` only**, so a store whose
+reasoning image an earlier engine build wrote is active once that image is installed, and
+its belief is rebuilt under the running build behind it (docs/storage.md, "Rebuilding behind
+an image") — a development prompt is browsable in seconds rather than after a recover. A
+served browser opens with `:auto` and waits for the recover, so the KB it makes active holds
+belief this build derived and refuses no write.
+The directory is classified as discovery classifies one, so a store, a dump and a corpus
+all load. A path holding no KB is logged and the browser stays on the starter. The three
+start scripts set it to their `KB-DIR` argument, default `checkouts/kb` beside the
+checkout, and set the heap from `VAELII_HEAP` (default `40g`).
 
 `VAELII_WEB_PORT` is the default rather than an override: an explicit `--port` wins. Three
 sources are read in order — the variable, the `vaelii.web.port` system property (what a
@@ -42,29 +62,71 @@ token, no header, no 401 — and the daemon holds the identical rule through the
 fn ([operations.md](operations.md)).
 [why a refusal rather than a warning](defenses.md#what-a-server-binds-decides-what-it-requires)
 
+**The browser also answers the daemon protocol**, `GET /health` and `POST /op`, over its
+active KB. A native client such as the vaelii-apple apps connects to
+`http://127.0.0.1:3000` with the same requests it sends `vaelii.serve`, and its writes
+take this process's `write-monitor` like the browser's own write routes
+([operations.md](operations.md), "The browser serves the protocol too").
+
 ### Working on it: `lein browser`
 
 `lein run` gives you a page and no way in. **`lein browser`** is `lein repl` with the
-browser already running: a prompt, a page, and a **reload channel** — **edit any source
-file and refresh**, and the next request serves the new code with no REPL step at all
-(`(require 'vaelii.host.web :reload)` at the prompt, or over nREPL through `.nrepl-port`,
-does the same on demand).
+browser already running: a prompt, a page, and a **reload channel** —
+`(require 'vaelii.browser.web :reload)` at the prompt, or over nREPL through `.nrepl-port`,
+reaches the running server. **`scripts/start-vaelii-dev.sh`** adds hot reload: **edit any
+source file and refresh**, and the next request serves the new code with no REPL step at
+all. The script is the only thing that turns hot reload on — it sets `VAELII_DEV=1` for
+`lein browser` — and `start` and `-main` never reload.
 
 That last part is the whole reason the command exists, because the failure it avoids is
 silent. **A ring handler is a value, and Jetty holds the one it was started with**, so a
 reload can redefine every var on the page and change nothing about what is served — the
-namespace reloads, the page does not, and there is nothing to see. `start`'s `:reload?`
-serves through `reloading-handler`, which reads `#'app` per request: a reload gives the
+namespace reloads, the page does not, and there is nothing to see. `lein browser` serves
+through `reloading-handler`, which reads `#'app` per request: a reload gives the
 var a new function object, an identity check misses once, the routes are rebuilt, and
 every request after that is the new code. What reloads the namespace **from disk** in the
-first place is ring-devel's `wrap-reload` (`hot-reloading`), layered over that handler in
-the same `:reload?` path: it reloads the changed files under `src` before each request, so
-a plain file edit reaches the running server with no REPL. (ring-devel ships in the
-`:dev`/`:repl` profiles only — resolved lazily, absent from the served jar, like the
-profiler.) A namespace the browser merely *calls* needs nothing beyond that reload — those
-calls already go through vars, so a changed `vaelii.host.svg` lands on the next request
-with nothing rebuilt. A plain served process pays for a reload it will never do, so
-`-main` takes this path only when `VAELII_DEV` is set.
+first place is `vaelii.browser.reload` (`hot-reloading`), layered over that handler when
+`VAELII_DEV` is set: before each request it reloads the changed files under `src`,
+together with every loaded namespace that requires one of them, transitively, in
+dependency order. A plain file edit reaches the running server with no REPL, and an
+engine edit does too.
+
+**A KB loaded before an engine edit keeps answering after the reload.** Re-evaluating a
+`defprotocol` defines a new interface and empties the protocol's extension map, and
+re-evaluating a `defrecord`, `deftype` or `definterface` defines a new class. A reload that
+reached them would leave the loaded KB's stores, records and belief network instances of
+classes the reloaded code no longer recognizes. So the reloader loads a changed file form
+by form and **leaves out every form whose protocol or class already exists**; everything
+else in the file is evaluated. A record keeps its methods inline — protocol dispatch on it
+is a direct interface call, which the engine's hot paths (the belief network, the stores,
+the provers) depend on — and a method that calls a function reaches the reloaded function
+through its var. An edit inside a record's definition is not loaded, and every page names
+it (`ns/Name`) until the process restarts. The protocols and the method-less records sit in
+**held namespaces** — `vaelii.impl.types.*`, `vaelii.impl.protocols`,
+`vaelii.impl.jtms-protocol`, `vaelii.impl.tokens`, `vaelii.impl.roster`,
+`vaelii.impl.settle-phases`, `vaelii.koinii.types` and `vaelii.host.llm.protocol` — whose ns
+symbol carries `:clojure.tools.namespace.repl/load false`, which require only held
+namespaces, and which the reloader never re-evaluates; an edit to one is named the same way.
+The state a watched namespace keeps is in `defonce`. `the-engine-survives-a-reload`
+(`public_api_test`) checks that for every watched file, and `reload_test` reloads the engine
+under a loaded `:memory` and `:disk-snapshot` KB, checks no class the KB holds was
+redefined, and then asserts, queries, explains and retracts against it.
+
+**The reloader loads into the existing namespace, not through tools.namespace's `refresh`.** `refresh`
+removes each namespace with `remove-ns` before it loads the file again, which
+re-evaluates every `defonce` and empties the state a loaded KB keeps in them: the cache
+registry, the change feed's listeners, the thaw guard's installed readers. Loading a file
+into the existing namespace, as `require :reload` does, keeps a `defonce`'s value.
+A held namespace's `:clojure.tools.namespace.repl/unload false` keeps a REPL `refresh`
+(CIDER's included) from removing it; `refresh` still resets the state of every other
+namespace it reloads.
+
+(tools.namespace ships in the `:dev` profile only — resolved when the reloader is built,
+absent from the served jar, like the profiler.) A namespace the browser merely *calls*
+needs nothing beyond that reload — those
+calls already go through vars, so a changed `vaelii.browser.svg` lands on the next request
+with nothing rebuilt. A served process never reloads: `-main` and `start` serve `app` as
+built.
 
 **Both halves are loopback**, and the pairing is why it is not configurable from there
 [why](defenses.md#loopback-only-for-the-browser-plus-nrepl-pairing) — the profile pins
@@ -73,7 +135,7 @@ loopback with no way to say otherwise. Exposing the browser stays the deliberate
 `--listen` on `-main`, which starts no REPL.
 
 A port already in use is **reported, not thrown**: you asked for a REPL, and you get one
-whether or not the port was free. `(vaelii.host.web/dev-stop)` takes the server down
+whether or not the port was free. `(vaelii.browser.web/dev-stop)` takes the server down
 without leaving the prompt; `dev-repl` called again replaces it.
 
 `-main` calls `fresh-starter-kb!`, which **clears the record + index stores first**
@@ -104,13 +166,15 @@ request log either, which [operations.md](operations.md) states as the trade it 
 | `/demo` (GET/POST) | the **non-monotonicity walkthrough**: three stepped writes to the reader's sandbox in which `(hasCapability Pingu flying)` is believed, stops being believed, and comes back — at a different handle. GET renders where the sandbox stands, POST runs one step. Every step writes, so every step is origin-checked (below) |
 | `/reasoning` (GET/POST) | the **worked examples**: every kind of inference the shipped ontology performs, each a question with a live answer, the level that answered it, and links to the stored sentexes it reasoned from. GET computes every read-only card on render; POST establishes one example's premises in the reader's sandbox (below) |
 | `/assert` (GET/POST) | the **new-sentex form**: sentences (one per line), a context, and the known-true switch. GET seeds it (`?q=<term>` from a term page); POST checks every line and applies them in one `edit!`, then says what followed (below) |
-| `/edit` (GET/POST) | the **multi-sentex editor**: GET seeds a textarea for a set of selected handles, POST checks and applies the save. htmx fragments swapped into the editor panel, not standalone pages. |
+| `/edit` (GET/POST) | the **sentex editor**: GET seeds it for a set of handles (`?handles=1,2`) or for a term's most direct index group (`?q=<term>`), POST checks and applies the save. htmx fragments swapped into the editor panel, not standalone pages. |
+| `/edit/preview` (POST) | what the open edit would do, through `vaelii.core/preview` — the same diff the save computes, and a read: the KB comes back at the same handles. Fills the lookahead under the editor's controls |
+| `/complete` (GET) | the terms a prefix could become, as the list the editor drops under the caret. `find-terms`' prefix match over the term roster, twelve at a time |
 | `/propose` (GET/POST) | the **proposal panel** at the foot of a term page: GET renders the instruction box (asking no model), POST runs one page-scoped turn through `vaelii.host.llm.session/propose-page` and swaps the lines it proposed into `#propose-result`. The turn writes nothing (below) |
 | `/propose/level` (POST) | the **same proposal at another density** — the list's own originals reposted, every verdict re-derived, no second model turn. Writes nothing |
 | `/propose/line` (POST) | one reviewed line, **re-rendered on the form the reader picked** — the numbered alternative is re-derived from `correct` and re-checked, so the chips are of the sentence that would actually be stored. Writes nothing |
 | `/propose/preview` (POST) | what accepting the accepted lines would **mean** — the belief added, the belief withdrawn, the dilemmas opened, the refusals — through `vaelii.core/preview`. Writes nothing; the KB comes back at the same handles |
 | `/propose/apply` (POST) | the accepted lines, checked whole and stored through `vaelii.core/edit!` in **one settle**. The panel's one write |
-| `/retract` (GET/POST) | the **retract confirmation**: GET previews the teardown (the selection and what the sweep would take with it) and writes nothing; POST performs it |
+| `/retract` (GET/POST) | the **retract confirmation**: GET previews the teardown (the named handles and what the sweep would take with them) and writes nothing; POST performs it |
 | `/chain` (POST) | run **forward chaining** as a job, up to the derivation bound the form names, and answer with the `/stats` page it changed — or, when the run outlasts 250 ms, with `/jobs` (below). POST-only: it derives and places conclusions |
 | `/funnel` (GET/POST) | the **chaining funnel**: every forward rule and what chaining did with it — how many firings it **placed**, how many it **refused** and why (`exception` / `naf` / `post-join` / `hidden`), or whether it stayed **silent** (no antecedent set ever completed). Ranked by what is wrong: no-placement rules first, refusals descending, firing rules last; each rule links to its sentex and carries the `violations` it filed. The per-rule breakdown behind `/stats`' headline, read `O(rules)` off the standing refusal ledger and the justification graph — no per-run instrumentation. GET reads the current state; POST runs the same chaining job as `/chain` but lands back here so the funnel fills in front of the reader |
 | `/jobs` | the **jobs screen**: every long run this process has made recently — a load, an export, a chaining run — with where it has got to, what it left behind, and the one control that stops it (below) |
@@ -213,7 +277,7 @@ argument-root bound otherwise — an over-count across every binary predicate at
 position — which is why the wording differs. The centre term is never subject to a cap: a
 stated root that is not drawn reads as orphans.
 
-**Drawn with no library.** `vaelii.host.svg` is a node, an edge, an arrowhead and the
+**Drawn with no library.** `vaelii.browser.svg` is a node, an edge, an arrowhead and the
 arithmetic that lays out a row, a column or a ring — pure, KB-free, tested on hand-built
 maps. No Graphviz shell-out (a page that renders by starting a process is a page that
 cannot be served), no d3, no cytoscape, no build step, and nothing added to `project.clj`:
@@ -234,7 +298,7 @@ figure and nothing else — the page is still 200 and still complete.
 ### Somewhere safe to be wrong
 
 Every browser session gets a **sandbox**: a scratch context of its own, hung below
-`CxWell`. `vaelii.host.sandbox`.
+`CxWell`. `vaelii.browser.sandbox`.
 
 The asymmetry is the whole design, and it is not a permission check. `genlCx` already
 decides what a context can see; hanging the sandbox at the bottom of the spindle means
@@ -317,7 +381,7 @@ case: a blocked conclusion has no handle to ask about.
 
 `/demo` argues one thing at length. `/reasoning` is the breadth: a card per kind of
 inference the shipped ontology performs, each a real question with the answer the KB gave
-when the page was drawn. The table is `vaelii.host.examples`; the page is the rendering of
+when the page was drawn. The table is `vaelii.browser.examples`; the page is the rendering of
 it.
 
 Two properties keep it from being a brochure, and both are required:
@@ -411,6 +475,10 @@ the one that lasts:
   a banner: it is reachable with the job `:done` — a store opened without `:recover?`, a dump
   imported with `:belief? false` or `:belief? :stored` — so nothing about the KB's status
   hints at it, and a reader's obvious conclusion is that the import failed.
+- **Belief from an earlier build.** A store opened with belief installs the image an
+  earlier engine build wrote and rebuilds belief behind it. The banner says so while the
+  rebuild runs, polls, and leaves the page when the rebuilt belief lands; a write in that
+  window renders the "rebuilding belief" refusal instead of the "not recovered" one.
 
   The bullet ends with the repair, and **which repair depends on the store rather than on
   how it got here**. A KB holding justifications or premise marks needs a `recover` and
@@ -535,7 +603,7 @@ last row, and the honest answer to that is the empty page it already gives.
 
 Three things here take minutes rather than milliseconds — filling a KB from a corpus,
 writing one back out, and joining every rule over everything stored — and they are **one
-mechanism** (`vaelii.host.jobs`) with one status vocabulary, one progress reading and one
+mechanism** (`vaelii.browser.jobs`) with one status vocabulary, one progress reading and one
 cancel. `/jobs` is that registry rendered; the `/kbs` panels are the same registry
 filtered to the two kinds that belong beside a KB, which is why neither is a second list
 of anything.
@@ -719,7 +787,7 @@ round-trip under `--attach`.
 - **A page is answered as the fragment that lands.** `hx-boost` and the header search
   both swap `#main`, so a request carrying `HX-Request` is answered with the `#main`
   element and a `<title>` (htmx lifts a title out of a fragment to retitle the tab) —
-  no head, no header, no selection chrome. A request **without** it gets the whole
+  no head, no header, no editor panel. A request **without** it gets the whole
   document, which is what keeps the browser working with JavaScript off; so does an
   `HX-History-Restore-Request`, since htmx is repopulating a history entry and replaces
   the whole history element with it.
@@ -765,7 +833,16 @@ round-trip under `--attach`.
   from one hard budget — twelve, six a side — so the picture costs at most 24 reads
   whatever the fan-out. Capping what is *drawn* is not capping what is *read*, and a page
   that draws eight of forty thousand subtypes by reading forty thousand looks identical on
-  the shipped schema.
+  the shipped schema. The radial view's second hop is bounded the same way twice over: it
+  reads at most `ego-scan` (500) matches before ordering them, and it does not expand a
+  neighbour whose own argument counts put it past `ego-expand-cap` (2,000) — that read
+  unions the scoped roots over an open functor, which a prefix of the answer does not make
+  cheaper, and one of them at `isa` took 851 ms.
+- **A node label is a term, so it is set in the page's monospace face**, at `--g-label`
+  (13.5px) raised by the sheet's `font-size-adjust`. `vaelii.browser.svg/char-w` is that
+  used size times Hasklig's .6em advance, so a pill's width is a width rather than the
+  estimate an unknown proportional face forced; the CSS size, the x-height adjust and
+  `char-w` move together or the pills stop fitting their labels.
 - **Search reads the vocabulary, never the sentexes.** `/find` filters the index's term
   roster through `vaelii.core/find-terms`, so it costs the number of distinct terms.
   A query carrying no regex metacharacter is matched as a **substring** — exactly what
@@ -777,56 +854,69 @@ round-trip under `--attach`.
 The result, over the starter plus the test-world cast: `/term?q=genl` renders in 11 KB
 reads, `/find?q=do` in 2, and the `/find` fragment is 373 bytes against a 2.7K document.
 
-## Selecting sentexes
+## A sentex row
 
-Selection is the most-touched interaction in the tool, so every route to it works. A
-selectable row is an `.sx-item[data-h]` list item (the term, sentex, and justification
-pages), and the list it sits in is a single-column ARIA **grid**:
+A row is an `.sx-item[data-h]` list item (the term, sentex, and justification pages),
+and it is **text**. It carries no selection state, no roving tabindex and no script, so
+a press-drag across a sentence selects that sentence and a copy takes the characters the
+KB stores. `data-h` is there for one reason: an out-of-band swap after a save addresses
+every copy of a row by it.
 
-- **Click** a row — its checkbox, or anywhere in it that is not a link — to toggle it.
-  A click on a *link* inside the row still navigates, so the row is selectable without
-  becoming a dead zone; the checkbox is there so the toggle target is never ambiguous.
-- **Shift-click** anywhere in a row (link included) selects the contiguous run from the
-  last row touched, in the order the page shows them.
-- **Press-drag** a marquee across the rows for a sweep, shift+drag to add to what is
-  already selected. A plain press is not a drag until the pointer moves 5px, so a click
-  stays a click.
-- **Keyboard.** The list is one Tab stop — a **roving tabindex** puts `tabindex="0"` on
-  the row holding the keyboard's place and `-1` on the rest. From a focused row: ↑/↓
-  move (Home/End jump to the ends), **shift**+↑/↓ extends the selection as they go,
-  **space** or **enter** toggles, and **escape** clears the selection and closes an open
-  panel. Escape works from anywhere; everything else is scoped to a focused row, so the
-  page still scrolls and the search box still takes its own keys.
-- **Select all in a group** — every index group on the term page, and every sentex list
-  elsewhere, carries a control that takes the whole list at once and clears it on a
-  second press (it says which it will do).
-- **ARIA.** The `<ul>` is `role="grid" aria-multiselectable="true"`, each row a
-  `role="row"` carrying `aria-selected`, its content a `role="gridcell"`. A grid rather
-  than a listbox because a row is *made of* links, which a listbox option may not
-  contain. The selection count is a live region (`role="status"`), so a change announces
-  without the page moving, and the focused row takes a visible ring.
-
-None of that is htmx-expressible, so it is the first of the five jobs
-`resources/public/select.js` does (below).
+The one control a row carries is **`[edit]`**, shown on hover or keyboard focus and
+holding its space either way, so a page of rows reads as sentences rather than as a
+column of controls and nothing reflows as the pointer crosses one. It is an ordinary
+htmx `GET /edit?handles=<h>` into the editor panel — a `<button>` rather than a link, so
+`hx-boost` leaves it alone and the press beside it stays a text selection.
 
 ## Editing sentexes
 
-The browser is not read-only: sentexes can be **asserted, edited in bulk, and
-retracted**. Every write goes through `vaelii.core/edit!` via the access facade, so each
-is **one settle** and works the same in-process or attached to a daemon.
+The browser is not read-only: sentexes can be **asserted, edited, and retracted**. Every
+write goes through `vaelii.core/edit!` via the access facade, so each is **one settle**
+and works the same in-process or attached to a daemon.
 
-Once ≥1 sentex is selected an **action bar** appears, with **Edit**, **Retract…** and
-Clear.
+A row's `[edit]` opens the **editor panel**, with **Save**, **Retract…** and Cancel. The
+panel takes a *set* of handles, so `/edit?handles=1,2,3` edits a batch in one settle —
+what a row's control hands it is a set of one. A **term** carries an `[edit]` of its own,
+beside its name at the top of its page: `/edit?q=<term>` opens the panel on the head of
+the term's most direct index group (`term-edit-cap`, 20), which is the group the page
+renders first.
 
-- **Edit** opens a textarea seeded with one `[sentence context]` line per selected
-  handle — `[sentence context opts]` when the sentex is known-true, so its
-  `:strength` survives. A rule is shown with its direction/defeasibility as `set/*Rule`
-  wrappers (its `exceptWhen` guard is a separate meta-sentex and is *not* carried, so
-  editing a guarded rule drops the guard; an `(unknown S)` antecedent is an ordinary
-  literal in the rule body and round-trips).
-- **Save** POSTs the edited text. The server diffs the lines against the selection **by
-  content**: a line you left alone touches nothing (its handle is untouched, no churn),
-  a line you changed or deleted retracts its sentex, a new line is asserted. The batch
+- **Contexts and sentences are interleaved; nothing is bracketed.** A bare symbol on a
+  line of its own sets the context every sentence under it is in, a map sets the options
+  they carry (`{:strength :monotonic}`, `{}` back to the default), and every list is a
+  sentence in whatever is current:
+
+  ```
+  CxNaturalWorld
+  (dog Muffet)
+  (implies (and (parentOf ?x ?y)
+                (parentOf ?y ?z))
+           (grandparentOf ?x ?z))
+
+  CxValuesGrammar
+  (isa Kids life-direction)
+  ```
+
+  A page of one context's facts says that context once, and moving a sentence to another
+  context is moving one line. A sentence with no context above it is a problem, not a
+  guess. `seed-text` writes the panel that way — the handles in the order they were
+  named, a context line wherever the context changes, an options map wherever the
+  strength does. A rule is shown with its direction/defeasibility as `set/*Rule` wrappers
+  (its `exceptWhen` guard is a separate meta-sentex and is *not* carried, so editing a
+  guarded rule drops the guard; an `(unknown S)` antecedent is an ordinary literal in the
+  rule body and round-trips).
+- **The text is read as forms, not as lines.** `read-forms` reads successive EDN forms
+  off a `LineNumberReader`, so a sentence may be laid out over as many lines as it needs
+  and a problem still names the line the form opens on. Reading stops at the first form
+  that does not read: everything after an unbalanced one is *inside* it, so going on
+  would report one mistake many times. `read-entries` sorts the forms it answers into
+  contexts, options and sentences. `/assert` reads its box the same way, with the form's
+  **context field** seeding the first sentence — so a box holding nothing but sentences
+  asserts them where the field says, and a context written in the box takes over from
+  that line down.
+- **Save** POSTs the edited text. The server diffs the sentences against the named handles
+  **by content**: a sentence you left alone touches nothing (its handle is untouched, no
+  churn), one you changed or deleted retracts its sentex, a new one is asserted. The batch
   that diff produces is then run past **`vaelii.core/check`** before `edit!` is called at
   all, so a save the engine would refuse comes back as a message *beside its line* —
   with the `:type` `assert` would have thrown — rather than as an exception. A line that
@@ -840,7 +930,7 @@ Clear.
   is checked first and the form is all-or-nothing: one bad line stores none of it, so
   the page is safe to retry.
 - **Retract…** opens a confirmation that says what will go *before* it goes. Retraction
-  is dependency-directed, so the panel lists the selection **and** the believed sentexes
+  is dependency-directed, so the panel lists the named handles **and** the believed sentexes
   that would lose their last witness — computed to a fixpoint from the justification
   graph, the same criterion the sweep applies (a datum goes when it is not a premise in
   its own right and every justification concluding it has an argument that is going).
@@ -851,11 +941,11 @@ Clear.
   it dropped read together.
 - **A save re-renders what changed, not the page.** Each retracted handle's row is
   swapped **out of band** (`hx-swap-oob`) — replaced by the row its line became, or
-  deleted when the line was deleted — and the selection count is corrected the same way.
-  Rows are addressed by their `data-h` attribute rather than by an id, because one
+  deleted when the line was deleted. Rows are addressed by their `data-h` attribute rather than by an id, because one
   handle can appear in more than one index group on a term page and htmx's selector form
   of `hx-swap-oob` swaps **all** the matches, so every copy of a row moves. A line is
-  paired with a handle **by position**: the textarea is seeded one line per selected
+  paired with a handle **by position** (sentences only — a context line is not one of
+  them): the textarea is seeded one sentence per named
   handle, so a line rewritten in place retracts at that position and asserts at it. Only
   that exact coincidence pairs — a line you appended has no row to replace, so it is
   listed in the result panel instead of pretending to be one.
@@ -1130,7 +1220,7 @@ button sits the other question: what the accepted set would **mean**. It is
   it briefly held, so what explains a derived line is the rule that would conclude it. A
   line that *already exists* — a withdrawal, a revival — keeps its handle and links to
   `/why/:id`.
-- **Recomputed on the accepted set, debounced.** `select.js` fires one
+- **Recomputed on the accepted set, debounced.** `vaelii.js` fires one
   `accepted-changed` event on `<body>` when the accepted *lines* change (re-choosing a
   shape on an accepted row counts; moving the cursor does not), and the panel's own
   `hx-trigger` carries `delay:400ms`. Holding `a` down the list costs one preview.
@@ -1256,8 +1346,7 @@ continuation routes answer bare rows, not pages — `<li>`s, or `<tr>`s where th
 real table, since a `<tbody>` may hold nothing else. `hx-target`/`hx-select` are set on the body so every boosted
 link swaps `#main`, and both are inherited — so a sentinel says explicitly that it
 targets **itself** and selects nothing, and so do the editor's own controls
-(`hx-select="unset"`). A sentinel ending a *selectable* list is a `role="row"` of that
-grid, since a grid's children must all be rows; the plain lists take the plain shape.
+(`hx-select="unset"`).
 
 ### The front page is bounded, and that is not a nicety
 
@@ -1265,14 +1354,23 @@ grid, since a grid's children must all be rows; the plain lists take the plain s
 catalog will load an ontology with hundreds of thousands of `genl` edges — so nothing on
 it may be proportional to the KB.
 
-The **hierarchy trees** open one level at a time. A node with children is a `<details>`
-that fetches them on its first `toggle`; a level is read by pinning the parent
+The **hierarchy trees** open one level at a time. A node with children carries a caret
+that fetches them on its first `change`; a level is read by pinning the parent
 (`(genl ?sub node)`), which the index answers from the predicate-scoped argument root
 (`[:argument-root genl 2 node]`), so the cost is that node's own fan-out rather than the
 number of edges in the KB. Whether a node gets a disclosure at all is
 `count-with-arg 2 node`, a cheap upper bound (one O(1) count per predicate at the slot):
 it spans every binary predicate holding the node in second position, so it can offer a
 disclosure that opens to nothing, and can never hide a real child.
+
+The caret is a **checkbox and its label**, not a `<details>`/`<summary>`. A `<summary>`
+consumes the click on whatever it contains, so the term inside one toggled the disclosure
+instead of opening the term's page — and a term is a link to its page everywhere else on
+the site. Here the caret is the only thing that toggles, the term beside it is an ordinary
+link, and `.tree-tog:not(:checked) ~ ul.tree-kids { display: none }` does the opening, so
+a reader with no script still works the tree. The checkbox's id keys on the edge
+(`pred`, `node`), which is what a disclosure *is*: a type reachable by two parents is a
+different disclosure under each.
 
 The **flat lists** read their functor root rather than a wholly-open pattern. `(comment
 ?term ?text)` pins nothing, so the trie fans over every child token at every level: a
@@ -1365,18 +1463,53 @@ ranks, and nothing about being asserted first makes a sentex more interesting. A
 not a **cap**: nothing is dropped by it, the sentinel walks the whole group, and the count
 beside a group's heading is its stored total rather than the page's.
 
+**Past `group-sort-cap` (20,000) a group is not ordered at all** — it pages in the order
+the index read it in, which is reproducible for an unchanged store and is therefore the
+one property paging needs. Ordering means realizing the whole group and printing a context
+per member to show sixty rows: at `genl`, whose functor root holds 2,381,749 sentexes,
+that was 129 s, paid twice per page. The same cap governs the graph's flank window
+(`flank-scan`), where the alternative was sorting millions of records to pick forty.
+
+### A term page reads what it can count, and says when it did not look
+
+Four of a term's groups come off roots with an **O(1) stored count** — the functor root,
+the argument-position roots, the context root. The two remainder groups ("In rules",
+"Nested elsewhere") are the term index **minus** what a root claimed, and no count answers
+that: the only way to know a sentex is not in a root is to look at it. So:
+
+- **Which argument positions a term sits at is asked of the counts**, not of the records.
+  `count-with-arg` is one O(1) set-size read per predicate at the slot, so twelve of them
+  (`arg-position-cap`) answer it without fetching anything. Reading it off the term's own
+  sentexes meant walking the whole extent and looking at every argument of every one —
+  17 s at `genl`, against 0 ms here.
+- **Whether a root claimed a sentex is decided per record**, from the sentence's own
+  shape, rather than against a set of every id the roots hold. Building that set *is* the
+  extent read the walk exists to avoid.
+- **The walk is bounded twice.** It stops after `remainder-scan` (50,000) entries, and it
+  is not started at all when the widest root already holds more than that — every sentex a
+  root holds contains the term, so a root past the cap proves the term index is past it
+  too, and the walk would only be truncated. When it did not finish, the page **says so**
+  and offers no remainder groups, rather than showing an empty one and implying there is
+  nothing there.
+
+Measured on a 12.26M-sentex import: `/term?q=genl` went from 207 s to ~0.75 s, `isa` from
+2.9 s to 25 ms, and no other term page measured above 135 ms. What is left at `genl` is
+the store's own first read of a 2.4M posting set.
+
 ## Rendering sentences
 
 A sentence is rendered structurally, not as one opaque string:
 
-- a **handle badge** stands before the sentence in place of the bare `#id` — a
-  small colour-coded square that links to the sentex page and encodes, at a glance,
-  what the handle *is*: **indigo** for a rule, **violet** for an asserted (premise)
-  fact, **teal** for a derived one; its glyph is the rule's direction (`→` forward,
-  `←` backward, `↔` both, `·` inert) or the fact's polarity (`•` positive, `¬`
-  negative); a **dashed** border marks a defeasible (default) rule, and a **dimmed**
-  badge a sentex that is stored but not believed. Its `title` carries the handle and
-  a plain reading, so the number is a hover away and lists stay scannable;
+- a **handle badge** stands before the sentence in place of the bare `#id` — one small
+  circle that links to the sentex page. Colour is the whole of what it says, on a scale a
+  reader learns once: **red** a negation, **white** a monotonic fact, **yellow** a default
+  fact, **green** one the engine derived rather than was told, **blue** a forward rule,
+  **purple** a backward rule, both halves for a rule running both ways, and **black** an
+  inert rule — stored, and chaining in neither direction. A **filled** circle is asserted
+  and a **ring** is derived, which is what keeps a derived negation distinguishable from
+  an asserted one; a **dimmed** one is stored and not believed. Negation outranks every other case, because a reader who misses
+  a `not` has the sentex backwards and no other confusion costs that. Its `title` carries
+  the handle and a plain reading, so the number is a hover away and lists stay scannable;
 - **each subterm is its own link** to `/term?q=<subterm>` — click the predicate,
   an individual, or the context independently (nested compound subterms are also
   listed individually under a sentex's *Subterms*);
@@ -1434,11 +1567,43 @@ symbol's namespace.
 
 ## Chrome & typography
 
+The page is a **terminal**: a dark ground, square frames, one monospace face, and no
+rounded corner anywhere (`* { border-radius: 0 }`, one reset rather than a zero per
+rule). Light mode inverts the ground and the accent pair and changes nothing else.
+
+- **A region is a framed box, titled in its own top border.** `panel` renders one — a
+  `<section class="panel">` whose `<h2 class="panel-title">` is absolutely positioned
+  onto the frame's top edge with the page ground showing through behind the letters, and
+  which opens with the index the page counts it by (`.panel-n`, set as a superscript in
+  the accent). The front page's five regions and each index group on a term page carry
+  one; `.idxgrp` draws the same frame on the container that already existed, so the page
+  is one shape repeated rather than two. A heading standing on its own — a page title, a
+  subsection — is a name followed by a rule running to the right edge (`h2::after`), the
+  divider a terminal monitor draws between two readouts in one box.
+- **A region folds by its number.** The digit in a frame's top border is a `<button>`,
+  and the digit key `1`–`9` pressed anywhere off a text field does the same thing: it sets
+  `data-folded` on the nearest `[data-panel]`, which the sheet reads to hide everything in
+  the frame but its title. The frame stays, holding its title and nothing else, so the
+  same digit unfolds it and the page stays folded where a reader folded it. Which
+  regions are folded is held in `localStorage` **per path**, and re-applied after every
+  htmx swap — a region fetched into the page arrives unfolded, whatever the reader last
+  said about a region with that number on another page. Both the front page's five
+  regions and a term page's index groups carry one, since both draw the same frame.
+- **The spectrum.** `--rb1` … `--rb9` are vaelii.com's nine-step scale in its order —
+  red, orange, amber, green, teal, cyan, blue, violet, pink — declared once per mode
+  beside the surfaces. Anything that counts (a paren's nesting depth, a badge's kind)
+  counts along it **from `--rb1`**, so red is what a reader meets first at every one of
+  them. The four palettes pick an accent *pair* out of their own values and leave the
+  spectrum alone; only the rainbow palette's gradient treatments read the whole scale.
+- **One control shape.** A `<button>` is a square frame around a label, filled only when
+  it is the one that writes (`.primary`, accent outline filling on hover) or the one that
+  tears down (`.danger`). Every page used to restate that rule; the base rule is the
+  whole of it now, so a control added later takes the page's shape by being a button.
 - A **header** carries the vaelii logo and monospace wordmark (a home link) at the
   left, then — pushed to the right — a **menubar** to the top-level tools (Ontology
   `/`, Reasoning `/reasoning`, Query `/levels`, Assert `/assert`, Sandbox `/assert` —
   the sandbox is reached as a place to write, never as a context to choose — Network
-  `/network`, Stats `/stats`, and KB `/kbs` carrying the active KB's name; select.js
+  `/network`, Stats `/stats`, and KB `/kbs` carrying the active KB's name; vaelii.js
   marks the one matching the current path active), a **search box**, the request
   indicator, and the colour controls. The search is an htmx *active search*: a debounced
   `hx-get` to `/find` swaps just the
@@ -1453,25 +1618,31 @@ symbol's namespace.
   so inherited by every navigation, search, and continuation). It is `position: fixed`
   and takes no layout space, so nothing shifts when it appears, and it holds still under
   `prefers-reduced-motion`.
-- **Two typefaces, one weight each.** [Hasklig](https://github.com/i-tu/Hasklig)
-  (monospace) sets the *formal* content — sentences, terms, handles, index keys, the
-  query inputs — so a KB is indistinguishable from the code it resembles.
-  [Atkinson Hyperlegible Next](https://www.brailleinstitute.org/freefont/)
-  (proportional) is reserved for *natural-language* text only — headings, prose,
-  section labels, the predicate comments; proportional never touches a sentence. Both
-  are vendored under `resources/public/font/` and served self-hosted, and each ships
-  its **regular only** — two files, 102K, the whole webfont budget. The heavier levels
-  the sheet asks for (`font-weight: 600` on the wordmark, a type term, an active
-  menubar link, a table head) are **synthesized**; headings sit at the regular weight
-  and take their hierarchy from size and space. Declaring each family at 400 alone is
+- **Two typefaces, one weight each, one job each.**
+  [Hasklig](https://github.com/i-tu/Hasklig) (monospace, `--mono`) sets everything the KB
+  stores or the terminal draws — sentences, terms, handles, index keys, frame titles,
+  tables, buttons, the editor — so a KB is indistinguishable from the code it resembles.
+  [Atkinson Hyperlegible Next](https://www.brailleinstitute.org/freefont/) (proportional,
+  `--prose`) sets English written for a reader: a paragraph, a hint, a `comment` string
+  off the KB. Body copy is the only place the two meet, and the sheet names what keeps
+  `--mono` inside it — `.sx`, `.nat`, `code`, `pre`, a badge, a tag, a form control — so
+  a quoted sentence inside a paragraph is still set as a sentence. **Mono is set one step
+  larger**, by `font-size-adjust: .535` against Hasklig's own .486 x-height — about 10% up
+  — because at one px size a monospace face reads smaller than a proportional one beside
+  it. It is `font-size-adjust` rather than a second px size because it adjusts the *used*
+  size and leaves the computed one alone: a rule that scales its subtree with `em` still
+  scales it, and a mono span inside a mono span does not compound. Both are vendored
+  under `resources/public/font/` and served self-hosted, and each ships its **regular
+  only** — two files, 102K, the whole webfont budget. The heavier levels the sheet asks
+  for (`font-weight: 600` on a frame title, the wordmark, a type term, an active menubar
+  link, a table head) are **synthesized**. Declaring each family at 400 alone is
   what keeps synthesis available — a `400 700` range would claim the face covers bold
   and flatten emphasis instead.
 - **htmx** ([vendored](https://htmx.org), `resources/public/htmx.min.js`, 2.0.9) drives
   the declarative interactivity. `hx-boost` on the body turns ordinary links and forms
   into ajax swaps with history (degrading to plain navigation when htmx is absent),
   scoped to `#main` — which is what lets the server answer with the fragment that lands,
-  and what keeps the header, the selection bar, and an open editor from being torn down
-  by a navigation. Scoping it costs one thing back, which the swap pays explicitly: a
+  and what keeps the header and an open editor from being torn down by a navigation. Scoping it costs one thing back, which the swap pays explicitly: a
   boosted swap whose target is not the body scrolls that target *into view*, so `#main`
   alone would land every navigation with the header — logo, search box, menubar — scrolled
   off the top of a page the reader never scrolled. `show:window:top` says where to land
@@ -1498,20 +1669,17 @@ symbol's namespace.
   the header's KB name out of band, so it emits that copy only when answering a swap; a
   whole document renders its own header, and shipping both would put two `#kb-label`s in
   the page, with every later target resolving against whichever came first.
-- **One hand-written script**, `resources/public/select.js` (vanilla, no build step, no
-  dependency), for what htmx cannot express: the selection above — click, shift-click,
-  keyboard, group control, and the marquee drag — the palette and theme dots
-  below, marking the menubar link for the current path active, the `/kbs` sliders, and
-  the proposal review's keys (`j`/`k`, `a`/`x`, `1`–`9`). The review holds a decision per
-  row *index* rather than per element, because choosing a shape swaps the row out from
-  under it; picking a shape only clicks the numbered button, and a change in the accepted
-  set dispatches one `accepted-changed` event the consequence panel's own `hx-trigger`
-  debounces — so both round-trips stay declarative like every other one. It re-syncs
-  after every htmx swap: a navigation replaces `#main`, which voids the selection; a
-  save or a retract swaps individual rows out of band, which prunes it (a handle whose
-  row has left the page is no longer selected); a continuation page of rows re-applies
-  the highlights over whatever is now on the page. So the count, the action bar, the
-  roving tabindex and each group control follow the page rather than drifting from it.
+- **One hand-written script**, `resources/public/vaelii.js` (vanilla, no build step, no
+  dependency), for what htmx cannot express: the palette and theme dots below, marking
+  the menubar link for the current path active, **folding a framed region** by its
+  number, the `/kbs` sliders, and the proposal review's keys (`j`/`k`, `a`/`x`,
+  `1`–`9`). The review holds a decision per row *index*
+  rather than per element, because choosing a shape swaps the row out from under it;
+  picking a shape only clicks the numbered button, and a change in the accepted set
+  dispatches one `accepted-changed` event the consequence panel's own `hx-trigger`
+  debounces — so both round-trips stay declarative like every other one. The header sits
+  outside the swapped region, so the active menubar link is re-marked after every htmx
+  swap; nothing else has state to re-sync.
 - **Palette and theme.** Two header controls, both dots painted in what they control,
   both persisted in `localStorage` and applied by a tiny pre-paint `<head>` script so
   the page never flashes the wrong colours. They are vaelii.com's two controls, values
@@ -1531,8 +1699,8 @@ symbol's namespace.
     `:root[data-palette]`, and painted in the pair it selects. A palette is an accent
     **pair**: `--accent` (the fill and emphasis hue), `--accent-2` (its deeper partner),
     `--accent-b` (the second tone the dot's gradient runs to), plus `--on-accent`, the
-    text a filled accent carries. The wordmark, the selected-row tint, the marquee, and
-    more **derive** from `--accent` with `color-mix`, so one value re-colours the whole
+    text a filled accent carries. The wordmark, the selected-card tint, and more
+    **derive** from `--accent` with `color-mix`, so one value re-colours the whole
     chrome. Rainbow keeps violet's accents and paints the wordmark, the primary button,
     and the header rule with a gradient (`--rainbow`) instead.
   Palette and theme are orthogonal: any palette works in light or dark. Each palette
@@ -1540,7 +1708,7 @@ symbol's namespace.
   pick a side, so the two can't drift apart. Light accents are deep and carry white
   text; dark accents are pastel and carry near-black — which is what `--on-accent`
   names, and why no filled surface hard-codes `#fff`.
-- The fonts, logo, favicons, htmx, and select.js are static files under
+- The fonts, logo, favicons, htmx, and vaelii.js are static files under
   `resources/public`, served by a reitit `create-resource-handler` that catches
   whatever the page router did not match. The stylesheet keeps its own `/vaelii.css`
   route. Every static answer carries a **cache header**, and `VAELII_DEV` in the
@@ -1552,6 +1720,47 @@ symbol's namespace.
   and anything outside those spellings is refused when the namespace loads. Nothing is loaded from a CDN: a CDN could change
   what runs in the operator's browser and would log every page they open. Each vendored
   asset's licence is recorded in [licenses/THIRD-PARTY.md](../licenses/THIRD-PARTY.md).
+
+### The sentence editor
+
+Every box that takes a sentence is the same component — the editor panel, `/assert`, and
+the `/levels` goal box at one line. A `.ed` is three elements over one value: the
+`<textarea>` that holds the text and takes the keys, the `<pre class="ed-hl">` painted
+behind it (transparent text over a coloured copy, so the caret, the selection and the
+undo stack are the browser's own), and the `<ul>` of completions under the field. **A
+page with no script still has the textarea**, which is why the value lives there and
+nowhere else.
+
+Four jobs, all of them keyed on the caret and none of them htmx-expressible:
+
+- **Rainbow parens.** Each delimiter is coloured by its nesting depth, cycling through
+  six, and one with nothing to close is coloured as the error it is. Strings, numbers,
+  `?variables`, `:keywords` and `;comments` take their own colour, and a symbol standing
+  alone at the top level takes the **context** colour, because that is what the server
+  reads it as. The six depth colours are six steps along the spectrum (`--rb1`, `--rb2`,
+  `--rb3`, `--rb5`, `--rb7`, `--rb8`), counted from red, so a sentence's outermost paren
+  is red and the editor follows the light/dark switch along with the sentences beside it.
+- **Indentation.** Enter opens the next line under the enclosing form's **first
+  argument** — Lisp's own rule — or one past its paren when the form has none yet; Tab
+  re-indents the line the caret is on. Both walk the same scan the painter does, so the
+  picture and the indentation can never disagree about where a string ends.
+- **Completion.** The symbol before the caret is a prefix, and `/complete` answers the
+  terms it could become — `find-terms`' prefix match over the **term roster**, so a
+  keystroke costs the size of the vocabulary and never a scan of the KB. Twelve at a
+  time, each in its role colour. Tab and Enter take the highlighted one, the arrows move,
+  Escape closes the list without closing the editor. It is the one plain `fetch` on the
+  page: the query is the symbol at the caret, which is not a field htmx can include.
+- **Enter submits a one-line editor.** The goal box is a `rows="1"` editor, so Enter has
+  to submit the form rather than open a line inside it.
+
+**The lookahead.** Under the editor's controls, `/edit/preview` says what the open save
+would do — the same diff `edit-post` computes, read through `v/preview` instead of
+`v/edit!`. `preview` hands the KB back at the same handles, so it is a read, and it runs
+on a 600 ms pause in the typing rather than behind a confirmation. A form that does not
+read is reported there too: the reader is told while the caret is still in the form that
+caused it, instead of on the far side of a save that did not go through. It posts through
+`writing` because a preview holds the single writer for its duration, exactly as the
+proposal panel's consequence preview does.
 
 ## Untrusted input
 
@@ -1602,12 +1811,12 @@ there is no `assert` that would produce the content.
 - Rendering is [hiccup](https://github.com/weavejester/hiccup) 2 (`hiccup2.core`);
   pages are plain server-rendered HTML linking one stylesheet, with `{:mode :html}`
   under the html5 doctype. Interactivity is declarative htmx (`hx-*` attributes) plus
-  the one small `select.js` module.
+  the one small `vaelii.js` module.
 - Handlers are pure functions `request -> response` (`web/app target` builds the
   ring handler), so they are unit-tested with mock request maps — no live server
   needed (see `test/vaelii/web_test.clj`).
 - **The target is resolved per request, not closed over.** `app` takes a KB, an access
-  value, or a *holder* — anything deref-able, which is what `vaelii.host.catalog/holder`
+  value, or a *holder* — anything deref-able, which is what `vaelii.browser.catalog/holder`
   gives it. That is the whole of the KB switch: activating another entry in `/kbs`
   re-points every page at once, with no restart and no handler rebuild. The header
   carries the active KB's name, swapped out of band when it changes.

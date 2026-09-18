@@ -216,7 +216,7 @@ without storing anything, and answers with the identical problem.
 | `:arg-type` / `:arg-genl` | an `arg` / `genlArg` constraint convicted it — [argtypes.md](argtypes.md) |
 | `:arg-variable` | a **rule** variable two argument constraints demand disjoint types of — [taxonomy.md](taxonomy.md) |
 | `:disjoint` / `:functional` / `:asymmetric` | a definitional clash — [exceptions.md](exceptions.md) |
-| `:unknown-option` | an option key nothing reads, or a non-map `opts` — `:mismatch` says which |
+| `:unknown-option` | an option key nothing reads, or a non-map `opts` — `:mismatch` says which. A refused `VAELII_*` or `vaelii.*` switch is named under `:switch`, and under `:property`, the older key |
 
 The one worth knowing in advance: **snake_case means arity 1.** An underscored functor
 names a type, and a type is a one-place predicate, so `(lives_in ?x cold_place)` is refused
@@ -615,14 +615,14 @@ so one vocabulary reads both.
 | `:unknown-handle` | no sentex is stored under the handle | [api.md](api.md) |
 | `:unknown-op` | the daemon has no op by that name | [operations.md](operations.md) |
 | `:unknown-option` | an option an entry point will not take, `:mismatch` saying how: `:unknown-key`, `:bad-value`, `:missing-value`, `:not-a-map`, `:missing-companion` or `:conflict` | [api.md](api.md) |
-| `:unknown-source` | the catalog has no KB source by that id, or the source names a kind nothing loads | [catalog.md](catalog.md) |
+| `:unknown-source` | the catalog has no KB source by that id, the source names a kind nothing loads, or the directory `lein cli upgrade` names holds no store | [catalog.md](catalog.md) |
 | `:unknown-subscription` | the feed token names no subscription — it was dropped, timed out, or belongs to another daemon | [feed.md](feed.md) |
 | `:unknown-tactician` | a strategy names a tactician the ordering table does not hold | [inference.md](inference.md) |
 | `:unminted-nat` | `assert-inert` was handed a reifiable NAT this KB never minted; it never mints, so assert the NAT-bearing fact first | [nat.md](nat.md) |
 | `:unparseable` | a model's answer does not read as EDN | [llm.md](llm.md) |
 | `:unreadable` | a line of a proposal or an edit batch does not read as EDN | [web.md](web.md) |
 | `:unreadable-store` | the records in that store do not thaw as sentexes — it was written by a build whose record classes differ | [storage.md](storage.md) |
-| `:unrecovered-kb` | the KB is open over a store whose belief was never built, so writes are refused until `recover` runs | [storage.md](storage.md) |
+| `:unrecovered-kb` | the KB is open over a store whose belief was never built, so writes are refused until `recover` runs; with `:hazards [:stale-belief]`, a `:recover? :background` open is rebuilding belief behind an earlier build's image, and writes resume when the rebuild finishes | [storage.md](storage.md) |
 | `:unrecovered-premise` | a retract named a premise this KB never recovered, so the dedup walk that would find its twin has not run | [storage.md](storage.md) |
 | `:unreleased` | an unload's release did not finish cleanly; the entry is still listed and unloading again retries it | [catalog.md](catalog.md) |
 | `:unsupported-compression` | a compression this build does not write, does not read, or whose codec is off the classpath | [storage.md](storage.md) |

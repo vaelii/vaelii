@@ -68,7 +68,8 @@
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rules :as rules]
             [vaelii.impl.sentex :as sx]
-            [vaelii.impl.taxonomy :as tax])
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning])
   (:import [java.lang.ref ReferenceQueue WeakReference]))
 
 ;; ---- the per-KB alpha registry ------------------------------------------
@@ -268,7 +269,7 @@
             ;; the exceptWhen guard is the reference's too (`res/match-one`): a rule's
             ;; exception meta-sentex is internal bookkeeping, stored Literal and so
             ;; admitted into the alpha memories, and must never surface as a fact
-            (when (and (jtms/in? (:tms kb) (:id stored))
+            (when (and (jtms/in? (reasoning/tms kb) (:id stored))
                        (not (sx/exceptWhen-meta? (:sentence stored))))
               (when (= (sx/negative? pat) (sx/negative? stored))
                 (when-let [b (res/unify (:context pat) (:context stored)
@@ -288,7 +289,7 @@
   are deferred, so a consumer answered by the direct hits pays for neither."
   [kb by-functor sentence context]
   (let [hits (match-one-via-alpha kb by-functor sentence context)]
-    (if (sx/symmetric-literal? sentence #(tax/has-prop? (:taxonomy kb) :symmetric %))
+    (if (sx/symmetric-literal? sentence #(tax/has-prop? (reasoning/taxonomy kb) :symmetric %))
       (lazy-cat hits
                 (let [seen (into #{} (map (fn [[h b]] [h b])) hits)]
                   (remove (fn [[h b]] (contains? seen [h b]))

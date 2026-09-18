@@ -15,9 +15,8 @@
   So the firing's justification names a **witness** for each sighting: one `genlCx`
   path from the placement up to each ingredient context, one supporter per edge.  A
   section per consequence below — `why` shows the edges, retracting either side's edge
-  withdraws what it licensed, defeating one puts the conclusion OUT, a reachability that
-  outlives the named witness re-derives, and an escape-hatch `(ist Ctx S)` placement
-  names nothing, because it rests on nothing.
+  withdraws what it licensed, defeating one puts the conclusion OUT, and a reachability
+  that outlives the named witness re-derives.
 
   The `genl` twin of all of it is `subsumption_support_test`, and the two are one claim
   about two relations."
@@ -407,23 +406,3 @@
           "the conclusion the edge licensed is named as a casualty"))
     (is (seq (v/sentexes-matching kb (list flies Tweety) CxLow))
         "and the preview put the KB back")))
-
-;; ---- what is *not* an ingredient, and so is not named --------------------
-
-(tu/deftest-kb an-ist-consequent-names-no-context-edge-for-a-rule-it-need-not-see
-  ;; the escape hatch places where the author said, whether or not the target can see the
-  ;; rule or the facts — so the placement rests on no sighting of either, and naming one
-  ;; would be a dependency the engine does not have.  A conclusion that goes when an
-  ;; unrelated edge is retracted is the same order-dependence pointing the other way.
-  (tu/with-terms [bird flies Tweety CxSaid CxHeld]
-    (v/assert kb (list 'genlCx CxSaid 'CxUniverse) 'CxUniverse)
-    (v/assert kb (list 'genlCx CxHeld 'CxUniverse) 'CxUniverse)
-    (v/assert kb (list 'implies (list bird '?x) (list 'ist CxHeld (list flies '?x))) CxSaid {:direction :forward})
-    (v/assert kb (list bird Tweety) CxSaid)
-    (let [placed (v/handle-of kb (list flies Tweety) CxHeld)]
-      (is (v/in? kb placed) "the named target took it, though it sees neither the rule nor the fact")
-      (is (empty? (edge-sentexes kb placed))
-          "and rests on no context edge, because its placement was not derived from one")
-      (v/retract! kb (v/handle-of kb (list 'genlCx CxHeld 'CxUniverse) 'CxUniverse))
-      (is (seq (v/sentexes-matching kb (list flies Tweety) CxHeld))
-          "so wiring the target elsewhere neither licensed the conclusion nor withdraws it"))))

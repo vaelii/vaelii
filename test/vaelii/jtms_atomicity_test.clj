@@ -18,6 +18,7 @@
             [vaelii.core :as v]
             [vaelii.impl.dense-jtms :as dense]
             [vaelii.impl.jtms :as jtms]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 ;; ---- unknown datums (pure, no KB) ---------------------------------------
@@ -102,5 +103,5 @@
   (tu/with-neutral-kb [kb tu/fresh]
     (is (= {:removed-sentexes 0 :removed-justifications 0}
            (v/retract! kb 999999)))
-    (is (not-any? #{999999} (jtms/datums (:tms kb)))
+    (is (not-any? #{999999} (jtms/datums (reasoning/tms kb)))
         "the phantom node must not survive into the TMS")))

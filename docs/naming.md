@@ -360,6 +360,7 @@ word means adding its row here and its entry there, in the same commit.
 | literal | formula | 1 | Literal |
 | pattern | formula | 1 | Pattern |
 | polarity | formula | 1 | Polarity |
+| reasoning | machine | 1 | Reasoning state |
 | record | machine | 1 | Record |
 | refusal | machine | 1 | Refusal |
 | region | knowledge, term | 2 | Region (relabel scope); Region (spatial) |

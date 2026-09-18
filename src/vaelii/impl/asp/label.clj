@@ -61,6 +61,8 @@
    [vaelii.impl.protocols :as p]
    [vaelii.impl.settle :as settle]
    [vaelii.impl.solve :as solve]
+   [vaelii.impl.types.reasoning :as reasoning]
+   [vaelii.impl.types.solve :as solve-types]
    [vaelii.impl.wiring :as wiring]))
 
 ;; `classify-program` lives in `asp.edge` (below core), so `settle` can stamp the
@@ -75,7 +77,7 @@
   Returns `{:true #{handle} :supportable #{handle} :false #{handle}}`, all empty when
   no tie has been arbitrated (nothing contested means nothing to be uncertain about)."
   [kb]
-  (if-let [program @(:program kb)]
+  (if-let [program @(reasoning/program kb)]
     (classify-program program)
     {:true #{} :supportable #{} :false #{}}))
 
@@ -206,7 +208,7 @@
   (`grounded_forcing_out_test`), exponential only inside one interacting cluster or across the
   clusters one datum joins, and capped at both.  See docs/labeling.md."
   [kb]
-  (let [tms     (:tms kb)
+  (let [tms     (reasoning/tms kb)
         nogoods (into []
                       (keep (fn [ng]
                               (let [ms (into #{}
@@ -371,7 +373,7 @@
   dilemma into one world.  `:error` is the bit that tells the two apart, and raising it
   here is what makes an imperative refuse with `:solver-failed`."
   [kb program]
-  (let [{:keys [defeat error]} (solve/solve (labeling-solver kb) program)]
+  (let [{:keys [defeat error]} (solve-types/solve (labeling-solver kb) program)]
     (when error (throw error))
     (let [given-up (set defeat)]
       (into #{} (remove given-up) (:assumptions program)))))
@@ -403,19 +405,16 @@
   the side that lost: the strengthened copy out-ranks it, and `decide-nogood` defeats
   the strictly weaker member.
 
-  **This commits, and the commitment is global.**  Belief in this TMS is a property of
-  a datum, not of a datum-in-a-context, so strengthening inside `ctx` defeats the
-  losing side *everywhere* — the base KB's dilemma stops being reported and the loser
-  goes OUT for every context, not just under `ctx`.  Measured on the Nixon diamond:
-  `contradictions` 1 → 0.  That is a deliberate choice of semantics (docs/labeling.md):
-  a labeling you can query as a world is worth more than one you can only read, and
-  the engine's refusal to arbitrate is preserved where it matters — it still refuses
-  *on its own*, and only commits when a caller writes the imperative.
+  **This commits, and the commitment is scoped to `ctx`.**  The strengthened copy and
+  the losing side form a nogood whose vantage is `ctx`, so the losing side is defeated at
+  `ctx` and below and nowhere else (docs/nmtms.md, \"A defeat is scoped to its
+  vantage\").  The base keeps believing both sides and reporting its dilemma.  The
+  engine's refusal to arbitrate holds: it still refuses *on its own*, and commits inside
+  `ctx` only when a caller writes the imperative (docs/labeling.md).
 
-  So rival labelings are compared **sequentially**, not side by side: retract the
-  returned handles, which revives the dilemma, then label again.  Holding two at once
-  needs belief to be relative to a context, which is what an ATMS's per-datum
-  assumption labels give you and what the TMS does not have today.
+  So rival labelings stand **side by side**, as sibling contexts: each labeling decides
+  the dilemma in its own context, and retracting the returned handles revives the
+  dilemma inside that context.
 
   Additive, so no `!`: this creates a context and asserts into it, and retracting the
   returned handles undoes it — including the commitment."
@@ -425,7 +424,7 @@
           keep-set       (solved-labeling kb program)]
       ;; the two came from separate solves; refuse to commit if they disagree
       (check-agrees program keep-set classification)
-      (reset! (:program kb) program)
+      (reset! (reasoning/program kb) program)
       (wiring/assert-sentence kb (list 'genlCx ctx base) base {:strength :monotonic})
       {:context ctx
        :program program
@@ -482,8 +481,8 @@
   undone by retracting the returned handles; the `genlCx` edge is a premise of its own
   and is retracted as one."
   [kb ctx base]
-  (let [tms (:tms kb)
-        program @(:program kb)
+  (let [tms (reasoning/tms kb)
+        program @(reasoning/program kb)
         ;; content order, as `label-dilemmas` orders the same set: `:assumptions` is
         ;; a handle set, and hash iteration would mint the copies — and return the
         ;; `:handles` a caller retracts — in an order that tracks assertion order

@@ -144,13 +144,10 @@
   [c0]
   (let [c (let [inner (peek (sx/peel-rule-wrapper c0))]
             (if (sx/implies? inner) inner c0))]
-    (if (and (sequential? c) (= sx/ist-functor (first c)))
-      (nm/functor (nth c 2))
-      (nm/functor c))))
+    (nm/functor c)))
 
 (defn consequent-predicate
-  "The predicate a rule concludes.  A consequent of the form `(ist Ctx S)` (place S
-  into context Ctx) is indexed by S's predicate, not by ist.
+  "The predicate a rule concludes.
 
   A **generator** concludes a rule, so its key is `implies` — reached by peeling the
   `set/*Rule` wrapper first, because that wrapper belongs to the rule being stamped
@@ -1057,8 +1054,8 @@
       [nil sentence])))
 
 (defn- deep-vars
-  "Every variable anywhere in a form (descends into nested subterms, so an ist
-  consequent's inner sentence and its context slot are both covered)."
+  "Every variable anywhere in a form (descends into nested subterms, so a variable
+  inside a compound argument or a stamped rule is covered)."
   [form]
   (filter sx/variable? (tree-seq sequential? seq form)))
 
@@ -1471,7 +1468,7 @@
   "The `[role literal]` pairs of a rule whose functor is a **variable** — `(?p ?x ?y)`,
   or the dotted rest `(?pred . ?args)`.  Read through `naming/applied-literals` one
   level at a time, so the frames descended into are the ones the naming check descends:
-  a negated antecedent, an `ist` consequent, a head existential, an aggregate's body.
+  a negated antecedent, a head existential, an aggregate's body.
 
   Inside a generator's stamped rule the question is asked of **non-holes only**, and
   that is the carve the whole feature rests on.  The index's claim is on what gets
@@ -1569,9 +1566,7 @@
   canonical `?var0` no goal can spell, and `resolution/concluding-rule-handles` unions
   that bucket into every concrete-goal answer so a backward goal can reach it.
 
-  **An `:inert` rule is the exception**: it chains in neither engine (`CxCore`'s
-  decontextualized-predicate lift is one, `(implies (?pred . ?args) (ist CxUniverse
-  (?pred . ?args)))`), so it concludes nothing and must not surface as a concluder for
+  **An `:inert` rule is the exception**: it chains in neither engine, so it concludes nothing and must not surface as a concluder for
   every goal.  It keeps the canonical variable — a dead key nothing reads — and only a
   rule that can actually conclude reaches `:var-pred`.
 

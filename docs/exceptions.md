@@ -111,6 +111,14 @@ from where the conclusion would live has no business blocking it. Backward chain
 places nothing, so it has no placement context; there the exception is evaluated in
 the query's context instead, the backward analogue of the same rule.
 
+**The exception's own context is scoped the same way.** An `exceptWhen` meta-sentex is
+a sentex, so a context reads the exceptions its `genlCx` ancestor set holds and no
+others, as it reads the rules (`provers/exception-visible-from?`). An exception stated
+in a context below the conclusion's blocks nothing in the conclusion's context, even
+when its query holds there. A `genlCx` edge that brings the exception into the ancestor
+set re-checks the firings placed below the edge, the same re-check any `genlCx` edge
+queues (the re-check index, below).
+
 ## The exception is a meta-sentex, not a materialized extent
 
 The exception is stored **once**, as a belief-following meta-sentex
@@ -315,7 +323,7 @@ order concludes. Belief would depend on whether the block arrived before or afte
 facts, which is the invariant [nmtms.md](nmtms.md) opens with.
 
 So the refusal is recorded, one level earlier and in the same shape. Where the blocked
-set holds justification ids, `(:refused kb)` holds `{rule-handle -> #{refusal}}`, and a
+set holds justification ids, `(reasoning/refused kb)` holds `{rule-handle -> #{refusal}}`, and a
 refusal is the firing's conclusion, its placement context, its antecedent handles, the
 bindings the condition was asked under, and the **depth bound the refusing run was
 configured with** (so a release honours that bound, not the default, in a settle with no
@@ -929,7 +937,7 @@ other wrappers are. Two `exceptWhen`s written together conjoin into one meta-sen
   *released*, plus the rules queued with no sentence to read, rather than from every
   rule it touched. Both quadratics above, gone.
 - **The refusal record.** A firing refused before it could become a justification is
-  remembered as `[rule handle, bindings]` in `(:refused kb)`, so a release reaches it
+  remembered as `[rule handle, bindings]` in `(reasoning/refused kb)`, so a release reaches it
   too; `settle/released-refusals` re-evaluates the queued rules' entries under the same
   narrowing, and `chain/release-refusal!` re-derives the ones that no longer block from
   the bindings they recorded. Capped per rule, `recover` rebuilds it by re-firing.

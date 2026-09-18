@@ -27,6 +27,7 @@
             [vaelii.host.starter :as starter]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (defn- content
@@ -43,20 +44,23 @@
 (defn- justification-content
   "The justification graph as content: each conclusion's sentence and context against the
   set of its antecedents' sentences and contexts, with the informant.  Handles are
-  resolved to sentences on both sides for `content`'s reason."
+  resolved to sentences on both sides for `content`'s reason, and an informant that is a
+  rule handle is resolved to the rule's sentence and context the same way; an informant
+  that is a symbol is compared as written."
   [kb]
   (let [recs (:records kb)
-        of   (fn [h] (let [sx (p/get-sentex recs h)] [(:sentence sx) (:context sx)]))]
+        of   (fn [h] (let [sx (p/get-sentex recs h)] [(:sentence sx) (:context sx)]))
+        inf  (fn [i] (if (integer? i) (of i) i))]
     (into #{}
           (mapcat (fn [h]
                     (for [j (v/supporting-justifications kb h)]
-                      [(of h) (:informant j) (set (map of (:antecedents j)))])))
+                      [(of h) (inf (:informant j)) (set (map of (:antecedents j)))])))
           (v/handles kb))))
 
 (defn- taxonomy-content
   "The two cached closures a reader sees: the type hierarchy and the context spindle."
   [kb]
-  (let [t (:taxonomy kb)]
+  (let [t (reasoning/taxonomy kb)]
     {:types    (into {} (for [x (tax/types t)]    [x (set (tax/genls-global t x))]))
      :contexts (into {} (for [c (tax/contexts t)] [c (set (tax/context-up t c))]))}))
 

@@ -68,12 +68,13 @@
             [vaelii.impl.naming :as nm]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.protocols :as p]
-            [vaelii.impl.provers :as provers]
             [vaelii.impl.qcn :as qcn]
             [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
-            [vaelii.impl.taxonomy :as tax]))
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.prover :as prover-types]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 (def ^:private pc-cache-limit 256)
 
@@ -176,15 +177,15 @@
   one constraint under two names it knows denote one thing."
   [kb pred context]
   (let [ix       (:index kb)
-        up       (when-not (pvar? context) (tax/context-up (:taxonomy kb) context))
-        merged?  (tax/merged-term-pred (:taxonomy kb))
+        up       (when-not (pvar? context) (tax/context-up (reasoning/taxonomy kb) context))
+        merged?  (tax/merged-term-pred (reasoning/taxonomy kb))
         visible  (delay (res/visible-supporter-fn kb context))
         retired? (if (and merged? (symbol? context) (not (pvar? context)))
                    #(res/retired-for? kb visible merged? (sx/sentence-of %))
                    (constantly false))]
     (->> (reads/as-stored-with-functor ix pred)
          (keep (fn [h]
-                 (when (jtms/in? (:tms kb) h)
+                 (when (jtms/in? (reasoning/tms kb) h)
                    (let [s (p/get-sentex (:records kb) h)
                          b (when s (sx/body s))]
                      (when (and (sx/negative? s)
@@ -279,7 +280,7 @@
   `possible-relations` are reads, and a network is a property of the stored facts whether
   or not anybody opted in to reasoning with it."
   [kb calc context]
-  (observe/cached (:qcn kb) [(:name calc) context]
+  (observe/cached (reasoning/qcn kb) [(:name calc) context]
                   (fn [_stale] (build-network kb calc context))))
 
 (defn network
@@ -346,13 +347,13 @@
   exactly the caller that would."
   [kb calc]
   (observe/cached
-   (:qcn kb) [(:name calc) ::readers]
+   (reasoning/qcn kb) [(:name calc) ::readers]
    (fn [_stale]
      (let [held (into #{}
                       (comp (mapcat (fn [pred] (reads/as-stored-with-functor (:index kb) pred)))
                             (keep (fn [h] (:context (p/get-sentex (:records kb) h)))))
                       (:context-predicates calc))]
-       (tax/meet-closure (:taxonomy kb) held)))))
+       (tax/meet-closure (reasoning/taxonomy kb) held)))))
 
 ;; ---- the path-consistency pass, memoized on the network value -----------
 ;; The pass is the expensive part (O(n³) triples per iteration) and a query asks for
@@ -383,7 +384,7 @@
   would fire for whichever asked first and leave the rest answering nothing with an empty
   ledger.  A query loop still reports once, and a change of belief reports again."
   [kb calc context net]
-  (when-let [v (:violations kb)]
+  (when-let [v (reasoning/violations kb)]
     (let [bad   (qcn/unsatisfiable-pairs net (:algebra calc))
           entry {:violation :qualitative-inconsistency
                  :calculus  (:name calc)
@@ -420,7 +421,7 @@
   that was resident before, or nil — which is what lets a pass warm-start off its own
   previous answer."
   [kb k net build]
-  (let [entry (observe/cached (:qcn kb) k (fn [stale] {:net net :result (build stale)}))]
+  (let [entry (observe/cached (reasoning/qcn kb) k (fn [stale] {:net net :result (build stale)}))]
     (if (identical? net (:net entry)) (:result entry) (build nil))))
 
 (defn tighten
@@ -456,7 +457,7 @@
                          (qcn/path-consistent-from net warm extra algebra)
                          (qcn/path-consistent net (into (nodes net) extra) algebra)))))))]
     (when (and (= :inconsistent result)
-               (observe/newly-seen? (:qcn kb) [(:name calc) context ::reported] net))
+               (observe/newly-seen? (reasoning/qcn kb) [(:name calc) context ::reported] net))
       (report-inconsistency! kb calc context net))
     result))
 
@@ -587,7 +588,7 @@
   differs."
   [kb calc context]
   (let [now  (join-baseline kb calc context)
-        base (some-> (:qcn-joined kb) deref (get [(:name calc) context ::joined]))]
+        base (some-> (reasoning/qcn-joined kb) deref (get [(:name calc) context ::joined]))]
     {:baseline now
      :moved    (if (and base
                         (map? (:net base)) (map? (:net now))
@@ -607,7 +608,7 @@
   delta join for that calculus and context to a full re-join.  The map is bounded by
   (calculi × reader contexts), which no eviction is needed for."
   [kb calc context baseline]
-  (when-let [a (:qcn-joined kb)]
+  (when-let [a (reasoning/qcn-joined kb)]
     (swap! a assoc [(:name calc) context ::joined] baseline))
   nil)
 
@@ -743,7 +744,7 @@
                (for [x ns y ns :when (and (not= x y) (holds? x y))] (answer x y))))))))))
 
 (defrecord CalculusProver [calculus]
-  provers/Prover
+  prover-types/Prover
   ;; both polarities: `(P a b)` is claimed by entailment and `(not (P a b))` by
   ;; refutation, and a believed negative literal is itself read into the network as a
   ;; constraint — so the goal and the fact meet in the same place.
@@ -804,8 +805,8 @@
 ;; stored facts it rests on, and those are what the justification lists.  These three
 ;; are the boundary chaining reaches through; the wiring itself is `vaelii.impl.chain`.
 
-(def ^:private registry-calculi
-  "`registered-calculi`'s last answer as `[registry answer]`, held against the prover
+(defonce ^{:private true
+           :doc "`registered-calculi`'s last answer as `[registry answer]`, held against the prover
   vector's IDENTITY.
 
   Registration is opt-in and happens at setup, so the answer is constant for the life of
@@ -823,7 +824,8 @@
   alive for the process's life, one more per `add-prover`, and hashing such a key walks
   the vector, which is the cost being removed.  A `swap!` on the registry produces a new
   value, so it simply misses and recomputes.  Last write wins and the pair is written as
-  one value, so a lost race costs a recomputation and cannot answer wrongly."
+  one value, so a lost race costs a recomputation and cannot answer wrongly."}
+  registry-calculi
   (volatile! nil))
 
 (defn registered-calculi

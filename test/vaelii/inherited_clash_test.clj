@@ -23,6 +23,7 @@
   vocabulary; this namespace reads it as an engine contract."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -306,7 +307,7 @@
       (v/assert kb (list carriesLoad hauler_kind 'Bone1) U mono)
       (v/assert kb (list 'not (list carriesLoad cart_kind 'Bone1)) U)
       (is (= 1 (count (inherited-reports kb carriesLoad))))
-      (reset! (:preserving kb) {})
+      (reset! (reasoning/preserving kb) {})
       (v/recover kb)
       (is (= 1 (count (inherited-reports kb carriesLoad)))
           "the rebuild re-derives the roster from the records"))))

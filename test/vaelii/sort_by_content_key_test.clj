@@ -422,7 +422,7 @@
   one rule — an answer's order is a function of content — seen from two sides."
   #{"(sort-by :id sentexes)"
     "(sort-by :id justifications)"
-    "(sort-by :id (v/sentexes-matching kb pattern '?ctx))"
+    "(sort-by :id (into [] (take ego-scan) (v/sentexes-matching kb pattern '?ctx)))"
     "(sort-by :id (vals @(:nodes sess)))"
     "(sort-by (juxt (comp print-key :context) :id) sentexes)"
     "(sort (:handles entry))"

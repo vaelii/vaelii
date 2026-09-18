@@ -129,29 +129,28 @@ argument:
   untouched, but then holds only the labeled literals and inherits no background — a
   record to read rather than a world to query.
 
-The `:monotonic` copy into an inheriting context takes `contradictions` from **1 to
-0**: the dilemma is decided rather than duplicated.
+The `:monotonic` copy into an inheriting context leaves `contradictions` at **1**: the
+base still holds both sides, and inside `Ctx` the dilemma is decided rather than
+duplicated.
 
-### The commitment is global, and that is the trade
+### The commitment is scoped to `Ctx`
 
-Belief in this TMS is a property of a *datum*, not of a datum-in-a-context. So
-strengthening inside `Ctx` defeats the losing side **everywhere** — the base KB stops
-reporting the dilemma and the loser goes OUT for every context, not only under `Ctx`.
+The strengthened copy and the losing side form a nogood whose vantage is `Ctx`, since
+`Ctx` sees the base and the base does not see `Ctx`. The losing side is defeated at `Ctx`
+and below, and nowhere else ([nmtms.md](nmtms.md#a-defeat-is-scoped-to-its-vantage)): a
+read from `Ctx` finds one side, and a read from the base finds both.
 
 This is the one place where "the KB represents dilemmas, it does not solve them"
-bends, and it bends deliberately:
+bends, and it bends only inside `Ctx`:
 
 * The engine still refuses to arbitrate **on its own**. `settle` decides no
   default/default clash; the commitment happens only because a caller wrote the
-  imperative.
-* It is undoable. `retract!` on the returned handles revives the dilemma, both sides
-  IN and `contradictions` back to 1.
+  imperative, and it binds the context the caller named.
+* It is undoable. `retract!` on the returned handles revives the dilemma inside `Ctx`.
 
-The cost is that rival labelings are compared **sequentially** — label, inspect,
-retract, label again — rather than side by side. Holding two at once requires belief
-to be relative to a context, which is exactly what an ATMS's per-datum assumption
-labels give you and what this TMS does not have. The difference is in the truth
-maintenance, not in the labeling.
+Rival labelings stand **side by side**: two `do/labeling` calls naming two contexts give
+two sibling contexts, each deciding the dilemma its own way, while the base reports the
+one dilemma throughout.
 
 ### The labeling solve and the classification solves must agree
 
@@ -174,7 +173,7 @@ ASP   defeats {2}   -> labels {1,3}
 
 The stub's labeling keeps an assumption holding in **no** optimum and drops two
 holding in **every** one. Under commit semantics that materializes an impossible world
-and globally defeats the atoms classification calls forced.
+and defeats, inside `Ctx`, the atoms classification calls forced.
 
 Two things hold them together. The labeling solve uses the **ASP edge solver whenever a
 backend is reachable**, deliberately bypassing `(:solver kb)` so both answers come from
@@ -359,7 +358,6 @@ order-independence and scaling) are `grounded_forcing_out_test`'s.
 
 Limits, none of them silent:
 
-* **One labeling at a time**, because belief is global — the trade above.
 * **`sentexes-matching` reports the inherited background missing** — the caveat above.
   It is context-exact, so it shows a labeled context's own extent and nothing it sees
   through `genlCx`. It holds in the base context too; a labeled context is only where

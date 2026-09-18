@@ -58,6 +58,7 @@
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.solve :as solve]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.wiring :as wiring]))
 
 ;; The below-core read of a context's stored extent — all records, believed or not
@@ -109,7 +110,7 @@
   happens to share the naming is never written into (the marker keeps it out of
   rediscovery, this keeps it out of materialization)."
   [kb into-cx n]
-  (let [existing (set (tax/contexts (:taxonomy kb)))
+  (let [existing (set (tax/contexts (reasoning/taxonomy kb)))
         taken?   (fn [c] (or (existing c) (pos? (reads/stored-count-in-context (:index kb) c))))]
     (->> (iterate inc 1)
          (map #(labeling-context into-cx %))
@@ -124,7 +125,7 @@
   contexts is inert by construction, so one that answers true is not a solve artifact —
   or is one somebody has since written into."
   [kb ctx]
-  (boolean (some #(jtms/in? (:tms kb) (:id %)) (stored-in kb ctx))))
+  (boolean (some #(jtms/in? (reasoning/tms kb) (:id %)) (stored-in kb ctx))))
 
 (defn- placed-under?
   "Does `ctx` carry the one `(genlCx ctx base)` edge a solve writes to place a labeling
@@ -170,7 +171,7 @@
   categories are disjoint, and the residue — a marker retracted *and* believed content
   written in — is indistinguishable from the user's context, which is what it has become."
   [kb base into-cx]
-  (let [existing (set (tax/contexts (:taxonomy kb)))
+  (let [existing (set (tax/contexts (reasoning/taxonomy kb)))
         taken?   (fn [c] (or (existing c) (pos? (reads/stored-count-in-context (:index kb) c))))
         slots    (take-while taken? (map #(labeling-context into-cx %) (iterate inc 1)))
         mine     (set (labeling-contexts kb into-cx))]
@@ -234,7 +235,7 @@
   never reaches here.  This one keeps the promise local to the destruction."
   [kb ctx base]
   (let [extent (stored-in kb ctx)]
-    (when (not-any? #(jtms/in? (:tms kb) (:id %)) extent)
+    (when (not-any? #(jtms/in? (reasoning/tms kb) (:id %)) extent)
       (doseq [s extent]
         (wiring/retract-sentex kb (:id s)))
       (when base
@@ -273,7 +274,7 @@
   so an `:inert` rule stays available — this run is the fourth consumer of a rule's
   firing beside the three chainers, and it reads rules by the same rule they do."
   [kb base]
-  (for [ctx (distinct (cons base (tax/context-up (:taxonomy kb) base)))
+  (for [ctx (distinct (cons base (tax/context-up (reasoning/taxonomy kb) base)))
         s   (stored-in kb ctx)
         :when (and (rules/assumption? s) (res/rule-believed? kb (:id s)))]
     s))
@@ -338,7 +339,7 @@
        (= (first s1) (first s2))
        (= (second s1) (second s2))
        (not= (nth s1 2) (nth s2 2))
-       (tax/has-prop? (:taxonomy kb) :functional (first s1) base)))
+       (tax/has-prop? (reasoning/taxonomy kb) :functional (first s1) base)))
 
 (defn- disjoint-clash?
   "Two unary type memberships of the same individual whose types are disjoint —
@@ -407,7 +408,7 @@
   constraint rule too but grounds to a solver cardinality atom, not a conjunctive nogood,
   so `cardinality-rules` takes those and this excludes them."
   [kb base]
-  (for [ctx (distinct (cons base (tax/context-up (:taxonomy kb) base)))
+  (for [ctx (distinct (cons base (tax/context-up (reasoning/taxonomy kb) base)))
         s   (stored-in kb ctx)
         :when (and (rules/constraint? s) (not (rules/cardinality-of s))
                    (res/rule-believed? kb (:id s)))]
@@ -562,7 +563,7 @@
   "Every **believed** cardinality rule visible from `base` — the `constraint-rules`
   counterpart for the rules that carry a `cardAtMost` / `cardAtLeast` marker."
   [kb base]
-  (for [ctx (distinct (cons base (tax/context-up (:taxonomy kb) base)))
+  (for [ctx (distinct (cons base (tax/context-up (reasoning/taxonomy kb) base)))
         s   (stored-in kb ctx)
         :when (and (rules/cardinality-of s) (res/rule-believed? kb (:id s)))]
     s))
@@ -684,6 +685,9 @@
     (let [ta         (System/nanoTime)
           translated (edge/translate program {:tiebreak? false :keep-belief? keep-belief?})
           tb         (System/nanoTime)
+          ;; the backend reads whether the program has an objective: with none (`:sat` and
+          ;; no soft constraint) it stops at the first model, and with one it streams
+          ;; improving models, which a soft constraint under `:sat` still needs
           result     (solver/solve translated :label)
           tc         (System/nanoTime)]
       {:optima       (if (= :unsat (:status result)) [] [(edge/kept-of translated result)])

@@ -6,7 +6,7 @@
   job holds, a cancellation that never interrupts a job writing a KB, and a report that
   outlives the job without outliving its usefulness."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
-            [vaelii.host.jobs :as jobs]))
+            [vaelii.browser.jobs :as jobs]))
 
 ;; The registry is process-global, so every test starts and ends with it empty.
 (use-fixtures :each (fn [f] (jobs/reset-registry!)

@@ -31,6 +31,7 @@
             [vaelii.impl.skolem :as skolem]
             [vaelii.impl.special :as special]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.violations :as violations]))
 
 (def default-chain-opts
@@ -219,7 +220,7 @@
 
   One set read for a KB that declares no closed extent, which is the common one."
   [kb antes]
-  (rules/closed-extent-antecedents (:taxonomy kb) antes))
+  (rules/closed-extent-antecedents (reasoning/taxonomy kb) antes))
 
 (defn closed-extent-blocks?
   "Is a firing blocked because one of its withheld negative antecedents does **not** hold
@@ -347,7 +348,7 @@
   rules it moved (`inherit/rejoin-rules`), and a datum arriving later triggers them
   afresh, both through this gate.  `derive-conclusion` resets the cache when a placed
   conclusion **roots** at a declaration functor (`placed-functor`, since the conclusion
-  the join hands over may still be wearing an `ist` frame or a `not`), so the next ask
+  the join hands over may still be wearing a `not`), so the next ask
   pays the two reads once more and caches the true.  A declaration leaves only outside a
   run (`retract!`), so a cached true never goes stale inside one."
   nil)
@@ -364,15 +365,13 @@
 
 (defn- placed-functor
   "The functor a conclusion literal roots at **once it is placed**, which is not always
-  the functor it is written with.  An `(ist Ctx S)` names the context S goes into and
-  places S (`place-conseq`), and a negation roots under its positive body's predicate
+  the functor it is written with: a negation roots under its positive body's predicate
   (`kv/root-keys` — polarity lives in the record, so `(not (p a))` counts under `p` and
-  never under `not`).  So neither `ist` nor `not` is ever the answer here, and a
-  conclusion wearing either would otherwise be read as a functor no declaration uses."
+  never under `not`).  So `not` is never the answer here, and a conclusion wearing it
+  would otherwise be read as a functor no declaration uses."
   [c]
   (when (sequential? c)
-    (let [c (if (= sx/ist-functor (nm/functor c)) (nth c 2 nil) c)
-          f (nm/functor c)]
+    (let [f (nm/functor c)]
       (if (= sx/not-functor f) (nm/functor (kb/body-under-not c)) f))))
 
 (defn- note-placed-declaration!
@@ -436,7 +435,7 @@
           (some (fn [a]
                   (let [g (res/substitute a @bindings)]
                     (and (inherit/ground-goal? g)
-                         (not-any? #(jtms/in? (:tms kb) (first %))
+                         (not-any? #(jtms/in? (reasoning/tms kb) (first %))
                                    (res/matches-visible kb g pctx))
                          (not= :for (inherit/verdict kb g pctx)))))
                 as)))))
@@ -489,7 +488,7 @@
   here, and this runs per firing on the settle path, where a `filterv` over the rewrite
   rules per bound term is what an ungated version would cost."
   [kb bindings pctx]
-  (let [tx (:taxonomy kb)]
+  (let [tx (reasoning/taxonomy kb)]
     (if (and (nil? (tax/merged-term-pred tx)) (empty? (tax/rewrite-rules tx)))
       bindings
       (let [visible? (res/visible-supporter-fn kb pctx)]
@@ -499,7 +498,7 @@
   "Does a believed visibility `except` hide one of `antes` from `pctx`?  A derivation
   resting on an antecedent the conclusion's context cannot see is invalid there.
 
-  Asked per antecedent (`res/hidden-fn`) rather than against the materialized hidden set,
+  Asked per antecedent (`res/except-hidden-fn`) rather than against the materialized hidden set,
   because this runs once per placement and once per candidate justification, and a rule
   has two or three antecedents where an ancestor set can hide thousands of handles.  A nil
   predicate is the gate — a KB that hides nothing from `pctx` pays a deref and returns
@@ -508,7 +507,7 @@
   rests on its facts — this is what sweeps a hidden rule's conclusions
   (`special/recheck-except` carries the departure-side twin)."
   [kb antes pctx]
-  (if-let [hidden? (res/hidden-fn kb pctx)]
+  (if-let [hidden? (res/except-hidden-fn kb pctx)]
     (boolean (some hidden? antes))
     false))
 
@@ -599,7 +598,7 @@
   through the KB's `dimensionOf` / `conversionFactor` table, so `(quantityLessThan
   (QuantityFn 500 Gram) (QuantityFn 1 Kilogram))` holds *because* a gram is declared a
   thousandth of a kilogram, and a conclusion drawn from it has to go when that
-  declaration does.  Which provers can say this is `provers/SupportingProver`; the ones
+  declaration does.  Which provers can say this is `prover-types/SupportingProver`; the ones
   that cannot report empty, and the protocol is what makes that the defensible answer rather than
   merely the convenient one.
 
@@ -647,7 +646,7 @@
 ;; deferred path has nothing to report and correctly reports nothing: `(lessThan 1 2)` is
 ;; a function of the bindings, where `(partOfRegion A C)` is a function of what is
 ;; *stored*.  Which half a deferred literal falls in is not the join's guess —
-;; `provers/SupportingProver` is where a prover says so, and a measure comparison, whose
+;; `prover-types/SupportingProver` is where a prover says so, and a measure comparison, whose
 ;; answer moves with the unit table, is in the same business as this section.
 ;;
 ;; This is **union, not replacement**.  Entailment subsumes assertion — an asserted
@@ -863,7 +862,7 @@
 ;; computation and not only by matching, beside the qualitative, the computed and the
 ;; preserving one — and it is the one whose roster is a taxonomy read: which predicates
 ;; `TransitivePredicateProver` answers is whatever *this* KB declared, so it cannot be a set
-;; on the prover the way a unit table's predicates are (`provers/SupportingProver`, and the
+;; on the prover the way a unit table's predicates are (`prover-types/SupportingProver`, and the
 ;; empty rosters there).
 ;;
 ;; The join without it sees stored edges only, so `(implies (and (causes ?a ?c) …) …)`
@@ -898,7 +897,7 @@
   `pred ∈ genls*(cpred)` (which is reflexive, catching the `pred = cpred` closure rule),
   never `pred ∈ specs*(cpred)`."
   [kb pred cpred]
-  (let [tx (:taxonomy kb)]
+  (let [tx (reasoning/taxonomy kb)]
     (boolean (and cpred (symbol? cpred)
                   (contains? (tax/genls-global tx cpred) pred)))))
 
@@ -920,7 +919,7 @@
        (let [f (nm/functor ante)]
          (and (symbol? f) (not (sx/variable? f))
               (not (contains? provers/transitive-predicates f))
-              (contains? (tax/props (:taxonomy kb) :transitive) f)
+              (contains? (tax/props (reasoning/taxonomy kb) :transitive) f)
               (not (walks-its-own-conclusion? kb f cpred))))))
 
 (defn- transitive-source-preds
@@ -932,7 +931,7 @@
   holding only a hop the reader cannot see is enumerated, walks nothing it can see, and
   answers nothing."
   [kb pred]
-  (let [tx (:taxonomy kb)]
+  (let [tx (reasoning/taxonomy kb)]
     (into (tax/specs-global tx pred) (tax/inverses-under tx pred))))
 
 (defn- mirrored-antecedent?
@@ -956,7 +955,7 @@
   (and (sequential? ante) (= 3 (count ante))
        (let [f (nm/functor ante)]
          (and (symbol? f) (not (sx/variable? f))
-              (let [tx    (:taxonomy kb)
+              (let [tx    (reasoning/taxonomy kb)
                     specs (res/sub-predicates kb f nil)]
                 (boolean (some #(contains? specs %) (tax/props tx :symmetric))))))))
 
@@ -975,7 +974,7 @@
   (when (and (sequential? fact) (= 3 (count fact)))
     (let [f (nm/functor fact)]
       (when (and (symbol? f) (not (sx/variable? f))
-                 (contains? (tax/props (:taxonomy kb) :symmetric) f))
+                 (contains? (tax/props (reasoning/taxonomy kb) :symmetric) f))
         (let [m (sx/mirror-literal fact)]
           (when-not (= m fact) m))))))
 
@@ -1118,7 +1117,7 @@
   arithmetic lists the rule handle alone, which is the honest reading.  Inventing a
   placeholder there would be worse than omitting it: `retract!` withdraws a conclusion by
   walking its justifications' antecedents, so a handle naming nothing retractable is a
-  support that can never be taken away.  For a `provers/SupportingProver` it is *not*
+  support that can never be taken away.  For a `prover-types/SupportingProver` it is *not*
   nothing, and omitting it would be the mirror mistake — a measure comparison holds
   because of a stored `conversionFactor` no other antecedent names, so a firing that
   omitted it would keep its conclusion after that row was retracted.
@@ -1258,7 +1257,7 @@
   [kb trigger-handle]
   (when-let [^java.util.Map arrivals *agenda-arrivals*]
     (when-let [at (.get arrivals trigger-handle)]
-      (when (jtms/in? (:tms kb) trigger-handle)
+      (when (jtms/in? (reasoning/tms kb) trigger-handle)
         (let [at (long at)]
           (fn [h] (let [a (.get arrivals h)] (or (nil? a) (<= (long a) at)))))))))
 
@@ -1393,8 +1392,8 @@
              (fn [one]
                (let [[h s new?] (kb/find-or-create-sentex kb one pctx)]
                  (when new? (special/index-rule-sentex kb h s))
-                 (jtms/ensure-node (:tms kb) h depth)
-                 (when-not (jtms/has-justification? (:tms kb) (:name rule) all-antes h)
+                 (jtms/ensure-node (reasoning/tms kb) h depth)
+                 (when-not (jtms/has-justification? (reasoning/tms kb) (:name rule) all-antes h)
                    (let [jid  (p/next-id (:records kb))
                          ;; content order is bought here, inside the dedup guard, for
                          ;; `place-fact-conclusion`'s reason: the question above is
@@ -1402,7 +1401,7 @@
                          just (jtms/->just jid (:name rule) (kb/antecedent-order kb all-antes)
                                            h bindings strength)]
                      (p/put-justification (:records kb) just)
-                     (jtms/add-justification (:tms kb) just)))
+                     (jtms/add-justification (reasoning/tms kb) just)))
                  (if new? [h] []))))
             minted))))
 
@@ -1413,23 +1412,30 @@
   declared to lift into.
 
   The definitional constraints — arg types, disjointness, functionality — hold of
-  *derived* content as much as of asserted content; a rule that concludes
-  `(cat Rex)` where `(dog Rex)` is believed and the two are declared disjoint has
-  concluded something the KB says cannot be.  They are checked here, on the
-  derivation path, exactly as `assert-one` checks them on the assert path.  So does
-  stratification, for the one conclusion that can break it: a derived `genl` /
-  `genlCx` edge that would close a cycle through negation.
+  *derived* content as much as of asserted content, and they are checked here, on the
+  derivation path, through `checks/constraint-admission`.  So is stratification, for
+  the one conclusion that can break it: a derived `genl` / `genlCx` edge that would
+  close a cycle through negation.
 
-  A failure is **dropped and recorded**, never thrown: chaining is a fixpoint and
-  must not abort halfway through it, and an exception escaping a rule firing would
+  A clash with a second believed sentex — disjointness, functionality, asymmetry — is
+  **placed**, not dropped.  A rule that concludes `(cat Rex)` where `(dog Rex)` is
+  believed and the two are declared disjoint stores the conclusion, and `settle` weighs
+  the pair: the stronger defeat class wins, and an equal `:default` pair stays believed
+  and is reported by `core/contradictions`.  `assert` refuses the same pair, because a
+  caller is there to be told; a firing has no caller.
+
+  A violation with no second side is **dropped and recorded**, never thrown: a malformed
+  sentence, an argument constraint, or a stratification cycle.  Chaining is a fixpoint
+  and must not abort halfway through it, and an exception escaping a rule firing would
   make the resulting belief set depend on which rule happened to fire first.  The
   conclusion is skipped (no sentex, no justification) and the violation lands in the
   KB's `violations` atom, readable with `core/violations`.
 
-  Dropping rather than arbitrating is deliberate, and docs/nmtms.md holds the reason:
-  an argument constraint convicts by the **absence** of a path from the argument's types
-  to the constraint type, so there is no second sentex to weigh the conclusion against
-  and nothing for a defeat class to compare.  A nogood needs two sides; this has one."
+  Dropping an argument-constraint violation rather than arbitrating it is deliberate, and
+  docs/nmtms.md holds the reason: an argument constraint convicts by the **absence** of a
+  path from the argument's types to the constraint type, so there is no second sentex to
+  weigh the conclusion against and nothing for a defeat class to compare.  A nogood needs
+  two sides; this has one."
   [kb rule conseq pctx all-antes depth bindings strength]
   (let [existing (kb/find-sentex-handle kb conseq pctx)
         ;; Checked only when the conclusion is **new**.  Re-deriving a sentence already
@@ -1465,8 +1471,8 @@
         ;; the derivation-path choke point: a derived genl edge reaches the closure,
         ;; and a derived fact is a re-check trigger like an asserted one
         (when new? (special/derived-sentex-added kb s h))
-        (jtms/ensure-node (:tms kb) h depth)
-        (when-not (jtms/has-justification? (:tms kb) (:name rule) all-antes h)
+        (jtms/ensure-node (reasoning/tms kb) h depth)
+        (when-not (jtms/has-justification? (reasoning/tms kb) (:name rule) all-antes h)
           (let [jid  (p/next-id (:records kb))
                 ;; **The content sort is paid here and nowhere earlier.**  `all-antes`
                 ;; arrives in the order the join built it; the record about to be
@@ -1479,7 +1485,7 @@
                 just (jtms/->just jid (:name rule) (kb/antecedent-order kb all-antes)
                                   h bindings strength)]
             (p/put-justification (:records kb) just)
-            (jtms/add-justification (:tms kb) just)))
+            (jtms/add-justification (reasoning/tms kb) just)))
         ;; Everything a conclusion means beyond itself, in the order `core/assert-one`
         ;; runs the same list — the three ways it merges, the copy a decontextualized
         ;; predicate takes, and what the argument constraints entail — because each is a
@@ -1660,7 +1666,7 @@
   related at all is a property of the KB, and *which* contexts can see the relating
   edges is `subsumption-support`'s question, asked once per placement."
   [kb matched record-of]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (into []
           (comp (keep (fn [[ak h]]
                         (when-let [s (:sentence (record-of h))]
@@ -1699,9 +1705,9 @@
   ;; rests on the *strongest* path relating the two functors, not the shortest, so its
   ;; conclusion is capped at that path's floor.  `supporter-class` is the live JTMS
   ;; defeat-class of each edge supporter, read here where the tms is in hand.
-  (let [supporter-class #(jtms/defeat-class (:tms kb) %)]
+  (let [supporter-class #(jtms/defeat-class (reasoning/tms kb) %)]
     (reduce (fn [acc [sub super]]
-              (if-let [hs (tax/reach-support (:taxonomy kb) :genl sub super vantage supporter-class)]
+              (if-let [hs (tax/reach-support (reasoning/taxonomy kb) :genl sub super vantage supporter-class)]
                 (into acc hs)
                 (reduced nil)))
             []
@@ -1751,7 +1757,7 @@
   elements.  `excepted-anywhere?` is the coarse gate, so the ordinary placement path
   still takes no ancestor set walk when none of this firing's supporters is targeted."
   [kb handles contexts]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (if (some #(res/excepted-anywhere? kb %) handles)
       (let [common  (tax/common-descendants tax contexts)
             visible (filter (fn [ctx]
@@ -1766,15 +1772,7 @@
   in that handle list — the `genl` edges the match subsumed through, and the `genlCx`
   edges the placement sees its ingredients over.
 
-  An **`(ist Ctx S)` consequent names its own context**, and that is an escape hatch
-  rather than a computed placement, so there is nothing to derive — the target is fixed
-  and the only question is whether it can reproduce the subsumption, asked from `Ctx`
-  itself so the edges it names are the ones it can see.  No witness there, no placement.
-  The rule and the facts are **not** ingredients of that placement, so the conclusion
-  does not rest on `Ctx` seeing them; it rests on `Ctx` seeing the `genl` supporters it
-  was held to, and those are the contexts witnessed.
-
-  Everything else is derived from the firing's three ingredients — the rule, the
+  The placement is derived from the firing's three ingredients — the rule, the
   antecedent facts, and the taxonomy the match climbed — by the one rule that has always
   governed the first two: the **maximal contexts that see all of them**.  The edges enter
   that computation as their supporters' asserting contexts.
@@ -1794,52 +1792,38 @@
   firing whose candidates *some* of which see a path keeps only those, and does not also
   descend below the others.  Placing under both would need the union re-maximalized, and
   the case — incomparable candidates disagreeing about one edge — is exotic."
-  [kb rule raw-c ist? links fact-handles fact-ctxs]
-  (let [tax (:taxonomy kb)]
-    (if ist?
-      ;; A **query context** is refused here, not merely unresolved.  `nm/context?` says
-      ;; yes to `CxNothing` and its two siblings — they are spelled like contexts and read
-      ;; as roles only at the entry points — so an `(ist CxNothing S)` consequent would place a
-      ;; perfectly ordinary conclusion into a symbol that names a way of *reading*.  Every
-      ;; write entry point already refuses one; this is the entry point that fires rather than asserts,
-      ;; and it is the one that could make `CxNothing` answer a fact.
-      (let [c  (when (and (nm/context? (second raw-c))
-                          (not (nm/query-context? (second raw-c))))
-                 (second raw-c))
-            hs (when c (subsumption-support kb links c))]
-        (if (and c hs)
-          [[c] {c (into (mapv first hs) (visibility-support tax c (keep second hs)))}]
-          [nil nil]))
-      (let [ingredients (cons (:context rule) fact-ctxs)
-            supporters  (cons (:rule-handle rule) fact-handles)
-            base        (exception-aware-placements kb supporters ingredients)]
-        (if (empty? links)
-          ;; no subsumption to witness, so the whole support map is the visibility one —
-          ;; and it is empty for the firing whose rule and facts are where the conclusion
-          ;; lands, which is nearly all of them
-          [base (reduce (fn [m b]
-                          (let [vs (visibility-support tax b ingredients)]
-                            (if (seq vs) (assoc m b vs) m)))
-                        {} base)]
-          (let [seeing (reduce (fn [m b]
-                                 (if-let [hs (subsumption-support kb links b)]
-                                   (assoc m b (into (mapv first hs)
-                                                    (visibility-support
-                                                     tax b (concat ingredients (keep second hs)))))
-                                   m))
-                               {} base)]
-            (if (seq seeing)
-              ;; `seeing` is the placement filter as well as the support map, and a
-              ;; subsumed firing always names at least one `genl` edge, so no entry of it
-              ;; is empty and the two readings cannot disagree
-              [(filterv seeing base) seeing]
-              (when-let [hs (subsumption-support kb links nil)]
-                (let [ectxs (concat ingredients (keep second hs))
-                      ps    (tax/maximal-common-descendant-contexts tax ectxs)
-                      ehs   (mapv first hs)]
-                  [ps (reduce (fn [m p]
-                                (assoc m p (into ehs (visibility-support tax p ectxs))))
-                              {} ps)])))))))))
+  [kb rule links fact-handles fact-ctxs]
+  (let [tax         (reasoning/taxonomy kb)
+        ingredients (cons (:context rule) fact-ctxs)
+        supporters  (cons (:rule-handle rule) fact-handles)
+        base        (exception-aware-placements kb supporters ingredients)]
+    (if (empty? links)
+      ;; no subsumption to witness, so the whole support map is the visibility one —
+      ;; and it is empty for the firing whose rule and facts are where the conclusion
+      ;; lands, which is nearly all of them
+      [base (reduce (fn [m b]
+                      (let [vs (visibility-support tax b ingredients)]
+                        (if (seq vs) (assoc m b vs) m)))
+                    {} base)]
+      (let [seeing (reduce (fn [m b]
+                             (if-let [hs (subsumption-support kb links b)]
+                               (assoc m b (into (mapv first hs)
+                                                (visibility-support
+                                                 tax b (concat ingredients (keep second hs)))))
+                               m))
+                           {} base)]
+        (if (seq seeing)
+          ;; `seeing` is the placement filter as well as the support map, and a
+          ;; subsumed firing always names at least one `genl` edge, so no entry of it
+          ;; is empty and the two readings cannot disagree
+          [(filterv seeing base) seeing]
+          (when-let [hs (subsumption-support kb links nil)]
+            (let [ectxs (concat ingredients (keep second hs))
+                  ps    (tax/maximal-common-descendant-contexts tax ectxs)
+                  ehs   (mapv first hs)]
+              [ps (reduce (fn [m p]
+                            (assoc m p (into ehs (visibility-support tax p ectxs))))
+                          {} ps)])))))))
 
 ;; ---- a refused firing is remembered as bindings --------------------------
 ;;
@@ -1911,7 +1895,7 @@
   (let [rh    (:rule-handle rule)
         entry {:conseq conseq :pctx pctx :antes antes :handles handles :bindings bindings
                :max-depth max-depth}]
-    (swap! (:refused kb)
+    (swap! (reasoning/refused kb)
            (fn [m]
              (let [cur (get m rh)]
                (cond
@@ -1934,7 +1918,9 @@
   [kb rule antes bindings pctx]
   (cond
     (nil? bindings)                                                 :post-join
-    (some #(exception-holds? kb % bindings pctx) (:excepts rule))    :exception
+    (some #(and (provers/exception-visible-from? kb pctx %)
+                (exception-holds? kb (:query %) bindings pctx))
+          (:excepts rule))                                          :exception
     (naf-blocks? kb (:naf rule) bindings pctx)                       :naf
     (closed-extent-blocks? kb (:closed-extent rule) bindings pctx)   :naf
     (antecedent-hidden? kb antes pctx)                               :hidden))
@@ -1955,8 +1941,8 @@
 
 (defn- place-conseq
   "Place one ground conclusion literal `raw-c` from a firing: resolve its placement
-  contexts — an `(ist Ctx S)` names its own, else the maximal contexts that see the
-  rule and all antecedent facts — and place it in each unless the rule's exception or a
+  contexts — the maximal contexts that see the rule and all antecedent facts — and
+  place it in each unless the rule's exception or a
   NAF antecedent blocks it there.  Returns the newly created handles.  A firing with no
   placement context is recorded like any other dropped conclusion, and one refused by a
   re-checkable block condition is recorded as a refusal (see above).
@@ -1966,17 +1952,14 @@
   a filter on it, and they join the antecedent list.  So do the `genlCx` supporters
   the placement sees its ingredients over: a placement is a claim about the ancestor set, and
   the conclusion may not outlive the edges that claim rests on."
-  [kb rule raw-c handles all-antes facts links depth max-depth bindings]
-  (let [ist?        (and (sequential? raw-c) (= sx/ist-functor (first raw-c)))
-        conseq      (if ist? (nth raw-c 2) raw-c)         ; (ist Ctx S) concludes S ...
-        fact-ctxs   (map :context facts)
-        [placements support] (placement-ingredients kb rule raw-c ist? links handles fact-ctxs)]
+  [kb rule conseq handles all-antes facts links depth max-depth bindings]
+  (let [fact-ctxs            (map :context facts)
+        [placements support] (placement-ingredients kb rule links handles fact-ctxs)]
     (if (empty? placements)
       ;; The join completed — every antecedent matched — and then the conclusion
       ;; evaporated: no context sees everything the firing rests on (sibling
-      ;; contexts with no common descendant, the taxonomy it climbed included), or
-      ;; an ist consequent named something that is not a context or an edge it cannot
-      ;; see.  "Possibly none" is a legitimate outcome of
+      ;; contexts with no common descendant, the taxonomy it climbed included).
+      ;; "Possibly none" is a legitimate outcome of
       ;; maximal-common-descendant-contexts, but a silent one reads as "the rule fired",
       ;; so it is recorded like any other dropped conclusion — naming the subsumption
       ;; when there was one, since "your context cannot see that genl edge" is a
@@ -2015,10 +1998,9 @@
                                            (seq links)
                                            (assoc :subsumed (mapv first links)
                                                   :would-place
-                                                  (vec (when-not ist?
-                                                         (tax/maximal-common-descendant-contexts
-                                                          (:taxonomy kb)
-                                                          (cons (:context rule) fact-ctxs))))))}]))
+                                                  (vec (tax/maximal-common-descendant-contexts
+                                                        (reasoning/taxonomy kb)
+                                                        (cons (:context rule) fact-ctxs)))))}]))
           [])
       ;; `exceptWhen`, `unknown`, and a visibility `except` all **block**: for a
       ;; placement one of whose exceptions holds, one of whose `(unknown S)` antecedents
@@ -2102,7 +2084,7 @@
   the fixpoint terminates (docs/skolem.md).  When the head is a conjunction the
   witness is shared across the conjuncts, which are placed one by one."
   [kb rule {:keys [bindings handles matched]} max-depth truncated]
-  (let [depth (inc (reduce max 0 (map #(jtms/depth (:tms kb) %) handles)))]
+  (let [depth (inc (reduce max 0 (map #(jtms/depth (reasoning/tms kb) %) handles)))]
     (if (> depth max-depth)
       (do (reset! truncated true) (when *tick* (*tick* 0)) {:new []})
       (let [raw0      (res/substitute (:consequent rule) bindings)
@@ -2162,12 +2144,13 @@
      ;; the conclusion is capped by its weakest antecedent; a `set/defaultRule`
      ;; introduces defeasibility, so its conclusions are always :default.
      :strength (if (:defeasible rsx) :default :monotonic)
-     ;; the `exceptWhen` exceptions — the queries of the belief-following meta-sentexes
-     ;; naming this rule, block-if-any (`provers/rule-exceptions`).  Fetched only when
-     ;; the cheap roster gate says the rule is watched, so an ordinary firing pays
-     ;; nothing (docs/exceptions.md).
+     ;; the `exceptWhen` exceptions — `{:context :query}` per believed meta-sentex
+     ;; naming this rule, block-if-any (`provers/rule-exception-entries`).  The context
+     ;; stays with each query because a placement context reads only the exceptions it
+     ;; sees.  Fetched only when the cheap roster gate says the rule is watched, so an
+     ;; ordinary firing pays nothing (docs/exceptions.md).
      :excepts (when (reads/watched-rule? (:index kb) handle)
-                (provers/rule-exceptions kb handle))
+                (provers/rule-exception-entries kb handle))
      ;; the negation-as-failure antecedents — `(unknown S)` literals, blocked the same
      ;; way an exception is, per placement context (docs/naf.md)
      :naf (rules/naf-antecedents rsx)
@@ -2189,7 +2172,7 @@
   "What is recorded against rule `rh`: a set of refusal entries, `:overflow`, or nil.
   `settle` reads this to decide which firings a queued rule owes a re-ask."
   [kb rh]
-  (get @(:refused kb) rh))
+  (get @(reasoning/refused kb) rh))
 
 (defn drop-refusal!
   "Retire one entry.  A refusal is dead when it fires, when its rule goes, or when the
@@ -2197,7 +2180,7 @@
   and a refusal must not resurrect a firing whose support left.  An `:overflow` record
   holds no entries to drop."
   [kb rh entry]
-  (swap! (:refused kb)
+  (swap! (reasoning/refused kb)
          (fn [m]
            (let [cur (get m rh)]
              (if (set? cur)
@@ -2221,7 +2204,7 @@
   the honest empty that comes back reads as *not excepted*."
   [kb rh entry]
   (let [rec (:records kb)
-        tms (:tms kb)
+        tms (reasoning/tms kb)
         rsx (p/get-sentex rec rh)]
     (if-not (and rsx (rules/rule? rsx) (rules/forward-sentex? rsx)
                  (every? (fn [h] (and (p/get-sentex rec h) (jtms/in? tms h)))
@@ -2259,11 +2242,11 @@
   nothing placed and nothing refused)."
   [kb]
   (let [rec (:records kb)
-        tms (:tms kb)
+        tms (reasoning/tms kb)
         idx (:index kb)
         rule-hs (into (sorted-set)
                       (mapcat #(reads/as-stored-rules-by-antecedent idx %))
-                      (keys @(:rule-antecedents kb)))]
+                      (keys @(reasoning/rule-antecedents kb)))]
     (into []
           (keep (fn [rh]
                   (when-let [rsx (p/get-sentex rec rh)]
@@ -2298,7 +2281,7 @@
                          ;; row can name the exception rather than only its category — forced
                          ;; only when a refusal actually rested on one (`@rview` is already
                          ;; realized by then)
-                         :excepts   (when exc? (vec (:excepts @rview)))
+                         :excepts   (when exc? (mapv :query (:excepts @rview)))
                          :status    (cond (pos? placed)              :fires
                                           (or over? (seq entries))   :blocked
                                           :else                      :silent)}))))
@@ -2324,7 +2307,7 @@
     :blocked []
     :dead    (do (drop-refusal! kb rh entry) [])
     :free    (let [rule  (rule-view kb rh)
-                   depth (inc (reduce max 0 (map #(jtms/depth (:tms kb) %) (:handles entry))))
+                   depth (inc (reduce max 0 (map #(jtms/depth (reasoning/tms kb) %) (:handles entry))))
                    ;; the bound the refusing run was configured with, kept on the entry;
                    ;; the default is the fallback for an entry a rebuild re-recorded
                    ;; before this field existed, never the silent ceiling it was
@@ -2424,7 +2407,7 @@
       (when (and (symbol? p) (not (sx/variable? p)))
         (not-empty
          (into #{} (mapcat #(reads/as-stored-rules-by-antecedent (:index kb) %))
-               (tax/genls-global (:taxonomy kb) p)))))))
+               (tax/genls-global (reasoning/taxonomy kb) p)))))))
 
 (defn- computed-rejoin-rules
   "The forward rules to re-join because `bfn` is a predicate a registered
@@ -2485,7 +2468,7 @@
   handful of set lookups — and its `inverse` arm adds no work at all until some KB
   declares an inverse, `inverses-under` answering empty off one map read until then."
   [kb fact bfn]
-  (let [tx       (:taxonomy kb)
+  (let [tx       (reasoning/taxonomy kb)
         walked?  #(and (symbol? %) (not (sx/variable? %))
                        (not (contains? provers/transitive-predicates %)))
         declared (when (and (sequential? fact) (= 2 (count fact))
@@ -2560,7 +2543,7 @@
         ;; keys for the specs `q` of its body's predicate, which is the direction a genl
         ;; edge carries through a negation — read off the rule roster rather than off
         ;; that closure (`rules/trigger-keys`)
-        preds    (rules/trigger-keys (:taxonomy kb) fact @(:rule-antecedents kb))
+        preds    (rules/trigger-keys (reasoning/taxonomy kb) fact @(reasoning/rule-antecedents kb))
         ;; the antecedent index is complete and posts on storage, so each candidate's own
         ;; record decides whether it may fire here — forward-capable, and believed, which
         ;; for a rule is `res/rule-believed?` rather than the `jtms/in?` a fact takes
@@ -2707,7 +2690,7 @@
           ;; it is made once at the elected spelling; and when the merge goes away the
           ;; spelling comes back through `settle`'s un-merge channel and fires then
           ;; (docs/nmtms.md).
-          (if (jtms/superseded? (:tms kb) datum)
+          (if (jtms/superseded? (reasoning/tms kb) datum)
             []
             (fire-rules-for kb datum max-depth truncated)))))))
 
@@ -2776,7 +2759,7 @@
       ;; before any datum behind it is processed, so the trigger of a pair is always the
       ;; one the ledger sorts later.
       (observe/with-handle-cache
-        (jtms/with-dedup-cache (:tms kb)
+        (jtms/with-dedup-cache (reasoning/tms kb)
           (binding [*tick* (fn [n]
                              (vswap! placed + n)
                              (when (and on-progress (due?)) (report!)))
@@ -2843,11 +2826,11 @@
   states the one narrow case it can differ from the live session in."
   [kb]
   (when-let [roster (seq (reads/watched-rules (:index kb)))]
-    (reset! (:refused kb) {})
+    (reset! (reasoning/refused kb) {})
     (let [live (filterv (fn [rh]
                           (let [rsx (p/get-sentex (:records kb) rh)]
                             (and rsx (rules/rule? rsx) (rules/forward-sentex? rsx)
-                                 (jtms/in? (:tms kb) rh))))
+                                 (jtms/in? (reasoning/tms kb) rh))))
                         roster)]
       (when (seq live) (chain kb live nil)))))
 
@@ -2867,15 +2850,15 @@
   concluded forty thousand things and a chain still joining are the same silence to
   somebody watching a load."
   [kb seed opts]
-  (swap! (:chain-stats kb) update :runs inc)
+  (swap! (reasoning/chain-stats kb) update :runs inc)
   (let [started (System/nanoTime)
         result  (chain kb seed opts)]
-    (swap! (:chain-stats kb) assoc :last result)
+    (swap! (reasoning/chain-stats kb) assoc :last result)
     ;; the counting is inside the payload, which Trove builds as a delay: a run that is
     ;; not being watched pays the `nanoTime` above and nothing else
     (trove/log! {:level :debug :id ::chain-run
                  :data (assoc result
-                              :run  (:runs @(:chain-stats kb))
+                              :run  (:runs @(reasoning/chain-stats kb))
                               :seed (count seed)
                               :ms   (quot (- (System/nanoTime) started) 1000000))})
     (when (:truncated? result)

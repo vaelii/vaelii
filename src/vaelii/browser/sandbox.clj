@@ -1,6 +1,6 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
-(ns vaelii.host.sandbox
+(ns vaelii.browser.sandbox
   "Somewhere safe to be wrong.
 
   A **sandbox** is a scratch context of one browser session's own, hung below
@@ -38,7 +38,7 @@
   half-escaped is easier to reason about than one with an entry point in it."
   (:refer-clojure :exclude [reset!])
   (:require [clojure.string :as str]
-            [vaelii.host.access :as v]))
+            [vaelii.browser.access :as v]))
 
 (def cookie-name "vaelii-sandbox")
 

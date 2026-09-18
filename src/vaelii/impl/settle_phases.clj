@@ -1,6 +1,7 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
-(ns vaelii.impl.settle-phases
+(ns ^{:clojure.tools.namespace.repl/load false :clojure.tools.namespace.repl/unload false}
+ vaelii.impl.settle-phases
   "Where a settle spends its **wall clock**, attributed to the four cost centres —
   one switch, off by default, free when off.
 
@@ -56,7 +57,9 @@
   region size is what a mean over settles hides — one root-edge retraction moves the
   whole graph and a leaf edge moves nothing — so the record is per settle and the
   percentiles are the caller's to take.  `vaelii.bench.settle-phases` is the caller that
-  has an opinion; nothing here formats."
+  has an opinion; nothing here formats.
+
+  A held namespace (`vaelii.impl.types.prover` states what that means): it defines the `Clock` type its instrument hints on, and requires no vaelii namespace, so the development browser's reloader never re-evaluates it, and an edit to it takes a restart."
   (:import [java.util ArrayDeque ArrayList HashMap]))
 
 ;; nil when off.  One atom rather than a flag beside a store, so a call site cannot read

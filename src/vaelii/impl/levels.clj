@@ -67,7 +67,8 @@
             [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
-            [vaelii.impl.taxonomy :as tax]))
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 (def level-table
   "The stack as data: what each level is called and the one mechanism it adds."
@@ -212,9 +213,15 @@
 (defn- level-2
   "Exact-sentence match in a single literal context: unification against the stored
   sentence, belief-filtered, with the symmetric mirror probed.  No inheritance of any
-  kind — the context is an exact trie token and a type predicate is not fanned out."
+  kind — the context is an exact trie token and a type predicate is not fanned out.
+
+  Belief is read as `context` reads it: a handle scoped-defeated at a vantage `context`
+  sees, or resting only on one, is dropped (`res/defeat-withdrawn-set`)."
   [kb goal context]
-  (map (fn [[h b s]] (stored-result 2 h b s)) (res/raw-match kb goal context)))
+  (let [w (res/defeat-withdrawn-set kb context)]
+    (map (fn [[h b s]] (stored-result 2 h b s))
+         (cond->> (res/raw-match kb goal context)
+           w (remove #(contains? w (first %)))))))
 
 (defn- level-3
   "Level 2 plus **context inheritance**: the goal is matched in every context the
@@ -233,14 +240,20 @@
   The `except` visibility filter is deliberately **not** here: it lives in
   `res/matches-visible`, which is level 4, so an excepted handle is matched at this
   level and gone at the next — that difference is level 4's contribution made visible,
-  and `an-excepted-fact-is-the-one-answer-that-falls-out-of-the-stack` pins it."
+  and `an-excepted-fact-is-the-one-answer-that-falls-out-of-the-stack` pins it.
+
+  A scoped defeat **is** here, because it is belief and not visibility: the view context
+  is the reader, and a handle defeated at a vantage it sees, or resting only on one, is
+  dropped from every ancestor's answer (`res/defeat-withdrawn-set`)."
   [kb goal context]
   (map (fn [[h b s]] (stored-result 3 h b s))
        (if (sx/variable? context)
          (res/raw-match kb goal context)
-         (res/without-retired kb context
-                              (res/lazy-mapcat #(res/raw-match kb goal %)
-                                               (tax/context-up (:taxonomy kb) context))))))
+         (let [w (res/defeat-withdrawn-set kb context)]
+           (cond->> (res/without-retired kb context
+                                         (res/lazy-mapcat #(res/raw-match kb goal %)
+                                                          (tax/context-up (reasoning/taxonomy kb) context)))
+             w (remove #(contains? w (first %))))))))
 
 (defn- level-4
   "Level 3 plus **predicate inheritance**: a unary type predicate is matched over its

@@ -924,11 +924,15 @@
 (defn dirty-marker-path ^String [root] (str root "/dirty.marker"))
 
 (defn token-log-present?
-  "True when `root` already holds a (non-empty) token dictionary — so a store must open
-  it to decode its frames, whether or not it still writes tokenized ones."
+  "True when `root` holds a `tokens.log` at all, an **empty** one included — so a store
+  must open the dictionary to decode its frames, whether or not it still writes tokenized
+  ones.  Emptiness is not absence: a `tokens.log` a crash tore to zero bytes leaves the
+  sentexes log's tokenized frames citing ids no dictionary holds, and opening the (empty)
+  dictionary is what turns each such frame into a typed `:damaged-dictionary` tombstone on
+  `rebuild-premises!`'s walk.  Gating the open on a non-empty length instead left
+  `open-record-store` with a nil dictionary and the tokenized decoder dereferencing it."
   [root]
-  (let [f (File. (str root) "tokens.log")]
-    (and (.exists f) (pos? (.length f)))))
+  (.exists (File. (str root) "tokens.log")))
 
 (defn dirty-marker-present?
   "True when a previous session's dirty marker survives — that session never ran a

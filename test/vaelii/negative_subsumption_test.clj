@@ -20,6 +20,7 @@
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rules :as rules]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh #(doto (tu/fresh) (tu/load-core!))))
@@ -92,14 +93,14 @@
       (let [body   (second pat)
             got    (proj (res/match-pattern kb pat '?ctx))
             manual (proj (mapcat (fn [f'] (res/raw-match kb (negate (cons f' (rest body))) '?ctx))
-                                 (tax/genls-global (:taxonomy kb) (first body))))]
+                                 (tax/genls-global (reasoning/taxonomy kb) (first body))))]
         (is (= manual got)
             (str "the negative fan diverged from the genl-union on " (pr-str pat)))))))
 
 (tu/deftest-kb super-predicates-is-the-genl-closure
   (tu/with-terms [dog_t animal_t]
     (v/assert kb (list 'genl dog_t animal_t) 'CxCore {:strength :monotonic})
-    (is (= (tax/genls-global (:taxonomy kb) dog_t) (res/super-predicates kb dog_t nil)))
+    (is (= (tax/genls-global (reasoning/taxonomy kb) dog_t) (res/super-predicates kb dog_t nil)))
     (is (contains? (res/super-predicates kb dog_t nil) animal_t))
     (is (not (contains? (res/sub-predicates kb dog_t nil) animal_t)))))
 
@@ -214,8 +215,8 @@
 (tu/deftest-kb trigger-keys-fan-the-negated-specs-off-the-rule-roster
   (tu/with-terms [dog_t animal_t other_t grounded A]
     (v/assert kb (list 'genl dog_t animal_t) 'CxCore {:strength :monotonic})
-    (let [tax'   (:taxonomy kb)
-          roster #(deref (:rule-antecedents kb))]
+    (let [tax'   (reasoning/taxonomy kb)
+          roster #(deref (reasoning/rule-antecedents kb))]
       (testing "with no rule reading a negation, an arriving negation names no key"
         (is (empty? (rules/trigger-keys tax' (negate (list animal_t A)) (roster)))))
       (v/assert-rule kb [(negate (list dog_t (symbol "?x")))]

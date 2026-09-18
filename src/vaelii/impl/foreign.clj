@@ -110,14 +110,16 @@
                              (str/join ", " (sort (map name (keys found)))))}))
     found))
 
-(def ^:private discovered
-  "The scan, cached — the classpath does not change under a running JVM.  `rescan` drops
-  it, for a repl that has just added one."
+(defonce ^{:private true
+           :doc "The scan, cached — the classpath does not change under a running JVM.  `rescan` drops
+  it, for a repl that has just added one."}
+  discovered
   (atom nil))
 
-(def ^:private registered
-  "Formats registered in code, which take precedence over the discovered ones: a caller
-  holding the reader is more specific than a manifest that happens to be on the path."
+(defonce ^{:private true
+           :doc "Formats registered in code, which take precedence over the discovered ones: a caller
+  holding the reader is more specific than a manifest that happens to be on the path."}
+  registered
   (atom {}))
 
 (defn rescan
@@ -190,6 +192,16 @@
                            (pr-str (into (sorted-set) (filter reader) (keys (formats))))
                            "; install a plugin that declares it"
                            " (see vaelii.impl.foreign)")
+                      {:type :no-foreign-reader :kind kind
+                       :available (into #{} (filter reader) (keys (formats)))}))))
+
+(defn directory-loader!
+  "The `:load-dir!` fn of the reader for `kind`, or throw `:no-foreign-reader` — for a
+  build with no plugin for `kind` (`reader!`'s refusal), and for a reader that loads no
+  directory.  `vaelii.core/load-foreign!` calls it."
+  [kind]
+  (or (:load-dir! (reader! kind))
+      (throw (ex-info (str "the " (name kind) " reader loads no directory")
                       {:type :no-foreign-reader :kind kind
                        :available (into #{} (filter reader) (keys (formats)))}))))
 

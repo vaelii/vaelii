@@ -18,6 +18,7 @@
             [vaelii.core :as v]
             [vaelii.host.core-context :as core-context]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]
             [vaelii.world :as world]))
 
@@ -75,15 +76,14 @@
 ;; ---- dot syntax driving a concrete forward rule -------------------------
 
 (deftest dot-syntax-drives-a-concrete-forward-rule
-  ;; The dotted rest-pattern is not just documentation: a real forward rule with
-  ;; a concrete head predicate copies parentOf pairs to kin pairs, and the ist
-  ;; consequent directs the derived fact into CxUniverse.
+  ;; A forward rule with a concrete head predicate and a dotted rest pattern copies
+  ;; parentOf pairs to kin pairs, placed in CxUniverse, where the rule and the fact are.
   (tu/with-neutral-kb [kb core-context-kb]
     (let [parentOf (tu/tmp-pred) kin (tu/tmp-pred) tom (tu/tmp-ind) bob (tu/tmp-ind)]
-      (v/assert kb (list 'implies (list parentOf '. '?args)
-                         (list 'ist 'CxUniverse (list kin '. '?args))) 'CxUniverse {:direction :forward})
+      (v/assert kb (list 'implies (list parentOf '. '?args) (list kin '. '?args))
+                'CxUniverse {:direction :forward})
       (v/assert kb (list parentOf tom bob) 'CxUniverse)   ; triggers the rule
-      (testing "the spliced consequent lands as a believed fact in the named context"
+      (testing "the spliced consequent lands as a believed fact"
         (is (= [(list kin tom bob)]
                (mapv :sentence (v/sentexes-matching kb (list kin tom bob) 'CxUniverse))))
         (is (v/ask? kb (list kin tom bob) 'CxUniverse)))
@@ -192,17 +192,6 @@
 
 ;; ---- regressions for defects the review found (now fixed) ----------------
 
-(deftest inert-dotted-rule-does-not-fire-on-a-global-chain
-  ;; The (set/inertRule (implies (?pred . ?args) (ist CxUniverse (?pred . ?args))))
-  ;; documentation rule must NOT copy facts into CxUniverse — forward chaining now
-  ;; respects rule direction (a backward/inert rule never forward-fires).
-  (tu/with-neutral-kb [kb core-context-kb]
-    (let [dog (tu/tmp-type) muffet (tu/tmp-ind)]
-      (v/assert kb (list dog muffet) 'CxCore)
-      (v/forward-chain kb)
-      (is (empty? (v/sentexes-matching kb (list dog muffet) 'CxUniverse)))
-      (is (empty? (v/sentexes-matching kb '(forced_decontextualized_predicate genlCx) 'CxUniverse))))))
-
 (deftest evaluate-is-error-safe
   (tu/with-neutral-kb [kb tu/fresh]
     (testing "a domain error (division / mod / quot by zero) yields no solution, not a throw"
@@ -253,7 +242,7 @@
       (is (seq (v/sentexes-matching kb '(forced_decontextualized_predicate genlCx) 'CxCore))))
     (testing "but no spindle members — those come with the starter"
       (is (empty? (v/sentexes-matching kb '(genlCx CxOrganism CxCore) '?ctx)))
-      (is (not (tax/sees? (:taxonomy kb) 'CxWell 'CxCore))))))
+      (is (not (tax/sees? (reasoning/taxonomy kb) 'CxWell 'CxCore))))))
 
 (deftest ^:slow a-user-defined-sibling-upper-context-supplies-universal-vocabulary
   ;; The spindle design lets a user add a sibling upper context — one that sees
@@ -273,9 +262,9 @@
       (v/assert kb (list 'arg priceOf 1 widget) widgets)
       (v/assert kb (list widget gadget)            widgets)
       (testing "the sibling sits among the upper spindle's members"
-        (is (tax/sees? (:taxonomy kb) widgets 'CxCore))
-        (is (tax/sees? (:taxonomy kb) 'CxUniverse widgets))
-        (is (tax/sees? (:taxonomy kb) 'CxNaturalWorld widgets)))   ; via Universe, through Well
+        (is (tax/sees? (reasoning/taxonomy kb) widgets 'CxCore))
+        (is (tax/sees? (reasoning/taxonomy kb) 'CxUniverse widgets))
+        (is (tax/sees? (reasoning/taxonomy kb) 'CxNaturalWorld widgets)))   ; via Universe, through Well
       (testing "the sibling's vocabulary is visible from a data context"
         (is (v/isa? kb gadget widget     'CxNaturalWorld))
         (is (v/isa? kb gadget 'artifact  'CxNaturalWorld)))          ; genl widget artifact
@@ -299,14 +288,14 @@
       (is (v/in? kb1 moral) "the moral was derived before the restart")
       (let [kb2 (tu/test-kb)]                     ; same dbs, empty memory
         (testing "before recover, the in-memory graph is empty"
-          (is (not (tax/sees? (:taxonomy kb2) 'CxWell 'CxCore)))
+          (is (not (tax/sees? (reasoning/taxonomy kb2) 'CxWell 'CxCore)))
           (is (not (v/in? kb2 moral))))
         (v/recover kb2)
         (testing "the spindle topology is rebuilt from the durable genlCx sentexes"
-          (is (tax/sees? (:taxonomy kb2) 'CxUniverse 'CxOrganism))
-          (is (tax/sees? (:taxonomy kb2) 'CxOrganism 'CxCore))
-          (is (tax/sees? (:taxonomy kb2) 'CxWell     'CxCore))     ; transitive, whole spindle
-          (is (tax/sees? (:taxonomy kb2) 'CxStories  'CxWell)))
+          (is (tax/sees? (reasoning/taxonomy kb2) 'CxUniverse 'CxOrganism))
+          (is (tax/sees? (reasoning/taxonomy kb2) 'CxOrganism 'CxCore))
+          (is (tax/sees? (reasoning/taxonomy kb2) 'CxWell     'CxCore))     ; transitive, whole spindle
+          (is (tax/sees? (reasoning/taxonomy kb2) 'CxStories  'CxWell)))
         (testing "a story character keeps its ontology type after recovery"
           (is (v/isa? kb2 'LionA 'mammal))
           (is (v/isa? kb2 'MouseA 'animal)))

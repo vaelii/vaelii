@@ -115,7 +115,7 @@
 (defn some-premise-id
   "A handle `store` has marked a premise, or nil — `some-sentex-id`'s twin.  Asked
   together with `some-justification-id` to tell a store that can be recovered into belief
-  from one that has to be loaded again (`vaelii.host.catalog`)."
+  from one that has to be loaded again (`vaelii.browser.catalog`)."
   [store]
   (if (satisfies? p/Tallying store)
     (p/a-premise-id store)

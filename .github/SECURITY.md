@@ -30,7 +30,7 @@ run where only their operator can reach them, and per-caller identity is a rever
 proxy's job. So the reports worth sending are about a boundary that fails to hold where
 it claims to, not about the absence of a login on a tool that never offered one.
 
-### The browser (`vaelii.host.web`, default port 3000)
+### The browser (`vaelii.browser.web`, default port 3000)
 
 - **It binds loopback**, and reaching it from another machine is the deliberate
   `--listen` flag on `-main`. Nothing else exposes it.

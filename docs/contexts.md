@@ -322,16 +322,15 @@ derived sentex in the **maximal** contexts that see the rule and all the matched
 facts: `taxonomy/maximal-common-descendant-contexts` = the most-general elements of the
 intersection of the facts' + rule's `context-down` closures. This can be several
 (incomparable maxima) or none (no common view ⇒ no justification). A universal rule
-firing on specific facts lands its conclusion in the specific context — unless the
-consequent is an `(ist Ctx S)` form, which directs it into `Ctx` explicitly (below) — a
-**query context** excepted, which is refused there as at every other write entry point, so the
-firing drops its conclusion rather than storing into a way of reading.
+firing on specific facts lands its conclusion in the specific context. A rule names no
+target of its own: an `(ist Ctx S)` consequent is refused
+([below](#ist-find-or-create-in-a-context)).
 
 The placement's own sightings are **antecedents of the firing**: the `genlCx` edges the
 conclusion's context sees the rule and the facts over join its justification, so
 retracting or defeating one withdraws what it licensed rather than leaving it stored in a
-context that can no longer see its reasons. The mechanism, its cost and its
-`(ist Ctx S)` exception are with the rest of the scoping rules in
+context that can no longer see its reasons. The mechanism and its cost are with the rest
+of the scoping rules in
 [The consumers](#the-consumers-and-what-each-of-them-may-reach) below.
 
 ### Enumerating the readers
@@ -385,7 +384,10 @@ The removal is **total**, not just for reads:
   `place-conseq` ask per placement). A firing that arrives *after* the
   except is never placed in the ancestor set; a late except sweeps what already fired; and
   retracting the except **re-derives** what it was hiding. A conclusion placed *above*
-  the ancestor set (a context that does not see the except) is untouched.
+  the ancestor set (a context that does not see the except) stays stored and believed
+  there. A read from a context that sees the except does not find that conclusion when
+  every justification it has rests on a hidden handle (`res/withdrawal`,
+  [nmtms.md](nmtms.md#a-defeat-is-scoped-to-its-vantage)).
 - **Rules.** `H` may itself be a rule — a firing rests on its rule exactly as it
   rests on its facts (the rule handle is in the stored justification), so excepting a
   rule sweeps its conclusions from the ancestor set, blocks late firings there, and revives
@@ -428,12 +430,6 @@ Ctx. `(ist Ctx S)` is **not** stored as a sentex; given to `assert` (or via
 - `contexts-of kb S` — the contexts S is asserted in.
 - `find-sentexes kb S` — any sentex containing S (via the term index).
 
-**ist in a rule consequent.** A rule whose consequent is `(ist Ctx S)` places `S`
-into the named context `Ctx` instead of the computed placement — overriding the
-default maximal-contexts rule. `Ctx` may be a variable bound by an antecedent (e.g.
-`(genlCx ?c CxUniverse) ⇒ (ist ?c ...)`). The rule is indexed by `S`'s predicate,
-not by `ist`, and range-restriction covers the inner sentence and the context slot.
-
 **ist in a query.** Every read taking a sentence and a context takes `(ist Ctx S)` as its
 goal, asking `S` in `Ctx` with the **named context winning over the argument** — the same
 resolution `assert` makes, so one form means one thing on both sides of the KB. That is
@@ -454,32 +450,47 @@ like a true negative: a wrong arity is `assert`'s own `:shape`, and an `(ist …
 as a **conjunct** of a join is `:not-well-formed`, a join's conjuncts sharing their
 bindings and so having no per-literal context. Ask the whole conjunction in `Ctx` instead.
 
-**ist places, and never reads on a rule's behalf.** There is no `ist` on the antecedent
-side: a rule cannot qualify a premise by the context to read it from, and `(ist Ctx S)` in
-antecedent or
-`exceptWhen` position is refused as `:not-well-formed`. Such a literal is indexed and
-matched under the functor `ist`, which no sentex carries, so it satisfies nothing — and
-the way that falls out depends on the frame it sits in. A positive antecedent is never
-satisfied and the rule cannot fire; an `exceptWhen` query never matches, so the guard
-never guards and the conclusion it was written to block stands believed; an `(unknown
-(ist …))` is satisfied by that same emptiness, so the rule fires unconditionally. The
-middle two are why this is a refusal rather than an inert shape: a rule that does nothing
-announces itself, and a guard that passes everything does not.
+**A rule is refused `ist` in every position.** `(ist Ctx S)` as an antecedent, an
+`exceptWhen` query, a NAF body or a consequent is `:not-well-formed`
+(`sentex/ist-rule-problem`), and the reason differs by position.
 
-The reading a rule wants is that `S` be **visible** where it is stated, which is what the
+As a read, the literal is indexed and matched under the functor `ist`, which no sentex
+carries, so it satisfies nothing — and the way that falls out depends on the frame it
+sits in. A positive antecedent is never satisfied and the rule cannot fire; an
+`exceptWhen` query never matches, so the conclusion it was written to block stands
+believed; an `(unknown (ist …))` is satisfied by that same emptiness, so the rule fires
+unconditionally. The middle two are why this is a refusal rather than an inert shape: a
+rule that does nothing announces itself, and an exception that blocks nothing does not.
+
+As a consequent, the frame would place the conclusion in `Ctx` instead of the maximal
+contexts that see the rule and the facts, whether or not `Ctx` sees either. Three
+properties fail with it:
+
+- `Ctx` believes a sentex whose justification rests on handles `Ctx` cannot read. The
+  context-scoping property fails on the write side.
+- The rule's `exceptWhen` query is evaluated in the placement context, so it runs in
+  `Ctx` and misses the facts stated where the rule is. An exception holding beside the
+  rule does not block the conclusion.
+- The backward chainers read only the rules the asking context sees
+  (`res/rule-visible-from?`), so a backward rule with the same consequent answers
+  nothing where the forward rule stored an answer. A rule's direction would change what
+  the KB believes.
+
+The reading a rule wants is that `S` be **visible** in some context, which is what the
 two mechanisms below this section say — `(decontextualized_predicate P)` takes every
-`(P ...)` into CxUniverse, which every context sees, and a `genlCx` edge puts
-`Ctx` in the rule's own ancestor set. Under either the premise is written plainly, and it is the
-`genlCx` topology rather than a per-rule annotation that decides what is readable
-from where. `sentex/ist-read-problem` carries the refusal and names both.
+`(P ...)` into CxUniverse, which every context sees, and a `genlCx` edge puts `Ctx` in
+another context's ancestor set. Under either the literal is written plainly, and the
+`genlCx` topology rather than a per-rule annotation decides what is readable from where.
+An `ist` into a context that already sees the rule and the facts adds nothing, because
+that context inherits the conclusion from the maximal placement above it.
 
-**Why the query takes what the antecedent is refused**, since it is one form treated two
-ways: the query grants no visibility the context argument did not already grant.
-`(sentexes-matching kb S CxA)` has always answered `CxA`'s facts from anywhere,
-and `(ist CxA S)` is a spelling of it — the caller asking about `CxA` has said
-so. A rule antecedent is the other case: nobody asked, the rule's own context may not see
-`Ctx`, and what comes back decides *belief* rather than answering one caller.
-`context_scoping_test` pins both halves.
+**Why the query takes what the rule is refused**, since it is one form treated two ways:
+the query grants no visibility the context argument did not already grant.
+`(sentexes-matching kb S CxA)` has always answered `CxA`'s facts from anywhere, and
+`(ist CxA S)` is a spelling of it — the caller asking about `CxA` has said so. A rule is
+the other case: nobody asked, the rule's own context may not see `Ctx`, and what comes
+back decides *belief* rather than answering one caller. `context_scoping_test` pins the
+query half and `check_test` pins the refusal.
 
 **The predicate meta-ontology** is a worked example. Predicates are reified as
 individuals under `predicate` (itself a `thing`): `unary_predicate` (types and
@@ -508,12 +519,10 @@ where it was stated. Retracting or defeating either the original or the declarat
 withdraws the copy through the JTMS, and declaring it retroactively lifts the `(P ...)`
 facts already present.
 
-The mechanism is documented in the KB in its own representation by an inert rule,
-`(set/inertRule (implies (?pred . ?args) (ist CxUniverse (?pred . ?args))))` — the
-dotted rest pattern quantifies over any predicate and its arguments (see
-[inference.md](inference.md)). It is `inertRule` because the behavior is implemented
-in code, so the rule is never indexed or fired; it only records the intent. The
-declaration is ordinary predicate metadata, read back with
+The mechanism is documented in the KB by the `comment` on `decontextualized_predicate` in
+`CxCore.txt`. It is implemented in code rather than as a rule, because a rule stating it
+would match every fact in the store and would name its target with an `ist` consequent,
+which a rule is refused. The declaration is ordinary predicate metadata, read back with
 `(has-prop? kb :decontextualized pred)`.
 
 **The mark itself is read globally, not through the asserting fact's ancestor set.** A
@@ -717,9 +726,8 @@ just as well when the feature is broken outright.
   drop whichever cannot see it. Only where *no* candidate can is the taxonomy binding,
   and the conclusion **descends** to the maximal contexts that see the edges too. A rule
   and a fact in one context, over a hierarchy stated in a sibling, therefore
-  conclude in the contexts below both instead of concluding nowhere. An `(ist Ctx S)`
-  consequent is not lowered: the target is named rather than derived, so it places
-  where the author said or not at all. A drop is a `:no-placement` entry naming the
+  conclude in the contexts below both instead of concluding nowhere. A drop is a
+  `:no-placement` entry naming the
   subsumption and the contexts that would have taken it but for the edges, since "your
   context cannot see that edge" is a different thing to fix from "your facts are in
   sibling contexts".
@@ -739,9 +747,8 @@ just as well when the feature is broken outright.
   which of the two the caller did. Retracting or defeating such an edge withdraws what it
   licensed, through the ordinary dependency-directed path and with no removal machinery
   of its own. The ingredient contexts are the rule's and the facts' — and the
-  named `genl` supporters', since seeing an edge is a sighting like any other — while an
-  `(ist Ctx S)` placement names the supporters' alone: the target is not derived from the
-  rule or the facts, so it does not rest on seeing them. **The ordinary firing pays one
+  named `genl` supporters', since seeing an edge is a sighting like any other. **The
+  ordinary firing pays one
   `=` per ingredient and reads nothing**: a rule and its facts in the placement's own
   context reach it reflexively, and a reflexive reach rests on nothing. `genlCx` is a
   `forced_decontextualized_predicate`, so an edge has exactly one supporter and the
@@ -868,7 +875,7 @@ just as well when the feature is broken outright.
   `transitive`, … — go the other way on purpose: they are `decontextualized_predicate`s,
   so a declaration is lifted to CxUniverse and read KB-wide.)
 
-An **`(ist Ctx S)` consequent remains an explicit escape hatch** and is not scoped —
-that is what it is for. A rule author writing one is choosing the target, the same way
-`forced_decontextualized_predicate` chooses CxUniverse; the engine holds them to
-the subsumption check above and nothing else.
+A rule cannot choose its own target: an `(ist Ctx S)` consequent is refused
+([ist](#ist-find-or-create-in-a-context)), so every forward conclusion is placed by the
+rule above. `forced_decontextualized_predicate` is the one way a sentence's storage
+context is fixed, and it fixes that context per predicate, for every writer.

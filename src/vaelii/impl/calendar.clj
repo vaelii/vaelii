@@ -44,9 +44,10 @@
   (:require [vaelii.impl.datetime :as dt]
             [vaelii.impl.interval :as interval]
             [vaelii.impl.point :as point]
-            [vaelii.impl.provers :as provers]
             [vaelii.impl.sentex :as sx]
-            [vaelii.impl.taxonomy :as tax]))
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.prover :as prover-types]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 ;; ---- the relation two calendar terms stand in ----------------------------
 
@@ -141,10 +142,10 @@
   scoping it to the theory that names `startOf` is what keeps a computed answer a claim
   this KB's reader can actually see, like every other read (docs/contexts.md)."
   [kb context]
-  (tax/has-prop? (:taxonomy kb) :transitive 'instantBefore context))
+  (tax/has-prop? (reasoning/taxonomy kb) :transitive 'instantBefore context))
 
 (defrecord CalendarProver []
-  provers/Prover
+  prover-types/Prover
   (applicable? [_ kb goal context]
     (and (some? (shape goal)) (time-vocabulary-visible? kb context)))
   ;; Exactly one, in every shape it claims: a check has the one empty solution or none,

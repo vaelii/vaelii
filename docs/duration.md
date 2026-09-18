@@ -173,7 +173,7 @@ two routes to one figure, and collapse to a point rather than a contradiction.
 Neither `totalDuration` nor `overlapDuration` is ever stored, so a forward rule joining on
 one draws its conclusion from facts no other antecedent names — the component `length`
 rows, the interval network, the metric constraints. `DurationProver` implements
-`provers/SupportingProver` so the firing names them: each answer comes back paired with the
+`prover-types/SupportingProver` so the firing names them: each answer comes back paired with the
 handles it was read from, and retracting any of them withdraws the conclusion through the
 ordinary relabel ([inference.md](inference.md), "What a computed answer rests on").
 

@@ -202,8 +202,12 @@
       (is (= 1 (count (v/contradictions kb)))
           "S and (not S) share a descendant context and the pair was not detected")
       (is (empty? (v/conflicts kb))))
-    (testing "and a known-true side wins outright rather than tying"
+    (testing "and a known-true side wins outright at the common descendant, and only there"
+      ;; CxBoth is the vantage, so the defeat reaches CxBoth and nothing above it: CxLeft
+      ;; never sees the denial and keeps its own claim (docs/nmtms.md, "A defeat is scoped
+      ;; to its vantage")
       (v/assert kb (list 'not (list flies Zed)) CxRight {:strength :monotonic})
-      (is (empty? (v/sentexes-matching kb (list flies Zed) '?ctx)))
-      (is (seq    (v/sentexes-matching kb (list 'not (list flies Zed)) '?ctx)))
+      (is (not (v/ask? kb (list flies Zed) CxBoth)))
+      (is (v/ask? kb (list 'not (list flies Zed)) CxBoth))
+      (is (v/ask? kb (list flies Zed) CxLeft))
       (is (empty? (v/contradictions kb))))))

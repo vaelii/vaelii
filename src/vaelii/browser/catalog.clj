@@ -1,6 +1,6 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
-(ns vaelii.host.catalog
+(ns vaelii.browser.catalog
   "What knowledge bases this process can load, and the lifecycle of loading one.
 
   Everything above the engine assumes it is holding *the* KB.  A browser that lists the
@@ -31,7 +31,7 @@
   **An entry** is a source that has been loaded, or is loading: a KB, a status, and a
   progress reading the loaders report into (`:on-progress`, reported by every loader —
   the corpus reader, `io.import/import-dump` and `io.generate/load-into`).  The running
-  half of that is not here: a load is a **job** (`vaelii.host.jobs`), which is what gives
+  half of that is not here: a load is a **job** (`vaelii.browser.jobs`), which is what gives
   it a thread of its own, the progress reading, the cancel flag and the report — so an
   entry carries the job's id and reads its status rather than keeping one.  One load runs
   at a time, since a load claims this process's writer, and cancelling one is cooperative:
@@ -56,18 +56,11 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [taoensso.trove :as trove]
+            [vaelii.browser.jobs :as jobs]
             [vaelii.core :as v]
             [vaelii.host.core-context :as core-context]
             [vaelii.host.io.generate :as generate]
-            [vaelii.host.jobs :as jobs]
-            [vaelii.host.starter :as starter]
-            [vaelii.impl.caches :as caches]
-            [vaelii.impl.capabilities :as cap]
-            [vaelii.impl.disk.backend :as disk]
-            [vaelii.impl.foreign :as foreign]
-            [vaelii.impl.io.import :as import]
-            [vaelii.impl.jtms :as jtms]
-            [vaelii.impl.protocols :as p])
+            [vaelii.host.starter :as starter])
   (:import (java.io File)))
 
 ;; ---- the shipped sources -------------------------------------------------
@@ -179,15 +172,15 @@
 
   **The size bound is the one thing that is an error.**  Discovery reads the manifest of
   every directory on the search path, so a file that merely *has* the right name decides
-  how much is pulled into a string; `import/read-edn-manifest` refuses past
-  `import/manifest-bytes`, and that refusal travels rather than reading as \"this is not
+  how much is pulled into a string; `v/read-manifest` refuses past its byte bound,
+  and that refusal travels rather than reading as \"this is not
   a KB\".  A gigabyte named `meta.edn` is either a mistake or an attempt, and both are
   worth a line naming the file — a silent skip would report the directory as holding
   nothing and say nothing about why.  Its other refusal, a manifest that is not readable
   EDN, is exactly the \"not a source\" case above and is answered as one."
   [^File f]
   (when (.isFile f)
-    (try (import/read-edn-manifest f)
+    (try (v/read-manifest f)
          (catch clojure.lang.ExceptionInfo e
            (if (= :manifest-too-large (:type (ex-data e))) (throw e) nil))
          (catch Exception _ nil))))
@@ -211,27 +204,6 @@
         (and (map? m) (:context-order m))                                :corpus
         (and (map? m) (or (:format-version m) (:variant m)))             :dump
         (some? (readable-edn (file-at (file-at d "records") "format.edn"))) :store))))
-
-(defn- store-backend
-  "The backend a store on disk wants, read off its layout — by what sits in `index/`
-  beside the durable records:
-
-    * a mapped index image (`index/trie.csr`, `vaelii.impl.disk.index-snapshot`) →
-      `:disk-snapshot`, which maps the image back rather than rebuilding — the fast open.
-    * a write-ahead-logged KV index (`index/kv.log`) → `:disk-log`, whose index is durable.
-    * no `index/` at all → `:disk-columnar`, which rebuilds the derived index from the
-      records on open (docs/storage.md).
-
-  Opening a store as the wrong one is not a slowdown but an emptiness: a store whose index
-  is derived, opened `:disk-log`, finds no durable index and surfaces no records — a
-  0-sentex KB over a full store, which is what this branch did for every store.
-  `:disk-dense` / `:disk-memory` share the columnar on-disk shape and read back correctly
-  as `:disk-columnar` — the index representation is the reader's to choose."
-  [path]
-  (cond
-    (.exists (file-at path "index" "trie.csr")) :disk-snapshot
-    (.exists (file-at path "index" "kv.log"))   :disk-log
-    :else                                       :disk-columnar))
 
 (defn- corpus-scale
   "How big a found corpus says it is — from the report its writer left beside it, which
@@ -551,11 +523,11 @@
 
 (defn install-memory-guard!
   "Attach the cache memory-pressure guard, feeding it this catalog's live KBs so the trim
-  reaches their per-KB caches (`vaelii.impl.caches/install-memory-guard!`).  The browser
+  reaches their per-KB caches (`vaelii.core/install-memory-guard!`).  The browser
   calls this at startup; the guard holds no roster of open KBs of its own, since the engine
   does not."
   []
-  (caches/install-memory-guard! {:kbs live-kbs}))
+  (v/install-memory-guard! {:kbs live-kbs}))
 
 (defn name-of
   "What to call `kb` — the name of the entry holding it, or nil for a KB this registry
@@ -699,7 +671,7 @@
         kb (:kb e)]
     (when-let [n (when (:records kb) (try (v/sentex-count kb) (catch Exception _ nil)))]
       (let [paged?   (= :disk-log (:backend (:where e)))
-            belief?  (jtms/any-node? (:tms kb))
+            belief?  (:network? (v/store-state kb #{:network?}))
             {:keys [index records tms]} resident-bytes-per-sentex
             parts    {:index   (* n index)
                       :records (if paged? 0 (* n records))
@@ -756,14 +728,13 @@
   succeeds and every answer is empty, the worst way for this to go wrong.  One record is
   enough to tell, and an empty store is fine (there is nothing to disagree about)."
   [kb path]
-  (when-let [h (cap/some-sentex-id (:records kb))]
-    (let [r (p/get-sentex (:records kb) h)]
-      (when-not (or (:sentence r) (:antecedent r))
-        (throw (ex-info (str "the store at " path " holds records this build cannot read"
-                             " — they thaw as " (pr-str (some-> r keys vec))
-                             ", not as sentexes.  It was written by a build whose record"
-                             " classes differ; re-import it from a dump.")
-                        {:type :unreadable-store :path path}))))))
+  (let [st (v/store-state kb #{:readable?})]
+    (when-not (:readable? st)
+      (throw (ex-info (str "the store at " path " holds records this build cannot read"
+                           " — they thaw as " (pr-str (:thawed-keys st))
+                           ", not as sentexes.  It was written by a build whose record"
+                           " classes differ; re-import it from a dump.")
+                      {:type :unreadable-store :path path})))))
 
 (defn- chain-asked
   "Forward-chain `kb` when the form asked for it, folding what it derived into `summary`.
@@ -818,37 +789,44 @@
                   (progress! {:phase :vocabulary :done 0 :note "CxCore"})
                   (core-context/load-into kb)
                   ;; the corpus reader ships as a plugin, so it is asked for rather
-                  ;; than required (vaelii.impl.foreign).  Its own `:chain?` chains per
+                  ;; than required (docs/foreign.md).  Its own `:chain?` chains per
                   ;; assertion, which is not what the option offers — `chain-asked` says
                   ;; why the pass belongs at the end
                   (chain-asked
                    kb params progress!
-                   ((:load-dir! (foreign/reader! :cyc-corpus))
-                    kb path
+                   (v/load-foreign!
+                    kb :cyc-corpus path
                     {:profile     (keyword (or (:profile params) "full"))
                      :bulk?       (boolean (:bulk? params))
                      :chain?      false
                      :on-progress progress!})))
       ;; passed through rather than coerced: `:belief?` has three values and a `boolean`
       ;; here would read `:stored` as `true` and run the recover the caller asked to defer
-      :dump     (import/import-dump (open!) path {:belief?     (belief-mode (:belief? params))
-                                                  :on-progress progress!})
+      :dump     (v/import! (open!) path {:belief?     (belief-mode (:belief? params))
+                                         :on-progress progress!})
       ;; a store is already a KB — opening it *is* the load.  Opening is not quick at
       ;; scale (the record log is scanned and the index rebuilt) and it reports nothing
       ;; while it runs, so say what is happening before going in.  The backend is read off
       ;; the store's own layout, never assumed: opening a `:disk-columnar` store as
-      ;; `:disk-log` surfaces no records at all (docs/storage.md).  `:recover? :auto`
-      ;; installs a `:disk-snapshot` store's belief image when it still describes the
-      ;; records and otherwise rebuilds — so opening carries belief when the params ask for
-      ;; it, and no second `recover` follows it.
-      :store    (let [backend  (store-backend path)
+      ;; `:disk-log` surfaces no records at all (docs/storage.md).
+      ;;
+      ;; `:recover? :background` is taken under `VAELII_DEV` only.  It installs an image an
+      ;; earlier engine build wrote and rebuilds belief on a daemon thread behind it, so a
+      ;; large store is browsable in seconds — worth the rebuild thread at a development
+      ;; prompt, where the alternative is waiting out a recover to look at one term.  A
+      ;; served browser takes `:auto` instead: it waits for the recover, so the KB it makes
+      ;; active holds belief this build derived, with no thread to abandon and no window in
+      ;; which writes are refused (docs/storage.md, "Rebuilding behind an image").
+      :store    (let [backend  (v/store-backend path)
                       recover? (boolean (:recover? params))
                       _  (progress! {:phase :open :done 0
                                      :note (if recover?
                                              "opening the store and recovering belief and the taxonomy"
                                              "opening the store — records only, recover to build belief")})
                       kb (v/open-kb {:backend backend :dir path
-                                     :recover? (if recover? :auto false)})]
+                                     :recover? (cond (not recover?)                false
+                                                     (v/switch-value "VAELII_DEV") :background
+                                                     :else                         :auto)})]
                   (note-kb! kb {:backend backend :dir path :attached? true})
                   (check-readable! kb path)
                   {})
@@ -879,6 +857,85 @@
                      (update :order #(vec (remove #{key} %)))
                      (update :active #(when (not= % key) %))))))
 
+(defn- start-load
+  "Start loading the source map `src` under `params`, as a job, and return the entry key.
+  `activate?` makes the entry active when the load finishes; without it the entry becomes
+  active only when no other entry is.  `load-source` and `load-dir` share this."
+  [src params activate?]
+  ;; Pick the key, check and claim under one monitor.  The already-loaded test and the
+  ;; `swap!` that registers the entry are two separate touches of `@state`, and two
+  ;; requests arriving together on Jetty's pool can each pass both — both spawn a
+  ;; loader, and two background loaders then write the same stores.  The key is picked
+  ;; inside for the same reason: a `:repeat?` source's suffix is one past the highest
+  ;; *registered*, so two generated loads keyed outside the monitor both read
+  ;; `generated#1` and the second's registration overwrites the first's.  A *second
+  ;; load* is refused a layer down, by the writer claim in the registry.
+  (locking start-monitor
+    (let [key (entry-key src)]
+      (when (entry key)
+        (throw (ex-info (str (:name src) " is already loaded — unload it first")
+                        {:type :already-loaded :key key})))
+      ;; The status and progress here are what an entry reads for the moment between being
+      ;; registered and its job's id landing on it — `with-job` prefers the job the instant
+      ;; there is one.  Not redundant: a caller rendering an entry in that window would
+      ;; otherwise be handed a nil status, and the page names it.
+      (swap! state (fn [s]
+                     (-> s
+                         (assoc-in [:entries key]
+                                   {:key key :source (dissoc src :options) :name (:name src)
+                                    :params params :status :running :started (now)
+                                    :progress {:phase :starting :done 0 :total (:total src)}})
+                         (update :order #(vec (distinct (conj % key)))))))
+      (try
+        (let [id (jobs/submit
+                  {:label      (str "Load " (:name src))
+                   :kind       :load
+                   ;; the KB does not exist yet — `run-load` opens it — so the claim is
+                   ;; made without naming it, and `write-blocked?` reads the entry for
+                   ;; the identity once there is one
+                   :writes     true
+                   :progress   {:phase :starting :done 0 :total (:total src)}
+                   :result-url "/kbs"
+                   :entry      key}
+                  (fn [progress!]
+                    ;; The entry outlives its job's report — a settled job ages out of the
+                    ;; registry after an hour — so the status the entry keeps *of its own*
+                    ;; has to be the settled one.  `with-job` prefers the job while there is
+                    ;; one and falls back to this; a fallback still reading `:running` is an
+                    ;; entry that never finishes loading, and two callers act on that: the
+                    ;; browser refuses every write to the KB (`write-blocked?`) and `unload!`
+                    ;; refuses `:still-stopping`, both of them for ever.
+                    (try
+                      (let [note-kb! (fn [kb where] (put-entry! key #(assoc % :kb kb :where where)))
+                            summary  (run-load src params progress! note-kb!)]
+                        ;; a cancelled or failed load leaves whatever had landed in its
+                        ;; stores; `unload!` is what takes those down
+                        ;; `:progress` settles with the status, as it does on the job
+                        ;; itself: the placeholder this entry registered with reads
+                        ;; `:starting`, and an hour on that is the only reading left
+                        ;; `stats` is a four-read census, so it runs BEFORE the swap —
+                        ;; a swap! fn must be cheap and retryable (`start-monitor`'s
+                        ;; own argument), and under contention it re-runs per retry
+                        (let [ks (some-> (get-in @state [:entries key]) :kb stats)]
+                          (put-entry! key #(assoc % :summary summary :stats ks
+                                                  :status :done :finished (now)
+                                                  :progress {:phase :done})))
+                        (swap! state (fn [s] (cond-> s (or activate? (nil? (:active s))) (assoc :active key))))
+                        (trove/log! {:level :info :id ::loaded
+                                     :msg (str "loaded KB " key) :data summary})
+                        summary)
+                      (catch Throwable t
+                        (put-entry! key #(assoc % :status (if (jobs/cancelled? t) :cancelled :failed)
+                                                :finished (now)
+                                                :error (or (.getMessage t) (str (class t)))))
+                        (throw t)))))]
+          (put-entry! key #(assoc % :job id))
+          key)
+        (catch Throwable t
+          ;; nothing is running, so the entry is a claim on a KB that will never exist
+          (drop-entry! key)
+          (throw t))))))
+
 (defn load-source
   "Start loading the source with id `source-id` under `params`, as a job.  Returns the
   entry key, or throws when the id names no source, the source is already loaded, or
@@ -889,85 +946,26 @@
   (the KB is queryable, and activated when nothing else is) or `:failed` / `:cancelled`."
   ([source-id] (load-source source-id {}))
   ([source-id params]
-   (let [src (or (source source-id)
-                 (throw (ex-info (str "no KB source " (pr-str source-id) " — the built-in"
-                                      " ids are \"core\", \"starter\" and \"generated\";"
-                                      " anything else is named in the catalog file or"
-                                      " found on the search path (docs/catalog.md)")
-                                 {:type :unknown-source})))]
-     ;; Pick the key, check and claim under one monitor.  The already-loaded test and the
-     ;; `swap!` that registers the entry are two separate touches of `@state`, and two
-     ;; requests arriving together on Jetty's pool can each pass both — both spawn a
-     ;; loader, and two background loaders then write the same stores.  The key is picked
-     ;; inside for the same reason: a `:repeat?` source's suffix is one past the highest
-     ;; *registered*, so two generated loads keyed outside the monitor both read
-     ;; `generated#1` and the second's registration overwrites the first's.  A *second
-     ;; load* is refused a layer down, by the writer claim in the registry.
-     (locking start-monitor
-       (let [key (entry-key src)]
-         (when (entry key)
-           (throw (ex-info (str (:name src) " is already loaded — unload it first")
-                           {:type :already-loaded :key key})))
-         ;; The status and progress here are what an entry reads for the moment between being
-         ;; registered and its job's id landing on it — `with-job` prefers the job the instant
-         ;; there is one.  Not redundant: a caller rendering an entry in that window would
-         ;; otherwise be handed a nil status, and the page names it.
-         (swap! state (fn [s]
-                        (-> s
-                            (assoc-in [:entries key]
-                                      {:key key :source (dissoc src :options) :name (:name src)
-                                       :params params :status :running :started (now)
-                                       :progress {:phase :starting :done 0 :total (:total src)}})
-                            (update :order #(vec (distinct (conj % key)))))))
-         (try
-           (let [id (jobs/submit
-                     {:label      (str "Load " (:name src))
-                      :kind       :load
-                      ;; the KB does not exist yet — `run-load` opens it — so the claim is
-                      ;; made without naming it, and `write-blocked?` reads the entry for
-                      ;; the identity once there is one
-                      :writes     true
-                      :progress   {:phase :starting :done 0 :total (:total src)}
-                      :result-url "/kbs"
-                      :entry      key}
-                     (fn [progress!]
-                       ;; The entry outlives its job's report — a settled job ages out of the
-                       ;; registry after an hour — so the status the entry keeps *of its own*
-                       ;; has to be the settled one.  `with-job` prefers the job while there is
-                       ;; one and falls back to this; a fallback still reading `:running` is an
-                       ;; entry that never finishes loading, and two callers act on that: the
-                       ;; browser refuses every write to the KB (`write-blocked?`) and `unload!`
-                       ;; refuses `:still-stopping`, both of them for ever.
-                       (try
-                         (let [note-kb! (fn [kb where] (put-entry! key #(assoc % :kb kb :where where)))
-                               summary  (run-load src params progress! note-kb!)]
-                           ;; a cancelled or failed load leaves whatever had landed in its
-                           ;; stores; `unload!` is what takes those down
-                           ;; `:progress` settles with the status, as it does on the job
-                           ;; itself: the placeholder this entry registered with reads
-                           ;; `:starting`, and an hour on that is the only reading left
-                           ;; `stats` is a four-read census, so it runs BEFORE the swap —
-                           ;; a swap! fn must be cheap and retryable (`start-monitor`'s
-                           ;; own argument), and under contention it re-runs per retry
-                           (let [ks (some-> (get-in @state [:entries key]) :kb stats)]
-                             (put-entry! key #(assoc % :summary summary :stats ks
-                                                     :status :done :finished (now)
-                                                     :progress {:phase :done})))
-                           (swap! state (fn [s] (cond-> s (nil? (:active s)) (assoc :active key))))
-                           (trove/log! {:level :info :id ::loaded
-                                        :msg (str "loaded KB " key) :data summary})
-                           summary)
-                         (catch Throwable t
-                           (put-entry! key #(assoc % :status (if (jobs/cancelled? t) :cancelled :failed)
-                                                   :finished (now)
-                                                   :error (or (.getMessage t) (str (class t)))))
-                           (throw t)))))]
-             (put-entry! key #(assoc % :job id))
-             key)
-           (catch Throwable t
-             ;; nothing is running, so the entry is a claim on a KB that will never exist
-             (drop-entry! key)
-             (throw t))))))))
+   (start-load (or (source source-id)
+                   (throw (ex-info (str "no KB source " (pr-str source-id) " — the built-in"
+                                        " ids are \"core\", \"starter\" and \"generated\";"
+                                        " anything else is named in the catalog file or"
+                                        " found on the search path (docs/catalog.md)")
+                                   {:type :unknown-source})))
+               params false)))
+
+(defn load-dir
+  "Start loading the KB directory at `path` under `params`, as a job, and make it the
+  active KB when the load finishes.  Returns the entry key.  The search path and the
+  catalog file need not list `path`: the directory is classified as discovery classifies
+  one, so `params` are that kind's options (`{:recover? true}` for a store).  Throws
+  `:unknown-source` when `path` holds no KB, and otherwise what `load-source` throws."
+  [path params]
+  (start-load (or (discovered-source (io/file path))
+                  (throw (ex-info (str "no KB at " path " — a KB directory holds a store's"
+                                       " records/, or a dump's or a corpus's meta.edn")
+                                  {:type :unknown-source :path (str path)})))
+              params true))
 
 (defn cancel!
   "Ask a running load to stop at its next progress report.  `!` because what it leaves
@@ -1064,13 +1062,13 @@
                               " that stopped existing halfway through.  Wait for the export,"
                               " or cancel it, then unload.")
                          {:type :still-exporting :key key})))
-       (let [{:keys [backend dir]} (:where (entry key))
+       (let [{:keys [backend]} (:where (entry key))
              run-in (or run-in (fn [work] (work)))]
          (try
            (run-in (fn []
                      (case backend
                        :memory  (when-let [kb (:kb (entry key))] (v/clear! kb))
-                       (:disk-log :disk-columnar :disk-snapshot) (disk/close-dir! dir)
+                       (:disk-log :disk-columnar :disk-snapshot) (some-> (:kb (entry key)) v/close!)
                        nil)))
            (catch Exception ex
              (let [why (or (.getMessage ex) (str (class ex)))]
@@ -1170,9 +1168,15 @@
             ;; *believed*, and a node exists per handle after any `recover` — a
             ;; recover over a strength-less store builds every node OUT, which is
             ;; precisely the state this caveat exists to point at
+            ;; the store-state probes read the store like the count does, so a throw here
+            ;; makes the KB unreadable too rather than failing the page header
+            st       (when-not (= ::unreadable n)
+                       (try (v/store-state kb #{:believes? :recoverable?})
+                            (catch Exception _ ::unreadable)))
+            n        (if (= ::unreadable st) ::unreadable n)
             belief?  (if (= ::unreadable n)
                        false
-                       (or (zero? (long n)) (jtms/any-belief? (:tms kb))))
+                       (or (zero? (long n)) (:believes? st)))
             settled? (and (not= ::unreadable n) (= :done (:status e)))
             ;; Which repair a beliefless KB needs, and the store is the only thing that
             ;; knows.  `recover` reads the premise roster and the justifications out of
@@ -1180,12 +1184,14 @@
             ;; wants a `recover`; one holding neither cannot be recovered into belief at
             ;; all and has to be loaded again.  Two different instructions, and telling
             ;; the first case to reload sends it back through hours of work for nothing.
-            recoverable? (and (not= ::unreadable n)
-                              (boolean (or (cap/some-premise-id (:records kb))
-                                           (cap/some-justification-id (:records kb)))))]
-        (when-not (and settled? belief?)
+            recoverable? (and (not= ::unreadable n) (boolean (:recoverable? st)))
+            ;; the third reason: belief is the image an earlier engine build wrote, and a
+            ;; rebuild under this build replaces it when it finishes (`:recover? :background`)
+            rebuilding?  (boolean (:stale-belief (v/write-hazards kb)))]
+        (when-not (and settled? belief? (not rebuilding?))
           {:key key :name (:name e) :status (if (= ::unreadable n) :unreadable (:status e))
-           :progress (:progress e) :belief? belief? :recoverable? recoverable?})))))
+           :progress (:progress e) :belief? belief? :recoverable? recoverable?
+           :rebuilding? rebuilding?})))))
 
 ;; ---- exporting -----------------------------------------------------------
 ;;
@@ -1194,7 +1200,7 @@
 ;; which is the whole reason export is here rather than only in the CLI.
 ;;
 ;; It runs the way a load runs, and for the same reason: it is a job like any other
-;; (`vaelii.host.jobs`) — minutes on a corpus, progress recorded where the panel looks for
+;; (`vaelii.browser.jobs`) — minutes on a corpus, progress recorded where the panel looks for
 ;; it, cancelled by the progress callback throwing (`export!` calls it at each chunk
 ;; boundary, and there is no other point at which stopping leaves a directory rather than a
 ;; file half-written).  What it is *not* is an entry: an export produces no KB, and filing

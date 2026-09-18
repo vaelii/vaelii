@@ -31,6 +31,7 @@
             [vaelii.host.core-context :as core-context]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (defn- content
@@ -60,7 +61,7 @@
 (defn- taxonomy-content
   "The two cached closures a reader sees: the type hierarchy and the context spindle."
   [kb]
-  (let [t (:taxonomy kb)]
+  (let [t (reasoning/taxonomy kb)]
     {:types    (into {} (for [x (tax/types t)]    [x (set (tax/genls-global t x))]))
      :contexts (into {} (for [c (tax/contexts t)] [c (set (tax/context-up t c))]))}))
 

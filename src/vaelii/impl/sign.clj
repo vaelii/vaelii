@@ -40,9 +40,10 @@
             [taoensso.trove :as trove]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.observe :as observe]
-            [vaelii.impl.provers :as provers]
             [vaelii.impl.resolution :as res]
-            [vaelii.impl.sentex :as sx]))
+            [vaelii.impl.sentex :as sx]
+            [vaelii.impl.types.prover :as prover-types]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 ;; =========================================================================
 ;; THE ALGEBRA — pure data in, pure data out.  No KB, no context, no belief.
@@ -179,7 +180,7 @@
 
 (def sign-sources
   "Every predicate the reading reads, which is what a conclusion drawn from a sign rests
-  on besides the facts a rule's other antecedents matched (`provers/SupportingProver`)."
+  on besides the facts a rule's other antecedents matched (`prover-types/SupportingProver`)."
   (into (conj arithmetic-predicates derivative-predicate comparison-predicate)
         sign-predicates))
 
@@ -309,7 +310,7 @@
   shape `vaelii.impl.violations` keeps, without its chaining-run stamp: nothing here is
   reached from a firing, so there is no run to name."
   [kb entry]
-  (when-let [v (:violations kb)]
+  (when-let [v (reasoning/violations kb)]
     (swap! v (fn [entries]
                (let [e' (conj entries entry) n (count e')]
                  (if (> n 1000) (vec (subvec e' (- n 1000))) e'))))))
@@ -367,10 +368,10 @@
   and reports again."
   [kb context]
   (let [{:keys [state inconsistent?]}
-        (observe/cached (:qcn kb) [::reading context]
+        (observe/cached (reasoning/qcn kb) [::reading context]
                         (fn [_stale] (build-reading kb context)))]
     (if inconsistent?
-      (do (when (observe/newly-seen? (:qcn kb) [::reported context] state)
+      (do (when (observe/newly-seen? (reasoning/qcn kb) [::reported context] state)
             (report-inconsistency! kb context state))
           :inconsistent)
       state)))
@@ -426,7 +427,7 @@
   while knowing none of them.
 
   An answer with **empty** support is dropped by the forward join rather than resting a
-  conclusion on nothing (`provers/SupportingProver`), and this is where one would come
+  conclusion on nothing (`prover-types/SupportingProver`), and this is where one would come
   from — a quantity nothing constrains — so the empty set is never a singleton and never
   excludes anything."
   [state attribute q svar neg?]
@@ -467,7 +468,7 @@
   (or (sx/variable? s) (contains? sign-of-value s)))
 
 (defrecord SignProver []
-  provers/Prover
+  prover-types/Prover
   (applicable? [_ _ goal _]
     (when-let [[_ q s] (goal-literal goal)]
       (and (or (term? q) (sx/variable? q)) (answer-slot? s))))
@@ -487,7 +488,7 @@
   (completeness [_ _ _ _] 100)
   (solve [_ kb goal context] (map first (solve-sign kb goal context)))
 
-  provers/SupportingProver
+  prover-types/SupportingProver
   (support-functors [_] sign-predicates)
   (support-sources  [_] sign-sources)
   (solve-with-support [_ kb goal context] (solve-sign kb goal context)))

@@ -24,6 +24,7 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -360,8 +361,8 @@
 
 ;; ---- the same thing through the KB ---------------------------------------
 
-(defn- kb-sound? [kb] (and (sound? (:taxonomy kb) :genl)
-                           (sound? (:taxonomy kb) :genlCx)))
+(defn- kb-sound? [kb] (and (sound? (reasoning/taxonomy kb) :genl)
+                           (sound? (reasoning/taxonomy kb) :genlCx)))
 
 (tu/deftest-kb a-batch-through-the-kb-leaves-a-sound-potential
   (tu/with-terms [a_t b_t c_t]
@@ -369,7 +370,7 @@
       (v/assert kb (list 'genl a_t b_t) 'CxUniverse)
       (v/assert kb (list 'genl b_t c_t) 'CxUniverse))
     (is (kb-sound? kb))
-    (is (not (loose? (:taxonomy kb) :genl)))
+    (is (not (loose? (reasoning/taxonomy kb) :genl)))
     (is (v/genl? kb a_t c_t))))
 
 (tu/deftest-kb an-aborted-batch-still-repairs-the-depth-potential
@@ -384,7 +385,7 @@
                    (v/assert kb (list 'genl q_t r_t) 'CxUniverse)
                    (v/assert kb (list 'genl p_t q_t) 'CxUniverse)
                    (throw (ex-info "cancelled" {:type :cancelled})))))
-    (is (not (loose? (:taxonomy kb) :genl)) "repaired on the way out")
+    (is (not (loose? (reasoning/taxonomy kb) :genl)) "repaired on the way out")
     (is (kb-sound? kb))
     (is (v/genl? kb p_t s_t) "and everything the batch did land is still reachable")))
 
@@ -397,7 +398,7 @@
   ;; Otherwise how many settles have run would decide where a conclusion lands, which
   ;; is exactly what content-keyed placement exists to rule out (docs/contexts.md).
   (tu/with-terms [CxAlpha CxBeta]
-    (let [tx    (:taxonomy kb)
+    (let [tx    (reasoning/taxonomy kb)
           place #(tax/maximal-common-descendant-contexts tx [%])]
       (v/assert kb (list 'genlCx CxBeta CxAlpha) 'CxUniverse)   ; b sees a
       ;; a → b closes the cycle, which `wff` refuses at assert; form it the way a belief
@@ -429,7 +430,7 @@
       (v/assert kb (list 'genl y_t z_t) 'CxUniverse))
     (let [before (into {} (for [t [w_t x_t y_t z_t]] [t (v/genls kb t)]))]
       (v/recover kb)
-      (is (not (loose? (:taxonomy kb) :genl)))
+      (is (not (loose? (reasoning/taxonomy kb) :genl)))
       (is (kb-sound? kb))
       (is (= before (into {} (for [t [w_t x_t y_t z_t]] [t (v/genls kb t)])))
           "the closure survives the rebuild"))))
@@ -501,7 +502,7 @@
   (let [d (v/assert kb '(not (genlCx CxCycMid CxCycHi)) 'CxUniverse {:strength :monotonic})]
     (v/assert kb '(genlCx CxCycHi CxCycMid) 'CxUniverse)    ; hi sees mid — no active cycle
     (v/retract! kb d))
-  (let [tax    (:taxonomy kb)
+  (let [tax    (reasoning/taxonomy kb)
         scc-of #(:scc (rel tax :genlCx))
         before {:scc    (scc-of)
                 :mid-hi (tax/sees? tax 'CxCycMid 'CxCycHi)

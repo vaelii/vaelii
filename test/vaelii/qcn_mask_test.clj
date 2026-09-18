@@ -26,7 +26,7 @@
             [vaelii.impl.qcn :as qcn]
             [vaelii.impl.relative :as rel]
             [vaelii.impl.space :as space])
-  (:import [vaelii.impl.qcn IRelationOps]))
+  (:import [vaelii.impl.types.qcn IRelationOps]))
 
 (def ^:private compile-algebra #'qcn/compile-algebra)
 

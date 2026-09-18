@@ -20,8 +20,8 @@
             [vaelii.core :as v]
             [vaelii.impl.asp.solver :as solver]
             [vaelii.impl.protocols :as p]
-            [vaelii.impl.provers :as provers]
             [vaelii.impl.rules :as rules]
+            [vaelii.impl.types.prover :as prover-types]
             [vaelii.test-util :as tu]))
 
 (def ^:private asp? (solver/available?))
@@ -232,7 +232,7 @@
   ;; the choice still grounds.  (The stored-fact leaf `prove` alone left it dormant.)
   (tu/with-cleared-kb [kb tu/fresh]
     (tu/with-terms [reach color Item]
-      (v/add-prover kb (reify provers/Prover
+      (v/add-prover kb (reify prover-types/Prover
                          (applicable?  [_ _ goal _] (and (sequential? goal) (= reach (first goal))))
                          (est-bindings [_ _ _ _] 1)
                          (cost         [_ _ _ _] :lookup)
@@ -265,7 +265,7 @@
   (when asp?
     (tu/with-cleared-kb [kb tu/fresh]
       (tu/with-terms [cand pick forbidden Ay Bee]
-        (v/add-prover kb (reify provers/Prover
+        (v/add-prover kb (reify prover-types/Prover
                            (applicable?  [_ _ goal _] (and (sequential? goal) (= forbidden (first goal))))
                            (est-bindings [_ _ _ _] 1)
                            (cost         [_ _ _ _] :lookup)

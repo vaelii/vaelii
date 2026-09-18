@@ -19,6 +19,7 @@
             [vaelii.core :as v]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.provers :as provers]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -157,7 +158,7 @@
       (testing "a closed goal alone leaves the cache empty"
         (v/clear-caches kb)
         (is (v/ask? kb (list before (nodes 0) (nodes 7)) CxFarm))
-        (is (zero? (count (:entries @(:closures kb))))))
+        (is (zero? (count (:entries @(reasoning/closures kb))))))
       (testing "and once an open ask has filled it, a pair from that node is answered from the set"
         (ancestors-of kb before (nodes 0) CxFarm)
         (let [stranger (tu/tmp-ind)                         ; in no edge, so in no reach
@@ -188,13 +189,13 @@
         (v/clear-caches kb)
         (is (= 7 (count (ancestors-of kb before (nodes 0) CxFarm)))
             "the answer is the whole reach whether or not it is held")
-        (is (zero? (count (:entries @(:closures kb))))
+        (is (zero? (count (:entries @(reasoning/closures kb))))
             "and a reach of 7 members is not held under a bound of 3"))
       (testing "a total that reaches the bound drops the map rather than evicting"
         (binding [provers/*closure-answer-limit* 5]
           (v/clear-caches kb)
           (ancestors-of kb before (nodes 5) CxFarm)     ; 2 members
           (ancestors-of kb before (nodes 4) CxFarm)     ; 3 more, total 5
-          (is (pos? (count (:entries @(:closures kb)))))
+          (is (pos? (count (:entries @(reasoning/closures kb)))))
           (ancestors-of kb before (nodes 3) CxFarm)     ; 4 more, over the bound
-          (is (zero? (count (:entries @(:closures kb))))))))))
+          (is (zero? (count (:entries @(reasoning/closures kb))))))))))

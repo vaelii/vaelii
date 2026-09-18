@@ -21,8 +21,8 @@
             [clojure.set :as set]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [taoensso.trove :as trove]
+            [vaelii.browser.catalog :as catalog]
             [vaelii.core :as v]
-            [vaelii.host.catalog :as catalog]
             [vaelii.host.client :as client]
             [vaelii.host.guard :as guard]
             [vaelii.host.llm.tools :as tools]
@@ -780,7 +780,9 @@
   (testing "flags and positionals interleave freely"
     (is (= ["4200" "/var/lib"] (#'serve/positional-args ["4200" "/var/lib" "--listen" "0.0.0.0"])))
     (is (= ["4200" "/var/lib"] (#'serve/positional-args ["4200" "--listen" "0.0.0.0" "/var/lib"])))
-    (is (= ["4200" "/var/lib"] (#'serve/positional-args ["--listen" "0.0.0.0" "4200" "/var/lib"]))))
+    (is (= ["4200" "/var/lib"] (#'serve/positional-args ["--listen" "0.0.0.0" "4200" "/var/lib"])))
+    (is (= ["4200" "/var/lib"] (#'serve/positional-args ["4200" "--starter" "/var/lib"]))
+        "--starter takes no value, so the word after it is still a positional"))
   (testing "an unknown flag is refused, not skipped"
     (let [e (is (thrown? clojure.lang.ExceptionInfo
                          (#'serve/positional-args ["4200" "--lisen" "0.0.0.0"])))]
@@ -790,6 +792,25 @@
     (let [e (is (thrown? clojure.lang.ExceptionInfo
                          (#'serve/positional-args ["4200" "/var/lib" "stray"])))]
       (is (= :unknown-option (:type (ex-data e)))))))
+
+(deftest the-daemon-opens-a-directory-under-the-backend-its-store-was-written-by
+  ;; `-main` opened every directory as `:disk-log`. A `:disk-snapshot` or `:disk-columnar`
+  ;; store opened that way finds no index log, so every client read answered nothing.
+  (let [d (.toFile (java.nio.file.Files/createTempDirectory
+                    "vaelii-serve-dir" (make-array java.nio.file.attribute.FileAttribute 0)))
+        touch (fn [& parts]
+                (let [x (apply io/file d parts)]
+                  (io/make-parents x)
+                  (spit x "")))]
+    (try
+      (testing "a directory holding no store gets a new durable :disk-log store"
+        (is (= :disk-log (#'serve/dir-backend (str d)))))
+      (testing "a directory holding a store opens under the backend its files name"
+        (touch "records" "format.edn")
+        (is (= :disk-columnar (#'serve/dir-backend (str d))))
+        (touch "index" "trie.csr")
+        (is (= :disk-snapshot (#'serve/dir-backend (str d)))))
+      (finally (doseq [^java.io.File x (reverse (file-seq d))] (.delete x))))))
 
 (deftest the-parked-poll-ceiling-stays-under-the-thread-pool
   ;; Two numbers that have to stay related, and were not.  A parked long poll holds one

@@ -103,19 +103,10 @@ done
 SEED="${TEST_SHUFFLE_SEED:-$RANDOM}"
 RANDOM=$SEED
 
-# Fisher-Yates over the global array SHUF, in place and IN THIS SHELL — not a
-# function that echoes its result through `< <(…)`.  Process substitution forks a
-# subshell, and bash reseeds `$RANDOM` in a subshell from the pid, so a seeded
-# sequence run there is NOT the seed's sequence — TEST_SHUFFLE_SEED would name an
-# order it never actually produces.  `$RANDOM` is a builtin; `shuf` is GNU
-# coreutils, which macOS ships no more than it ships bash 4's namerefs (3.2).
-shuffle_inplace() {
-  local i j tmp n=${#SHUF[@]}
-  for (( i = n - 1; i > 0; i-- )); do
-    j=$(( RANDOM % (i + 1) ))
-    tmp="${SHUF[i]}"; SHUF[i]="${SHUF[j]}"; SHUF[j]="$tmp"
-  done
-}
+# `shuffle_inplace` shuffles the global array SHUF, and lives in
+# scripts/lib/suite-configs.sh because `test-matrix.sh` shuffles its roster too.  That
+# file carries why the shuffle runs in this shell rather than in a subshell, which is
+# what makes TEST_SHUFFLE_SEED name the order it actually produces.
 
 SHUF=()
 if [[ ${#WANTED[@]} -gt 0 ]]; then

@@ -15,7 +15,7 @@ knows nothing about vaelii, and one namespace that renders a
 [`Program`](nmtms.md) to it.
 
 ```
-vaelii.impl.solve/Solver          the protocol   (docs/nmtms.md)
+vaelii.impl.types.solve/Solver          the protocol   (docs/nmtms.md)
   └── vaelii.impl.asp.edge        Program  ->  ASPIF,  answer set -> {:defeat :violated}
         └── vaelii.impl.asp.solver          backend selection
               ├── vaelii.impl.asp.clingo    in-process libclingo, via JNA

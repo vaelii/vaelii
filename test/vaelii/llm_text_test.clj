@@ -264,11 +264,10 @@
                                               :remove []}))]
         (is (= 1 (:index p)))
         (is (= :add (:in p)))))
-    (testing "a rule consequent's `ist` is left alone — that is how a rule says where its
-              conclusions are placed, and it is written out in a line a reviewer reads"
-      (is (nil? (session/placement-problem
-                 ['(implies (lion ?x) (ist CxCriedWolf (dangerous ?x)))
-                  'CxLionMouse]))))))
+    (testing "a rule consequent's `ist` is the check chain's refusal, not this one's"
+      (let [rule ['(implies (lion ?x) (ist CxCriedWolf (dangerous ?x))) 'CxLionMouse]]
+        (is (nil? (session/placement-problem rule)))
+        (is (= :not-well-formed (:type (session/check-entry kb rule))))))))
 
 (tu/deftest-kb a-bracketed-ist-is-refused-exactly-as-the-list-spelling-is
   ;; The line is model-written EDN, read **before** canon — where a vector and a list are

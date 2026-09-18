@@ -301,7 +301,7 @@
       :remove-from-set (arg-tree-remove tree pred pos term a)
       :put             (arg-tree-put    tree pred pos term a)
       :delete          (arg-tree-delete tree pred pos term)
-      (kv/unknown-op! op))))
+      (p/unknown-op! op))))
 
 (defn- arg-entries
   "The trie re-projected into the flat `[:argument-root pred pos term] → handle-set`
@@ -336,12 +336,12 @@
       :delete  (dissoc! t k)
       :increment (assoc! t k (inc (long (get t k 0))))
       ;; floored at 0, like `kv/apply-op`'s arm — the two folds may not disagree about
-      ;; what one op means, and a counter here is a cardinality (`kv/KvBackend`)
+      ;; what one op means, and a counter here is a cardinality (`p/KvBackend`)
       :decrement (assoc! t k (max 0 (dec (long (get t k 0)))))
       :add-to-set (assoc! t k (conj (get t k #{}) a))
       :remove-from-set (let [s (disj (get t k #{}) a)]
                          (if (empty? s) (dissoc! t k) (assoc! t k s)))
-      (kv/unknown-op! op))))
+      (p/unknown-op! op))))
 
 (defn- mem-apply-op
   "The persistent twin: apply one write op to map `m`, returning `[m' reply]`.  An
@@ -358,7 +358,7 @@
 ;; the atom is stale only for the life of a bulk load, and `with-bulk-writes` documents
 ;; why that is sound (positive load; every real read is post-load).
 (defrecord MemoryKvBackend [state]
-  kv/KvBackend
+  p/KvBackend
   ;; an argument-root key reads out of the `::arg` trie for every generic op too, so a
   ;; caller that still names the four-part vector — a direct test, the columnar fallback's
   ;; `kv-load` (which puts a whole posting), a snapshot round-trip — sees the same set the
@@ -388,7 +388,7 @@
   (kv-increment [_ k]   (if-let [tv (txn-for state)]
                           (let [v (inc (long (get @tv k 0)))] (vswap! tv assoc! k v) v)
                           (long (get (swap! state update k (fnil inc 0)) k))))
-  ;; floored at 0 on both arms: a counter is a cardinality (`kv/KvBackend`), and the
+  ;; floored at 0 on both arms: a counter is a cardinality (`p/KvBackend`), and the
   ;; transient a bulk load writes through has to answer as the persistent one does
   (kv-decrement [_ k]   (if-let [tv (txn-for state)]
                           (let [v (max 0 (dec (long (get @tv k 0))))] (vswap! tv assoc! k v) v)
@@ -492,7 +492,7 @@
   ;; agnostic union by reference, the agnostic count as a node read (`count` of the
   ;; maintained union), and a multi-column probe as an intersection of scoped leaves —
   ;; none consing an `[:argument-root …]` vector or touching the slot roster.
-  kv/ArgColumns
+  p/ArgColumns
   (arg-scoped-members [_ pred pos term] (arg-scoped (arg-state-key @state) pos term pred))
   (arg-scoped-intersect [_ pred pos-terms]
     (let [tree (arg-state-key @state)

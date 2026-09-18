@@ -12,11 +12,12 @@
             [vaelii.core :as v]
             [vaelii.impl.literal-cache :as lc]
             [vaelii.impl.resolution :as res]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
 
-(defn- entries [kb] @(:matches kb))
+(defn- entries [kb] @(reasoning/matches kb))
 
 (defn- fresh-cache!
   "Clear the cache so a count means what the test did, not what asserting the fixture's

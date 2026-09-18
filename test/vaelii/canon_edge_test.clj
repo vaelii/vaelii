@@ -358,40 +358,6 @@
         (is (= h1 h2))
         (is (= n1 (sentex-count kb)))))))
 
-;; ---- range restriction descends into an ist consequent ------------------
-
-(defn- range-refusal
-  "The :type check-range-restricted throws for these args, or nil when it accepts."
-  [antecedents consequent]
-  (try (vr/check-range-restricted antecedents consequent) nil
-       (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))
-
-(deftest range-restriction-descends-into-an-ist-consequent
-  ;; `deep-vars` walks the whole consequent with tree-seq rather than reading its
-  ;; top-level arguments, because `(ist ?ctx (p ?x))` hides both the context slot and
-  ;; the inner sentence one level down.  A flat `deep-vars` would accept an unbound
-  ;; ?ctx and place the conclusion into a context named by a free variable.
-  (testing "an unbound context slot is rejected"
-    (is (= :not-range-restricted (range-refusal '[(p ?x)] '(ist ?ctx (p ?x))))))
-  (testing "an unbound variable in the *embedded* sentence is rejected"
-    (is (= :not-range-restricted (range-refusal '[(p ?x)] '(ist CxSome (q ?y))))))
-  (testing "the anonymous wildcard is rejected in either slot"
-    (is (= :not-range-restricted (range-refusal '[(p ?x)] '(ist CxSome (q _)))))
-    (is (= :not-range-restricted (range-refusal '[(p ?x)] '(ist _ (q ?x))))))
-  (testing "an antecedent that binds the context is the accepted form"
-    (is (nil? (vr/check-range-restricted '[(p ?x) (ctxOf ?x ?ctx)] '(ist ?ctx (p ?x)))))))
-
-(tu/deftest-kb an-unbound-ist-context-is-refused-by-assert
-  (tu/with-terms [holds noted]
-    (testing "assert refuses the rule"
-      (is (= :not-range-restricted
-             (try (v/assert-rule kb [(list holds '?x)]
-                                 (list 'ist '?ctx (list noted '?x)) 'CxU)
-                  nil
-                  (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))))
-    (testing "and stored nothing — a refused rule leaves no residue to match against"
-      (is (empty? (v/find-sentexes kb noted))))))
-
 ;; ---- the two comparators agree where they overlap ------------------------
 ;;
 ;; `cmp-blind` is `cmp-term` with one arm changed (any two variables tie), and the

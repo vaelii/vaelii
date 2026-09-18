@@ -211,7 +211,7 @@ A forward rule may join on a bound nobody stated — `(temporalDistance Dawn Dus
 only the two legs through noon are written down. The firing then has to say what the bound
 rested on, or retracting a leg would leave the conclusion standing on a reason the JTMS
 cannot reach ([nmtms.md](nmtms.md)). `TemporalDistanceProver` implements
-`provers/SupportingProver` for exactly that: each answer comes back paired with the handles
+`prover-types/SupportingProver` for exactly that: each answer comes back paired with the handles
 behind it.
 
 **The support is the path, not the network.** A bound between P and Q is the least-weight

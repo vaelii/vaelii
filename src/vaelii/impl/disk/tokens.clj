@@ -38,7 +38,8 @@
   under a different lock — reads it without one and still sees a safely published entry."
   (:require [vaelii.impl.disk.files :as f]
             [vaelii.impl.sentex :as sx]
-            vaelii.impl.tokens)
+            vaelii.impl.tokens
+            [vaelii.impl.types.store :as store-types])
   (:import [java.util HashMap]
            [vaelii.impl.tokens Key]))
 
@@ -57,8 +58,6 @@
 ;; of frames the log holds twice, and a rewrite is what makes the dictionary reloadable
 ;; again.  Which caller may rewrite is not this namespace's call — an id is cited by
 ;; whatever cited it — so the repair is offered and never taken here.
-
-(defrecord TokenLog [log path fwd rev lock])
 
 (defn open-token-log
   "Open `dir/tokens.log` and rebuild the in-memory maps from it: frame *i* holds the
@@ -86,7 +85,7 @@
                         (let [tok (sx/intern-sym tok)]
                           (.put fwd (Key. tok) (Integer/valueOf (count @rev)))
                           (vswap! rev conj! tok))))
-      (->TokenLog log path fwd (atom (persistent! @rev)) (Object.))
+      (store-types/->TokenLog log path fwd (atom (persistent! @rev)) (Object.))
       (catch Throwable t
         (try (f/close! log) (catch Throwable _ nil))
         (throw t)))))

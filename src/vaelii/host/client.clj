@@ -268,7 +268,9 @@
   (call conn :believed [handles]))
 
 (defn believed?
-  "Is `handle` JTMS IN after the `(except ...)` cascade visible from `context`?"
+  "Is `handle` JTMS IN and not withdrawn from `context` — hidden by the `(except ...)`
+  cascade visible from it, scoped-defeated at a vantage it sees, or resting only on such a
+  handle (docs/nmtms.md, \"A defeat is scoped to its vantage\")?"
   [conn handle context]
   (call conn :believed? [handle context]))
 
@@ -368,8 +370,8 @@
 (defn contradictions
   "The coexisting pairs the last settle left standing — **represented dilemmas**, not
   failures."
-  [conn]
-  (call conn :contradictions []))
+  ([conn] (call conn :contradictions []))
+  ([conn context] (call conn :contradictions [context])))
 
 (defn count-in-context
   "How many sentexes are **stored** in `context` — one set-size read, O(1), nothing

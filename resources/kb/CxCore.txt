@@ -536,7 +536,7 @@
 (arg contradicts 2 thing)
 
 (comment decontextualized_predicate
-         "(decontextualized_predicate ?predicate) means that every (?predicate …) sentence, asserted or concluded by a rule, is also deduced into CxUniverse. Every context sees CxUniverse, so the fact stops being a claim of one theory and becomes a claim of the KB. The copy is supported by the placement sentex and this declaration together, so retracting either withdraws it. Conceptually the inert rule (implies (?pred . ?args) (ist CxUniverse (?pred . ?args))), implemented in code because it has to run wherever content is stored and not only where it is asserted.")
+         "(decontextualized_predicate ?predicate) means that every (?predicate …) sentence, asserted or concluded by a rule, is also deduced into CxUniverse. Every context sees CxUniverse, so the fact stops being a claim of one theory and becomes a claim of the KB. The copy is supported by the placement sentex and this declaration together, so retracting either withdraws it. The lift is implemented in code rather than stated as a rule, because it runs wherever content is stored and not only where it is asserted, and because a rule stating it would match every fact in the store.")
 (unary_predicate decontextualized_predicate)
 
 (comment disjoint
@@ -935,7 +935,7 @@
 (decontextualized_predicate inverse)
 
 (comment ist
-         "(ist ?context ?sentence) means that ?sentence holds in ?context. Never stored as a sentex of its own: given to assert it finds or creates ?sentence in ?context and returns that handle, and used as a rule's consequent it directs the conclusion into the named context instead of the computed placement. The wrapped sentence is a term, so one sentence is findable from another through the term index.")
+         "(ist ?context ?sentence) means that ?sentence holds in ?context. Never stored as a sentex of its own: given to assert it finds or creates ?sentence in ?context and returns that handle, and given to a read it asks ?sentence in ?context. A rule refuses it in every position: as an antecedent it matches nothing, and as a consequent it would place a conclusion in a context that need not see the rule or its facts. The wrapped sentence is a term, so one sentence is findable from another through the term index.")
 (binary_predicate ist)
 (instance_relation_predicate ist)
 (arg ist 1 context)
@@ -1017,7 +1017,6 @@
 
 (comment set/inertRule
          "(set/inertRule ?rule) means that ?rule is asserted inert. Stored and documented but never used for inference in either direction, which is how a rule stating something the engine implements in code gets written down where a reader will find it. A virtual wrapper interpreted on assert.")
-(set/inertRule (implies (?pred . ?args) (ist CxUniverse (?pred . ?args))))
 
 (comment sibling_disjoint
          "(sibling_disjoint ?collection) means that any two specializations of ?collection — the types below it under genl — share no instance, unless one is itself a genl of the other. The clique is consulted rather than stored, exactly as disjoint_metatype's is: no (disjoint …) sentex per pair, dropping the mark releases every pair at once, and a specialization arriving as a later genl edge is separated the moment it is believed. The genl-relatedness exception is what keeps a specialization disjoint from its siblings without being separated from its own supertypes, which are specializations of ?collection too; it is read over the whole KB, the way (disjoint a b) refuses a genl-related pair. Whether those specializations cover ?collection is a separate claim this one does not make.")

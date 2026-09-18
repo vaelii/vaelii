@@ -1,6 +1,6 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
-(ns vaelii.host.jobs
+(ns vaelii.browser.jobs
   "Long work, as jobs: one registry, one progress reading, one cancel.
 
   Three things this process does take minutes rather than milliseconds — filling a KB

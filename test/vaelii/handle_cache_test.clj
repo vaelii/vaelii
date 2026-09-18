@@ -21,6 +21,7 @@
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.observe :as observe]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -157,7 +158,7 @@
 
 (tu/deftest-kb justification-dedup-is-set-equality
   (testing "same members, whatever the order, repetition, or collection type"
-    (let [tms (:tms kb)]
+    (let [tms (reasoning/tms kb)]
       (jtms/ensure-node tms 9911 0)
       (jtms/add-justification tms (jtms/->just 99011 'rule [11 22 33] 9911 {}))
       (is (jtms/has-justification? tms 'rule [11 22 33] 9911))
@@ -194,9 +195,9 @@
             h2 (kb/find-sentex-handle kb (list spans X Z) CxStory)]
         (is (some? h1) "the two-witness conclusion is derived")
         (is (some? h2) "and carries the rule above it")
-        (is (= 2 (count (jtms/supports (:tms kb) h1)))
+        (is (= 2 (count (jtms/supports (reasoning/tms kb) h1)))
             "one justification per distinct witness — the dedup rejects neither")
-        (is (= 1 (count (jtms/supports (:tms kb) h2)))
+        (is (= 1 (count (jtms/supports (reasoning/tms kb) h2)))
             "and exactly one where there is one witness, however often it re-derives")
         (is (= 1 (count (v/sentexes-with-functor kb reaches)))
             "one sentex, not one per witness")))))

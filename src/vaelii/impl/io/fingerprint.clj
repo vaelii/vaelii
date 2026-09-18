@@ -76,7 +76,7 @@
   "A 64-bit hash of the justification `j` stored at handle `h` — what belief reads of it:
   the informant, the antecedents in their stored order, the consequence and the
   strength.  The bindings are not hashed: belief never reads them
-  (`jtms/graph-just`).  A dump's belief image is stamped with an accumulator of these, so
+  (`jtms/graph-just`).  A dump's reasoning image is stamped with an accumulator of these, so
   an import that lands different justifications declines the image."
   ^long [^long h j]
   (-> fnv-offset

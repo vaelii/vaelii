@@ -1,9 +1,9 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
-(ns vaelii.belief-image-test
-  "The belief image (`vaelii.impl.belief-image`): a `:disk-snapshot` KB writes its whole
-  belief state beside the records, and the next open installs it in place of a recover;
-  an export dump carries one, and an import of the same records installs it.  An
+(ns vaelii.reasoning-image-test
+  "The reasoning image (`vaelii.impl.reasoning-image`): a `:disk-snapshot` KB writes its
+  whole reasoning state beside the records, and the next open installs it in place of a
+  recover; an export dump carries one, and an import of the same records installs it.  An
   installed KB holds the network, the taxonomy and the KB atoms of the KB that wrote the
   image, and believes what a recover of the same records believes, before and after the
   same later writes.  An image that no longer describes the records, the source or the
@@ -14,17 +14,18 @@
             [clojure.set :as set]
             [clojure.test :refer [deftest is testing]]
             [vaelii.core :as v]
-            [vaelii.impl.belief-image :as bi]
             [vaelii.impl.disk.record-store :as drs]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
-            [vaelii.impl.protocols :as p])
+            [vaelii.impl.protocols :as p]
+            [vaelii.impl.reasoning-image :as ri]
+            [vaelii.impl.types.reasoning :as reasoning])
   (:import [java.io File RandomAccessFile]
            [java.nio.file CopyOption Files StandardCopyOption]
            [java.nio.file.attribute FileAttribute]))
 
 (defn- tmpdir ^String []
-  (str (Files/createTempDirectory "vaelii-belief-image-" (into-array FileAttribute []))))
+  (str (Files/createTempDirectory "vaelii-reasoning-image-" (into-array FileAttribute []))))
 
 (defn- rm-rf! [^String dir]
   (doseq [f (reverse (file-seq (io/file dir)))] (.delete ^File f)))
@@ -38,7 +39,7 @@
         (Files/copy (.toPath f) (.toPath t)
                     (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING]))))))
 
-(defn- manifest ^File [dir] (io/file dir "belief" "manifest.edn"))
+(defn- manifest ^File [dir] (io/file dir "reasoning" "manifest.edn"))
 
 (defn- manifest-text [dir] (let [f (manifest dir)] (when (.exists f) (slurp f))))
 
@@ -72,14 +73,14 @@
 (defn- belief
   "Belief as content: `{[sentence context] in?}` over every stored sentex."
   [kb]
-  (let [recs (:records kb) tms (:tms kb)]
+  (let [recs (:records kb) tms (reasoning/tms kb)]
     (into {} (keep (fn [id] (when-let [s (p/get-sentex recs id)]
                               [[(v/sentence-of s) (:context s)] (jtms/in? tms id)])))
           (p/sentex-ids recs))))
 
-(defn- network [kb] (dissoc (jtms/snapshot (:tms kb)) :touched :touched-in :touched-new))
+(defn- network [kb] (dissoc (jtms/snapshot (reasoning/tms kb)) :touched :touched-in :touched-new))
 
-(defn- state [kb] (#'bi/state-of kb))
+(defn- state [kb] (#'ri/state-of kb))
 
 (defn- whole
   "Everything an image carries, read off a live KB: belief, the network and the state."
@@ -184,19 +185,19 @@
   [["the records moved under it"
     (fn [dir]
       (let [aside (tmpdir)]
-        (copy-dir! (str dir "/belief") aside)
+        (copy-dir! (str dir "/reasoning") aside)
         (let [kb (open dir)] (v/assert kb '(dog Muffet) 'CxUniverse {:strength :default}) (v/close! kb))
-        (rm-rf! (str dir "/belief"))
-        (copy-dir! aside (str dir "/belief"))
+        (rm-rf! (str dir "/reasoning"))
+        (copy-dir! aside (str dir "/reasoning"))
         (rm-rf! aside)))]
    ["another source digest"
     (fn [dir] (rewrite-manifest! dir #(assoc % :source "0")))]
    ["another policy"
     (fn [dir] (rewrite-manifest! dir #(update-in % [:policy :arbitrate] not)))]
    ["a truncated network section"
-    (fn [dir] (truncate! (io/file dir "belief" "network.bin")))]
+    (fn [dir] (truncate! (io/file dir "reasoning" "network.bin")))]
    ["a truncated state section"
-    (fn [dir] (truncate! (io/file dir "belief" "state.nippy")))]])
+    (fn [dir] (truncate! (io/file dir "reasoning" "state.nippy")))]])
 
 (deftest a-stale-or-torn-image-is-declined-and-the-open-recovers
   (doseq [[label spoil!] spoilers]
@@ -209,7 +210,7 @@
                 [b ref] (recovered-copy dir)]
             (try
               (is (not (installed? a)) "the image was declined")
-              (same-as! b a)
+              (same-as! (whole b) (whole a))
               (finally (v/close! a) (v/close! b) (rm-rf! ref))))
           (finally (rm-rf! dir)))))))
 
@@ -219,8 +220,8 @@
       (let [kb (open dir)]
         (content! kb)
         (v/add-evaluatable kb 'evenSum (fn [a b] (even? (+ a b))))
-        (is (= :provers-registered (bi/refusal kb)))
-        (is (nil? (bi/save! kb)))
+        (is (= :provers-registered (ri/refusal kb)))
+        (is (nil? (ri/save! kb)))
         (v/close! kb))
       (is (not (.exists (manifest dir))) "nor does its close write one")
       (finally (rm-rf! dir)))))
@@ -232,7 +233,7 @@
         (let [kb (open dir)]
           (content! kb)
           (kb/note-hazards! kb {:no-belief true})
-          (is (nil? (bi/save! kb)))
+          (is (nil? (ri/save! kb)))
           (v/close! kb))
         (is (not (.exists (manifest dir))))
         (finally (rm-rf! dir)))))
@@ -242,15 +243,16 @@
         (let [kb (open dir)]
           (content! kb)
           (v/assert-inert kb '(dog Spot) 'CxUniverse)
-          (is (nil? (bi/save! kb)))
+          (is (nil? (ri/save! kb)))
           (v/close! kb))
         (is (not (.exists (manifest dir))))
         (finally (rm-rf! dir))))))
 
 (deftest every-kb-atom-is-imaged-or-named-as-left-alone
   (let [kb    (v/open-kb {:space 15 :recover? false})
-        atoms (into #{} (keep (fn [[k x]] (when (instance? clojure.lang.Atom x) k))) kb)]
-    (is (= atoms (set/union (set bi/state-atoms) bi/unimaged-atoms))
+        atoms (into #{} (keep (fn [[k x]] (when (instance? clojure.lang.Atom x) k)))
+                    (concat kb (reasoning/of kb)))]
+    (is (= atoms (set/union (set ri/state-atoms) ri/unimaged-atoms))
         "a new KB atom must be carried by the image or named in `unimaged-atoms`")))
 
 (defn- export-import
@@ -275,18 +277,18 @@
   (export-import
    (fn [_]) (fn [_])
    (fn [a b ex im]
-     (is (= :written (:belief-image ex)))
-     (is (= {:belief :installed} (:belief-image im)))
+     (is (= :written (:reasoning-image ex)))
+     (is (= {:reasoning :installed} (:reasoning-image im)))
      (same-as! (whole a) (whole b)))))
 
 (deftest a-dump-image-under-another-source-is-declined-and-the-import-recovers
   (export-import
    (fn [_])
    (fn [dump]
-     (let [f (io/file dump "belief" "manifest.edn")]
+     (let [f (io/file dump "reasoning" "manifest.edn")]
        (spit f (pr-str (assoc (edn/read-string (slurp f)) :source "0")))))
    (fn [a b _ im]
-     (is (= {:belief :recovered :reason :source-differs} (:belief-image im)))
+     (is (= {:reasoning :recovered :reason :source-differs} (:reasoning-image im)))
      (is (= (belief a) (belief b))))))
 
 (deftest a-kb-running-its-own-code-exports-no-image
@@ -294,8 +296,8 @@
    (fn [a] (v/add-evaluatable a 'evenSum (fn [x y] (even? (+ x y)))))
    (fn [_])
    (fn [a b ex im]
-     (is (= :not-writable (:belief-image ex)))
-     (is (= {:belief :recovered :reason :absent} (:belief-image im)))
+     (is (= :not-writable (:reasoning-image ex)))
+     (is (= {:reasoning :recovered :reason :absent} (:reasoning-image im)))
      (is (= (belief a) (belief b))))))
 
 (deftest the-records-stamp-covers-the-justifications
@@ -304,14 +306,14 @@
       (let [kb   (open dir)
             _    (content! kb)
             recs (:records kb)
-            fp   (drs/belief-fingerprint recs)]
+            fp   (drs/reasoning-fingerprint recs)]
         (try
           (is (= (count (p/justification-ids recs)) (get-in fp [:justifications :count])))
           (testing "a justification stored over unchanged sentexes moves the stamp"
             (let [[a c] (take 2 (sort (p/sentex-ids recs)))]
               (p/put-justification recs (jtms/->just (p/next-id recs) 'rule [a] c {} :default))
-              (is (= (:sentexes fp) (:sentexes (drs/belief-fingerprint recs))))
-              (is (not= (:justifications fp) (:justifications (drs/belief-fingerprint recs))))))
+              (is (= (:sentexes fp) (:sentexes (drs/reasoning-fingerprint recs))))
+              (is (not= (:justifications fp) (:justifications (drs/reasoning-fingerprint recs))))))
           (finally (v/close! kb))))
       (finally (rm-rf! dir)))))
 
@@ -331,8 +333,8 @@
           (v/clear! kb)
           (v/assert kb '(genl cat mammal) 'CxUniverse)
           (v/assert kb '(cat Tiddle) 'CxUniverse)
-          (let [imaged (:records (bi/read-manifest (io/file dir "belief")))
-                now    (drs/belief-fingerprint (:records kb))]
+          (let [imaged (:records (ri/read-manifest (io/file dir "reasoning")))
+                now    (drs/reasoning-fingerprint (:records kb))]
             (is (= (strip imaged) (strip now)) "the new records refill the old slots")
             (is (not= imaged now) "the epoch separates the two record sets"))
           (let [kb2 (open dir)]

@@ -570,7 +570,7 @@
 ;; this raises answers itself: the form grants **no** visibility a context argument did
 ;; not already grant, because naming A is what `(sentexes-matching kb S 'CxA)` has
 ;; always done.  That is what separates a read from a rule antecedent, where the same
-;; shape is refused (`sentex/ist-read-problem`): a caller asking about A has said so,
+;; shape is refused (`sentex/ist-rule-problem`): a caller asking about A has said so,
 ;; while a rule reading A on the sly decides belief from a context its own cannot see.
 
 (tu/deftest-kb an-ist-read-is-a-spelling-of-the-context-argument

@@ -432,7 +432,10 @@
   ;; ends on the proven optimum (flagged optimal, `finalize` reports `:optimum`) and an
   ;; interrupted one still has its best model in hand (`finalize` reports `:best-effort`).
   ;; `--models=1` would stop at the FIRST, un-optimized model, which is wrong for a labeling.
+  ;; `:sat` is that `--models=1`: a program with no objective has nothing to improve, and
+  ;; `--models=0` there enumerates every model.
   {:label                ["--opt-mode=opt"  "--models=0"]
+   :sat                  ["--models=1"]
    :all-optima           ["--opt-mode=optN" "--models=0"]
    :classify-true        ["--opt-mode=optN" "--enum-mode=cautious" "--models=0"]
    :classify-supportable ["--opt-mode=optN" "--enum-mode=brave"    "--models=0"]})
@@ -442,6 +445,7 @@
    `:all-optima` read the models at the optimum, so every model still on the best
    cost is kept; the two classify modes read `(last models)` alone."
   {:label                :optimal
+   :sat                  :last
    :all-optima           :optimal
    :classify-true        :last
    :classify-supportable :last})
@@ -481,14 +485,14 @@
   (let [cost  (first opt)
         status (cond
                  (and (pos? (bit-and result result-interrupted))
-                      (= :label mode) (seq models))         :best-effort
+                      (#{:label :sat} mode) (seq models))   :best-effort
                  (pos? (bit-and result result-interrupted)) :interrupted
                  (pos? (bit-and result result-unsat))       :unsat
                  (and opt any-optimal?)                     :optimum
                  (pos? (bit-and result result-sat))         :sat
                  :else                                       :unknown)]
     (case mode
-      :label
+      (:label :sat)
       {:status status :atoms (vec (:atoms (first (optimal-models models opt)))) :cost cost :raw raw}
 
       :all-optima
@@ -501,13 +505,21 @@
       ;; converged consequence set (matches clasp's last-witness semantics).
       {:status status :atoms (vec (:atoms (last models))) :cost cost :raw raw})))
 
+(defn- objective?
+  "Do `stmts` hold a minimize statement over at least one literal?  Without one every
+   model costs the same, so a search for improving models enumerates them all."
+  [stmts]
+  (boolean (some #(and (= :minimize (:type %)) (seq (:literals %))) stmts)))
+
 (defn solve
   "Run clingo in-process on translated program `{:aspif <text> :stmts <statements>}` in
    one of the supported modes, injecting `:stmts` through the `clingo_backend_*`
    accessors (no ASPIF text, no temp file, no parse). See `finalize` for the return
-   contract."
+   contract.  A `:label` solve of a program with no objective runs as `:sat`: streaming
+   improving models there would enumerate every model."
   [{:keys [stmts]} mode]
-  (finalize (backend-solve (mode-args-or-throw mode) stmts (mode-retention mode)) mode))
+  (let [mode (if (and (= :label mode) (not (objective? stmts))) :sat mode)]
+    (finalize (backend-solve (mode-args-or-throw mode) stmts (mode-retention mode)) mode)))
 
 (defn- load-block!
   "Load the base ASPIF program into `ctl` via clingo_control_load_aspif. NOT

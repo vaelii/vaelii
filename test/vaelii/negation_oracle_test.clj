@@ -76,6 +76,7 @@
             [vaelii.impl.protocols :as p]
             [vaelii.impl.rules :as vr]
             [vaelii.impl.settle :as settle]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 ;; ---- the shared ontology ------------------------------------------------
@@ -148,7 +149,7 @@
   {:believed  (into #{}
                     (comp (keep #(p/get-sentex (:records kb) %))
                           (map (juxt :sentence :context)))
-                    (jtms/in-datums (:tms kb)))
+                    (jtms/in-datums (reasoning/tms kb)))
    :dilemmas  (into #{} (map clash-key) (v/contradictions kb))
    :conflicts (into #{} (map clash-key) (v/conflicts kb))})
 

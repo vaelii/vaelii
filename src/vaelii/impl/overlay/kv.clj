@@ -75,7 +75,7 @@
   beside the writer then sees a batch whole or not at all, as it does on every other
   backend."
   (:require [clojure.set :as set]
-            [vaelii.impl.kv :as kv]))
+            [vaelii.impl.protocols :as p]))
 
 ;; ---- reserved bookkeeping keys --------------------------------------------
 
@@ -98,7 +98,7 @@
 
 ;; ---- the merged view ------------------------------------------------------
 
-(defn- cleared? [overlay] (some? (kv/kv-get overlay cleared-key)))
+(defn- cleared? [overlay] (some? (p/kv-get overlay cleared-key)))
 
 (defn- shadowed?
   "Is the base's value at `k` invisible — wholesale-cleared, or tombstoned?
@@ -111,9 +111,9 @@
   every backend, which is the reason it is on the protocol."
   [overlay k]
   (or (cleared? overlay)
-      (kv/kv-member? overlay deleted-keys-key k)))
+      (p/kv-member? overlay deleted-keys-key k)))
 
-(defn- overlay-has? [overlay k] (some? (kv/kv-get overlay k)))
+(defn- overlay-has? [overlay k] (some? (p/kv-get overlay k)))
 
 (defn- inherited?
   "Is the merged view at `k` *exactly* the base's own value — nothing to merge in and
@@ -136,12 +136,12 @@
 
 (defn- merged-members [overlay base k]
   (if (inherited? overlay k)
-    (kv/kv-members base k)                         ; nothing to merge: the base's own value
-    (let [own     (kv/kv-members overlay k)
-          removed (kv/kv-members overlay (removed-key k))]
+    (p/kv-members base k)                         ; nothing to merge: the base's own value
+    (let [own     (p/kv-members overlay k)
+          removed (p/kv-members overlay (removed-key k))]
       (if (shadowed? overlay k)
         own                                        ; base hidden: the overlay's own set is all
-        (let [merged (into (kv/kv-members base k) own)]
+        (let [merged (into (p/kv-members base k) own)]
           (if (seq removed) (set/difference merged removed) merged))))))
 
 (defn- merged-count
@@ -150,7 +150,7 @@
   set, since a union minus a removal set has no cardinality shortcut."
   [overlay base k]
   (if (inherited? overlay k)
-    (kv/kv-count base k)
+    (p/kv-count base k)
     (count (merged-members overlay base k))))
 
 (defn- merged-member?
@@ -160,16 +160,16 @@
   merged set — which is the whole point, since the caller is `exception-rule?`."
   [overlay base k m]
   (if (shadowed? overlay k)
-    (kv/kv-member? overlay k m)
-    (and (or (kv/kv-member? overlay k m)
-             (kv/kv-member? base k m))
-         (not (kv/kv-member? overlay (removed-key k) m)))))
+    (p/kv-member? overlay k m)
+    (and (or (p/kv-member? overlay k m)
+             (p/kv-member? base k m))
+         (not (p/kv-member? overlay (removed-key k) m)))))
 
 (defn- merged-get [overlay base k]
   (cond
-    (overlay-has? overlay k) (kv/kv-get overlay k)
+    (overlay-has? overlay k) (p/kv-get overlay k)
     (shadowed? overlay k)    nil
-    :else                    (kv/kv-get base k)))
+    :else                    (p/kv-get base k)))
 
 (defn- base-has?
   "Does the base hold a *visible* value at `k`?  Read through `kv-get`, which every
@@ -179,7 +179,7 @@
   the keyspace with them."
   [overlay base k]
   (and (not (shadowed? overlay k))
-       (some? (kv/kv-get base k))))
+       (some? (p/kv-get base k))))
 
 ;; ---- the write primitives -------------------------------------------------
 
@@ -187,7 +187,7 @@
   "Shadow the base's value at `k` — sticky, so a later repopulation of `k` in the overlay
   does not resurrect what the base held."
   [overlay k]
-  (kv/kv-add-to-set overlay deleted-keys-key k))
+  (p/kv-add-to-set overlay deleted-keys-key k))
 
 (defn- seed-counter!
   "Copy-on-write for a counter: give the overlay an absolute value at `k`, seeded from the
@@ -195,20 +195,20 @@
   and no read has to add the two together."
   [overlay base k]
   (when-not (overlay-has? overlay k)
-    (kv/kv-put overlay k (long (or (when-not (shadowed? overlay k) (kv/kv-get base k)) 0)))))
+    (p/kv-put overlay k (long (or (when-not (shadowed? overlay k) (p/kv-get base k)) 0)))))
 
 (defn- put*
   "A `kv-put` replaces the key rather than merging into it, so it shadows the base and
   drops the overlay's own removal bookkeeping for `k`."
   [overlay base k v]
   (when (base-has? overlay base k) (tombstone! overlay k))
-  (kv/kv-delete overlay (removed-key k))
-  (kv/kv-put overlay k v))
+  (p/kv-delete overlay (removed-key k))
+  (p/kv-put overlay k v))
 
 (defn- delete*
   [overlay base k]
-  (kv/kv-delete overlay k)
-  (kv/kv-delete overlay (removed-key k))
+  (p/kv-delete overlay k)
+  (p/kv-delete overlay (removed-key k))
   (when (base-has? overlay base k) (tombstone! overlay k)))
 
 (defn- add-to-set*
@@ -219,9 +219,9 @@
   ;; guarded: nearly every key a fork writes has no removal record at all, and on a
   ;; durable overlay half an unconditional remove is a WAL frame per posting that
   ;; removed nothing
-  (when (kv/kv-member? overlay (removed-key k) m)
-    (kv/kv-remove-from-set overlay (removed-key k) m))
-  (kv/kv-add-to-set overlay k m))
+  (when (p/kv-member? overlay (removed-key k) m)
+    (p/kv-remove-from-set overlay (removed-key k) m))
+  (p/kv-add-to-set overlay k m))
 
 (defn- remove-from-set*
   "Drop `m` from the overlay's own set, and — when the base contributes it to the merged
@@ -231,23 +231,23 @@
   to answer each membership would cost a 100M-handle set walk per probe on a `:dense`
   base — the same rule `merged-member?` states, eight lines up."
   [overlay base k m]
-  (kv/kv-remove-from-set overlay k m)
+  (p/kv-remove-from-set overlay k m)
   (when (and (not (shadowed? overlay k))
-             (kv/kv-member? base k m))
-    (kv/kv-add-to-set overlay (removed-key k) m)))
+             (p/kv-member? base k m))
+    (p/kv-add-to-set overlay (removed-key k) m)))
 
 ;; ---- the decorator --------------------------------------------------------
 
 (defrecord OverlayKv [overlay base lock]
-  kv/KvBackend
+  p/KvBackend
   (kv-get  [_ k]   (locking lock (merged-get overlay base k)))
   (kv-put  [_ k v] (locking lock (put* overlay base k v)) nil)
   (kv-delete [_ k] (locking lock (delete* overlay base k)) nil)
 
   (kv-increment [_ k]
-    (locking lock (seed-counter! overlay base k) (kv/kv-increment overlay k)))
+    (locking lock (seed-counter! overlay base k) (p/kv-increment overlay k)))
   (kv-decrement [_ k]
-    (locking lock (seed-counter! overlay base k) (kv/kv-decrement overlay k)))
+    (locking lock (seed-counter! overlay base k) (p/kv-decrement overlay k)))
 
   (kv-add-to-set      [_ k m] (locking lock (add-to-set* overlay k m)) nil)
   (kv-remove-from-set [_ k m] (locking lock (remove-from-set* overlay base k m)) nil)
@@ -268,7 +268,7 @@
     (locking lock
       (cond
         (empty? ks)                          #{}
-        (every? #(inherited? overlay %) ks)  (kv/kv-intersect base ks)
+        (every? #(inherited? overlay %) ks)  (p/kv-intersect base ks)
         :else (reduce set/intersection (map #(merged-members overlay base %) ks)))))
 
   ;; every op routed back through this decorator, so the merge model applies to a batched
@@ -278,16 +278,16 @@
     (locking lock
       (mapv (fn [[op k a]]
               (case op
-                :put             (kv/kv-put this k a)
-                :delete          (kv/kv-delete this k)
-                :increment       (kv/kv-increment this k)
-                :decrement       (kv/kv-decrement this k)
-                :add-to-set      (kv/kv-add-to-set this k a)
-                :remove-from-set (kv/kv-remove-from-set this k a)
-                ;; the one refusal every backend spells (`kv/unknown-op!`): a caller
+                :put             (p/kv-put this k a)
+                :delete          (p/kv-delete this k)
+                :increment       (p/kv-increment this k)
+                :decrement       (p/kv-decrement this k)
+                :add-to-set      (p/kv-add-to-set this k a)
+                :remove-from-set (p/kv-remove-from-set this k a)
+                ;; the one refusal every backend spells (`p/unknown-op!`): a caller
                 ;; discriminating on `:type` must not have to know which adapter it
                 ;; reached
-                (kv/unknown-op! op)))
+                (p/unknown-op! op)))
             ops)))
 
   ;; The portable projection of the *merged* view — what an export of a fork writes.  Set
@@ -300,7 +300,7 @@
     (locking lock
       ;; `first`, not `key`: the contract says entries are pairs, and the tiered
       ;; backend yields plain vectors where the map-backed ones yield `MapEntry`s
-      (let [own (into {} (remove (comp reserved-key? first)) (kv/kv-entries overlay))
+      (let [own (into {} (remove (comp reserved-key? first)) (p/kv-entries overlay))
             own-merged (mapv (fn [[k v]]
                                [k (if (set? v) (merged-members overlay base k) v)])
                              own)
@@ -311,7 +311,7 @@
                                              (let [ms (merged-members overlay base k)]
                                                (when (seq ms) [k ms]))
                                              [k v]))))
-                              (kv/kv-entries base)))]
+                              (p/kv-entries base)))]
         ;; Realized **inside** the monitor, both halves.  A lazy `concat` handed back
         ;; from here realizes after the lock is released, and each element it then
         ;; produces calls `merged-members` / `shadowed?` / `cleared?` — the reads this
@@ -328,16 +328,16 @@
       (doseq [batch (partition-all 4096 entries)]
         (doseq [[k _] batch]
           (when (base-has? overlay base k) (tombstone! overlay k))
-          (kv/kv-delete overlay (removed-key k)))
-        (kv/kv-load overlay batch)))
+          (p/kv-delete overlay (removed-key k)))
+        (p/kv-load overlay batch)))
     nil)
 
   ;; O(1) rather than a tombstone per base key: the marker hides the base wholesale, and
   ;; it is set *after* the wipe because the wipe would otherwise take it with it
   (kv-clear! [_]
     (locking lock
-      (kv/kv-clear! overlay)
-      (kv/kv-put overlay cleared-key true))
+      (p/kv-clear! overlay)
+      (p/kv-put overlay cleared-key true))
     nil))
 
 (defn overlay-kv

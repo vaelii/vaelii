@@ -43,6 +43,27 @@
   [dir]
   (.getCanonicalPath (io/file dir)))
 
+(defn store-backend
+  "The `open-kb` backend the store in `dir` was written by, read off the files beside its
+  records, or nil when `dir` holds no store (no `records/format.edn`):
+
+    * `index/trie.csr`, a mapped index image → `:disk-snapshot`;
+    * `index/kv.log`, a write-ahead-logged index → `:disk-log`;
+    * no `index/` file of either kind → `:disk-columnar`, which rebuilds the index from the
+      records on open.  `:disk-memory` and `:disk-dense` write the same files and read back
+      correctly as `:disk-columnar`.
+
+  An open under the wrong backend returns an empty KB and throws nothing: a
+  `:disk-snapshot` or `:disk-columnar` store opened as `:disk-log` finds no index log, so
+  every read answers nothing although every record is on disk."
+  [dir]
+  (let [f (fn [& parts] (.exists ^java.io.File (apply io/file dir parts)))]
+    (when (f "records" "format.edn")
+      (cond
+        (f "index" "trie.csr") :disk-snapshot
+        (f "index" "kv.log")   :disk-log
+        :else                  :disk-columnar))))
+
 (defn- register-or-close!
   "Register `entry` with the durability daemon and return `[store id]` — closing the
   store through `entry`'s own `:close` if the registration throws.
@@ -193,10 +214,10 @@
                     (assoc :snapshot save-fn)
                     (assoc-in [:dur-ids :snapshot] id)))))))
 
-(defn register-belief-image!
-  "Register `save-fn` (a thunk) as `dir`'s belief image writer, run at the front of
+(defn register-reasoning-image!
+  "Register `save-fn` (a thunk) as `dir`'s reasoning image writer, run at the front of
   `close-dir!` beside the index image's and on JVM shutdown in the same `:image` phase —
-  the belief image is stamped against these records too, so it is written while they are
+  the reasoning image is stamped against these records too, so it is written while they are
   open.
 
   **The latest registration replaces the one before it**, where the index image's first
@@ -207,16 +228,16 @@
   [dir save-fn]
   (let [cdir (canonical-dir dir)]
     (locking stores
-      (when-let [old (get-in @stores [cdir :dur-ids :belief-image])]
+      (when-let [old (get-in @stores [cdir :dur-ids :reasoning-image])]
         (dur/deregister! old))
       (let [id (dur/register! {:fsync (fn [_] nil)
                                :close save-fn
                                :phase :image
-                               :label (str "belief-image " cdir)})]
+                               :label (str "reasoning-image " cdir)})]
         (swap! stores update cdir
                #(-> (or % {:dir cdir :dur-ids {}})
-                    (assoc :belief-image save-fn)
-                    (assoc-in [:dur-ids :belief-image] id)))))))
+                    (assoc :reasoning-image save-fn)
+                    (assoc-in [:dur-ids :reasoning-image] id)))))))
 
 (defn maybe-refresh-index-snapshot!
   "Rewrite `cdir`'s index image if the live index has drifted past the threshold.
@@ -313,7 +334,7 @@
   [dir]
   (let [cdir (canonical-dir dir)]
     (locking stores
-      (when-let [{:keys [records index overlay-meta snapshot belief-image dur-ids]} (@stores cdir)]
+      (when-let [{:keys [records index overlay-meta snapshot reasoning-image dur-ids]} (@stores cdir)]
         ;; Deregister first: it is the signal a task the compaction executor has queued
         ;; but not started reads, so it turns every waiting rewrite of this directory
         ;; into a skip rather than something to wait out.  It also stops the next daemon
@@ -342,9 +363,9 @@
                               :msg (str "disk backend: the index snapshot for " cdir
                                         " was not written (" (.getMessage t)
                                         ") — the next open rebuilds from the records")}))))
-        ;; the belief image under the same two conditions, and `save!` logs and swallows
+        ;; the reasoning image under the same two conditions, and `save!` logs and swallows
         ;; its own failure
-        (when belief-image (belief-image))
+        (when reasoning-image (reasoning-image))
         (let [failures (into []
                              (keep identity)
                              [(when records

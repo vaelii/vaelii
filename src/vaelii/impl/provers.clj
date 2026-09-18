@@ -86,65 +86,12 @@
             [vaelii.impl.rules :as rules]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.prover :as prover-types
+             :refer [Prover SupportingProver applicable? completeness cost
+                     est-bindings solve solve-with-support support-functors
+                     support-sources]]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.violations :as violations]))
-
-(defprotocol Prover
-  (applicable?  [prover kb goal context])
-  (est-bindings [prover kb goal context])
-  (cost         [prover kb goal context])
-  (completeness [prover kb goal context])
-  (solve        [prover kb goal context]))
-
-(defprotocol SupportingProver
-  "A prover whose answer is a function of **stored facts** rather than of the goal's own
-  arguments alone, and which can say which facts — the unit table a measure comparison
-  normalizes through, the constraints a metric bound is closed out of, the lengths a
-  duration sums.
-
-  A separate protocol rather than a sixth `Prover` method, because implementing it is a
-  choice: `EvaluableProver` computes `(lessThan 3 5)` from the numbers in front of it and
-  has no support to report, while `QuantityProver` reads a `conversionFactor` row before
-  it can compare two masses.  Only the second is here.
-
-  **Forward chaining is what needs it.**  A rule antecedent discharged by a prover
-  contributes no matched fact, so a firing that rested on one lists the rule and whatever
-  the *other* antecedents matched — and a `conversionFactor` row behind the answer is
-  supported by nothing the JTMS can reach.  Retracting it then leaves the conclusion
-  believed.  `solve-with-support` closes that: each answer carries the handles it was read
-  from, the join adds them to the firing's antecedents, and the ordinary relabel withdraws
-  the conclusion when any of them goes.  It is the same contract
-  `qcn-kb/solve-with-support` and `inherit/solve-with-support` already meet for a
-  qualitative and an inherited antecedent.
-
-    support-functors     the functors this prover answers with support, as a set
-    support-sources      the functors it *reads* to answer them, as a set
-    solve-with-support   the solutions of `Prover/solve`, each as `[bindings support]`
-
-  `support-sources` is what keeps the firing order-independent.  A rule whose antecedent
-  this prover answers is triggered by the facts its *other* antecedents match, and a
-  `conversionFactor` row is not one of them — so a unit table stated after the rule and
-  the facts would never reach a join, and the same three sentences would derive a
-  conclusion or not depending on which arrived last.  Naming the sources puts such a datum
-  in front of the rules carrying a `support-functors` antecedent, re-joined in full
-  (`chain/rejoin-in-full`), exactly as a `(symmetric P)` declaration is.
-
-  Two obligations on an implementer, and both are what makes the protocol sound:
-
-  * **`solve-with-support` answers exactly what `solve` answers.**  The bindings are the
-    same solutions in the same order; only the support rides alongside.  A prover whose
-    two methods disagreed would make a rule fire differently forward and backward.
-  * **The support is enough to have produced the answer on its own.**  It may
-    over-approximate — a reading taken over a set of declarations names all of them — but
-    it may never omit a fact the answer moved with, since that is the fact whose
-    retraction would leave a stale conclusion standing.
-
-  An answer with **empty** support is one nothing stored licensed — the diagonal of a
-  metric network, an arithmetic identity — and the forward join drops it rather than
-  building a justification that names the rule alone while looking as though it named the
-  facts (`qcn-kb/solve-with-support` gives the qualitative version of the same case)."
-  (support-functors   [prover])
-  (support-sources    [prover])
-  (solve-with-support [prover kb goal context]))
 
 (def cost-tiers
   "First-answer cost tiers, cheapest first — one question: is the answer something
@@ -252,7 +199,7 @@
       (cond-> #{}
         (seq (inherit/positions kb pred context))            (conj :preserving)
         (seq (res/concluding-rule-handles kb pred context)) (conj :rules)
-        (seq (tax/inverses-under (:taxonomy kb) pred context)) (conj :inverse)
+        (seq (tax/inverses-under (reasoning/taxonomy kb) pred context)) (conj :inverse)
         (some datetime/time-term? (nm/args goal))             (conj :calendar)))))
 
 (defn sole-prover
@@ -324,7 +271,7 @@
   tax/closure-relations)
 
 (defn- trans-fns [kb pred context]
-  (let [tx (:taxonomy kb)]
+  (let [tx (reasoning/taxonomy kb)]
     (if (= pred 'genl)
       ;; genl answers from the asking context's vantage; the genlCx closures
       ;; are deliberately global — visibility scoped by visibility is circular
@@ -410,7 +357,7 @@
   ;; convicted subtrees, an upper bound on the answer (two partners may share a
   ;; subtype) that costs a cached closure read per partner and no walk over the types.
   (est-bindings [_ kb goal context]
-    (let [[_ a b] goal, tx (:taxonomy kb)
+    (let [[_ a b] goal, tx (reasoning/taxonomy kb)
           spec-count (fn [t] (count (tax/specs tx t context)))
           sum        (fn [f xs] (transduce (map f) + 0 xs))]
       (cond
@@ -431,7 +378,7 @@
   ;; closes under) are visible, so the query's own context is the vantage — a
   ;; `?ctx` context is the unscoped read, as everywhere
   (solve [_ kb goal context]
-    (let [[_ a b] goal tx (:taxonomy kb)]
+    (let [[_ a b] goal tx (reasoning/taxonomy kb)]
       (cond
         (and (ground? a) (ground? b)) (if (tax/disjoint? tx a b context) [{}] [])
         (ground? a) (map (fn [t] {b t}) (disjoint-with tx a context))
@@ -465,7 +412,7 @@
   A `P` declared its own inverse yields the two probes of a symmetric predicate, which is
   what such a declaration says."
   [kb dir pred node context]
-  (let [qs (sort (tax/inverses-under (:taxonomy kb) pred context))]
+  (let [qs (sort (tax/inverses-under (reasoning/taxonomy kb) pred context))]
     (if (= dir :succ)
       (into [(list pred node '?rv)] (map #(list % '?rv node)) qs)
       (into [(list pred '?rv node)] (map #(list % node '?rv)) qs))))
@@ -554,7 +501,7 @@
   seed set and not an enumeration of the vocabulary — bounded by the extent, the way
   `DisjointnessProver`'s open goal is bounded by the declarations."
   [kb pred context]
-  (let [qs   (sort (tax/inverses-under (:taxonomy kb) pred context))
+  (let [qs   (sort (tax/inverses-under (reasoning/taxonomy kb) pred context))
         ends (fn [pat k] (keep #(get (second %) k) (res/matches-visible kb pat context)))]
     (distinct (apply concat
                      (ends (list pred '?lv '?rv) '?lv)
@@ -680,7 +627,7 @@
   with no cache atom answers nil, which is a miss and costs an extra walk rather than a
   wrong answer."
   [kb k ^long clock]
-  (when-let [a (:closures kb)]
+  (when-let [a (reasoning/closures kb)]
     (let [c @a]
       (when (== clock (long (:clock c -1)))
         (get (:entries c) k)))))
@@ -690,8 +637,8 @@
   derived, so the next ask recomputes whatever the drop below took."
   [kb k v ^long clock]
   (let [lim (long (caches/limit-of :closure-answers *closure-answer-limit*))]
-    (when (and (:closures kb) (<= (count v) lim))
-      (swap! (:closures kb)
+    (when (and (reasoning/closures kb) (<= (count v) lim))
+      (swap! (reasoning/closures kb)
              (fn [c]
                (let [c (if (== clock (long (:clock c -1)))
                          c
@@ -787,7 +734,7 @@
   Prover
   (applicable? [_ kb goal context]
     (and (binary? goal)
-         (tax/has-prop? (:taxonomy kb) :transitive (first goal) context)
+         (tax/has-prop? (reasoning/taxonomy kb) :transitive (first goal) context)
          (not (contains? transitive-predicates (first goal)))))
   (est-bindings [_ kb goal _] (est-by-functor kb goal))
   (cost         [_ _ _ _] :compute)              ; computes the reach fixpoint before the first answer
@@ -940,7 +887,7 @@
 (defrecord SymmetricProver []
   Prover
   (applicable? [_ kb goal context]
-    (and (binary? goal) (tax/has-prop? (:taxonomy kb) :symmetric (first goal) context)))
+    (and (binary? goal) (tax/has-prop? (reasoning/taxonomy kb) :symmetric (first goal) context)))
   (est-bindings [_ kb goal _] (est-by-functor kb goal))
   (cost         [_ _ _ _] :lookup)
   (completeness [_ _ _ _] 50)                 ; augments the fact prover
@@ -956,7 +903,7 @@
   Prover
   (applicable? [_ kb goal context]
     (and (binary? goal)
-         (boolean (seq (tax/inverses-under (:taxonomy kb) (first goal) context)))))
+         (boolean (seq (tax/inverses-under (reasoning/taxonomy kb) (first goal) context)))))
   (est-bindings [_ kb goal _] (est-by-functor kb goal))
   (cost         [_ _ _ _] :lookup)
   (completeness [_ _ _ _] 50)
@@ -973,7 +920,7 @@
 (defrecord ReflexiveProver []
   Prover
   (applicable? [_ kb goal context]
-    (and (binary? goal) (tax/has-prop? (:taxonomy kb) :reflexive (first goal) context)))
+    (and (binary? goal) (tax/has-prop? (reasoning/taxonomy kb) :reflexive (first goal) context)))
   (est-bindings [_ _ _ _] 1)
   (cost         [_ _ _ _] :lookup)
   (completeness [_ _ _ _] 50)
@@ -1150,7 +1097,7 @@
   (solve [_ kb goal context]
     (let [[p n] (rest goal)]
       (if (true? (admits-position? (relation-variable-arity? kb p context)
-                                   (tax/declared-arity (:taxonomy kb) p context)
+                                   (tax/declared-arity (reasoning/taxonomy kb) p context)
                                    n))
         [{}] []))))
 
@@ -1889,7 +1836,7 @@
   wherever it is mentioned.  One theory may be willing to read a vocabulary's extent as
   complete where another, reading the same predicate, will not."
   [kb pred context]
-  (and (symbol? pred) (tax/has-prop? (:taxonomy kb) :closed-extent pred context)))
+  (and (symbol? pred) (tax/has-prop? (reasoning/taxonomy kb) :closed-extent pred context)))
 
 (defrecord ClosedExtentProver []
   Prover
@@ -2016,7 +1963,7 @@
   Short-circuits on a defn-free KB before touching the taxonomy."
   [kb coll context]
   (and (has-defn-fact? kb 'defnSufficient)
-       (let [tx (:taxonomy kb)]
+       (let [tx (reasoning/taxonomy kb)]
          (boolean (some (fn [d] (or (= d coll) (tax/genl? tx d coll context)))
                         (defn-declaring-colls kb 'defnSufficient context))))))
 
@@ -2028,7 +1975,7 @@
   ancestor count; short-circuits on a defn-free KB."
   [kb coll context]
   (and (has-defn-fact? kb 'defnNecessary)
-       (let [tx (:taxonomy kb)]
+       (let [tx (reasoning/taxonomy kb)]
          (boolean (some (fn [d] (or (= d coll) (tax/genl? tx coll d context)))
                         (defn-declaring-colls kb 'defnNecessary context))))))
 
@@ -2037,7 +1984,7 @@
   `coll`'s own and every spec's, the descent the positive walk admits on."
   [kb coll context]
   (mapcat #(defn-conditions kb 'defnSufficient % context)
-          (tax/specs (:taxonomy kb) coll context)))
+          (tax/specs (reasoning/taxonomy kb) coll context)))
 
 (defn- most-general-first
   "`colls` ordered most-general-first — a linear extension of the genl partial order, so an
@@ -2059,7 +2006,7 @@
   the ¬member half and this merely declines to admit."
   [kb coll member context]
   (and (has-defn-fact? kb 'defnNecessary)
-       (let [tx        (:taxonomy kb)
+       (let [tx        (reasoning/taxonomy kb)
              ancestors (disj (tax/genls tx coll context) coll)]
          (boolean
           (some (fn [g]
@@ -2116,7 +2063,7 @@
   because a collection's own failing necessary is itself a sound negative witness."
   [kb coll context]
   (mapcat #(defn-conditions kb 'defnNecessary % context)
-          (tax/genls (:taxonomy kb) coll context)))
+          (tax/genls (reasoning/taxonomy kb) coll context)))
 
 (defrecord DefnNecessaryNegationProver []
   Prover
@@ -2215,7 +2162,7 @@
   Kilogram)` beside `(QuantityFn 5 Kg)` under a merged unit would count as two values
   (`res/representative-term`'s own example)."
   [kb goal v context]
-  (let [merged (tax/merged-term-pred (:taxonomy kb))
+  (let [merged (tax/merged-term-pred (reasoning/taxonomy kb))
         vis    (when merged (res/visible-supporter-fn kb context))]
     (->> (conjunction-solutions kb (sx/conjuncts (sx/aggregate-body goal)) {} context)
          (keep #(get % v))
@@ -2388,7 +2335,7 @@
   ;; `?variable` because the minted context name would carry a `?` no context name may.
   (applicable? [_ kb goal context]
     (and (binary? goal)
-         (tax/has-prop? (:taxonomy kb) :modal (nm/functor goal) context)
+         (tax/has-prop? (reasoning/taxonomy kb) :modal (nm/functor goal) context)
          (modal/projectable-agent? (second goal))
          (sequential? (nth goal 2))))
   ;; The planner should order a belief query by what the *inner* query actually costs,
@@ -2446,7 +2393,7 @@
   stops at the first witness."
   [kb term context]
   (let [visible? (res/visible-supporter-fn kb context)
-        live?    (or visible? #(jtms/in? (:tms kb) %))]
+        live?    (or visible? #(jtms/in? (reasoning/tms kb) %))]
     (->> (reads/as-stored-with-term (:index kb) term)
          (keep #(p/get-sentex (:records kb) %))
          (filter #(live? (:id %))))))
@@ -2489,7 +2436,7 @@
          [_ b] (res/matches-visible kb (list 'arg p n '?t) context)
          :let [t' (get b '?t)]
          :when (symbol? t')
-         super (tax/genls (:taxonomy kb) t' context)]
+         super (tax/genls (reasoning/taxonomy kb) t' context)]
      super)))
 
 (defrecord ArgTypeProver []
@@ -2593,7 +2540,7 @@
   the `genl` closure, the contravariant trigger down it?"
   [kb goal context]
   (when-let [{:keys [pred fixed types-up types-down]} (meta-constraint-shape (nm/functor goal))]
-    (let [tax  (:taxonomy kb)
+    (let [tax  (reasoning/taxonomy kb)
           k    (nm/functor goal)
           gvec (vec goal)
           qp   (nth gvec pred)]
@@ -2732,8 +2679,8 @@
 
 ;; ---- which registered provers can say what their answer rests on ---------
 
-(def ^:private registry-support
-  "`[registry-vector {:answers #{functor} :sources #{functor}}]`, memoized against the
+(defonce ^{:private true
+           :doc "`[registry-vector {:answers #{functor} :sources #{functor}}]`, memoized against the
   registry's **identity**.
 
   A volatile pair rather than a map, for `qcn-kb/registered-calculi`'s reason: the
@@ -2741,7 +2688,8 @@
   answers every KB that registered nothing *and* every stretch of writing on one that
   did.  A `swap!` on the registry produces a new value, so it simply misses and
   recomputes; last write wins and the pair is written as one value, so a lost race costs a
-  recomputation and cannot answer wrongly."
+  recomputation and cannot answer wrongly."}
+  registry-support
   (volatile! nil))
 
 (defn- support-summary
@@ -2804,13 +2752,13 @@
   them is a record fetch per stored fact of every predicate named."
   [kb preds]
   (observe/cached
-   (:qcn kb) [::source-contexts preds]
+   (reasoning/qcn kb) [::source-contexts preds]
    (fn [_stale]
      (let [held (into #{}
                       (comp (mapcat (fn [pred] (reads/as-stored-with-functor (:index kb) pred)))
                             (keep (fn [h] (:context (p/get-sentex (:records kb) h)))))
                       preds)]
-       (tax/meet-closure (:taxonomy kb) held)))))
+       (tax/meet-closure (reasoning/taxonomy kb) held)))))
 
 (defn- goal-cost-rank [pr kb goal context] (cost-rank (cost pr kb goal context)))
 
@@ -2934,7 +2882,7 @@
   is in the set for the subsumption reason `inverses-under` states: its spelling holds
   sub-predicate tuples, and those answer the super-predicate's goal."
   [kb pred a b context]
-  (let [qs (tax/inverses-under (:taxonomy kb) pred context)
+  (let [qs (tax/inverses-under (reasoning/taxonomy kb) pred context)
         pv (remove #(instance? InverseProver %) (registry kb))]
     (->> qs
          (sort)                                  ; content-keyed, so the order is stable
@@ -3017,7 +2965,7 @@
   arguments onto one representative is the question it exists to answer, and the prover
   normalizes them itself."
   [kb context]
-  (let [tx (:taxonomy kb)]
+  (let [tx (reasoning/taxonomy kb)]
     (when-not (and (nil? (tax/merged-term-pred tx)) (empty? (tax/rewrite-rules tx)))
       (let [visible? (res/visible-supporter-fn kb context)
             rules    (cond->> (tax/rewrite-rules tx)
@@ -3053,9 +3001,21 @@
   [kb except bindings context]
   (conjunction-derivable? kb except bindings context (condition-normalizer kb context)))
 
-(defn rule-exceptions
-  "The exceptWhen exceptions currently in force for the rule at `handle` — a seq of
-  **conjunctions** (each a vector of literals), evaluated block-if-**any**-holds.
+(defn exception-visible-from?
+  "Does `context` see the exception `entry` (a `rule-exception-entries` element)?
+
+  An `exceptWhen` is a sentex, so a context reasons with the exceptions its `genlCx`
+  ancestor set holds and no others, exactly as it reasons with the rules
+  (`res/rule-visible-from?`).  An exception stated in a context below the conclusion's
+  therefore blocks nothing in the conclusion's context.  An open `?ctx` or nil
+  `context` is the unscoped path and sees every exception."
+  [kb context entry]
+  (res/rule-visible-from? kb context (:context entry)))
+
+(defn rule-exception-entries
+  "The exceptWhen exceptions currently in force for the rule at `handle`, each as
+  `{:context c :query q}`: `q` is one **conjunction** (a vector of literals) and `c` is
+  the context its meta-sentex is stored in.
 
   An exception is a separate belief-following meta-sentex `(exceptWhen Q (sentexHandle
   handle))`: the rule and its exceptions are distinct assertions, so a rule and its
@@ -3075,16 +3035,35 @@
               (filter some?)
               (filter #(sx/exceptWhen-meta? (:sentence %)))
               (filter #(= handle (sx/exceptWhen-rule-handle (:sentence %))))
-              (filter #(jtms/in? (:tms kb) (:id %)))
-              (map #(sx/exception-query-conjuncts (:sentence %))))
+              (filter #(jtms/in? (reasoning/tms kb) (:id %)))
+              (map (fn [msx] {:context (:context msx)
+                              :query   (sx/exception-query-conjuncts (:sentence msx))})))
         (reads/as-stored-with-term (:index kb) (sx/sentex-handle handle))))
+
+(defn rule-exceptions
+  "The conjunctions of `rule-exception-entries`, evaluated block-if-**any**-holds.
+
+  The two-argument arity reads every believed exception wherever it is stored, which
+  is the set a structural reader wants: the re-check index, the stratification graph
+  and the candidate narrowing all over-approximate safely.  The three-argument arity
+  keeps only the exceptions `context` sees (`exception-visible-from?`), which is the
+  set a block decision in `context` reads."
+  ([kb handle]
+   (mapv :query (rule-exception-entries kb handle)))
+  ([kb handle context]
+   (into []
+         (comp (filter #(exception-visible-from? kb context %))
+               (map :query))
+         (rule-exception-entries kb handle))))
 
 (defn exceptions-block?
   "Is a firing of rule `handle` blocked by any of its exceptWhen exceptions under
-  `bindings`, evaluated in `context`?  Block-if-**any**-conjunction-holds.  An ordinary
-  rule (no exception) yields no conjunctions and pays nothing past the roster gate."
+  `bindings`, evaluated in `context`?  Block-if-**any**-conjunction-holds, over the
+  exceptions `context` sees.  An ordinary rule (no exception) yields no conjunctions
+  and pays nothing past the roster gate."
   [kb handle bindings context]
-  (boolean (some #(exception-holds? kb % bindings context) (rule-exceptions kb handle))))
+  (boolean (some #(exception-holds? kb % bindings context)
+                 (rule-exceptions kb handle context))))
 
 (defn rule-guard
   "The firing guard for a rule handle, or nil when the rule carries no exception.
@@ -3100,7 +3079,7 @@
   the context the caller is asking from."
   [kb rule-sentex context]
   (let [h (:id rule-sentex)]
-    (when (and h (reads/watched-rule? (:index kb) h) (seq (rule-exceptions kb h)))
+    (when (and h (reads/watched-rule? (:index kb) h) (seq (rule-exceptions kb h context)))
       (fn [bindings] (not (exceptions-block? kb h bindings context))))))
 
 (defn parse-rule
@@ -3218,7 +3197,7 @@
   whole reach set — so the guard's target is a member count, and the trim keeps whole reaches
   up to it rather than dropping the map wholesale the way `:clear` does."
   [kb ^long target]
-  (if-let [a (:closures kb)]
+  (if-let [a (reasoning/closures kb)]
     (let [before (long (:members @a 0))]
       (when (> before target)
         (swap! a (fn [c]
@@ -3244,8 +3223,8 @@
                  "every entry at once. Bounded by total MEMBERS rather than entries, "
                  "since an entry is a whole reach set: a reach larger than the bound is "
                  "never stored, and a total that reaches it drops the map wholesale.")
-  :read     (fn [kb] {:entries (some-> (:closures kb) deref :entries count)})
-  :clear    (fn [kb] (let [a (:closures kb)
+  :read     (fn [kb] {:entries (some-> (reasoning/closures kb) deref :entries count)})
+  :clear    (fn [kb] (let [a (reasoning/closures kb)
                            n (if a (count (:entries @a)) 0)]
                        (some-> a (reset! {}))
                        n))

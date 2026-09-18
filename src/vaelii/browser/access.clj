@@ -1,6 +1,6 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
-(ns vaelii.host.access
+(ns vaelii.browser.access
   "How a *read* client reaches a KB — directly in-process, or over the daemon HTTP API
   (`vaelii.host.serve`).  It re-exports the slice of the `vaelii.core` read surface the
   browser uses, so the browser is written once against these names and runs unchanged
@@ -15,10 +15,11 @@
     a raw KB → the same local path (so a caller holding a plain KB needs no wrapper)
 
   The pure display fns (`term-role`, `reified-term?`, `readable-sentence`,
-  `indexable-terms`, `levels`, `calculi`)
-  and the bootstrap fns (`open-kb`, `clear!`) take no target and just delegate to
-  `vaelii.core` — they are here only so a caller can require this one namespace and
-  reach the whole surface it needs.
+  `indexable-terms`, `negative?`, `rests-on`, `query-contexts`, `assertable-strengths`,
+  `sort-by-content`, `levels`, `calculi`), the bootstrap fns (`open-kb`, `clear!`), the
+  in-process `write-hazards` and the process-wide `switch-value` take no target and
+  delegate to `vaelii.core`.  They are here so a caller can require this one namespace
+  and reach the whole surface it needs.
 
   Reads — including `check` / `check-edit`, which answer what `assert` would refuse
   and write nothing — plus the four writes the browser performs: `edit` (an
@@ -182,8 +183,18 @@
 (def indexable-terms   core/indexable-terms)
 (def levels            core/levels)
 (def calculi           core/calculi)
+(def negative?         core/negative?)
+(def rests-on          core/rests-on)
+(def query-contexts    core/query-contexts)
+(def assertable-strengths core/assertable-strengths)
+(def sort-by-content   core/sort-by-content)
 (def open-kb           core/open-kb)
 (def clear!            core/clear!)
+;; asked only of an in-process KB: a daemon refuses an unrecovered write itself, and its
+;; hazards are its own process's state
+(def write-hazards     core/write-hazards)
+;; a switch is this process's configuration, not a KB read, so it delegates straight
+(def switch-value      core/switch-value)
 ;; the cache profile is process-wide, not a KB read, so it delegates straight rather than
 ;; dispatching to a target: the scale it moves is this process's, the way `set-log-level`
 ;; changes the process a daemon runs in rather than the KB it serves.  Only the two the

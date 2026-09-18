@@ -152,7 +152,9 @@ looks like success.
 Heap is the other thing this corpus is sensitive to, and the numbers sit close together:
 6 GB is not enough for the checked `:ontology` load, and the JVM default on a large
 machine is. Neither `lein browser` nor `lein run -m vaelii.web` sets `-Xmx`, so both
-get that default; a profile that pins a smaller heap wants the `:dir` instead.
+get that default; a profile that pins a smaller heap wants the `:dir` instead. The
+three `scripts/start-vaelii*.sh` set `-Xmx` from `VAELII_HEAP`, default `40g`: a full
+recover of a 12.26M-sentex store filled a 24g heap.
 
 ## Text you exported yourself
 

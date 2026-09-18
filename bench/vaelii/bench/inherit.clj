@@ -25,7 +25,8 @@
   Run: `lein bench-inherit [--depth n] [--samples n] [--claims n] [--branching b]`"
   (:require [vaelii.core :as v]
             [vaelii.impl.inherit :as inherit]
-            [vaelii.impl.provers :as provers]))
+            [vaelii.impl.provers :as provers]
+            [vaelii.impl.types.prover :as prover-types]))
 
 (def ^:private defaults
   {:depth     8      ; the genl chain each preserved argument walks
@@ -105,7 +106,7 @@
     (println "\nthe control — a predicate with no preserved position")
     (run-arm "ask? (no decl)" #(v/ask? kb (list 'bq_unrelated_of (type-name 0)) ctx) samples)
     (println (format "\nest-bindings reports %s for the 3-position goal"
-                     (provers/est-bindings (provers/->TransitiveInArgProver) kb (gs 3) ctx)))
+                     (prover-types/est-bindings (provers/->TransitiveInArgProver) kb (gs 3) ctx)))
     (println)))
 
 (defn- parse-args [args]

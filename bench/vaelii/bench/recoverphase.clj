@@ -49,8 +49,9 @@
                         -Dvaelii.disk.sync-ms=0 so the syncer never starves it
     equality [ks…]      supersession vs class size k (default 2 4 8 16 32 64)
     all                 decomp defaults + fetchfix 300000 + equality defaults
-  Large sizes want heap: prefix with
-    lein update-in :jvm-opts conj '\"-Xmx24g\"' -- with-profile +bench run -m vaelii.bench.recoverphase …"
+  Large sizes want heap.  The `-Xmx` goes after the profile's own `-Xmx6g`, and the last one
+  wins, so name the profile first:
+    lein with-profile +bench update-in :jvm-opts conj '\"-Xmx24g\"' -- run -m vaelii.bench.recoverphase …"
   (:require [clojure.java.io :as io]
             [vaelii.core :as v]
             [vaelii.impl.chain :as chain]
@@ -63,7 +64,8 @@
             [vaelii.impl.reindex :as reindex]
             [vaelii.impl.settle :as settle]
             [vaelii.impl.special :as special]
-            [vaelii.impl.taxonomy :as tax]))
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 ;; ---- plumbing -----------------------------------------------------------
 
@@ -140,7 +142,7 @@
   :relabel :skipped}` in ms.  The premise loop tests membership in the live set rather
   than fetching a record (the landed shape)."
   [kb]
-  (let [tms  (:tms kb)
+  (let [tms  (reasoning/tms kb)
         rec  (:records kb)
         live (p/sentex-ids rec)
         stored? (fn [h] (or (not (integer? h)) (some? (p/get-sentex rec h))))
@@ -164,8 +166,8 @@
   (let [split   (rebuild-tms-split! kb)
         t-tax   (ms (binding [tax/*defer-depths?* true]
                       (special/rebuild-taxonomy kb)
-                      (tax/refresh-beliefs (:taxonomy kb) #(jtms/in? (:tms kb) %)))
-                    (tax/restore-depths (:taxonomy kb)))
+                      (tax/refresh-beliefs (reasoning/taxonomy kb) #(jtms/in? (reasoning/tms kb) %)))
+                    (tax/restore-depths (reasoning/taxonomy kb)))
         t-exc   (ms (special/recheck-every-exception kb))
         t-sup   (ms (special/refresh-supersessions kb (#'recovery/recovered-supersessions kb)))
         t-opp   (ms (kb/rebuild-opposed! kb)
@@ -194,7 +196,7 @@
   (let [run (fn [order-fn]
               (let [kb  (reopen-cold dir)
                     _   (reindex/reindex kb)
-                    tms (:tms kb) rec (:records kb)
+                    tms (reasoning/tms kb) rec (:records kb)
                     live (p/sentex-ids rec)
                     stored? (fn [h] (or (not (integer? h)) (some? (p/get-sentex rec h))))]
                 (doseq [id live] (jtms/ensure-node tms id 0))
@@ -265,7 +267,7 @@
         b (reopen-cold dir) _ (v/reindex b)                 ; v/reindex = reindex + core/recover
         rec (:records a)
         ids (vec (p/sentex-ids rec))
-        mism (reduce (fn [c id] (if (= (jtms/in? (:tms a) id) (jtms/in? (:tms b) id)) c (inc c)))
+        mism (reduce (fn [c id] (if (= (jtms/in? (reasoning/tms a) id) (jtms/in? (reasoning/tms b) id)) c (inc c)))
                      0 ids)]
     (println (format "  parity with core/recover: %s (%,d handles, %d disagreements)"
                      (if (zero? mism) "OK" "MISMATCH") (count ids) (long mism)))
@@ -334,7 +336,7 @@
 (defn- in-count
   "Sentexes believed `in?` over the whole live set (out = live − in)."
   [kb]
-  (let [tms (:tms kb)]
+  (let [tms (reasoning/tms kb)]
     (reduce (fn [c id] (if (jtms/in? tms id) (inc c) c)) 0 (p/sentex-ids (:records kb)))))
 
 ;; ---- mode: taxstats -----------------------------------------------------
@@ -352,9 +354,9 @@
     (rebuild-tms-split! kb)
     (binding [tax/*defer-depths?* true]
       (special/rebuild-taxonomy kb)
-      (tax/refresh-beliefs (:taxonomy kb) #(jtms/in? (:tms kb) %)))
-    (tax/restore-depths (:taxonomy kb))
-    (let [genl    (get (deref (:taxonomy kb)) :genl)
+      (tax/refresh-beliefs (reasoning/taxonomy kb) #(jtms/in? (reasoning/tms kb) %)))
+    (tax/restore-depths (reasoning/taxonomy kb))
+    (let [genl    (get (deref (reasoning/taxonomy kb)) :genl)
           fwd     (:fwd genl)
           ectxs   (:edge-ctxs genl)
           ccounts (:ctx-counts genl)
@@ -432,7 +434,7 @@
   (println (format "%n=== cleanup preview: %s (index %s) ===" dir index-kind))
   (let [kb  (v/open-kb {:records :disk :index index-kind :dir dir :recover? false})
         rec (:records kb)
-        tms (:tms kb)]
+        tms (reasoning/tms kb)]
     (println (format "  [%s] reindex…" (now-str)))
     (reindex/reindex kb)
     (println (format "  [%s] recover…" (now-str)))
@@ -440,7 +442,7 @@
       (timed-recover! kb))
     (println (format "  [%s] recovered; scanning belief…" (now-str)))
     (let [ids       (p/sentex-ids rec)
-          clashes   (deref (:clashes kb))
+          clashes   (deref (reasoning/clashes kb))
           pairs     (:pairs clashes)
           nogoods   (:nogoods clashes)
           clash-ids (into #{} (mapcat identity) pairs)
@@ -488,14 +490,14 @@
 (defn- disjoint-audit-run [^String dir]
   (println (format "%n=== disjoint audit: %s ===" dir))
   (let [kb  (v/open-kb {:records :disk :index :columnar :dir dir :recover? false})
-        tax (:taxonomy kb)]
+        tax (reasoning/taxonomy kb)]
     (println (format "  [%s] reindex…" (now-str)))
     (reindex/reindex kb)
     (println (format "  [%s] rebuild-tms + rebuild-taxonomy…" (now-str)))
     (rebuild-tms-split! kb)
     (binding [tax/*defer-depths?* true]
       (special/rebuild-taxonomy kb)
-      (tax/refresh-beliefs (:taxonomy kb) #(jtms/in? (:tms kb) %)))
+      (tax/refresh-beliefs (reasoning/taxonomy kb) #(jtms/in? (reasoning/tms kb) %)))
     (tax/restore-depths tax)
     (let [didx    (:disjoint-index (deref tax))
           types   (keys didx)
@@ -527,14 +529,14 @@
     (println (format "%n  [%s] done." (now-str)))))
 
 ;; ---- mode: beliefimage ---------------------------------------------------
-;; The belief image end to end against a real `:disk-snapshot` store, through the
+;; The reasoning image end to end against a real `:disk-snapshot` store, through the
 ;; production open (`:recover? :auto`).  Pass 1 opens with the image's manifest removed,
 ;; so the open recovers from the records and writes a fresh image; pass 2 opens again
 ;; and installs it.  The two beliefs must agree handle for handle, and the two open
 ;; times are the saving.  Removing the manifest discards a cache: pass 1's recover writes
 ;; the image again from the records.
 
-(defn- clash-pairs [kb] (count (:pairs (some-> (:clashes kb) deref))))
+(defn- clash-pairs [kb] (count (:pairs (some-> (reasoning/clashes kb) deref))))
 
 (defn- belief-census
   "[in out] over the whole live set — belief and its sparse complement."
@@ -543,8 +545,8 @@
     [in (- n in)]))
 
 (defn- beliefimage-run [^String dir]
-  (println (format "%n=== belief image: %s ===" dir))
-  (.delete (io/file dir "belief" "manifest.edn"))
+  (println (format "%n=== reasoning image: %s ===" dir))
+  (.delete (io/file dir "reasoning" "manifest.edn"))
   (binding [tax/*scoped-memo-budget* (memo-budget)]
     (println (format "  [%s] PASS 1 — open, recover from the records, write the image" (now-str)))
     (let [[kb1 t1]   (timed (v/open-kb {:backend :disk-snapshot :dir dir}))
@@ -558,7 +560,7 @@
       (let [[kb2 t2]   (timed (v/open-kb {:backend :disk-snapshot :dir dir}))
             [in2 out2] (belief-census kb2)
             cp2        (clash-pairs kb2)
-            mism       (reduce (fn [c id] (if (= (jtms/in? (:tms kb1) id) (jtms/in? (:tms kb2) id)) c (inc c)))
+            mism       (reduce (fn [c id] (if (= (jtms/in? (reasoning/tms kb1) id) (jtms/in? (reasoning/tms kb2) id)) c (inc c)))
                                0 (p/sentex-ids (:records kb2)))]
         (println (format "  open %.2f min · in %,d · out %,d · clash-pairs %,d — %s"
                          (/ t2 60000.0) (long in2) (long out2) (long cp2) (heap-str)))

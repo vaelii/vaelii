@@ -15,7 +15,7 @@
   facts (`[:false …]`), variable-pattern fan-out (every argument position blanked), node
   pruning on `unindex-sentex!`, and `clear-index!` back to empty.
 
-  A node's child edges change *shape* past `columnar/promote-at` children, and both shapes
+  A node's child edges change *shape* past `trie-types/promote-at` children, and both shapes
   have to answer identically — so `columnar-wide-node-tiers` drives one node across that
   width in both directions with the threshold turned down, asserting the representation as
   well as the answers.
@@ -30,7 +30,8 @@
             [vaelii.impl.disk.index-snapshot :as snap]
             [vaelii.impl.memory :as mem]
             [vaelii.impl.protocols :as p]
-            [vaelii.impl.sentex :as sx])
+            [vaelii.impl.sentex :as sx]
+            [vaelii.impl.types.trie :as trie-types])
   (:import [it.unimi.dsi.fastutil.ints Int2IntOpenHashMap]))
 
 ;; ---- a small, collision-prone vocabulary --------------------------------
@@ -181,7 +182,7 @@
 (defn- node-at
   "The trie node id at a decoded path prefix, negative when the prefix is absent."
   [trie prefix]
-  (#'columnar/-node-at trie prefix))
+  (#'trie-types/-node-at trie prefix))
 
 (defn- child-rep
   "Which shape the trie is holding node `id`'s child edges in — `:none`, `:array` (the
@@ -203,7 +204,7 @@
   ;; child edge per fact and is the only thing in the trie that grows.  `promote-at` is
   ;; turned down to 8 (so it demotes at 4) rather than building a node of 65: the tier is
   ;; a threshold, and what has to be exercised is the crossing, not the width.
-  (with-redefs [columnar/promote-at 8]
+  (with-redefs [trie-types/promote-at 8]
     (let [mem  (mem/memory-index-store       {:space 74})
           col  (columnar/columnar-index-store {:space 74})
           trie (:trie col)]

@@ -78,7 +78,8 @@
             [vaelii.impl.protocols :as p]
             [vaelii.impl.rules :as rules]
             [vaelii.impl.sentex :as sx]
-            [vaelii.impl.taxonomy :as tax])
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning])
   (:import [java.io File PushbackReader]))
 
 ;; ---- the strength wrapper ------------------------------------------------
@@ -362,7 +363,7 @@
   [kb written {:keys [context ancestor-set]}]
   (cond
     context (filterv #{context} (keys written))
-    ancestor-set    (let [up (set (tax/context-up (:taxonomy kb) ancestor-set))]
+    ancestor-set    (let [up (set (tax/context-up (reasoning/taxonomy kb) ancestor-set))]
                       (filterv up (keys written)))
     :else   (vec (keys written))))
 

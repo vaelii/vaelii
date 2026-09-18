@@ -42,7 +42,6 @@
   over another."
   (:require [clojure.set :as set]
             [vaelii.impl.capabilities :as cap]
-            [vaelii.impl.kv :as kv]
             [vaelii.impl.protocols :as p]))
 
 ;; ---- reserved bookkeeping keys --------------------------------------------
@@ -88,15 +87,14 @@
 
 (defn- note! [a meta-kv k id]
   (swap! a conj id)
-  (kv/kv-add-to-set meta-kv k id))
+  (p/kv-add-to-set meta-kv k id))
 
 (defn- unnote! [a meta-kv k id]
   (swap! a disj id)
-  (kv/kv-remove-from-set meta-kv k id))
+  (p/kv-remove-from-set meta-kv k id))
 
-(defrecord OverlayRecordStore
-           [overlay base meta-kv counter
-            hidden? sx-tombstoned jd-tombstoned pv-tombstoned released]
+(defrecord OverlayRecordStore [overlay base meta-kv counter
+                               hidden? sx-tombstoned jd-tombstoned pv-tombstoned released]
 
   p/RecordStore
   ;; strictly above every handle the base holds, so a minted handle is never a base one
@@ -242,8 +240,8 @@
   ;; anything minted after it stays above the base's range regardless.
   (clear-records! [_]
     (p/clear-records! overlay)
-    (kv/kv-clear! meta-kv)
-    (kv/kv-put meta-kv cleared-key true)
+    (p/kv-clear! meta-kv)
+    (p/kv-put meta-kv cleared-key true)
     (reset! counter 0)
     (reset! hidden? true)
     (reset! sx-tombstoned #{})
@@ -330,11 +328,11 @@
       :base           base
       :meta-kv        meta-kv
       :counter        (atom (max base-next own-next))
-      :hidden?        (atom (some? (kv/kv-get meta-kv cleared-key)))
-      :sx-tombstoned  (atom (set (kv/kv-members meta-kv sx-tombstone-key)))
-      :jd-tombstoned  (atom (set (kv/kv-members meta-kv jd-tombstone-key)))
-      :pv-tombstoned  (atom (set (kv/kv-members meta-kv pv-tombstone-key)))
-      :released       (atom (set (kv/kv-members meta-kv released-key)))})))
+      :hidden?        (atom (some? (p/kv-get meta-kv cleared-key)))
+      :sx-tombstoned  (atom (set (p/kv-members meta-kv sx-tombstone-key)))
+      :jd-tombstoned  (atom (set (p/kv-members meta-kv jd-tombstone-key)))
+      :pv-tombstoned  (atom (set (p/kv-members meta-kv pv-tombstone-key)))
+      :released       (atom (set (p/kv-members meta-kv released-key)))})))
 
 (defn overlay-record-store?
   "Is `store` one of these — i.e. is it already a fork's record half?  Asked by

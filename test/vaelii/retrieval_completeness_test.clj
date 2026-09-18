@@ -29,6 +29,7 @@
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -39,12 +40,12 @@
   and then `unify` itself."
   [kb pat ctx]
   (let [recs     (:records kb)
-        tms      (:tms kb)
+        tms      (reasoning/tms kb)
         ;; a variable view-context means *any* context, exactly as `matches-visible`
         ;; reads it — the up-closure of a variable is not an ancestor set
         visible? (if (sx/variable? ctx)
                    (constantly true)
-                   (let [up (tax/context-up (:taxonomy kb) ctx)] #(contains? up %)))
+                   (let [up (tax/context-up (reasoning/taxonomy kb) ctx)] #(contains? up %)))
         pt       (res/kb-sentex kb pat ctx)]
     (into #{}
           (keep (fn [h]

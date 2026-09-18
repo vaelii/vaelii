@@ -1215,7 +1215,7 @@
      ['ist (enforced {:shape {:args [:context :sentence]} :storage [:none] :checked false
                       :family nil :facets #{}
                       :notes "never stored: it names where the sentence goes, at the assert entry point."}
-                     "assert and rule placement — never stored, it names where the sentence goes")]
+                     "assert placement and read goals — never stored, it names where the sentence goes")]
      ['believes (enforced {:shape {:args [:term :sentence]} :storage [:none] :checked false
                            :family nil :facets #{:answers}
                            :notes (str "a plain binary predicate, assertible and stored like any"

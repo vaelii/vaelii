@@ -1,10 +1,11 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
-(ns vaelii.host.llm.protocol
+(ns ^{:clojure.tools.namespace.repl/load false :clojure.tools.namespace.repl/unload false}
+ vaelii.host.llm.protocol
   "The pluggable-model extension point: one protocol, two methods, and a provider-neutral
   request/response shape.
 
-  Mirrors `vaelii.impl.solve/Solver` — a protocol plus a deterministic stub as the
+  Mirrors `vaelii.impl.types.solve/Solver` — a protocol plus a deterministic stub as the
   default, with the real backend reached only when a caller installs it.  So the
   suite, and a build with no API key and no network, run the whole pipeline against
   `vaelii.host.llm.stub` and never open a socket.

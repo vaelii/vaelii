@@ -45,6 +45,7 @@
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.settle :as settle]
             [vaelii.impl.special :as special]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.violations :as violations]))
 
 (def ^:private bench-context 'CxLoadPhase)
@@ -174,22 +175,22 @@
   "Delegate every `KvBackend` op to `inner`, with `kv-batch`'s op list passed through
   `xform` first.  Reads are untouched, so `count-at` still answers off what landed."
   [inner xform]
-  (reify kv/KvBackend
-    (kv-get             [_ k]   (kv/kv-get inner k))
-    (kv-put             [_ k x] (kv/kv-put inner k x))
-    (kv-delete          [_ k]   (kv/kv-delete inner k))
-    (kv-increment       [_ k]   (kv/kv-increment inner k))
-    (kv-decrement       [_ k]   (kv/kv-decrement inner k))
-    (kv-add-to-set      [_ k m] (kv/kv-add-to-set inner k m))
-    (kv-remove-from-set [_ k m] (kv/kv-remove-from-set inner k m))
-    (kv-members         [_ k]   (kv/kv-members inner k))
-    (kv-member?         [_ k m] (kv/kv-member? inner k m))
-    (kv-count           [_ k]   (kv/kv-count inner k))
-    (kv-intersect       [_ ks]  (kv/kv-intersect inner ks))
-    (kv-batch           [_ ops] (kv/kv-batch inner (xform ops)))
-    (kv-entries         [_]     (kv/kv-entries inner))
-    (kv-load            [_ es]  (kv/kv-load inner es))
-    (kv-clear!          [_]     (kv/kv-clear! inner))))
+  (reify p/KvBackend
+    (kv-get             [_ k]   (p/kv-get inner k))
+    (kv-put             [_ k x] (p/kv-put inner k x))
+    (kv-delete          [_ k]   (p/kv-delete inner k))
+    (kv-increment       [_ k]   (p/kv-increment inner k))
+    (kv-decrement       [_ k]   (p/kv-decrement inner k))
+    (kv-add-to-set      [_ k m] (p/kv-add-to-set inner k m))
+    (kv-remove-from-set [_ k m] (p/kv-remove-from-set inner k m))
+    (kv-members         [_ k]   (p/kv-members inner k))
+    (kv-member?         [_ k m] (p/kv-member? inner k m))
+    (kv-count           [_ k]   (p/kv-count inner k))
+    (kv-intersect       [_ ks]  (p/kv-intersect inner ks))
+    (kv-batch           [_ ops] (p/kv-batch inner (xform ops)))
+    (kv-entries         [_]     (p/kv-entries inner))
+    (kv-load            [_ es]  (p/kv-load inner es))
+    (kv-clear!          [_]     (p/kv-clear! inner))))
 
 (defn- with-backend
   "`kb` with its index store rebuilt over a decorated backend."
@@ -246,10 +247,10 @@
 (defn- always-post-opposed!
   [kb sentence]
   (let [b (sx/canon (kb/body-under-not sentence))]
-    (swap! (:opposed kb) (if (@#'kb/opposed? (:index kb) b) conj disj) b)
-    (swap! (:negations kb) (fn [m] (-> m
-                                       (update :by-body dissoc b)
-                                       (update :dirty (fnil conj #{}) b))))))
+    (swap! (reasoning/opposed kb) (if (@#'kb/opposed? (:index kb) b) conj disj) b)
+    (swap! (reasoning/negations kb) (fn [m] (-> m
+                                                (update :by-body dissoc b)
+                                                (update :dirty (fnil conj #{}) b))))))
 
 (defn- baseline-run [facts redefs]
   (gc!)

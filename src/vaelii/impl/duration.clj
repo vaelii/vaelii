@@ -57,7 +57,8 @@
             [vaelii.impl.provers :as provers]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
-            [vaelii.impl.stp :as stp]))
+            [vaelii.impl.stp :as stp]
+            [vaelii.impl.types.prover :as prover-types]))
 
 ;; ---- measures in and out -------------------------------------------------
 
@@ -264,7 +265,7 @@
   (or (sx/variable? d) (provers/measure? d)))
 
 (defrecord DurationProver []
-  provers/Prover
+  prover-types/Prover
   (applicable? [_ _ goal _]
     (and (sequential? goal) (seq goal)
          (case (first goal)
@@ -286,13 +287,13 @@
   (completeness [_ _ _ _] 100)
   (solve [_ kb goal context] (map first (solve-with-support-for kb goal context)))
 
-  provers/SupportingProver
+  prover-types/SupportingProver
   (support-functors [_] duration-predicates)
   ;; Everything the two computations read.  `length` and the unit table for both; the
   ;; interval relations, the endpoint bridge and the metric constraints for the overlap,
   ;; which reads the Allen network and — where it narrows — the metric one.  A datum on any
   ;; of them moves an answer no antecedent of the rule names, which is what this set is for
-  ;; (`provers/SupportingProver`).
+  ;; (`prover-types/SupportingProver`).
   (support-sources [_]
     (-> #{'length}
         (into provers/unit-table-predicates)

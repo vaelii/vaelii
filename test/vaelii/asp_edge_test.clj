@@ -1,7 +1,7 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.asp-edge-test
-  "The ASP edge solver (`vaelii.impl.asp.edge`) behind the `solve/Solver` protocol.
+  "The ASP edge solver (`vaelii.impl.asp.edge`) behind the `solve-types/Solver` protocol.
 
   Two halves.  The first drives `edge-solver` directly with hand-built `Program`s
   — no KB, no store — because the translation is a pure function of the program
@@ -39,6 +39,7 @@
             [vaelii.impl.asp.solver :as solver]
             [vaelii.impl.rules :as vr]
             [vaelii.impl.solve :as solve]
+            [vaelii.impl.types.solve :as solve-types]
             [vaelii.test-util :as tu]))
 
 (def ^:private asp? (solver/available?))
@@ -49,7 +50,7 @@
 (defn- decide
   "Run `edge-solver` over a program built from `contested` / `nogoods` / `content`."
   [contested nogoods content]
-  (solve/solve edge/edge-solver (solve/program contested nogoods content)))
+  (solve-types/solve edge/edge-solver (solve/program contested nogoods content)))
 
 (defn- sentences
   "What each of `handles` asserts, per `content` — so an assertion can name the
@@ -331,7 +332,7 @@
   (let [t (edge/translate (solve/program #{} [] {}))]
     (is (nil? (:aspif t)))
     (is (= {:defeat #{} :violated []}
-           (solve/solve edge/edge-solver (solve/program #{} [] {}))))))
+           (solve-types/solve edge/edge-solver (solve/program #{} [] {}))))))
 
 ;; ---- a result that is not an answer ------------------------------------
 ;;
@@ -371,7 +372,7 @@
     (with-backend-answering {:status status :atoms [] :cost nil :raw nil}
       (fn []
         (testing (str "edge-solver on " status " decides nothing at all")
-          (let [r (solve/solve edge/edge-solver two-choices)]
+          (let [r (solve-types/solve edge/edge-solver two-choices)]
             (is (empty? (:defeat r)) "not one side, not both — none")
             (is (= :solver-failed (:type (ex-data (:error r)))))
             (is (= status (:status (ex-data (:error r)))))))
@@ -391,8 +392,8 @@
   ;; whose round 1 timed out and whose round 2 did not would end at a belief set
   ;; neither solver would produce, on knowledge that never changed.
   (when asp?
-    (let [decided (solve/solve edge/edge-solver shared-member)
-          stub    (solve/solve solve/local-solver shared-member)]
+    (let [decided (solve-types/solve edge/edge-solver shared-member)
+          stub    (solve-types/solve solve/local-solver shared-member)]
       (testing "the two solvers really do disagree here, or this test proves nothing"
         (is (= #{2} (:defeat decided)) "ASP spends one defeat on the shared member")
         (is (= #{1 3} (:defeat stub)) "the stub spends two"))
@@ -402,7 +403,7 @@
                                              (if (= mode :label)
                                                {:status :interrupted :atoms [] :cost nil :raw nil}
                                                (real aspif mode)))]
-                  (solve/solve edge/edge-solver shared-member))]
+                  (solve-types/solve edge/edge-solver shared-member))]
           (is (empty? (:defeat r)))
           (is (not= (:defeat stub) (:defeat r))))))))
 
@@ -413,16 +414,16 @@
   ;; `asp.label` raises it rather than committing a world nobody computed.
   (when asp?
     (testing "a program with nothing to satisfy really does defeat nothing, and errs not"
-      (let [r (solve/solve edge/edge-solver
-                           (solve/program #{1 2} []
-                                          {1 {:sentence '(a) :context 'Cx}
-                                           2 {:sentence '(b) :context 'Cx}}))]
+      (let [r (solve-types/solve edge/edge-solver
+                                 (solve/program #{1 2} []
+                                                {1 {:sentence '(a) :context 'Cx}
+                                                 2 {:sentence '(b) :context 'Cx}}))]
         (is (empty? (:defeat r)))
         (is (nil? (:error r)))))
     (testing "an interrupted solve defeats nothing either, and says why"
       (with-backend-answering {:status :interrupted :atoms [] :cost nil :raw nil}
         (fn []
-          (let [r (solve/solve edge/edge-solver shared-member)]
+          (let [r (solve-types/solve edge/edge-solver shared-member)]
             (is (empty? (:defeat r)))
             (is (= :solver-failed (:type (ex-data (:error r)))))))))))
 
@@ -440,7 +441,7 @@
     (with-redefs [solver/available? (constantly true)
                   solver/solve      (fn [_ _] (throw thrown))]
       (testing (str what " comes back as a result, not a throw")
-        (let [r (solve/solve edge/edge-solver two-choices)]
+        (let [r (solve-types/solve edge/edge-solver two-choices)]
           (is (empty? (:defeat r)) "nothing was decided")
           (is (= expected-type (:type (ex-data (:error r)))))
           (is (identical? thrown (ex-cause (:error r))) "the original failure is the cause"))))))
@@ -450,8 +451,8 @@
   ;; it: the edge solver degrades, a labeling keeps nothing, an enumeration is empty.
   (with-backend-answering {:status :unsat :atoms [] :cost nil :raw nil}
     (fn []
-      (is (= (solve/solve solve/local-solver two-choices)
-             (solve/solve edge/edge-solver two-choices)))
+      (is (= (solve-types/solve solve/local-solver two-choices)
+             (solve-types/solve edge/edge-solver two-choices)))
       (is (= #{} (edge/kept-of (edge/translate two-choices) {:status :unsat :atoms []})))
       (is (= [] (edge/enumerate-optima two-choices))))))
 
@@ -472,7 +473,7 @@
         hi    {:nogood #{1} :priority 9 :sentence '(contradicts zzz)}
         prog (fn [ngs] (solve/program #{1} (conj (vec ngs) force)
                                       {1 {:sentence '(live) :context 'Cx}}))
-        seen (fn [ngs] (mapv :sentence (:violated (solve/solve edge/edge-solver (prog ngs)))))]
+        seen (fn [ngs] (mapv :sentence (:violated (solve-types/solve edge/edge-solver (prog ngs)))))]
     (when asp?
       (testing "the same three nogoods in either order read identically"
         (is (= (seen [ng1 ng2 hi]) (seen [hi ng2 ng1]))))
@@ -509,7 +510,7 @@
   ;; should not be possible to add one without saying so.
   (when asp?
     (testing "one program, one solve"
-      (is (= [:label] (backend-solves #(solve/solve edge/edge-solver two-choices))))
+      (is (= [:label] (backend-solves #(solve-types/solve edge/edge-solver two-choices))))
       (is (= [:all-optima] (backend-solves #(edge/enumerate-optima two-choices)))))
     (testing "classification is two — cautious, then brave"
       (is (= [:classify-true :classify-supportable]

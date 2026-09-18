@@ -11,6 +11,7 @@
             [vaelii.core :as v]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -222,7 +223,7 @@
   ;; answer is memoized per context and retired by exactly the events that can move it:
   ;; the except arriving, and the except leaving.
   (tu/with-terms [CxChild CxParent CxOther]
-    (let [tx     (:taxonomy kb)
+    (let [tx     (reasoning/taxonomy kb)
           down   #(tax/context-down tx CxParent)]
       (v/assert kb (list 'genlCx CxParent 'CxWell) 'CxUniverse {:strength :monotonic})
       (v/assert kb (list 'genlCx CxOther CxParent) 'CxUniverse {:strength :monotonic})
@@ -246,7 +247,7 @@
   ;; a `genlCx` supporter.  One on an ordinary fact reaches none, so no candidate pays a
   ;; filtered walk — the answer is the raw closure, which is the same set.
   (tu/with-terms [shiny gold CxChild CxParent]
-    (let [tx (:taxonomy kb)]
+    (let [tx (reasoning/taxonomy kb)]
       (v/assert kb (list 'genlCx CxParent 'CxWell) 'CxUniverse {:strength :monotonic})
       (v/assert kb (list 'genlCx CxChild CxParent) 'CxUniverse {:strength :monotonic})
       (let [h  (v/assert kb (list shiny gold) CxParent {:strength :monotonic})
@@ -301,7 +302,7 @@
   ;; hidden from every warm read — and the KB then disagrees with `recover` over one
   ;; store, which is the property the derivation path exists to keep.
   (tu/with-terms [shiny gold hide trigger CxChild CxParent CxOther]
-    (let [tx (:taxonomy kb)]
+    (let [tx (reasoning/taxonomy kb)]
       (v/assert kb (list 'genlCx CxParent 'CxWell) 'CxUniverse {:strength :monotonic})
       (v/assert kb (list 'genlCx CxOther CxParent) 'CxUniverse {:strength :monotonic})
       (let [edge-h (v/assert kb (list 'genlCx CxChild CxParent) 'CxUniverse
@@ -562,14 +563,14 @@
     (v/assert kb (list 'genlCx CxAr 'CxWell) 'CxUniverse {:strength :monotonic})
     (let [arh (v/assert kb (list 'arity myRel 2) CxAr {:strength :monotonic})]
       (testing "arity declaration is active"
-        (is (= 2 (tax/declared-arity (:taxonomy kb) myRel))))
+        (is (= 2 (tax/declared-arity (reasoning/taxonomy kb) myRel))))
       (let [eh (v/assert kb (list 'except (sx/sentex-handle arh)) CxAr {:strength :monotonic})]
         (testing "the arity sentex is hidden from query"
           (is (empty? (v/sentexes-matching kb (list 'arity myRel 2) CxAr))))
         (testing "retract except — arity sentex returns"
           (v/retract! kb eh)
           (is (seq (v/sentexes-matching kb (list 'arity myRel 2) CxAr)))
-          (is (= 2 (tax/declared-arity (:taxonomy kb) myRel))))))))
+          (is (= 2 (tax/declared-arity (reasoning/taxonomy kb) myRel))))))))
 
 (tu/deftest-kb except-blocks-inverse-sentex-visibility
   ;; inverse: the inverse relation.

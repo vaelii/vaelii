@@ -594,14 +594,14 @@ hot-loop tax to weigh against the guarantee. Iterating reads take a
 shared stamp outright; they already allocate O(nodes), so the acquisition is lost in
 the walk.
 
-### A belief image is installed whole or not at all
+### A reasoning image is installed whole or not at all
 
 A label is a fixpoint over the justification graph, and one assert can move an unbounded
 region of it, so the network cannot be a write-ahead log
 ([why the index persists and these two do not](storage.md#why-the-index-persists-and-these-two-do-not)).
-A belief image is a snapshot instead: the whole network and the state around it, written
+A reasoning image is a snapshot instead: the whole network and the state around it, written
 between operations and installed on the next open in place of a recover
-([storage.md](storage.md#the-belief-image)).
+([storage.md](storage.md#the-reasoning-image)).
 
 An image is installed only against the exact records, source identity and policies it was
 written under, and any mismatch discards all of it. Nothing reconciles an image against
@@ -614,9 +614,11 @@ belief is order independent.
 
 The stamp covers the source as well as the records because a label is a function of both:
 the same records under a changed settle rule label differently. The source identity hashes
-the engine namespaces recovery and the write entry points reach, read as forms with
-comments and docstrings removed, so a prose edit keeps an image and a code edit discards
-it. A KB running a prover or evaluatable registered from outside the engine takes no image,
+the engine definitions recovery and the write entry points can run, read as forms with
+comments and docstrings removed. A prose edit keeps an image, and so does an edit to a
+definition recover never reaches; an edit to a definition it reaches discards the image.
+The walk over definitions reads no local scope, so a local that shares a var's name reaches
+the var, and the digest covers more forms than recover runs rather than fewer. A KB running a prover or evaluatable registered from outside the engine takes no image,
 because that code is outside the digest. Every mismatch class costs a recover, which is the
 path an open without an image runs, so the worst a declined image does is make an open as
 slow as it is with no image at all.
@@ -857,12 +859,13 @@ answers, one derived sentex per pair the closure already covers (see
 spelling that writes a rule down without running it, so a claim can sit on the record with
 no second engine computing it beside the closure.
 
-Which leaves each account free to take the cheaper spelling. What `CxCore.txt` ships this
-way is the global lifting rule, `(implies (?pred . ?args) (ist CxUniverse (?pred . ?args)))`
-— a rule worth reading and worth never firing. `genl`'s own transitivity is carried by the
-`comment` on the predicate instead: prose describing a closure is a smaller thing to keep
-true than a rule sentence nothing runs, and the argument above only says the account must
-be somewhere a reader finds it, never that it must be a rule.
+Which leaves each account free to take the cheaper spelling. `CxCore.txt` ships no inert
+rule: `genl`'s transitivity and the decontextualized-predicate lift are both carried by the
+`comment` on their predicate. Prose describing a closure is a smaller thing to keep true
+than a rule sentence nothing runs, and the argument above only says the account must be
+somewhere a reader finds it, never that it must be a rule. The lift cannot be written as a
+rule at all, because its consequent would be an `(ist CxUniverse …)`, which a rule is
+refused ([contexts.md](contexts.md#ist-find-or-create-in-a-context)).
 
 ### Recording a disjoint clique beats asserting it
 

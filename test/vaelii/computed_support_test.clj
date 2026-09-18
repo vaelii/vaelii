@@ -2,7 +2,7 @@
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.computed-support-test
   "A forward rule whose antecedent a **prover** answers out of stored facts
-  (`vaelii.impl.provers/SupportingProver`): the metric temporal closure, the duration
+  (`vaelii.impl.types.prover/SupportingProver`): the metric temporal closure, the duration
   arithmetic, and the measure comparisons.
 
   All three answer a question whose answer is a function of what the KB holds — how far

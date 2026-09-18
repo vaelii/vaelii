@@ -14,6 +14,7 @@
             [vaelii.impl.kb :as kb]
             [vaelii.impl.nat :as nat]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded core-context/load-into))
@@ -166,7 +167,7 @@
   ;; also declared — a hole no gate-off test can see.
   (tu/with-terms [Quote Kilogram Kg QuantityFn cycl_expression cycl_constant]
     (declare-quote! kb Quote cycl_expression cycl_constant)      ; gate ON
-    (is (true? (tax/any-quoting-functions? (:taxonomy kb))))
+    (is (true? (tax/any-quoting-functions? (reasoning/taxonomy kb))))
     (v/assert kb (list 'sameAs Kilogram Kg) 'CxUniverse)
     (let [q (fn [u] (list QuantityFn 5 u))]
       (testing "a non-quoting compound still folds under congruence with the gate on"
@@ -186,7 +187,7 @@
           k2 (k-of kb (v/assert kb (list cycl_constant (list Quote Fluffet)) 'CxUniverse))]
       (v/recover kb)
       (testing "the gate rebuilds"
-        (is (true? (tax/any-quoting-functions? (:taxonomy kb)))))
+        (is (true? (tax/any-quoting-functions? (reasoning/taxonomy kb)))))
       (testing "so the mention is still opaque to an identity merge after recovery"
         (v/assert kb (list 'sameAs Muffet Fluffet) 'CxUniverse)
         (is (empty? (nat/colliding-constant-groups kb)))

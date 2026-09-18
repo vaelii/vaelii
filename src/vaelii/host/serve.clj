@@ -60,6 +60,7 @@
             [taoensso.trove :as trove]
             [vaelii.core :as v]
             [vaelii.host.guard :as guard]
+            [vaelii.host.starter :as starter]
             [vaelii.host.subscribe :as sub]
             [vaelii.impl.caches :as caches]
             [vaelii.impl.config :as config])
@@ -333,7 +334,7 @@
     :search-tree       (op v/search-tree)
     :compare-tacticians (op v/compare-tacticians)
     ;; introspection reads — the surface a read client (the browser) needs to render
-    ;; a KB it does not own; safe to serve, and shared with vaelii.host.access
+    ;; a KB it does not own; safe to serve, and shared with vaelii.browser.access
     :premise?     (op v/premise?)
     :defeat-class (op v/defeat-class)
     :justification    (op v/justification)
@@ -461,7 +462,7 @@
 ;;
 ;; A second table rather than a second value shape in the first one, because the
 ;; difference is worth being able to state: `ops` is the surface a caller could also
-;; reach in process, and `vaelii.host.access` dispatches through it for exactly that
+;; reach in process, and `vaelii.browser.access` dispatches through it for exactly that
 ;; reason; `feed-ops` is the daemon's own, and a local caller holding a KB uses
 ;; `core/watch` instead.  `vaelii.host.llm.tools` derives the model's tool set from
 ;; `ops` alone, so a subscription is not something a model can allocate.
@@ -586,8 +587,13 @@
     ;; client/server split
     :unknown-subscription :bad-cursor :too-many-subscriptions :too-many-waiters})
 
-(defn- handle-op
+(defn handle-op
   "Run one `{:op :args}` request under the write lock and answer with EDN.
+
+  Public because the browser serves the same protocol: `vaelii.browser.web` answers
+  `POST /op` by calling this with its active KB, its own subscription registry and its
+  own write monitor, so a native client reads the browser's KB with the daemon's op
+  table, guards and refusals (docs/operations.md, \"The browser serves the protocol too\").
 
   The two guards run before the body is read.  `POST /op` is the write route of the
   single writer, and on an open loopback daemon nothing above has identified the
@@ -729,7 +735,7 @@
   "The network interface the daemon binds unless told otherwise.  `POST /op` is the **write**
   route of the single writer, so it answers only the machine it runs on; exposing it is
   an explicit choice (`--listen`), not the default.  The same rule the browser holds to
-  (`vaelii.host.web`), and the more important of the two — the browser edits a KB, and
+  (`vaelii.browser.web`), and the more important of the two — the browser edits a KB, and
   this one *is* the KB's only writer.
 
   Loopback bounds *which machine* may reach the daemon and nothing more: a browser on
@@ -843,13 +849,16 @@
                                                              " — the daemon takes a port"
                                                              " and a store directory and"
                                                              " nothing else: <port>"
-                                                             " [<dir>] [--listen <address>]")
+                                                             " [<dir>] [--listen <address>]"
+                                                             " [--starter]")
                                                         {:type :unknown-option :mismatch :unknown-key :arg (nth pos 2)}))
                                         pos)
       (= "--listen" a)                (recur (rest more) pos)   ; value read by listen-host
+      (= "--starter" a)               (recur more pos)          ; read by -main
       (.startsWith ^String a "--")    (throw (ex-info (str "unknown flag: " a " — the"
                                                            " daemon reads --listen"
-                                                           " <address>, and takes a port"
+                                                           " <address> and --starter,"
+                                                           " and takes a port"
                                                            " and a store directory as"
                                                            " positionals")
                                                       {:type :unknown-option :mismatch :unknown-key :flag a}))
@@ -922,13 +931,28 @@
                            "daemon should answer, or confirm that is what fronts it")
                  :data {:host host}})))
 
+(defn- dir-backend
+  "The backend the daemon opens `dir` under: the one the store there was written by
+  (`v/store-backend`), else `:disk-log` for a directory holding no store yet.  A
+  `:disk-snapshot` or `:disk-columnar` store opened as `:disk-log` finds no index log, so
+  every client read against it answers nothing although every record is on disk."
+  [dir]
+  (or (v/store-backend dir) :disk-log))
+
 (defn -main
-  "Run the daemon in the foreground.  Args: `[port [dir]] [--listen ADDR]`, in any
-  order — `dir` selects the durable `:disk-log` backend (recovered on open, so it
-  persists across restarts); with no `dir` the KB is in-memory and lives only as
-  long as the process.
+  "Run the daemon in the foreground.  Args: `[port [dir]] [--listen ADDR] [--starter]`,
+  in any order — `dir` opens the store there under the backend its files were written by,
+  or a new durable `:disk-log` store when it holds none (`dir-backend`); either is
+  recovered on open, so it persists across restarts.  With no `dir` the KB is in-memory
+  and lives only as long as the process.
+
+  `--starter` loads the shipped starter schema (`vaelii.host.starter/load-into`) into the
+  KB after it opens and before the port is bound, so `GET /health` answers only once the
+  schema is in.  The load asserts every starter sentence: into a directory that already
+  holds them, each dedups to its stored handle, and the load still reads every file.
 
     lein run -m vaelii.host.serve 4200 /var/lib/vaelii
+    lein run -m vaelii.host.serve 4200 --starter                          ; in memory, with the schema
     lein run -m vaelii.host.serve 4200 /var/lib/vaelii --listen 0.0.0.0   ; opt-in
 
   It binds **loopback** unless `--listen` says otherwise, for the reason on `loopback`
@@ -975,13 +999,15 @@
                        (binding [*out* *err*] (println (ex-message e)))
                        (System/exit 2)))
         hosts (host-posture host)
-        kb    (if dir
-                (v/open-kb {:backend :disk-log :dir dir :recover? :auto})
-                (v/open-kb {}))]
+        starter? (boolean (some #{"--starter"} args))
+        kb    (cond-> (if dir
+                        (v/open-kb {:backend (dir-backend dir) :dir dir :recover? :auto})
+                        (v/open-kb {}))
+                starter? starter/load-into)]
     (trove/log! {:level :info :id ::start
                  :msg "vaelii daemon listening"
                  :data {:port port :host host :dir (or dir :memory)
-                        :auth posture :hosts hosts}})
+                        :starter starter? :auth posture :hosts hosts}})
     (announce-auth! host posture hosts)
     ;; shrink the derived caches when the heap the daemon runs in fills, and grow them back
     ;; as it frees — the daemon owns one KB, so the guard's roster is that one

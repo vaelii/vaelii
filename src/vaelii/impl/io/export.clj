@@ -46,20 +46,20 @@
   format and a reader must never have to guess.
 
   **`meta.edn` is written last**, which makes it double as the completion marker:
-  `vaelii.host.catalog/classify` keys on it, so a half-written or cancelled export is
+  `vaelii.browser.catalog/classify` keys on it, so a half-written or cancelled export is
   not offered as loadable.  That is the one ordering constraint in the whole format.
 
   Export from a KB nobody is writing: the walk fetches record by record, and the
   single-writer contract offers no snapshot to walk instead."
   (:require [clojure.java.io :as io]
             [taoensso.trove :as trove]
-            [vaelii.impl.belief-image :as belief-image]
             [vaelii.impl.io.fingerprint :as fp]
             [vaelii.impl.io.frames :as frames]
             [vaelii.impl.io.snapshot :as snapshot]
             [vaelii.impl.kv :as kv]
             [vaelii.impl.opts :as opts]
             [vaelii.impl.protocols :as p]
+            [vaelii.impl.reasoning-image :as reasoning-image]
             [vaelii.impl.sentex :as sx])
   (:import (java.io File)
            (java.time Instant)))
@@ -274,7 +274,7 @@
   orthogonal to the nippy encoding of the frames inside it).  `:on-progress` is called
   with `{:phase :done :total}` — the form a corpus reader's `load-dir!`,
   `io.import/import-dump` and `io.generate/load-into` report, so
-  `vaelii.host.catalog` draws a bar from it — at every chunk boundary, in phase order
+  `vaelii.browser.catalog` draws a bar from it — at every chunk boundary, in phase order
   `:sentexes`, `:justifications`, `:provenance`, `:index-entries`, `:meta`.  A callback
   that **throws** is how a caller cancels: the throw propagates out of the phase it
   interrupted, leaving a directory with no `meta.edn`, which is not a loadable dump.
@@ -290,12 +290,12 @@
   record and 3.8× the records' bytes, for a load twice as fast —
   so it is opt-in rather than the default.
 
-  `:belief? true`, the default, also writes `belief/`: the KB's belief image
-  (`vaelii.impl.belief-image`), stamped with content fingerprints of the sentexes and the
+  `:belief? true`, the default, also writes `reasoning/`: the KB's reasoning image
+  (`vaelii.impl.reasoning-image`), stamped with content fingerprints of the sentexes and the
   justifications this dump streams, taken on the same two walks.  An import that lands
   exactly those records under the same source identity installs it in place of `recover`.
   It is written only for a KB on the dense network, with the default provers and solver,
-  whose network covers its records; the summary's `:belief-image` is `:written`,
+  whose network covers its records; the summary's `:reasoning-image` is `:written`,
   `:not-writable` or `:omitted` (`:belief? false`).  A phase `:belief` reports it.
 
   `dir` must not exist or must be empty (`:type :not-empty`), and `meta.edn` is
@@ -337,9 +337,9 @@
          ;; the fingerprint rides the sentex walk rather than making a second one —
          ;; the writer already fetches every record, and on `:disk` that is a page read
          ;; apiece
-         ;; the belief image rides the same two walks: its stamp is the content
+         ;; the reasoning image rides the same two walks: its stamp is the content
          ;; fingerprint of the sentexes and of the justifications this dump streams
-         image?   (and belief? (belief-image/writable? kb))
+         image?   (and belief? (reasoning-image/writable? kb))
          fprint   (when (or index? image?) (fp/accumulator))
          jprint   (when image? (fp/accumulator fp/justification-hash))
          sx-n (frames/write-frames! (io/file d frames/sentex-file)
@@ -363,10 +363,10 @@
                               (assoc frame-opts :on-chunk (chunk :index-entries nil)))
                 0)
          image (when image?
-                 (on-progress {:phase :belief :done 0 :total 1})
-                 (belief-image/write-sections!
-                  kb (io/file d "belief")
-                  (belief-image/stamp kb {:sentexes (fprint) :justifications (jprint)})))]
+                 (on-progress {:phase :reasoning-image :done 0 :total 1})
+                 (reasoning-image/write-sections!
+                  kb (io/file d reasoning-image/dir-name)
+                  (reasoning-image/stamp kb {:sentexes (fprint) :justifications (jprint)})))]
      (on-progress {:phase :meta :done 0 :total 1})
      (write-meta! d (array-map
                      :format              format-marker
@@ -380,7 +380,7 @@
                      :justification-count j-n
                      :provenance-count    p-n
                      :index-entry-count   i-n
-                     :belief-image        (some? image)
+                     :reasoning-image     (some? image)
                      :handle-policy       :preserved
                      :written-at          (str (Instant/now))
                      :writer              (writer-id)))
@@ -389,7 +389,7 @@
                     :justifications j-n
                     :provenance     p-n
                     :index-entries  i-n
-                    :belief-image   (cond image :written belief? :not-writable :else :omitted)
+                    :reasoning-image (cond image :written belief? :not-writable :else :omitted)
                     :bytes          (dir-bytes d)
                     :elapsed-ms     (quot (- (System/nanoTime) t0) 1000000)
                     :dir            (.getAbsolutePath d)}]

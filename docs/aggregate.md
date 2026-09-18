@@ -22,7 +22,7 @@ engine machinery.
 (agg/avg   ?n ?v Body)
 ```
 
-One shape, one prover (`provers/AggregateProver`), one `wff` arm. `?v` is
+One shape, one prover (`prover-types/AggregateProver`), one `wff` arm. `?v` is
 **projected out** — `thereExists`'s rule applied to a variable that is counted rather
 than merely witnessed — so `?n` is the only binding produced and no solution ever
 mentions `?v` outside the aggregate.

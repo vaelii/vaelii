@@ -8,7 +8,7 @@
   [web.md](web.md), "Long work as jobs".
 - **Assumes:** sentex, context, `genl` / `genlCx` → [glossary.md](glossary.md).
 
-`vaelii.host.catalog`. Everything else in this repo assumes it is holding *the* KB. The
+`vaelii.browser.catalog`. Everything else in this repo assumes it is holding *the* KB. The
 catalog is what makes that a choice: it lists the knowledge bases this process could
 load, loads one in the background while the pages keep answering, and says which of the
 loaded ones every other page is about.
@@ -154,7 +154,7 @@ runs at a time** — they are minutes long and memory-hungry, and two at once wo
 each other's timings meaningless and each other's memory unpredictable.
 
 The running half is not here. A load is a job like the export beside it and the chaining
-run on `/stats` (`vaelii.host.jobs`, [web.md](web.md)), which is what gives it the thread,
+run on `/stats` (`vaelii.browser.jobs`, [web.md](web.md)), which is what gives it the thread,
 the progress reading, the cancel flag and the report — so an entry carries its job's id and
 **reads its status** rather than keeping one of its own, and the panel and the loader cannot
 tell two stories. The status vocabulary is the registry's, whatever the job is doing:
@@ -354,7 +354,7 @@ number that decides whether to load it at all.
 ## The switch
 
 `holder` is a deref-able that yields the active KB (or a fallback when nothing is
-loaded). `vaelii.host.web/app` takes one of those in place of a KB and resolves it **per
+loaded). `vaelii.browser.web/app` takes one of those in place of a KB and resolves it **per
 request**, so activating another entry re-points every page at once with no restart and
 no handler rebuild. A KB or an access value still works — `app` takes any of the three.
 

@@ -50,7 +50,7 @@ firing over a hypothesis places its conclusion **in** the abduction context, bec
 placement is the maximal common descendant (docs/contexts.md) and the scratch context is
 the only one below both the rule and the hypothesis.  So the consequences land inside the
 thing that gets discarded, with nothing arranging for it — the same asymmetry the sandbox
-(`vaelii.host.sandbox`) is built out of, for the same reason.
+(`vaelii.browser.sandbox`) is built out of, for the same reason.
 
 So the new code is the **search**: finding the dead end, and deciding what may be
 assumed.

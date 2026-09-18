@@ -6,11 +6,11 @@
   page at it, with no restart."
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing use-fixtures]]
+            [vaelii.browser.catalog :as catalog]
+            [vaelii.browser.web :as web]
             [vaelii.core :as v]
-            [vaelii.host.catalog :as catalog]
             [vaelii.host.core-context :as core-context]
             [vaelii.host.io.generate :as generate]
-            [vaelii.host.web :as web]
             [vaelii.impl.kb :as kb]
             [vaelii.test-util :as tu]))
 
@@ -58,7 +58,7 @@
       (doseq [{:keys [key label]} generate/knobs]
         (is (re-find (re-pattern (str "data-knob=\"" (name key) "\"")) body)
             (str "slider for " label))))
-    (testing "a slider carries the mapping select.js needs to turn a position into a value"
+    (testing "a slider carries the mapping vaelii.js needs to turn a position into a value"
       (is (re-find #"data-log=\"1\"" body))
       (is (re-find #"type=\"range\"" body)))
     (testing "and the value the form submits is its own field, not the track position"

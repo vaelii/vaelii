@@ -92,6 +92,8 @@
 #   ./scripts/test-matrix.sh --jobs 4         # fewer at a time, on a box you are using
 #   ./scripts/test-matrix.sh --keep           # keep each durable run's scratch directory
 #   ./scripts/test-matrix.sh --fail-fast      # launch nothing new once one has failed
+#   ./scripts/test-matrix.sh --ordered        # longest first, not shuffled
+#   TEST_MATRIX_SEED=42 ./scripts/test-matrix.sh   # replay a given shuffle
 #
 # Env:
 #   TEST_MATRIX_OUT   log directory (default logs/test-matrix/run-<pid>, outside target/
@@ -99,6 +101,11 @@
 #   MATRIX_KEEP_RUNS  past run dirs to keep (default 20); a run touched in the last 24h is
 #                     never pruned regardless, so a parallel run is never a candidate
 #   MATRIX_JOBS       how many at a time (default: scripts/lib/slots.sh)
+#   TEST_MATRIX_SEED  the shuffle seed (default: a fresh one, reported per run), the
+#                     counterpart of `test-shuffle.sh`'s TEST_SHUFFLE_SEED.  A seed
+#                     replays an order within one script and not across the two: the
+#                     rosters differ, and `test-shuffle.sh` pins memory first.
+#                     `--ordered` ignores the seed.
 #   MATRIX_JVM_OPTS   extra JVM_OPTS for every run.  Empty by default.  On a loaded box
 #                     `-XX:ActiveProcessorCount=2` is the one worth trying — each JVM
 #                     otherwise sizes its GC and JIT pools from all ten cores while
@@ -137,6 +144,12 @@ esac
 # the default slot count, shared with test-parallel.sh so the rule cannot drift
 # shellcheck source=scripts/lib/slots.sh
 . scripts/lib/slots.sh
+# one row in `logs/runs.tsv` per matrix: the revision, the clock, the roster and the
+# verdict.  `summary.tsv` beside each run holds the per-configuration detail; this is
+# the one line that says WHICH REVISION the matrix last went green at, without
+# opening two dozen run directories to find it
+# shellcheck source=scripts/lib/runlog.sh
+. scripts/lib/runlog.sh
 
 # The live dashboard — a repainted frame in which each configuration's command line and
 # its bar alternate — runs on a terminal.  A pipe, a redirect or CI gets the scrolling
@@ -187,6 +200,7 @@ FAIL_FAST=0
 OWED=0
 OWED_BASE=""
 DRY=0
+SHUFFLE=1
 HEARTBEAT="${MATRIX_HEARTBEAT:-60}"
 WANTED=()
 
@@ -197,6 +211,9 @@ while [[ $# -gt 0 ]]; do
     --jobs=*) JOBS="${1#*=}"; shift ;;
     --keep) KEEP=1; shift ;;
     --fail-fast) FAIL_FAST=1; shift ;;
+    # the launch order: shuffled by default, longest-first on request.  The block that
+    # orders the roster below says what each costs.
+    --ordered) SHUFFLE=0; shift ;;
     --owed) OWED=1; shift ;;
     # a ref rather than a bare flag, so it cannot be confused with the positional
     # configuration names: `--owed main` would read as "--owed, and also run `main`",
@@ -288,6 +305,10 @@ fi
 # names them every time, because a roster that quietly shrank is a matrix that means
 # less than the word does.
 if [[ ${#WANTED[@]} -eq 0 ]]; then WANTED=(routine); fi
+# What this run calls its roster, for the ledger row.  `--owed` names itself rather
+# than listing the configurations it resolved to: the set is a function of the diff,
+# so the word is the reproducible thing and the list is in `summary.tsv`.
+if (( OWED )); then ROSTER_LABEL="owed"; else ROSTER_LABEL="${WANTED[*]}"; fi
 CONFIGS=()
 while IFS= read -r c; do CONFIGS+=("$c"); done < <(expand_configs "${WANTED[@]}")
 [[ ${#CONFIGS[@]} -gt 0 ]] || { echo "no configurations selected" >&2; exit 2; }
@@ -302,20 +323,35 @@ for c in "${ALL_BACKENDS[@]}" "${ALL_SWEEPS[@]}"; do
   (( running )) || SAT_OUT+=("$c")
 done
 ROSTER_TOTAL=$(( ${#ALL_BACKENDS[@]} + ${#ALL_SWEEPS[@]} ))
+# The routine roster's size, which is the floor a run has to reach to be filed as
+# the matrix rather than as a subset (see the ledger row at the end).
+ROUTINE_TOTAL=$(( ROSTER_TOTAL - ${#ROUTINE_SKIP[@]} ))
 
-# LONGEST FIRST, which is what decides the finish.  A slot count under the configuration
-# count means somebody starts in a second wave, and whoever starts last sets the wall
-# clock — so the last thing to start must be the shortest thing there is.  Measured: the
-# durable five take ~10-12 minutes under a full box against ~4-5 for the rest, and a
-# 4-minute sweep starting at minute nine finishes after the 12-minute disk run that
-# started at zero.  That is the whole difference between 13 minutes and 12.
+# THE LAUNCH ORDER, of which there are two: a SHUFFLE, which is the default, and
+# LONGEST FIRST under `--ordered`.
+#
+# Shuffled, for the reason `test-shuffle.sh` shuffles its walk.  A slot count under the
+# configuration count means somebody starts in a second wave, and a fixed order picks the
+# same first wave every time — so a matrix stopped early, by `--fail-fast` or by ^C or by
+# the box, has always covered the same prefix and never the rest.  A random order reaches
+# a different set first on each run, and the seed is printed, so an order worth having
+# again is replayed with `TEST_MATRIX_SEED=<n>`.
+#
+# Longest first is what a slot count under the configuration count would otherwise want,
+# because whoever starts last sets the wall clock: the last thing to start should be the
+# shortest thing there is.  Measured: the durable five take ~10-12 minutes under a full
+# box against ~4-5 for the rest, and a 4-minute sweep starting at minute nine finishes
+# after the 12-minute disk run that started at zero.  That is the whole difference
+# between 13 minutes and 12, which is the price the shuffle pays and `--ordered` does
+# not.  Reach for `--ordered` when the wall clock is what you are spending.
 #
 # Weights come from the last run in this checkout (`config-timings.tsv`, kept beside the
 # run directories and shared by every run, the way `gate.sh` keeps its shard timings) and
 # fall back to a prior when there are none: a durable record store writes files and is
 # slower, which is a fact about the configuration rather than about the machine, so it is
 # safe to assume before anything has been measured.  `test-parallel.sh` bin-packs from
-# measurement for the same reason and with the same fallback.
+# measurement for the same reason and with the same fallback.  Every run records its
+# seconds either way, so `--ordered` reads the timings a shuffled run wrote.
 # Run logs live under logs/, NOT target/.  A concurrent `lein clean` — or the auto-clean
 # lein runs before a compile/uberjar/coverage task — wipes all of target/, and a live
 # matrix run's per-configuration logs and disk scratch sit inside its run directory.  logs/
@@ -334,8 +370,21 @@ order_longest_first() {
     printf '%s\t%s\n' "$w" "$c"
   done | sort -k1,1nr -k2,2 | cut -f2        # ties on the name, so the order is content's
 }
+# The seed is captured even when nobody gave one, so every run prints an order that can
+# be run again.  `shuffle_inplace` is scripts/lib/suite-configs.sh's, over the global
+# SHUF and in this shell — that file says why a subshell would make the seed a lie.
+SEED="${TEST_MATRIX_SEED:-$RANDOM}"
+RANDOM=$SEED
 ORDERED=()
-while IFS= read -r c; do ORDERED+=("$c"); done < <(order_longest_first)
+if (( SHUFFLE )); then
+  ORDER_LABEL="shuffled"
+  SHUF=("${CONFIGS[@]}")
+  shuffle_inplace
+  ORDERED=("${SHUF[@]}")
+else
+  ORDER_LABEL="longest first"
+  while IFS= read -r c; do ORDERED+=("$c"); done < <(order_longest_first)
+fi
 CONFIGS=("${ORDERED[@]}")
 
 # Slots default from `scripts/lib/slots.sh` — the same rule `test-parallel.sh` shards by:
@@ -353,7 +402,8 @@ if (( DRY )); then
   echo "${BOLD}${#CONFIGS[@]} of $ROSTER_TOTAL configuration(s), $JOBS at a time${OFF}" \
        "${DIM}$SELECTOR${OFF}"
   [[ ${#SAT_OUT[@]} -gt 0 ]] && echo "${DIM}not run: ${SAT_OUT[*]}${OFF}"
-  echo "${DIM}longest first:${OFF}"
+  (( SHUFFLE )) && echo "${DIM}seed $SEED  (TEST_MATRIX_SEED=$SEED to replay this order)${OFF}"
+  echo "${DIM}${ORDER_LABEL}:${OFF}"
   for c in "${CONFIGS[@]}"; do
     printf '  %-16s %s%s%s\n' "$c" "$DIM" "env $(config_env "$c") lein test $SELECTOR" "$OFF"
   done
@@ -401,6 +451,45 @@ RUN_NS_COUNT=$(selected_ns_count "$SELECTOR")
 set -m
 FAILED=()
 n=${#CONFIGS[@]}
+
+# ---- the plan, for a reader watching this run go ------------------------------
+#
+# A run that has started says nothing about itself until it ends: the ledger row
+# is written at exit, and the run directory holds only whichever configuration
+# logs have been opened so far.  A watcher then cannot tell a `--owed` run of
+# three from a `full` run whose other twelve have not started, and cannot tell
+# how far along either is.  So state it once, here, where all three facts are
+# settled and none of them can change.
+#
+# Written before the first configuration launches and never rewritten.  The
+# verdict is still `summary.tsv`'s and the ledger row's; this is the intention,
+# and a run that is killed leaves it behind saying what it had meant to do.
+{
+  printf 'selector\t%s\n' "$SELECTOR"
+  printf 'roster\t%s\n' "$ROSTER_LABEL"
+  printf 'configs\t%d\n' "$n"
+  printf 'of\t%d\n' "$ROSTER_TOTAL"
+  # the order and the seed that chose it, so a run reproduced from this file runs the
+  # configurations in the order this one did
+  printf 'order\t%s\n' "$ORDER_LABEL"
+  (( SHUFFLE )) && printf 'seed\t%s\n' "$SEED"
+  printf 'sequence\t%s\n' "${CONFIGS[*]}"
+} > "$OUT_DIR/matrix.plan" 2>/dev/null || true
+
+# Which PROCESS GROUP each configuration runs in, one row appended by `launch` as
+# that configuration starts.  Nothing else can say which configuration a JVM is
+# running: a configuration is chosen by the environment variables `launch` passes
+# its subshell, and an environment never reaches a command line — so a process
+# table alone tells thirteen matrix JVMs apart by pid and by nothing else, and
+# tools/vaelii-top's JVM tile had to repeat this run's progress on every one of
+# them.  `set -m` puts each configuration's subshell in a group of its own, and
+# the launcher JVM and the project JVM it trampolines into both carry it, so the
+# group names both.
+#
+# Appended as the run goes and not written with `summary.tsv` at the end, because
+# a reader watching a run is the only reader it has.  A relaunched configuration
+# appends a second row; the group the first names is gone by then, so both stand.
+printf 'config\tpid\tpgid\tlog\n' > "$OUT_DIR/configs.tsv" 2>/dev/null || true
 state=(); pid=(); pgid=(); rev=(); logf=(); startt=(); secs=(); diskd=(); fin=()
 for ((i = 0; i < n; i++)); do state[i]=queued; pid[i]=0; pgid[i]=0; secs[i]=0; diskd[i]=""; fin[i]=""; done
 
@@ -524,6 +613,10 @@ launch() {                                         # launch <index>
   pid[i]=$!
   pgid[i]=$(ps -o pgid= -p "${pid[i]}" 2>/dev/null | tr -d ' ')
   pgid[i]="${pgid[i]:-${pid[i]}}"
+  # the group is what says which configuration a JVM under it is running; see the
+  # configs.tsv header above
+  printf '%s\t%s\t%s\t%s\n' "$cfg" "${pid[i]}" "${pgid[i]}" "$log" \
+    >> "$OUT_DIR/configs.tsv" 2>/dev/null || true
   state[i]=running
   # the live dashboard carries a launching config as a bar that starts filling; only
   # the scrolling view announces it as a line
@@ -763,12 +856,24 @@ START_REV=$(revision_hash)
 START_DIRTY=$(revision_dirty)
 T0=$SECONDS
 
+# The ledger row's clock starts here, and its revision is the one the header prints
+# rather than a second read of git: a matrix is ~35 minutes, and two reads a
+# microsecond apart are still two facts that can disagree once somebody lands a
+# commit between them.
+runlog_start
+RUNLOG_REV="$START_REV"
+RUNLOG_DIRTY="$START_DIRTY"
+
 echo "${BOLD}running ${n} of $ROSTER_TOTAL configuration(s), $JOBS at a time${OFF}" \
      "${DIM}$SELECTOR — $RUN_NS_COUNT of $NS_COUNT namespaces${OFF}"
 if [[ ${#SAT_OUT[@]} -gt 0 ]]; then
   echo "${DIM}not run: ${SAT_OUT[*]} — \`full\` runs all $ROSTER_TOTAL${OFF}"
 fi
 echo "${DIM}at $(revision_line)${OFF}"
+if (( SHUFFLE )); then
+  echo "${DIM}order: ${CONFIGS[*]}${OFF}"
+  echo "${DIM}seed $SEED  (TEST_MATRIX_SEED=$SEED replays this order, --ordered runs longest first)${OFF}"
+fi
 # The two commands this stands in for, as pasteable reproducers: the `lint` you still owe
 # by hand (the matrix does not run it), and the `test` run itself — its `#` carries the
 # run's log directory, absolute so it pastes from anywhere.  Under a live terminal the
@@ -1010,6 +1115,10 @@ else
     echo "  ${DIM}logs: $OUT_DIR/<config>.log — one per failure, and failures.tsv${OFF}"
   fi
 fi
+# Beside the verdict rather than only in the header, which is an hour of scrollback away
+# by now: a red matrix is re-run, and re-running it in the order that produced the red
+# is how a scheduling-dependent failure is caught a second time.
+(( SHUFFLE )) && echo "  ${DIM}shuffled, seed $SEED — TEST_MATRIX_SEED=$SEED runs this order again${OFF}"
 
 # ---- did every run run the same suite? ---------------------------------------
 # The question a GREEN matrix asks, and the one nothing used to answer.  Thirteen runs
@@ -1093,5 +1202,37 @@ else
   echo "  matrix. Your own change is cleared by a green run at a revision that holds it.${OFF}"
 fi
 
-[[ ${#FAILED[@]} -eq 0 && $skipped -eq 0 && $deltas_bad -eq 0 ]] && exit 0
+# ---- the ledger row ----------------------------------------------------------
+# The selector is the `variant` column: a `:default` matrix and an `:all` matrix are
+# different verdicts, and the row for one must not read as the last run of the other.
+# The roster goes in the summary instead, because it is what the count is OVER — "all
+# green" over `routine` is a different sentence from "all green" over `full`, and a
+# reader of the row needs both numbers to tell them apart.
+matrix_summary=$(printf '%d of %d configurations, roster %s, %d failed, %d skipped' \
+                   "$n" "$ROSTER_TOTAL" "$ROSTER_LABEL" "${#FAILED[@]}" "$skipped")
+
+# A SUBSET IS ITS OWN VERDICT, so it goes under its own variant rather than
+# overwriting the matrix's.  `lein test-matrix --owed` is the common way to run
+# one — it runs what the changed files owe — and "the matrix is green" off
+# thirteen configurations is a different sentence from the same words off three.
+# Filed under one variant, the cheap run would keep hiding when the whole roster
+# last ran, which is the question the row exists to answer.
+#
+# Decided on WHAT RAN, not on what was asked for: a count at or above the routine
+# roster is the matrix, anything short of it is a subset, so an `--owed` run that
+# happens to owe everything is filed as the matrix it was.  A hand-named list
+# lands here too, and belongs here — its claim is partial for the same reason.
+matrix_variant="$SELECTOR"
+if (( n < ROUTINE_TOTAL )); then matrix_variant="$SELECTOR owed"; fi
+if [[ ${#FAILED[@]} -eq 0 && $skipped -eq 0 && $deltas_bad -eq 0 ]]; then
+  matrix_state=passed
+elif (( skipped == n )); then
+  # Nothing ran at all, which `--fail-fast` cannot produce and an interrupt can.
+  matrix_state=interrupted
+else
+  matrix_state=failed
+fi
+runlog_record matrix "$matrix_variant" "$matrix_state" "$matrix_summary" "$OUT_DIR"
+
+[[ "$matrix_state" == passed ]] && exit 0
 exit 1

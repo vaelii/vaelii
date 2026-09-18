@@ -19,7 +19,7 @@ Every key is a structured vector and every set member a bare value. On the in-me
 backend (`vaelii.impl.memory`) the vectors are used directly as map keys — with **one
 exception**, the predicate-scoped argument roots, which live under a reserved key as a
 counted `pos → term → {:union, :preds}` trie and are read through the second protocol
-`kv/ArgColumns` (§2); a dump re-emits them in the flat shape, so nothing outside that
+`vaelii.impl.protocols/ArgColumns` (§2); a dump re-emits them in the flat shape, so nothing outside that
 backend can tell. On the on-disk backend (`vaelii.impl.disk.kv`) the same map is
 held in RAM and durably logged, nippy-framed so ints and keywords keep their type. The
 whole layout:
@@ -270,7 +270,7 @@ term]` is the only four-element key, so a probe through a flat `key → set` map
 vector at the call site and pays a vector `equals` per read; and the family is
 *hierarchical* — `pos → term → pred → handles` — while the reads a settle leans on ask for
 a subtree of it: one scoped leaf, the predicate-agnostic **union** at a `(pos, term)` node,
-or that node's cardinality. `kv/ArgColumns` names those four reads
+or that node's cardinality. `vaelii.impl.protocols/ArgColumns` names those four reads
 (`arg-scoped-members` / `arg-scoped-intersect` / `arg-agnostic-members` /
 `arg-agnostic-count`) so a backend holding the family as a counted trie can answer them as
 node reads. It has an `Object` default that rebuilds the vector keys and folds the generic
@@ -723,9 +723,7 @@ than failing:
   restriction binds `?p` to a concrete antecedent, so the rule fires forward with the
   predicate ground, and its consequent is filed under the `:var-pred` catch-all (§3) for
   the backward read.  An `:inert` rule is exempt from the antecedent refusal, since it runs
-  in neither engine; `CxCore`'s `(implies (?pred . ?args) (ist CxUniverse (?pred
-  . ?args)))` is one, stating for a reader what the decontextualized-predicate lift does
-  in code — and being inert, its variable consequent keeps the dead `?var0` key rather than
+  in neither engine, and its variable consequent keeps the dead `?var0` key rather than
   the live catch-all.
 
   A **generator's** stamped rule is the other exemption, and it is the one that buys

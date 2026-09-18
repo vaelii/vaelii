@@ -170,13 +170,6 @@ or **Derived**) and not defeated.
 with the same word — `(believes Alice P)` proves `P` in Alice's own context and says
 nothing about whether the KB holds it. See [belief.md](belief.md).
 
-**Belief image** ![tms](../.github/badges/cat-tms.svg): The whole belief state a
-`:disk-snapshot` KB writes beside its records (`vaelii.impl.belief-image`): the dense
-network, the taxonomy, and the KB atoms recovery fills. The next open installs it in place
-of `recover` when its stamp — the records' fingerprint, the **source identity** and the
-belief policies — equals the KB's, and discards all of it otherwise. See
-[storage.md](storage.md#the-belief-image).
-
 **`bijection`** ![kb](../.github/badges/cat-kb.svg): `(bijection P)` — the strongest of
 the three **function marks**: `P` is single-valued, one-to-one, total on its declared
 domain and onto its declared range. CxCore rules derive `(injection P)` and
@@ -514,6 +507,12 @@ sentex or justification is referenced by, allocated in assertion order. Belief
 tie-breaks never key on it, or arrival order would leak in. See
 [storage.md](storage.md).
 
+**Held namespace** ![backend](../.github/badges/cat-backend.svg): A namespace whose ns
+symbol carries `:clojure.tools.namespace.repl/load false`. It defines protocols, records or
+types, requires only held namespaces, and the development browser's reloader never
+re-evaluates it, so a KB loaded before an engine edit keeps the classes its values are
+instances of. See [web.md](web.md#working-on-it-lein-browser).
+
 **`holdsAt`** ![kb](../.github/badges/cat-kb.svg): `(holdsAt F T)` — is fluent
 `F` the case at instant `T`? Never stated and never stored: it is what inertia
 derives from the events a narrative gives, and it is backward-only, since a fluent
@@ -539,10 +538,11 @@ applications, differing in whether the KB *believes* what it stores.
 
 - An **inert rule** — `set/inertRule`, or `{:direction :inert}` — is believed,
   indexed and browsable, and chains in neither direction. It is a rule kept as
-  **documentation**: the shipped one is CxCore's global lifting rule, written down
-  where a reader looks for it while the code is what actually runs it
-  ([taxonomy.md](taxonomy.md)).  `genl`'s transitivity is not written this way — its
-  cached closure is described in the `comment` on the predicate. Its own `:strength` is an ordinary class —
+  **documentation**, written down where a reader looks for it while the code is what
+  actually runs it. The shipped ontology holds none: `genl`'s transitivity and the
+  decontextualized-predicate lift are described in the `comment` on their predicate
+  ([defenses.md](defenses.md#an-inert-rule-records-transitivity-not-a-forward-rule)).
+  Its own `:strength` is an ordinary class —
   there is no `:inert` strength, the two assertable classes being `:default`
   and `:monotonic`.
 - An **inert sentex** — `core/assert-inert` — is stored, indexed and durable but
@@ -569,8 +569,8 @@ said about reaching every member of its range. Derives `(functional P)` and
 the `arg` declarations, audited on demand. See [taxonomy.md](taxonomy.md).
 
 **`ist`** ![kb](../.github/badges/cat-kb.svg): "Is true in" — `(ist Ctx S)`
-finds-or-creates `S` in `Ctx` and returns its handle. Not stored as data; in a
-rule consequent it places `S` into the named context. See
+finds-or-creates `S` in `Ctx` and returns its handle, and given to a read it asks `S`
+in `Ctx`. Not stored as data. A rule is refused it in every position. See
 [contexts.md](contexts.md).
 
 ## J
@@ -857,6 +857,19 @@ connected, partially overlapping, equal, and the two proper-part relations with
 their converses. `vaelii.impl.space`, registered as `:rcc8`. See
 [space.md](space.md).
 
+**Reasoning image** ![tms](../.github/badges/cat-tms.svg): The whole **reasoning state** a
+`:disk-snapshot` KB writes beside its records (`vaelii.impl.reasoning-image`): the dense
+network, the taxonomy, and the KB atoms recovery fills. The next open installs it in place
+of `recover` when its stamp — the records' fingerprint, the **source identity** and the
+belief policies — equals the KB's, and discards all of it otherwise. See
+[storage.md](storage.md#the-reasoning-image).
+
+**Reasoning state** ![tms](../.github/badges/cat-tms.svg): What a KB holds in memory to
+answer from, as one `Reasoning` value in a volatile (`vaelii.impl.types.reasoning`): the
+belief network, the taxonomy, and every atom a recover or a settle fills. Not a store —
+`recover` rebuilds it from the records, as `reindex` rebuilds the index, and a **belief
+image** is one written to a directory. See [storage.md](storage.md#the-reasoning-image).
+
 **Record** ![backend](../.github/badges/cat-backend.svg): The stored shape of a sentex — a
 `LiteralSentex` or a `RuleSentex` — as distinct from the knowledge it holds. See
 [storage.md](storage.md).
@@ -957,8 +970,15 @@ function of the facts alone, so it is repeatable.
 `core/qualitative-scenario` / `qualitative-scenarios`. See
 [scenario.md](scenario.md).
 
+**Scoped defeat** ![tms](../.github/badges/cat-tms.svg): A nogood's defeated member
+disbelieved at the nogood's **Vantage** and in every context below it, where the vantage
+sits strictly below the member's own context. The member keeps its IN label in the
+network, and a read from a context at or below the vantage reads it, and whatever rests
+only on it, as withdrawn. The settle re-decides the scoped defeats every settle. See
+[nmtms.md](nmtms.md#a-defeat-is-scoped-to-its-vantage).
+
 **Seal** ![backend](../.github/badges/cat-backend.svg): The point an **operation log**
-starts again from (`vaelii.impl.seal`): the index image and the belief image, written
+starts again from (`vaelii.impl.seal`): the index image and the reasoning image, written
 together, then a `seal.nippy` naming the new generation, the records watermark and the
 two fingerprints the images carry, then the log truncated to a header for that
 generation. A restore installs the images against the seal's fingerprints and replays
@@ -1027,10 +1047,12 @@ the antecedent bound, so the same binding names the same witness twice and a
 re-derivation does not mint a second one. See [skolem.md](skolem.md).
 
 **Source identity** ![backend](../.github/badges/cat-backend.svg): The digest of
-the engine source that derives belief (`vaelii.impl.source-identity`). It covers the
-namespaces `recovery` and `vaelii.core` reach through `ns` requires, imports and quoted
-symbols, read as forms with comments, docstrings and reader positions removed, and the
-jar names of the libraries those namespaces load. A **belief image** is installed only
+the engine definitions that derive belief (`vaelii.impl.source-identity`). It covers the
+top-level forms reachable from `open-kb`, `recover` and the write entry points recover
+calls back into, each symbol resolved through its namespace's `ns` form, plus the forms
+that run without a direct call: methods, protocol extensions, records and forms that define
+no var. Each form is read with comments, docstrings and reader positions removed, and the
+jar names of the libraries the engine namespaces load are included. A **reasoning image** is installed only
 by a build whose source identity equals the one the image was written under. See
 [storage.md](storage.md).
 
@@ -1182,6 +1204,12 @@ quantifier's variable. Ground/closed only and never stored. See [naf.md](naf.md)
 a string, a number, a character, a boolean. It denotes itself, which is why its **Kind**
 answers both argument readings. See [argtypes.md](argtypes.md).
 
+**Vantage** ![tms](../.github/badges/cat-tms.svg): A context a nogood is decided at —
+one that sees every member, and for a definitional clash the declaration too. The
+defeated member is disbelieved there and in every context below it. When the vantage is
+the member's own context the defeat is the network's; below it, a **Scoped defeat**. See
+[nmtms.md](nmtms.md#a-defeat-is-scoped-to-its-vantage).
+
 **Variable** ![kb](../.github/badges/cat-kb.svg): A `?x` symbol standing for an unknown. Canonically renumbered
 (`?var0`, `?var1`, …) in a stored rule, with the author's spelling kept in
 the **Varmap**. See [canonicalization.md](canonicalization.md).
@@ -1231,7 +1259,7 @@ stratification. See [naming.md](naming.md).
 
 **`why` / `why-not`** ![tms](../.github/badges/cat-tms.svg): Introspection.
 `why` returns the proof tree of a believed handle down to premises; `why-not`
-explains a stored-but-OUT datum (`:defeated` / `:superseded` / `:unsupported`)
+explains a stored-but-OUT datum (`:defeated` / `:withdrawn` / `:superseded` / `:unsupported`)
 or a blocked conclusion. `why-not`'s `{:nearest n}` answers the one case with nothing
 stored to explain: it runs a bounded backward search and names the rules that came
 closest, with the antecedents each is still missing. See [nmtms.md](nmtms.md),

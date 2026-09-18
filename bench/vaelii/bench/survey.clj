@@ -365,7 +365,7 @@
 (def default-dir
   "The store the real-corpus benchmarks read, when the command line names none:
   `VAELII_BENCH_STORE`, else `VAELII_SURVEY_STORE`, else `~/.vaelii/kbs/store` — the
-  KB location `vaelii.host.catalog` already searches.  There is no store here by
+  KB location `vaelii.browser.catalog` already searches.  There is no store here by
   default; supply one, or pass a path as the last argument.
 
   Public because `records`, `densetrie` and `forward` sample the same corpus and must

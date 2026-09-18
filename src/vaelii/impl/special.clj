@@ -63,6 +63,7 @@
             [vaelii.impl.rules :as rules]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.wff :as wff]))
 
 ;; ## The exception re-check queue
@@ -98,7 +99,7 @@
   once queued, adding a narrower trigger must not narrow it back."
   [kb rule-handles trigger]
   (when (seq rule-handles)
-    (swap! (:recheck kb)
+    (swap! (reasoning/recheck kb)
            (fn [m]
              (reduce (fn [m rh]
                        (let [cur (get m rh)]
@@ -211,7 +212,7 @@
           ;; the global closure on purpose, as everywhere here: an over-selected
           ;; re-check re-evaluates and changes nothing, an under-selected one is a
           ;; wrong belief
-          (doseq [p (tax/genls-global (:taxonomy kb) pred)]
+          (doseq [p (tax/genls-global (reasoning/taxonomy kb) pred)]
             (mark-recheck kb (reads/watched-rules-on idx p) :all))
           (when (= 'transitive (nm/functor sentence))
             (recheck-preserving-along kb pred)))))))
@@ -236,7 +237,7 @@
                   (filter #(and (= 'arg (nm/functor %)) (= 4 (count %))))
                   (map #(nth % 3))
                   (filter symbol?))
-            (tax/genls-global (:taxonomy kb) pred)))))
+            (tax/genls-global (reasoning/taxonomy kb) pred)))))
 
 (defn- recheck-arg-inferred
   "`arg` read as an **inference** rather than as a constraint: a believed `(P … x@n …)`
@@ -267,7 +268,7 @@
                          (when (= 4 (count sen)) (filter symbol? [(nth sen 3)]))
                          (arg-declared-types kb pred)))]
       (doseq [t  ts
-              t' (tax/genls-global (:taxonomy kb) t)]
+              t' (tax/genls-global (reasoning/taxonomy kb) t)]
         (mark-recheck kb (reads/watched-rules-on idx t') :all)))))
 
 (defn- recheck-on-predicate
@@ -301,7 +302,7 @@
       (when (seq (reads/watched-rules idx))
         ;; the global closure on purpose: an over-selected re-check re-evaluates and
         ;; changes nothing, an under-selected one is a missed withdrawal
-        (doseq [p (tax/genls-global (:taxonomy kb) pred)]
+        (doseq [p (tax/genls-global (reasoning/taxonomy kb) pred)]
           (mark-recheck kb (reads/watched-rules-on idx p) trigger))
         (recheck-preserving-along kb pred)
         (recheck-arg-inferred kb pred trigger)))))
@@ -422,7 +423,7 @@
                     (and b (not= b sentence)) (conj (nm/functor b)))]
         (into #{}
               (comp (filter symbol?)
-                    (mapcat #(tax/genls-global (:taxonomy kb) %))
+                    (mapcat #(tax/genls-global (reasoning/taxonomy kb) %))
                     (mapcat #(reads/watched-rules-on idx %)))
               preds)))))
 
@@ -547,7 +548,7 @@
   [kb sub]
   (let [idx (:index kb)]
     (when-let [rules (seq (reads/watched-rules-on idx 'not))]
-      (let [below (tax/specs-global (:taxonomy kb) sub)]
+      (let [below (tax/specs-global (reasoning/taxonomy kb) sub)]
         (doseq [rh rules
                 :when (negation-under-moved-closure? kb rh below)]
           (mark-recheck kb [rh] :all))))))
@@ -579,7 +580,7 @@
   doubt, the answer is to queue, not to skip — queueing conservatively is the fallback,
   never queueing everything always."
   [kb sub super]
-  (let [tx (:taxonomy kb) idx (:index kb)]
+  (let [tx (reasoning/taxonomy kb) idx (:index kb)]
     ;; No excepted rule anywhere ⇒ nothing to re-check, and computing `genls(super)`
     ;; just to iterate an empty rule set would make a deep `genl` load quadratic —
     ;; the up-closure grows with depth and this runs on every edge.  Guard on the
@@ -616,7 +617,7 @@
   The record is read as a bare KB field rather than through `chain`, which writes it and
   sits three layers above here."
   [kb rh hit?]
-  (let [r (get @(:refused kb) rh)]
+  (let [r (get @(reasoning/refused kb) rh)]
     (if (set? r) (boolean (some hit? r)) (= :overflow r))))
 
 (defn- recheck-genlCx-edge
@@ -658,10 +659,10 @@
   every firing the rule ever made.  That is the price of narrowing on placement rather
   than queueing wholesale, and it is paid on a `genlCx` edge alone."
   [kb sub]
-  (let [idx (:index kb) tms (:tms kb)
+  (let [idx (:index kb) tms (reasoning/tms kb)
         excepted (reads/watched-rules idx)]
     (when (seq excepted)
-      (let [affected (tax/context-down (:taxonomy kb) sub)
+      (let [affected (tax/context-down (reasoning/taxonomy kb) sub)
             in-ancestor-set? (fn [jid]
                                (when-let [j (jtms/justification tms jid)]
                                  (when-let [csx (p/get-sentex (:records kb) (:consequence j))]
@@ -738,7 +739,7 @@
   pays one set read per merge."
   ([kb] (recheck-equality-edge kb nil))
   ([kb terms]
-   (let [tms (:tms kb)]
+   (let [tms (reasoning/tms kb)]
      (when-let [rules (seq (reads/watched-rules (:index kb)))]
        (doseq [rh rules]
          (when (or (nil? terms)
@@ -777,8 +778,8 @@
   choke points, beside `:opposed` at the store's, and rebuilt by `recover` because
   recovery replays rule indexing."
   [kb rule-sentex preds f]
-  (bump-roster! (:rule-antecedents kb) preds f)
-  (bump-roster! (:rule-contexts kb) [(:context rule-sentex)] f))
+  (bump-roster! (reasoning/rule-antecedents kb) preds f)
+  (bump-roster! (reasoning/rule-contexts kb) [(:context rule-sentex)] f))
 
 (defn index-rule-sentex
   "Index a rule handle by **all** of its predicates — both sets are complete, so
@@ -813,7 +814,7 @@
     ;; read rather than a property of the sentence, so it is asked here where the kb is
     ;; (`rules/closed-extent-predicates-of`).  A grant asserted *after* the rule reaches
     ;; it through `index-closed-extent-rules` below.
-    (let [ce (rules/closed-extent-predicates-of (:taxonomy kb) (sx/sentence-of rule-sentex))]
+    (let [ce (rules/closed-extent-predicates-of (reasoning/taxonomy kb) (sx/sentence-of rule-sentex))]
       (when (or (rules/rechecked? rule-sentex) (seq ce))
         (p/index-exception (:index kb) handle
                            (distinct (concat (rules/recheck-predicates rule-sentex) ce)))
@@ -946,7 +947,7 @@
   ([kb except-sentex] (recheck-except kb except-sentex :all))
   ([kb except-sentex trigger]
    (when-let [h (sx/handle-id (second (:sentence except-sentex)))]
-     (let [tms      (:tms kb)
+     (let [tms      (reasoning/tms kb)
            users    (keep (fn [jid]
                             (let [inf (:informant (jtms/justification tms jid))]
                               (when (integer? inf) inf)))
@@ -957,8 +958,8 @@
            ;; missed sweep or a missed revival
            firers   (when (symbol? pred)
                       (mapcat #(reads/as-stored-rules-by-antecedent (:index kb) %)
-                              (rules/trigger-keys (:taxonomy kb) (:sentence target)
-                                                  @(:rule-antecedents kb))))
+                              (rules/trigger-keys (reasoning/taxonomy kb) (:sentence target)
+                                                  @(reasoning/rule-antecedents kb))))
            marked   (vec (cond-> (into (set users) firers)
                            (and target (rules/rule? target)) (conj h)))]
        (mark-recheck kb marked trigger)
@@ -998,7 +999,7 @@
   region is `moved` itself — without a record fetch per member, on a set that is the
   whole KB when a rebuild's settle reads it."
   [kb moved]
-  (if (empty? @(:excepted kb))
+  (if (empty? @(reasoning/excepted kb))
     (set moved)
     (into (set moved)
           (keep (fn [h]
@@ -1032,7 +1033,7 @@
     kb
     moved
     (or (nil? moved)
-        (and (seq @(:excepted kb))
+        (and (seq @(reasoning/excepted kb))
              (some (fn [h]
                      (some-> (p/get-sentex (:records kb) h)
                              :sentence
@@ -1040,11 +1041,11 @@
                    moved)))))
   ([kb moved visibility-moved?]
    (let [region (when (some? moved) (belief-change-region kb moved))
-         tms    (:tms kb)]
+         tms    (reasoning/tms kb)]
      (when visibility-moved?
-       (tax/note-supporter-visibility-change! (:taxonomy kb)))
+       (tax/note-supporter-visibility-change! (reasoning/taxonomy kb)))
      (tax/refresh-beliefs
-      (:taxonomy kb)
+      (reasoning/taxonomy kb)
       #(jtms/in? tms %)
       region))))
 
@@ -1055,10 +1056,9 @@
 ;;
 ;; The lift is a *deduction*: the original stays where it was stated and a copy is
 ;; derived in CxUniverse, justified by the placement sentex AND the declaration —
-;; so retracting or defeating either withdraws the copy.  The KB documents the
-;; mechanism in its own representation as the inert rule
-;; `(implies (?pred . ?args) (ist CxUniverse (?pred . ?args)))`; it is implemented
-;; in code because that dotted rule would match every fact in the store.
+;; so retracting or defeating either withdraws the copy.  CxCore documents the
+;; mechanism in the `comment` on `decontextualized_predicate`; it is implemented in
+;; code because a rule stating it would match every fact in the store.
 ;;
 ;; **CxUniverse, and not a target the declaration names.**  The definitional
 ;; checks — disjointness, functionality, arg — are context-scoped: they run where
@@ -1090,7 +1090,7 @@
   every context in a spindle-shaped KB.  When it does not, the copy lands where the
   stating context cannot look, and the check has to be re-run on the copy itself."
   [kb src-context]
-  (not (tax/sees? (:taxonomy kb) src-context universal-context)))
+  (not (tax/sees? (reasoning/taxonomy kb) src-context universal-context)))
 
 (defn- deduce-lift
   "Deduce `sentence` (stored at `src-handle` in `src-context`) into CxUniverse,
@@ -1121,17 +1121,17 @@
             ;; a rule conclusion does
             (when new? (derived-sentex-added kb s2 h2))
             (doseq [dh dhs]
-              (let [depth (inc (max (jtms/depth (:tms kb) src-handle) (jtms/depth (:tms kb) dh)))
+              (let [depth (inc (max (jtms/depth (reasoning/tms kb) src-handle) (jtms/depth (reasoning/tms kb) dh)))
                     antes [src-handle dh]]
-                (jtms/ensure-node (:tms kb) h2 depth)
-                (when-not (jtms/has-justification? (:tms kb) 'decontextualized_predicate antes h2)
+                (jtms/ensure-node (reasoning/tms kb) h2 depth)
+                (when-not (jtms/has-justification? (reasoning/tms kb) 'decontextualized_predicate antes h2)
                   (let [jid  (p/next-id (:records kb))
                         ;; The lift adds no defeasibility of its own, so it confers
                         ;; :monotonic and `conferred-class` caps it at the weaker of the
                         ;; source fact and the declaration.
                         just (jtms/->just jid 'decontextualized_predicate antes h2 {} :monotonic)]
                     (p/put-justification (:records kb) just)
-                    (jtms/add-justification (:tms kb) just)))))
+                    (jtms/add-justification (reasoning/tms kb) just)))))
             {:new (if new? [h2] []) :violations []}))))))
 
 (defn deduce-lifts
@@ -1149,7 +1149,7 @@
   The gate is a single in-memory cache read, because every assert and every placed rule
   conclusion pays it to find out there is nothing to do."
   [kb sentence handle context]
-  (let [tax  (:taxonomy kb)
+  (let [tax  (reasoning/taxonomy kb)
         pred (nm/functor sentence)]
     ;; the global property read on purpose: the lift decides the *storage* context,
     ;; and scoping it by what could see the declaration would be circular
@@ -1287,18 +1287,18 @@
             ;; conclusion does
             (when new? (derived-sentex-added kb s2 h2))
             (let [antes  (into [src-handle] because)
-                  depth  (inc (long (reduce max (map #(jtms/depth (:tms kb) %) antes))))
-                  _      (jtms/ensure-node (:tms kb) h2 depth)
-                  fresh? (not (jtms/has-justification? (:tms kb) (:kind ent) antes h2))
+                  depth  (inc (long (reduce max (map #(jtms/depth (reasoning/tms kb) %) antes))))
+                  _      (jtms/ensure-node (reasoning/tms kb) h2 depth)
+                  fresh? (not (jtms/has-justification? (reasoning/tms kb) (:kind ent) antes h2))
                   ;; `was-in?` records whether `h2` is already believed by another support,
                   ;; read before this justification is added.  It is an O(1) fixpoint read
                   ;; (`jtms/in?`), not an index read, and it gates the cascade below.
-                  was-in? (jtms/in? (:tms kb) h2)]
+                  was-in? (jtms/in? (reasoning/tms kb) h2)]
               (when fresh?
                 (let [jid  (p/next-id (:records kb))
                       just (jtms/->just jid (:kind ent) antes h2 {} :monotonic)]
                   (p/put-justification (:records kb) just)
-                  (jtms/add-justification (:tms kb) just)))
+                  (jtms/add-justification (reasoning/tms kb) just)))
               (merge-with into
                           {:new (if new? [h2] []) :violations []}
                           ;; A minted sentence materializes its own entailments when it first
@@ -1401,7 +1401,7 @@
                    (mapcat #(reads/as-stored-with-functor idx %))
                    (distinct)
                    (keep #(p/get-sentex recs %)))
-          (tax/specs-global (:taxonomy kb) pred))))
+          (tax/specs-global (reasoning/taxonomy kb) pred))))
 
 (defn- any-stored?
   "Is any sentex stored under any of `functors`?  One index cardinality read each, which
@@ -1466,7 +1466,7 @@
   gate and the reader it guards cannot disagree about which predicates declare."
   [kb super]
   (and (symbol? super)
-       (let [tax       (:taxonomy kb)
+       (let [tax       (reasoning/taxonomy kb)
              declaring (reduce (fn [acc k]
                                  (into acc (tax/props tax (tax/arg-declaration-props k))))
                                #{}
@@ -1555,16 +1555,16 @@
        (fn [acc one]
          (let [[h s new?] (kb/find-or-create-sentex kb one context)]
            (when new? (index-rule-sentex kb h s))
-           (let [depth (inc (long (jtms/depth (:tms kb) defn-handle)))]
-             (jtms/ensure-node (:tms kb) h depth)
-             (when-not (jtms/has-justification? (:tms kb) informant [defn-handle] h)
+           (let [depth (inc (long (jtms/depth (reasoning/tms kb) defn-handle)))]
+             (jtms/ensure-node (reasoning/tms kb) h depth)
+             (when-not (jtms/has-justification? (reasoning/tms kb) informant [defn-handle] h)
                (let [jid  (p/next-id (:records kb))
                      ;; :monotonic conferred, capped by the `defn*` fact's own class in
                      ;; `conferred-class` — the rule adds no defeasibility of its own, so
                      ;; a default `defn*` makes a default rule, exactly as the lift does
                      just (jtms/->just jid informant [defn-handle] h {} :monotonic)]
                  (p/put-justification (:records kb) just)
-                 (jtms/add-justification (:tms kb) just))))
+                 (jtms/add-justification (reasoning/tms kb) just))))
            (if new? (update acc :new conj h) acc)))
        {:new [] :violations []}
        minted))))
@@ -1611,19 +1611,19 @@
   genl of `super` newly matches nothing, since a positive antecedent fans downward and
   the edge moved nothing above `super`."
   [kb sub super]
-  (let [specs (tax/specs-global (:taxonomy kb) sub)]
+  (let [specs (tax/specs-global (reasoning/taxonomy kb) sub)]
     (when (some (fn [k] (and (vector? k) (contains? specs (second k))))
-                (keys @(:rule-antecedents kb)))
+                (keys @(reasoning/rule-antecedents kb)))
       (let [idx  (:index kb)
             recs (:records kb)
-            tms  (:tms kb)]
+            tms  (reasoning/tms kb)]
         (into [] (comp (mapcat #(reads/as-stored-with-functor idx %))
                        (distinct)
                        (filter #(jtms/in? tms %))
                        (filter (fn [h]
                                  (when-let [s (p/get-sentex recs h)]
                                    (sx/negative? s)))))
-              (tax/genls-global (:taxonomy kb) super))))))
+              (tax/genls-global (reasoning/taxonomy kb) super))))))
 
 (defn subsumption-seeds
   "The stored facts a new `(genl sub super)` edge newly makes matchable, as chaining
@@ -1655,12 +1655,12 @@
   (when (= 'genl (nm/functor sentence))
     (let [[_ sub super] sentence
           idx (:index kb)
-          tms (:tms kb)]
+          tms (reasoning/tms kb)]
       (when (symbol? sub)
         (into (into [] (comp (mapcat #(reads/as-stored-with-functor idx %))
                              (distinct)
                              (filter #(jtms/in? tms %)))
-                    (tax/specs-global (:taxonomy kb) sub))
+                    (tax/specs-global (reasoning/taxonomy kb) sub))
               (when (symbol? super) (negative-subsumption-seeds kb sub super)))))))
 
 (defn- transitive-left-ends
@@ -1675,7 +1675,7 @@
   [kb pred a]
   (let [idx  (:index kb)
         recs (:records kb)
-        tms  (:tms kb)
+        tms  (reasoning/tms kb)
         left (fn [h]
                (when-let [sx (p/get-sentex recs h)]
                  (let [sent (:sentence sx)]
@@ -1712,7 +1712,7 @@
   "The believed stored FACT handles among `handles` whose functor is one of `functors`."
   [kb functors handles]
   (let [recs (:records kb)
-        tms  (:tms kb)]
+        tms  (reasoning/tms kb)]
     (into []
           (comp (distinct)
                 (filter #(jtms/in? tms %))
@@ -1782,7 +1782,7 @@
            (sequential? sentence)
            (= 3 (count sentence))
            (not (contains? tax/closure-relations functor))
-           (tax/has-prop? (:taxonomy kb) :transitive functor))
+           (tax/has-prop? (reasoning/taxonomy kb) :transitive functor))
       (let [partners (transitive-partner-functors kb functor)]
         (when (seq partners)
           (believed-facts-with-functors
@@ -1814,7 +1814,7 @@
       (let [functors (into #{} (keep nm/functor) antes)
             trans    (into #{} (filter #(and (symbol? %)
                                              (not (contains? tax/closure-relations %))
-                                             (tax/has-prop? (:taxonomy kb) :transitive %)))
+                                             (tax/has-prop? (reasoning/taxonomy kb) :transitive %)))
                            functors)]
         (when (seq trans)
           (let [partners (into #{} (remove trans) functors)]
@@ -1930,13 +1930,13 @@
   ([kb sentence gated?]
    (when (= 'genlCx (nm/functor sentence))
      (let [[_ sub super] sentence
-           preds (keys @(:rule-antecedents kb))]
+           preds (keys @(reasoning/rule-antecedents kb))]
        (when (seq preds)
          (let [idx  (:index kb)
                recs (:records kb)
-               tms  (:tms kb)
-               tx   (:taxonomy kb)
-               ruled? @(:rule-contexts kb)
+               tms  (reasoning/tms kb)
+               tx   (reasoning/taxonomy kb)
+               ruled? @(reasoning/rule-contexts kb)
                up    (when (symbol? super) (tax/context-up tx super))
                down  (when (symbol? sub)   (tax/context-down tx sub))
                ancestor-set (if gated?
@@ -2048,7 +2048,7 @@
   below the table; declared-through here because migration needs it before the
   table exists."
   [kb sentence context]
-  (when-let [ps (seq (wff-problems (:taxonomy kb) sentence context))]
+  (when-let [ps (seq (wff-problems (reasoning/taxonomy kb) sentence context))]
     {:violation :not-well-formed
      :detail    {:problems (vec ps)
                  :message  (str "not well-formed: " (str/join "; " ps))}}))
@@ -2062,14 +2062,14 @@
   the weaker of the original and the equality.  Idempotent (`has-justification?`)."
   [kb orig-handle twin-handle eqs]
   (doseq [eh (distinct eqs)]
-    (let [depth (inc (max (jtms/depth (:tms kb) orig-handle) (jtms/depth (:tms kb) eh)))
+    (let [depth (inc (max (jtms/depth (reasoning/tms kb) orig-handle) (jtms/depth (reasoning/tms kb) eh)))
           antes [orig-handle eh]]
-      (jtms/ensure-node (:tms kb) twin-handle depth)
-      (when-not (jtms/has-justification? (:tms kb) 'rewriteOf antes twin-handle)
+      (jtms/ensure-node (reasoning/tms kb) twin-handle depth)
+      (when-not (jtms/has-justification? (reasoning/tms kb) 'rewriteOf antes twin-handle)
         (let [jid  (p/next-id (:records kb))
               just (jtms/->just jid 'rewriteOf antes twin-handle {} :monotonic)]
           (p/put-justification (:records kb) just)
-          (jtms/add-justification (:tms kb) just))))))
+          (jtms/add-justification (reasoning/tms kb) just))))))
 
 (defn- varmap-realign
   "The substitution mapping the *original* rule's canonical variables to the `twin`'s.
@@ -2115,7 +2115,7 @@
   (or (sx/exceptWhen-rule-handle s)
       (kb/except-target s)
       (when (and (sequential? s) (symbol? (first s))
-                 (tax/has-prop? (:taxonomy kb) :target-following (first s)))
+                 (tax/has-prop? (reasoning/taxonomy kb) :target-following (first s)))
         (some #(when (sx/sentex-handle? %) (sx/handle-id %)) s))))
 
 (defn- rebuild-handle-meta
@@ -2163,7 +2163,7 @@
     (doseq [mh   (reads/as-stored-with-term (:index kb) (sx/sentex-handle orig))
             :let  [msx (p/get-sentex (:records kb) mh)
                    s   (and msx (:sentence msx))]
-            :when (and msx (jtms/in? (:tms kb) mh) (= orig (meta-target kb s)))]
+            :when (and msx (jtms/in? (reasoning/tms kb) mh) (= orig (meta-target kb s)))]
       (let [m'  (rebuild-handle-meta kb s orig twin realign reader)
             ctx (:context msx)
             [h sx2 new?] (kb/find-or-create-sentex kb m' ctx)]
@@ -2179,7 +2179,7 @@
   first migration took.  Empty when `orig` has no twin, the common path.  A forward-chaining
   or defeat use of `orig` carries a different informant and is filtered out."
   [kb orig]
-  (let [tms (:tms kb)]
+  (let [tms (reasoning/tms kb)]
     (->> (jtms/dependents tms orig)
          (map #(jtms/justification tms %))
          (filter #(and (= 'rewriteOf (:informant %)) (some #{orig} (:antecedents %))))
@@ -2225,7 +2225,7 @@
   merged, and which rules reach it, are both cheap set questions, and a sentence no
   merge touches never walks a class or reads a record."
   [kb sentence]
-  (let [tx      (:taxonomy kb)
+  (let [tx      (reasoning/taxonomy kb)
         merged? (tax/merged-term-pred tx)
         terms   (when merged? (sx/symbols-where merged? sentence))
         rules   (filterv #(rewrite/rule-applies? % sentence) (tax/rewrite-rules tx))]
@@ -2262,7 +2262,7 @@
   context closes almost as fast — `meet-closure` of a comparable pair is the pair, and
   the filter leaves the fact's own context alone."
   [kb sentex]
-  (let [tx    (:taxonomy kb)
+  (let [tx    (reasoning/taxonomy kb)
         pctx  (:context sentex)
         ectxs (equality-contexts kb (sx/sentence-of sentex))]
     (when (seq ectxs)
@@ -2283,7 +2283,7 @@
   [kb sentex reader placed]
   (let [handle    (:id sentex)
         sentence  (sx/sentence-of sentex)
-        tx        (:taxonomy kb)
+        tx        (reasoning/taxonomy kb)
         rewritten (sx/canon (kb/rewrite-term kb sentence reader))]
     (when-not (or (= rewritten (sx/canon sentence))
                   (some (fn [[c f]] (and (= f rewritten) (tax/sees? tx reader c))) placed))
@@ -2294,7 +2294,7 @@
                  ;; symbol equalities incident on a term of the sentence
                  (filter (fn [eh]
                            (when-let [esx (p/get-sentex (:records kb) eh)]
-                             (and (jtms/in? (:tms kb) eh)
+                             (and (jtms/in? (reasoning/tms kb) eh)
                                   (tax/sees? tx reader (:context esx)))))
                          (mapcat #(tax/equality-supporters tx %)
                                  (filter symbol? (tree-seq sequential? seq sentence))))
@@ -2304,7 +2304,7 @@
                  ;; must not appear as a support.
                  (for [{:keys [handle context] :as rule} (tax/rewrite-rules tx)
                        :when (and (rewrite/rule-applies? rule sentence)
-                                  (jtms/in? (:tms kb) handle)
+                                  (jtms/in? (reasoning/tms kb) handle)
                                   (tax/sees? tx reader context))]
                    handle))]
         (when (seq eqs)
@@ -2409,7 +2409,7 @@
   superseded ones are exactly the twins of a previous election, and re-election has
   to be able to reach them."
   [kb terms]
-  (let [tms (:tms kb)]
+  (let [tms (reasoning/tms kb)]
     (reduce
      (fn [acc t]
        (reduce (fn [acc sx] (merge-with into acc (migrate-sentex kb sx)))
@@ -2418,7 +2418,7 @@
                              (or (jtms/in? tms (:id %)) (jtms/superseded? tms (:id %))))
                        (kb/find-sentexes kb t))))
      {:new [] :superseded [] :violations []}
-     (remove #(= % (tax/representative (:taxonomy kb) %)) terms))))
+     (remove #(= % (tax/representative (reasoning/taxonomy kb) %)) terms))))
 
 (defn- integrate-equality
   "The equality relations' add arm: reflect the sentex into the closure and migrate
@@ -2428,8 +2428,8 @@
   [kb sentex handle]
   (let [sentence (:sentence sentex)
         [_ a b]  sentence]
-    (tax/add-equality (:taxonomy kb) a b handle (kb/preferred-term sentence))
-    (let [class (tax/equiv-class (:taxonomy kb) a)]
+    (tax/add-equality (reasoning/taxonomy kb) a b handle (kb/preferred-term sentence))
+    (let [class (tax/equiv-class (reasoning/taxonomy kb) a)]
       (recheck-equality-edge kb (set class))
       (migrate-class kb class))))
 
@@ -2441,7 +2441,7 @@
   actually change.  Same shape as `migrate-class`, keyed by the rule's LHS head rather
   than by a merged term's class."
   [kb head]
-  (let [tms (:tms kb)]
+  (let [tms (reasoning/tms kb)]
     (reduce (fn [acc sx] (merge-with into acc (migrate-sentex kb sx)))
             {:new [] :superseded [] :violations []}
             (filter #(and (kb/rewritable-sentex? kb %)
@@ -2456,7 +2456,7 @@
   disagree; the engine still gives a deterministic normal form, so nothing is dropped."
   [kb sentex handle lhs rhs]
   (let [new-rule {:handle handle :lhs lhs :rhs rhs}]
-    (for [nj (rewrite/non-joining-pairs new-rule (tax/rewrite-rules (:taxonomy kb)))]
+    (for [nj (rewrite/non-joining-pairs new-rule (tax/rewrite-rules (reasoning/taxonomy kb)))]
       {:violation :non-confluent
        :rule      handle
        :with      (:with nj)
@@ -2477,7 +2477,7 @@
   [kb sentex handle]
   (let [[_ a b]   (:sentence sentex)
         [lhs rhs] (rewrite/orient a b)]
-    (tax/add-rewrite-rule (:taxonomy kb) handle lhs rhs (:context sentex))
+    (tax/add-rewrite-rule (reasoning/taxonomy kb) handle lhs rhs (:context sentex))
     (recheck-equality-edge kb)
     (update (migrate-matching kb (first lhs))
             :violations into (confluence-violations kb sentex handle lhs rhs))))
@@ -2522,10 +2522,10 @@
   is proportional to the **standing merges** and not to the store — a KB holding a
   hundred million facts and no merge enumerates nothing."
   [kb]
-  (let [tx   (:taxonomy kb)
+  (let [tx   (reasoning/taxonomy kb)
         idx  (:index kb)
         recs (:records kb)
-        tms  (:tms kb)]
+        tms  (reasoning/tms kb)]
     (into (into []
                 (comp (mapcat #(reads/as-stored-with-functor idx %))
                       (distinct)
@@ -2554,7 +2554,7 @@
   same pair `migrate-class` admits and for its reason.  Keyed by handle, so a sentex
   reached through two of its terms is migrated once."
   [kb terms ctxs]
-  (let [tms (:tms kb)]
+  (let [tms (reasoning/tms kb)]
     (into {}
           (comp (mapcat #(kb/find-sentexes kb %))
                 (filter #(and (contains? ctxs (:context %))
@@ -2602,7 +2602,7 @@
   the reader can no longer see, and `refresh-supersessions` hands the spelling back."
   [kb sentence]
   (when (= 'genlCx (nm/functor sentence))
-    (let [tx           (:taxonomy kb)
+    (let [tx           (reasoning/taxonomy kb)
           [_ sub super] sentence]
       (when (and (symbol? sub) (symbol? super)
                  (or (seq (tax/equality-edges tx)) (seq (tax/rewrite-rules tx))))
@@ -2666,7 +2666,7 @@
   It is a stamp of the derived state, not of the KB: a store holding a hundred million
   facts and no merge stamps as the empty set."
   [kb]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     {:equality (tax/equality-edges tax)
      :prefs    (tax/equality-prefs tax)
      :rewrites (tax/rewrite-rules tax)
@@ -2736,12 +2736,12 @@
   still: the displaced datum itself leaving, and its restatement leaving with it.  Pass
   nil to force the full pass."
   [kb extra region]
-  (let [tms   (:tms kb)
+  (let [tms   (reasoning/tms kb)
         held  (jtms/superseded tms)
         stamp (supersession-stamp kb)
-        prev  (some-> (:supersessions kb) deref)
+        prev  (some-> (reasoning/supersessions kb) deref)
         vis   (memoize #(res/visible-supporter-fn kb %))]
-    (some-> (:supersessions kb) (reset! stamp))
+    (some-> (reasoning/supersessions kb) (reset! stamp))
     (if (and (some? region) (region-suffices? stamp prev extra))
       (reduce (fn [m d] (if-let [e (displacement kb vis d)] (conj m e) (dissoc m d)))
               (into held extra)
@@ -2762,9 +2762,9 @@
   delay is: nothing between the finish's read and `reset-touched!` relabels, so the
   region cannot grow underneath it."
   ([kb] (refresh-supersessions kb nil))
-  ([kb extra] (refresh-supersessions kb extra (jtms/touched (:tms kb))))
+  ([kb extra] (refresh-supersessions kb extra (jtms/touched (reasoning/tms kb))))
   ([kb extra region]
-   (jtms/supersede (:tms kb) (supersession-map kb extra region))))
+   (jtms/supersede (reasoning/tms kb) (supersession-map kb extra region))))
 
 (defn- derive-equality
   "Store `(equals x y)` in `context` as a **derivation** from `antes` and merge with
@@ -2781,13 +2781,13 @@
         sentence   (list 'equals lo hi)
         antes      (kb/antecedent-order kb antes)
         [h s new?] (kb/find-or-create-sentex kb sentence context)
-        depth      (inc (reduce max 0 (map #(jtms/depth (:tms kb) %) antes)))]
-    (jtms/ensure-node (:tms kb) h depth)
-    (when-not (jtms/has-justification? (:tms kb) informant antes h)
+        depth      (inc (reduce max 0 (map #(jtms/depth (reasoning/tms kb) %) antes)))]
+    (jtms/ensure-node (reasoning/tms kb) h depth)
+    (when-not (jtms/has-justification? (reasoning/tms kb) informant antes h)
       (let [jid  (p/next-id (:records kb))
             just (jtms/->just jid informant antes h {} :monotonic)]
         (p/put-justification (:records kb) just)
-        (jtms/add-justification (:tms kb) just)))
+        (jtms/add-justification (reasoning/tms kb) just)))
     (when new? (derived-sentex-added kb s h))
     (integrate-equality kb s h)))
 
@@ -2883,7 +2883,7 @@
   `distinct` rather than a set literal, so the list keeps the order the descent produced
   and stays stable to read."
   [kb sentence context handle]
-  (let [tax     (:taxonomy kb)
+  (let [tax     (reasoning/taxonomy kb)
         recs    (:records kb)
         pred    (nm/functor sentence)
         ;; content-ordered, so which pair gets the explicit equality is a function of
@@ -3025,7 +3025,7 @@
   than N times inside it."
   ([kb sentence context handle] (derive-functional-equalities kb sentence context handle nil))
   ([kb sentence context handle readers]
-   (let [tax (:taxonomy kb)]
+   (let [tax (reasoning/taxonomy kb)]
      (when (tax/functional-family-declared? tax)
        (if (functional-mark-relevant? tax sentence)
          (reduce (fn [acc r]
@@ -3139,7 +3139,7 @@
   [kb sentence declares? derive]
   (when (and (= 'genl (nm/functor sentence))
              (= 2 (nm/arity sentence))
-             (declares? (:taxonomy kb)))
+             (declares? (reasoning/taxonomy kb)))
     (let [[_ sub] sentence]
       (when (symbol? sub)
         (reduce (fn [acc sx]
@@ -3218,7 +3218,7 @@
   reconciles, is skipped.  A non-mergeable converse is the hard contradiction
   `checks/antisymmetry-problems` refuses at the entry point instead."
   [kb sentence context handle]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (when (seq (tax/props tax :anti-symmetric))
       (let [pred (nm/functor sentence)
             args (vec (nm/args sentence))]
@@ -3283,7 +3283,7 @@
   shared body exists to prevent."
   ([kb sentence context handle] (derive-antisymmetric-equalities kb sentence context handle nil))
   ([kb sentence context handle readers]
-   (let [tax (:taxonomy kb)]
+   (let [tax (reasoning/taxonomy kb)]
      (when (seq (tax/props tax :anti-symmetric))
        (if (anti-symmetric-mark-relevant? tax sentence)
          (reduce (fn [acc r]
@@ -3349,7 +3349,7 @@
   `derive-functional-equalities`/`-in` read the store, never the belief filter, and
   this feeds them, so it has to agree."
   [kb contexts marked?]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (for [c     (filter symbol? contexts)
           h     (reads/as-stored-in-context (:index kb) c)
           :let  [s (p/get-sentex (:records kb) h)]
@@ -3417,7 +3417,7 @@
   treating it as routine — it is closer to `:exposure-truncated`'s honesty than to a
   bound with a guaranteed safety net behind it."
   [kb sub marked?]
-  (let [tax    (:taxonomy kb)
+  (let [tax    (reasoning/taxonomy kb)
         budget (max 0 (long tax/*exposure-instance-budget*))
         xs     (into [] (take (inc budget))
                      (stored-facts-in-ancestors kb (context-edge-reader-ancestors tax sub) marked?))]
@@ -3461,7 +3461,7 @@
   coverage story for the same cut."
   [kb sentence declares? relevant? derive prop]
   (when (= 'genlCx (nm/functor sentence))
-    (let [tax (:taxonomy kb)
+    (let [tax (reasoning/taxonomy kb)
           [_ sub super] sentence]
       (when (and (symbol? sub) (symbol? super) (declares? tax))
         (let [[candidates cut] (budgeted-context-edge-candidates kb sub relevant?)
@@ -3660,10 +3660,10 @@
          marked? (fn [pred] (not (contains? skip pred)))]
      {:integrate    (fn [kb sx h] (let [pred (second (:sentence sx))]
                                     (when (marked? pred)
-                                      (tax/mark-prop (:taxonomy kb) kind pred h (:context sx)))))
+                                      (tax/mark-prop (reasoning/taxonomy kb) kind pred h (:context sx)))))
       :disintegrate (fn [kb sx] (let [pred (second (:sentence sx))]
                                   (when (marked? pred)
-                                    (tax/unmark-prop! (:taxonomy kb) kind pred (:id sx)))))
+                                    (tax/unmark-prop! (reasoning/taxonomy kb) kind pred (:id sx)))))
       :rebuild      (fn [tax {[_ pred] :sentence id :id ctx :context}]
                       (when (marked? pred) (tax/mark-prop tax kind pred id ctx)))
       :wff          wff/prop-problems})))
@@ -3702,11 +3702,11 @@
                    (let [s (:sentence sx) [_ a b] s]
                      (cond
                        (rewrite/schematic-equation? s)
-                       (do (tax/del-rewrite-rule! (:taxonomy kb) (:id sx))
+                       (do (tax/del-rewrite-rule! (reasoning/taxonomy kb) (:id sx))
                            (recheck-equality-edge kb))
                        (sequential? b) nil
                        :else
-                       (do (tax/del-equality! (:taxonomy kb) a b (:id sx))
+                       (do (tax/del-equality! (reasoning/taxonomy kb) a b (:id sx))
                            ;; no class to narrow by on this side: what a released
                            ;; condition owes a re-derivation to is the firings the block
                            ;; swept, which hold no bindings to test
@@ -3827,18 +3827,18 @@
     ;; too.
     'genl {:integrate    (fn [kb sx h]
                            (let [[_ a b] (:sentence sx)]
-                             (tax/add-genl (:taxonomy kb) a b h (:context sx))
+                             (tax/add-genl (reasoning/taxonomy kb) a b h (:context sx))
                              (recheck-genl-edge kb a b)))
            :disintegrate (fn [kb sx]
                            (let [[_ a b] (:sentence sx)]
-                             (tax/del-genl! (:taxonomy kb) a b (:id sx))
+                             (tax/del-genl! (reasoning/taxonomy kb) a b (:id sx))
                              (recheck-genl-edge kb a b)))
            :rebuild      (fn [tax {sentence :sentence id :id ctx :context}]
                            (replay-edge tax/add-genl tax sentence 'genl id ctx))
            :wff          wff/genl-problems}
     'genlCx {:integrate    (fn [kb sx h]
                              (let [[_ a b] (:sentence sx)]
-                               (tax/add-genlCx (:taxonomy kb) a b h (:context sx))
+                               (tax/add-genlCx (reasoning/taxonomy kb) a b h (:context sx))
                                ;; visibility moved: re-check the excepted rules whose
                                ;; firings live in the affected context ancestor set
                                ;; (`context-down` of the edge's sub) — the context-keyed
@@ -3849,7 +3849,7 @@
                                (recheck-except-ancestors kb)))
              :disintegrate (fn [kb sx]
                              (let [[_ a b] (:sentence sx)]
-                               (tax/del-genlCx! (:taxonomy kb) a b (:id sx))
+                               (tax/del-genlCx! (reasoning/taxonomy kb) a b (:id sx))
                                (recheck-genlCx-edge kb a)
                                (recheck-except-ancestors kb)))
              :rebuild      (fn [tax {sentence :sentence id :id ctx :context}]
@@ -3857,17 +3857,17 @@
              :wff          wff/genlCx-problems}
     'disjoint {:integrate    (fn [kb sx h]
                                (let [[_ a b] (:sentence sx)]
-                                 (tax/add-disjoint (:taxonomy kb) a b h (:context sx))))
+                                 (tax/add-disjoint (reasoning/taxonomy kb) a b h (:context sx))))
                :disintegrate (fn [kb sx]
                                (let [[_ a b] (:sentence sx)]
-                                 (tax/del-disjoint! (:taxonomy kb) a b (:id sx))))
+                                 (tax/del-disjoint! (reasoning/taxonomy kb) a b (:id sx))))
                :rebuild      (fn [tax {[_ a b] :sentence id :id ctx :context}]
                                (tax/add-disjoint tax a b id ctx))
                :wff          wff/disjoint-problems}
     'disjoint_metatype
     {:integrate    (fn [kb sx h]
                      (let [[_ m] (:sentence sx)]
-                       (tax/mark-disjoint-metatype (:taxonomy kb) m h (:context sx))
+                       (tax/mark-disjoint-metatype (reasoning/taxonomy kb) m h (:context sx))
                        ;; Members already asserted are *recorded*, not turned into a
                        ;; clique of `(disjoint a b)` sentexes; `tax/disjoint?` consults
                        ;; the membership directly.  A member asserted later is picked up
@@ -3889,10 +3889,10 @@
                        ;; reading what is stored through this very function.
                        (doseq [{[_ t] :sentence id :id mctx :context}
                                (stored-declarations kb m)]
-                         (tax/add-metatype-member (:taxonomy kb) m t id mctx))))
+                         (tax/add-metatype-member (reasoning/taxonomy kb) m t id mctx))))
      :disintegrate (fn [kb sx]
                      (let [[_ m] (:sentence sx)]
-                       (tax/unmark-disjoint-metatype! (:taxonomy kb) m (:id sx))))
+                       (tax/unmark-disjoint-metatype! (reasoning/taxonomy kb) m (:id sx))))
      ;; marks only: membership is replayed by rebuild-taxonomy's second pass, once every
      ;; metatype is known — the member functors are the metatypes themselves, which no
      ;; static table key can name
@@ -3907,10 +3907,10 @@
     'sibling_disjoint
     {:integrate    (fn [kb sx h]
                      (let [[_ c] (:sentence sx)]
-                       (tax/mark-sibling-disjoint (:taxonomy kb) c h (:context sx))))
+                       (tax/mark-sibling-disjoint (reasoning/taxonomy kb) c h (:context sx))))
      :disintegrate (fn [kb sx]
                      (let [[_ c] (:sentence sx)]
-                       (tax/unmark-sibling-disjoint! (:taxonomy kb) c (:id sx))))
+                       (tax/unmark-sibling-disjoint! (reasoning/taxonomy kb) c (:id sx))))
      :rebuild      (fn [tax {[_ c] :sentence id :id ctx :context}]
                      (tax/mark-sibling-disjoint tax c id ctx))
      :wff          wff/sibling-disjoint-problems}
@@ -3926,11 +3926,11 @@
     'siblingDisjointException
     {:integrate    (fn [kb sx h]
                      (let [[_ a b] (:sentence sx)]
-                       (tax/add-sib-exception (:taxonomy kb) a b h (:context sx))))
+                       (tax/add-sib-exception (reasoning/taxonomy kb) a b h (:context sx))))
      :disintegrate (fn [kb sx]
                      (let [[_ a b] (:sentence sx)]
-                       (tax/del-sib-exception! (:taxonomy kb) a b (:id sx))
-                       (when-let [d (:sib-exc-dirty kb)] (swap! d conj #{a b}))))
+                       (tax/del-sib-exception! (reasoning/taxonomy kb) a b (:id sx))
+                       (when-let [d (reasoning/sib-exc-dirty kb)] (swap! d conj #{a b}))))
      :rebuild      (fn [tax {[_ a b] :sentence id :id ctx :context}]
                      (tax/add-sib-exception tax a b id ctx))
      :wff          wff/siblingDisjointException-problems}
@@ -3942,11 +3942,11 @@
     {:integrate    (fn [kb sx h]
                      (let [[_ pred n] (:sentence sx)]
                        (when (and (symbol? pred) (integer? n))
-                         (tax/add-arity (:taxonomy kb) pred n h (:context sx)))))
+                         (tax/add-arity (reasoning/taxonomy kb) pred n h (:context sx)))))
      :disintegrate (fn [kb sx]
                      (let [[_ pred n] (:sentence sx)]
                        (when (and (symbol? pred) (integer? n))
-                         (tax/del-arity! (:taxonomy kb) pred n (:id sx)))))
+                         (tax/del-arity! (reasoning/taxonomy kb) pred n (:id sx)))))
      :rebuild      (fn [tax {[_ pred n] :sentence id :id ctx :context}]
                      (when (and (symbol? pred) (integer? n))
                        (tax/add-arity tax pred n id ctx)))}
@@ -3966,21 +3966,21 @@
     {:integrate    (fn [kb sx h]
                      (let [[_ pred n] (:sentence sx)]
                        (when (and (symbol? pred) (integer? n) (pos? n))
-                         (tax/add-functional-in-arg (:taxonomy kb) pred n h (:context sx)))))
+                         (tax/add-functional-in-arg (reasoning/taxonomy kb) pred n h (:context sx)))))
      :disintegrate (fn [kb sx]
                      (let [[_ pred n] (:sentence sx)]
                        (when (and (symbol? pred) (integer? n) (pos? n))
-                         (tax/del-functional-in-arg! (:taxonomy kb) pred n (:id sx)))))
+                         (tax/del-functional-in-arg! (reasoning/taxonomy kb) pred n (:id sx)))))
      :rebuild      (fn [tax {[_ pred n] :sentence id :id ctx :context}]
                      (when (and (symbol? pred) (integer? n) (pos? n))
                        (tax/add-functional-in-arg tax pred n id ctx)))
      :wff          wff/functional-in-arg-problems}
     'inverse {:integrate    (fn [kb sx h]
                               (let [[_ p q] (:sentence sx)]
-                                (tax/add-inverse (:taxonomy kb) p q h (:context sx))))
+                                (tax/add-inverse (reasoning/taxonomy kb) p q h (:context sx))))
               :disintegrate (fn [kb sx]
                               (let [[_ p q] (:sentence sx)]
-                                (tax/del-inverse! (:taxonomy kb) p q (:id sx))))
+                                (tax/del-inverse! (reasoning/taxonomy kb) p q (:id sx))))
               :rebuild      (fn [tax {[_ p q] :sentence id :id ctx :context}]
                               (tax/add-inverse tax p q id ctx))
               :wff          wff/inverse-problems}
@@ -3995,7 +3995,7 @@
     (assoc (prop-entry 'decontextualized_predicate)
            :integrate (fn [kb sx h]
                         (let [pred (second (:sentence sx))]
-                          (tax/mark-prop (:taxonomy kb) :decontextualized pred h (:context sx))
+                          (tax/mark-prop (reasoning/taxonomy kb) :decontextualized pred h (:context sx))
                           (lift-existing kb pred h))))
     'forced_decontextualized_predicate (prop-entry 'forced_decontextualized_predicate)
     ;; `(target_following_predicate P)` marks P as forming a **target-following
@@ -4034,12 +4034,12 @@
         (assoc :integrate
                (fn [kb sx h]
                  (let [pred (second (:sentence sx))]
-                   (tax/mark-prop (:taxonomy kb) :closed-extent pred h (:context sx))
+                   (tax/mark-prop (reasoning/taxonomy kb) :closed-extent pred h (:context sx))
                    (index-closed-extent-rules kb pred))))
         (assoc :disintegrate
                (fn [kb sx]
                  (let [pred (second (:sentence sx))]
-                   (tax/unmark-prop! (:taxonomy kb) :closed-extent pred (:id sx))
+                   (tax/unmark-prop! (reasoning/taxonomy kb) :closed-extent pred (:id sx))
                    (index-closed-extent-rules kb pred)))))
     ;; `(modal_predicate P)` is what makes `(P agent sentence)` project into the agent's
     ;; context (docs/belief.md) — `BeliefProjectionProver` reads it.  Not
@@ -4320,8 +4320,8 @@
        ;; supporter, and belief follows it through `refresh-cache-support` — a member
        ;; stated while the mark is defeated is recorded now and separates the moment
        ;; the mark revives, in either order of arrival.
-       (and (= 1 (nm/arity sentence)) (tax/stored-disjoint-metatype? (:taxonomy kb) f))
-       (tax/add-metatype-member (:taxonomy kb) f (first (nm/args sentence)) handle
+       (and (= 1 (nm/arity sentence)) (tax/stored-disjoint-metatype? (reasoning/taxonomy kb) f))
+       (tax/add-metatype-member (reasoning/taxonomy kb) f (first (nm/args sentence)) handle
                                 (:context sentex))))))
 
 (defn- run-integrate-arms
@@ -4411,12 +4411,12 @@
           ;; refusal is dead when its rule goes, and this is the event that says so —
           ;; entries are otherwise dropped lazily, when a queued rule's record is
           ;; walked, and a departed rule is never queued again.
-          (swap! (:refused kb) dissoc (:id sentex)))
+          (swap! (reasoning/refused kb) dissoc (:id sentex)))
       ;; a member leaving a disjoint metatype: it stops being disjoint from the rest.
       ;; Gated on storage like the integrate arm, so a member retracted while the mark
       ;; is defeated drops its support entry rather than leaving it behind for good.
-      (and (= 1 (nm/arity sentence)) (tax/stored-disjoint-metatype? (:taxonomy kb) f))
-      (tax/del-metatype-member! (:taxonomy kb) f (first (nm/args sentence)) (:id sentex)))))
+      (and (= 1 (nm/arity sentence)) (tax/stored-disjoint-metatype? (reasoning/taxonomy kb) f))
+      (tax/del-metatype-member! (reasoning/taxonomy kb) f (first (nm/args sentence)) (:id sentex)))))
 
 (defn integrate-transitive
   "The **table** half of `derived-sentex-added`: for a functor the table keys, only the
@@ -4502,7 +4502,7 @@
   genl / genlCx functor root does, and replaying it would seed a null closure node that
   crashes `restore-depths`."
   [kb]
-  (let [tax   (:taxonomy kb)
+  (let [tax   (reasoning/taxonomy kb)
         skips (volatile! 0)]
     (tax/clear-relations! tax)
     (binding [*edge-replay-skips* skips]

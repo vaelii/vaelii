@@ -38,6 +38,11 @@ cd "$(dirname "$0")/.." || exit 1
 # shard log
 # shellcheck source=scripts/lib/revision.sh
 . scripts/lib/revision.sh
+# one row in `logs/runs.tsv` per run: the revision, the clock, the totals and the
+# verdict, so "which revision did the suite last pass at" is one file to read
+# rather than a dozen `target/gate/run-*` directories a `lein clean` can delete
+# shellcheck source=scripts/lib/runlog.sh
+. scripts/lib/runlog.sh
 # the default shard count, shared with test-matrix.sh so the rule cannot drift
 # shellcheck source=scripts/lib/slots.sh
 . scripts/lib/slots.sh
@@ -76,6 +81,10 @@ esac
 [[ -z "$jobs" ]] && jobs=$(default_slots)   # P-2 minus running vaelii JVMs; see scripts/lib/slots.sh
 
 mkdir -p "$OUT" || exit 1
+# The revision the shards are about, read BEFORE the first JVM boots: a sharded
+# suite is minutes long on a checkout several agents write to, and a verdict
+# credited to whatever landed while it ran is a verdict about no tree at all.
+runlog_start
 # the timings sit above `$OUT` when the gate hands us a per-run directory, so their own
 # parent may not exist yet on a fresh checkout
 mkdir -p "$(dirname "$TIMINGS")" || exit 1
@@ -131,6 +140,13 @@ awk -v jobs="$jobs" -v timings="$TIMINGS" '
 ' <(printf '%s\n' "${namespaces[@]}") > "$assign_out"
 
 echo "running $n namespaces at $selector across $jobs shard(s) — $(revision_line) — logs in $OUT"
+# The same facts into the run directory, for a reader watching this run go.  The
+# shard logs carry the revision stamp but not the selector or the shard count,
+# and a bare `lein test-parallel` writes no other file here — `gate.sh` captures
+# this stdout into `test.log`, and a run outside the gate captures nothing.  So
+# a watcher had nothing to read the plan off (tools/vaelii-top/src/vtop/live.py).
+printf 'selector\t%s\nshards\t%d\nnamespaces\t%d\n' \
+  "$selector" "$jobs" "$n" > "$OUT/test.plan" 2>/dev/null || true
 
 # ---- run --------------------------------------------------------------------
 t0=$SECONDS
@@ -203,6 +219,23 @@ printf 'across %d shard(s) in %ds\n' "${#shard_logs[@]}" "$elapsed"
 if [[ ${#missing[@]} -gt 0 ]]; then
   printf 'shard(s) produced no exit marker (killed?): %s\n' "${missing[*]}" >&2
 fi
+
+# The ledger row.  The selector is the `variant` column and not part of the kind,
+# because a `:default` suite and an `:all` suite are different verdicts: the row
+# for one must not read as the last run of the other.  A shard with no exit
+# marker was killed, so that run is `interrupted` rather than failed — it reached
+# no verdict, and a ledger that called it a failure would send somebody looking
+# for a test that never ran.
+suite_summary=$(printf '%d tests, %d assertions, %d failures, %d errors, %d shard(s)' \
+                  "$tests" "$assertions" "$failures" "$errors" "${#shard_logs[@]}")
+if [[ ${#missing[@]} -gt 0 ]]; then
+  runlog_record test "$selector" interrupted "$suite_summary" "$OUT"
+elif [[ $bad -ne 0 || $failures -ne 0 || $errors -ne 0 ]]; then
+  runlog_record test "$selector" failed "$suite_summary" "$OUT"
+else
+  runlog_record test "$selector" passed "$suite_summary" "$OUT"
+fi
+
 if [[ $bad -ne 0 || $failures -ne 0 || $errors -ne 0 ]]; then
   echo
   echo "failing tests:"

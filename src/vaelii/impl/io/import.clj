@@ -92,11 +92,13 @@
             [vaelii.impl.naming :as nm]
             [vaelii.impl.opts :as opts]
             [vaelii.impl.protocols :as p]
+            [vaelii.impl.reasoning-image :as ri]
             [vaelii.impl.recovery :as recovery]
             [vaelii.impl.reindex :as reindex]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rules :as rules]
-            [vaelii.impl.sentex :as sx]))
+            [vaelii.impl.sentex :as sx]
+            [vaelii.impl.strength :as st]))
 
 (def export-format
   "The marker `vaelii.impl.io.export` writes.  Version numbers alone cannot tell a dump
@@ -120,7 +122,7 @@
 
   Every one of them is a handful of keys: a marker, a version, some counts, a
   compression name.  They are also the *first* thing read about a directory nobody has
-  promised anything about — `vaelii.host.catalog` probes every entry of the KB search
+  promised anything about — `vaelii.browser.catalog` probes every entry of the KB search
   path this way, and a load reads one before it opens a stream — so an unbounded read is
   a whole file pulled into a string on the strength of its name.  A megabyte is orders
   of magnitude above the largest of them (a hand-written `catalog.edn` naming thousands
@@ -142,7 +144,7 @@
   leave — otherwise raises a bare `RuntimeException` (\"EOF while reading\"), which is
   neither a `:type` a caller can discriminate on nor a fact about the file it names.
   Which of the two refusals means \"not a KB\" and which means \"a broken one\" is the
-  caller's to decide, and `vaelii.host.catalog` decides it differently from the loaders."
+  caller's to decide, and `vaelii.browser.catalog` decides it differently from the loaders."
   [f]
   (let [^java.io.File f (io/file f)
         limit (long manifest-bytes)
@@ -275,6 +277,21 @@
                       {:type :no-dump :dir (str dir)})))
     (read-edn-manifest f)))
 
+(defn- dump-reader-field
+  "The `field` of the `:engine-dump` reader map, or a refusal **by name** when the reader
+  resolves but declares no such field.  A dump reader offers `{:name :versions :decode-frame
+  :replay-belief!}` (docs/foreign.md); a plugin that ships a map missing one is refused with
+  `:no-foreign-reader` here rather than dereferenced as nil several frames on — the same
+  treatment `frame-decoder`'s `if-let` already gives `:decode-frame`.  `foreign/reader!`
+  throws first when nothing reads the kind at all, so this only guards the field-absent case."
+  [field]
+  (or (field (foreign/reader! :engine-dump))
+      (throw (ex-info (str "the :engine-dump foreign reader is on the classpath but its reader"
+                           " map declares no " field " — a dump reader offers"
+                           " {:name :versions :decode-frame :replay-belief!}"
+                           " (see vaelii.impl.foreign)")
+                      {:type :no-foreign-reader :kind :engine-dump :missing field}))))
+
 (defn- assert-supported-version!
   "Gate the version against the numbering its own dialect uses — the two overlap, so one
   set would read our v1 as an unsupported foreign v1.  A foreign dump's numbering belongs
@@ -283,7 +300,7 @@
   (let [ours      (ours? meta)
         supported (if ours
                     supported-export-versions
-                    (:versions (foreign/reader! :engine-dump)))
+                    (dump-reader-field :versions))
         vn        (:format-version meta)]
     (when-not (supported vn)
       (throw (ex-info (str (if ours "export" "foreign") " dump format version " vn
@@ -353,9 +370,6 @@
   change lands in one place."
   [s]
   (if (= s :monotonic) :monotonic :default))
-
-(defn- stronger [a b]
-  (if (or (= a :monotonic) (= b :monotonic)) :monotonic :default))
 
 ;;; ── progress ──────────────────────────────────────────────────────────
 ;;
@@ -690,7 +704,7 @@
   not a torn file.
 
   `jprint` is folded with each justification stored (`fingerprint/justification-hash`),
-  the half of a dump belief image's records stamp the sentex pass does not take."
+  the half of a dump reasoning image's records stamp the sentex pass does not take."
   [kb frames old->new orphaned preserve? tick! jprint]
   (let [records (:records kb)
         remap   (fn [id] (if (integer? id) (get old->new id) id))
@@ -740,7 +754,7 @@
   (let [records   (:records kb)
         by-handle (reduce (fn [acc [_ {:keys [handle strength]}]]
                             (if strength
-                              (update acc handle stronger (strength-class strength))
+                              (update acc handle st/max (strength-class strength))
                               acc))
                           {} sx-meta)]
     ;; through `cap/mark-premises`, which on a store that can mark many at once is a
@@ -1131,20 +1145,20 @@
                      :values (vec (sort-by pr-str (keys belief-modes)))}))))
 
 (defn- dump-belief!
-  "The belief half of a `{:belief? true}` import: install the dump's belief image in place
+  "The belief half of a `{:belief? true}` import: install the dump's reasoning image in place
   of `recover` when the import kept every handle (`kept?`) and the dump carries one, and
   recover otherwise.  The image's records stamp is checked against `sentex-fp` and
   `jprint`, the fingerprints this import took of the sentexes and the justifications it
-  landed.  Returns `recovery/recover-with-image`'s map, or `{:belief :recovered :reason
+  landed.  Returns `recovery/recover-with-image`'s map, or `{:reasoning :recovered :reason
   r}` with `r` `:absent` (no image in the dump) or `:handles-remapped`."
   [kb dir kept? sentex-fp jprint]
-  (let [bdir (io/file dir "belief")]
+  (let [bdir (io/file dir ri/dir-name)]
     (cond
       (not kept?)
-      (do (recovery/recover kb) {:belief :recovered :reason :handles-remapped})
+      (do (recovery/recover kb) {:reasoning :recovered :reason :handles-remapped})
 
       (not (.exists (io/file bdir "manifest.edn")))
-      (do (recovery/recover kb) {:belief :recovered :reason :absent})
+      (do (recovery/recover kb) {:reasoning :recovered :reason :absent})
 
       :else
       (recovery/recover-with-image kb bdir {:sentexes sentex-fp :justifications (jprint)}))))
@@ -1157,11 +1171,11 @@
   With `{:belief? true}` (the default) it lands in the state the engine's own restart path
   produces: the record store populated from the re-canonicalized records + the
   justifications + premise marks, the index rebuilt (`reindex`), belief recovered
-  (`recover`).  A dump carrying a belief image (`export!`'s `:belief?`) is installed in
+  (`recover`).  A dump carrying a reasoning image (`export!`'s `:belief?`) is installed in
   place of the recover when the import kept every handle and the records it landed, the
   source identity and the belief policies all equal the image's stamp; the summary's
-  `:belief-image` says which happened (`{:belief :installed}` or `{:belief :recovered
-  :reason r}`).
+  `:reasoning-image` says which happened (`{:reasoning :installed}` or `{:reasoning
+  :recovered :reason r}`).
 
   With `{:belief? false}` it stores + indexes every sentex but skips what rests on what,
   the premise marks, and `recover` — the whole corpus is browsable / findable / countable
@@ -1351,7 +1365,7 @@
                        :dropped    dropped
                        :dropped-orphaned dropped-orphaned})
                     ;; a foreign dialect's account, read by its own reader
-                    ((:replay-belief! (foreign/reader! :engine-dump))
+                    ((dump-reader-field :replay-belief!)
                      kb {:dir dir :compression compression :read-fn read-fn :meta meta
                          :sx-meta sx-meta :old->new old->new :orphaned orphaned
                          :ticker tick :strength-class strength-class}))
@@ -1384,7 +1398,7 @@
                                 :handle-policy      (if kept? :preserved :remapped)
                                 :collapsed          collapsed
                                 :belief?            belief?
-                                :belief-image       img
+                                :reasoning-image    img
                                 :sentexes           (cap/count-sentexes (:records kb))
                                 :frames             frames
                                 :justifications     (cap/count-justifications (:records kb))

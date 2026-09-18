@@ -158,8 +158,11 @@
   ;; says, the pin reads the reference matcher inside.  Written against a `binding` rather
   ;; than an `alter-var-root` so the test itself leaves no root moved.
   (let [matcher   (requiring-resolve 'vaelii.impl.chain/*matcher*)
-        reference (get tu/shipped-defaults matcher)]
+        reference (tu/shipped-value matcher)]
     (is (some? reference) "the matcher is rostered")
+    (is (= (requiring-resolve 'vaelii.impl.resolution/match-pattern)
+           (get tu/shipped-defaults matcher))
+        "the matcher's default is held as the var that defines it, so a reload reaches it")
     (with-bindings* {matcher ::something-else}
       (fn []
         (is (= ::something-else (var-get matcher)) "the sweep's replacement is what is installed")

@@ -186,6 +186,62 @@
     (is (merged? kb Alice Bob U)
         "two sub-predicate tuples are convicted by the super's mark")))
 
+;; `special/derive-antisymmetric-equalities` justifies the merge once per declaring
+;; sentex (`tax/prop-supporters`), read KB-wide rather than from the merge's context —
+;; `equality_test/a-merge-rests-on-every-functional-declaration-not-on-one-of-them` pins
+;; the same read for `functional`.  A declaration stated in a sibling context therefore
+;; supports a merge in a context that cannot see it, and `VAELII_AUDIT_SUPPORT` reports
+;; that justification.
+
+(defn- declaration-contexts
+  "The contexts of the `anti_symmetric` declarations the `(equals a b)` merge in `ctx`
+  names among its supporters, as a set."
+  [kb a b ctx]
+  (let [[lo hi] (sort [a b])
+        h       (v/handle-of kb (list 'equals lo hi) ctx)]
+    (set (for [s (:support (v/why kb h))
+               x (:because s)
+               :when (= 'anti_symmetric (first (:sentence x)))]
+           (:context x)))))
+
+(tu/deftest-kb an-antisymmetric-merge-rests-on-every-declaration-not-on-one-of-them
+  ;; Both directions, on fresh terms each time, for the functional test's reason: a merge
+  ;; resting on one arbitrary declaration passes whenever the retracted one is not it.
+  (tu/with-terms [CxFam CxStory]
+    (v/assert kb (list 'genlCx CxFam U) U)
+    (v/assert kb (list 'genlCx CxStory U) U)
+    (doseq [retire [:first :second]]
+      (let [atOrAbove (tu/tmp-pred "atOrAbove")
+            alice     (tu/tmp-ind "Alice")
+            bob       (tu/tmp-ind "Bob")
+            h1        (v/assert kb (list 'anti_symmetric atOrAbove) CxFam)
+            h2        (v/assert kb (list 'anti_symmetric atOrAbove) CxStory)]
+        (v/assert kb (list atOrAbove alice bob) CxFam)
+        (v/assert kb (list atOrAbove bob alice) CxFam)
+        (is (merged? kb alice bob CxFam) "the merge is derived while both declarations stand")
+        (testing (str "retiring the " (name retire) " declaration leaves the merge")
+          (v/retract! kb (if (= retire :first) h1 h2))
+          (is (merged? kb alice bob CxFam)))))))
+
+(tu/deftest-kb an-antisymmetric-declaration-in-a-sibling-context-supports-the-merge
+  (tu/with-terms [CxFam CxStory]
+    (v/assert kb (list 'genlCx CxFam U) U)
+    (v/assert kb (list 'genlCx CxStory U) U)
+    (let [atOrAbove (tu/tmp-pred "atOrAbove")
+          alice     (tu/tmp-ind "Alice")
+          bob       (tu/tmp-ind "Bob")
+          decl      (v/assert kb (list 'anti_symmetric atOrAbove) CxStory)]
+      (v/assert kb (list atOrAbove alice bob) CxFam)
+      (v/assert kb (list atOrAbove bob alice) CxFam)
+      (testing "the declaration stated in CxStory merges the pair in CxFam"
+        (is (not (v/sees? kb CxFam CxStory)))
+        (is (merged? kb alice bob CxFam)))
+      (testing "the merge names the CxStory declaration, which CxFam does not see"
+        (is (contains? (declaration-contexts kb alice bob CxFam) CxStory)))
+      (testing "retracting the declaration un-merges"
+        (v/retract! kb decl)
+        (is (not (merged? kb alice bob CxFam)))))))
+
 ;;; ── anti_transitive: declared, chain conviction deferred ───────────────
 
 (tu/deftest-kb antitransitive-classifies-and-clashes-with-transitive

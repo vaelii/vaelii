@@ -1,9 +1,14 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
-(ns vaelii.impl.belief-image
-  "A **belief image**: the whole belief state of a KB, written as three files and installed
-  into an empty KB in place of a recover.  Two places hold one: a `:disk-snapshot` KB's own
-  directory, under `<dir>/belief/`, and an export dump, under `<dump>/belief/`.
+(ns vaelii.impl.reasoning-image
+  "A **reasoning image**: the whole reasoning state of a KB
+  (`vaelii.impl.types.reasoning`), written as three files and installed into an empty KB in
+  place of a recover.  Two places hold one: a `:disk-snapshot` KB's own directory, under
+  `<dir>/reasoning/`, and an export dump, under `<dump>/reasoning/` (`dir-name`).
+
+  `:belief? true` is still what the export and import option is called, because that option
+  decides whether the **labels** are carried, and a dump written with `:belief? false`
+  holds records and no image at all.
 
   ## What is in it
 
@@ -20,7 +25,7 @@
   The two layout numbers, a records fingerprint, the source identity's digest, and the two
   policies that move belief (`checks/arbitrating?` and `config/assertive-arg-types?`).  The
   records fingerprint differs by place, because each place is checked against something
-  different.  A disk image carries the record store's `belief-fingerprint`, read off the
+  different.  A disk image carries the record store's `reasoning-fingerprint`, read off the
   slots without decoding a record.  A dump's image carries content fingerprints of the
   sentexes and the justifications the dump streams (`fingerprint/accumulator`), which an
   import recomputes while it lands them.
@@ -61,7 +66,7 @@
   image written by a KB built assert by assert carries that KB's labels, which equal a
   recover's because belief is order independent, and that KB's derivation depths and
   settle readings, which a recover rebuilds from the records instead of reading
-  ([docs/defenses.md](docs/defenses.md), \"A belief image is installed whole or not at
+  ([docs/defenses.md](docs/defenses.md), \"A reasoning image is installed whole or not at
   all\")."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
@@ -76,7 +81,8 @@
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.solve :as solve]
-            [vaelii.impl.source-identity :as si])
+            [vaelii.impl.source-identity :as si]
+            [vaelii.impl.types.reasoning :as reasoning])
   (:import [java.io BufferedInputStream BufferedOutputStream DataInputStream
             DataOutputStream File FileInputStream FileOutputStream]
            [java.nio.file CopyOption Files StandardCopyOption]
@@ -88,25 +94,35 @@
   An image of any other number is discarded."
   1)
 
+(def ^String dir-name
+  "The directory an image is written to, under a `:disk-snapshot` KB's own directory and
+  under an export dump.  One constant because five callers name it: `disk-dir` here,
+  `vaelii.impl.seal`, `vaelii.impl.io.export`, `vaelii.impl.io.import` and
+  `vaelii.host.cli`."
+  "reasoning")
+
 (def state-atoms
   "The KB atoms an image carries: each one recovery fills, or the closing settle leaves
-  holding something the next settle reads.  `belief_image_test` fails on a KB atom that is
+  holding something the next settle reads.  `reasoning_image_test` fails on a KB atom that is
   in neither this list nor `unimaged-atoms`."
   [:clash-readings :program :recheck :refused :opposed :preserving
    :preserved-clashes :excepted :meta-except-count :rule-antecedents :rule-contexts
-   :negations :clashes :sib-exc-dirty :supersessions])
+   :negations :clashes :sib-exc-dirty :supersessions :scoped-defeats
+   :vantage-disagreements])
 
 (def unimaged-atoms
   "The KB atoms an image leaves as the open made them.  `:taxonomy` has its own section.
   `:provers` and `:solver` are configuration the caller sets, held to the defaults by
   `refusal`.  `:settle-stats` and `:chain-stats` count work this process did.  `:qcn`,
-  `:qcn-joined`, `:matches` and `:closures` are bounded caches a missing read refills.
+  `:qcn-joined`, `:matches` and `:closures` are bounded caches a missing read refills, and
+  `:withdrawn` is the per-reader cache `res/withdrawal` refills from the imaged
+  `:scoped-defeats`, `:vantage-disagreements` and `:excepted`.
   `:unrecovered` is the write-hazard record recovery clears after an install.  `:feed`
   holds the change feed's subscriptions, which a caller in this process registered.
   `:violations` is the log of what writes newly exposed; a restore exposes nothing
   (`settle/*rebuilding?*`), so an installed KB starts it empty, as a recovered one does."
   #{:taxonomy :provers :solver :settle-stats :chain-stats :qcn :qcn-joined :matches
-    :closures :unrecovered :feed :violations})
+    :closures :withdrawn :unrecovered :feed :violations})
 
 (def taxonomy-side-slots
   "The taxonomy keys an image leaves as the open made them: the two callbacks
@@ -116,13 +132,22 @@
 
 ;; ---- which KB ---------------------------------------------------------------
 
+(defn- network
+  "`kb`'s belief network, or nil when `kb` holds no `Reasoning` value.  A dump is written
+  from a `{:records …}` map as well as from an open KB (`vaelii.impl.io.export/export!`),
+  and that map has no `:reasoning` volatile for `reasoning/tms` to dereference.  A KB
+  value holding no reasoning reads as holding no network, so the three callers below
+  answer false or `:not-applicable` for one."
+  [kb]
+  (some-> (:reasoning kb) deref :tms))
+
 (defn applies?
-  "Does `kb` keep a belief image in its own directory — a `:disk-snapshot` KB (the one
+  "Does `kb` keep a reasoning image in its own directory — a `:disk-snapshot` KB (the one
   carrying a `:snapshot-dir`) over the durable record store, on the dense network?"
   [kb]
   (and (some? (:snapshot-dir kb))
        (instance? DiskRecordStore (:records kb))
-       (instance? DenseTms (:tms kb))))
+       (instance? DenseTms (network kb))))
 
 (defn refusal
   "Why `kb` may neither write nor install an image, or nil.  A prover or evaluatable
@@ -142,15 +167,15 @@
   never writes one of a network that does not cover its records."
   [kb]
   (and (not (:no-belief @(:unrecovered kb)))
-       (== (dense/node-count (:tms kb)) (cap/count-sentexes (:records kb)))))
+       (== (dense/node-count (reasoning/tms kb)) (cap/count-sentexes (:records kb)))))
 
 (defn writable?
   "May `kb`'s belief be written as an image: the dense network, no `refusal`, and a
   network that covers the records?"
   [kb]
-  (and (instance? DenseTms (:tms kb)) (nil? (refusal kb)) (belief-built? kb)))
+  (and (instance? DenseTms (network kb)) (nil? (refusal kb)) (belief-built? kb)))
 
-(defn- disk-dir ^File [kb] (io/file (str (:snapshot-dir kb) "/belief")))
+(defn- disk-dir ^File [kb] (io/file (str (:snapshot-dir kb)) dir-name))
 
 (defn- section ^File [^File dir ^String nm] (io/file dir nm))
 
@@ -212,8 +237,8 @@
   (DataInputStream. (BufferedInputStream. (FileInputStream. f) 1048576)))
 
 (defn- state-of [kb]
-  {:taxonomy (apply dissoc @(:taxonomy kb) taxonomy-side-slots)
-   :atoms    (into {} (map (fn [a] [a @(get kb a)])) state-atoms)})
+  {:taxonomy (apply dissoc @(reasoning/taxonomy kb) taxonomy-side-slots)
+   :atoms    (into {} (map (fn [a] [a @(get (reasoning/of kb) a)])) state-atoms)})
 
 (defn write-sections!
   "Write `kb`'s network and state into `dir`, then a manifest carrying `stamp`, and return
@@ -227,7 +252,7 @@
      (.mkdirs dir)
      (.delete mf)
      (write-atomic! (section dir "network.bin")
-                    (fn [f] (with-open [o (data-out f)] (dense/write-image (:tms kb) o))))
+                    (fn [f] (with-open [o (data-out f)] (dense/write-image (reasoning/tms kb) o))))
      (write-atomic! (section dir "state.nippy")
                     (fn [f] (with-open [o (data-out f)] (nippy/freeze-to-out! o (state-of kb)))))
      (when (commit?)
@@ -249,20 +274,20 @@
   (when (and (applies? kb) (writable? kb))
     (try
       (let [t0      (System/nanoTime)
-            records (drs/belief-fingerprint (:records kb))
-            moved?  #(not= records (drs/belief-fingerprint (:records kb)))
+            records (drs/reasoning-fingerprint (:records kb))
+            moved?  #(not= records (drs/reasoning-fingerprint (:records kb)))
             m       (write-sections! kb (disk-dir kb) (stamp kb records) #(not (moved?)))]
         (if m
           (trove/log! {:level :info :id ::written
-                       :msg (format "wrote the belief image for %s in %.0f ms"
+                       :msg (format "wrote the reasoning image for %s in %.0f ms"
                                     (:snapshot-dir kb) (/ (- (System/nanoTime) t0) 1e6))})
           (trove/log! {:level :warn :id ::records-moved
-                       :msg (str "belief image for " (:snapshot-dir kb) " abandoned: the"
+                       :msg (str "reasoning image for " (:snapshot-dir kb) " abandoned: the"
                                  " records moved while it was written")}))
         m)
       (catch Throwable t
         (trove/log! {:level :warn :id ::write-failed :error t
-                     :msg (str "belief image for " (:snapshot-dir kb) " not written ("
+                     :msg (str "reasoning image for " (:snapshot-dir kb) " not written ("
                                (.getMessage t) ") — the next open recovers")})
         nil))))
 
@@ -275,10 +300,10 @@
       (cond
         (not= source (:digest (si/source-identity)))
         (trove/log! {:level :info :id ::source-moved
-                     :msg (str "belief image for " (:snapshot-dir kb) " not refreshed at"
+                     :msg (str "reasoning image for " (:snapshot-dir kb) " not refreshed at"
                                " close: the engine source changed since belief was derived")})
 
-        (or (nil? m) (not= (:records m) (drs/belief-fingerprint (:records kb))))
+        (or (nil? m) (not= (:records m) (drs/reasoning-fingerprint (:records kb))))
         (save! kb)
 
         :else nil))))
@@ -291,7 +316,23 @@
   [kb source]
   (when (and (applies? kb) (nil? (refusal kb)))
     (let [source (or source (:digest (si/source-identity)))]
-      (disk/register-belief-image! (:snapshot-dir kb) #(save-at-close! kb source)))))
+      (disk/register-reasoning-image! (:snapshot-dir kb) #(save-at-close! kb source)))))
+
+(defn register-rebuild-close!
+  "Arrange for `kb`'s directory close to stop a belief rebuild and then refresh the image,
+  for a KB whose open installed an image written under other engine source.  `stop!`
+  returns once the rebuild has stopped.  `source` is a thunk: the digest belief was
+  derived under once the rebuilt belief is installed, and nil while the installed image
+  is still the one the earlier build wrote, in which case nothing is written."
+  [kb stop! source]
+  (disk/register-reasoning-image! (:snapshot-dir kb)
+                                  #(do (stop!)
+                                       (when-let [s (source)] (save-at-close! kb s)))))
+
+(defn source-digest
+  "The source identity's digest for the source on the classpath now."
+  []
+  (:digest (si/source-identity)))
 
 ;; ---- installing -------------------------------------------------------------
 
@@ -304,37 +345,101 @@
 (defn install-from!
   "Install the image in `dir` into `kb` in place of a recover.  `records-fn` returns the
   KB's records fingerprint in the form the image's manifest carries; it runs only once the
-  cheaper conditions hold.  Returns `{:belief :installed :source d}`, or `{:belief :recover
+  cheaper conditions hold.  Returns `{:reasoning :installed :source d}`, or `{:reasoning :recover
   :reason r}` with the KB untouched — `r` one of `decision`'s reasons, a `refusal`,
   `:not-applicable`, `:network-populated` or `:unreadable`.  `:source` is the source
-  identity's digest, which `register-close!` takes."
-  [kb ^File dir records-fn]
-  (cond
-    (not (instance? DenseTms (:tms kb))) {:belief :recover :reason :not-applicable}
-    (jtms/any-node? (:tms kb))           {:belief :recover :reason :network-populated}
-    (refusal kb)                         {:belief :recover :reason (refusal kb)}
-    :else
-    (let [now (stamp kb (records-fn))]
-      (if-let [why (decision (read-manifest dir) now)]
-        {:belief :recover :reason why :source (:source now)}
-        (try
-          (let [net (with-open [i (data-in (section dir "network.bin"))]
-                      (dense/read-image! (dense/create-dense-tms) i))
-                st  (read-state dir)]
-            (dense/copy-into! (:tms kb) net)
-            (swap! (:taxonomy kb) merge (:taxonomy st))
-            (doseq [[a v] (:atoms st)] (reset! (get kb a) v))
-            {:belief :installed :source (:source now)})
-          (catch Throwable t
-            (trove/log! {:level :warn :id ::unreadable :error t
-                         :msg (str "belief image in " dir " unreadable ("
-                                   (.getMessage t) ") — recovering from the records")})
-            {:belief :recover :reason :unreadable :source (:source now)}))))))
+  identity's digest, which `register-close!` takes.
+
+  `accept` is a set of `decision` reasons under which the image is installed anyway, and
+  the result is then `{:reasoning :stale :reason r :source d :image-source d'}`, `d'` the
+  digest the image was written under.  `vaelii.impl.recovery` passes `#{:source-differs}`
+  under `:recover? :background` and rebuilds belief behind the installed image."
+  ([kb dir records-fn] (install-from! kb dir records-fn #{}))
+  ([kb ^File dir records-fn accept]
+   (cond
+     (not (instance? DenseTms (network kb))) {:reasoning :recover :reason :not-applicable}
+     (jtms/any-node? (network kb))           {:reasoning :recover :reason :network-populated}
+     (refusal kb)                         {:reasoning :recover :reason (refusal kb)}
+     :else
+     (let [now      (stamp kb (records-fn))
+           manifest (read-manifest dir)
+           why      (decision manifest now)]
+       (if (and why (not (contains? accept why)))
+         {:reasoning :recover :reason why :source (:source now)}
+         (try
+           (let [net (with-open [i (data-in (section dir "network.bin"))]
+                       (dense/read-image! (dense/create-dense-tms) i))
+                 st  (read-state dir)]
+             (dense/copy-into! (reasoning/tms kb) net)
+             (swap! (reasoning/taxonomy kb) merge (:taxonomy st))
+             (doseq [[a v] (:atoms st)] (reset! (get (reasoning/of kb) a) v))
+             (if why
+               {:reasoning :stale :reason why :source (:source now)
+                :image-source (:source manifest)}
+               {:reasoning :installed :source (:source now)}))
+           (catch Throwable t
+             (trove/log! {:level :warn :id ::unreadable :error t
+                          :msg (str "reasoning image in " dir " unreadable ("
+                                    (.getMessage t) ") — recovering from the records")})
+             {:reasoning :recover :reason :unreadable :source (:source now)})))))))
 
 (defn install!
   "Install a `:disk-snapshot` KB's own image in place of a recover — `install-from!` over
-  its directory, against the record store's `belief-fingerprint`."
-  [kb]
-  (if (applies? kb)
-    (install-from! kb (disk-dir kb) #(drs/belief-fingerprint (:records kb)))
-    {:belief :recover :reason :not-applicable}))
+  its directory, against the record store's `reasoning-fingerprint`, under `accept`."
+  ([kb] (install! kb #{}))
+  ([kb accept]
+   (if (applies? kb)
+     (install-from! kb (disk-dir kb) #(drs/reasoning-fingerprint (:records kb)) accept)
+     {:reasoning :recover :reason :not-applicable})))
+
+;; ---- trusting and verifying a source change -----------------------------------
+
+(def ^:private sections
+  "The image's files, manifest first: moving or deleting in this order leaves a directory
+  without a manifest, and so without an image, from the first file on."
+  ["manifest.edn" "network.bin" "state.nippy"])
+
+(defn move-image!
+  "Move the image in `from` into `to`, manifest first, and return the manifest now in `to`.
+  Returns nil and moves nothing when `from` holds no manifest.  A section already in `to`
+  is replaced."
+  [^File from ^File to]
+  (when (.exists (section from "manifest.edn"))
+    (.mkdirs to)
+    (doseq [nm sections
+            :let [src (section from nm)]
+            :when (.exists src)]
+      (Files/move (.toPath src) (.toPath (section to nm))
+                  (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING])))
+    (read-manifest to)))
+
+(defn delete-image!
+  "Delete the image in `dir`, manifest first, and then `dir` itself when no other file is
+  left in it."
+  [^File dir]
+  (doseq [nm sections] (.delete (section dir nm)))
+  (when (empty? (.list dir)) (.delete dir)))
+
+(defn- read-network ^DenseTms [^File dir]
+  (with-open [i (data-in (section dir "network.bin"))]
+    (dense/read-image! (dense/create-dense-tms) i)))
+
+(defn- labels
+  "The bitmaps that state what network `t` believes: its nodes, and the IN, defeated and
+  blocked sets."
+  [^DenseTms t]
+  [(.-nodes t) (.-in t) (.-defeated t) (.-blocked t)])
+
+(defn compare-images
+  "Compare the images in `a` and `b`, as `{:labels :network :state}`, each `:same` or
+  `:differs`.  `:labels` compares what the two networks believe: the node set and the IN,
+  defeated and blocked sets.  `:network` and `:state` compare the two files byte for byte,
+  so they also differ on derivation depths, justification order and map iteration order,
+  and none of those is belief.  Both images must carry this build's layout numbers, which
+  the caller checks against the manifests before calling."
+  [^File a ^File b]
+  (let [same  (fn [x] (if x :same :differs))
+        file= (fn [nm] (== -1 (Files/mismatch (.toPath (section a nm)) (.toPath (section b nm)))))]
+    {:labels  (same (= (labels (read-network a)) (labels (read-network b))))
+     :network (same (file= "network.bin"))
+     :state   (same (file= "state.nippy"))}))

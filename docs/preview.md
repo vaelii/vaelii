@@ -222,7 +222,7 @@ node in a KB whose belief was never built — are one function (`teardown-refusa
 A preview is a write followed by its undo, so it holds the single writer for its
 duration ([storage.md](storage.md), "The single-writer contract"). It is not a read.
 
-That is also why it is filed with the writes in `serve/ops` and `vaelii.host.access`,
+That is also why it is filed with the writes in `serve/ops` and `vaelii.browser.access`,
 though it stores nothing: a remote client gets the same answer over the daemon
 ([operations.md](operations.md)), because the daemon *is* the single writer.
 

@@ -741,6 +741,41 @@
               (v/assert k (list 'disjoint t1 t2) 'CxUniverse))
             (is (= [:disjoint] (mapv :kind (v/contradictions k))))))))))
 
+(deftest a-settle-over-the-whole-store-sweeps-nothing-and-files-no-cut
+  ;; A load into an empty KB leaves the settle a region holding every stored sentex, so
+  ;; the sweep returns no sentex the candidate set does not already hold, and the budget
+  ;; it spends there buys nothing.  A cut filed off that settle says content a declaration
+  ;; implicates went undecided, in the one settle that decided all of it.  The region
+  ;; decides the pair without the sweep, which is the second claim here.
+  (binding [checks/*arbitrate-constraints?* true]
+    (tu/with-terms [t1 t2 Pip]
+      (let [build (fn [k]
+                    (v/assert k (list 'genl t1 'thing) 'CxUniverse)
+                    (v/assert k (list 'genl t2 'thing) 'CxUniverse)
+                    (dotimes [_ 20] (v/assert k (list t1 (tu/tmp-ind "Filler")) 'CxUniverse))
+                    (dotimes [_ 20] (v/assert k (list t2 (tu/tmp-ind "Other")) 'CxUniverse))
+                    (v/assert k (list t1 Pip) 'CxUniverse)
+                    (v/assert k (list t2 Pip) 'CxUniverse))]
+        (testing "one settle over the whole store files no cut, and decides the pair"
+          (tu/with-cleared-kb [k tu/fresh]
+            (binding [tax/*exposure-instance-budget* 2]
+              (v/with-deferred-settle k
+                (build k)
+                (v/assert k (list 'disjoint t1 t2) 'CxUniverse)))
+            (is (empty? (filter #(= :arbitration-truncated (:violation %)) (v/violations k)))
+                "the region holds every sentex the sweep would have returned")
+            (is (= [:disjoint] (mapv :kind (v/contradictions k)))
+                "and the pair is decided off the region")))
+        (testing "a declaration whose settle moves less than the store is swept, and a
+                  budget too small to finish that sweep files the cut"
+          (tu/with-cleared-kb [k tu/fresh]
+            (v/with-deferred-settle k (build k))
+            (v/clear-violations! k)
+            (binding [tax/*exposure-instance-budget* 2]
+              (v/assert k (list 'disjoint t1 t2) 'CxUniverse))
+            (is (seq (filter #(= :arbitration-truncated (:violation %)) (v/violations k)))
+                "the sweep runs whenever the region is smaller than the store")))))))
+
 ;; ---- the other two kinds, across the same edge ---------------------------
 ;;
 ;; `disjoint` was the only kind the ledger could say, so under `:refuse` a `functional`

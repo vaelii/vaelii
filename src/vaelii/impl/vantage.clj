@@ -47,7 +47,8 @@
             [vaelii.impl.provers :as provers]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
-            [vaelii.impl.taxonomy :as tax]))
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 (def witness-key
   "Where a `CxInference` answer reports the reader that witnessed it: the keyword
@@ -117,7 +118,7 @@
   already. Running it anyway cost more than a whole post-hoc read on a 24-context KB, to
   return the set it was handed."
   [kb goals]
-  (let [t     (:taxonomy kb)
+  (let [t     (reasoning/taxonomy kb)
         nodes (set (tax/contexts t))
         extra (into #{} (remove nodes) (candidate-contexts kb goals))]
     (if (empty? extra)
@@ -184,7 +185,7 @@
   the honest answer — but it is a different grouping from the bare-bindings case above, and
   worth knowing before comparing the two."
   [kb witness by-binding]
-  (let [t      (:taxonomy kb)
+  (let [t      (reasoning/taxonomy kb)
         attach (attach-witness witness)]
     (vec (mapcat (fn [[b ws]]
                    (keep (fn [w] (attach b w)) (sort (tax/maximal-contexts t ws))))
@@ -358,7 +359,7 @@
   at `'?ctx`, which is what makes this one pass instead of |readers|, and what makes the
   placement afterwards required rather than a formality."
   [kb goals budget]
-  (let [tax   (:taxonomy kb)
+  (let [tax   (reasoning/taxonomy kb)
         reg   (provers/registry kb)
         built (volatile! 0)
         ;; **The first literal is not metered.**  The budget guards the *multiplication* —
@@ -455,7 +456,7 @@
   so an ordinary answer — which is nearly every answer — takes no ancestor set walk at all and
   reaches the one-line path above."
   [kb supporters ctxs]
-  (let [tax     (:taxonomy kb)
+  (let [tax     (reasoning/taxonomy kb)
         merged? (tax/merged-term-pred tax)
         base    (if (some #(res/excepted-anywhere? kb %) supporters)
                   (tax/maximal-contexts
@@ -556,7 +557,7 @@
       ;; path — the one case that never needs it, since post-hoc places from the ingredients
       ;; it matched and enumerates no readers at all.  A run that bails reaches the fan,
       ;; which pays for the real set then.
-      (let [budget (* (max 1 (count (tax/contexts (:taxonomy kb)))) *rows-per-reader*)
+      (let [budget (* (max 1 (count (tax/contexts (reasoning/taxonomy kb)))) *rows-per-reader*)
             rows   (post-hoc kb goals witness budget prepared-at)]
         (if (identical? abandoned rows)
           {:answers (fan kb goals witness run-at) :strategy :fan :abandoned-post-hoc true}

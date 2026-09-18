@@ -27,7 +27,8 @@
             [vaelii.impl.checks :as checks]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.kb :as kb]
-            [vaelii.impl.taxonomy :as tax]))
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 (def ^:private defaults
   {:types        4000
@@ -112,7 +113,7 @@
     per))
 
 (defn- report-shape [kb opts ctx]
-  (let [t   (:taxonomy kb)
+  (let [t   (reasoning/taxonomy kb)
         i0  (ind-name 0)
         ts  (v/types-of kb i0 ctx)
         gs  (mapv #(count (tax/genls t % ctx)) ts)]
@@ -131,7 +132,7 @@
     (println (format "\nbuilt %,d sentexes in %.1f s\n"
                      (long (v/sentex-count kb)) (/ build-ns 1e9)))
     (report-shape kb opts ctx)
-    (let [t (:taxonomy kb)]
+    (let [t (reasoning/taxonomy kb)]
       (println "\nthe primitives the checks are built out of")
       (let [u (unary-samples opts ctx)]
         (run-arm "genls (unscoped)" (fn [s _] (seq (tax/genls-global t (first s)))) u)

@@ -18,6 +18,7 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -27,12 +28,12 @@
     (v/assert kb (list 'genl sub_t super_t) CxStory)
     (v/assert kb (list sub_t Ind1) CxStory)
     (testing "while believed, the edge entails membership"
-      (is (tax/genl?-global (:taxonomy kb) sub_t super_t))
+      (is (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t))
       (is (v/isa? kb Ind1 super_t)))
     (v/assert kb (list 'not (list 'genl sub_t super_t)) CxStory {:strength :monotonic})
     (testing "once defeated, the edge is gone from the closure"
       (is (empty? (v/sentexes-matching kb (list 'genl sub_t super_t) CxStory)))
-      (is (not (tax/genl?-global (:taxonomy kb) sub_t super_t))))
+      (is (not (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t))))
     (testing "so isa? cannot answer through it any more"
       (is (not (v/isa? kb Ind1 super_t))))))
 
@@ -41,11 +42,11 @@
     (v/assert kb (list 'genl sub_t super_t) CxStory)
     (let [neg (v/assert kb (list 'not (list 'genl sub_t super_t)) CxStory
                         {:strength :monotonic})]
-      (is (not (tax/genl?-global (:taxonomy kb) sub_t super_t)))
+      (is (not (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t)))
       (testing "retracting the defeater revives the edge, closure included"
         (v/retract! kb neg)
         (is (seq (v/sentexes-matching kb (list 'genl sub_t super_t) CxStory)))
-        (is (tax/genl?-global (:taxonomy kb) sub_t super_t))))))
+        (is (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t))))))
 
 (tu/deftest-kb a-defeat-in-one-of-two-supporting-contexts-withdraws-only-its-context
   ;; An edge asserted from two *disconnected* sibling contexts is one edge with two
@@ -59,17 +60,17 @@
     (v/assert kb (list 'genl sub_t super_t) CxA)
     (v/assert kb (list 'genl sub_t super_t) CxB)
     (is (= #{CxA CxB}
-           (tax/edge-contexts (:taxonomy kb) :genl [sub_t super_t])))
+           (tax/edge-contexts (reasoning/taxonomy kb) :genl [sub_t super_t])))
     (let [neg (v/assert kb (list 'not (list 'genl sub_t super_t)) CxB
                         {:strength :monotonic})]
       (testing "the edge survives on A's believed supporter, B's context leaves"
-        (is (tax/genl?-global (:taxonomy kb) sub_t super_t))
+        (is (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t))
         (is (= #{CxA}
-               (tax/edge-contexts (:taxonomy kb) :genl [sub_t super_t]))))
+               (tax/edge-contexts (reasoning/taxonomy kb) :genl [sub_t super_t]))))
       (testing "retracting the defeater brings B's context back"
         (v/retract! kb neg)
         (is (= #{CxA CxB}
-               (tax/edge-contexts (:taxonomy kb) :genl [sub_t super_t])))))))
+               (tax/edge-contexts (reasoning/taxonomy kb) :genl [sub_t super_t])))))))
 
 (tu/deftest-kb retracting-the-last-believed-supporter-of-a-shared-edge-drops-it
   ;; The retract twin of the test above, and the form a belief-blind writer gets wrong on
@@ -91,18 +92,18 @@
     (v/assert kb (list 'not (list 'genl sub_t super_t)) CxB {:strength :monotonic})
     (let [ha (v/handle-of kb (list 'genl sub_t super_t) CxA)]
       (testing "A's supporter is believed, so the edge stands and entails membership"
-        (is (tax/genl?-global (:taxonomy kb) sub_t super_t))
-        (is (= #{CxA} (tax/edge-contexts (:taxonomy kb) :genl [sub_t super_t])))
+        (is (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t))
+        (is (= #{CxA} (tax/edge-contexts (reasoning/taxonomy kb) :genl [sub_t super_t])))
         (is (v/isa? kb Ind1 super_t)))
       (v/retract! kb ha)
       (testing "with it gone, B's supporter is stored but defeated — nothing believes it"
-        (is (not (tax/genl?-global (:taxonomy kb) sub_t super_t)))
-        (is (= #{} (tax/edge-contexts (:taxonomy kb) :genl [sub_t super_t])))
+        (is (not (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t)))
+        (is (= #{} (tax/edge-contexts (reasoning/taxonomy kb) :genl [sub_t super_t])))
         (is (not (v/isa? kb Ind1 super_t))))
       (testing "and retracting the defeater revives it on the supporter that survived"
         (v/retract! kb (v/handle-of kb (list 'not (list 'genl sub_t super_t)) CxB))
-        (is (tax/genl?-global (:taxonomy kb) sub_t super_t))
-        (is (= #{CxB} (tax/edge-contexts (:taxonomy kb) :genl [sub_t super_t])))
+        (is (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t))
+        (is (= #{CxB} (tax/edge-contexts (reasoning/taxonomy kb) :genl [sub_t super_t])))
         (is (v/isa? kb Ind1 super_t))))))
 
 (tu/deftest-kb a-forward-derived-genl-reaches-the-taxonomy
@@ -112,16 +113,16 @@
     (testing "the rule fired and the sentex is believed"
       (is (seq (v/sentexes-matching kb (list 'genl foo_t bar_t) CxStory))))
     (testing "and the closure knows the edge — a derived genl is still a genl"
-      (is (tax/genl?-global (:taxonomy kb) foo_t bar_t)))))
+      (is (tax/genl?-global (reasoning/taxonomy kb) foo_t bar_t)))))
 
 (tu/deftest-kb recover-agrees-with-the-running-kb
   (tu/with-terms [marker foo_t bar_t Trigger1 CxStory]
     (v/assert-rule kb [(list marker '?x)] (list 'genl foo_t bar_t) CxStory {:direction :forward :chain? false})
     (v/assert kb (list marker Trigger1) CxStory)
-    (let [before (tax/genl?-global (:taxonomy kb) foo_t bar_t)]
+    (let [before (tax/genl?-global (reasoning/taxonomy kb) foo_t bar_t)]
       (v/recover kb)
       (testing "a restart does not change what the KB entails"
-        (is (= before (tax/genl?-global (:taxonomy kb) foo_t bar_t)))))))
+        (is (= before (tax/genl?-global (reasoning/taxonomy kb) foo_t bar_t)))))))
 
 (tu/deftest-kb recover-does-not-revive-a-defeated-edge
   ;; `rebuild-taxonomy` replays **stored** declarations, so it activates a defeated `genl`
@@ -139,10 +140,10 @@
     (v/assert kb (list 'genl sub_t super_t) CxStory)
     (v/assert kb (list sub_t Ind1) CxStory)
     (v/assert kb (list 'not (list 'genl sub_t super_t)) CxStory {:strength :monotonic})
-    (is (not (tax/genl?-global (:taxonomy kb) sub_t super_t)) "defeated before the restart")
+    (is (not (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t)) "defeated before the restart")
     (v/recover kb)
     (testing "and defeated after it — the rebuild replayed the edge, belief took it back"
-      (is (not (tax/genl?-global (:taxonomy kb) sub_t super_t)))
+      (is (not (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t)))
       (is (not (v/isa? kb Ind1 super_t))))))
 
 (tu/deftest-kb recover-ignores-a-negated-declaration
@@ -161,8 +162,8 @@
     (v/assert kb (list 'not (list 'inverse pp qq)) 'CxUniverse {:strength :monotonic})
     (let [snapshot #(hash-map :types     (set (v/types kb))
                               :contexts  (set (v/contexts kb))
-                              :merged?   (some? (tax/merged-term-pred (:taxonomy kb)))
-                              :genl-edge (tax/genl?-global (:taxonomy kb) d_t e_t))
+                              :merged?   (some? (tax/merged-term-pred (reasoning/taxonomy kb)))
+                              :genl-edge (tax/genl?-global (reasoning/taxonomy kb) d_t e_t))
           before (snapshot)]
       (v/recover kb)
       (testing "recovery integrates exactly what assertion integrated"
@@ -183,14 +184,14 @@
     (v/assert kb (list 'implies (list flag '?s) (list 'sameAs Aa Bb)) 'CxUniverse
               {:direction :forward :strength :monotonic})
     (let [h   (v/assert kb (list flag Switch) 'CxUniverse)
-          eq  #(:equality @(:taxonomy kb))
+          eq  #(:equality @(reasoning/taxonomy kb))
           e   (first (:handles (eq)))]
       (is (some? e) "the rule derives the merge")
-      (is (= Aa (tax/representative (:taxonomy kb) Bb)))
+      (is (= Aa (tax/representative (reasoning/taxonomy kb) Bb)))
       (v/assert kb (list 'not (list flag Switch)) 'CxUniverse {:strength :monotonic})
       (is (false? (v/in? kb e)) "the derived merge is defeated with its trigger")
       (is (contains? (:out (eq)) e) "and the partition records it OUT")
-      (is (= Bb (tax/representative (:taxonomy kb) Bb)) "merging nothing")
+      (is (= Bb (tax/representative (reasoning/taxonomy kb) Bb)) "merging nothing")
       (v/retract! kb h)
       (is (nil? (v/sentex kb e)) "retracting the trigger sweeps the derived merge")
       (is (not (contains? (:out (eq)) e)) "and it leaves :out")
@@ -200,11 +201,11 @@
 (tu/deftest-kb recover-drops-an-edge-whose-sentex-is-gone
   (tu/with-terms [sub_t super_t CxStory]
     (let [h (v/assert kb (list 'genl sub_t super_t) CxStory)]
-      (is (tax/genl?-global (:taxonomy kb) sub_t super_t))
+      (is (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t))
       (v/retract! kb h)
       (testing "recover rebuilds from the store rather than merging into the cache"
         (v/recover kb)
-        (is (not (tax/genl?-global (:taxonomy kb) sub_t super_t)))))))
+        (is (not (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t)))))))
 
 (tu/deftest-kb an-edge-asserted-in-two-contexts-survives-one-retraction
   (tu/with-terms [sub_t super_t CxA CxB]
@@ -213,11 +214,11 @@
     (let [ha (v/assert kb (list 'genl sub_t super_t) CxA)]
       (v/assert kb (list 'genl sub_t super_t) CxB)
       (testing "two sentexes, one edge"
-        (is (tax/genl?-global (:taxonomy kb) sub_t super_t)))
+        (is (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t)))
       (v/retract! kb ha)
       (testing "CxB still asserts it, so the edge stands"
         (is (seq (v/sentexes-matching kb (list 'genl sub_t super_t) CxB)))
-        (is (tax/genl?-global (:taxonomy kb) sub_t super_t))))))
+        (is (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t))))))
 
 (tu/deftest-kb a-defeated-genlCx-stops-making-facts-visible
   (tu/with-terms [parentOf Tom Bob CxSub CxSuper]
@@ -228,7 +229,7 @@
     (v/assert kb (list 'not (list 'genlCx CxSub CxSuper)) 'CxUniverse
               {:strength :monotonic})
     (testing "defeating the context edge withdraws the inheritance"
-      (is (not (tax/sees? (:taxonomy kb) CxSub CxSuper)))
+      (is (not (tax/sees? (reasoning/taxonomy kb) CxSub CxSuper)))
       (is (empty? (v/ask kb (list parentOf Tom '?y) CxSub))))))
 
 (tu/deftest-kb a-revived-genlCx-arbitrates-the-pair-it-rejoins
@@ -250,11 +251,11 @@
                      'CxUniverse {:direction :forward})
       (let [ht (v/assert kb (list qq Trigger) 'CxUniverse {:strength :monotonic})]
         (testing "the derived monotonic negation defeats the edge"
-          (is (not (tax/sees? (:taxonomy kb) CxSub CxSuper)))
+          (is (not (tax/sees? (reasoning/taxonomy kb) CxSub CxSuper)))
           (is (v/in? kb hn)))
         (v/retract! kb ht)
         (testing "the retract's own settle revives the edge and re-arbitrates the pair"
-          (is (tax/sees? (:taxonomy kb) CxSub CxSuper))
+          (is (tax/sees? (reasoning/taxonomy kb) CxSub CxSuper))
           (is (v/in? kb hn))
           (is (not (v/in? kb hp))))))))
 
@@ -267,12 +268,12 @@
   (tu/with-terms [sub_t super_t other_t CxStory]
     (v/assert kb (list 'genl sub_t super_t) CxStory)
     (v/assert kb (list 'not (list 'genl sub_t super_t)) CxStory {:strength :monotonic})
-    (is (not (tax/genl?-global (:taxonomy kb) sub_t super_t)))            ; defeated, out of the closure
+    (is (not (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t)))            ; defeated, out of the closure
     (testing "an unrelated assert (a belief-quiet settle) keeps the defeat in place"
       (v/assert kb (list 'genl other_t 'thing) CxStory)
-      (is (not (tax/genl?-global (:taxonomy kb) sub_t super_t))))
+      (is (not (tax/genl?-global (reasoning/taxonomy kb) sub_t super_t))))
     (testing "and the new edge, installed on the assert path, is active regardless"
-      (is (tax/genl?-global (:taxonomy kb) other_t 'thing)))))
+      (is (tax/genl?-global (reasoning/taxonomy kb) other_t 'thing)))))
 
 (deftest refresh-beliefs-skips-a-relation-no-moved-supporter-touches   ; perf-review #11
   ;; refresh-beliefs takes the set of handles whose belief just moved.  A genl edge

@@ -24,9 +24,17 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
-            [vaelii.impl.foreign :as foreign])
+            [vaelii.impl.foreign :as foreign]
+            [vaelii.impl.io.import :as io-import])
   (:import [java.nio.file Files]
            [java.nio.file.attribute FileAttribute]))
+
+;; A dump reader map that omits a documented field, for the refusal test below.  A dump
+;; reader offers `{:name :versions :decode-frame :replay-belief!}` (docs/foreign.md); this
+;; one has `:decode-frame` and no `:versions` / `:replay-belief!`.
+;; not `^:private`: it is referenced only through a quoted symbol by `foreign/register`
+;; below (`requiring-resolve`), which a static unused-var check cannot see.
+(def versionless-dump-reader {:decode-frame identity})
 
 (def ^:private plugin-file "src/vaelii/impl/foreign.clj")
 
@@ -115,6 +123,24 @@
     (is (thrown-with-msg? clojure.lang.ExceptionInfo #"does not read cyc-corpus"
                           (foreign/reader! :cyc-corpus)))
     (finally (foreign/unregister :cyc-corpus))))
+
+(deftest a-dump-reader-missing-a-required-field-is-refused-by-name
+  ;; A resolved `:engine-dump` reader whose map omits a documented field is refused with
+  ;; `:no-foreign-reader` at the engine's own call site — the graceful treatment
+  ;; `frame-decoder` already gives `:decode-frame` — rather than dereferenced as nil into
+  ;; an NPE several frames into the import.  `:versions` gates the version check and
+  ;; `:replay-belief!` reads the belief stream; both go through `dump-reader-field`.
+  (let [field #'io-import/dump-reader-field]
+    (try
+      (foreign/register :engine-dump 'vaelii.foreign-contract-test/versionless-dump-reader)
+      (testing "a field the map does not declare is a named refusal, not an NPE"
+        (doseq [missing [:versions :replay-belief!]]
+          (let [e (is (thrown? clojure.lang.ExceptionInfo (field missing)))]
+            (is (= :no-foreign-reader (:type (ex-data e))))
+            (is (= missing (:missing (ex-data e)))))))
+      (testing "a field the map does declare is returned"
+        (is (= identity (field :decode-frame))))
+      (finally (foreign/unregister :engine-dump)))))
 
 ;;; ── discovery ─────────────────────────────────────────────────────────
 

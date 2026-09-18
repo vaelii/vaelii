@@ -36,6 +36,7 @@
             [vaelii.impl.nat :as nat]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.wiring :as wiring]))
 
 (def quasiquote-function
@@ -55,7 +56,7 @@
   "Gate: is quasiquotation enabled — `(quoting_function Quasiquote)` declared?  False ⇒ the
   reducer short-circuits, one prop read.  Mirrors `nat/any-reifiable-functions?`."
   [kb]
-  (tax/quoting-function? (:taxonomy kb) quasiquote-function))
+  (tax/quoting-function? (reasoning/taxonomy kb) quasiquote-function))
 
 (defn ensure-quasiquote-functions
   "Enable quasiquotation as a unit — declare the four marks it needs, each only if absent:
@@ -65,7 +66,7 @@
   this call is what turns the reducer on.  Idempotent, asserted without chaining or settling
   since it is pure metadata — the shape `skolem/ensure-skolem-function` uses."
   [kb]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (doseq [s (cond-> []
                 (not (nat/reifiable-function? kb quote-function))
                 (conj (list 'reifiable_function quote-function))
@@ -117,7 +118,7 @@
     ;; one way and queried (top level only) another.
     (and (seq? term)
          (or (contains? nat/nat-quoting-predicates (first term))
-             (tax/quoting-function? (:taxonomy kb) (first term))))
+             (tax/quoting-function? (reasoning/taxonomy kb) (first term))))
     term
     (vector? term) (mapv #(reduce-term kb % reify-fn) term)
     (seq? term)    (apply list (map #(reduce-term kb % reify-fn) term))

@@ -2,19 +2,21 @@
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.web-test
   "Exercises the web handlers as pure request -> response (no live server)."
-  (:require [clojure.java.io :as io]
+  (:require [clojure.edn :as edn]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
+            [vaelii.browser.access :as acc]
+            [vaelii.browser.catalog :as cat]
+            [vaelii.browser.jobs :as jobs]
+            [vaelii.browser.sandbox :as sandbox]
+            [vaelii.browser.svg :as svg]
+            [vaelii.browser.web :as web]
             [vaelii.core :as v]
-            [vaelii.host.access :as acc]
-            [vaelii.host.catalog :as cat]
             [vaelii.host.guard :as guard]
-            [vaelii.host.jobs :as jobs]
-            [vaelii.host.sandbox :as sandbox]
             [vaelii.host.serve :as serve]
-            [vaelii.host.svg :as svg]
-            [vaelii.host.web :as web]
             [vaelii.impl.jtms :as jtms]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]
             [vaelii.world :as world]))
 
@@ -102,33 +104,48 @@
 
 (defn- section
   "One `<h2>` section of a page, so an assertion about the type tree is not satisfied by
-  a term that happens to appear in the disjointness list below it."
+  a term that happens to appear in the disjointness list below it.  The opening tag is
+  matched without its attributes: a framed region titles itself with an
+  `<h2 class=\"panel-title\">`, and a slice that stopped only at a bare `<h2>` would run
+  to the end of the document."
   [body heading]
   (let [i (str/index-of body heading)
-        j (when i (str/index-of body "<h2>" (+ i (count heading))))]
+        j (when i (str/index-of body "<h2" (+ i (count heading))))]
     (when i (subs body i (or j (count body))))))
 
 (deftest the-type-tree-opens-one-level-at-a-time
   (let [body (section (:body (GET "/")) "Types <span")]
-    (testing "the stated root is on the page, open"
-      (is (re-find #"<details open=\"open\"><summary><a[^>]*href=\"/term\?q=thing\"" body)))
+    (testing "the stated root is on the page, its caret open and the term a plain link"
+      ;; a `<summary>` swallowed the click on the term inside it, so the caret is a
+      ;; checkbox and the term beside it is an ordinary link to the term's page
+      (is (re-find #"<input checked=\"checked\"[^>]*class=\"tree-tog\"" body))
+      (is (re-find #"<a[^>]*href=\"/term\?q=thing\"" body)))
     (testing "a node with subtypes is a disclosure that fetches its own children"
       ;; `formula` is a direct subtype of `thing`, so it is on the first level, and it has
       ;; `atomic_formula` under it, so it is a node with children rather than a leaf.  It
       ;; also sorts early: the first level is paged at 50, and a node late in the
       ;; alphabet falls off that page whenever the vocabulary grows a direct subtype —
       ;; which `VAELII_ASSERTIVE_ARG_TYPES=1` does by minting one per declared type
-      (is (re-find #"<details[^>]*hx-get=\"/tree/rows\?rel=genl&amp;node=formula" body)))
+      (is (re-find #"<input[^>]*hx-get=\"/tree/rows\?rel=genl&amp;node=formula" body)))
     (testing "and it selects nothing out of what it fetches"
       ;; `hx-select="#main"` is on the body and inherited; against a fragment of bare
       ;; rows it selects nothing, so an open would swap in nothing.  This is invisible
       ;; to a handler test — the swap is the client's — so the attribute is the assertion
-      (is (re-find #"<details[^>]*hx-select=\"unset\"[^>]*hx-get=\"/tree/rows|<details[^>]*hx-get=\"/tree/rows[^>]*hx-select=\"unset\"" body)))
+      (is (re-find #"<input[^>]*hx-select=\"unset\"[^>]*hx-get=\"/tree/rows|<input[^>]*hx-get=\"/tree/rows[^>]*hx-select=\"unset\"" body)))
     (testing "and what is below it is not in the page until it is opened"
       ;; `animal` is under `physical_object` and `bird` under that — the eager tree
       ;; rendered the whole hierarchy, this one renders one level and a placeholder
       (is (not (re-find #"href=\"/term\?q=bird\"" body)))
       (is (re-find #"tree-kids" body) "the placeholder a fetch will replace"))))
+
+(deftest a-framed-region-folds-by-its-number
+  ;; the digit in a frame's top border is the control that hides the frame's contents,
+  ;; and the digit key does the same — so the number has to reach the region it numbers
+  (let [body (:body (GET "/"))]
+    (is (re-find #"<section class=\"panel\" data-panel=\"1\"" body)
+        "the region carries the number the reader presses")
+    (is (re-find #"<button aria-expanded=\"true\" class=\"panel-n\"[^>]*>1</button>" body)
+        "and the number in its title is that control")))
 
 (deftest tree-rows-answers-one-node-and-checks-its-relation
   (testing "a node's children come back as bare rows"
@@ -218,6 +235,16 @@
         (is (re-find #"QuantityFn" (:body r))
             "and the compound is listed rather than being what killed the page")))))
 
+(tu/deftest-kb a-term-past-the-probed-argument-positions-is-in-a-remainder-group
+  ;; the page probes argument positions 1 to 12; a fact naming the term only at 13 has no
+  ;; argument group, so the remainder groups hold it
+  (tu/with-terms [spansMany Filler Deep]
+    (let [s (concat [spansMany] (repeat 12 Filler) [Deep])
+          h (v/assert kb s 'CxUniverse {:chain? false})
+          groups (:groups (#'web/term-index-groups kb Deep))]
+      (is (some #(= h (:id %)) (mapcat :sentexes groups))
+          (str "the fact is in no group: " (pr-str (map :label groups)))))))
+
 (tu/deftest-kb the-front-page-does-not-grow-with-the-taxonomy
   ;; the acceptance criterion, asserted rather than measured: adding a wide band of
   ;; types must not add rows to the page.  It is the whole point — an eager tree renders
@@ -292,7 +319,7 @@
       ;; is a comma, a period or a non-breaking space depending on which one that is.
       ;; The expectation is built with the same `format` call rather than by pinning
       ;; `Locale/US`, which would be a JVM-global write for the length of a render.
-      (let [cap  (ns-resolve 'vaelii.host.web 'lattice-cap)
+      (let [cap  (ns-resolve 'vaelii.browser.web 'lattice-cap)
             shown (format "%,d" (long n))
             body (with-redefs-fn {cap 0}               ; no lattice to draw, at any size
                    #(:body (GET "/")))
@@ -336,7 +363,7 @@
       (v/assert kb (list wobbles x) CxDilemma)
       (v/assert kb (list 'not (list wobbles x)) CxDilemma))
     (is (<= 2 (count (v/contradictions kb))) "the KB holds more dilemmas than the cap below")
-    (let [cap  (ns-resolve 'vaelii.host.web 'ledger-cap)
+    (let [cap  (ns-resolve 'vaelii.browser.web 'ledger-cap)
           body (with-redefs-fn {cap 1} #(:body (GET "/stats")))
           seg  (segment body "<h3>Contradictions" 2000)]   ; the section, not the stat card
       (is (= 1 (count (re-seq #"⇄" seg))) "one row, not the whole disagreement")
@@ -527,7 +554,7 @@
   ;; uncaught one is a bare 500 on a route the browser hits per keystroke.  The
   ;; matcher's failure, whatever its class, is `term-hits`' ordinary ::bad answer.
   (with-redefs [acc/find-terms (fn [& _] (throw (StackOverflowError.)))]
-    (is (= :vaelii.host.web/bad (#'web/term-hits tu/*kb* "a{2}" 10))
+    (is (= :vaelii.browser.web/bad (#'web/term-hits tu/*kb* "a{2}" 10))
         "the sentinel, not a throw")
     (let [r (GET "/find" "q=a%7B2%7D")]
       (is (= 200 (:status r)))
@@ -777,13 +804,13 @@
   "Every read op the browser can reach, taken from the daemon's own allowlist rather than
   listed here — so an op added to the surface is counted by this the day it exists.  These
   are exactly the calls that are an HTTP round-trip under `--attach`."
-  (into [] (filter #(ns-resolve 'vaelii.host.access %)) (map symbol (keys @(resolve 'vaelii.host.serve/ops)))))
+  (into [] (filter #(ns-resolve 'vaelii.browser.access %)) (map symbol (keys @(resolve 'vaelii.host.serve/ops)))))
 
 (defn- read-counts
   "Run `f` with every facade read counted, and answer `{op n}`."
   [f]
   (let [counts (atom {})
-        vars   (mapv (fn [op] [op (ns-resolve 'vaelii.host.access op)]) facade-read-ops)
+        vars   (mapv (fn [op] [op (ns-resolve 'vaelii.browser.access op)]) facade-read-ops)
         orig   (into {} (map (fn [[_ vr]] [vr @vr])) vars)]
     (try
       (doseq [[op vr] vars]
@@ -811,7 +838,7 @@
       (v/assert kb (list 'genl t 'thing) 'CxUniverse {:chain? false})
       (v/assert-many kb (for [i (range n)] (list 'genl (symbol (str (name t) "_kid" i)) t))
                      'CxUniverse {:chain? false}))
-    (let [gvar  (ns-resolve 'vaelii.host.web 'term-graph)
+    (let [gvar  (ns-resolve 'vaelii.browser.web 'term-graph)
           drawn (fn [t] (read-counts #(GET "/term" (str "q=" t))))
           plain (fn [t] (with-redefs-fn {gvar (fn [& _] nil)}
                           #(read-counts (fn [] (GET "/term" (str "q=" t))))))
@@ -869,7 +896,7 @@
           (is (str/includes? body "earliest mentions")))))))
 
 (tu/deftest-kb the-graph-renders-the-same-through-the-access-facade
-  ;; the browser is written against `vaelii.host.access`, not `vaelii.core`; driving it
+  ;; the browser is written against `vaelii.browser.access`, not `vaelii.core`; driving it
   ;; through an access value rather than a raw KB is the in-process half of that claim
   (tu/with-terms [nearBy TmpP TmpQ CxFacade]
     (v/assert kb (list nearBy TmpP TmpQ) CxFacade {:chain? false})
@@ -891,6 +918,44 @@
             "the only edge is gone, so the node it reached is gone, so there is nothing to draw")
         (is (re-find #"badge-out" body)
             "and the row is still listed, dimmed — the page does not disagree with itself")))))
+
+(tu/deftest-kb a-sentex-circle-is-coloured-by-what-the-sentex-is
+  ;; colour is the whole of the badge now — no glyph to read — so the class that carries
+  ;; the colour is the assertion.  Negation outranks strength: a reader who misses a `not`
+  ;; has the sentex backwards
+  (tu/with-terms [likes TmpL TmpM CxCircle]
+    (v/assert kb (list likes TmpL TmpM) CxCircle {:strength :monotonic})
+    (v/assert kb (list likes TmpM TmpL) CxCircle)
+    (v/assert kb (list 'not (list likes TmpL TmpL)) CxCircle {:strength :monotonic})
+    (let [body (:body (GET "/term" (str "q=" TmpL)))]
+      (is (re-find #"class=\"badge badge-monotonic\"" body) "known true is white")
+      (is (re-find #"class=\"badge badge-default\"" body) "a default is yellow")
+      (is (re-find #"class=\"badge badge-neg\"" body)
+          "and a negation is red whatever its strength")
+      (is (not (re-find #"badge-fact|badge-rule" body))
+          "the kind/origin classes the glyph needed are gone"))))
+
+(tu/deftest-kb a-derived-fact-is-a-green-ring-and-an-inert-rule-is-unlit
+  (tu/with-terms [aR cR TmpR CxRing]
+    (v/assert-rule kb [(list aR '?x)] (list cR '?x) CxRing {:direction :forward})
+    (v/assert kb (list aR TmpR) CxRing)
+    (let [body (:body (GET "/term" (str "q=" TmpR)))]
+      (is (re-find #"class=\"badge badge-derived badge-open\"" body)
+          "what the engine worked out is green, and a ring rather than a fill"))
+    (let [h (v/assert-rule kb [(list cR '?x)] (list aR '?x) CxRing {:direction :inert})]
+      (is (re-find #"class=\"badge badge-inert\"" (:body (GET (str "/sentex/" h))))
+          "a rule that chains in neither direction carries the one circle with no hue"))))
+
+(tu/deftest-kb a-rule-circle-is-coloured-by-the-direction-it-runs
+  (tu/with-terms [aQ cQ CxDir]
+    (let [fwd (v/assert-rule kb [(list aQ '?x)] (list cQ '?x) CxDir
+                             {:direction :forward-only})
+          bwd (v/assert-rule kb [(list cQ '?x)] (list aQ '?x) CxDir
+                             {:direction :backward})]
+      (is (re-find #"class=\"badge badge-forward\"" (:body (GET (str "/sentex/" fwd))))
+          "forward is blue")
+      (is (re-find #"class=\"badge badge-backward\"" (:body (GET (str "/sentex/" bwd))))
+          "backward is purple"))))
 
 (deftest a-picture-that-cannot-be-drawn-costs-only-the-picture
   ;; this is the one part of the page that does arithmetic on KB-derived numbers, so it is
@@ -1284,6 +1349,13 @@
    (*app* (cond-> {:request-method :post :uri uri :scheme :http :params params}
             headers (assoc :headers headers)))))
 
+(defn- edit-text
+  "The editor's text for a context and its sentences: the context on a line of its own,
+  then one sentence per line — the shape `read-entries` reads.  A sentence is *not*
+  wrapped in a vector with its context any more; the context is the line above it."
+  ^String [ctx & sentences]
+  (str/join "\n" (cons (pr-str ctx) (map pr-str sentences))))
+
 (tu/deftest-kb edit-form-seeds-a-textarea-for-the-selected-handles
   (tu/with-terms [likesOf Alice Bob CxEdit]
     (let [h1 (v/assert kb (list likesOf Alice Bob) CxEdit)
@@ -1300,16 +1372,14 @@
     (let [h1   (v/assert kb (list likesOf Alice Bob) CxEdit)
           h2   (v/assert kb (list likesOf Bob Alice) CxEdit)
           ;; keep line 1 verbatim, rewrite line 2's object Alice -> Carol
-          text (str (pr-str [(list likesOf Alice Bob) CxEdit]) "\n"
-                    (pr-str [(list likesOf Bob Carol) CxEdit]))
+          text (edit-text CxEdit (list likesOf Alice Bob) (list likesOf Bob Carol))
           r    (POST "/edit" {"handles" (str h1 "," h2) "text" text})]
       (testing "it re-renders the changed row in place instead of reloading the page"
         (is (nil? (get-in r [:headers "HX-Refresh"])))
         (is (re-find (re-pattern (str "outerHTML:\\[data-h=&apos;" h2 "&apos;\\]")) (:body r)))
         (is (re-find (re-pattern (name Carol)) (:body r))))
-      (testing "and corrects the selection count out of band"
-        (is (re-find #"id=\"sx-count\"" (:body r)))
-        (is (re-find #"hx-swap-oob=\"innerHTML\"" (:body r))))
+      (testing "and the replacement really is an out-of-band swap"
+        (is (re-find #"hx-swap-oob=" (:body r))))
       (testing "the unchanged line keeps its handle — no churn"
         (is (v/in? kb h1)))
       (testing "the changed line's old sentex is retracted"
@@ -1318,13 +1388,19 @@
         (is (seq (v/sentexes-matching kb (list likesOf Bob Carol) CxEdit)))
         (is (empty? (v/sentexes-matching kb (list likesOf Bob Alice) CxEdit)))))))
 
-(tu/deftest-kb a-parse-error-blocks-the-save-and-leaves-the-kb-intact
+(tu/deftest-kb a-shape-error-blocks-the-save-and-leaves-the-kb-intact
   (tu/with-terms [likesOf Alice Bob CxEdit]
-    (let [h1 (v/assert kb (list likesOf Alice Bob) CxEdit)
-          r  (POST "/edit" {"handles" (str h1) "text" "(this is not a vector)"})]
-      (is (= 200 (:status r)))
-      (is (nil? (get-in r [:headers "HX-Refresh"])) "no refresh on a parse error")
-      (is (re-find #"expected \[sentence context\]" (:body r)))
+    (let [h1 (v/assert kb (list likesOf Alice Bob) CxEdit)]
+      (testing "a sentence with no context above it"
+        (let [r (POST "/edit" {"handles" (str h1) "text" "(this has no context)"})]
+          (is (= 200 (:status r)))
+          (is (nil? (get-in r [:headers "HX-Refresh"])) "no refresh on a shape error")
+          (is (re-find #"no context yet" (:body r)))))
+      (testing "and a form that is neither a sentence, a context nor an options map"
+        (let [r (POST "/edit" {"handles" (str h1) "text" (str CxEdit "\n[1 2 3]")})]
+          (is (= 200 (:status r)))
+          (is (re-find #"expected a sentence, a context term or an options map"
+                       (:body r)))))
       (is (v/in? kb h1) "nothing was written"))))
 
 (tu/deftest-kb a-line-that-does-not-read-at-all-is-an-unreadable-row-on-every-write-form
@@ -1424,7 +1500,7 @@
     (is (re-find #"<body[^>]*hx-swap=\"outerHTML show:window:top\"" body)
         "the boosted swap says where to land: the top of the document")
     (testing "a continuation replaces itself in place and moves the page not at all"
-      (let [cap (ns-resolve 'vaelii.host.web 'group-cap)
+      (let [cap (ns-resolve 'vaelii.browser.web 'group-cap)
             row (-> (with-redefs-fn {cap 1} #(:body (GET "/term" "q=dog")))
                     (->> (re-find #"<li class=\"more\"[^>]*>")))]
         (is row "a capped index group ends in a sentinel")
@@ -1458,8 +1534,7 @@
         (is (re-find #"class=\"more\"" (:body r)))
         (is (re-find #"hx-trigger=\"revealed, click" (:body r)))
         (is (re-find #"/term/rows\?q=" (:body r))))
-      (testing "and it is a row of the grid it ends, reachable and firable by keyboard"
-        (is (re-find #"<li class=\"more\"[^>]*role=\"row\"" (:body r)))
+      (testing "and it is reachable and firable by keyboard"
         (is (re-find #"keyup\[key==&apos;Enter&apos;\]" (:body r)))
         (is (re-find #"class=\"more-cell\"[^>]*tabindex=\"0\"" (:body r))))
       (testing "the first page is the cap, and Thing9 (last by context+handle) is not on it"
@@ -1595,7 +1670,7 @@
 ;; ---- static assets are cached (and re-read only in dev) ----------------
 
 (deftest static-assets-carry-a-cache-policy
-  (doseq [uri ["/vaelii.css" "/select.js" "/htmx.min.js"]]
+  (doseq [uri ["/vaelii.css" "/vaelii.js" "/htmx.min.js"]]
     (let [r (GET uri)]
       (is (= 200 (:status r)) uri)
       (is (some? (get-in r [:headers "Cache-Control"])) uri))))
@@ -1703,7 +1778,7 @@
 (tu/deftest-kb a-same-origin-post-edits-the-kb
   (tu/with-terms [likesOf Alice Bob Carol CxEdit]
     (let [h    (v/assert kb (list likesOf Alice Bob) CxEdit)
-          text (pr-str [(list likesOf Alice Carol) CxEdit])
+          text (edit-text CxEdit (list likesOf Alice Carol))
           r    (POST "/edit" {"handles" (str h) "text" text}
                  {"host" "localhost:3000" "origin" "http://localhost:3000"})]
       (is (= 200 (:status r)))
@@ -1713,7 +1788,7 @@
 (tu/deftest-kb a-cross-origin-post-is-refused-and-writes-nothing
   (tu/with-terms [likesOf Alice Bob Carol CxEdit]
     (let [h    (v/assert kb (list likesOf Alice Bob) CxEdit)
-          text (pr-str [(list likesOf Alice Carol) CxEdit])]
+          text (edit-text CxEdit (list likesOf Alice Carol))]
       (doseq [[label hdrs] [["another site"  {"host" "localhost:3000" "origin" "http://evil.example"}]
                             ;; a sandboxed frame sends Origin: null — an origin claim
                             ;; that matches nothing, not an absent header
@@ -1728,7 +1803,7 @@
 (tu/deftest-kb a-same-origin-referer-is-accepted
   (tu/with-terms [likesOf Alice Bob CxEdit]
     (let [h (v/assert kb (list likesOf Alice Bob) CxEdit)
-          r (POST "/edit" {"handles" (str h) "text" (pr-str [(list likesOf Alice Bob) CxEdit])}
+          r (POST "/edit" {"handles" (str h) "text" (edit-text CxEdit (list likesOf Alice Bob))}
               {"host" "localhost:3000" "referer" "http://localhost:3000/term?q=x"})]
       (is (= 200 (:status r))))))
 
@@ -1745,7 +1820,7 @@
     (let [h    (v/assert kb (list likesOf Alice Bob) CxEdit)
           form (str "handles=" h "&text="
                     (java.net.URLEncoder/encode
-                     (pr-str [(list likesOf Alice Carol) CxEdit]) "UTF-8"))
+                     (edit-text CxEdit (list likesOf Alice Carol)) "UTF-8"))
           post (fn []
                  (*app* {:request-method :post :uri "/edit" :scheme :http
                          :headers {"host"         "localhost:3000"
@@ -1766,38 +1841,165 @@
           (is (seq (v/sentexes-matching kb (list likesOf Alice Carol) CxEdit))
               "the form really was parsed out of the body"))))))
 
-;; ---- selection: the rows carry what the keyboard and a screen reader need ----
-;; Selection is client-side (select.js), so what the server owes it is the markup it
-;; drives: a grid of rows, each with an addressable handle, a selected state, a place
-;; in the roving tabindex, and a visible toggle target — plus the per-group control.
+;; ---- a sentex row is text, with one control on it -----------------------
+;; The rows carry no selection state and no script: a press-drag across a sentence
+;; selects that sentence, the way it does over any other text on the page.  The one
+;; control a row carries is the `[edit]` that opens the editor on its handle.
 
-(deftest sentex-rows-are-a-selectable-aria-grid
+(deftest a-sentex-row-is-plain-text-carrying-its-handle
   (let [body (:body (GET "/term" "q=dog"))]
-    (testing "the list is a multi-selectable grid, not a bare ul"
+    (testing "the list is a plain labelled list, not a multi-selectable grid"
       (is (re-find #"class=\"sx-list\"" body))
-      (is (re-find #"role=\"grid\"" body))
-      (is (re-find #"aria-multiselectable=\"true\"" body)))
-    (testing "each row is an addressable row with a selected state and a tab position"
+      (is (not (re-find #"role=\"grid\"" body)))
+      (is (not (re-find #"aria-multiselectable" body))))
+    (testing "a row is addressable by handle and carries no selection chrome"
       (is (re-find #"class=\"sx-item\"" body))
-      (is (re-find #"aria-selected=\"false\"" body))
-      (is (re-find #"role=\"row\"" body))
-      (is (re-find #"tabindex=\"-1\"" body))
-      (is (re-find #"role=\"gridcell\"" body)))
-    (testing "and carries the click affordance that makes the toggle target unambiguous"
-      (is (re-find #"class=\"sx-check\"" body)))
-    (testing "every group offers to select the whole of itself"
-      (is (re-find #"data-select-all" body))
-      (is (re-find #">Select all<" body)))
-    (testing "the count is a live region, so a change announces"
-      (is (re-find #"id=\"sx-count\"" body))
-      (is (re-find #"aria-live=\"polite\"" body)))))
+      (is (re-find #"data-h=\"\d+\"" body))
+      (is (not (re-find #"class=\"sx-check\"" body)))
+      (is (not (re-find #"data-select-all" body)))
+      (is (not (re-find #"Select all" body))))
+    (testing "and nothing on the page makes a sentence unselectable"
+      (is (not (re-find #"sx-dragging" body))))))
 
-(deftest the-selection-bar-offers-both-writes
-  (let [body (:body (GET "/"))]
-    (is (re-find #"hx-get=\"/edit\"" body))
-    (is (re-find #"hx-get=\"/retract\"" body))
-    (testing "the destructive one is a preview by GET; only its POST retracts"
-      (is (not (re-find #"hx-get=\"/retract\"[^>]*hx-post" body))))))
+(deftest a-row-opens-the-editor-on-its-own-handle
+  (let [body (:body (GET "/term" "q=dog"))
+        h    (second (re-find #"data-h=\"(\d+)\"" body))]
+    (is (some? h))
+    (is (re-find (re-pattern (str "hx-get=\"/edit\\?handles=" h "\"")) body))
+    (testing "into the editor panel, which is outside the swapped region"
+      (is (re-find #"hx-target=\"#editor\"" body))
+      (is (re-find #"<div id=\"editor\"" body)))
+    (testing "and the page carries no selection action bar for it to have come from"
+      (is (not (re-find #"id=\"sx-bar\"" body))))))
+
+(tu/deftest-kb the-editor-offers-both-writes
+  (tu/with-terms [likesOf Alice Bob CxEdit]
+    (let [h    (v/assert kb (list likesOf Alice Bob) CxEdit)
+          body (:body (GET "/edit" (str "handles=" h)))]
+      (is (re-find #"hx-post=\"/edit\"" body))
+      (is (re-find (re-pattern (str "hx-get=\"/retract\\?handles=" h "\"")) body))
+      (testing "the destructive one is a preview by GET; only its POST retracts"
+        (is (not (re-find #"hx-get=\"/retract[^>]*hx-post" body)))))))
+
+;; ---- the sentence editor ------------------------------------------------
+;; Every box that takes a sentence is the same component: a textarea holding the value,
+;; a highlight layer painted behind it, and a completion list under it.  What the server
+;; owes it is the markup, the completions, and the lookahead — the painting and the keys
+;; are the client's (vaelii.js).
+
+(tu/deftest-kb every-sentence-box-is-the-editor
+  (tu/with-terms [likesOf Alice Bob CxEdit]
+    (let [h (v/assert kb (list likesOf Alice Bob) CxEdit)]
+      (doseq [[what body] [["the row editor" (:body (GET "/edit" (str "handles=" h)))]
+                           ["the assert form" (:body (GET "/assert"))]
+                           ["the goal box"    (:body (GET "/levels" "q=(animal ?x)"))]]]
+        (testing what
+          (is (re-find #"class=\"ed[ \"]" body) "the wrapper the script finds it by")
+          (is (re-find #"class=\"ed-hl\"" body) "the layer the colours are painted on")
+          (is (re-find #"class=\"ed-in\"" body) "the textarea still holds the value")
+          (is (re-find #"class=\"ed-complete\"" body) "the list completions land in")))
+      (testing "the goal box submits on Enter, being one line tall"
+        (let [body (:body (GET "/levels" "q=(animal ?x)"))]
+          (is (re-find #"data-ed-submit" body))
+          (is (re-find #"rows=\"1\"" body)))))))
+
+(tu/deftest-kb the-editor-reads-forms-rather-than-lines
+  (tu/with-terms [aP bP cP X CxForms]
+    (let [h    (v/assert kb (list aP X) CxForms)
+          ;; the context on its own line, then one sentence over three of them,
+          ;; indented the way the editor indents it
+          text (str CxForms "\n"
+                    "(implies (and (" bP " ?x)\n"
+                    "              (" cP " ?x))\n"
+                    "         (" aP " ?x))")
+          r    (POST "/edit" {"handles" (str h) "text" text})]
+      (is (= 200 (:status r)))
+      (testing "the three lines are one sentex, not three"
+        (is (re-find #"1 asserted" (:body r)))
+        (is (nil? (v/sentex kb h)) "and the handle it replaced is gone"))
+      (testing "the rule really was stored as a rule"
+        (is (seq (v/sentexes-matching kb (list 'implies (list 'and (list bP '?x) (list cP '?x))
+                                               (list aP '?x))
+                                      CxForms)))))))
+
+(tu/deftest-kb a-context-line-carries-every-sentence-under-it
+  (tu/with-terms [aP X Y CxOne CxTwo]
+    (v/assert kb (list aP 'seed) CxOne)                    ; so both contexts exist
+    (v/assert kb (list aP 'seed) CxTwo)
+    (let [r (POST "/assert" {"text" (str CxOne "\n(" aP " " X ")\n"
+                                         CxTwo "\n(" aP " " Y ")")
+                             "ctx"  (str CxOne)}
+              {"host" "localhost:3000" "origin" "http://localhost:3000"})]
+      (is (= 200 (:status r)))
+      (testing "the sentence above the second context line is in the first"
+        (is (seq (v/sentexes-matching kb (list aP X) CxOne)))
+        (is (empty? (v/sentexes-matching kb (list aP X) CxTwo))))
+      (testing "and the one below it is in the second"
+        (is (seq (v/sentexes-matching kb (list aP Y) CxTwo)))
+        (is (empty? (v/sentexes-matching kb (list aP Y) CxOne)))))))
+
+(tu/deftest-kb the-panel-seeds-a-context-once-for-the-sentences-under-it
+  (tu/with-terms [aP X Y CxSeed]
+    (let [h1   (v/assert kb (list aP X) CxSeed)
+          h2   (v/assert kb (list aP Y) CxSeed)
+          body (:body (GET "/edit" (str "handles=" h1 "," h2)))
+          area (second (re-find #"(?s)<textarea[^>]*>(.*?)</textarea>" body))]
+      (is (some? area))
+      (testing "the context is a line of its own, written once for both sentences"
+        (is (= 1 (count (re-seq (re-pattern (str "(?m)^" CxSeed "$")) area)))))
+      (testing "and no sentence is wrapped in a vector with it"
+        (is (not (re-find #"\[\(" area)))))))
+
+(tu/deftest-kb an-unreadable-form-names-the-line-it-opens-on
+  (tu/with-terms [aP X CxForms]
+    (let [h (v/assert kb (list aP X) CxForms)
+          ;; the fourth line opens a form that never closes
+          r (POST "/edit" {"handles" (str h)
+                           "text"    (str CxForms "\n(" aP " " X ")\n\n(oops\n")})]
+      (is (= 200 (:status r)))
+      (is (re-find #"line 4" (:body r)) "the line the unbalanced form opens on")
+      (is (re-find #"unreadable" (:body r)))
+      (is (v/in? kb h) "and nothing was written"))))
+
+(tu/deftest-kb the-lookahead-says-what-a-save-would-do-and-writes-nothing
+  (tu/with-terms [likesOf Alice Bob Carol CxAhead]
+    (let [h (v/assert kb (list likesOf Alice Bob) CxAhead)
+          r (POST "/edit/preview"
+              {"handles" (str h)
+               "text"    (edit-text CxAhead (list likesOf Alice Carol))}
+              {"host" "localhost:3000" "origin" "http://localhost:3000"})]
+      (is (= 200 (:status r)))
+      (is (re-find #"This save" (:body r)))
+      (testing "it is a read: the sentex it would retract is still there"
+        (is (v/in? kb h))
+        (is (empty? (v/sentexes-matching kb (list likesOf Alice Carol) CxAhead))))
+      (testing "and an unreadable form is reported there rather than at the save"
+        (let [bad (POST "/edit/preview" {"handles" (str h) "text" "CxAhead\n(oops"}
+                    {"host" "localhost:3000" "origin" "http://localhost:3000"})]
+          (is (re-find #"edit-errors" (:body bad))))))))
+
+(deftest completions-are-a-bounded-prefix-read
+  (testing "a prefix answers the terms it could become, each in its role colour"
+    (let [body (:body (GET "/complete" "q=paren"))]
+      (is (re-find #"data-t=\"parentOf\"" body))
+      (is (re-find #"role=\"option\"" body))
+      (is (re-find #"class=\"sx t-pred\"" body))
+      (is (not (re-find #"<html" body)) "a fragment, not a document")))
+  (testing "it is a prefix, not a substring: `entOf` finds nothing"
+    (is (not (re-find #"parentOf" (:body (GET "/complete" "q=entOf"))))))
+  (testing "a blank prefix answers nothing rather than the first n terms in the KB"
+    (is (= "" (:body (GET "/complete" "q=")))))
+  (testing "and one past the cap answers nothing rather than scanning for whoever sent it"
+    (is (= "" (:body (GET "/complete" (str "q=" (apply str (repeat 200 "a")))))))))
+
+(deftest a-term-carries-an-edit-of-its-own
+  (let [body (:body (GET "/term" "q=dog"))]
+    (testing "beside its name, opening the editor on what it is most directly in"
+      (is (re-find #"hx-get=\"/edit\?q=dog\"" body)))
+    (testing "and that opens a panel holding real forms"
+      (let [panel (:body (GET "/edit" "q=dog"))]
+        (is (re-find #"class=\"ed-in\"" panel))
+        (is (re-find #"name=\"handles\"" panel))))))
 
 ;; ---- why: the whole proof tree, not one hop ----------------------------
 
@@ -1846,8 +2048,8 @@
       (testing "the scenario is the one under test: IN, two supports, one of them blocked"
         (is (v/in? kb h) "(flies Opus) is believed — carried by the bat rule")
         (is (= 2 (count sup)) "two justifications conclude it: the bird rule and the bat rule")
-        (is (seq (jtms/blocked (:tms kb))) "the bird justification is JTMS-blocked, not swept"))
-      (let [blk  (jtms/blocked (:tms kb))
+        (is (seq (jtms/blocked (reasoning/tms kb))) "the bird justification is JTMS-blocked, not swept"))
+      (let [blk  (jtms/blocked (reasoning/tms kb))
             body (:body (GET (str "/why/" h)))]
         (testing "the why-page counter reports 1 of 2, not 2 of 2"
           (is (str/includes? body "1 of 2 justifications currently support this"))
@@ -1885,7 +2087,7 @@
     (let [h      (v/handle-of kb (list flies Opus) CxFly)
           server (serve/start kb {:port 0 :token nil})]
       (is (= 2 (count (v/supporting-justifications kb h))))
-      (is (seq (jtms/blocked (:tms kb))) "the scenario really holds one blocked justification")
+      (is (seq (jtms/blocked (reasoning/tms kb))) "the scenario really holds one blocked justification")
       (try
         (let [attached (web/app (acc/remote "localhost" (serve/port server)))
               body     (:body (attached {:request-method :get :uri (str "/why/" h)}))]
@@ -1972,12 +2174,12 @@
 (tu/deftest-kb the-editor-shows-a-check-problem-beside-the-line
   (tu/with-terms [likesOf Alice Bob CxEdit]
     (let [h (v/assert kb (list likesOf Alice Bob) CxEdit)
-          ;; a syntactically fine `[sentence context]` that `assert` would still refuse
+          ;; a syntactically fine sentence that `assert` would still refuse
           r (POST "/edit" {"handles" (str h)
-                           "text" (pr-str [(list likesOf Alice '?x) CxEdit])})]
+                           "text" (edit-text CxEdit (list likesOf Alice '?x))})]
       (is (= 200 (:status r)))
       (is (re-find #"not-ground" (:body r)))
-      (is (re-find #"line 1" (:body r)))
+      (is (re-find #"line 2" (:body r)) "the sentence's own line, under its context")
       (is (v/in? kb h) "the save was refused, so the original is untouched"))))
 
 (tu/deftest-kb a-cross-origin-assert-is-refused
@@ -2007,7 +2209,7 @@
         (is (v/in? kb fa))
         (is (v/in? kb ch))))))
 
-(tu/deftest-kb retracting-the-selection-takes-its-consequences-with-it
+(tu/deftest-kb retracting-a-sentex-takes-its-consequences-with-it
   (tu/with-terms [aP cP X CxRetract]
     (v/assert-rule kb [(list aP '?x)] (list cP '?x) CxRetract {:direction :forward})
     (let [fa (v/assert kb (list aP X) CxRetract)
@@ -2022,8 +2224,8 @@
       (testing "and every row that is actually gone is deleted out of band"
         (is (re-find (re-pattern (str "delete:\\[data-h=&apos;" fa "&apos;\\]")) (:body r)))
         (is (re-find (re-pattern (str "delete:\\[data-h=&apos;" ch "&apos;\\]")) (:body r))))
-      (testing "and the selection count is corrected"
-        (is (re-find #"id=\"sx-count\"" (:body r)))))))
+      (testing "and the panel says so rather than reloading the page"
+        (is (nil? (get-in r [:headers "HX-Refresh"])))))))
 
 (tu/deftest-kb a-cross-origin-retract-is-refused
   (tu/with-terms [aP X CxRetract]
@@ -2303,3 +2505,49 @@
         (is (str/includes? body "/some/kbs"))
         (is (str/includes? body "51 more are not shown"))
         (is (str/includes? body (str "first " cat/max-discovered " entries")))))))
+
+;; ---- the daemon protocol, served over the active KB ----------------------
+
+(defn- post-op
+  "POST `{:op :args}` to `app` with the headers a native client sends, and answer the
+  parsed EDN reply with its status."
+  [app op args]
+  (let [body (pr-str {:op op :args (vec args)})
+        resp (app {:request-method :post :uri "/op"
+                   :headers {"content-type" "application/edn"}
+                   :body (java.io.ByteArrayInputStream. (.getBytes ^String body "UTF-8"))})]
+    (assoc (edn/read-string (:body resp)) :status (:status resp))))
+
+(deftest the-browser-serves-the-daemon-protocol-over-its-active-kb
+  ;; A native client connects to a running browser as it connects to `vaelii.serve`, so
+  ;; the browser answers the same two routes with the same handler, over the KB it shows.
+  (testing "GET /health answers the daemon's EDN"
+    (let [r (GET "/health")]
+      (is (= 200 (:status r)))
+      (is (= {:ok true} (edn/read-string (:body r))))))
+  (testing "POST /op runs an op from the daemon's table against the browser's KB"
+    (let [r (post-op *app* :term-count [])]
+      (is (= 200 (:status r)))
+      (is (true? (:ok r)))
+      (is (= (v/term-count tu/*kb*) (:result r)))))
+  (testing "the daemon's guards come with it: no EDN content type is a 415"
+    (let [resp (*app* {:request-method :post :uri "/op"
+                       :headers {"content-type" "text/plain"}
+                       :body (java.io.ByteArrayInputStream. (.getBytes "{:op :term-count}" "UTF-8"))})]
+      (is (= 415 (:status resp)))
+      (is (= :not-edn (:type (edn/read-string (:body resp)))))))
+  (testing "an unknown op is the daemon's typed 400"
+    (is (= [400 :unknown-op] ((juxt :status :type) (post-op *app* :no-such-op []))))))
+
+(deftest the-browser-refuses-an-op-it-cannot-run-safely
+  (testing "a browser attached to a remote daemon sends the caller to that daemon"
+    ;; `acc/remote` opens no socket until a call, and the refusal precedes any call
+    (let [r (post-op (web/app (acc/remote "127.0.0.1" 1)) :term-count [])]
+      (is (= [404 :not-found false] ((juxt :status :type :ok) r)))
+      (is (str/includes? (:error r) "--attach"))))
+  (testing "a KB a job is writing refuses every op, since the job does not take the monitor"
+    (with-redefs [cat/write-blocked? (constantly true)]
+      (is (= [409 :still-loading] ((juxt :status :type) (post-op *app* :term-count []))))))
+  (testing "a KB being exported refuses every op"
+    (with-redefs [cat/exporting-kb? (constantly true)]
+      (is (= [409 :still-exporting] ((juxt :status :type) (post-op *app* :term-count [])))))))

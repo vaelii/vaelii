@@ -1,7 +1,7 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.host.guard
-  "The HTTP guards both servers hold to — `vaelii.host.web` (the browser) and
+  "The HTTP guards both servers hold to — `vaelii.browser.web` (the browser) and
   `vaelii.host.serve` (the daemon).
 
   The browser authenticates nobody and the daemon only when a token is set

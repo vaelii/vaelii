@@ -25,6 +25,7 @@
             [vaelii.impl.asp.label :as label]
             [vaelii.impl.asp.solver :as solver]
             [vaelii.impl.solve :as solve]
+            [vaelii.impl.types.solve :as solve-types]
             [vaelii.test-util :as tu]))
 
 (def ^:private asp? (solver/available?))
@@ -162,24 +163,30 @@
 
 ;; ---- 3. what committing does, and what undoes it ------------------------
 
-(deftest labeling-commits-and-the-commitment-is-global
-  ;; The chosen semantics, stated where it can be read (docs/labeling.md). Belief is a
-  ;; property of a datum rather than of a datum-in-a-context, so strengthening inside
-  ;; `ctx` decides the dilemma for the whole KB. That is a real consequence and it is
-  ;; pinned here rather than left to be discovered: the engine still refuses to
-  ;; arbitrate on its own, and commits only because a caller wrote the imperative.
+(defn- sides-in
+  "Which sides of dilemma `d` a level-3 read from `ctx` finds, as `[positive? negative?]`."
+  [kb {:keys [pred individual]} ctx]
+  [(boolean (seq (v/lookup kb 3 (list pred individual) ctx)))
+   (boolean (seq (v/lookup kb 3 (list 'not (list pred individual)) ctx)))])
+
+(deftest labeling-commits-inside-its-context-and-leaves-the-base-alone
+  ;; The chosen semantics, stated where it can be read (docs/labeling.md).  `ctx` sees
+  ;; the base and the base does not see `ctx`, so the strengthened copy decides the
+  ;; dilemma at `ctx` and below and nowhere else (docs/nmtms.md, "A defeat is scoped to
+  ;; its vantage").  The engine still refuses to arbitrate on its own, and commits
+  ;; inside `ctx` only because a caller wrote the imperative.
   (tu/with-neutral-kb [kb tu/fresh]
     (let [d (dilemma kb)
           ctx (tu/tmp-ctx "Labeling")]
       (is (= {:positive true :negative true :reported 1} (belief-snapshot kb d))
           "before: both sides believed, one dilemma reported")
-      (let [{:keys [handles]} (v/assert kb (list 'do/labeling ctx) 'CxUniverse)
-            after (belief-snapshot kb d)]
-        (testing "the dilemma is decided, not reported twice"
-          (is (zero? (:reported after))))
-        (testing "exactly one side survives, globally"
-          (is (not= (:positive after) (:negative after)))
-          (is (not= (v/in? kb (:positive d)) (v/in? kb (:negative d)))))
+      (let [{:keys [handles]} (v/assert kb (list 'do/labeling ctx) 'CxUniverse)]
+        (testing "the base still believes both sides and reports the one dilemma"
+          (is (= {:positive true :negative true :reported 1} (belief-snapshot kb d)))
+          (is (and (v/in? kb (:positive d)) (v/in? kb (:negative d)))))
+        (testing "inside the labeling context exactly one side survives"
+          (let [[pos neg] (sides-in kb d ctx)]
+            (is (not= pos neg))))
         (testing "and the labeling context records the surviving side"
           (is (= 1 (count handles))))))))
 
@@ -208,28 +215,37 @@
         (let [pos (seq (v/lookup kb 3 (list pred individual) ctx))
               neg (seq (v/lookup kb 3 (list 'not (list pred individual)) ctx))]
           (is (not= (boolean pos) (boolean neg)))))
-      (testing "and the same holds in the base, since the commitment is global"
+      (testing "and the base keeps both sides, since the commitment is scoped to ctx"
         (let [pos (seq (v/lookup kb 3 (list pred individual) 'CxUniverse))
               neg (seq (v/lookup kb 3 (list 'not (list pred individual)) 'CxUniverse))]
-          (is (not= (boolean pos) (boolean neg))))))))
+          (is (and pos neg)))))))
 
-(deftest retracting-a-labeling-revives-the-dilemma
-  ;; The undo path, and the reason rival labelings can still be compared — one after
-  ;; another rather than side by side. Additive, so no `!`; that claim is only true if
-  ;; this holds.
+(deftest retracting-a-labeling-revives-the-dilemma-inside-its-context
+  ;; The undo path.  Additive, so no `!`; that claim is only true if this holds.
   (tu/with-neutral-kb [kb tu/fresh]
     (let [d (dilemma kb)
           ctx (tu/tmp-ctx "Labeling")
           {:keys [handles]} (v/assert kb (list 'do/labeling ctx) 'CxUniverse)]
-      (is (zero? (:reported (belief-snapshot kb d))) "committed")
+      (is (apply not= (sides-in kb d ctx)) "committed inside ctx")
       (run! #(v/retract! kb %) handles)
-      (testing "the dilemma is back, both sides believed again"
-        (is (= {:positive true :negative true :reported 1} (belief-snapshot kb d))))
-      (testing "so a rival labeling can be built over the revived dilemma"
-        (let [ctx2 (tu/tmp-ctx "Rival")
-              {h2 :handles} (v/assert kb (list 'do/labeling ctx2) 'CxUniverse)]
-          (is (= 1 (count h2)))
-          (is (zero? (:reported (belief-snapshot kb d)))))))))
+      (testing "the dilemma is back inside ctx, both sides read again"
+        (is (= [true true] (sides-in kb d ctx)))
+        (is (= {:positive true :negative true :reported 1} (belief-snapshot kb d)))))))
+
+(deftest rival-labelings-stand-side-by-side
+  ;; Each labeling decides the dilemma in its own context and in no other, so two of them
+  ;; hold at once as sibling contexts, and the base reports its one dilemma throughout.
+  (tu/with-neutral-kb [kb tu/fresh]
+    (let [d    (dilemma kb)
+          ctx  (tu/tmp-ctx "Labeling")
+          ctx2 (tu/tmp-ctx "Rival")
+          {h1 :handles} (v/assert kb (list 'do/labeling ctx) 'CxUniverse)
+          {h2 :handles} (v/assert kb (list 'do/labeling ctx2) 'CxUniverse)]
+      (is (= 1 (count h1)))
+      (is (= 1 (count h2)))
+      (is (apply not= (sides-in kb d ctx)))
+      (is (apply not= (sides-in kb d ctx2)))
+      (is (= {:positive true :negative true :reported 1} (belief-snapshot kb d))))))
 
 ;; ---- 4. the labeling solve agrees with the classification solve ---------
 
@@ -258,7 +274,7 @@
                                   {:nogood #{1 3} :priority 1 :sentence '(contradicts (aaa) (ccc))}]
                                  content)
           c       (label/classify-program program)
-          labeled (fn [solver] (let [d (set (:defeat (solve/solve solver program)))]
+          labeled (fn [solver] (let [d (set (:defeat (solve-types/solve solver program)))]
                                  (into #{} (remove d) (:assumptions program))))]
       (testing "the classification is decisive here — one optimum, nothing supportable"
         (is (= #{2 3} (:true c)))

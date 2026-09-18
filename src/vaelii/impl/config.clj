@@ -88,7 +88,8 @@
   carries the domain in whatever shape the domain has."
   [nm value want data]
   (throw (ex-info (str nm "=" value " is not a value " nm " reads — want " want)
-                  (merge {:type :unknown-option :mismatch :bad-value :property nm :value value} data))))
+                  (merge {:type :unknown-option :mismatch :bad-value :switch nm :property nm :value value}
+                         data))))
 
 (defn- boolean-vocabulary [] (vec (concat (sort truthy) (sort falsy))))
 
@@ -255,7 +256,8 @@
                          " — the mapped index image is an index representation, selected"
                          " as {:backend :disk-snapshot}, so the KB's own opts record that"
                          " it was asked for.  Unset the property and name the backend.")
-                    {:type :unknown-option :mismatch :unknown-key :property "vaelii.index.snapshot" :value v
+                    {:type :unknown-option :mismatch :unknown-key :switch "vaelii.index.snapshot"
+                     :property "vaelii.index.snapshot" :value v
                      :remedy {:backend :disk-snapshot}})))
   nil)
 
@@ -276,18 +278,19 @@
   "Refuse `vaelii.belief.snapshot`, naming the backend that writes and installs a belief
   image instead.
 
-  A belief image is written and installed for a `{:backend :disk-snapshot}` KB on the
-  dense network (`vaelii.impl.belief-image`), the same KB whose index is read from an
+  A reasoning image is written and installed for a `{:backend :disk-snapshot}` KB on the
+  dense network (`vaelii.impl.reasoning-image`), the same KB whose index is read from an
   image, and no property turns it on or off.  Refused rather than ignored, on
   `index-snapshot?`'s argument: an operator whose unit file sets it meets a refusal at the
   open instead of a switch that does nothing."
   []
   (when-let [v (raw "vaelii.belief.snapshot")]
     (throw (ex-info (str "vaelii.belief.snapshot=" v " is not a switch this build reads"
-                         " — a belief image is written and installed for a"
+                         " — a reasoning image is written and installed for a"
                          " {:backend :disk-snapshot} KB, so the KB's own opts record that"
                          " it was asked for.  Unset the property and name the backend.")
-                    {:type :unknown-option :mismatch :unknown-key :property "vaelii.belief.snapshot" :value v
+                    {:type :unknown-option :mismatch :unknown-key :switch "vaelii.belief.snapshot"
+                     :property "vaelii.belief.snapshot" :value v
                      :remedy {:backend :disk-snapshot}})))
   nil)
 
@@ -620,7 +623,7 @@
     (throw (ex-info (str nm " is claimed by " (count rows) " rows — two readers with two"
                          " domains for one name is one of them wrong, and which one wins"
                          " is the order `check!` happens to walk in.")
-                    {:type :bad-table-entry :mismatch :duplicate-name :property nm})))
+                    {:type :bad-table-entry :mismatch :duplicate-name :switch nm :property nm})))
   switches)
 
 ;; At load, as `predicates/check-families` runs at its own: a reader added without a row

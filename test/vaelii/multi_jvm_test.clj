@@ -314,7 +314,7 @@
                   "the restored records and belief are those of a prefix of the operations")
               (is (and m (>= (long m) (long done)))
                   (str "and the prefix holds the " done " operations the writer reported done")))
-            (is (#{:index :belief} (when (vector? (:reason r)) (first (:reason r))))
+            (is (#{:index :reasoning} (when (vector? (:reason r)) (first (:reason r))))
                 (str "a declined restore names an image, which only a kill inside a seal"
                      " leaves: " (pr-str (dissoc r :kb)))))
           (finally (v/close! (or (:kb r) kb))))))))

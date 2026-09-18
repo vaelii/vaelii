@@ -200,7 +200,7 @@ you wanted a set. Which entry point answers what, and what each costs, is
 | TMS assert | `(v/assert kb s ctx {:strength :monotonic})` for known-true, `:default` — the default — for defeasible |
 | TMS retract | `(v/retract! kb handle)`, tearing down whatever rested solely on it |
 | `why` | `(v/why kb handle opts?)` — the proof tree, cycle-guarded |
-| `why-not` | `(v/why-not kb handle)` → `:defeated` / `:superseded` / `:unsupported` / `:not-stored`; the sentence arity adds `:excepted` |
+| `why-not` | `(v/why-not kb handle)` → `:defeated` / `:withdrawn` / `:superseded` / `:unsupported` / `:not-stored`; the sentence arity adds `:excepted` |
 | — | `(v/in? kb handle)`, `(v/believed kb handles)` — a stored sentex is not a believed one |
 | — | `(v/settle-stats kb)`, `(v/with-deferred-settle kb & body)` |
 

@@ -60,7 +60,8 @@
     that path — an entry point that consulted it would extend the opt-out to reads nobody granted
     it to."
   (:require [vaelii.impl.jtms :as jtms]
-            [vaelii.impl.protocols :as p]))
+            [vaelii.impl.protocols :as p]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 ;; ---- extents: the trie and the secondary roots ---------------------------
 
@@ -130,7 +131,7 @@
   taking a prefix pays a TMS probe per handle it takes and not per handle in the root.  A
   superseded spelling drops out with a defeated one, since that is what `in?` answers."
   [kb pred]
-  (let [tms (:tms kb)]
+  (let [tms (reasoning/tms kb)]
     (filter #(jtms/in? tms %) (p/sentexes-with-functor (:index kb) pred))))
 
 (defn believed-with-args
@@ -141,7 +142,7 @@
   and wants only what holds asks here rather than intersecting and then filtering by
   hand."
   [kb pred pos-terms]
-  (let [tms (:tms kb)]
+  (let [tms (reasoning/tms kb)]
     (filter #(jtms/in? tms %) (p/sentexes-with-args (:index kb) pred pos-terms))))
 
 ;; ---- cardinalities: a posting set's size, and never its members -----------

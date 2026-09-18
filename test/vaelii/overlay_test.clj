@@ -55,7 +55,7 @@
    :justifications (into {} (map (juxt identity #(p/get-justification (:records kb) %)))
                          (p/justification-ids (:records kb)))
    :premises       (set (p/premise-ids (:records kb)))
-   :index          (set (kv/kv-entries (:backend (:index kb))))})
+   :index          (set (p/kv-entries (:backend (:index kb))))})
 
 (defn- populate!
   "A small base: a taxonomy edge, a forward rule, and two facts — so a fork inherits
@@ -79,18 +79,18 @@
 (deftest the-overlay-kv-satisfies-the-backend-contract
   ;; A fork of nothing is the thing it forked: with an empty base, every merge rule
   ;; degenerates and the decorator has to answer the one spec every adapter answers.
-  (let [base (doto (mem/memory-kv-backend {:space [::kv-base]}) (kv/kv-clear!))
-        ov   (doto (mem/memory-kv-backend {:space [::kv-fork]}) (kv/kv-clear!))]
+  (let [base (doto (mem/memory-kv-backend {:space [::kv-base]}) (p/kv-clear!))
+        ov   (doto (mem/memory-kv-backend {:space [::kv-fork]}) (p/kv-clear!))]
     (kvt/check-backend (okv/overlay-kv ov (frozen/frozen-kv base)))
-    (is (empty? (kv/kv-entries base)) "and the base stayed empty throughout")))
+    (is (empty? (p/kv-entries base)) "and the base stayed empty throughout")))
 
 (deftest a-frozen-base-refuses-every-write
   (testing "the index half"
     (let [b (frozen/frozen-kv (mem/memory-kv-backend {:space [::frozen]}))]
       (is (thrown-with-msg? clojure.lang.ExceptionInfo #"mounted read-only"
-                            (kv/kv-add-to-set b [:x] 1)))
-      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"mounted read-only" (kv/kv-clear! b)))
-      (is (nil? (kv/kv-get b [:x])) "and reads still work")))
+                            (p/kv-add-to-set b [:x] 1)))
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"mounted read-only" (p/kv-clear! b)))
+      (is (nil? (p/kv-get b [:x])) "and reads still work")))
   (testing "the record half"
     (let [r (frozen/frozen-records (mem/memory-record-store {:space [::frozen]}))]
       (is (thrown-with-msg? clojure.lang.ExceptionInfo #"mounted read-only"
@@ -223,7 +223,7 @@
   (let [base (fresh-base 10)
         f    (v/fork base {:index :dense})]
     (v/assert f '(dog Rex) 'CxOverlay {:strength :monotonic})
-    (is (seq (doall (kv/kv-entries (:backend (:index f)))))
+    (is (seq (doall (p/kv-entries (:backend (:index f)))))
         "the merged projection realizes")
     (v/clear! base)))
 
@@ -847,15 +847,15 @@
   ;; reading the ex-data can act on, so that is what is asserted.
   (let [b   (frozen/frozen-kv (mem/memory-kv-backend {:space [::frozen-roster]}))
         r   (frozen/frozen-records (mem/memory-record-store {:space [::frozen-roster]}))
-        ops [["kv-put"               #(kv/kv-put b [:x] 1)]
-             ["kv-delete"            #(kv/kv-delete b [:x])]
-             ["kv-increment"         #(kv/kv-increment b [:x])]
-             ["kv-decrement"         #(kv/kv-decrement b [:x])]
-             ["kv-add-to-set"        #(kv/kv-add-to-set b [:x] 1)]
-             ["kv-remove-from-set"   #(kv/kv-remove-from-set b [:x] 1)]
-             ["kv-batch"             #(kv/kv-batch b [[:kv-put [:x] 1]])]
-             ["kv-load"              #(kv/kv-load b [[[:x] 1]])]
-             ["kv-clear!"            #(kv/kv-clear! b)]
+        ops [["kv-put"               #(p/kv-put b [:x] 1)]
+             ["kv-delete"            #(p/kv-delete b [:x])]
+             ["kv-increment"         #(p/kv-increment b [:x])]
+             ["kv-decrement"         #(p/kv-decrement b [:x])]
+             ["kv-add-to-set"        #(p/kv-add-to-set b [:x] 1)]
+             ["kv-remove-from-set"   #(p/kv-remove-from-set b [:x] 1)]
+             ["kv-batch"             #(p/kv-batch b [[:kv-put [:x] 1]])]
+             ["kv-load"              #(p/kv-load b [[[:x] 1]])]
+             ["kv-clear!"            #(p/kv-clear! b)]
              ["put-sentex"           #(p/put-sentex r {:sentence '(dog Muffet)})]
              ["delete-sentex!"       #(p/delete-sentex! r 1)]
              ["put-justification"    #(p/put-justification r {:consequent 1})]
@@ -879,7 +879,7 @@
     (is (= (into {} (map (fn [[op _]] [op op])) ops)
            (into {} (map (fn [[op d]] [op (:op d)])) outcome))
         "and each refusal names the op the caller called")
-    (is (and (nil? (kv/kv-get b [:x])) (set? (p/sentex-ids r)))
+    (is (and (nil? (p/kv-get b [:x])) (set? (p/sentex-ids r)))
         "while the reads on both halves still answer")))
 
 (deftest an-overlay-with-nothing-to-fork-is-refused-by-name

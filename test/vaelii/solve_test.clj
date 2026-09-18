@@ -35,6 +35,7 @@
             [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.solve :as solve]
+            [vaelii.impl.types.solve :as solve-types]
             [vaelii.test-util :as tu]))
 
 ;; ---- builders ------------------------------------------------------------
@@ -54,7 +55,7 @@
   [priority & handles]
   {:nogood (set handles) :priority priority :sentence (list 'contradicts handles)})
 
-(defn- decide [program] (solve/solve solve/local-solver program))
+(defn- decide [program] (solve-types/solve solve/local-solver program))
 
 (defn- claims
   "What `handles` assert, per `content` — so an assertion names the *claim* that
@@ -235,8 +236,8 @@
   ;; *fails*: the unsatisfiable contradiction is returned as data, whole, so a caller
   ;; can report its sentence and priority.
   (let [bad (ng 3 7 8)
-        r   (solve/solve solve/local-solver
-                         (solve/->Program #{} #{7 8} [bad] {} []))]
+        r   (solve-types/solve solve/local-solver
+                               (solve-types/->Program #{} #{7 8} [bad] {} []))]
     (is (= #{} (:defeat r)))
     (is (= [bad] (:violated r)) "the whole nogood map comes back, not just its handles")))
 
@@ -246,8 +247,8 @@
   ;; first unsatisfiable nogood would lose the defeat.
   (let [c   (content 1 '(a))
         bad (ng 0 7 8)
-        r   (solve/solve solve/local-solver
-                         (solve/->Program #{1} #{7 8 9} [(ng 0 1 9) bad] c []))]
+        r   (solve-types/solve solve/local-solver
+                               (solve-types/->Program #{1} #{7 8 9} [(ng 0 1 9) bad] c []))]
     (is (= #{1} (:defeat r)))
     (is (= [bad] (:violated r)))))
 
@@ -326,7 +327,7 @@
   ;; says only that `decide` is not a random number generator.
   (let [c        (content 1 '(a) 2 '(b) 3 '(c))
         p        (solve/program #{1 2 3} [(ng 1 1 2) (ng 0 2 3)] c)
-        recorded (solve/map->Program (into {} p))
+        recorded (solve-types/map->Program (into {} p))
         other    (solve/program #{3 2 1} [(ng 0 3 2) (ng 1 2 1)]
                                 (content 3 '(c) 2 '(b) 1 '(a)))
         r        (decide p)]
@@ -357,7 +358,7 @@
   ;; `nmtms_test/an-installed-solver-is-never-asked-to-decide-a-plain-rebuttal` covers
   ;; the other half — that the engine does not currently consult it for a rebuttal.
   (let [asked  (atom [])
-        plugin (reify solve/Solver
+        plugin (reify solve-types/Solver
                  (solve [_ program]
                    (swap! asked conj program)
                    {:defeat #{} :violated []}))
@@ -366,7 +367,7 @@
     (is (identical? plugin @(:solver kb)))
     (testing "and the installed solver is what a solve dispatches to"
       (let [p (solve/program #{1 2} [(ng 0 1 2)] (content 1 '(a) 2 '(b)))]
-        (is (= {:defeat #{} :violated []} (solve/solve @(:solver kb) p)))
+        (is (= {:defeat #{} :violated []} (solve-types/solve @(:solver kb) p)))
         (is (= [p] @asked) "the plug-in saw the program, unaltered")))
     (testing "whereas the stub it replaced would have decided that same program"
       (is (= #{2} (:defeat (decide (solve/program #{1 2} [(ng 0 1 2)]

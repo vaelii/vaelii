@@ -76,7 +76,10 @@
             [taoensso.trove :as trove]
             [vaelii.impl.io.frames :as frames]
             [vaelii.impl.kv :as kv]
-            [vaelii.impl.protocols :as p])
+            [vaelii.impl.protocols :as p]
+            [vaelii.impl.types.snapshot :as snapshot-types
+             :refer [SnapshotSink SnapshotSource commit! read-manifest read-section
+                     write-section!]])
   (:import (java.io File)))
 
 (def format-version
@@ -89,24 +92,6 @@
   "index")
 
 ;;; ── the sink protocol ──────────────────────────────────────────────────────
-
-(defprotocol SnapshotSink
-  "Where a snapshot's bytes go — a directory, a database, memory.  Two ops: stream a
-  named section, and commit the manifest that vouches for the lot."
-  (write-section! [sink name frames]
-    "Write the lazy seq `frames` to the section named `name`, one chunk in memory at a
-    time.  Returns the number of frames written.")
-  (commit! [sink manifest]
-    "Write `manifest` as the completion marker — **last**, after every section, so an
-    image with no committed manifest is never offered."))
-
-(defprotocol SnapshotSource
-  "Where a snapshot's bytes come from.  Two ops mirroring the sink: read the manifest, and
-  stream a named section back."
-  (read-manifest [source]
-    "The committed manifest map, or nil when the image is absent or was never committed.")
-  (read-section [source name]
-    "A constant-memory lazy seq of the frames in the section named `name`."))
 
 ;;; ── the file target, over the shared framing ───────────────────────────
 

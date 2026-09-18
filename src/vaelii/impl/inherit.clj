@@ -92,7 +92,8 @@
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.strength :as st]
-            [vaelii.impl.taxonomy :as tax]))
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 (def declarations
   "The two declaration functors, mapped to whether they read `R` backwards."
@@ -236,7 +237,7 @@
                           [h b] (res/matches-visible kb (list f pred '?n '?rel) context)
                           :let  [n (get b '?n) rel (get b '?rel)]
                           :when (and (integer? n) (pos? n) (symbol? rel)
-                                     (usable-relation? (:taxonomy kb) rel context))]
+                                     (usable-relation? (reasoning/taxonomy kb) rel context))]
                       {:n n :rel rel :inverse? inverse? :handle h
                        :in (:context (p/get-sentex (:records kb) h))})))))
 
@@ -318,7 +319,7 @@
   [kb {:keys [rel inverse?]} x context]
   (memoized [:reach rel inverse? x context]
             (fn []
-              (let [tx (:taxonomy kb)]
+              (let [tx (reasoning/taxonomy kb)]
                 (case rel
                   genl        (if inverse? (tax/specs tx x context) (tax/genls tx x context))
                   genlCx (if inverse? (tax/context-down tx x) (tax/context-up tx x)) ; global on purpose
@@ -465,7 +466,7 @@
         :let  [tuple (or known (bound-tuple b slots order))]
         :when (and tuple (in-product? slots tuple))
         :let  [sxr (p/get-sentex (:records kb) h)]
-        :when (and sxr (jtms/in? (:tms kb) h))]
+        :when (and sxr (jtms/in? (reasoning/tms kb) h))]
     [tuple h sxr]))
 
 (def ^:dynamic *retrieval*
@@ -511,7 +512,7 @@
        (map (fn [[tuple h sxr]]
               {:polarity polarity :handle h :sentence (:sentence sxr)
                :context (:context sxr) :tuple tuple
-               :class (or (jtms/defeat-class (:tms kb) h) :default)}))
+               :class (or (jtms/defeat-class (reasoning/tms kb) h) :default)}))
        (group-by :tuple)
        (map (fn [[_ cs]]
               ;; the strongest claim on a tuple: key built once per claim (min in one
@@ -559,7 +560,7 @@
     (let [pred  (nm/functor goal)
           args  (vec (nm/args goal))
           poss  (positions kb pred context)
-          asym? (tax/has-prop? (:taxonomy kb) :asymmetric pred context)
+          asym? (tax/has-prop? (reasoning/taxonomy kb) :asymmetric pred context)
           ;; With no preserved position the product is the goal's own arguments alone,
           ;; so this still answers "what is believed about exactly this tuple" — which
           ;; is what the asymmetry check needs of a predicate that inherits nothing.
@@ -684,7 +685,7 @@
   (->> (res/matches-visible kb sentence context)
        (keep (fn [[h _]]
                (when-let [sxr (p/get-sentex (:records kb) h)]
-                 (when (jtms/in? (:tms kb) h)
+                 (when (jtms/in? (reasoning/tms kb) h)
                    [[(str (:context sxr))
                      (binding [*print-length* nil *print-level* nil]
                        (pr-str (:sentence sxr)))]
@@ -770,7 +771,7 @@
      (keep (fn [{:keys [rel inverse? handle]}]
              (let [[sub super] (if inverse? [w a] [a w])]
                (when-let [es (if (contains? virtual-relations rel)
-                               (some->> (tax/reach-support (:taxonomy kb) (keyword rel) sub super
+                               (some->> (tax/reach-support (reasoning/taxonomy kb) (keyword rel) sub super
                                                            (when (= 'genl rel) context))
                                         (mapv first))
                                (when-let [p (fact-path kb rel inverse? a w context)]
@@ -983,7 +984,7 @@
                          a)))
                    (range (count args)))
         base (for [[h b] (res/matches-visible kb (cons pred pat) context)
-                   :when (jtms/in? (:tms kb) h)
+                   :when (jtms/in? (reasoning/tms kb) h)
                    :let  [t (mapv (fn [i]
                                     (let [p (nth pat i)]
                                       (if (= p (probe-var i)) (get b p) p)))
@@ -992,7 +993,7 @@
                [t h])]
     (if-not (= 2 (count args))
       base
-      (let [tx   (:taxonomy kb)
+      (let [tx   (reasoning/taxonomy kb)
             syms (into #{} (filter #(tax/has-prop? tx :symmetric %))
                        (res/sub-predicates kb pred nil))]
         (if (empty? syms)
@@ -1113,9 +1114,9 @@
          ;; the mirror is applied per fanned literal on its own declaration, so a
          ;; symmetry on a sub-predicate moves every preserved super it feeds
          (= 'symmetric f)           (when (symbol? arg1)
-                                      (let [ups (tax/genls-global (:taxonomy kb) arg1)]
+                                      (let [ups (tax/genls-global (reasoning/taxonomy kb) arg1)]
                                         (into #{} (comp (filter #(ups (first %))) (map first)) decls)))
-         :else (let [preds (tax/genls-global (:taxonomy kb) f)]
+         :else (let [preds (tax/genls-global (reasoning/taxonomy kb) f)]
                  (into #{}
                        (comp (filter (fn [[p r]] (or (preds p) (preds r)))) (map first))
                        decls)))))))

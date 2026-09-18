@@ -7,7 +7,7 @@
   ## A seal
 
   `seal!` writes the KB's derived state and starts the log again: the index image
-  (`vaelii.impl.disk.index-snapshot`), the belief image (`vaelii.impl.belief-image`), then
+  (`vaelii.impl.disk.index-snapshot`), the reasoning image (`vaelii.impl.reasoning-image`), then
   `<dir>/oplog/seal.nippy`, then a new generation of the log.  It fsyncs the record store
   before it writes `seal.nippy`, so every record below the watermark is on disk once a
   seal names the watermark.  `seal.nippy` holds the
@@ -25,7 +25,7 @@
   A KB is sealed when a `:seal`-class operation returns, when its directory closes, and
   when its index drifts past `vaelii.index.snapshot-drift`: the drift is measured inside
   a write, so the seal waits until the operation returns (`oplog/request-seal!`).  A KB
-  `belief-image/refusal` names a reason for, or whose network does not cover its records,
+  `reasoning-image/refusal` names a reason for, or whose network does not cover its records,
   cannot be sealed, and its log is marked unusable instead.
 
   ## A restore
@@ -44,19 +44,21 @@
   hazards (`kb/note-hazards!`), so closing that KB writes no image of the state."
   (:require [clojure.java.io :as io]
             [taoensso.trove :as trove]
-            [vaelii.impl.belief-image :as bi]
             [vaelii.impl.disk.backend :as disk]
             [vaelii.impl.disk.files :as f]
             [vaelii.impl.disk.index-snapshot :as snapshot]
             [vaelii.impl.disk.record-store :as drs]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.oplog :as oplog]
-            [vaelii.impl.protocols :as p])
+            [vaelii.impl.protocols :as p]
+            [vaelii.impl.reasoning-image :as ri])
   (:import [vaelii.impl.disk.record_store DiskRecordStore]))
 
 (def format-version
-  "`seal.nippy`'s layout number.  A seal of any other number is not restored."
-  1)
+  "`seal.nippy`'s layout number.  A seal of any other number is not restored.  Version 2
+  names the reasoning image's fingerprint `:reasoning-fp` and reads the image from
+  `<dir>/reasoning/`."
+  2)
 
 (defn- seal-path ^String [dir] (str dir "/oplog/seal.nippy"))
 
@@ -77,27 +79,28 @@
       (not (and log dir (instance? DiskRecordStore inner)))
       {:sealed false :reason :not-applicable}
 
-      (or (bi/refusal kb) (not (bi/writable? kb)))
-      (let [why (or (bi/refusal kb) :belief-not-built)]
+      (or (ri/refusal kb) (not (ri/writable? kb)))
+      (let [why (or (ri/refusal kb) :reasoning-not-built)]
         (oplog/mark-unusable! log [:seal-refused why])
         {:sealed false :reason why})
 
       :else
-      (let [gen       (inc (long (or (:generation (read-seal dir)) -1)))
-            slot-fp   (drs/slot-fingerprint inner)
-            belief-fp (drs/belief-fingerprint inner)
-            idx       (snapshot/save! dir (:index kb) (constantly slot-fp))
-            _         (bi/write-sections! kb (io/file dir "belief") (bi/stamp kb belief-fp))
-            watermark (inc (long (p/next-id inner)))]
+      (let [gen          (inc (long (or (:generation (read-seal dir)) -1)))
+            slot-fp      (drs/slot-fingerprint inner)
+            reasoning-fp (drs/reasoning-fingerprint inner)
+            idx          (snapshot/save! dir (:index kb) (constantly slot-fp))
+            _            (ri/write-sections! kb (io/file dir ri/dir-name)
+                                             (ri/stamp kb reasoning-fp))
+            watermark    (inc (long (p/next-id inner)))]
         ;; every record below the watermark is on disk before the seal says it is
         (drs/fsync inner)
         (f/write-nippy-atomic! (seal-path dir)
-                               {:format    format-version
-                                :generation gen
-                                :watermark watermark
-                                :slot-fp   slot-fp
-                                :belief-fp belief-fp
-                                :index     (select-keys idx [:index :reason])})
+                               {:format       format-version
+                                :generation   gen
+                                :watermark    watermark
+                                :slot-fp      slot-fp
+                                :reasoning-fp reasoning-fp
+                                :index        (select-keys idx [:index :reason])})
         (oplog/rotate! log gen)
         (oplog/set-watermark! (:records kb) watermark)
         (trove/log! {:level :info :id ::sealed
@@ -114,13 +117,13 @@
 
 (defn- install-writers!
   "Make `kb`'s directory write its images only as a seal: the index writer `open-kb`
-  registered becomes `seal-or-request!`, and the belief image's writer does nothing,
+  registered becomes `seal-or-request!`, and the reasoning image's writer does nothing,
   since a seal writes both."
   [kb]
   (let [dir (:snapshot-dir kb)]
     (oplog/set-seal-fn! (:oplog kb) seal!)
     (disk/replace-index-snapshot! dir #(seal-or-request! kb))
-    (disk/register-belief-image! dir (fn [] nil))))
+    (disk/register-reasoning-image! dir (fn [] nil))))
 
 (defn attach!
   "`kb` — a `:disk-snapshot` KB whose belief and index cover its records — recording its
@@ -161,7 +164,7 @@
                         ;; the KB holds part of a replay, and the writers `open-kb`
                         ;; registered would image it stamped with the store it now holds
                         (disk/replace-index-snapshot! dir (fn [] nil))
-                        (disk/register-belief-image! dir (fn [] nil))
+                        (disk/register-reasoning-image! dir (fn [] nil))
                         (kb/note-hazards! kb {:no-belief true :no-index true}))
                       (trove/log! {:level :info :id ::declined
                                    :msg (str "operation log for " dir " not replayed: "
@@ -180,9 +183,10 @@
                 (decline [:index (:reason idx)] true)
 
                 :else
-                (let [bel (bi/install-from! kb (io/file dir "belief") (constantly (:belief-fp s)))]
-                  (if-not (= :installed (:belief bel))
-                    (decline [:belief (:reason bel)] false)
+                (let [bel (ri/install-from! kb (io/file dir ri/dir-name)
+                                            (constantly (:reasoning-fp s)))]
+                  (if-not (= :installed (:reasoning bel))
+                    (decline [:reasoning (:reason bel)] false)
                     (let [_   (kb/note-hazards! kb {:no-belief false :no-index false})
                           lkb (oplog/attach-replaying kb log (:watermark s))
                           r   (try (oplog/replay! lkb frames) nil

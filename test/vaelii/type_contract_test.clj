@@ -420,7 +420,7 @@
   "Every `:type` in the tree whose value is a symbol rather than a keyword literal, by
   hand — and what each one is, since the scan can only read the var's name.
 
-  `cancelled` is `vaelii.host.jobs`'s `::cancelled`, the namespaced keyword a cancelled
+  `cancelled` is `vaelii.browser.jobs`'s `::cancelled`, the namespaced keyword a cancelled
   `progress!` throws and the only thing that tells a cancelled job from a failed one. It
   is deliberately not in `roster`: the roster is the *plain-keyword* refusal vocabulary a
   caller discriminates on, and this one is read by the job registry beside it rather than
@@ -498,6 +498,9 @@
    :not-assertible          #{}
    :not-edn                 #{}
    :not-empty               #{}
+   ;; the daemon's unrouted-path reply and the browser's reply to `POST /op` while it
+   ;; reads a remote daemon — both wire replies, in the daemon's shape
+   :not-found               #{:error :ok}
    :not-ground              #{:context}
    :not-indexable           #{:sentence}
    :not-range-restricted    #{:antecedents :consequent :problems}
@@ -507,10 +510,13 @@
    :pattern-too-costly      #{:scope}
    :shape                   #{}
    :solver-failed           #{}
+   :still-exporting         #{}
+   :still-loading           #{}
    :torn-snapshot           #{}
    :truncated-dump          #{}
    :unauthorized            #{}
    :unknown-backend         #{:axis :kind :mismatch}
+   :unknown-command         #{:cmd :commands}
    :unknown-frame           #{}
    :unknown-handle          #{}
    :unknown-option          #{:mismatch}
@@ -631,6 +637,17 @@
    "a solver that ran and failed carries what the process gave back — `:exit`, `:err`,
     `:out`, `:argv`; one that never started carries the `:op` or the `:mode` it would have
     run. There is nothing an unstarted process could put under the first set of keys."
+
+   :still-exporting
+   "the catalog throws it with the `:key` of the entry an unload was asked for; the browser
+    answers `POST /op` with it as a wire reply, `:ok false` and prose, while an export walks
+    the active KB. The reply shape and the throw shape share the keyword and nothing else,
+    as with `:body-too-large`."
+
+   :still-loading
+   "the catalog throws it with the `:key` of the entry an export was asked for; the browser
+    answers `POST /op` with it as a wire reply while a job writes the active KB. The same
+    two shapes as `:still-exporting`."
 
    :torn-snapshot
    "the dense root table and the index snapshot tear differently, and each names the count

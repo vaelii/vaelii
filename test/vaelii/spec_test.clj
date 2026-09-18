@@ -87,7 +87,7 @@
                       (ns-publics 'vaelii.core))]
     (is (= '#{abduce add-evaluatable argue assert-many bulk-assert-facts! check clear-caches
               compare-tacticians edit-with-consequences! export! export-text! fork import!
-              kb-quality preview query-status search-tree}
+              kb-quality load-foreign! preview query-status search-tree}
            gap)
         "the opts-taking publics `public-syms` does not reach — named in its docstring")))
 

@@ -12,6 +12,7 @@
             [vaelii.impl.protocols :as p]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.types.prover :as prover-types]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -543,7 +544,7 @@
   (tu/with-terms [parentOf Tom Bob CxStory]
     (v/assert kb (list parentOf Tom Bob) CxStory)
     (let [invoked (atom false)
-          costly  (reify provers/Prover
+          costly  (reify prover-types/Prover
                     (applicable?  [_ _ _ _] true)
                     (est-bindings [_ _ _ _] 1)
                     (cost         [_ _ _ _] :search)   ; last (most expensive) tier

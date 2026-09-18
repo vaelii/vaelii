@@ -297,12 +297,13 @@
    "TEST_MATRIX_OUT"   "scripts/test-matrix.sh, its log directory"
    "MATRIX_JOBS"       "scripts/test-matrix.sh, how many configurations run at once"
    "MATRIX_JVM_OPTS"   "scripts/test-matrix.sh, extra JVM_OPTS for every configuration"
+   "TEST_MATRIX_SEED"  "scripts/test-matrix.sh, the seed its launch order is shuffled with"
    "MATRIX_HEARTBEAT"  "scripts/test-matrix.sh, seconds between its progress lines"})
 
 (deftest an-unpinned-switch-is-read-by-the-script-it-names
   ;; The hatch is a hand-kept list that the ghost-row check reads as *real* — `real` is
   ;; the scanned names plus these keys — so adding an entry is all it takes to document a
-  ;; switch nothing reads.  It doubled this release, from four to nine.  What keeps it
+  ;; switch nothing reads.  Ten entries stand here today.  What keeps it
   ;; honest is that each reason already names the file that reads the switch, which makes
   ;; the claim checkable without a regex for every `${CAPS}` in every script.
   (doseq [[nm why] (sort-by key unpinned)]

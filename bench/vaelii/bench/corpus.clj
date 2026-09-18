@@ -25,14 +25,15 @@
             [vaelii.core :as v]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.protocols :as p]
-            [vaelii.impl.rete :as rete]))
+            [vaelii.impl.rete :as rete]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 ;; antecedent-count distribution from the real audit (bench-survey audit): mode 3–4.
 (def ^:private ante-dist
   (vec (mapcat (fn [[k w]] (repeat w k)) [[1 6] [2 16] [3 38] [4 23] [5 12] [6 3] [7 1]])))
 
 (defn- kb-ram [kb]
-  (postings/retained [@(:state (:records kb)) @(:state (:backend (:index kb))) (:tms kb)]))
+  (postings/retained [@(:state (:records kb)) @(:state (:backend (:index kb))) (reasoning/tms kb)]))
 
 (defn- ms [t0] (/ (- (System/nanoTime) t0) 1e6))
 

@@ -308,23 +308,32 @@
   ;; tested apart from this one; this drives the assembled chain with usage maps rather than a
   ;; real collection, which is what the body was lifted out of the listener to allow.
   (let [on-collection @#'caches/on-collection
+        guard   @#'caches/guard
         old-gen (fn [used] (doto (java.util.HashMap.)
                              (.put "G1 Old Gen"
-                                   (java.lang.management.MemoryUsage. 0 used 1000 1000))))]
-    (caches/install-memory-guard! {:kbs (fn [] [kb])})
-    (is (= 1.0 (:pressure (v/cache-profile))))
-    (on-collection (old-gen 900))
-    (is (= 0.5 (:pressure (v/cache-profile))) "a reading over the high mark shrinks")
-    (on-collection (old-gen 900))
-    (is (= 0.25 (:pressure (v/cache-profile))) "and again while already shrunk")
-    (on-collection (old-gen 700))
-    (is (= 0.25 (:pressure (v/cache-profile))) "a reading between the marks holds")
-    (on-collection (old-gen 100))
-    (is (< 0.25 (:pressure (v/cache-profile))) "a reading under the low mark grows")
-    (testing "a collection that names no old-gen pool leaves pressure where it is"
-      (let [p (:pressure (v/cache-profile))]
-        (on-collection (java.util.HashMap.))
-        (is (= p (:pressure (v/cache-profile))))))))
+                                   (java.lang.management.MemoryUsage. 0 used 1000 1000))))
+        kbs0    (:kbs @guard)]
+    ;; The :kbs thunk is set on the guard directly rather than by install-memory-guard!.  An
+    ;; installed listener runs this same on-collection on every collection the JVM makes.  A
+    ;; collection during this test reads an old generation under pressure-low, and the
+    ;; listener then grows the pressure these assertions read, one 1.5 step per collection.
+    ;; the-guard-attaches-to-the-collectors-and-detaches covers install-memory-guard!.
+    (swap! guard assoc :kbs (fn [] [kb]))
+    (try
+      (is (= 1.0 (:pressure (v/cache-profile))))
+      (on-collection (old-gen 900))
+      (is (= 0.5 (:pressure (v/cache-profile))) "a reading over the high mark shrinks")
+      (on-collection (old-gen 900))
+      (is (= 0.25 (:pressure (v/cache-profile))) "and again while already shrunk")
+      (on-collection (old-gen 700))
+      (is (= 0.25 (:pressure (v/cache-profile))) "a reading between the marks holds")
+      (on-collection (old-gen 100))
+      (is (< 0.25 (:pressure (v/cache-profile))) "a reading under the low mark grows")
+      (testing "a collection that names no old-gen pool leaves pressure where it is"
+        (let [p (:pressure (v/cache-profile))]
+          (on-collection (java.util.HashMap.))
+          (is (= p (:pressure (v/cache-profile))))))
+      (finally (swap! guard assoc :kbs kbs0)))))
 
 (deftest the-guard-attaches-to-the-collectors-and-detaches
   (is (false? (:installed? (caches/memory-guard))) "nothing attached to start")
@@ -585,6 +594,7 @@
    "compiled-cache-limit"  :compiled-algebras
    "closure-cache-limit"   :metric-closures
    "*symbol-pool-limit*"   :symbol-pool
+   "generation-limit"      :symbol-pool
    "*scoped-memo-budget*"  :taxonomy-scoped-closures
    "parse-memo-limit"      :source-parses})
 

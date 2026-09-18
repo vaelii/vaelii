@@ -35,6 +35,45 @@
 
 (def ^:private C 'CxUniverse)
 
+;; ---- the independent second statement of the algebra --------------------
+
+(def ^:private by-axes
+  "Each base direction as the inequalities over two places that *define* it, a place being
+  `[ew ns]` — the east-west coordinate growing eastward, the north-south one growing
+  northward.  This is the independent second statement of the algebra: everything below is
+  derived from here and compared against what `orientation/compose` computes from the
+  projections, so the two can only agree by both being right."
+  {:n  (fn [aew ans bew bns] (and (= aew bew) (> ans bns)))
+   :s  (fn [aew ans bew bns] (and (= aew bew) (< ans bns)))
+   :e  (fn [aew ans bew bns] (and (> aew bew) (= ans bns)))
+   :w  (fn [aew ans bew bns] (and (< aew bew) (= ans bns)))
+   :ne (fn [aew ans bew bns] (and (> aew bew) (> ans bns)))
+   :nw (fn [aew ans bew bns] (and (< aew bew) (> ans bns)))
+   :se (fn [aew ans bew bns] (and (> aew bew) (< ans bns)))
+   :sw (fn [aew ans bew bns] (and (< aew bew) (< ans bns)))
+   :eq (fn [aew ans bew bns] (and (= aew bew) (= ans bns)))})
+
+(def ^:private places
+  "Every place on a 3×3 grid.  Three values per axis realize any layout of three things: a
+  layout is a weak ordering of three coordinates on each axis independently, so it needs at
+  most three distinct values per axis, and the two axes are free of each other."
+  (vec (for [ew (range 3) ns (range 3)] [ew ns])))
+
+(defn- holding [[aew ans] [bew bns]]
+  (into #{} (keep (fn [[dir pred]] (when (pred aew ans bew bns) dir))) by-axes))
+
+(defn- direction-of [a b] (first (holding a b)))
+
+(def ^:private derived-composition
+  "The composition table computed from `by-axes`: lay out three places every way they can
+  sit on the grid, read off the three directions, and record that r1 ∘ r2 admits r3."
+  (delay
+    (reduce (fn [tbl [a b c]]
+              (update-in tbl [(direction-of a b) (direction-of b c)]
+                         (fnil conj #{}) (direction-of a c)))
+            {}
+            (for [a places b places c places] [a b c]))))
+
 ;; ---- the algebra, without a KB ------------------------------------------
 
 (deftest the-nine-directions-are-exactly-the-nine-axis-pairs
@@ -86,6 +125,23 @@
     (doseq [d dir/all-directions]
       (is (= #{d} (dir/compose #{:eq} #{d})))
       (is (= #{d} (dir/compose #{d} #{:eq}))))))
+
+(deftest the-composition-table-matches-the-axis-definitions
+  ;; The guard on the computation.  A wrong projection entry — one that still covers all
+  ;; nine [x y] pairs, so the bijection check passes and no crash follows — is a wrong
+  ;; entailment reported with full confidence about a pair nobody asserted anything for.
+  ;; The bijection and totality tests above cannot catch a *permutation* of the projection;
+  ;; only comparing every entry against the axis definitions can, which is what `relative`
+  ;; does for its own computed table and this does for the cardinal one.
+  (let [derived @derived-composition]
+    (testing "every pair of directions composes to the same set the definitions give"
+      (doseq [r1 dir/all-directions r2 dir/all-directions]
+        (is (= (get-in derived [r1 r2]) (dir/compose #{r1} #{r2}))
+            (str r1 " ∘ " r2))))
+    (testing "and the derivation reaches all 81 pairs"
+      (is (= dir/all-directions (set (keys derived))))
+      (doseq [[_ row] derived]
+        (is (= dir/all-directions (set (keys row))))))))
 
 (deftest composition-of-sets-is-the-union-over-their-members
   (is (= (set/union (dir/compose #{:n} #{:ne}) (dir/compose #{:e} #{:ne}))

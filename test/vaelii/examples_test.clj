@@ -10,8 +10,8 @@
   states a verdict the KB no longer gives."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
+            [vaelii.browser.examples :as ex]
             [vaelii.core :as v]
-            [vaelii.host.examples :as ex]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded tu/load-starter!))

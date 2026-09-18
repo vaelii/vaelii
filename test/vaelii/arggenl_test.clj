@@ -16,6 +16,7 @@
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -206,11 +207,11 @@
   ;; goes when its sentex does — the same discipline every other declaration keeps.
   (let [rel (tu/tmp-pred) a (tu/tmp-ind) b (tu/tmp-ind)]
     (let [h (v/assert kb (list 'arity rel 2) 'CxUniverse)]
-      (is (= 2 (tax/declared-arity (:taxonomy kb) rel)) "cached on assert")
+      (is (= 2 (tax/declared-arity (reasoning/taxonomy kb) rel)) "cached on assert")
       (is (= :arity (ex-type #(v/assert kb (list rel a) 'CxUniverse))))
       (testing "and retracting the declaration takes the constraint with it"
         (v/retract! kb h)
-        (is (nil? (tax/declared-arity (:taxonomy kb) rel)))
+        (is (nil? (tax/declared-arity (reasoning/taxonomy kb) rel)))
         (is (v/assert kb (list rel a) 'CxUniverse))
         (is (v/assert kb (list rel a b) 'CxUniverse)
             "the arity the declaration named is admitted too — with nothing declared
@@ -220,7 +221,7 @@
             sx (v/sentex kb h2)
             p2 (second (:sentence sx))]
         (v/recover kb)
-        (is (= 3 (tax/declared-arity (:taxonomy kb) p2))
+        (is (= 3 (tax/declared-arity (reasoning/taxonomy kb) p2))
             "recover replays the declaration into the cache")))))
 
 (tu/deftest-kb a-rebuild-clears-the-arity-cache-before-replaying-it
@@ -234,10 +235,10 @@
   (tu/with-cleared-kb [kb2 tu/fresh]
     (let [rel (tu/tmp-pred) a (tu/tmp-ind)]
       (v/assert kb2 (list 'arity rel 2) 'CxUniverse)
-      (is (= 2 (tax/declared-arity (:taxonomy kb2) rel)))
+      (is (= 2 (tax/declared-arity (reasoning/taxonomy kb2) rel)))
       (v/clear! kb2)
       (v/recover kb2)
-      (is (nil? (tax/declared-arity (:taxonomy kb2) rel))
+      (is (nil? (tax/declared-arity (reasoning/taxonomy kb2) rel))
           "the rebuild re-derives from the records, it does not top up")
       (is (v/assert kb2 (list rel a) 'CxUniverse)
           "and the constraint went with the declaration"))))
@@ -254,7 +255,7 @@
       (v/assert kb (list 'genlCx CxBoth CxRight) 'CxUniverse)
       (v/assert kb (list 'arity rel 2) CxLeft)
       (v/assert kb (list 'arity rel 3) CxRight)
-      (let [tax (:taxonomy kb)]
+      (let [tax (reasoning/taxonomy kb)]
         (is (= 2 (tax/declared-arity tax rel CxLeft)) "sees only the binary one")
         (is (= 3 (tax/declared-arity tax rel CxRight)) "sees only the ternary one")
         (is (nil? (tax/declared-arity tax rel CxBoth))
@@ -274,13 +275,13 @@
   (let [rel (tu/tmp-pred) a (tu/tmp-ind) b (tu/tmp-ind)]
     (v/assert kb (list 'arity rel 2) 'CxUniverse)
     (v/assert kb (list 'arity rel 3) 'CxUniverse)
-    (is (nil? (tax/declared-arity (:taxonomy kb) rel))
+    (is (nil? (tax/declared-arity (reasoning/taxonomy kb) rel))
         "unsettled, which is not the same as undeclared but constrains the same")
     (is (v/assert kb (list rel a b) 'CxUniverse))
     (is (v/assert kb (list rel a b (tu/tmp-ind)) 'CxUniverse))
     (testing "and dropping one of them settles it again"
       (v/retract! kb (v/handle-of kb (list 'arity rel 3) 'CxUniverse))
-      (is (= 2 (tax/declared-arity (:taxonomy kb) rel)))
+      (is (= 2 (tax/declared-arity (reasoning/taxonomy kb) rel)))
       (is (= :arity (ex-type #(v/assert kb (list rel a) 'CxUniverse)))))))
 
 (tu/deftest-kb a-variableArity-predicate-is-exempt
@@ -362,7 +363,7 @@
     (v/assert kb (list 'genlArg rel 1 root) ctx)
     ;; a reified NAT-shaped constant minted with real genl edges into CxUniverse —
     ;; the raw writer stands in for nat/mint-nat!, whose edges are exactly this
-    (tax/add-genl (:taxonomy kb) reified root 999901 'CxUniverse)
+    (tax/add-genl (reasoning/taxonomy kb) reified root 999901 'CxUniverse)
     (testing "globally in the hierarchy, invisibly from ctx: open world excuses"
       (is (v/assert kb (list rel reified (tu/tmp-type)) ctx)))
     (testing "a plain individual with no edges anywhere is still convicted"
@@ -370,7 +371,7 @@
     (testing "visible evidence reaching the wrong place still convicts"
       (v/assert kb (list 'genl kind 'thing) ctx)     ; visible, but not under root
       (is (= :arg-genl (ex-type #(v/assert kb (list rel kind (tu/tmp-type)) ctx)))))
-    (tax/del-genl! (:taxonomy kb) reified root 999901)))
+    (tax/del-genl! (reasoning/taxonomy kb) reified root 999901)))
 
 ;; ---- a literal is typed by what it is ------------------------------------
 ;; `arg` is open-world about a **symbol** — an untyped one violates nothing — and closed

@@ -412,3 +412,61 @@
       (testing "and retracting it withdraws the edge again"
         (v/retract! kb (:id (tu/sentex-matching kb (list 'subFooOf mterm yterm) 'CxUniverse)))
         (is (not (v/sees? kb km ky)))))))
+
+;; ---- the computed edge's supporters, stated below the context it is stored in ----
+;;
+;; `materialize-edge` stores the computed `genlCx` in CxUniverse and justifies it by the two
+;; `termOfUnit` sentexes, the `contextArgSubrelation` declaration and, for a dimension
+;; resolved by stored facts, the `(R a b)` evidence.  Nothing requires the declaration or
+;; the evidence to be stated where CxUniverse can see it, so the edge can rest on a
+;; supporter in a context below its own.  These two tests pin that shape, and
+;; `VAELII_AUDIT_SUPPORT` reports both justifications.
+
+(defn- supporter-contexts
+  "The contexts of every sentex a justification of handle `h` names, as a set."
+  [kb h]
+  (set (for [s (:support (v/why kb h)) b (:because s)] (:context b))))
+
+(tu/deftest-kb a-subrelation-declared-below-cxuniverse-orders-the-contexts
+  (tu/with-terms [CxData]
+    (v/assert kb (list 'genlCx CxData 'CxUniverse) 'CxUniverse)
+    (let [cxfn  (declare-datetime-dimension! kb)
+          decl  (v/assert kb (list 'contextArgSubrelation cxfn 2 'subintervalOf) CxData)
+          year  (list cxfn 'CxMonad (list 'DatetimeFn "2000"))
+          month (list cxfn 'CxMonad (list 'DatetimeFn "2000-01"))
+          ky    (:context (v/sentex kb (v/assert kb '(holiday NewYear) year)))
+          km    (:context (v/sentex kb (v/assert kb '(weather Cold) month)))
+          edge  (v/handle-of kb (list 'genlCx km ky) 'CxUniverse)]
+      (testing "the declaration stated in CxData still computes the edge, stored in CxUniverse"
+        (is (v/sees? kb km ky))
+        (is (some? edge)))
+      (testing "the edge rests on the declaration in CxData, which CxUniverse does not see"
+        (is (contains? (supporter-contexts kb edge) CxData))
+        (is (not (v/sees? kb 'CxUniverse CxData))))
+      (testing "retracting the declaration withdraws the edge"
+        (v/retract! kb decl)
+        (is (not (v/sees? kb km ky)))))))
+
+(tu/deftest-kb subrelation-evidence-stated-below-cxuniverse-orders-the-contexts
+  (tu/with-terms [CxData]
+    (v/assert kb (list 'genlCx CxData 'CxUniverse) 'CxUniverse)
+    (let [cxfn  (fresh-cxfn "Time")
+          yterm (list 'DatetimeFn "2000")
+          mterm (list 'DatetimeFn "2000-01")
+          year  (list cxfn 'CxMonad yterm)
+          month (list cxfn 'CxMonad mterm)]
+      (v/assert kb (list 'context_denoting_function cxfn) 'CxUniverse)
+      (v/assert kb '(unreifiable_function DatetimeFn) 'CxUniverse)
+      (v/assert kb (list 'contextArgSubrelation cxfn 2 'subFooOf) 'CxUniverse)
+      (let [ky   (:context (v/sentex kb (v/assert kb '(holiday NewYear) year)))
+            km   (:context (v/sentex kb (v/assert kb '(weather Cold) month)))
+            ev   (v/assert kb (list 'subFooOf mterm yterm) CxData)
+            edge (v/handle-of kb (list 'genlCx km ky) 'CxUniverse)]
+        (testing "evidence stated in CxData still computes the edge, stored in CxUniverse"
+          (is (v/sees? kb km ky))
+          (is (some? edge)))
+        (testing "the edge rests on the evidence in CxData, which CxUniverse does not see"
+          (is (contains? (supporter-contexts kb edge) CxData)))
+        (testing "retracting the evidence withdraws the edge"
+          (v/retract! kb ev)
+          (is (not (v/sees? kb km ky))))))))

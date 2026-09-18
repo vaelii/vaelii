@@ -28,6 +28,7 @@
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.strength :as strength]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.wff :as wff]))
 
 ;; ---- invariants: naming + argument type declarations --------------------
@@ -398,7 +399,7 @@
   (when (and (symbol? t) (application-term? x)
              (not (contains? nat/nat-quoting-predicates pred))
              (nat/any-result-declarations? kb))
-    (let [tax (:taxonomy kb)
+    (let [tax (reasoning/taxonomy kb)
           rs  (vec (declared kb (first x) context))]
       (when (not-any? #(tax/genl? tax % t context) rs)
         (nm/min-by-content-key identity (filterv #(tax/genl? tax % 'thing context) rs))))))
@@ -466,7 +467,7 @@
   [kb sentence context types decls]
   (let [pred (nm/functor sentence)
         as   (vec (nm/args sentence))
-        tax  (:taxonomy kb)]
+        tax  (reasoning/taxonomy kb)]
     (when (symbol? pred)
       (first
        (for [m     (in-content-order (decls 'arg))
@@ -587,7 +588,7 @@
   [kb sentence context decls]
   (let [pred (nm/functor sentence)
         as   (vec (nm/args sentence))
-        tax  (:taxonomy kb)]
+        tax  (reasoning/taxonomy kb)]
     (when (symbol? pred)
       (first
        (for [d     (in-content-order (decls 'genlArg))
@@ -642,7 +643,7 @@
   the mark is global, so a covering constraint on any predicate runs the scoped check for
   every assert, and the scoped `decls` read decides whose tuples it actually binds."
   [kb kinds]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (boolean (some #(seq (tax/props tax %)) kinds))))
 
 (defn- covering-triples
@@ -683,7 +684,7 @@
   [kb sentence context types decls]
   (let [pred (nm/functor sentence)
         as   (vec (nm/args sentence))
-        tax  (:taxonomy kb)]
+        tax  (reasoning/taxonomy kb)]
     (when (and (symbol? pred)
                (covering-declared? kb [:declares-args-isa :declares-arg-and-rest-isa]))
       (first
@@ -716,7 +717,7 @@
   [kb sentence context decls]
   (let [pred (nm/functor sentence)
         as   (vec (nm/args sentence))
-        tax  (:taxonomy kb)]
+        tax  (reasoning/taxonomy kb)]
     (when (and (symbol? pred)
                (covering-declared? kb [:declares-args-genl :declares-arg-and-rest-genl]))
       (first
@@ -770,7 +771,7 @@
   [kb sentence context _types decls]
   (let [pred (nm/functor sentence)
         as   (vec (nm/args sentence))
-        tax  (:taxonomy kb)]
+        tax  (reasoning/taxonomy kb)]
     (when (and (symbol? pred)
                (pos? (reads/stored-count-with-functor (:index kb) 'quotedArg)))
       (first
@@ -861,7 +862,7 @@
   re-derive per write.  One map read, which is why every arity question asks this one
   first and the membership spelling second."
   [kb pred context]
-  (let [n (tax/declared-arity (:taxonomy kb) pred context)]
+  (let [n (tax/declared-arity (reasoning/taxonomy kb) pred context)]
     (when (and (integer? n) (pos? n)) n)))
 
 (defn- membered-arity
@@ -961,7 +962,7 @@
   workload and `perf`'s `membership-under-depth` pin the shape so it cannot worsen
   unnoticed."
   [kb pred context types]
-  (let [tax    (:taxonomy kb)
+  (let [tax    (reasoning/taxonomy kb)
         supers (sort (disj (tax/genls tax pred context) pred))
         pairs  (into [] (keep (fn [p] (when-let [n (own-arity kb p context types)] [p n])))
                      supers)]
@@ -1185,7 +1186,7 @@
   ordinary load: the spec closure of a collection is the whole taxonomy beneath it, and
   an edge between two collections has no arity on either side to make it worth walking."
   [kb pred context types]
-  (let [tax   (:taxonomy kb)
+  (let [tax   (reasoning/taxonomy kb)
         specs (sort (disj (tax/specs tax pred context) pred))
         pairs (into [] (keep (fn [p]
                                (when-not (variable-arity? types p)
@@ -1307,7 +1308,7 @@
   incoherent — picks the same one every run."
   [kb f context]
   (or (exact-arity-classes f)
-      (let [supers (tax/genls (:taxonomy kb) f context)]
+      (let [supers (tax/genls (reasoning/taxonomy kb) f context)]
         (first (for [[t n] (sort-by key exact-arity-classes)
                      :when (contains? supers t)]
                  n)))))
@@ -1348,7 +1349,7 @@
   of the vocabulary rather than of the order the closure came back in."
   [kb sentence context types]
   (when-let [[pred n] (arity-declared-by kb sentence context)]
-    (let [tax     (:taxonomy kb)
+    (let [tax     (reasoning/taxonomy kb)
           supers  (tax/genls tax pred context)
           related (sort (disj (into supers (tax/specs tax pred context)) pred))]
       (when (and (seq related) (not (variable-arity? types pred)))
@@ -1542,7 +1543,7 @@
   [kb v]
   (let [hs (opposing-handles v)]
     (when (seq hs)
-      (reduce strength/min (map #(jtms/defeat-class (:tms kb) %) hs)))))
+      (reduce strength/min (map #(jtms/defeat-class (reasoning/tms kb) %) hs)))))
 
 (defn- with-opposing-class
   "Stamp a violation with its opposing sentexes' defeat class, so every consumer reads
@@ -1636,8 +1637,8 @@
   can force the `matches-visible` reference the two oracles compare it against."
   [kb t x context]
   (let [recs   (:records kb)
-        tms    (:tms kb)
-        tax    (:taxonomy kb)
+        tms    (reasoning/tms kb)
+        tax    (reasoning/taxonomy kb)
         target (list t x)
         up     (when-not (sx/variable? context) (tax/context-up tax context))
         vis?   (if up #(contains? up %) (constantly true))
@@ -1724,7 +1725,7 @@
             ;; one question, asked of each type the term holds: `t` and the asserting
             ;; context are fixed across the loop, and they are what most of the answer
             ;; is a function of
-            (let [disjoint? (tax/disjointness-test (:taxonomy kb) t context)]
+            (let [disjoint? (tax/disjointness-test (reasoning/taxonomy kb) t context)]
               (for [t' ts
                     :when (disjoint? t')
                     h    (membership-handles kb t' x context)]
@@ -1810,7 +1811,7 @@
   wants of two `(functional P)` sentexes in different contexts, applied one level up."
   [kb sentence context]
   (let [pred (nm/functor sentence)
-        tax  (:taxonomy kb)
+        tax  (reasoning/taxonomy kb)
         args (vec (nm/args sentence))
         k    (count args)
         ;; `(q a1 … ?fv … ak)` — the sentence's own arguments with position `n` opened
@@ -2006,7 +2007,7 @@
          args (vec (nm/args sentence))]
      (when (and (symbol? pred) (= 2 (count args))
                 (every? sx/ground-term? args))
-       (let [marked   (sort (tax/props-over (:taxonomy kb) :asymmetric pred context))
+       (let [marked   (sort (tax/props-over (reasoning/taxonomy kb) :asymmetric pred context))
              ;; read once the mark is there to convict against, so an unmarked predicate
              ;; pays no canonicalization for it
              self     (when (seq marked) (:sentence (res/kb-sentex kb sentence context)))
@@ -2026,7 +2027,7 @@
                                              {:polarity :for :handle h
                                               :sentence (:sentence sxr)
                                               :context (:context sxr)
-                                              :class (or (jtms/defeat-class (:tms kb) h)
+                                              :class (or (jtms/defeat-class (reasoning/tms kb) h)
                                                          :default)})]
                             o (concat (filter #(= :for (:polarity %))
                                               (inherit/surviving kb converse context))
@@ -2190,9 +2191,9 @@
          args (vec (nm/args sentence))]
      (when (and (symbol? pred) (= 2 (count args))
                 (every? sx/ground-term? args))
-       (let [tms    (:tms kb)
+       (let [tms    (reasoning/tms kb)
              [a b]  args
-             marked (sort (tax/props-over (:taxonomy kb) :anti-transitive pred context))
+             marked (sort (tax/props-over (reasoning/taxonomy kb) :anti-transitive pred context))
              ;; read once the mark is there to convict against, so an unmarked predicate
              ;; pays no canonicalization for it
              self   (when (seq marked) (:sentence (res/kb-sentex kb sentence context)))
@@ -2264,7 +2265,7 @@
     (when (and (symbol? pred) (= 2 (count args))
                (= (first args) (second args))
                (every? sx/ground-term? args))
-      (for [q (sort (tax/props-over (:taxonomy kb) :irreflexive pred context))]
+      (for [q (sort (tax/props-over (reasoning/taxonomy kb) :irreflexive pred context))]
         {:type :irreflexive :sentence sentence :pred q
          :message (str "irreflexive: " q " cannot hold of a thing and itself, but "
                        (pr-str sentence) " does")}))))
@@ -2299,7 +2300,7 @@
     (when (and (symbol? pred) (= 2 (count args))
                (every? sx/ground-term? args))
       (let [[a b]   args
-            triples (for [q (sort (tax/props-over (:taxonomy kb) :anti-symmetric pred context))
+            triples (for [q (sort (tax/props-over (reasoning/taxonomy kb) :anti-symmetric pred context))
                           m (res/matches-visible kb (list q b a) context)]
                       [(first m) nil q])]
         (map (fn [[h _ via]] [h via]) (first-per-slot triples))))))
@@ -2448,7 +2449,7 @@
   [kb pred via context]
   (if (= pred via)
     []
-    (mapv first (tax/reach-support (:taxonomy kb) :genl pred via context))))
+    (mapv first (tax/reach-support (reasoning/taxonomy kb) :genl pred via context))))
 
 (defn- arg-entailments
   "The entailments one argument-constraint kind draws over `sentence`'s arguments in
@@ -2466,7 +2467,7 @@
   [kb sentence context decls kind eligible? mint]
   (let [pred (nm/functor sentence)
         as   (vec (nm/args sentence))
-        tax  (:taxonomy kb)]
+        tax  (reasoning/taxonomy kb)]
     (when (and (symbol? pred) (some eligible? as))
       (for [d     (decls kind)
             :let  [dh  (nth d 0)
@@ -2503,7 +2504,7 @@
   [kb sentence context types decls]
   (let [pred (nm/functor sentence)
         as   (vec (nm/args sentence))
-        tax  (:taxonomy kb)]
+        tax  (reasoning/taxonomy kb)]
     (when (and (symbol? pred) (some checkable-term? as)
                (pos? (reads/stored-count-with-functor (:index kb) 'interArg)))
       (for [d     (decls 'interArg)
@@ -2698,7 +2699,7 @@
         {:entailments seed :refusal nil}
         (let [{:keys [mints readers]} (entailment-cascade kb sentence context types decls seed)
               added (cascade-memberships sentence mints)
-              tax   (:taxonomy kb)]
+              tax   (reasoning/taxonomy kb)]
           {:entailments seed
            :refusal
            (first
@@ -2967,14 +2968,16 @@
   (or (symbol? v) (keyword? v) (string? v) (number? v)
       (nil? v) (boolean? v) (char? v)))
 
-(def ^:private ^java.util.concurrent.ConcurrentHashMap storable-class-cache
-  "Storability memoized by class.  Every value that reaches the freeze probe is a leaf
+(defonce ^{:private true
+           :tag java.util.concurrent.ConcurrentHashMap
+           :doc "Storability memoized by class.  Every value that reaches the freeze probe is a leaf
   that is neither a scalar nor a collection, and for those it is a property of the
   *class* — a `Date` always freezes and thaws, a function never does, and nippy's own
   thaw allowlist is class-keyed — so the probe runs once per class, not once per value.
   A bulk load of dated or id-stamped facts then pays one freeze/thaw for the type, not
   one per fact.  Bounded by the distinct non-scalar leaf classes a process ever asserts,
-  which is a handful."
+  which is a handful."}
+  storable-class-cache
   (java.util.concurrent.ConcurrentHashMap.))
 
 (defn- nippy-storable?
@@ -3146,7 +3149,7 @@
   [kb]
   (let [index (:index kb)]
     (cond-> (set (reads/watched-rules index))
-      (contains? @(:rule-antecedents kb) 'different)
+      (contains? @(reasoning/rule-antecedents kb) 'different)
       (into (reads/as-stored-rules-by-antecedent index 'different)))))
 
 (defn- exception-predicates
@@ -3182,7 +3185,7 @@
                         antes (concat (exception-predicates kb handle)
                                       (rules/recheck-predicates rule-sentex)
                                       (rules/closed-extent-predicates-of
-                                       (:taxonomy kb) (sx/sentence-of rule-sentex))))}))
+                                       (reasoning/taxonomy kb) (sx/sentence-of rule-sentex))))}))
 
 (defn- stored-rule-node
   "The graph node for a stored rule handle — nil if the handle names something that
@@ -3238,7 +3241,7 @@
                                                              (rules/naf-predicates-of inner)
                                                              (rules/aggregate-predicates-of inner)
                                                              (rules/closed-extent-predicates-of
-                                                              (:taxonomy kb) inner)))]
+                                                              (reasoning/taxonomy kb) inner)))]
     ;; The fast path skips the walk when the graph has no negative edge at all — and a
     ;; `different` antecedent counts as one on both sides, so a rule that reads the
     ;; equality closure is walked, and a *stored* one keeps the walk alive for a rule
@@ -3249,7 +3252,7 @@
                      :antecedent-preds antes
                      :exception-preds  negatives
                      :consequent-pred  (rules/consequent-predicate inner)}]
-        (when-let [cycle (wff/negation-cycle (:taxonomy kb)
+        (when-let [cycle (wff/negation-cycle (reasoning/taxonomy kb)
                                              (stratification-concluders kb pending)
                                              pending)]
           (throw (ex-info (str "not stratified: " (pr-str inner) " would close a cycle"
@@ -3356,18 +3359,12 @@
 
 (defn- binding-literals
   "The literals of rule `inner` that **bind** its variables: every positive antecedent,
-  plus the consequent — with an `(ist Ctx S)` consequent replaced by the `S` it places,
-  since that is the sentence the conclusion is stored as and so the one whose argument
-  positions the conclusion has to satisfy."
+  plus the consequent."
   [inner]
-  (let [c (rules/consequent inner)
-        c (if (and (sequential? c) (= sx/ist-functor (first c)) (= 3 (count c)))
-            (nth c 2)
-            c)]
-    (conj (into []
-                (remove #(or (sx/negation? %) (sx/unknown? %) (sx/there-exists? %)))
-                (rules/antecedents inner))
-          c)))
+  (conj (into []
+              (remove #(or (sx/negation? %) (sx/unknown? %) (sx/there-exists? %)))
+              (rules/antecedents inner))
+        (rules/consequent inner)))
 
 (defn- literal-variable-constraints
   "The memberships one literal demands of the variables sitting in its arguments, as
@@ -3456,7 +3453,7 @@
   name order and each one's constraints in literal-then-content order, so a rule
   several of whose variables clash is refused for the same one every time."
   [kb inner context]
-  (let [taxo   (:taxonomy kb)
+  (let [taxo   (reasoning/taxonomy kb)
         by-var (variable-constraints kb (binding-literals inner) context)]
     (first
      ;; `name-key`, not `str`: a rule variable is a symbol, and saying so is what keeps
@@ -3707,9 +3704,7 @@
     (sx/check-naf-closed (rules/antecedents inner) (rules/consequent inner) nil)
     ;; A rule the index cannot key on, refused before it is stored — except when it is
     ;; `:inert`, which runs in neither engine and so promises nothing the index has to
-    ;; answer for.  `CxCore`'s `(implies (?pred . ?args) (ist CxUniverse (?pred
-    ;; . ?args)))` is that case: the decontextualized-predicate lift is implemented in
-    ;; code, and the rule states it for a reader.
+    ;; answer for.
     (when-not (= :inert direction)
       (rules/check-indexable-functors inner))
     (nm/check! (:naming kb) inner context)
@@ -3772,7 +3767,7 @@
                                                                        new-exc-preds))
                          :consequent-pred (rules/consequent-key (:consequent rsx)))]
       (when (seq (:exception-preds pending))
-        (when-let [cycle (wff/negation-cycle (:taxonomy kb)
+        (when-let [cycle (wff/negation-cycle (reasoning/taxonomy kb)
                                              (stratification-concluders kb pending)
                                              pending)]
           (throw (ex-info (str "not stratified: the exception on rule#" rule-handle
@@ -3825,7 +3820,7 @@
                                                    :consequent-pred
                                                    (rules/consequent-key (:consequent rsx)))]
                                 (when-let [c (wff/negation-cycle
-                                              (:taxonomy kb)
+                                              (reasoning/taxonomy kb)
                                               (stratification-concluders kb pending)
                                               pending)]
                                   [pending c]))))
@@ -3866,7 +3861,7 @@
       (let [starts (negative-edge-rules kb)]
         (when (seq starts)
           (let [[_ a b]    sentence
-                probe      (tax/detached-copy (:taxonomy kb))
+                probe      (tax/detached-copy (reasoning/taxonomy kb))
                 _          (if (= f 'genl)
                              (tax/add-genl probe a b ::probe)
                              (tax/add-genlCx probe a b ::probe))

@@ -25,6 +25,7 @@
             [vaelii.impl.kb :as kb]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.settle :as settle]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (def ^:private ctx 'CxRevivedDatum)
@@ -61,15 +62,15 @@
             ;; ordered on the handle rather than on arrival would filter the partner out
             ;; from under it (`witness_order_test`)
             (let [h (kb/find-sentex-handle kb (list ra X Y) ctx)]
-              (is (= 1 (count (jtms/supports (:tms kb) h))))
+              (is (= 1 (count (jtms/supports (reasoning/tms kb) h))))
               (is (= #{[(list pa X Z) ctx] [(list qa Z Y) ctx]}
                      (into #{}
-                           (comp (map #(jtms/justification (:tms kb) %))
+                           (comp (map #(jtms/justification (reasoning/tms kb) %))
                                  (mapcat :antecedents)
                                  (keep #(p/get-sentex (:records kb) %))
                                  (remove :antecedent)      ; the rule handle is in there too
                                  (map (juxt :sentence :context)))
-                           (jtms/supports (:tms kb) h)))))))))))
+                           (jtms/supports (reasoning/tms kb) h)))))))))))
 
 (deftest the-partner-arriving-last-reaches-the-same-belief
   (testing "the order that never needed a revival is the oracle"

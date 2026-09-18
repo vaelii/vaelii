@@ -31,7 +31,6 @@
   business and orthogonal — this is what makes the *composition* safe whatever the base
   is (memory, disk, or a later SQL store)."
   (:require [vaelii.impl.capabilities :as cap]
-            [vaelii.impl.kv :as kv]
             [vaelii.impl.protocols :as p]))
 
 (defn- refuse [op]
@@ -43,13 +42,13 @@
 ;; ---- the index half --------------------------------------------------------
 
 (defrecord FrozenKv [base]
-  kv/KvBackend
-  (kv-get       [_ k]   (kv/kv-get base k))
-  (kv-members   [_ k]   (kv/kv-members base k))
-  (kv-member?   [_ k m] (kv/kv-member? base k m))
-  (kv-count     [_ k]   (kv/kv-count base k))
-  (kv-intersect [_ ks]  (kv/kv-intersect base ks))
-  (kv-entries   [_]     (kv/kv-entries base))
+  p/KvBackend
+  (kv-get       [_ k]   (p/kv-get base k))
+  (kv-members   [_ k]   (p/kv-members base k))
+  (kv-member?   [_ k m] (p/kv-member? base k m))
+  (kv-count     [_ k]   (p/kv-count base k))
+  (kv-intersect [_ ks]  (p/kv-intersect base ks))
+  (kv-entries   [_]     (p/kv-entries base))
 
   (kv-put             [_ _ _] (refuse "kv-put"))
   (kv-delete          [_ _]   (refuse "kv-delete"))

@@ -433,7 +433,7 @@ docstring. What is on it:
 | the forward join and the trigger keys (`rules/trigger-keys`, `chain`, `inherit/moved-predicates`, `vantage`) | a firing is placed in a context the join decides, so the candidate fan cannot be scoped by one — the narrowing happens at placement |
 | the exception re-check triggers (`special`) | a trigger over-approximates in the direction the answer is: a declaration this edge cannot see still qualifies a rule in some context that can, and a missed trigger is a wrong belief where a spare one is a query |
 | settle's candidate discovery | an over-approximated candidate merely checks and yields nothing; the arbitration that follows is scoped |
-| `resolution`'s exception index and `hidden-fn` | the visibility filter cannot be scoped by the filter it is itself derived from |
+| `resolution`'s exception index, `except-hidden-fn` and `withdrawal` | the visibility filter cannot be scoped by the filter it is itself derived from |
 | `quality/taxonomy-coverage` | a report on the whole taxonomy has no vantage to read from |
 | `quality/clash-partners` | a rule pair is decided from a common descendant of the two rules' contexts, a vantage belonging to neither, so the candidate fan cannot be scoped by either |
 
@@ -1094,7 +1094,7 @@ maintained by `integrate-sentex`:
 
   `chain/join-antecedent` unions the walk's answers with the matcher's, so a rule whose
   antecedent is `(causes ?a ?c)` fires across two stored hops and not only across one —
-  and `TransitivePredicateProver` is a `provers/SupportingProver`, so each answer carries
+  and `TransitivePredicateProver` is a `prover-types/SupportingProver`, so each answer carries
   the handles of one chain of edges (a breadth-first pass with parent pointers, so a
   shortest one) and the firing rests on exactly those. Retracting a hop of the chain
   withdraws the conclusion by the ordinary relabel; retracting an edge the chain never

@@ -71,7 +71,10 @@
   (:require [clojure.set :as set]
             [taoensso.trove :as trove]
             [vaelii.impl.profile :as prof]
-            [vaelii.impl.protocols :as p]
+            [vaelii.impl.protocols :as p
+             :refer [ArgColumns arg-agnostic-count arg-agnostic-members
+                     arg-scoped-intersect kv-batch kv-clear! kv-count kv-entries kv-get
+                     kv-intersect kv-load kv-member? kv-members unknown-op!]]
             [vaelii.impl.sentex :as sx]))
 
 (def index-layout-version
@@ -92,64 +95,6 @@
   the `[:argument-slot pos term]` roster that keeps the predicate-agnostic reads
   answerable."
   2)
-
-(defprotocol KvBackend
-  "The key-value operations `KvIndexStore` bottoms out on.  Keys are structured
-  vectors; set members are bare values.  Each adapter maps those onto its store."
-  ;; scalars / counters
-  (kv-get  [b k]   "The value at `k`, or nil.")
-  (kv-put  [b k v] "Set `k` to `v`.")
-  (kv-delete  [b k]   "Delete `k`.")
-  (kv-increment [b k]   "Increment the counter at `k`; return the new value.")
-  ;; **Clamped at zero**, and the counters are why.  Every counter key this index writes
-  ;; is a *cardinality* — how many sentexes live under a trie prefix — and a cardinality
-  ;; is not negative.  `plan/prefix-estimate` divides its selectivity by these, and a
-  ;; negative one there is not a wrong estimate but a meaningless one; `unindex-present!`
-  ;; reads the reply to decide which nodes died, and `<= 0` is what it asks, so the floor
-  ;; changes no decision on the ordinary path.  It is free: the fold has the new value in
-  ;; hand either way.
-  ;;
-  ;; A backend that answers 0 to a decrement of an absent key is therefore telling the
-  ;; truth rather than rounding: the key holds no sentexes, and it held none before.
-  (kv-decrement [b k]   "Decrement the counter at `k`, floored at 0; return the new value.")
-  ;; sets
-  (kv-add-to-set     [b k member] "Add `member` to the set at `k`.")
-  (kv-remove-from-set     [b k member] "Remove `member` from the set at `k` (dropping the key when it empties).")
-  (kv-members [b k]        "The members of the set at `k`, as a set (empty when absent).")
-  (kv-member? [b k member] "Is `member` in the set at `k`? — answered without building the set.")
-  (kv-count    [b k]        "The cardinality of the set at `k` (0 when absent).")
-  ;; set intersection — one operation over N keys
-  (kv-intersect [b ks] "The intersection of the sets at `ks`, as a set.")
-  ;; batch — a sequence of write ops applied as one unit; returns one reply per op
-  (kv-batch [b ops] "Apply the write ops `[op key & args]` as one unit; return the replies in order.")
-  ;; the portable projection, both ways.  `kv-entries` is the only way to ask a backend
-  ;; for everything it holds; `kv-load` puts an entry back **in the backend's own
-  ;; representation**, which a bare `kv-put` cannot do — a backend that packs handle sets
-  ;; into int postings would take a plain set from `kv-put` and then fail the next
-  ;; `kv-add-to-set` against it.
-  (kv-entries [b]         "Every entry as a lazy `[key value]` seq; set values as Clojure sets, counters as longs.")
-  (kv-load    [b entries] "Install `[key value]` entries into an empty backend, in this backend's representation.")
-  ;; wholesale wipe (the whole index)
-  (kv-clear! [b] "Remove every entry."))
-
-(defn unknown-op!
-  "Refuse a write op no adapter recognizes.  **One throw for every one of them**, because
-  which fold a write went through is not something the op's readability depends on: the
-  persistent `apply-op` and the transient twin a bulk load takes (`vaelii.impl.memory`),
-  the dense backends' own `kv-batch` (`vaelii.impl.dense-kv`, `vaelii.impl.dense-roots`)
-  and the fork decorator's (`vaelii.impl.overlay.kv`) all bottom out here.  So a caller
-  discriminating on `:type` reads `:unknown-frame` whatever backend it reached, which is
-  the shape `kv_backend_test`'s adapter contract holds every one of them to.
-
-  `:unknown-frame` and not `case`'s bare `IllegalArgumentException`, because on the disk
-  side it is not a programming error at all — it is a log written by some other build,
-  and a build that cannot read a log must be able to say so by name rather than delete
-  it."
-  [op]
-  (throw (ex-info (str "unknown index write op " (pr-str op) " — a batch op is :put,"
-                       " :delete, :increment, :decrement, :add-to-set or"
-                       " :remove-from-set")
-                  {:type :unknown-frame :op op})))
 
 (defn apply-op
   "Apply one `kv-batch` write op to map `m`, returning `[m' reply]`.  Only
@@ -228,36 +173,6 @@
 ;; family, because its members are terms rather than handles: a backend that packs the
 ;; handle families into int postings routes `[:term-roster]` to its ordinary set storage.
 (def ^:private roster-key [:term-roster])
-
-;; ---- the argument columns -------------------------------------------------
-;; The predicate-scoped argument-root family is the one family whose key is a four-element
-;; VECTOR — `[:argument-root pred pos term]` — so a probe through a flat key→set map pays
-;; `APersistentVector.doEquiv` per read and conses that vector at the call site.  The
-;; family is also *hierarchical*: `pos → term → pred → handles`, and the reads a settle
-;; leans on ask for a subtree of it — a scoped bucket at one leaf, the predicate-agnostic
-;; UNION at a `(pos, term)` node, or that node's cardinality (`could-clash?` /
-;; `pairable?`).  `ArgColumns` names those reads directly so a backend that stores the
-;; family as a counted trie answers them as node reads: no consed vector, no `doEquiv`, a
-;; count read off a node, and the agnostic union handed back by reference instead of
-;; rebuilt per call.
-;;
-;; Every `KvBackend` gets the `Object` default below, which reconstructs the vector keys
-;; and folds the generic set ops — so a backend that has not specialized the family
-;; answers exactly what a flat `key → set` map answers.  Only the in-memory backend
-;; (`vaelii.impl.memory`) overrides it with the trie; the columnar, disk and overlay
-;; backends ride the default.
-(defprotocol ArgColumns
-  "Descent reads over the predicate-scoped argument-root family (`pos → term → pred`)."
-  (arg-scoped-members [b pred pos term]
-    "Handles at `[:argument-root pred pos term]` — one scoped leaf.")
-  (arg-scoped-intersect [b pred pos-terms]
-    "Intersection of the scoped leaves over `pos-terms` (a seq/map of `[pos term]`) — the
-    multi-column narrowing; a single column is that leaf handed back directly.")
-  (arg-agnostic-members [b pos term]
-    "Union of the handles at `(pos, term)` across every predicate — the predicate-agnostic
-    read, over the slot roster in the default and off a maintained node union in the trie.")
-  (arg-agnostic-count [b pos term]
-    "Cardinality of that union — a node read where the family is a counted trie."))
 
 (extend-protocol ArgColumns
   Object

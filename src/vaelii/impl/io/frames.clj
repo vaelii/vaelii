@@ -14,7 +14,7 @@
 
   **Why it is its own namespace and not `export`'s private helper.**  Three callers write
   and read this format — `vaelii.impl.io.export` (the dump), `vaelii.impl.io.import` (the
-  reader) and `vaelii.impl.io.snapshot` (the derived-state image) — and the snapshot sink
+  reader) and `vaelii.impl.io.snapshot` (the index image) — and the snapshot sink
   is meant to be *a thin adapter over this framing, not a second copy of it*.  A second
   copy is exactly the drift a shared projection was created to avoid one layer up: two
   writers that agree today and diverge on the next compression tweak.  So the framing lives
@@ -230,7 +230,9 @@
 ;; references: an entry holds nothing alive, and both `framed` and `close-frames!` sweep
 ;; the cleared ones, so a reader nobody closes explicitly costs one dead entry until the
 ;; next call and nothing after it.  The queue holds one entry per *open* reader.
-(def ^:private ^java.util.concurrent.ConcurrentLinkedQueue open-readers
+(defonce ^{:private true
+           :tag java.util.concurrent.ConcurrentLinkedQueue}
+  open-readers
   (java.util.concurrent.ConcurrentLinkedQueue.))
 
 (defn- sweep-readers!

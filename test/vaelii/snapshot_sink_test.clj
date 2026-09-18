@@ -24,6 +24,7 @@
             [vaelii.impl.kv :as kv]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.rules :as vr]
+            [vaelii.impl.types.snapshot :as snapshot-types]
             [vaelii.test-util :as tu])
   (:import (java.io File)
            (java.nio.file Files)
@@ -167,7 +168,7 @@
           (testing "and so is the file image's — one format, read back the same way"
             (snap/save-index! (snap/file-sink (.getPath (File. dir "image")) {:compression :none})
                               (:index kb) stamp)
-            (is (= proj (vec (snap/read-section
+            (is (= proj (vec (snapshot-types/read-section
                               (snap/file-source (.getPath (File. dir "image")))
                               snap/index-section)))))))
       (finally (rm-rf! dir)))))

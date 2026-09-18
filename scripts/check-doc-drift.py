@@ -186,7 +186,7 @@ ALIASES = {
     "settle": "vaelii.impl.settle", "solve": "vaelii.impl.solve",
     "special": "vaelii.impl.special", "starter": "vaelii.host.starter",
     "strength": "vaelii.impl.strength", "tax": "vaelii.impl.taxonomy",
-    "taxonomy": "vaelii.impl.taxonomy", "web": "vaelii.host.web",
+    "taxonomy": "vaelii.impl.taxonomy", "web": "vaelii.browser.web",
     "wff": "vaelii.impl.wff",
 }
 
@@ -793,9 +793,10 @@ for path in repo_text_files():
 #     (RoaringBitmap, fastutil), the clingo bridge (JNA, libclingo), the
 #     embedded-SQLite and Postgres record stores (the Apache-2.0 `com.vaelii/sqlite`
 #     and `com.vaelii/postgres` siblings the SSPL engine does not depend on), the
-#     sampling profiler, and ring-devel's
-#     `wrap-reload` for the hot-reload dev server — the last two shipping in the
-#     `:repl`/`:dev` profiles and therefore absent from a served process by design.  A
+#     sampling profiler, and tools.namespace's dependency graph for the hot-reload dev
+#     server (`vaelii.browser.reload`, which resolves it through a computed symbol) —
+#     the last two shipping in the `:repl`/`:dev` profiles and therefore absent from a
+#     served process by design.  A
 #     require of one of those is not a layering cut this repo could straighten out:
 #     it is a namespace that is not on the classpath, so the require would fail the
 #     load rather than defer it.
@@ -815,8 +816,7 @@ E8_OK_TARGETS = {"vaelii.impl.dense-jtms/create-dense-tms",
                  "vaelii.impl.asp.clingo/solve",
                  "vaelii.impl.asp.clingo/classify-both",
                  "vaelii.impl.asp.clingo/available?",
-                 "clj-async-profiler.core/serve-ui",
-                 "ring.middleware.reload/wrap-reload"}
+                 "clj-async-profiler.core/serve-ui"}
 E8_LITERAL = re.compile(r"\(requiring-resolve\s+'([^\s()]+)")
 
 for path in clj_files():
@@ -1288,7 +1288,21 @@ E17_ROSTER = {
     # The visibility filter cannot be scoped by the filter it derives — asking
     # `context-up` here would make except evaluation recursive on itself.
     ("src/vaelii/impl/resolution.clj", "visible-exception-index"),
-    ("src/vaelii/impl/resolution.clj", "hidden-fn"),
+    ("src/vaelii/impl/resolution.clj", "except-hidden-fn"),
+    # The per-reader withdrawal reads the same raw ancestor set for the same reason: it
+    # takes the except targets and the scoped defeats a reader sees, and the scoped
+    # `context-up` is itself filtered by what the except targets hide.
+    ("src/vaelii/impl/resolution.clj", "withdrawal*"),
+    # The two diagnostics that report that withdrawal read the same raw ancestor set as
+    # `withdrawal*`: a scoped read would name no vantage for a handle belief withdraws
+    # through the unscoped one, so `belief-status` would answer `:withdrawn? true` with an
+    # empty `:scoped-vantages` and `why-not` an empty `:withdrawn-by`.
+    # The reader's own ancestor set again, for the same reason: it names the vantages
+    # whose verdicts `withdrawal*` applies, and the two must read one relation or a
+    # reader would take a verdict the withdrawal does not.
+    ("src/vaelii/impl/resolution.clj", "undecided-pairs"),
+    ("src/vaelii/impl/resolution.clj", "scoped-vantages"),
+    ("src/vaelii/impl/resolution.clj", "scoped-defeats-seen"),
     # A report on the whole taxonomy, which has no vantage to read from.
     ("src/vaelii/impl/quality.clj", "taxonomy-coverage"),
     # The clash reading's candidate fan. A rule pair is decided from a common descendant

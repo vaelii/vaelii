@@ -65,6 +65,7 @@
             [clojure.test.check.properties :as prop]
             [vaelii.core :as v]
             [vaelii.impl.jtms :as jtms]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 ;; Flush the scratch space after this namespace's generated runs, so the KB content
@@ -159,7 +160,7 @@
   rather than a query, because the claim is about labels and a retrieval would filter them
   again by context."
   [kb]
-  (set (jtms/in-datums (:tms kb))))
+  (set (jtms/in-datums (reasoning/tms kb))))
 
 (defn- run-ops
   "Apply `ops` (op fns) to a freshly cleared KB and return both readings the property

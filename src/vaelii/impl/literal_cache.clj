@@ -47,7 +47,8 @@
   unmoved stamp."
   (:require [vaelii.impl.caches :as caches]
             [vaelii.impl.observe :as observe]
-            [vaelii.impl.sentex :as sx])
+            [vaelii.impl.sentex :as sx]
+            [vaelii.impl.types.reasoning :as reasoning])
   (:import [java.util.concurrent.atomic AtomicLong]))
 
 (def ^:private canonical-vars
@@ -161,8 +162,14 @@
   and a cache that has grown past this is one whose queries have moved on."
   4096)
 
-(def ^:private ^AtomicLong hit-count (AtomicLong. 0))
-(def ^:private ^AtomicLong miss-count (AtomicLong. 0))
+(defonce ^{:private true
+           :tag AtomicLong}
+  hit-count
+  (AtomicLong. 0))
+(defonce ^{:private true
+           :tag AtomicLong}
+  miss-count
+  (AtomicLong. 0))
 
 (defn- storing
   "`xs`, with the fully realized answer handed to `store!` **at the moment the source
@@ -221,7 +228,7 @@
   measure the mechanism rather than a store), and the change clock a fresh lookup would
   stamp with."
   [kb]
-  {:size   (count @(:matches kb))
+  {:size   (count @(reasoning/matches kb))
    :limit  (caches/limit-of :literal-matches cache-limit)
    :hits   (.get hit-count)
    :misses (.get miss-count)
@@ -238,8 +245,8 @@
   \"this KB\" must not reach past it.  `reset-counters` is that second, wider control,
   asked for separately."
   [kb]
-  (let [n (count @(:matches kb))]
-    (reset! (:matches kb) {})
+  (let [n (count @(reasoning/matches kb))]
+    (reset! (reasoning/matches kb) {})
     n))
 
 (defn reset-counters
@@ -273,5 +280,5 @@
                                           :hits    (:hits s)
                                           :misses  (:misses s)}))
   :clear    clear-cache
-  :trim     (fn [kb target] (caches/trim-map! (:matches kb) target))
+  :trim     (fn [kb target] (caches/trim-map! (reasoning/matches kb) target))
   :reset-counters (fn [_] (reset-counters))})

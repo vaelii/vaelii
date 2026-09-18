@@ -48,10 +48,10 @@
   open design point, deferred until a use asks for it."
   (:require
    [vaelii.impl.asp.label :as label]
-   [vaelii.impl.jtms :as jtms]
    [vaelii.impl.kb :as kb]
-   [vaelii.impl.provers :as provers]
-   [vaelii.impl.sentex :as sx]))
+   [vaelii.impl.resolution :as res]
+   [vaelii.impl.sentex :as sx]
+   [vaelii.impl.types.prover :as prover-types]))
 
 (defn- ground? [form]
   (not (some sx/variable? (tree-seq sequential? seq form))))
@@ -63,12 +63,12 @@
        (ground? (second goal))))
 
 (defn- believed?
-  "Is the stored sentex for `s` currently IN?  The brave/cautious answer for a datum in no
-  dilemma — every optimum agrees with belief there — read at `ask`'s level (what is stored
-  or cached, no rule expansion)."
+  "Is the stored sentex for `s` believed as `context` reads it (`res/believed-at?`)?  The
+  brave/cautious answer for a datum in no dilemma — every optimum agrees with belief
+  there — read at `ask`'s level (what is stored or cached, no rule expansion)."
   [kb s context]
   (boolean (when-let [h (kb/find-sentex-handle kb s context)]
-             (jtms/in? (:tms kb) h))))
+             (res/believed-at? kb h context))))
 
 (defn- holds?
   "Does `(<modal> s)` hold in `context`?  `label/classify-dilemmas` classifies the current
@@ -87,7 +87,7 @@
     (believed? kb s context)))                        ; no dilemma at all: ordinary belief
 
 (defrecord BraveCautiousProver []
-  provers/Prover
+  prover-types/Prover
   (applicable?  [_ _ goal _] (modal-goal? goal))
   (est-bindings [_ _ _ _] 1)          ; a ground modal check: it holds or it does not
   (cost         [_ _ _ _] :compute)   ; a backend solve (brave + cautious), or the solve-free bracket

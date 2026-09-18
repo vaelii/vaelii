@@ -35,7 +35,8 @@
             [vaelii.bench.util :as u :refer [zipf-sample]]
             [vaelii.core :as v]
             [vaelii.impl.jtms :as jtms]
-            [vaelii.impl.protocols :as p])
+            [vaelii.impl.protocols :as p]
+            [vaelii.impl.types.reasoning :as reasoning])
   (:import [org.openjdk.jol.info GraphLayout]))
 
 ;; ---- generation (well-formed for the real assert path) ------------------
@@ -76,8 +77,8 @@
   [kb]
   {:index    @(:state (:backend (:index kb)))
    :records  @(:state (:records kb))
-   :jtms     (:tms kb)
-   :taxonomy @(:taxonomy kb)})
+   :jtms     (reasoning/tms kb)
+   :taxonomy @(reasoning/taxonomy kb)})
 
 (defn- ms [t0] (/ (- (System/nanoTime) t0) 1e6))
 
@@ -105,7 +106,7 @@
   chaining ON, so each distinct fact derives a `relB` twin — a justification
   per derivation.  Isolates the per-justification JTMS cost the premise-only run cannot see."
   [kb ^java.util.Random rng {:keys [n inds ind-cum ctxs]}]
-  (v/assert-rule kb ['(relA ?x ?y)] '(relB ?x ?y) (first ctxs))
+  (v/assert-rule kb ['(relA ?x ?y)] '(relB ?x ?y) (first ctxs) {:direction :forward})
   (let [t0 (System/nanoTime)]
     (dotimes [_ n]
       (let [a (nth inds (zipf-sample ind-cum rng))
@@ -124,8 +125,8 @@
         ;; representation without materializing a snapshot of the dense one.
         ;; The justification count is the network's own, deliberately not the
         ;; store's `dedns` above — the two agreeing is the thing worth seeing.
-        nodes  (count (jtms/datums (:tms kb)))
-        justs  (count (jtms/justifications (:tms kb)))
+        nodes  (count (jtms/datums (reasoning/tms kb)))
+        justs  (count (jtms/justifications (reasoning/tms kb)))
         comps  (components kb)
         sizes  (into {} (map (fn [[k o]] [k (retained [o])])) comps)
         combined (retained (vals comps))

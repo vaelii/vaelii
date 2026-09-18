@@ -10,8 +10,8 @@
   (`vaelii.impl.chain`) files a conclusion it dropped, and the prover registry
   (`vaelii.impl.provers`) files an aggregate's numeric error — and the chainer is built
   *on* the registry, so the registry cannot name it.  The ledger reads nothing from
-  either, only `(:violations kb)` and `(:chain-stats kb)`, so it sits below both and the
-  edge runs the one direction the layering allows.
+  either, only `(reasoning/violations kb)` and `(reasoning/chain-stats kb)`, so it sits
+  below both and the edge runs the one direction the layering allows.
 
   Why a ledger rather than a throw: an entry is recorded from inside the semi-naive
   fixpoint and from inside a relabel, and neither may abort — a definitional check that
@@ -24,7 +24,8 @@
   a log can look up.  So at `:debug` the drop is followed by the rule itself."
   (:require [taoensso.trove :as trove]
             [vaelii.impl.protocols :as p]
-            [vaelii.impl.sentex :as sx]))
+            [vaelii.impl.sentex :as sx]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 (def ^:private max-violations
   "The ledger accumulates across chaining runs (see `vaelii.core/violations`); this caps
@@ -73,13 +74,13 @@
   emptied only by `vaelii.core/clear-violations!`, which does."
   [kb entries]
   (when (seq entries)
-    (let [run     (:runs @(:chain-stats kb))
+    (let [run     (:runs @(reasoning/chain-stats kb))
           stamped (mapv #(assoc % :run run) entries)]
       (doseq [e stamped]
         (trove/log! {:level :warn :id ::dropped-conclusion :data e})
         (when (:rule e)
           (trove/log! {:level :debug :id ::dropping-rule :data (dropping-rule kb e)})))
-      (swap! (:violations kb)
+      (swap! (reasoning/violations kb)
              (fn [v]
                (let [v' (into v stamped)
                      n  (count v')]
@@ -102,6 +103,6 @@
   derivation-path drops it exists to report.  `:run` is ignored in the comparison because
   a later run meeting the same defect is the same defect, not a second one."
   [kb entry]
-  (when-not (some #(= (dissoc % :run) entry) (some-> (:violations kb) deref))
+  (when-not (some #(= (dissoc % :run) entry) (some-> (reasoning/violations kb) deref))
     (report kb [entry]))
   nil)

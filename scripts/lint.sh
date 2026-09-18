@@ -22,19 +22,36 @@
 #                 scripts/unused-publics-baseline.txt
 #   - prose       metaphor and aphorism where a mechanism has a name, against the
 #                 per-file budget in scripts/prose-baseline.txt (CONTRIBUTING §3.9)
+#   - tools       ruff over the Python under tools/, which no Clojure check and
+#                 no shell check reads.  Skips with a note where ruff is absent
 #
 #   lein lint               # the clean report
 #   VERBOSE=1 lein lint     # also dump each check's full output, pass or fail
 #   bash scripts/lint.sh -v # same, when run directly
 #
+# EVERY RUN KEEPS ITS REPORT.  The report goes to `logs/lint/run-<pid>.log` as
+# well as to the console, `logs/lint/latest` points at the newest, and one row
+# lands in `logs/runs.tsv` naming the revision, the clock and the verdict
+# (scripts/lib/runlog.sh).  Under `lein gate` this is the second copy — the gate
+# captures its own stage log — and it is kept because the two answer different
+# questions: the gate's copy is one run's output under `target/`, which `lein
+# clean` deletes, and this is the history of what this checkout has linted.
+#
 # The granular `lein lint-glossary` / `lint-versions` / `lint-links` /
 # `lint-drift` / `lint-kondo` / `lint-cljfmt` / `lint-shellcheck` /
-# `lint-reflect` / `lint-unused` / `lint-prose` aliases run a single check
-# for a quick one-off.
+# `lint-reflect` / `lint-unused` / `lint-prose` / `lint-tools` aliases run a
+# single check for a quick one-off.
 set -uo pipefail   # NOT -e: every check must run even after one fails.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
+
+# shellcheck source=scripts/lib/runlog.sh
+. "$ROOT/scripts/lib/runlog.sh"
+
+LINT_ROOT="logs/lint"
+LOG="$LINT_ROOT/run-$$.log"
+mkdir -p "$LINT_ROOT" || exit 1
 
 # Read the inherited VERBOSE env (or a -v arg) before normalizing it to 0/1 —
 # don't reset to 0 first, that would clobber `VERBOSE=1 lein lint`.
@@ -83,6 +100,7 @@ summary() {
     reflect)    s="$(grep -oE 'no reflection warnings.*' "$o" | head -1)" ;;
     unused)     s="$(grep -oE '[0-9]+ known[^.]*' "$o" | head -1)" ;;
     prose)      s="$(grep -oE '[0-9]+ of [0-9]+ allowed, [0-9]+ files remaining' "$o" | head -1)" ;;
+    tools)      s="$(sed -n 's/^lint-tools: //p' "$o" | head -1)" ;;
   esac
   echo "${s:-ok}"
 }
@@ -174,28 +192,54 @@ kondo_version_note() {
          '' "$DIM" "$pin" "$RST"
 }
 
-printf '%slint%s\n' "$BOLD" "$RST"
+# The roster and the verdict, as a function, so the whole report can go through
+# one `tee` below.  `${PIPESTATUS[0]}` is what keeps the exit status this
+# script's own: a pipeline reports the LAST command's status, which would make
+# every lint run as green as `tee` is.
+lint_run() {
+  printf '%slint%s\n' "$BOLD" "$RST"
 
-check glossary   -- bash scripts/lint-glossary.sh
-check versions   -- bash scripts/lint-versions.sh
-check links      -- python3 scripts/check-doc-links.py --public-view
-check drift      -- python3 scripts/check-doc-drift.py
-check conflicts  -- bash scripts/lint-conflict-markers.sh
-check kondo      -- clj-kondo --lint src test bench
-kondo_version_note
-check cljfmt     -- lein cljfmt check
-# The roster is that script's, not this one's, and `lein lint-shellcheck` runs the
-# same file — one list, so it cannot be complete for one caller and short for the
-# other. It also checks itself against the tree, both directions.
-check shellcheck -- bash scripts/lint-shellcheck.sh
-check reflect    -- bash scripts/check-reflection.sh
-check unused     -- python3 scripts/check-unused-publics.py
-check prose      -- python3 scripts/check-prose.py
+  check glossary   -- bash scripts/lint-glossary.sh
+  check versions   -- bash scripts/lint-versions.sh
+  check links      -- python3 scripts/check-doc-links.py --public-view
+  check drift      -- python3 scripts/check-doc-drift.py
+  check conflicts  -- bash scripts/lint-conflict-markers.sh
+  check kondo      -- clj-kondo --lint src test bench
+  kondo_version_note
+  check cljfmt     -- lein cljfmt check
+  # The roster is that script's, not this one's, and `lein lint-shellcheck` runs the
+  # same file — one list, so it cannot be complete for one caller and short for the
+  # other. It also checks itself against the tree, both directions.
+  check shellcheck -- bash scripts/lint-shellcheck.sh
+  check reflect    -- bash scripts/check-reflection.sh
+  check unused     -- python3 scripts/check-unused-publics.py
+  check prose      -- python3 scripts/check-prose.py
+  check tools      -- bash scripts/lint-tools.sh
 
-total=$((pass + fail))
-if [[ $fail -eq 0 ]]; then
-  printf '%slint: %d/%d clean%s\n' "$GREEN" "$pass" "$total" "$RST"
-  exit 0
-fi
-printf '%slint: %d/%d — %s FAILED%s\n' "$RED" "$pass" "$total" "${failed_labels[*]}" "$RST"
-exit 1
+  total=$((pass + fail))
+  if [[ $fail -eq 0 ]]; then
+    printf '%slint: %d/%d clean%s\n' "$GREEN" "$pass" "$total" "$RST"
+    return 0
+  fi
+  printf '%slint: %d/%d — %s FAILED%s\n' "$RED" "$pass" "$total" "${failed_labels[*]}" "$RST"
+  return 1
+}
+
+runlog_start
+revision_stamp lint >"$LOG"
+lint_run 2>&1 | tee -a "$LOG"
+rc=${PIPESTATUS[0]}
+
+# `latest` is a convenience and never a source of truth — a concurrent lint
+# repoints it, which is gate.sh's note about its own.
+ln -sfn "$(basename "$LOG")" "$LINT_ROOT/latest" 2>/dev/null || true
+runlog_prune "$LINT_ROOT" "${LINT_KEEP_RUNS:-40}"
+
+# The summary comes back OUT of the log rather than out of a variable: `lint_run`
+# ran in a pipeline, so its `$pass` and `$fail` were a subshell's.  The verdict
+# line it printed is the same fact, and reading it here is gate.sh's rule — one
+# roster, read where it was written, so the two cannot drift.
+verdict=$(sed 's/\x1b\[[0-9;]*m//g' "$LOG" | grep -E '^lint: ' | tail -1)
+[[ $rc -eq 0 ]] && state=passed || state=failed
+runlog_record lint - "$state" "${verdict#lint: }" "$LOG"
+exit "$rc"

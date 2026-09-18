@@ -33,6 +33,7 @@
             [vaelii.core :as v]
             [vaelii.impl.rules :as vr]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.wff :as wff]
             [vaelii.test-util :as tu]))
 
@@ -101,7 +102,7 @@
                              :ctx CxEdge})
     (is (v/assert kb (list 'genl penguin unrelated) CxEdge)
         "penguin under an unrelated supertype crosses no negative edge")
-    (is (tax/genl?-global (:taxonomy kb) penguin unrelated)
+    (is (tax/genl?-global (reasoning/taxonomy kb) penguin unrelated)
         "and the accepted edge did reach the closures")))
 
 (tu/deftest-kb the-same-edge-is-accepted-when-the-rule-carries-no-exception
@@ -130,7 +131,7 @@
       (testing "the edge kind is checked, not skipped"
         (is (pos? n)))
       (testing "and is accepted: the graph is over predicates, so no context edge is in it"
-        (is (tax/sees? (:taxonomy kb) CxSub CxEdge))))))
+        (is (tax/sees? (reasoning/taxonomy kb) CxSub CxEdge))))))
 
 ;; ---- a refused edge leaves nothing behind --------------------------------
 
@@ -144,15 +145,15 @@
                              :ctx CxEdge})
     (let [before-sx    (tu/sentex-ids kb)
           before-dd    (tu/justification-ids kb)
-          before-edges (tax/genl-edges (:taxonomy kb))
+          before-edges (tax/genl-edges (reasoning/taxonomy kb))
           data         (refusal kb (list 'genl penguin flightless) CxEdge)]
       (is (= :not-stratified (:type data)))
       (is (= before-sx (tu/sentex-ids kb))    "no sentex was stored")
       (is (= before-dd (tu/justification-ids kb)) "no justification was stored")
       (testing "and the cached closures never learned the edge"
-        (is (= before-edges (tax/genl-edges (:taxonomy kb))))
-        (is (not (tax/genl?-global (:taxonomy kb) penguin flightless)))
-        (is (not (contains? (tax/specs-global (:taxonomy kb) flightless) penguin)))))))
+        (is (= before-edges (tax/genl-edges (reasoning/taxonomy kb))))
+        (is (not (tax/genl?-global (reasoning/taxonomy kb) penguin flightless)))
+        (is (not (contains? (tax/specs-global (reasoning/taxonomy kb) flightless) penguin)))))))
 
 ;; ---- the fast path ------------------------------------------------------
 ;; Every rule in the bundled starter is unexcepted, so a regression here would slow
@@ -195,7 +196,7 @@
         (is (seq (:cycle (:detail (first vs))))))
       (testing "and dropped: no sentex, and the closures never learned it"
         (is (empty? (v/sentexes-matching kb (list 'genl penguin flightless) '?ctx)))
-        (is (not (tax/genl?-global (:taxonomy kb) penguin flightless))))
+        (is (not (tax/genl?-global (reasoning/taxonomy kb) penguin flightless))))
       (testing "chaining still ran to a fixpoint rather than aborting"
         (is (seq (v/sentexes-matching kb (list noted penguin) '?ctx)))))))
 
@@ -218,8 +219,8 @@
       (is (= :not-stratified (:type data)) "the probe ran and the edge was refused")
       (v/retract! kb h)
       (testing "the closure read after the gen catch-up never sees the refused edge"
-        (is (not (contains? (tax/specs-global (:taxonomy kb) flightless) penguin)))
-        (is (not (contains? (tax/genls-global (:taxonomy kb) penguin) flightless)))))))
+        (is (not (contains? (tax/specs-global (reasoning/taxonomy kb) flightless) penguin)))
+        (is (not (contains? (tax/genls-global (reasoning/taxonomy kb) penguin) flightless)))))))
 
 (tu/deftest-kb a-derived-edge-that-closes-no-cycle-is-placed-normally
   ;; The control for the drop above: same derivation, same excepted rule in the KB,
@@ -232,7 +233,7 @@
     (v/assert kb (list subtypeMarker penguin) CxDerive)
     (is (empty? (v/violations kb)))
     (is (seq (v/sentexes-matching kb (list 'genl penguin unrelated) '?ctx)))
-    (is (tax/genl?-global (:taxonomy kb) penguin unrelated)
+    (is (tax/genl?-global (reasoning/taxonomy kb) penguin unrelated)
         "a derived edge reaches the taxonomy through integrate-transitive")))
 
 ;; ---- the consequent-var-pred rule and negation ---------------------------

@@ -17,6 +17,7 @@
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.special :as special]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -337,11 +338,11 @@
   [kb view-context]
   (if (sx/variable? view-context)
     #{}
-    (let [up (tax/context-up (:taxonomy kb) view-context)]
+    (let [up (tax/context-up (reasoning/taxonomy kb) view-context)]
       (into #{}
             (comp (map #(p/get-sentex (:records kb) %))
                   (filter some?)
-                  (filter #(jtms/in? (:tms kb) (:id %)))
+                  (filter #(jtms/in? (reasoning/tms kb) (:id %)))
                   (filter #(contains? up (:context %)))
                   (keep #(sx/handle-id (second (:sentence %)))))
             (p/sentexes-with-functor (:index kb) sx/except-functor)))))
@@ -472,17 +473,17 @@
           e (v/assert kb (list 'except (sx/sentex-handle h)) ctx {:strength :monotonic})
           m (v/assert kb (list 'except (sx/sentex-handle e)) ctx {:strength :monotonic})]
       (testing "M is a meta-except: its target E is itself an except"
-        (is (= 1 @(:meta-except-count kb))))
+        (is (= 1 @(reasoning/meta-except-count kb))))
       (testing "retracting the inner except E strands M, so the count drops at once"
         (v/retract! kb e)
-        (is (= 0 @(:meta-except-count kb))
+        (is (= 0 @(reasoning/meta-except-count kb))
             "the count must not leak while M dangles over a deleted E"))
       (testing "retracting the meta-except M leaves the count at zero"
         (v/retract! kb m)
-        (is (= 0 @(:meta-except-count kb))))
+        (is (= 0 @(reasoning/meta-except-count kb))))
       (testing "the incremental count equals a fresh recomputation from storage"
         (kb/rebuild-excepted! kb)
-        (is (= 0 @(:meta-except-count kb)))))))
+        (is (= 0 @(reasoning/meta-except-count kb)))))))
 
 ;; ---- ordering contract: except-target extraction before mutation ----------
 

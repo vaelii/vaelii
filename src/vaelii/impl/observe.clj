@@ -25,15 +25,18 @@
   itself to `vaelii.impl.caches` at the bottom of this file so a reader can see what the
   process is holding."
   (:refer-clojure :exclude [])
-  (:require [vaelii.impl.caches :as caches])
+  (:require [vaelii.impl.caches :as caches]
+            [vaelii.impl.types.reasoning :as reasoning])
   (:import [java.util.concurrent.atomic AtomicLong]))
 
-(def ^:private on-add
-  "A `(fn [kb sentex handle])` run after a sentex is stored + indexed, or nil."
+(defonce ^{:private true
+           :doc "A `(fn [kb sentex handle])` run after a sentex is stored + indexed, or nil."}
+  on-add
   (atom nil))
 
-(def ^:private on-remove
-  "A `(fn [kb sentex])` run as a sentex leaves the store, or nil."
+(defonce ^{:private true
+           :doc "A `(fn [kb sentex])` run as a sentex leaves the store, or nil."}
+  on-remove
   (atom nil))
 
 (defn install!
@@ -85,11 +88,13 @@
 
 ;; ---- the change clock ----------------------------------------------------
 
-(def ^:private ^AtomicLong clock
-  "A monotone counter bumped by every mutation that could move what a derived,
+(defonce ^{:private true
+           :tag AtomicLong
+           :doc "A monotone counter bumped by every mutation that could move what a derived,
   resident structure computes.  An `AtomicLong` rather than an atom: the engine is
   single-writer, so this is an increment, not a compare-and-swap — and it sits on every
-  mutating `jtms` entry point, so it has to added no work at all."
+  mutating `jtms` entry point, so it has to added no work at all."}
+  clock
   (AtomicLong. 0))
 
 (defn note-change
@@ -329,8 +334,14 @@
       (do (swap! cache caches/assoc-bounded (caches/limit-of :resident resident-limit) k v)
           true))))
 
-(def ^:private ^AtomicLong neighbour-hits (AtomicLong. 0))
-(def ^:private ^AtomicLong neighbour-misses (AtomicLong. 0))
+(defonce ^{:private true
+           :tag AtomicLong}
+  neighbour-hits
+  (AtomicLong. 0))
+(defonce ^{:private true
+           :tag AtomicLong}
+  neighbour-misses
+  (AtomicLong. 0))
 
 (defn note-neighbours!
   "Record one neighbour-set read by the closure walk: `hit?` true where `*reach-memo*`
@@ -432,12 +443,12 @@
                  "problem behind it, and the closures over each. Stamped with the "
                  "change clock, so one mutation retires every entry; past the limit it "
                  "is cleared wholesale.")
-  :read     (fn [kb] {:entries (some-> (:qcn kb) deref count)})
-  :clear    (fn [kb] (let [a (:qcn kb)
+  :read     (fn [kb] {:entries (some-> (reasoning/qcn kb) deref count)})
+  :clear    (fn [kb] (let [a (reasoning/qcn kb)
                            n (if a (count @a) 0)]
                        (some-> a (reset! {}))
                        n))
-  :trim     (fn [kb target] (when-let [a (:qcn kb)] (caches/trim-map! a target)))})
+  :trim     (fn [kb target] (when-let [a (reasoning/qcn kb)] (caches/trim-map! a target)))})
 
 (caches/register-cache
  {:cache    :stored-handles

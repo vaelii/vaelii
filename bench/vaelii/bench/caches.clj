@@ -55,7 +55,8 @@
             [vaelii.impl.naming :as nm]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.rules :as rules]
-            [vaelii.host.starter :as starter]))
+            [vaelii.host.starter :as starter]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 ;; ---- reporting ----------------------------------------------------------
 
@@ -87,8 +88,8 @@
 
 ;; ---- the two structures whose population is not capped -------------------
 
-(defn- closure-memo [kb] @(:closure-memo @(:taxonomy kb)))
-(defn- vis-index    [kb] @(:vis-index    @(:taxonomy kb)))
+(defn- closure-memo [kb] @(:closure-memo @(reasoning/taxonomy kb)))
+(defn- vis-index    [kb] @(:vis-index    @(reasoning/taxonomy kb)))
 
 (defn- memo-census
   "Entry counts inside the closure memo, split by level.  The unscoped level is the one
@@ -166,7 +167,7 @@
   (let [t0 (System/nanoTime)
         _  (taxonomy-sweep! kb terms ctx)
         warm (ms t0)
-        _  (reset! (:closure-memo @(:taxonomy kb)) {})
+        _  (reset! (:closure-memo @(reasoning/taxonomy kb)) {})
         t1 (System/nanoTime)
         _  (taxonomy-sweep! kb terms ctx)
         cold (ms t1)]
@@ -189,7 +190,7 @@
   Reads the node's `:consequences` adjacency — the same candidate set
   `restrength-informant*` uses — and never scans `:justs`."
   [kb handles]
-  (let [state @(:tms kb)
+  (let [state @(reasoning/tms kb)
         justs (:justs state)
         nodes (:nodes state)
         in    (:in state #{})]

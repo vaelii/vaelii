@@ -7,6 +7,7 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.rules :as vr]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -139,7 +140,7 @@
         (doseq [i (range 8)]
           (v/assert kb (list warm (tu/tmp-ind (str "Cold" i))) 'CxUniverse
                     {:chain? false}))
-        (is (empty? (:dirty @(:negations kb))))))
+        (is (empty? (:dirty @(reasoning/negations kb))))))
     (let [hn (v/assert kb (list 'not (list warm sun)) 'CxUniverse)]
       (is (= 1 (count (v/contradictions kb))) "the twin arriving is what forms the pair")
       (testing "and the memo drops the entry when the twin leaves"

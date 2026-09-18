@@ -116,9 +116,9 @@
               [:antecedent '(bird ?x)] [:consequent '(flies ?x)]]
              (nm/literals '(exceptWhen [(penguin ?x) (sick ?x)]
                                        (implies (bird ?x) (flies ?x))))))))
-  (testing "an `ist` redirection frames the sentence it directs"
-    (is (= [[:antecedent '(arity ?p 1)] [:consequent '(unary_predicate ?p)]]
-           (nm/literals '(implies (arity ?p 1) (ist CxCore (unary_predicate ?p)))))))
+  (testing "an `ist` frames the sentence it names a context for"
+    (is (= [[:sentence '(unary_predicate dog)]]
+           (nm/literals '(ist CxCore (unary_predicate dog))))))
   (testing "a negation-as-failure query is framed by `unknown` / `thereExists`"
     (is (= [[:antecedent '(bird ?x)] [:antecedent '(nestOf ?x ?y)] [:consequent '(homeless ?x)]]
            (nm/literals '(implies (and (bird ?x) (unknown (thereExists ?y (nestOf ?x ?y))))
@@ -135,10 +135,9 @@
   (testing "a variable in functor position is a pattern, not a named predicate"
     (is (= [] (nm/literals '(?pred . ?args))))
     (is (= [] (nm/literals '(?p ?x))))
-    (testing "so the decontextualization rule's dotted rest pattern names nothing"
+    (testing "so a rule's dotted rest pattern names nothing"
       (is (= [] (nm/literals '(set/inertRule
-                               (implies (?pred . ?args)
-                                        (ist CxUniverse (?pred . ?args)))))))))
+                               (implies (?pred . ?args) (?pred . ?args))))))))
   (testing "`(sentexHandle N)` names a stored sentex by id"
     (is (= [[:exception '(penguin ?x)]]
            (nm/literals '(exceptWhen (penguin ?x) (sentexHandle 7))))))
@@ -228,21 +227,16 @@
     (is (empty? (nm/problems '(evaluate Sum (+ 1 2)) 'CxWell)))
     (is (empty? (nm/problems '(termOfUnit Rod1 (QuantityFn 5 Meter)) 'CxWell)))))
 
-(deftest ist-directs-into-a-context
-  (is (empty? (nm/problems '(implies (bird ?x) (ist CxCore (flies ?x))) 'CxWell)))
-  (testing "a variable context is bound at firing time"
-    (is (empty? (nm/problems '(implies (and (bird ?x) (ctxOf ?x ?c))
-                                       (ist ?c (flies ?x)))
-                             'CxWell))))
+(deftest ist-names-a-context
+  (is (empty? (nm/problems '(ist CxCore (flies Tweety)) 'CxWell)))
   (testing "anything else is not a context name"
-    (is (seq (nm/problems '(implies (bird ?x) (ist Muffet (flies ?x))) 'CxWell)))))
+    (is (seq (nm/problems '(ist Muffet (flies Tweety)) 'CxWell)))))
 
 (deftest the-dotted-marker-is-still-refused-at-the-top-level
   (is (seq (nm/problems '(parentOf Tom . Bob) 'CxWell)))
   (testing "but is legal inside a rule pattern"
     (is (empty? (nm/problems '(set/inertRule
-                               (implies (?pred . ?args)
-                                        (ist CxUniverse (?pred . ?args))))
+                               (implies (?pred . ?args) (?pred . ?args)))
                              'CxCore)))))
 
 ;; ---- a problem is data before it is prose --------------------------------
@@ -263,7 +257,7 @@
            (map #(dissoc % :literal) (nm/problems* '(parentOf Baby_Penguin Tom) 'CxWell))))
     (is (= [{:class :ist-context :role :sentence :symbol 'Muffet}]
            (map #(dissoc % :literal)
-                (nm/problems* '(implies (bird ?x) (ist Muffet (flies ?x))) 'CxWell)))))
+                (nm/problems* '(ist Muffet (flies Tweety)) 'CxWell)))))
   (testing "every class it can report is one `problem-classes` names"
     (is (every? nm/problem-classes
                 (map :class (nm/problems* '(Flies Baby_Penguin) 'NotAThing)))))
@@ -493,7 +487,7 @@
    :functor-arity  ['(lives_in Tweety cold_place)              'CxWell]
    :functor-unary  ['(warmBlooded Muffet)                       'CxWell]
    :argument       ['(parentOf Baby_Penguin Tom)               'CxWell]
-   :ist-context    ['(implies (bird ?x) (ist Muffet (flies ?x))) 'CxWell]
+   :ist-context    ['(ist Muffet (flies Tweety))                'CxWell]
    :dot-marker     ['(parentOf Tom .)                          'CxWell]})
 
 (deftest every-problem-class-renders-a-message

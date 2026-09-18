@@ -175,7 +175,7 @@ need the QCN/temporal reasoners, `hot-records` needs a disk-backed store.
 
 | Cache | Unit | Bound | Retired by |
 |---|---|---|---|
-| Symbol pool `:symbol-pool` | symbols | 1 000 000 | wholesale clear |
+| Symbol pool `:symbol-pool` | symbols | 1 000 000 | the older of two generations dropped at half the bound |
 | Relation decode tables `:relation-decode` | masks | 8192 | wholesale clear |
 | Compiled algebras `:compiled-algebras` | algebras | 64 | wholesale clear |
 | Path-consistency passes `:path-consistency` | networks | 256 | wholesale clear |

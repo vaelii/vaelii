@@ -20,6 +20,7 @@
             [vaelii.impl.rewrite :as rewrite]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.wiring :as wiring]))
 
 ;; ---- unification --------------------------------------------------------
@@ -352,7 +353,7 @@
            af (when (sequential? a) (first a))
            ff (when (sequential? f) (first f))]
        (if (and (symbol? af) (not (sx/variable? af)) (symbol? ff) (not= af ff)
-                (contains? (tax/genls (:taxonomy kb) af context) ff))
+                (contains? (tax/genls (reasoning/taxonomy kb) af context) ff))
          (unify (rest a) (rest f))                    ; genl of the body: unify the arguments
          (unify antecedent fact)))
 
@@ -360,7 +361,7 @@
      (let [[t a]  antecedent
            [t' x] fact]
        (if (and (symbol? t) (not (sx/variable? t)))
-         (when (contains? (tax/specs (:taxonomy kb) t context) t') (unify a x))
+         (when (contains? (tax/specs (reasoning/taxonomy kb) t context) t') (unify a x))
          ;; a variable functor: `specs` is reflexive, so it never holds a concrete `t'` —
          ;; unify the whole literal, functor and argument, the way the n-ary `:else` arm
          ;; already does for its own variable-functor case
@@ -370,7 +371,7 @@
      (let [af (when (sequential? antecedent) (first antecedent))
            ff (when (sequential? fact) (first fact))]
        (if (and (symbol? af) (not (sx/variable? af)) (symbol? ff) (not= af ff)
-                (contains? (tax/specs (:taxonomy kb) af context) ff))
+                (contains? (tax/specs (reasoning/taxonomy kb) af context) ff))
          (unify (rest antecedent) (rest fact))        ; sub-predicate: unify the arguments
          (unify antecedent fact))))))
 
@@ -415,7 +416,7 @@
      (if (and (symbol? gf) (not (sx/variable? gf))
               (symbol? cf) (not (sx/variable? cf))
               (not= gf cf)
-              (contains? (reach (:taxonomy kb) gf context) cf))
+              (contains? (reach (reasoning/taxonomy kb) gf context) cf))
        (unify (rest g) (rest c) bindings)
        (unify goal consequent bindings)))))
 
@@ -459,12 +460,12 @@
        (sx/variable? pred)
        (into var-conseq
              (mapcat #(p/rules-by-antecedent idx %))
-             (keys @(:rule-antecedents kb)))
+             (keys @(reasoning/rule-antecedents kb)))
 
        (symbol? pred)
        (into var-conseq
              (mapcat #(p/rules-by-consequent idx %))
-             (tax/specs (:taxonomy kb) pred context))
+             (tax/specs (reasoning/taxonomy kb) pred context))
 
        :else
        (into var-conseq (p/rules-by-consequent idx pred))))))
@@ -483,7 +484,7 @@
   than from a vantage, exactly as the closure reads read it."
   [kb context rule-ctx]
   (or (not (and (symbol? context) (not (sx/variable? context))))
-      (tax/sees? (:taxonomy kb) context rule-ctx)))
+      (tax/sees? (reasoning/taxonomy kb) context rule-ctx)))
 
 (def ^:dynamic *belief-blind*
   "Read the store as **stored** rather than as believed — `CxEverything`, and nothing
@@ -558,7 +559,7 @@
   (`rules/forward-sentex?` / `backward-sentex?`), which is what makes it documentation
   rather than an absence (docs/inference.md)."
   [kb handle]
-  (let [tms (:tms kb)]
+  (let [tms (reasoning/tms kb)]
     (or *belief-blind*
         (not (jtms/known-datum? tms handle))
         (jtms/in? tms handle))))
@@ -572,7 +573,7 @@
   from recursively asking itself whether its own supporters are reachable."
   [kb handle context]
   (boolean
-   (and (jtms/in? (:tms kb) handle)
+   (and (jtms/in? (reasoning/tms kb) handle)
         ;; The whole-KB roster is the cheap gate. Only a handle targeted somewhere
         ;; pays the context-sensitive cascade walk.
         (or (not (excepted-anywhere? kb handle))
@@ -584,7 +585,7 @@
   (boolean
    (and (supporter-believed? kb handle context)
         (when-let [sentex (p/get-sentex (:records kb) handle)]
-          (tax/sees? (:taxonomy kb) context (:context sentex))))))
+          (tax/sees? (reasoning/taxonomy kb) context (:context sentex))))))
 
 (defn visible-supporter-fn
   "`handle -> boolean`, memoized: is the sentex `handle` believed, inherited by
@@ -606,7 +607,7 @@
   reader can see them.  Only a class genuinely split by an invisible edge pays for
   `scoped-class`."
   [kb visible? term]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (if (and visible? (tax/merged? tax term) (not (tax/class-fully-visible? tax term visible?)))
       (second (tax/scoped-class tax term visible?))
       (tax/representative tax term))))
@@ -629,7 +630,7 @@
   an identity merge (`tax/spelling-representative`).  Gated by `merged?`, so an unmerged
   symbol is one map miss."
   [kb visible? term]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (if (tax/merged? tax term)
       (tax/spelling-representative tax term visible?)
       term)))
@@ -763,7 +764,7 @@
   is a walk over argument terms that does not read these marks, so a schematic `equals`
   normalizes inside a quoted position as it does outside one."
   [kb visible? term]
-  (if-let [marks (tax/mention-marks (:taxonomy kb))]
+  (if-let [marks (tax/mention-marks (reasoning/taxonomy kb))]
     (representative-term-mention kb visible? marks term false)
     (representative-term-plain kb visible? term)))
 
@@ -830,7 +831,7 @@
   `sameAs` is not reported displaced by `why-not`.  Gated on `tax/mention-marks`: a KB declaring
   no `quoting_function` and no `modal_predicate` takes the flat walk unchanged."
   [kb visible? sentence]
-  (if-let [marks (tax/mention-marks (:taxonomy kb))]
+  (if-let [marks (tax/mention-marks (reasoning/taxonomy kb))]
     (displacements-mention kb visible? marks sentence false {})
     (displacements-plain kb visible? sentence)))
 
@@ -849,7 +850,7 @@
   vantage.  `kb/rewrite-term` is the spelling for a caller holding a context instead."
   [kb term visible?]
   (let [sym   (representative-term kb visible? term)
-        rules (cond->> (tax/rewrite-rules (:taxonomy kb))
+        rules (cond->> (tax/rewrite-rules (reasoning/taxonomy kb))
                 visible? (filterv #(visible? (:handle %))))]
     (rewrite/normalize-sentence rules sym)))
 
@@ -880,7 +881,7 @@
   mirror probe at once."
   [kb sentence context]
   (sx/sentex sentence context
-             {:symmetric? #(tax/has-prop? (:taxonomy kb) :symmetric %)}))
+             {:symmetric? #(tax/has-prop? (reasoning/taxonomy kb) :symmetric %)}))
 
 (def ^:dynamic *prefetch-candidates*
   "Candidate handles per **prefetch hint** a retrieval path gives its record store, or
@@ -953,7 +954,7 @@
   to only one of them is a hint the default query does not get."
   [kb cands]
   (let [pf     (when *prefetch-candidates* (cap/prefetcher (:records kb)))
-        tms    (:tms kb)
+        tms    (reasoning/tms kb)
         blind? (belief-blind?)]
     (cap/hinting (when pf (fn [chunk] (pf (filterv #(or blind? (jtms/in? tms %)) chunk))))
                  (or *prefetch-candidates* 1)
@@ -974,7 +975,7 @@
   over-fetch that setting trades for."
   [kb sentence context]
   (let [pat   (kb-sentex kb sentence context)
-        tms   (:tms kb)
+        tms   (reasoning/tms kb)
         recs  (:records kb)
         blind? (belief-blind?)
         ;; a rule-shaped pattern matches a stored rule's whole `implies` form, which a
@@ -1032,7 +1033,7 @@
   (let [hits (match-one kb sentence context)]
     ;; the global property, matching kb-sentex's key discipline — the mirror probe
     ;; exists because storage sorted the arguments, and storage does not vary by reader
-    (if (sx/symmetric-literal? sentence #(tax/has-prop? (:taxonomy kb) :symmetric %))
+    (if (sx/symmetric-literal? sentence #(tax/has-prop? (reasoning/taxonomy kb) :symmetric %))
       (lazy-cat hits
                 (let [seen (into #{} (map (fn [[h b]] [h b])) hits)]
                   (remove (fn [[h b]] (contains? seen [h b]))
@@ -1047,7 +1048,7 @@
   them: a genl edge invisible from the vantage does not connect a sub-predicate's
   facts to the pattern, exactly as it does not appear in the closure reads."
   [kb f context]
-  (tax/specs (:taxonomy kb) f context))
+  (tax/specs (reasoning/taxonomy kb) f context))
 
 (defn super-predicates
   "The **genl** closure of `f` from the vantage `context`: `sub-predicates` mirrored,
@@ -1062,7 +1063,7 @@
   `match-pattern` and the rete alpha matcher for the same reason `sub-predicates` is:
   so the two cannot drift."
   [kb f context]
-  (tax/genls (:taxonomy kb) f context))
+  (tax/genls (reasoning/taxonomy kb) f context))
 
 (defn fanned-match
   "The fan-out itself, shared by every matcher that does one: decompose `sentence` into
@@ -1139,7 +1140,7 @@
   (if (sx/variable? view-context)
     (match-pattern kb sentence '?ctx)
     (lazy-mapcat (fn [c] (match-pattern kb sentence c view-context))
-                 (tax/context-up (:taxonomy kb) view-context))))
+                 (tax/context-up (reasoning/taxonomy kb) view-context))))
 
 ;; ---- hierarchical (set-algebra) retrieval -------------------------------
 ;; `matches-visible` answers `(p a ?x)` visible from `c` by a *product* of lookups:
@@ -1381,7 +1382,7 @@
   [kb sentence view-context]
   (if-not (hierarchical-literal? sentence)
     (matches-visible* kb sentence view-context)
-    (let [tax   (:taxonomy kb)
+    (let [tax   (reasoning/taxonomy kb)
           ;; a variable functor names no predicate, so there is no spec closure to fan
           ;; or filter by — every candidate's functor is admissible, and `unify` binds
           ;; the variable to it.  `lead-candidates` gets `specs` nil here and takes its
@@ -1466,7 +1467,7 @@
             ;; admitted record may yield.
             blind? (belief-blind?)
             admit (fn [h]
-                    (when (or blind? (jtms/in? (:tms kb) h))
+                    (when (or blind? (jtms/in? (reasoning/tms kb) h))
                       (when-let [stored (p/get-sentex (:records kb) h)]
                         (when (and (not (sx/exceptWhen-meta? (:sentence stored)))
                                    (pred-ok? (some-> (sx/body stored) first))
@@ -1563,9 +1564,9 @@
   fast path applies.  Both the hot boolean reads and diagnostic exception forest use
   this one index so they cannot disagree about scope."
   [kb view-context]
-  (let [by-ctx @(:excepted kb)]
+  (let [by-ctx @(reasoning/excepted kb)]
     (when-not (or (empty? by-ctx) (sx/variable? view-context))
-      (let [up (tax/context-up-global (:taxonomy kb) view-context)]
+      (let [up (tax/context-up-global (reasoning/taxonomy kb) view-context)]
         (not-empty
          (reduce-kv
           (fn [m ctx entries]
@@ -1629,7 +1630,7 @@
   [kb handle view-context]
   (if-let [target->ehs (visible-exception-index kb view-context)]
     (let [records (:records kb)
-          tms (:tms kb)
+          tms (reasoning/tms kb)
           ordered-roots (nm/sort-by-content-key
                          (fn [h]
                            (let [s (p/get-sentex records h)]
@@ -1683,23 +1684,34 @@
   question without materializing this set."
   [kb view-context]
   (if-let [target->ehs (visible-exception-index kb view-context)]
-    (let [tms (:tms kb)
-          has-meta? (pos? @(:meta-except-count kb))]
+    (let [tms       (reasoning/tms kb)
+          ;; With a meta-except stored, the cascade is evaluated once per except over the
+          ;; whole visible roster (`exception-states`), so a chain of n excepts costs n
+          ;; reads rather than one walk of its suffix per target.
+          in-force? (if (pos? @(reasoning/meta-except-count kb))
+                      (let [states (exception-states tms target->ehs
+                                                     (into [] cat (vals target->ehs)))]
+                        #(get-in states [% :in-force?]))
+                      #(jtms/in? tms %))]
       (persistent!
        (reduce-kv (fn [acc target ehs]
-                    (if (if has-meta?
-                          (some #(except-in-force? tms target->ehs % #{}) ehs)
-                          (some #(jtms/in? tms %) ehs))
+                    (if (some in-force? ehs)
                       (conj! acc target)
                       acc))
                   (transient #{})
                   target->ehs)))
     #{}))
 
-(defn hidden-fn
+(defn except-hidden-fn
   "A predicate `(fn [handle]) -> boolean` answering, for **one** `view-context`, what
   `excepted-handles` answers for all of them at once — or **nil** when that vantage hides
   nothing at all.
+
+  This is the `except` roster alone, handle by handle, and it is what a **derivation**
+  asks (`chain/antecedent-hidden?`): a firing placed under an `except` is blocked and swept.
+  A read asks `hidden-fn`, which adds the scoped defeats and everything resting only on a
+  withdrawn handle.  A firing is not blocked on those, because a scoped defeat is re-decided
+  every settle, and a block would sweep and re-derive the firing on every one of them.
 
   Nil rather than `(constantly false)` on purpose: it is the caller's O(1) gate, and one
   that lets it skip its filter outright instead of running a predicate that can only ever
@@ -1727,15 +1739,15 @@
   `:meta-except-count`, so the common no-meta read never builds it and stays O(what it
   returns)."
   [kb view-context]
-  (let [by-ctx @(:excepted kb)]
+  (let [by-ctx @(reasoning/excepted kb)]
     (when-not (or (empty? by-ctx) (sx/variable? view-context))
-      (let [up   (tax/context-up-global (:taxonomy kb) view-context)
+      (let [up   (tax/context-up-global (reasoning/taxonomy kb) view-context)
             ;; only the contexts that both state an except and are visible from here —
             ;; computed once, so the predicate walks nothing it will always reject
             live (into [] (comp (filter #(contains? up (key %))) (map val)) by-ctx)
-            tms  (:tms kb)]
+            tms  (reasoning/tms kb)]
         (when (seq live)
-          (if (pos? @(:meta-except-count kb))
+          (if (pos? @(reasoning/meta-except-count kb))
             ;; Meta-exceptions present: the cascade (`except-in-force?`) resolves an
             ;; except-handle to *its own* targets anywhere in the ancestor set, so it needs the
             ;; whole roster in one map.  Flatten it once, here — O(excepts in the ancestor set) —
@@ -1762,9 +1774,169 @@
                          (some #(jtms/in? tms %) ehs)))
                      live)))))))))
 
+(defn- undecided-pairs*
+  [kb up]
+  (let [ds @(reasoning/vantage-disagreements kb)]
+    (if (empty? ds)
+      #{}
+      (into #{}
+            (mapcat (fn [{:keys [by]}]
+                      (let [seen (into {} (filter #(contains? up (key %))) by)]
+                        (when (< 1 (count (distinct (vals seen)))) seen))))
+            ds))))
+
+(defn undecided-pairs
+  "The `#{[vantage handle]}` scoped defeats `reader` reads no verdict from: the ones a
+  nogood's disagreeing vantages decided, where `reader` sees two vantages that defeated
+  different members.
+
+  A nogood is decided once per vantage, and two vantages can defeat different members.
+  Each verdict holds at its own vantage and below, so a reader under one of them reads that
+  verdict.  A reader under both reads two verdicts, and one nogood does not convict two
+  members: it takes neither, believes every member, and `contradictions` reports the nogood
+  (docs/nmtms.md, \"Vantages that disagree\").  A defeat of the same handle at a vantage
+  outside the disagreement is **not** here, so a reader that sees one of those still reads
+  the handle as withdrawn.
+
+  Empty, on one deref and with no ancestor read, for every KB whose settle recorded no
+  disagreement — which is every KB with one vantage per nogood.  Otherwise cached per
+  reader beside the withdrawal it feeds, and emptied with it."
+  [kb reader]
+  (if (or (empty? @(reasoning/vantage-disagreements kb)) (sx/variable? reader))
+    #{}
+    (let [cache (reasoning/withdrawn kb)
+          k     [::undecided reader]
+          hit   (get @cache k ::absent)]
+      (if (identical? ::absent hit)
+        (let [v (undecided-pairs* kb (tax/context-up-global (reasoning/taxonomy kb) reader))]
+          (swap! cache assoc k v)
+          v)
+        hit))))
+
+(defn- withdrawal*
+  [kb reader with-excepts?]
+  (let [up    (tax/context-up-global (reasoning/taxonomy kb) reader)
+        und   (undecided-pairs* kb up)
+        extra (into (if with-excepts? (excepted-handles kb reader) #{})
+                    (comp (filter #(contains? up (key %)))
+                          (mapcat (fn [[v hs]] (map #(vector v %) hs)))
+                          (remove und)
+                          (map peek))
+                    @(reasoning/scoped-defeats kb))]
+    (when (seq extra)
+      (let [{:keys [region in]} (jtms/grounded-in-region (reasoning/tms kb) extra)]
+        {:region region :in in :out (into #{} (remove in) region)}))))
+
+(defn withdrawal
+  "What `reader` reads as withdrawn, as `{:region :in :out}`, or nil when nothing is.
+
+  Three things withdraw a handle from a reader: a believed `except` visible from it, a
+  scoped defeat at a vantage it sees (`:scoped-defeats`, written by the settle), and resting
+  only on handles withdrawn by those two.  The third is `jtms/grounded-in-region` with the
+  first two forced OUT: `:region` is their forward consequence closure, `:in` the part of
+  it that stays believed, and `:out` the rest.  So a conclusion stored in a context above
+  the `except` or the vantage is withdrawn from this reader when every justification it has
+  rests on a withdrawn handle (docs/nmtms.md, \"A defeat is scoped to its vantage\").
+
+  Nil at once, with two derefs, when the KB stores no `except` and holds no scoped defeat,
+  and for a variable reader, which reads every context.  Otherwise cached per reader in
+  `:withdrawn`.  The settle empties that cache at every point it moves the network or the
+  roster (`clear-withdrawn!`), so between two settles a reader computes its answer once.  A
+  forward chaining run between two settles therefore reads the consequences as they stood
+  at the last settle.  The `except` targets themselves are asked live, by `hidden-fn`.
+
+  `with-excepts?` false leaves the `except` roster out and answers for the scoped defeats
+  alone.  That is the **belief** half of the answer, which `defeat-withdrawn-set` gives
+  the levels that filter belief and not visibility (`vaelii.impl.levels`, levels 2 and 3)."
+  ([kb reader] (withdrawal kb reader true))
+  ([kb reader with-excepts?]
+   (when-not (or (sx/variable? reader)
+                 (and (empty? @(reasoning/scoped-defeats kb))
+                      (or (not with-excepts?) (empty? @(reasoning/excepted kb)))))
+     (let [cache (reasoning/withdrawn kb)
+           k     (if with-excepts? reader [reader :defeats])
+           hit   (get @cache k ::absent)]
+       (if (identical? ::absent hit)
+         (let [w (withdrawal* kb reader with-excepts?)]
+           (swap! cache assoc k w)
+           w)
+         hit)))))
+
+(defn withdrawn-set
+  "The handles `reader` reads as withdrawn (`withdrawal`'s `:out`), or nil when none are."
+  [kb reader]
+  (:out (withdrawal kb reader)))
+
+(defn defeat-withdrawn-set
+  "The handles `reader` reads as disbelieved on account of the scoped defeats alone — each
+  one scoped-defeated at a vantage `reader` sees, and each one resting only on such a
+  handle — or nil when there are none.  A scoped defeat is a matter of belief, where an
+  `except` is a matter of visibility, so a read that filters belief and not visibility
+  applies this set and not `hidden-fn`."
+  [kb reader]
+  (:out (withdrawal kb reader false)))
+
+(defn clear-withdrawn!
+  "Empty the per-reader `withdrawal` cache.  The settle calls this wherever it moves the
+  network or `:scoped-defeats`.
+
+  Moves the taxonomy's supporter-visibility generation too, when anything can be
+  withdrawn at all: the scoped closure reads are memoized on that generation, and which
+  supporters a reader reads as withdrawn is computed from the network as well as from the
+  two rosters (`supporter-filter-roster`)."
+  [kb]
+  (reset! (reasoning/withdrawn kb) {})
+  (when (or (seq @(reasoning/scoped-defeats kb)) (seq @(reasoning/excepted kb)))
+    (tax/note-supporter-visibility-change! (reasoning/taxonomy kb))))
+
+(defn supporter-filter-roster
+  "What the taxonomy's `supporter-filter-active?` callback answers (`kb/attach-visibility!`):
+  nil when no reader reads any handle as withdrawn, else a seq of `[context {target #{…}}]`
+  entries naming every handle some reader can read as withdrawn.
+
+  Those are the `except` targets, the scoped-defeated handles, and everything in their
+  forward consequence closure, since a handle resting only on a withdrawn one is withdrawn
+  from the same reader.  The taxonomy reads only the entries' target keys
+  (`relation-filter-active?`) to decide whether a relation needs its supporters asked one by
+  one, so the closure rides in one extra entry.  Computed once per settle and cached in
+  `:withdrawn`, because the taxonomy calls this on every scoped read."
+  [kb]
+  (let [ex @(reasoning/excepted kb)
+        sd @(reasoning/scoped-defeats kb)]
+    (when (or (seq ex) (seq sd))
+      (let [cache (reasoning/withdrawn kb)
+            hit   (get @cache ::roster ::absent)]
+        (if (identical? ::absent hit)
+          (let [seeds  (-> #{}
+                           (into (comp (map val) (mapcat keys)) ex)
+                           (into (mapcat val) sd))
+                region (when (seq seeds) (:region (jtms/grounded-in-region (reasoning/tms kb) seeds)))
+                ;; one map, so every entry the taxonomy reads with `val` is a map entry
+                roster (seq (cond-> ex
+                              (seq region) (assoc ::withdrawable (zipmap region (repeat #{})))))]
+            (swap! cache assoc ::roster roster)
+            roster)
+          hit)))))
+
+(defn hidden-fn
+  "A predicate `(fn [handle]) -> boolean` answering whether `view-context` reads `handle`
+  as withdrawn, or **nil** when it reads nothing as withdrawn.  Every belief-filtered read
+  with a concrete context asks this.
+
+  It is `except-hidden-fn`, asked live, together with `withdrawn-set`, which adds the scoped
+  defeats and the handles resting only on a withdrawn one.  Nil stays the O(1) gate for the
+  common KB, which excepts nothing and holds no scoped defeat."
+  [kb view-context]
+  (let [base (except-hidden-fn kb view-context)
+        out  (withdrawn-set kb view-context)]
+    (cond (and base out) (fn [handle] (boolean (or (contains? out handle) (base handle))))
+          out            (fn [handle] (contains? out handle))
+          :else          base)))
+
 (defn excepted?
-  "Is the sentex at `handle` hidden from `view-context` by a believed `except`?  The
-  one-shot form of `hidden-fn`, for a caller with a single handle to ask about."
+  "Is the sentex at `handle` withdrawn from `view-context` — hidden by a believed `except`,
+  scoped-defeated at a vantage it sees, or resting only on such a handle?  The one-shot form
+  of `hidden-fn`, for a caller with a single handle to ask about."
   [kb handle view-context]
   (boolean (when-let [hidden? (hidden-fn kb view-context)] (hidden? handle))))
 
@@ -1777,12 +1949,13 @@
   `excepted?` still performs the meta-exception cascade, so an except suppressed in
   its own context does not count here."
   [kb handle]
-  (boolean (some #(excepted? kb handle %) (keys @(:excepted kb)))))
+  (boolean (some #(excepted? kb handle %) (keys @(reasoning/excepted kb)))))
 
 (defn without-excepted
-  "Drop the `[handle …]` matches whose handle is hidden from `view-context` by a
-  believed `except` — the visibility-removal filter, and the **identical seq** when the
-  reader's ancestor set stores no except at all, which is almost every read of almost every KB."
+  "Drop the `[handle …]` matches whose handle `view-context` reads as withdrawn — hidden by
+  a believed `except`, scoped-defeated at a vantage it sees, or resting only on such a
+  handle (`hidden-fn`) — and answer the **identical seq** when the reader reads nothing as
+  withdrawn, which is almost every read of almost every KB."
   [kb view-context matches]
   (if-let [hidden? (hidden-fn kb view-context)]
     (remove #(hidden? (first %)) matches)
@@ -1806,7 +1979,7 @@
   (`any-mention-position?`), so an ordinary sentence in a KB that merely grants `believes`
   keeps the flat read."
   [kb visible merged? sentence]
-  (let [marks (tax/mention-marks (:taxonomy kb))]
+  (let [marks (tax/mention-marks (reasoning/taxonomy kb))]
     (if (and marks (any-mention-position? marks sentence))
       (not= (representative-term-mention kb @visible marks sentence false) sentence)
       (sx/some-symbol? (fn [t]
@@ -1836,7 +2009,7 @@
   filters nothing: it asks about the KB rather than from a vantage, exactly as the class
   reads do."
   [kb view-context matches]
-  (let [merged? (tax/merged-term-pred (:taxonomy kb))]
+  (let [merged? (tax/merged-term-pred (reasoning/taxonomy kb))]
     (if-not (and merged? (symbol? view-context) (not (sx/variable? view-context)))
       matches
       (let [visible (delay (visible-supporter-fn kb view-context))]
@@ -1903,7 +2076,7 @@
      (let [[canonical rename] (lc/canonicalize sentence)]
        (lc/rename-matches
         rename
-        (lc/lookup (:matches kb)
+        (lc/lookup (reasoning/matches kb)
                    [canonical view-context
                     *hierarchical-retrieval* *arg-root-retrieval* *structural-index*
                     *belief-blind*]
@@ -1950,7 +2123,7 @@
   Sorted, so which declaration a refusal names — and the order the entailments are drawn
   in — is a function of the vocabulary rather than of the closure's hash order."
   [kb kind pred context]
-  (let [tax       (:taxonomy kb)
+  (let [tax       (reasoning/taxonomy kb)
         declaring (tax/props tax (tax/arg-declaration-props kind))]
     (if (empty? declaring)
       []
@@ -2231,18 +2404,31 @@
 
   Built once per query rather than asked per answer.  The defeated set is a *derived*
   state recomputed each settle (`vaelii.impl.jtms`), and a query writes nothing, so it
-  cannot move underneath the search that read it."
+  cannot move underneath the search that read it.
+
+  **`:scoped` holds the scoped defeats**, `{sentence #{[vantage handle]}}`, beside the
+  network's defeats in `:by-sentence`.  A scoped defeat reaches a reader at or below its
+  vantage and no other, so `defeated-answer?` tests it against the vantage rather than
+  against the context the sentex is stored in (docs/nmtms.md, \"A defeat is scoped to its
+  vantage\").  The handle rides beside the vantage because a reader takes no verdict from a
+  pair its disagreeing vantages decided (`undecided-pairs`)."
   [kb]
-  (let [ds (jtms/defeated (:tms kb))]
-    (when (seq ds)
-      (reduce (fn [idx h]
-                (if-let [sx (p/get-sentex (:records kb) h)]
-                  (-> idx
-                      (update-in [:by-sentence (sx/sentence-of sx)] (fnil conj #{}) (:context sx))
-                      (update :functors conj (nm/functor (sx/sentence-of sx))))
-                  idx))
-              {:by-sentence {} :functors #{}}
-              ds))))
+  (let [ds (jtms/defeated (reasoning/tms kb))
+        sd @(reasoning/scoped-defeats kb)]
+    (when (or (seq ds) (seq sd))
+      (let [note (fn [idx k h place]
+                   (if-let [sx (p/get-sentex (:records kb) h)]
+                     (-> idx
+                         (update-in [k (sx/sentence-of sx)] (fnil conj #{}) (place sx))
+                         (update :functors conj (nm/functor (sx/sentence-of sx))))
+                     idx))
+            idx  (reduce #(note %1 :by-sentence %2 :context)
+                         {:by-sentence {} :scoped {} :functors #{}}
+                         ds)]
+        (reduce-kv (fn [idx v hs]
+                     (reduce #(note %1 :scoped %2 (constantly [v %2])) idx hs))
+                   idx
+                   sd)))))
 
 (defn defeatable-goal?
   "Could an answer to `goal` be one belief has already defeated — is its functor one some
@@ -2265,14 +2451,73 @@
   **Visible from the query's context**, because a defeat is a claim about a stored sentex
   and a reader that cannot see that sentex is not the reader it was decided for.  An
   unscoped read (a nil or variable context) sees every context, so any defeat counts —
-  the same reading `matches-visible` gives the wildcard."
+  the same reading `matches-visible` gives the wildcard.
+
+  A **scoped** defeat counts only for a concrete `context` that sees its vantage.  An
+  unscoped read also reads the contexts above the vantage, which believe the sentex, so
+  a scoped defeat drops nothing from it."
   [kb idx sentence context]
   (boolean
    (when idx
-     (when-let [ctxs (get (:by-sentence idx) (sx/sentence-of (kb-sentex kb sentence context)))]
-       (if (or (nil? context) (sx/variable? context))
-         true
-         (boolean (some #(tax/sees? (:taxonomy kb) context %) ctxs)))))))
+     (let [s        (sx/sentence-of (kb-sentex kb sentence context))
+           unscoped (or (nil? context) (sx/variable? context))
+           sees?    #(tax/sees? (reasoning/taxonomy kb) context %)]
+       (or (when-let [ctxs (get (:by-sentence idx) s)]
+             (or unscoped (boolean (some sees? ctxs))))
+           (when-let [vs (get (:scoped idx) s)]
+             (and (not unscoped)
+                  (let [und (undecided-pairs kb context)]
+                    (boolean (some (fn [[v :as pair]]
+                                     (and (not (contains? und pair)) (sees? v)))
+                                   vs))))))))))
+
+(defn scoped-vantages
+  "The vantages `handle` is scoped-defeated at that `context` sees, in content order, or
+  an empty vector when there are none.  A variable context names no reader, so it sees
+  no vantage.
+
+  Read through `context-up-global`, the ancestor set `withdrawal*` applies the defeats
+  from, and not through `tax/sees?`: a believed `except` over a `genlCx` sentex puts a hole
+  in the filtered read and none in the unfiltered one, so the filtered read answers no
+  vantage for a handle belief reads as withdrawn — a `:withdrawn? true` naming no cause."
+  [kb handle context]
+  (if (sx/variable? context)
+    []
+    (let [up  (tax/context-up-global (reasoning/taxonomy kb) context)
+          und (undecided-pairs kb context)]
+      (into [] (comp (filter (fn [[v hs]] (and (contains? hs handle)
+                                               (contains? up v)
+                                               (not (contains? und [v handle])))))
+                     (map key))
+            (sort-by key @(reasoning/scoped-defeats kb))))))
+
+(defn scoped-defeats-seen
+  "Every scoped defeat whose vantage `context` sees, as `[vantage handle]` pairs, or an
+  empty vector for a variable context.  Unordered: a caller reporting them orders them
+  on content.  Read through `context-up-global` for the reason `scoped-vantages` states."
+  [kb context]
+  (if (sx/variable? context)
+    []
+    (let [up  (tax/context-up-global (reasoning/taxonomy kb) context)
+          und (undecided-pairs kb context)]
+      (into [] (for [[v hs] @(reasoning/scoped-defeats kb)
+                     :when (contains? up v)
+                     h hs
+                     :when (not (contains? und [v h]))]
+                 [v h])))))
+
+(defn believed-at?
+  "Is `handle` believed as `context` reads it: IN in the network, and not withdrawn from
+  `context` by a scoped defeat (`defeat-withdrawn-set`)?  The `except` roster is not
+  applied, since an `except` is visibility and this is belief.
+
+  The reader for a caller holding a sentex and no reader is the sentex's own context.  A
+  sentex stored below a vantage and resting only on the member scoped-defeated there is
+  IN in the network and withdrawn from every context that can read it, and this answers
+  false for it."
+  [kb handle context]
+  (boolean (and (jtms/in? (reasoning/tms kb) handle)
+                (not (contains? (defeat-withdrawn-set kb context) handle)))))
 
 ;; ---- dead ends -----------------------------------------------------------
 

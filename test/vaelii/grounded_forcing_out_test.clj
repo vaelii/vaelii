@@ -19,6 +19,7 @@
             [vaelii.impl.config :as config]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.rules :as vr]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (defn- default-rule [antes conseq]
@@ -52,7 +53,7 @@
   ;; while keeping the rest.  Runs under both TMS representations.
   (tu/with-neutral-kb [kb tu/fresh]
     (let [{:keys [pos neg ethical opposes q]} (one-diamond kb)
-          tms        (:tms kb)
+          tms        (reasoning/tms kb)
           extra      #{pos neg}
           via-defeat (do (jtms/defeat tms extra)
                          (let [r (set (jtms/in-datums tms))]
@@ -73,8 +74,8 @@
   ;; Forcing nothing out is the believed set unchanged.
   (tu/with-neutral-kb [kb tu/fresh]
     (one-diamond kb)
-    (is (= (set (jtms/in-datums (:tms kb)))
-           (jtms/grounded-forcing-out (:tms kb) #{})))))
+    (is (= (set (jtms/in-datums (reasoning/tms kb)))
+           (jtms/grounded-forcing-out (reasoning/tms kb) #{})))))
 
 ;; ---- scaling of the classify-local bracket over N dilemmas ---------------
 

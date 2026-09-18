@@ -417,7 +417,7 @@
   ;; its outermost functor: under a `not`- or `ist`-headed consequent an antecedent's
   ;; own frame is not "the recursive literal", so it sorts like any generator — and the
   ;; genuinely recursive antecedent is held back either way.
-  (let [p (tu/tmp-pred) q (tu/tmp-pred) r (tu/tmp-pred) ctx (tu/tmp-ctx)]
+  (let [p (tu/tmp-pred) q (tu/tmp-pred) r (tu/tmp-pred)]
     (testing "a negated-head rule dedups across antecedent order"
       (let [h1 (v/assert-rule kb [(list 'not (list p '?x)) (list 'not (list q '?x))]
                               (list 'not (list r '?x)) 'CxU {:direction :forward})
@@ -426,12 +426,6 @@
                               (list 'not (list r '?x)) 'CxU {:direction :forward})]
         (is (= h1 h2))
         (is (= n1 (count (p/sentex-ids (:records kb)))))))
-    (testing "an ist-headed rule dedups across antecedent order"
-      (let [h1 (v/assert-rule kb [(list p '?x) (list q '?x)] (list 'ist ctx (list r '?x))
-                              'CxU {:direction :forward})
-            h2 (v/assert-rule kb [(list q '?x) (list p '?x)] (list 'ist ctx (list r '?x))
-                              'CxU {:direction :forward})]
-        (is (= h1 h2))))
     (testing "a recursive rule with a negated head keeps its recursive literal held"
       (let [b (tu/tmp-pred) a (tu/tmp-pred)
             h (v/assert-rule kb [(list b '?x '?y) (list a '?y '?z)]
@@ -815,28 +809,43 @@
 
 ;; ---- the symbol pool is bounded, and the bound changes no answer ---------
 
-(deftest the-symbol-pool-is-bounded-and-a-flush-changes-no-answer
+(deftest the-symbol-pool-is-bounded-and-a-rotation-changes-no-answer
   ;; Interning is a pure space optimization, and the pool is not vocabulary-sized: NAT
   ;; reification, head-existential skolemization and abduction each mint a fresh symbol
   ;; per fact, so an unbounded pool grows with the KB.  With room for a handful, minting
-  ;; past it flushes the pool wholesale — and because interning changes identity and never
-  ;; equality, a canonicalization either side of a flush still answers `=`, hashes the
-  ;; same, and keys a map the same.
+  ;; past it rotates the pool's generations — and because interning changes identity and
+  ;; never equality, a canonicalization either side of a rotation still answers `=`,
+  ;; hashes the same, and keys a map the same.
   (binding [sx/*symbol-pool-limit* 8]
-    (let [^java.util.concurrent.ConcurrentHashMap pool @#'sx/symbol-pool
-          before (sx/canon '(parentOf Tom Bob))]
+    (let [before (sx/canon '(parentOf Tom Bob))]
       (dotimes [i 200]
         (sx/canon (list (symbol (str "minted" i)) (symbol (str "Witness" i))))
-        (is (<= (.size pool) 8) (str "the pool never exceeds its bound (mint " i ")")))
+        (is (<= (#'sx/pool-size) 8) (str "the pool never exceeds its bound (mint " i ")")))
       (let [after (sx/canon '(parentOf Tom Bob))]
-        (testing "the canonical form survives every flush in between"
+        (testing "the canonical form survives every rotation in between"
           (is (= before after))
           (is (= (hash before) (hash after)))
           (is (= {before :v} {after :v}) "so it still keys a map"))
         (testing "and a sentex built either side is still the same sentex"
           (is (= (sx/sentex before 'CxA) (sx/sentex after 'CxA)))))
-      (testing "sharing resumes for whatever is named after a flush"
+      (testing "sharing resumes for whatever is named after a rotation"
         (is (identical? (sx/intern-sym 'pooledAgain) (sx/intern-sym 'pooledAgain)))))))
+
+(deftest a-rotation-keeps-a-name-in-use-and-drops-a-name-left-unused
+  ;; A lookup that finds a name in the previous generation puts it into the current one, so
+  ;; a name read between every two rotations keeps one object while the pool rotates under
+  ;; it.  A name nobody reads for two rotations leaves the pool, and the next mention pools
+  ;; a fresh instance.  `(symbol …)` builds a new, unpooled object on every call, so
+  ;; `identical?` against the first pooled instance tells the two cases apart.
+  (binding [sx/*symbol-pool-limit* 8]
+    (let [hot  (sx/intern-sym (symbol "poolHotName"))
+          cold (sx/intern-sym (symbol "poolColdName"))]
+      (dotimes [i 100]
+        (sx/intern-sym (symbol (str "poolFiller" i)))
+        (is (identical? hot (sx/intern-sym (symbol "poolHotName")))
+            (str "a name read every step keeps its object (filler " i ")")))
+      (is (not (identical? cold (sx/intern-sym (symbol "poolColdName"))))
+          "a name unread across the rotations was dropped and is pooled afresh"))))
 
 (tu/deftest-kb a-double-negated-rule-antecedent-fires-like-the-plain-one
   ;; The fact entry point peels double negation; the rule entry point must too.  A

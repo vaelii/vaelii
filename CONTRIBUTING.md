@@ -20,13 +20,13 @@ lein browser       # the one to work in: a REPL with the browser running in it, 
 ```
 
 `lein browser` is `lein repl` with the browser already started *and a reload channel
-into it* (§6). `lein run -m vaelii.host.web` serves the same pages with no way in, so
+into it* (§6). `lein run -m vaelii.browser.web` serves the same pages with no way in, so
 prefer `lein browser` while you are editing.
 
 ### 1.1 Static analysis (`lein lint`) setup
 
 Building, running and testing Vaelii needs only a JDK and Leiningen. `lein lint` is a
-separate gate that shells out to three more binaries, none of which Leiningen
+separate gate that shells out to four more binaries, none of which Leiningen
 installs:
 
 - [`clj-kondo`](https://github.com/clj-kondo/clj-kondo) — `brew install
@@ -34,11 +34,15 @@ installs:
   script](https://github.com/clj-kondo/clj-kondo/blob/master/doc/install.md)
 - [`shellcheck`](https://www.shellcheck.net/) — `brew install shellcheck` (macOS), or
   your distro's package
+- [`ruff`](https://docs.astral.sh/ruff/) — `brew install ruff` (macOS), or `pipx
+  install ruff`. The only optional one: the `tools` check skips with a note when ruff
+  is absent, because no CI image this repo uses carries it
 - `python3` — usually already present
 
 ```bash
 lein lint    # glossary, versions, doc links, doc drift, conflict markers, clj-kondo,
-             # cljfmt, shellcheck, reflect (a compile pass), unused (a public var nothing calls)
+             # cljfmt, shellcheck, reflect (a compile pass), unused (a public var nothing
+             # calls), prose, tools (ruff over the Python under tools/)
 lein fix     # reformats in place; cljfmt is the only auto-repairable check
 lein gate    # lint, then the suite — the check before you push
 lein release-gate  # ...and the perf claims, before a tag or a perf-sensitive land
@@ -101,7 +105,9 @@ the two single-axis scripts take in sequence.
 
 ```
 src/vaelii/            the six public namespaces: core.clj (the whole API) plus five thin entry points (§2.1)
-src/vaelii/impl/       everything else: engine internals, ontology content, browser
+src/vaelii/impl/       the engine internals and the ontology content
+src/vaelii/host/       the tooling above the API: the daemon, the CLI, the loaders, the LLM stack
+src/vaelii/browser/    the KB browser, an app on the public API (koinii/ is the other app)
 test/vaelii/           the suite, plus the test-world fixtures (world*.clj)
 bench/                 the load/scale harnesses (:bench profile, its own source path)
 resources/kb/          the starter ontology as term-centric text, read by vaelii.host.seed
@@ -117,8 +123,8 @@ source path is what stops `:uberjar {:aot :all}` from compiling and shipping the
 
 **`vaelii.core` is the engine's whole API**, and five thin entry points are public
 beside it: `vaelii.client`, `vaelii.starter`, `vaelii.web`, `vaelii.serve` and
-`vaelii.cli`. Everything else lives under `vaelii.impl.*` and is free to change without
-notice — the engine internals, the ontology content, and the browser alike. Tests reach
+`vaelii.cli`. Everything else lives under `vaelii.impl.*`, `vaelii.host.*` or one of the
+two apps (`vaelii.koinii.*`, `vaelii.browser.*`) and is free to change without notice. Tests reach
 into `impl` freely, which is what unit tests are for; nothing outside this repo should.
 
 The five exist so that the entry points a first-time reader is pointed at are ones the
@@ -480,7 +486,9 @@ pronoun points at. Eight rules:
 
 **`lein lint`'s `prose` check** (`scripts/check-prose.py`) enforces the mechanical part:
 P1 banned metaphors, P2 banned rhetoric, P3 pseudo-cleft, P4 a copula with `are` straight
-after it. It reads against `scripts/prose-baseline.txt`, a per-file budget that only
+after it. It reads `src/`, `test/`, `bench/`, `docs/`, `scripts/`, `resources/kb/`,
+`tools/` and the root markdown against `scripts/prose-baseline.txt`, a per-file budget
+that only
 shrinks — a file absent from the baseline is pinned at zero, so new and rewritten files
 are clean by default. The sentence-form rules are held by review. This section states the
 rule, so it quotes the banned tokens in order to ban them and is exempt by name, the
@@ -543,7 +551,9 @@ lein test-multi-jvm              # the cross-process tests — opt-in, in neithe
 lein test-fuzz                   # the exhaustive truncation sweep — likewise opt-in
 lein test-backends               # the whole suite once per backend (all eight)
 lein test-sweeps                 # ...and once per alternative implementation (all five)
-lein test-matrix                 # both at once, concurrently — ~13 min, not ~55
+lein test-matrix                 # both at once, concurrently — ~13 min, not ~55.
+                                 # Shuffled launch order, seed printed; `--ordered`
+                                 # schedules the longest first instead
 lein test-shuffle                # the thirteen in a seeded random order, memory first,
                                  # stopping at the first red — the fresh-angle smoke walk
 ```
@@ -672,20 +682,20 @@ them before merge.
 Edit a source file, then at the `lein browser` prompt:
 
 ```clojure
-(require 'vaelii.host.web :reload)
+(require 'vaelii.browser.web :reload)
 ```
 
 …and the next request serves the new code. From an editor, connect over nREPL through
 `.nrepl-port` and do the same.
 
-The reason `lein browser` exists rather than `lein run -m vaelii.host.web` is that the
+The reason `lein browser` exists rather than `lein run -m vaelii.browser.web` is that the
 failure it avoids is silent. **A ring handler is a value, and Jetty holds the one it
 was started with**, so a reload against a plain `lein run` can redefine every var on
 the page and change nothing about what is served: the namespace reloads, the page does
 not, and there is nothing to see. `lein browser` serves through a handler that
 re-resolves `#'app` per request, so a reload actually lands.
 
-`(vaelii.host.web/dev-stop)` takes the server down without leaving the prompt.
+`(vaelii.browser.web/dev-stop)` takes the server down without leaving the prompt.
 `VAELII_WEB_PORT` moves it off 3000, and moves `lein run -m vaelii.web` too — an explicit
 `--port` still wins.
 

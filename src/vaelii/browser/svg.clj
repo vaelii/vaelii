@@ -1,6 +1,6 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
-(ns vaelii.host.svg
+(ns vaelii.browser.svg
   "The inline-SVG primitives the term page's concept graph is drawn with: a node, an
   edge, an arrowhead, and the arithmetic that lays out a row, a column or a ring.
 
@@ -33,14 +33,18 @@
 (def node-h
   "Every node is the same height.  A row is then a straight line of pills and the eye
   reads the row rather than the boxes."
-  24)
+  28)
 
 (def ^:private char-w
-  "Average advance of the page's sans face at the node font size.  An estimate, and it
-  only ever has to be an over-estimate: text that is narrower than its box is centred,
-  text that is wider spills.  Measured against the widest thing a KB name can be — an
-  all-caps CapitalCamelCase context — rather than against lowercase prose."
-  7.0)
+  "Advance of one character in a node label.  A node label is a **term**, so it is set in
+  the page's monospace face, where every character advances .6em and this is a width
+  rather than an estimate: 13.5px (`--g-label`) raised by the sheet's `font-size-adjust`
+  of .535 against Hasklig's own .486 x-height is 14.86px used, and .6 of that is 8.92.
+  Nine leaves the eighth of a pixel per character as slack, on the side that matters —
+  text narrower than its box is centred, text wider than it spills.  The sheet's
+  `--g-label` and `--x-height` are the other two thirds of this number; all three move
+  together or the pills stop fitting their labels."
+  9.0)
 
 (def ^:private pad 10)
 

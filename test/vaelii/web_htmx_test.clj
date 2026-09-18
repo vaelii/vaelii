@@ -18,10 +18,10 @@
   set is the attributes it reads through `getClosestAttributeValue`."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
+            [vaelii.browser.catalog :as catalog]
+            [vaelii.browser.web :as web]
             [vaelii.core :as v]
-            [vaelii.host.catalog :as catalog]
             [vaelii.host.llm.stub :as stub]
-            [vaelii.host.web :as web]
             [vaelii.test-util :as tu]))
 
 (def ^:dynamic *app* nil)

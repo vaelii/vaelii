@@ -11,11 +11,11 @@
   or is absent renders a message rather than a stack trace."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
+            [vaelii.browser.web :as web]
             [vaelii.core :as v]
             [vaelii.host.llm.protocol :as proto]
             [vaelii.host.llm.provider :as llm-provider]
             [vaelii.host.llm.stub :as stub]
-            [vaelii.host.web :as web]
             [vaelii.test-util :as tu]))
 
 (def ^:dynamic *app* nil)
@@ -465,7 +465,7 @@
       (is (re-find #"Accept a line to see what it would do" body)))))
 
 (deftest the-review-script-announces-the-accepted-set-once-per-change
-  (let [js (slurp "resources/public/select.js")]
+  (let [js (slurp "resources/public/vaelii.js")]
     (testing "the event the panel's hx-trigger listens for"
       (is (str/includes? js "accepted-changed")))
     (testing "keyed on the lines, so re-choosing a shape on an accepted row counts"

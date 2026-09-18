@@ -20,11 +20,10 @@
   (:require [clojure.set :as set]
             [clojure.test :refer [deftest is testing]]
             [vaelii.core :as v]
-            [vaelii.impl.kv :as kv]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.rules :as vr]
             [vaelii.test-util :as tu])
-  (:import (vaelii.impl.dense_kv IntPostings)))
+  (:import (vaelii.impl.types.postings IntPostings)))
 
 ;;; ── the families ──────────────────────────────────────────────────────
 
@@ -142,7 +141,7 @@
         present (families-present kb)]
     (doseq [[fam k] (sort-by (comp str key) present)]
       (testing (pr-str fam)
-        (let [v (kv/kv-get backend k)]
+        (let [v (p/kv-get backend k)]
           (cond
             (handle-families fam)
             (is (instance? IntPostings v)
@@ -173,17 +172,17 @@
     (doseq [[fam k] (sort-by (comp str key) present)
             :when   (not= :trie (first fam))]      ; the columnar trie is native; no [:trie …] key reaches the roots
       (testing (pr-str fam)
-        (is (seq (kv/kv-members roots k)) (str fam " is missing from the roots backend"))
+        (is (seq (p/kv-members roots k)) (str fam " is missing from the roots backend"))
         (if (and (handle-families fam) (not (unpackable-handle-families fam)))
-          (is (nil? (kv/kv-get roots k))
+          (is (nil? (p/kv-get roots k))
               (str fam " is a handle family but " (pr-str k) " is readable through `kv-get`"
                    " — it sits in the fallback backend, un-interned and boxed"))
-          (is (some? (kv/kv-get roots k))
+          (is (some? (p/kv-get roots k))
               (str fam " must stay in the fallback — it is either not a handle family"
                    " or one the packed layout cannot carry (see"
                    " `unpackable-handle-families`)")))))
     ;; and the trie families really are elsewhere — the roots hold no path keys at all
     (doseq [[fam k] present :when (= :trie (first fam))]
-      (is (empty? (kv/kv-members roots k))
+      (is (empty? (p/kv-members roots k))
           (str fam " reached the roots backend; the columnar trie is supposed to own it")))
     (tu/clear-kb! kb)))

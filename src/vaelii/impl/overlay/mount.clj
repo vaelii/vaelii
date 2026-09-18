@@ -42,7 +42,8 @@
             [vaelii.impl.memory :as mem]
             [vaelii.impl.overlay.frozen :as frozen]
             [vaelii.impl.overlay.kv :as okv]
-            [vaelii.impl.overlay.store :as ostore]))
+            [vaelii.impl.overlay.store :as ostore]
+            [vaelii.impl.protocols :as p]))
 
 (defn kv-backend-of
   "The `KvBackend` an `IndexStore` is written over, or nil when it is not written over one
@@ -50,7 +51,7 @@
   no such protocol and answers nil."
   [index-store]
   (let [b (:backend index-store)]
-    (when (and b (satisfies? kv/KvBackend b)) b)))
+    (when (and b (satisfies? p/KvBackend b)) b)))
 
 (defn- base-kv
   [base-index]

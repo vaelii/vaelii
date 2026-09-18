@@ -220,9 +220,8 @@ so a candidate shaped like one stores somewhere other than the context the calle
 past a check chain with nothing to say about it — the sentence is well-formed and every
 name in it is legal. That is the only way this path's "the context is the caller's"
 promise can be broken, so `session/placement-problem` refuses it as `:context-escape`, on
-every propose path rather than only this one. A rule *consequent* `ist` is left alone:
-that form exists to place derived conclusions, and it is visible in the line a reviewer
-reads rather than hidden in where the line goes.
+every propose path rather than only this one. A rule consequent `ist` is not this
+refusal's: the check chain refuses an `ist` in any rule position as `:not-well-formed`.
 
 Beside that, `:corrections` reports entries that **passed** the critic and are still the
 wrong shape — `(believed person)` states a one-place claim of a type symbol where the KB's
@@ -461,7 +460,7 @@ reshuffles under a reviewer is a bug.
 | the span is the document's own characters | every segment of every fable satisfies `(= text (subs doc start end))` |
 | nothing writes | a source scan for `assert` / `edit!` / `retract` / `ist`, and a run that leaves the sentex, index and term counts identical |
 | the batch is applicable | `check-batch` **and** `check-edit` on it are both empty; a refused candidate is a repair carrying its verdict |
-| a candidate cannot file itself elsewhere | an `(ist Ctx S)` candidate is refused on every path, the message names both contexts, and a rule consequent's `ist` is left alone |
+| a candidate cannot file itself elsewhere | an `(ist Ctx S)` candidate is refused on every path, the message names both contexts, and a rule consequent's `ist` is the check chain's `:not-well-formed` |
 | `:invalid` means refused, not empty | a document whose every claim is already stored is `:ok` with an empty batch, and applying it is a no-op |
 | the right claim in the wrong shape | `(believed person)` passes the critic, is reported as a correction, and is flagged in the queue |
 | vocabulary | a document restating a stored claim produces no new term; a coined functor is reported with its arity and role |

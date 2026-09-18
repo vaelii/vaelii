@@ -53,11 +53,10 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [vaelii.host.llm.protocol :as llm-protocol]
-            [vaelii.impl.io.snapshot :as snapshot]
-            [vaelii.impl.kv :as kv]
             [vaelii.impl.protocols :as protocols]
-            [vaelii.impl.provers :as provers]
-            [vaelii.impl.solve :as solve])
+            [vaelii.impl.types.prover :as prover-types]
+            [vaelii.impl.types.snapshot :as snapshot-types]
+            [vaelii.impl.types.solve :as solve-types])
   (:import [java.io File]))
 
 (def ^:private golden-file "test/golden/spi-protocols.edn")
@@ -74,32 +73,32 @@
    [#'protocols/RecordSink      "docs/storage.md"]
    [#'protocols/BulkAnnotating  "docs/storage.md"]
    [#'protocols/IndexStore      "docs/storage.md"]
-   [#'kv/KvBackend              "docs/storage.md"]
-   [#'snapshot/SnapshotSink     "docs/storage.md"]
-   [#'snapshot/SnapshotSource   "docs/storage.md"]
-   [#'solve/Solver              "docs/asp.md"]
-   [#'provers/Prover            "docs/qcn.md"]
-   [#'provers/SupportingProver  "docs/inference.md"]
+   [#'protocols/KvBackend              "docs/storage.md"]
+   [#'snapshot-types/SnapshotSink     "docs/storage.md"]
+   [#'snapshot-types/SnapshotSource   "docs/storage.md"]
+   [#'solve-types/Solver              "docs/asp.md"]
+   [#'prover-types/Prover            "docs/qcn.md"]
+   [#'prover-types/SupportingProver  "docs/inference.md"]
    [#'llm-protocol/Provider     "docs/llm.md"]])
 
 (def ^:private not-an-extension-point
   "The protocols deliberately NOT pinned, each with why.  Every one is a single
   backend's internal shape: it exists so two namespaces in this repo can agree, and
   nothing outside the repo has an implementation of it to break."
-  {'vaelii.impl.columnar/PTrie
+  {'vaelii.impl.types.trie/PTrie
    "the columnar index's own trie shape; ColumnarIndexStore is its only implementer."
    'vaelii.impl.tokens/ITokens
    "the int-token table behind the columnar trie — an encoding detail of that backend."
-   'vaelii.impl.dense-roots/PMappedRoots
+   'vaelii.impl.types.dense-roots/PMappedRoots
    "how the dense roots are memory-mapped; read by the dense index and nothing else."
-   'vaelii.impl.dense-kv/IPostings
+   'vaelii.impl.types.postings/IPostings
    "how the dense KvBackend packs a handle set. A new backend supplies a KvBackend
     (which IS pinned) and never this."
    'vaelii.impl.jtms-protocol/Tms
    "the sparse/dense JTMS swap (docs/density.md); the protocol has its own file so the
     rest of jtms.clj stays instrumentable (scripts/coverage.sh). Both implementations
     ship here and `VAELII_TEST_TMS` picks between them; an internal axis, not an invitation."
-   'vaelii.impl.kv/ArgColumns
+   'vaelii.impl.protocols/ArgColumns
    "the argument-root family's read shape — the counted pos→term trie behind
     `sentexes-with-arg`/`count-with-arg`. MemoryKvBackend implements it and DenseRoots
     delegates to that one; both are in this repo and nothing outside supplies it."})
@@ -180,7 +179,7 @@
 (defn- ns-of
   "The `ns` form's name for a source file."
   [^File f]
-  (some-> (re-find #"(?m)^\(ns\s+([\w.-]+)" (slurp f)) second symbol))
+  (some-> (re-find #"(?m)^\(ns\s+(?:\^\{[^}]*\}\s+)?([\w.-]+)" (slurp f)) second symbol))
 
 (defn declared-protocols
   "`#{ns/Protocol …}` — every protocol declared under `src/`.  Read from the sources

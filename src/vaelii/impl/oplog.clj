@@ -73,7 +73,8 @@
             [vaelii.impl.disk.durability :as dur]
             [vaelii.impl.disk.files :as f]
             [vaelii.impl.feed :as feed]
-            [vaelii.impl.protocols :as p])
+            [vaelii.impl.protocols :as p]
+            [vaelii.impl.types.store :as store-types])
   (:import [java.io RandomAccessFile]))
 
 (def format-version
@@ -98,12 +99,6 @@
 (def ^:dynamic *replay-inputs*
   "The inputs map of the frame `replay!` is running."
   nil)
-
-;; `raf` is the log file, written and forced under `lock` because a `RandomAccessFile`
-;; shares one file pointer (`vaelii.impl.disk.files`, the shared-pointer invariant).
-;; `state` is `fresh-state`'s map; `reg` the durability registration; `seal-fn` the
-;; function `run-op` calls when a seal is due.
-(defrecord Oplog [path ^RandomAccessFile raf lock state reg seal-fn])
 
 (defn- log-path ^String [dir] (str dir "/oplog/ops.log"))
 
@@ -138,7 +133,7 @@
         [frames end] (scan raf)
         _    (f/truncate-log! raf end)
         lock (Object.)
-        log  (->Oplog path raf lock (atom nil) (atom nil) (atom nil))]
+        log  (store-types/->Oplog path raf lock (atom nil) (atom nil) (atom nil))]
     (if (empty? frames)
       (do (locking lock (f/append-record! raf (header generation)))
           (reset! (:state log) (fresh-state generation)))
@@ -262,9 +257,10 @@
 
 ;; ---- replay ---------------------------------------------------------------
 
-(def ^:private dispatch
-  "Operation name -> the function a frame of it runs through.  Installed by `vaelii.core`
-  at load, with the write entry points of its `write-ops` table."
+(defonce ^{:private true
+           :doc "Operation name -> the function a frame of it runs through.  Installed by `vaelii.core`
+  at load, with the write entry points of its `write-ops` table."}
+  dispatch
   (atom {}))
 
 (defn install-dispatch!

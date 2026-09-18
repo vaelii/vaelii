@@ -156,7 +156,7 @@ answers, so the constraint-only reading stays one `binding` away.
 
 ## What this is not
 
-`provers/ArgTypeProver` already answers a ground `(animal Fred)` goal from exactly this
+`prover-types/ArgTypeProver` already answers a ground `(animal Fred)` goal from exactly this
 declaration — arg read as an inference is not new. What is new is that the type
 becomes a **record**: a handle, a justification naming what it rests on, a place in the
 taxonomy that `isa?` / `types-of` and the definitional checks read, and a datum the
@@ -507,7 +507,7 @@ decides at all, rather than every non-symbol being exempt:
 **Checked and never entailed is not the same as read literally.** Whose declarations speak
 for a tuple is one question for all four spellings — `res/constraining-predicates`, the
 predicate's own and every super-predicate the asking context can see — so a `quotedArg` on
-`pAgeOf` refuses a `pInfantAgeOf` tuple at the entry point. `provers/MetaConstraintProver`
+`pAgeOf` refuses a `pInfantAgeOf` tuple at the entry point. `prover-types/MetaConstraintProver`
 answers `quotedArg` along that same closure, position 1 descending the predicate and
 position 3 widening up the type, exactly as it answers the other three; the alternative was
 one declaration meaning one thing to `assert` and another to `ask`. What stays out is the

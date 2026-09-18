@@ -1,7 +1,7 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.sandbox-test
-  "Somewhere safe to be wrong — `vaelii.host.sandbox`, and the browser wiring that puts a
+  "Somewhere safe to be wrong — `vaelii.browser.sandbox`, and the browser wiring that puts a
   reader in one without asking them to choose a context.
 
   The property that matters is asymmetric visibility, and it is not a permission check:
@@ -11,10 +11,10 @@
   half of it is a sandbox that either cannot be used or cannot be trusted."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
+            [vaelii.browser.catalog :as catalog]
+            [vaelii.browser.sandbox :as sandbox]
+            [vaelii.browser.web :as web]
             [vaelii.core :as v]
-            [vaelii.host.catalog :as catalog]
-            [vaelii.host.sandbox :as sandbox]
-            [vaelii.host.web :as web]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded tu/load-starter!))

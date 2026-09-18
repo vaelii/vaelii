@@ -27,81 +27,81 @@
   overlay decorator over an empty base, which is the claim that a fork of nothing
   behaves exactly like the thing it forked."
   [b]
-  (kv/kv-clear! b)
+  (p/kv-clear! b)
   (testing "scalar upsert — set, overwrite, read, delete"
-    (is (nil? (kv/kv-get b [:s :a])) "absent scalar reads nil")
-    (kv/kv-put b [:s :a] {:x 1})
-    (is (= {:x 1} (kv/kv-get b [:s :a])) "a Clojure value round-trips")
-    (kv/kv-put b [:s :a] {:x 2})
-    (is (= {:x 2} (kv/kv-get b [:s :a])) "a second set overwrites")
-    (kv/kv-delete b [:s :a])
-    (is (nil? (kv/kv-get b [:s :a])) "delete removes it"))
+    (is (nil? (p/kv-get b [:s :a])) "absent scalar reads nil")
+    (p/kv-put b [:s :a] {:x 1})
+    (is (= {:x 1} (p/kv-get b [:s :a])) "a Clojure value round-trips")
+    (p/kv-put b [:s :a] {:x 2})
+    (is (= {:x 2} (p/kv-get b [:s :a])) "a second set overwrites")
+    (p/kv-delete b [:s :a])
+    (is (nil? (p/kv-get b [:s :a])) "delete removes it"))
 
   (testing "counters — incr/decr return the post-op value"
-    (is (= 1 (kv/kv-increment b [:c :n])) "first incr from absent is 1")
-    (is (= 2 (kv/kv-increment b [:c :n])))
-    (is (= 1 (kv/kv-decrement b [:c :n])) "decr returns the new value")
-    (is (= 0 (kv/kv-decrement b [:c :n])))
+    (is (= 1 (p/kv-increment b [:c :n])) "first incr from absent is 1")
+    (is (= 2 (p/kv-increment b [:c :n])))
+    (is (= 1 (p/kv-decrement b [:c :n])) "decr returns the new value")
+    (is (= 0 (p/kv-decrement b [:c :n])))
     ;; Every counter key this index writes is a cardinality — how many sentexes live
     ;; under a trie prefix — and `plan/prefix-estimate` divides by them, so the floor is
     ;; part of the contract rather than an accident of one adapter's arithmetic.  An
     ;; adapter that lets one go negative passes every other line here and hands the
     ;; planner a number that means nothing.
     (testing "a decrement at zero holds the floor rather than going negative"
-      (is (= 0 (kv/kv-decrement b [:c :n])) "at zero it stays at zero")
-      (is (= 0 (kv/kv-decrement b [:c :never])) "and an absent counter decrements to zero")
-      (is (= 1 (kv/kv-increment b [:c :n])) "the floor is a floor, not a stuck key")
-      (kv/kv-delete b [:c :never])))
+      (is (= 0 (p/kv-decrement b [:c :n])) "at zero it stays at zero")
+      (is (= 0 (p/kv-decrement b [:c :never])) "and an absent counter decrements to zero")
+      (is (= 1 (p/kv-increment b [:c :n])) "the floor is a floor, not a stuck key")
+      (p/kv-delete b [:c :never])))
 
   (testing "sets — add/remove/members/card, every member type intact"
-    (kv/kv-add-to-set b [:put 1] 1970)          ; a number, not "1970"
-    (kv/kv-add-to-set b [:put 1] :rule)         ; a keyword, not "rule"
-    (kv/kv-add-to-set b [:put 1] 'foo)          ; a symbol
-    (is (= #{1970 :rule 'foo} (kv/kv-members b [:put 1])) "types survive the round trip")
-    (is (= 3 (kv/kv-count b [:put 1])))
-    (kv/kv-add-to-set b [:put 1] 1970)          ; re-add is idempotent (set semantics)
-    (is (= 3 (kv/kv-count b [:put 1])))
-    (kv/kv-remove-from-set b [:put 1] :rule)
-    (is (= #{1970 'foo} (kv/kv-members b [:put 1])))
+    (p/kv-add-to-set b [:put 1] 1970)          ; a number, not "1970"
+    (p/kv-add-to-set b [:put 1] :rule)         ; a keyword, not "rule"
+    (p/kv-add-to-set b [:put 1] 'foo)          ; a symbol
+    (is (= #{1970 :rule 'foo} (p/kv-members b [:put 1])) "types survive the round trip")
+    (is (= 3 (p/kv-count b [:put 1])))
+    (p/kv-add-to-set b [:put 1] 1970)          ; re-add is idempotent (set semantics)
+    (is (= 3 (p/kv-count b [:put 1])))
+    (p/kv-remove-from-set b [:put 1] :rule)
+    (is (= #{1970 'foo} (p/kv-members b [:put 1])))
     (testing "membership — the same answer as the set, one probe instead of a set"
       ;; nothing above compares the two ops, and on a backend that packs a posting they
       ;; are different code paths entirely; `kv_membership_test` is the differential
-      (is (kv/kv-member? b [:put 1] 1970))
-      (is (kv/kv-member? b [:put 1] 'foo))
-      (is (not (kv/kv-member? b [:put 1] :rule))  "a member that was removed")
-      (is (not (kv/kv-member? b [:put 1] 'bar))   "one that was never there")
-      (is (not (kv/kv-member? b [:never] 1970))   "and a key that was never written"))
+      (is (p/kv-member? b [:put 1] 1970))
+      (is (p/kv-member? b [:put 1] 'foo))
+      (is (not (p/kv-member? b [:put 1] :rule))  "a member that was removed")
+      (is (not (p/kv-member? b [:put 1] 'bar))   "one that was never there")
+      (is (not (p/kv-member? b [:never] 1970))   "and a key that was never written"))
     (testing "an emptied set is indistinguishable from an absent one"
-      (kv/kv-remove-from-set b [:put 1] 1970)
-      (kv/kv-remove-from-set b [:put 1] 'foo)
-      (is (= #{} (kv/kv-members b [:put 1])))
-      (is (zero? (kv/kv-count b [:put 1])))
-      (is (not (kv/kv-member? b [:put 1] 1970)))))
+      (p/kv-remove-from-set b [:put 1] 1970)
+      (p/kv-remove-from-set b [:put 1] 'foo)
+      (is (= #{} (p/kv-members b [:put 1])))
+      (is (zero? (p/kv-count b [:put 1])))
+      (is (not (p/kv-member? b [:put 1] 1970)))))
 
   (testing "N-key intersection"
-    (doseq [m '[a b c]] (kv/kv-add-to-set b [:i 1] m))
-    (doseq [m '[b c d]] (kv/kv-add-to-set b [:i 2] m))
-    (doseq [m '[b c e]] (kv/kv-add-to-set b [:i 3] m))
-    (is (= '#{b c} (kv/kv-intersect b [[:i 1] [:i 2]])) "two-key intersect")
-    (is (= '#{b c} (kv/kv-intersect b [[:i 1] [:i 2] [:i 3]])) "three-key intersect")
-    (is (= '#{a b c} (kv/kv-intersect b [[:i 1]])) "single-key intersect is the set itself")
-    (is (= #{} (kv/kv-intersect b [])) "no keys intersect to empty"))
+    (doseq [m '[a b c]] (p/kv-add-to-set b [:i 1] m))
+    (doseq [m '[b c d]] (p/kv-add-to-set b [:i 2] m))
+    (doseq [m '[b c e]] (p/kv-add-to-set b [:i 3] m))
+    (is (= '#{b c} (p/kv-intersect b [[:i 1] [:i 2]])) "two-key intersect")
+    (is (= '#{b c} (p/kv-intersect b [[:i 1] [:i 2] [:i 3]])) "three-key intersect")
+    (is (= '#{a b c} (p/kv-intersect b [[:i 1]])) "single-key intersect is the set itself")
+    (is (= #{} (p/kv-intersect b [])) "no keys intersect to empty"))
 
   (testing "batch — mixed writes as one unit, one reply per op in order"
-    (let [replies (kv/kv-batch b [[:increment [:b :n]]          ; 0 -> 1
-                                  [:increment [:b :n]]          ; 1 -> 2
-                                  [:add-to-set [:b :s] 7]        ; (non-counter reply ignored)
-                                  [:decrement [:b :n]]          ; 2 -> 1
-                                  [:put  [:b :v] :hello]
-                                  [:remove-from-set [:b :s] 7]])]     ; empties the set
+    (let [replies (p/kv-batch b [[:increment [:b :n]]          ; 0 -> 1
+                                 [:increment [:b :n]]          ; 1 -> 2
+                                 [:add-to-set [:b :s] 7]        ; (non-counter reply ignored)
+                                 [:decrement [:b :n]]          ; 2 -> 1
+                                 [:put  [:b :v] :hello]
+                                 [:remove-from-set [:b :s] 7]])]     ; empties the set
       (is (= 6 (count replies)) "one reply per op")
       (is (= 1 (long (nth replies 0))) "first incr reply is the new value")
       (is (= 2 (long (nth replies 1))))
       (is (= 1 (long (nth replies 3))) "decr reply is the new value, positionally aligned"))
     (testing "every op in the batch actually took effect"
-      (is (= :hello (kv/kv-get b [:b :v])) "the :put landed")
-      (is (zero? (kv/kv-count b [:b :s])) "the :add-to-set then :remove-from-set cancelled to empty")
-      (is (= 2 (long (kv/kv-increment b [:b :n]))) "the counter settled at 1 (incr,incr,decr)"))
+      (is (= :hello (p/kv-get b [:b :v])) "the :put landed")
+      (is (zero? (p/kv-count b [:b :s])) "the :add-to-set then :remove-from-set cancelled to empty")
+      (is (= 2 (long (p/kv-increment b [:b :n]))) "the counter settled at 1 (incr,incr,decr)"))
     ;; An op no adapter recognizes is `:unknown-frame` on **every** adapter, and it is a
     ;; contract rather than an implementation detail: on the disk backend a write op is
     ;; also a WAL frame, so an unreadable one is a log written by some other build and a
@@ -110,7 +110,7 @@
     ;; discriminating on one must not have to know which adapter it reached.
     (testing "an op no fold recognizes is refused by name, not by `case`"
       (let [e (is (thrown? clojure.lang.ExceptionInfo
-                           (kv/kv-batch b [[:frobnicate [:b :v] 1]])))]
+                           (p/kv-batch b [[:frobnicate [:b :v] 1]])))]
         (is (= :unknown-frame (:type (ex-data e))))
         (is (= :frobnicate (:op (ex-data e))) "and names the op it could not read"))))
 
@@ -120,24 +120,24 @@
     ;; both.  So the property is a round trip through a cleared store, not a peek at the
     ;; representation — and afterwards ordinary writes must still work, which is what a
     ;; `kv-put` of a raw set would break on a backend that packs them.
-    (kv/kv-clear! b)
-    (kv/kv-add-to-set b [:term-index 'foo] 11)
-    (kv/kv-add-to-set b [:term-index 'foo] 12)
-    (kv/kv-add-to-set b [:context-root 'CxA] 11)
-    (kv/kv-put b [:trie :count []] 2)
-    (let [snapshot (into #{} (kv/kv-entries b))]
+    (p/kv-clear! b)
+    (p/kv-add-to-set b [:term-index 'foo] 11)
+    (p/kv-add-to-set b [:term-index 'foo] 12)
+    (p/kv-add-to-set b [:context-root 'CxA] 11)
+    (p/kv-put b [:trie :count []] 2)
+    (let [snapshot (into #{} (p/kv-entries b))]
       (is (= 3 (count snapshot)) "every key, once")
       (is (contains? snapshot [[:term-index 'foo] #{11 12}])
           (str "a handle set does not come back as a set: " (pr-str snapshot)))
-      (kv/kv-clear! b)
-      (is (empty? (kv/kv-entries b)))
-      (kv/kv-load b snapshot)
-      (is (= snapshot (into #{} (kv/kv-entries b))) "and back in unchanged")
-      (is (= #{11 12} (kv/kv-members b [:term-index 'foo])) "readable through the ordinary reads")
-      (is (= 2 (long (kv/kv-get b [:trie :count []]))))
+      (p/kv-clear! b)
+      (is (empty? (p/kv-entries b)))
+      (p/kv-load b snapshot)
+      (is (= snapshot (into #{} (p/kv-entries b))) "and back in unchanged")
+      (is (= #{11 12} (p/kv-members b [:term-index 'foo])) "readable through the ordinary reads")
+      (is (= 2 (long (p/kv-get b [:trie :count []]))))
       (testing "a loaded entry is in the backend's own representation, not a foreign value"
-        (kv/kv-add-to-set b [:term-index 'foo] 13)
-        (is (= #{11 12 13} (kv/kv-members b [:term-index 'foo]))))))
+        (p/kv-add-to-set b [:term-index 'foo] 13)
+        (is (= #{11 12 13} (p/kv-members b [:term-index 'foo]))))))
 
   ;; The predicate-scoped argument roots are the one key family an adapter may hold
   ;; hierarchically rather than as a flat key→set entry (`vaelii.impl.memory`'s counted
@@ -148,44 +148,44 @@
   ;; has to think about, and the two the index's own writes never issue on this family,
   ;; so nothing else in the suite would notice one adapter refusing them.
   (testing "argument roots — the hierarchical family answers the flat contract"
-    (kv/kv-clear! b)
+    (p/kv-clear! b)
     (let [k1 [:argument-root 'p 1 'A]
           k2 [:argument-root 'q 1 'A]]                 ; same (pos, term), another predicate
-      (kv/kv-add-to-set b k1 11)
-      (kv/kv-add-to-set b k1 12)
-      (kv/kv-add-to-set b k2 13)
-      (is (= #{11 12} (kv/kv-members b k1)))
+      (p/kv-add-to-set b k1 11)
+      (p/kv-add-to-set b k1 12)
+      (p/kv-add-to-set b k2 13)
+      (is (= #{11 12} (p/kv-members b k1)))
       (testing "kv-delete drops the whole scoped posting and nothing beside it"
-        (kv/kv-delete b k1)
-        (is (= #{} (kv/kv-members b k1)))
-        (is (zero? (kv/kv-count b k1)))
-        (is (not (kv/kv-member? b k1 11)))
-        (is (nil? (kv/kv-get b k1)))
-        (is (= #{} (kv/kv-intersect b [k1 k2])))
-        (is (empty? (filter #(= k1 (first %)) (kv/kv-entries b)))
+        (p/kv-delete b k1)
+        (is (= #{} (p/kv-members b k1)))
+        (is (zero? (p/kv-count b k1)))
+        (is (not (p/kv-member? b k1 11)))
+        (is (nil? (p/kv-get b k1)))
+        (is (= #{} (p/kv-intersect b [k1 k2])))
+        (is (empty? (filter #(= k1 (first %)) (p/kv-entries b)))
             "and leaves no dangling posting for a dump or a snapshot to carry")
-        (is (= #{13} (kv/kv-members b k2))
+        (is (= #{13} (p/kv-members b k2))
             "the predicate beside it under the same (pos, term) keeps its handles"))
       (testing "the same delete inside a batch is the same delete"
-        (kv/kv-add-to-set b k1 11)
-        (kv/kv-batch b [[:delete k1]])
-        (is (= #{} (kv/kv-members b k1)))
-        (is (= #{13} (kv/kv-members b k2))))
+        (p/kv-add-to-set b k1 11)
+        (p/kv-batch b [[:delete k1]])
+        (is (= #{} (p/kv-members b k1)))
+        (is (= #{13} (p/kv-members b k2))))
       (testing "a whole-posting put installs exactly that posting, in either fold"
-        (kv/kv-put b k1 #{21 22})
-        (is (= #{21 22} (kv/kv-members b k1)))
-        (kv/kv-batch b [[:put k1 #{31}]])
-        (is (= #{31} (kv/kv-members b k1)) "the second put replaces rather than unions")
-        (is (= #{13} (kv/kv-members b k2))))
+        (p/kv-put b k1 #{21 22})
+        (is (= #{21 22} (p/kv-members b k1)))
+        (p/kv-batch b [[:put k1 #{31}]])
+        (is (= #{31} (p/kv-members b k1)) "the second put replaces rather than unions")
+        (is (= #{13} (p/kv-members b k2))))
       (testing "and writing under a deleted key again is an ordinary write"
-        (kv/kv-delete b k1)
-        (kv/kv-add-to-set b k1 41)
-        (is (= #{41} (kv/kv-members b k1)))
-        (is (= #{41} (kv/kv-intersect b [k1]))
+        (p/kv-delete b k1)
+        (p/kv-add-to-set b k1 41)
+        (is (= #{41} (p/kv-members b k1)))
+        (is (= #{41} (p/kv-intersect b [k1]))
             "the posting is back, and every read of it agrees"))))
 
-  (kv/kv-clear! b)
-  (is (nil? (kv/kv-get b [:c :n])) "clear wipes everything"))
+  (p/kv-clear! b)
+  (is (nil? (p/kv-get b [:c :n])) "clear wipes everything"))
 
 (deftest memory-backend-satisfies-the-contract
   ;; a dedicated db number, isolated from the KB registries the suite uses
@@ -197,31 +197,31 @@
   ;; KB's index, a chaining callback asserting elsewhere — must land on that backend's
   ;; own atom, visible at once, rather than on the loaded backend's transient, where it
   ;; would be persisted into the wrong map at the end of the load.
-  (let [loaded (doto (mem/memory-kv-backend {:space 993}) (kv/kv-clear!))
-        other  (doto (mem/memory-kv-backend {:space 994}) (kv/kv-clear!))]
+  (let [loaded (doto (mem/memory-kv-backend {:space 993}) (p/kv-clear!))
+        other  (doto (mem/memory-kv-backend {:space 994}) (p/kv-clear!))]
     (try
       (mem/with-bulk-writes loaded
-        (kv/kv-put loaded [:s :mine] 1)
-        (kv/kv-add-to-set loaded [:set :mine] 7)
-        (kv/kv-put other [:s :theirs] 2)
-        (kv/kv-add-to-set other [:set :theirs] 8)
-        (kv/kv-increment other [:c :theirs])
+        (p/kv-put loaded [:s :mine] 1)
+        (p/kv-add-to-set loaded [:set :mine] 7)
+        (p/kv-put other [:s :theirs] 2)
+        (p/kv-add-to-set other [:set :theirs] 8)
+        (p/kv-increment other [:c :theirs])
         (testing "the other backend's writes are on its own atom, mid-load"
-          (is (= 2 (kv/kv-get other [:s :theirs])))
-          (is (= #{8} (kv/kv-members other [:set :theirs])))
-          (is (= 1 (kv/kv-get other [:c :theirs]))))
+          (is (= 2 (p/kv-get other [:s :theirs])))
+          (is (= #{8} (p/kv-members other [:set :theirs])))
+          (is (= 1 (p/kv-get other [:c :theirs]))))
         (testing "and none of them leaked into the loaded backend's reads"
-          (is (nil? (kv/kv-get loaded [:s :theirs])))))
+          (is (nil? (p/kv-get loaded [:s :theirs])))))
       (testing "after the load, each backend holds exactly what was written to it"
-        (is (= 1 (kv/kv-get loaded [:s :mine])))
-        (is (= #{7} (kv/kv-members loaded [:set :mine])))
-        (is (nil? (kv/kv-get loaded [:s :theirs])) "the other backend's scalar did not persist here")
-        (is (empty? (kv/kv-members loaded [:set :theirs])))
-        (is (= 2 (kv/kv-get other [:s :theirs])))
-        (is (nil? (kv/kv-get other [:s :mine]))))
+        (is (= 1 (p/kv-get loaded [:s :mine])))
+        (is (= #{7} (p/kv-members loaded [:set :mine])))
+        (is (nil? (p/kv-get loaded [:s :theirs])) "the other backend's scalar did not persist here")
+        (is (empty? (p/kv-members loaded [:set :theirs])))
+        (is (= 2 (p/kv-get other [:s :theirs])))
+        (is (nil? (p/kv-get other [:s :mine]))))
       (finally
-        (kv/kv-clear! loaded)
-        (kv/kv-clear! other)))))
+        (p/kv-clear! loaded)
+        (p/kv-clear! other)))))
 
 (deftest a-bulk-load-refuses-to-discard-a-write-that-landed-under-it
   ;; The accumulator is a transient taken off an atom held per **space**, which every
@@ -231,10 +231,10 @@
   ;; thread: its install lands on the atom, and the outer batch, which snapshotted before
   ;; it started, wipes it.  The install is a compare-and-set against that snapshot, so the
   ;; batch says the state moved instead of discarding it.
-  (let [b (doto (mem/memory-kv-backend {:space 995}) (kv/kv-clear!))]
+  (let [b (doto (mem/memory-kv-backend {:space 995}) (p/kv-clear!))]
     (try
       (let [d (try (mem/with-bulk-writes b
-                     (kv/kv-put b [:s :batch] 1)
+                     (p/kv-put b [:s :batch] 1)
                      ;; something else reaches the shared atom mid-batch
                      (reset! (:state b) {[:s :other] 2}))
                    nil
@@ -242,10 +242,10 @@
         (is (= :stacked-batch (:type d))
             "the batch reports the collision rather than installing over it"))
       (testing "and what landed under the batch is still there"
-        (is (= 2 (kv/kv-get b [:s :other])))
-        (is (nil? (kv/kv-get b [:s :batch]))
+        (is (= 2 (p/kv-get b [:s :other])))
+        (is (nil? (p/kv-get b [:s :batch]))
             "the refused batch installed nothing, so neither map is half applied"))
-      (finally (kv/kv-clear! b)))))
+      (finally (p/kv-clear! b)))))
 
 (deftest suite-backend-satisfies-the-contract
   ;; whatever the suite runs on — the in-memory backend by default, the on-disk WAL
@@ -257,7 +257,7 @@
     ;; native trie and delegates the flat families to a key-interning backend under
     ;; `:roots` — either way the suite reaches a real `KvBackend` and runs the contract.
     (let [b (or (:backend (:index kb)) (:roots (:index kb)))]
-      (is (satisfies? kv/KvBackend b) "the index rests on a KvBackend")
+      (is (satisfies? p/KvBackend b) "the index rests on a KvBackend")
       (check-backend b))))
 
 (deftest deleting-a-stored-sentexs-argument-root-leaves-the-store-consistent
@@ -275,7 +275,7 @@
             h   (v/assert kb (list rel A B) CxCtx)]
         (is (= #{h} (set (p/sentexes-with-args idx rel [[1 A]])))
             "the argument-root probe answers before the delete")
-        (kv/kv-delete bk [:argument-root rel 1 A])
+        (p/kv-delete bk [:argument-root rel 1 A])
         (testing "the probe answers empty rather than a handle with no posting"
           (is (= #{} (set (p/sentexes-with-args idx rel [[1 A]]))))
           (is (= #{} (set (p/sentexes-with-args idx rel [[1 A] [2 B]])))
@@ -301,26 +301,26 @@
 ;; path off a round-trip-per-op regression.
 
 (defrecord CountingBackend [inner counts]
-  kv/KvBackend
-  (kv-batch  [_ ops] (swap! counts update :batch inc)  (kv/kv-batch inner ops))
-  (kv-intersect [_ ks]  (swap! counts update :sinter inc) (kv/kv-intersect inner ks))
-  (kv-get      [_ k]   (kv/kv-get inner k))
-  (kv-put      [_ k v] (kv/kv-put inner k v))
-  (kv-delete      [_ k]   (kv/kv-delete inner k))
-  (kv-increment     [_ k]   (kv/kv-increment inner k))
-  (kv-decrement     [_ k]   (kv/kv-decrement inner k))
-  (kv-add-to-set     [_ k m] (kv/kv-add-to-set inner k m))
-  (kv-remove-from-set     [_ k m] (kv/kv-remove-from-set inner k m))
-  (kv-members [_ k]   (kv/kv-members inner k))
-  (kv-member? [_ k m] (kv/kv-member? inner k m))
-  (kv-count    [_ k]   (kv/kv-count inner k))
-  (kv-entries  [_]     (kv/kv-entries inner))
-  (kv-load     [_ es]  (kv/kv-load inner es))
-  (kv-clear!   [_]     (kv/kv-clear! inner)))
+  p/KvBackend
+  (kv-batch  [_ ops] (swap! counts update :batch inc)  (p/kv-batch inner ops))
+  (kv-intersect [_ ks]  (swap! counts update :sinter inc) (p/kv-intersect inner ks))
+  (kv-get      [_ k]   (p/kv-get inner k))
+  (kv-put      [_ k v] (p/kv-put inner k v))
+  (kv-delete      [_ k]   (p/kv-delete inner k))
+  (kv-increment     [_ k]   (p/kv-increment inner k))
+  (kv-decrement     [_ k]   (p/kv-decrement inner k))
+  (kv-add-to-set     [_ k m] (p/kv-add-to-set inner k m))
+  (kv-remove-from-set     [_ k m] (p/kv-remove-from-set inner k m))
+  (kv-members [_ k]   (p/kv-members inner k))
+  (kv-member? [_ k m] (p/kv-member? inner k m))
+  (kv-count    [_ k]   (p/kv-count inner k))
+  (kv-entries  [_]     (p/kv-entries inner))
+  (kv-load     [_ es]  (p/kv-load inner es))
+  (kv-clear!   [_]     (p/kv-clear! inner)))
 
 (deftest the-index-write-is-one-batch-and-args-is-one-sinter
   (tu/with-neutral-kb [kb tu/fresh]        ; only to build real sentexes; nothing stored
-    (let [inner  (doto (mem/memory-kv-backend {:space 992}) (kv/kv-clear!))
+    (let [inner  (doto (mem/memory-kv-backend {:space 992}) (p/kv-clear!))
           counts (atom {:batch 0 :sinter 0})
           store  (kv/->KvIndexStore (->CountingBackend inner counts))]
       (tu/with-terms [rel A B C Ctx]

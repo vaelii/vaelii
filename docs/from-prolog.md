@@ -176,7 +176,7 @@ outlives it.
 
 This is the piece with no Prolog analogue at all, and it is why every conclusion carries a
 justification. `(v/why kb handle)` is the proof tree; `(v/why-not kb handle)` answers
-`:defeated` / `:superseded` / `:unsupported` / `:not-stored`, and the sentence arity adds
+`:defeated` / `:withdrawn` / `:superseded` / `:unsupported` / `:not-stored`, and the sentence arity adds
 `:excepted`. → [nmtms.md](nmtms.md)
 
 ## The call you would have made

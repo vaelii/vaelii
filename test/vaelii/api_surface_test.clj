@@ -6,7 +6,7 @@
 
   **What this catches that the suite does not.**  `public_api_test` pins which
   namespaces are public — exhaustively, in both directions, so a new file outside
-  `impl/`, `host/` and `koinii/` fails there — and then names a handful of entry points per namespace and
+  `impl/`, `host/`, `koinii/` and `browser/` fails there — and then names a handful of entry points per namespace and
   checks they are present.  That is a floor, not a surface: `vaelii.core` alone
   publishes well over a hundred vars, and nothing pins an arglist anywhere.  So a
   removed var no test happens to call, or an arity dropped from one that is called
@@ -51,12 +51,13 @@
   is a tag rather than an exception in this file.
 
   The namespace roster is **derived from the tree** — every `.clj` under `src/vaelii`
-  outside `impl/`, `host/` and `koinii/` — rather than listed here.  `public_api_test`'s
+  outside `impl/`, `host/`, `koinii/` and `browser/` — rather than listed here.  `public_api_test`'s
   `no-public-namespace-is-spelled-impl` pins that the derivation equals the six, so the
   two disagree only when one of them is wrong.  `koinii/` is out for the reason it is out
   of the SPI and refusal rosters: it is an application shipped in this tree, a *consumer*
   of the six rather than one of them (`docs/koinii.md`), and freezing its arglists here
-  would put koinii's own development in the engine's compatibility contract."
+  would put koinii's own development in the engine's compatibility contract.  `browser/` is
+  out for the same reason: the browser is the second application (`docs/web.md`)."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.pprint :as pprint]
@@ -70,9 +71,10 @@
 
 (defn public-namespaces
   "The public namespaces, read off the tree: every `.clj` under `src/vaelii` that is not
-  under `impl/`, `host/` or `koinii/`.  Sorted, so the golden's order is the tree's and
-  not a hash's.  `host/` is private like `impl/` — the tooling above core, fronted by the
-  five thin entry points (docs/namespaces.md) — so it is not a public promise."
+  under `impl/`, `host/`, `koinii/` or `browser/`.  Sorted, so the golden's order is the
+  tree's and not a hash's.  `host/` is private like `impl/` — the tooling above core,
+  fronted by four of the five thin entry points (docs/namespaces.md) — and `koinii/` and
+  `browser/` are the two apps, so none of them is a public promise."
   []
   (->> (file-seq (io/file "src/vaelii"))
        (filter #(.isFile ^File %))
@@ -81,6 +83,7 @@
        (remove #(str/includes? % "/impl/"))
        (remove #(str/includes? % "/host/"))
        (remove #(str/includes? % "/koinii/"))
+       (remove #(str/includes? % "/browser/"))
        (map #(-> % (subs (count "src/")) (str/replace #"\.clj$" "")
                  (str/replace "/" ".") (str/replace "_" "-") symbol))
        sort))

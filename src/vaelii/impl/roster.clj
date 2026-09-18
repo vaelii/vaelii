@@ -1,6 +1,7 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
-(ns vaelii.impl.roster
+(ns ^{:clojure.tools.namespace.repl/load false :clojure.tools.namespace.repl/unload false}
+ vaelii.impl.roster
   "A **live-handle roster**: what `sentex-ids` / `justification-ids` / `premise-ids` hand
   back, for a store big enough that the shape matters.
 
@@ -51,7 +52,9 @@
 
   A reader that outlives the call gets `live-snapshot`, an immutable `HandleRoster` over a
   copy: it costs the *bitmap's* size, not the corpus's, which is why handing one out is
-  affordable where copying the boxed set was the thing to avoid."
+  affordable where copying the boxed set was the thing to avoid.
+
+  A held namespace (`vaelii.impl.types.prover` states what that means): it defines the `HandleRoster` and `LiveRoster` types, whose methods are inline, and requires no vaelii namespace, so the development browser's reloader never re-evaluates it, and an edit to it takes a restart."
   (:import [java.util Collection Iterator Set]
            [org.roaringbitmap.longlong LongIterator Roaring64Bitmap]))
 

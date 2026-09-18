@@ -29,10 +29,11 @@
             [vaelii.core :as v]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.protocols :as p]
-            [vaelii.impl.rete :as rete]))
+            [vaelii.impl.rete :as rete]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 (defn- kb-ram [kb]
-  (postings/retained [@(:state (:records kb)) @(:state (:backend (:index kb))) (:tms kb)]))
+  (postings/retained [@(:state (:records kb)) @(:state (:backend (:index kb))) (reasoning/tms kb)]))
 
 (defn- ms [t0] (/ (- (System/nanoTime) t0) 1e6))
 

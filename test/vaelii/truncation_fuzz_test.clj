@@ -20,7 +20,8 @@
   answer.
 
   Two tests over one sweep.  `^:fuzz` walks every offset of every file for all four
-  durable backends and an export dump — the coverage.  The `:default` one walks a fixed,
+  durable backends, the disk-log store a second time with tokenized bodies (so its
+  `tokens.log` is swept too), and an export dump — the coverage.  The `:default` one walks a fixed,
   seeded sample of the same space, so the harness itself cannot rot unnoticed between
   runs of the exhaustive one.  Both assert on the **aggregate** rather than per offset,
   so the count is a property of the subjects and not of how many bytes a build happens
@@ -29,9 +30,11 @@
   **`^:fuzz` runs only when named**, by `lein test-fuzz` and by `deep.yml` — no
   selector reaches it, `:all` included.  Not because it is slow the way `^:slow` is
   slow, but because it asks a question no configuration varies: `subjects` names its own
-  four backends and reads no switch, so every row of the matrix would run the identical
-  sweep.  What `^:slow` means is *deferred until something eventually runs it*; what
-  this means is *once, not once per configuration* — see `CONTRIBUTING.md` §5.
+  backends and pins the one switch a subject sets, so every row of the matrix would run
+  the identical sweep.  What `^:slow` means is *deferred until something eventually runs it*; what
+  this means is *once, not once per configuration* — see `CONTRIBUTING.md` §5.  The one
+  build that varies `vaelii.disk.tokens` pins it for itself rather than reading it, so no
+  matrix row moves the sweep.
 
   Cost lives in `scratch-dir`, and it is worth reading before concluding the sweep is
   expensive: on a tmpfs it is a couple of minutes rather than ten."
@@ -139,6 +142,17 @@
   it believed."
   20000)
 
+(defn- with-property
+  "Run `thunk` with the JVM system property `k` set to `v`, restoring the prior value
+  (or clearing it) after.  `vaelii.disk.tokens` is read at each store open
+  (`config/disk-tokens?`), so setting it around a build is what selects tokenized frames
+  for that build alone."
+  [^String k ^String v thunk]
+  (let [prev (System/getProperty k)]
+    (System/setProperty k v)
+    (try (thunk)
+         (finally (if prev (System/setProperty k prev) (System/clearProperty k))))))
+
 (defn- store-subject
   "A durable KB on `backend`: built, closed, and reopened with recovery — which is the
   read a restart makes, and the one that walks every file."
@@ -159,6 +173,20 @@
                      ;; directory nobody wrote
                      (p/clear-index! (:index kb))
                      (v/close! kb)))))})
+
+(defn- tokenized-store-subject
+  "The `:disk-log` store built with tokenized sentex bodies (`vaelii.disk.tokens` on for
+  the build), so its durable `tokens.log` and its tokenized `sentexes.log` frames join
+  the sweep — the shapes the four plain subjects never write, since tokenization is off
+  by default.  Only the build sets the switch: a reopen reads a tokenized frame off its
+  own tag with the dictionary opened whenever `tokens.log` is present, so a truncated
+  `tokens.log` retires the ids past its torn tail and `open-record-store` tombstones the
+  records that cite them, exactly as it would after a crash."
+  [space]
+  (let [s (store-subject :disk-log space)]
+    (assoc s
+           :label "disk-log-tok"
+           :build (fn [dir] (with-property "vaelii.disk.tokens" "true" #((:build s) dir))))))
 
 (defn- dump-subject
   "An export dump, read back with `import!` — the other durable shape, and the one that
@@ -187,15 +215,17 @@
               (contents kb)))})
 
 (defn- subjects
-  "One per durable shape.  Each takes a space of its own — a RAM-side index is shared
+  "One per durable shape, with the disk-log store appearing a second time built with
+  tokenized bodies.  Each takes a space of its own — a RAM-side index is shared
   per space number for the life of the JVM, so two subjects on one number would read
   each other's postings."
   []
-  [(store-subject :disk-memory   [::fuzz :disk-memory])
-   (store-subject :disk-dense    [::fuzz :disk-dense])
-   (store-subject :disk-columnar [::fuzz :disk-columnar])
-   (store-subject :disk-log      [::fuzz :disk-log])
-   (dump-subject                 [::fuzz :dump])])
+  [(store-subject :disk-memory        [::fuzz :disk-memory])
+   (store-subject :disk-dense         [::fuzz :disk-dense])
+   (store-subject :disk-columnar      [::fuzz :disk-columnar])
+   (store-subject :disk-log           [::fuzz :disk-log])
+   (tokenized-store-subject           [::fuzz :disk-log-tok])
+   (dump-subject                      [::fuzz :dump])])
 
 ;; ---- one offset --------------------------------------------------------
 

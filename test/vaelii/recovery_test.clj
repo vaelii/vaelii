@@ -14,7 +14,9 @@
             [vaelii.impl.chain :as chain]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.settle :as settle]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]
             [vaelii.world :as world]))
 
@@ -69,8 +71,8 @@
     (v/assert kb (list 'disjoint dog cat) 'CxUniverse)
     (let [kb2 (restart)]
       ;; entries with no sentex behind them anywhere in the store
-      (tax/add-disjoint (:taxonomy kb2) stale-a stale-b 9999)
-      (tax/mark-prop (:taxonomy kb2) :transitive ghostPred 9999)
+      (tax/add-disjoint (reasoning/taxonomy kb2) stale-a stale-b 9999)
+      (tax/mark-prop (reasoning/taxonomy kb2) :transitive ghostPred 9999)
       (is (v/disjoint? kb2 stale-a stale-b))
       (is (v/has-prop? kb2 :transitive ghostPred))
       (v/recover kb2)
@@ -142,7 +144,7 @@
           out   (try (v/set-log-level :warn)
                      (with-out-str (v/recover kb2))     ; throws here without the fix
                      (finally (v/set-log-level level)))
-          tax2  @(:taxonomy kb2)]
+          tax2  @(reasoning/taxonomy kb2)]
       (testing "recover completes rather than crashing in strong-components"
         (is (not (contains? (get-in tax2 [:genl :nodes]) nil)))
         (is (not (contains? (get-in tax2 [:genlCx :nodes]) nil))))
@@ -184,7 +186,7 @@
           out   (try (v/set-log-level :warn)
                      (with-out-str (v/recover kb2))
                      (finally (v/set-log-level level)))
-          tax2  @(:taxonomy kb2)]
+          tax2  @(reasoning/taxonomy kb2)]
       (testing "the well-formed edges survive the rebuild"
         (is (contains? (set (v/genls kb2 sub-ok)) super-ok))
         (is (contains? (get-in tax2 [:genlCx :nodes]) 'CxSubOk)))
@@ -282,6 +284,27 @@
       (is (not (v/disjoint? kb2 dog cat)) "nor after a restart")
       (is (= before (v/disjoint? kb2 dog cat))
           "the answer must not change across a restart"))))
+
+(tu/deftest-kb recover-skips-the-retroactive-sweep-and-decides-the-same-clash
+  ;; `recover`'s first settle holds every stored sentex, so the retroactive sweeps can add
+  ;; no candidate to it (`settle/*whole-store-region?*`).  Two claims: recover reaches no
+  ;; declaration through `declaration-implicates`, and the clash a late declaration makes
+  ;; is decided the same way live and after a restart.
+  (let [dog (tu/tmp-type) cat (tu/tmp-type) rex (tu/tmp-ind "Rex")]
+    (v/assert kb (list dog rex) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list cat rex) 'CxUniverse {:strength :default})
+    (v/assert kb (list 'disjoint dog cat) 'CxUniverse {:strength :monotonic})
+    (let [cat-h  (v/handle-of kb (list cat rex) 'CxUniverse)
+          before (v/in? kb cat-h)
+          kb2    (restart)
+          calls  (atom 0)
+          real   @#'settle/declaration-implicates]
+      (is (not before) "the late declaration defeats the default member live")
+      (with-redefs-fn {#'settle/declaration-implicates
+                       (fn [& args] (swap! calls inc) (apply real args))}
+        #(v/recover kb2))
+      (is (zero? @calls) "recover's first settle runs no retroactive sweep")
+      (is (= before (v/in? kb2 cat-h)) "and decides the pair as the live KB did"))))
 
 (tu/deftest-kb recover-agrees-about-a-rule-concluded-equality
   ;; The live path reads the write and the rebuild reads the store, so a functor whose
@@ -530,8 +553,8 @@
     (v/assert-rule kb [(list bird '?x)] (list flies '?x) CxAviary {:direction :forward})
     (v/assert-rule kb [(list 'not (list departed '?x)) (list bird '?x)]
                    (list alive '?x) CxAviary {:direction :forward})
-    (let [live-antes @(:rule-antecedents kb)
-          live-ctxs  @(:rule-contexts kb)]
+    (let [live-antes @(reasoning/rule-antecedents kb)
+          live-ctxs  @(reasoning/rule-contexts kb)]
       (testing "the live roster counts what arrived, negated antecedents by [:not pred]"
         (is (= 2 (get live-antes bird)))
         (is (= 1 (get live-antes [:not departed])))
@@ -539,8 +562,8 @@
       (let [kb2 (restart)]
         (v/recover kb2)
         (testing "a reopened KB's rosters are the live ones, entry for entry"
-          (is (= live-antes @(:rule-antecedents kb2)))
-          (is (= live-ctxs @(:rule-contexts kb2))))
+          (is (= live-antes @(reasoning/rule-antecedents kb2)))
+          (is (= live-ctxs @(reasoning/rule-contexts kb2))))
         (testing "so the reads off them answer as they did before the restart"
           (is (= 2 (count (chain/rule-firing-report kb2))))
           (is (= (count (chain/rule-firing-report kb))

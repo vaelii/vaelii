@@ -17,7 +17,7 @@
 ;; so the exclude below carries it instead.  `defspec` (test.check) defines a var by
 ;; its first arg, like `deftest`.
 ;;
-;; `vaelii.host.access/defreads` is the same shape one level up: it takes a list of op
+;; `vaelii.browser.access/defreads` is the same shape one level up: it takes a list of op
 ;; names and *defines* a wrapper per name, so those names are definitions rather than
 ;; calls and must not be read as unresolved.
 {:lint-as
@@ -41,7 +41,7 @@
              (vaelii.multi-jvm/with-child)
              ;; `defreads` defines one target-first wrapper per op name, so the names
              ;; in its list are being *defined*, not called.
-             (vaelii.host.access/defreads)]}
+             (vaelii.browser.access/defreads)]}
 
   ;; Many test namespaces `:refer` deftest but drive the KB through `deftest-kb`
   ;; (which expands to clojure.test/deftest), so the direct `deftest` reads as
@@ -58,12 +58,12 @@
   ;; used by the opt-in disk compression in vaelii.impl.disk.files) are `def`'d
   ;; through an indirection clj-kondo doesn't follow, so it reads them as
   ;; unresolved.  They exist; exclude the two by name.
-  ;; `vaelii.host.access`'s whole read surface is defined by `defreads`, one var per op
+  ;; `vaelii.browser.access`'s whole read surface is defined by `defreads`, one var per op
   ;; name, so *no* var of that namespace is visible to clj-kondo and every call to one
   ;; reads as unresolved.  Exclude the namespace rather than list a name at a time.
   :unresolved-var {:exclude [taoensso.nippy/zstd-compressor
                              taoensso.nippy/lz4-compressor
-                             vaelii.host.access]}}
+                             vaelii.browser.access]}}
 
  ;; The disk backend guards each on-disk file family with a shared `Object` held on
  ;; its record/backend (created once at open, stored in a field).  clj-kondo's
@@ -84,7 +84,7 @@
  :config-in-ns
  {vaelii.impl.disk.record-store {:linters {:locking-suspicious-lock {:level :off}}}
   vaelii.impl.disk.kv           {:linters {:locking-suspicious-lock {:level :off}}}
-  vaelii.host.access            {:linters {:unused-excluded-var {:level :off}}}
+  vaelii.browser.access            {:linters {:unused-excluded-var {:level :off}}}
   vaelii.impl.naming            {:linters {:unused-excluded-var {:level :off}}}
   vaelii.impl.sentex            {:linters {:unused-excluded-var {:level :off}}}
   vaelii.impl.wiring            {:linters {:unused-excluded-var {:level :off}}}}}

@@ -71,7 +71,7 @@
             [vaelii.core :as v]
             [vaelii.impl.disk.durability :as dur]
             [vaelii.impl.disk.files :as f]
-            [vaelii.impl.kv :as kv]))
+            [vaelii.impl.protocols :as p]))
 
 ;; ---- the instrument ------------------------------------------------------
 
@@ -173,12 +173,12 @@
       (let [backend (:backend (:index kb))]
         (is (some? backend) "the index must be the disk KV backend, or nothing below is durable")
         ;; warm, outside the count
-        (kv/kv-batch backend [[:put [::dwc :warm] 1]])
+        (p/kv-batch backend [[:put [::dwc :warm] 1]])
         (doseq [width batch-sizes]
           (testing (str "a batch of " width " ops")
-            (let [ops (file-ops #(kv/kv-batch backend
-                                              (mapv (fn [i] [:put [::dwc width i] i])
-                                                    (range width))))]
+            (let [ops (file-ops #(p/kv-batch backend
+                                             (mapv (fn [i] [:put [::dwc width i] i])
+                                                   (range width))))]
               (is (= {:wal-batch 1 :log-append 1 :positional-write 1} ops)
                   (str "the batch must be one packed append and one write — a frame per op "
                        "is " width " of each, and a mid-batch failure then leaves the log "

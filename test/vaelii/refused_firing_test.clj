@@ -17,6 +17,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [vaelii.core :as v]
             [vaelii.impl.chain :as chain]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (def ^:private ctx 'CxRefusedFiring)
@@ -24,7 +25,7 @@
 (defn- recorded
   "How many refusals stand against the one rule in `kb`'s record."
   [kb]
-  (reduce + 0 (map (fn [v] (if (set? v) (count v) 0)) (vals @(:refused kb)))))
+  (reduce + 0 (map (fn [v] (if (set? v) (count v) 0)) (vals @(reasoning/refused kb)))))
 
 (defn- inheritance!
   "`(bigger dog cat)` inherited down to `[chi mc]` by argument preservation, with the
@@ -163,7 +164,7 @@
       ;; remember *that* bound
       (v/assert kb '(rmark RM1) ctx {:max-depth 7})
       (is (= 1 (recorded kb)))
-      (let [entry (-> @(:refused kb) vals first first)]
+      (let [entry (-> @(reasoning/refused kb) vals first first)]
         (is (= 7 (:max-depth entry))
             "the entry carries the run's bound, which release-refusal! reads over the default")))))
 
@@ -181,12 +182,12 @@
       (skip-rule! kb)
       (v/assert kb '(rskip RM1) ctx)
       (v/assert kb '(rmark RM1) ctx {:max-depth 7})
-      (is (= 7 (:max-depth (-> @(:refused kb) vals first first)))
+      (is (= 7 (:max-depth (-> @(reasoning/refused kb) vals first first)))
           "the live entry carries the run's bound")
       (v/recover kb)
       (is (= 1 (recorded kb)) "the rebuild re-records the standing refusal")
       (is (= (:max-depth chain/default-chain-opts)
-             (:max-depth (-> @(:refused kb) vals first first)))
+             (:max-depth (-> @(reasoning/refused kb) vals first first)))
           "and at the default bound, since the run's bound did not survive the restart"))))
 
 (deftest a-refusal-is-not-a-contradiction
@@ -259,7 +260,7 @@
         (dotimes [i 10] (v/assert kb (list 'rmark (symbol (str "RM" i))) ctx))
         (is (empty? (v/sentexes-matching kb '(rseen ?x) '?ctx))
             "every firing is refused")
-        (is (= [:overflow] (vec (vals @(:refused kb))))
+        (is (= [:overflow] (vec (vals @(reasoning/refused kb))))
             "and past the cap the rule keeps no entries at all")
         (testing "and the release still reaches every one of them"
           (dotimes [i 10]

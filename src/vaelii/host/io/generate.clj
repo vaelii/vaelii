@@ -26,7 +26,7 @@
 
   `plan` is pure — the whole KB as data, nothing asserted.  `load-into` asserts it,
   reporting progress through an optional `:on-progress` callback (which may throw to
-  cancel the load, the flag `vaelii.host.catalog` cancels on)."
+  cancel the load, the flag `vaelii.browser.catalog` cancels on)."
   (:require [vaelii.core :as v]
             [vaelii.host.core-context :as core-context]
             [vaelii.host.starter :as starter]

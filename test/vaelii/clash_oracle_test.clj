@@ -81,6 +81,7 @@
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rules :as vr]
             [vaelii.impl.settle :as settle]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 ;; ---- the shared ontology ------------------------------------------------
@@ -184,7 +185,7 @@
   {:believed   (into #{}
                      (comp (keep #(p/get-sentex (:records kb) %))
                            (map (juxt v/sentence-of :context)))
-                     (jtms/in-datums (:tms kb)))
+                     (jtms/in-datums (reasoning/tms kb)))
    :dilemmas   (into #{} (map clash-key) (v/contradictions kb))
    :conflicts  (into #{} (map clash-key) (v/conflicts kb))
    :violations (into #{} (map :violation) (v/violations kb))})
@@ -571,7 +572,7 @@
         idx #_{:clj-kondo/ignore [:missing-protocol-method]}
         (reify p/IndexStore
           (sentexes-with-arg [_ _pos _term] [1 2]))
-        fake {:records recs :index idx :tms tms}]
+        fake {:records recs :index idx :reasoning (volatile! {:tms tms})}]
     (jtms/add-premise tms 1 :monotonic)
     (jtms/add-premise tms 2 :monotonic)
     (is (false? (@#'settle/holds-two-members? fake '{clsh_member #{clsh_member}} 'CK))

@@ -562,9 +562,9 @@ The spelling is a **biconditional on arity**.  A functor carrying an underscore 
     {:class :argument :role role :symbol a :literal literal}))
 
 (defn- ist-context-problems
-  "The `(ist Ctx S)` context slots that do not name a context.  A rule consequent
-  `(ist Ctx S)` places S into Ctx, so that slot is a context name like the asserting
-  context — or a variable an antecedent binds, which is resolved at firing time.
+  "The `(ist Ctx S)` context slots that do not name a context.  `(ist Ctx S)` names the
+  context S is asserted into or asked in, so that slot is a context name like the
+  asserting context.  A variable in the slot is a pattern position and is not judged.
 
   `sx/forms-where` rather than a `tree-seq`, and this is the check that wants it: an
   `ist` can sit anywhere, so this is the only one here that descends **arguments** —
@@ -624,8 +624,7 @@ The spelling is a **biconditional on arity**.  A functor carrying an underscore 
 
       :ist-context
       (str "ist directs " (pr-str literal) " into " (pr-str symbol)
-           ", which must start with Cx and continue CapitalCamelCase, or a variable an"
-           " antecedent binds")
+           ", which must start with Cx and continue CapitalCamelCase")
 
       :dot-marker
       "'.' is not a valid argument (dotted rest patterns belong in rule patterns)")))

@@ -34,8 +34,11 @@
    but must stream every improving witness as the bound descends, so a run cut off by the
    time limit still leaves its best witness in the JSON (read back as `:best-effort`)
    rather than the nothing optN yields before it proves the optimum.  `-n 1` would stop at
-   the first, un-optimized witness."
+   the first, un-optimized witness.  `:sat` is `-n 1`: a program with no objective has
+   nothing to improve, and `-n 0` there enumerates every model — so `solve` runs a
+   `:label` solve of such a program under `:sat`'s flags (`objective?`)."
   {:label                ["--opt-mode=opt"  "-n" "0"]
+   :sat                  ["-n" "1"]
    :all-optima           ["--opt-mode=optN" "-n" "0"]
    :classify-true        ["--opt-mode=optN" "-e" "cautious" "-n" "0"]
    :classify-supportable ["--opt-mode=optN" "-e" "brave"    "-n" "0"]})
@@ -128,11 +131,19 @@
       (all-witnesses parsed)
       (filter #(= costs (:Costs %)) (all-witnesses parsed)))))
 
+(defn- objective?
+  "Does `aspif-text` hold a minimize statement over at least one literal?  ASPIF writes
+  one as `2 <priority> <n> <lit w>…`.  Without one every model costs the same, so a
+  search for improving models has nothing to improve and enumerates them all."
+  [aspif-text]
+  (boolean (re-find #"(?m)^2 -?\d+ [1-9]" aspif-text)))
+
 (defn solve
   "Run clasp on `aspif-text` in one of the supported modes.
 
    Modes:
      :label                — one minimum-cost witness (for labeling output)
+     :sat                  — the first witness, for a program with no objective
      :all-optima           — every minimum-cost witness (for inspection)
      :classify-true        — atoms in every minimum-cost witness
      :classify-supportable — atoms in at least one minimum-cost witness
@@ -144,20 +155,23 @@
      :witnesses — vector of value vectors (only populated for :all-optima)
      :raw       — full parsed JSON (for diagnostics)
 
+   A `:label` solve of a program with no objective runs under `:sat`'s flags: streaming
+   improving models there would enumerate every model.
+
    `:interrupted` is the time limit (`config/asp-time-limit`) or a signal with NO witness
    to show for it.  A `:label` run cut off *after* it had a witness is `:best-effort`
    instead — that model is a valid labeling, its optimality merely unproven — which the
    imperative `:one` caller takes over nothing (`asp.edge/kept-of`); the enumerating modes
    need a finished search, so they stay `:interrupted`."
   [aspif-text mode]
-  (let [argv (or (mode-args mode)
+  (let [argv (or (mode-args (if (and (= :label mode) (not (objective? aspif-text))) :sat mode))
                  (throw (ex-info (str "unknown clasp mode: " (pr-str mode) " — want one of "
                                       (pr-str (vec (sort (keys mode-args)))))
                                  {:type :unknown-option :mismatch :bad-value :mode mode :valid (keys mode-args)})))
         parsed (invoke-clasp (concat argv (time-limit-args)) aspif-text)
         status (status-of parsed)]
     (case mode
-      :label
+      (:label :sat)
       (let [best (first (optimal-witnesses parsed))]
         ;; interrupted mid-optimization but a witness is in hand: that model is a valid
         ;; labeling (lowest cost seen, optimality unproven), so hand it back `:best-effort`

@@ -249,40 +249,6 @@
         (is (holds? kb (list outweighs chihuahua_t maine_coon_t)))
         (is (= 9 (count (v/sentexes-matching kb (list outweighs '?x '?y) ctx))))))))
 
-(tu/deftest-kb a-declaration-derived-through-an-ist-consequent-invalidates-the-cache-too
-  ;; The same hole as the test above, reached through the `ist` entry point: a rule concluding
-  ;; `(ist Cx (transitiveInArg …))` places the declaration exactly as a bare consequent
-  ;; does — `place-conseq` unwraps the frame — so the run's cached "no declarations
-  ;; exist" has to be forgotten on the **placed** form and not on the functor the join
-  ;; happens to be holding, which for this rule is `ist`.
-  (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t chihuahua_t siamese_t
-                  largerThan outweighs preservesBoth]
-    (kinds! kb {:dog dog_t :cat cat_t :gr golden_retriever_t
-                :chi chihuahua_t :mc maine_coon_t :sia siamese_t})
-    (let [quiet {:chain? false}
-          _     (v/assert kb (list 'asymmetric largerThan) ctx quiet)
-          _     (v/assert kb (list largerThan dog_t cat_t) ctx quiet)
-          rh    (v/assert kb (list 'set/forwardRule (list 'implies (list largerThan '?x '?y) (list outweighs '?x '?y)))
-                          ctx quiet)
-          _     (v/assert kb (list 'set/forwardRule (list 'implies (list preservesBoth '?p)
-                                                          (list 'ist ctx (list 'transitiveInArg '?p 1 'genl))))
-                          ctx quiet)
-          _     (v/assert kb (list 'set/forwardRule (list 'implies (list preservesBoth '?p)
-                                                          (list 'ist ctx (list 'transitiveInArg '?p 2 'genl))))
-                          ctx quiet)
-          fh    (v/assert kb (list preservesBoth largerThan) ctx quiet)]
-      (testing "nothing has chained yet"
-        (is (not (holds? kb (list outweighs dog_t cat_t)))))
-      (chain/chain-all kb [rh fh] nil)
-      (settle/settle kb)
-      (testing "the declarations were derived inside the run, through the ist frame"
-        (is (holds? kb (list 'transitiveInArg largerThan 1 'genl)))
-        (is (holds? kb (list 'transitiveInArg largerThan 2 'genl))))
-      (testing "and the joins after them inherit"
-        (is (holds? kb (list outweighs dog_t cat_t)))
-        (is (holds? kb (list outweighs chihuahua_t maine_coon_t)))
-        (is (= 9 (count (v/sentexes-matching kb (list outweighs '?x '?y) ctx))))))))
-
 (tu/deftest-kb the-inverse-declaration-fires-upward
   (tu/with-terms [dog_t animal_t thing_t hasA aboutIt]
     (v/with-deferred-settle kb
@@ -349,7 +315,11 @@
         (is (seq (v/sentexes-matching kb goal CxA))))
       (testing "the lattice edge exposes the pair, and the firing re-derives on the
                 surviving route in the settle that defeated its witness"
-        (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+        ;; The edge makes CxA see the denial, so CxA — the witness's own context — is the
+        ;; vantage and the defeat reaches every reader of the witness.  An edge the other
+        ;; way would make CxB the vantage, and the witness would stay believed in CxA
+        ;; (docs/nmtms.md, "A defeat is scoped to its vantage").
+        (v/assert kb (list 'genlCx CxA CxB) 'CxUniverse)
         (is (v/ask? kb (list largerThan chi_t cat_t) 'CxUniverse)
             "the backward entry point still proves the claim through the long route")
         (is (seq (v/sentexes-matching kb goal 'CxUniverse))

@@ -8,8 +8,8 @@
   and the scenario each say something the stored facts alone do not.  A relation nobody
   asserted has to appear in the matrix, or the page is only echoing the KB back."
   (:require [clojure.test :refer [is testing use-fixtures]]
+            [vaelii.browser.web :as web]
             [vaelii.core :as v]
-            [vaelii.host.web :as web]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded tu/load-starter!))

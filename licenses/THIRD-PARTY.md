@@ -3,10 +3,10 @@
 Vaelii itself is licensed under the [SSPL-1.0](https://www.mongodb.com/licensing/server-side-public-license)
 (see `project.clj`). This file covers the assets **vendored into the repo** — files
 checked in under `resources/public/` and served verbatim by the browser
-(`vaelii.host.web`), each under its own upstream licence.
+(`vaelii.browser.web`), each under its own upstream licence.
 
 Everything else under `resources/public/` is the project's own work and carries no
-third-party obligation: `vaelii.css`, `select.js`, and the marks below. The badge SVGs
+third-party obligation: `vaelii.css`, `vaelii.js`, and the marks below. The badge SVGs
 under `.github/badges/` are likewise rendered locally by `scripts/update-badges.sh` —
 no network, no vendored code — in the visual style of shields.io, which is CC0-1.0.
 
@@ -60,9 +60,9 @@ SOFTWARE.
 | Upstream | <https://www.brailleinstitute.org/freefont/> |
 | Copyright | © 2020, 2024 Braille Institute of America, Inc. (<https://www.brailleinstitute.org/freefont/>) |
 
-The proportional face, used for natural-language text only — headings, prose, section
-labels, the predicate comments. A typeface drawn for legibility at a glance, which is
-what a page of unfamiliar vocabulary needs.
+The proportional face, used for English written for a reader — a paragraph, a hint, a
+`comment` string off the KB. A typeface drawn for legibility at a glance, which is what a
+page of unfamiliar vocabulary needs.
 
 ## Hasklig
 

@@ -42,7 +42,8 @@
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.special :as special]
             [vaelii.impl.strength :as strength]
-            [vaelii.impl.taxonomy :as tax]))
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 (def ^:dynamic *removed-sink*
   "A volatile holding a vector of the sentexes that have left the store, or nil — the
@@ -173,7 +174,7 @@
   asserted twice, and which of the two assertions the KB keeps must not decide how
   strongly it holds it.  A `doomed` that is not a premise leaves the survivor alone."
   [kb doomed survivor]
-  (let [tms (:tms kb)]
+  (let [tms (reasoning/tms kb)]
     (when (jtms/premise? tms doomed)
       (let [s (strength/max (jtms/premise-strength tms survivor)
                             (jtms/premise-strength tms doomed))]
@@ -196,7 +197,7 @@
   record.  A copy taken from the graph would leave the fold's justifications unable to
   answer either."
   [kb doomed survivor]
-  (let [tms  (:tms kb)
+  (let [tms  (reasoning/tms kb)
         recs (:records kb)]
     (doseq [jid  (vec (jtms/dependents tms doomed))
             :let [j     (or (p/get-justification recs jid) (jtms/justification tms jid))
@@ -229,7 +230,7 @@
   `fold-dependents!`' reason — the network drops a firing's `:bindings`, which an
   `exceptWhen` query and a NAF antecedent re-evaluate from."
   [kb doomed survivor]
-  (let [tms  (:tms kb)
+  (let [tms  (reasoning/tms kb)
         recs (:records kb)]
     (doseq [jid  (vec (jtms/supports tms doomed))
             :let [j (or (p/get-justification recs jid) (jtms/justification tms jid))]
@@ -265,7 +266,7 @@
   (special/migrate-handle-metas kb doomed survivor [witness]
                                 (:context (p/get-sentex (:records kb) doomed)))
   (p/unmark-premise! (:records kb) doomed)
-  (let [{:keys [removed-sentexes removed-justifications]} (jtms/retract! (:tms kb) doomed)
+  (let [{:keys [removed-sentexes removed-justifications]} (jtms/retract! (reasoning/tms kb) doomed)
         gone (into [] (keep #(p/get-sentex (:records kb) %)) removed-sentexes)]
     (doseq [sx gone] (sentex-removed! kb sx))
     (doseq [jid removed-justifications] (p/delete-justification! (:records kb) jid)))
@@ -302,7 +303,7 @@
   (let [ctx  (:context sx)
         want (kb/canonical-sentence kb (:sentence sx) ctx)]
     (when (not= want (:sentence sx))
-      (let [tms    (:tms kb)
+      (let [tms    (reasoning/tms kb)
             self   (:id sx)
             mirror (kb/find-sentex-handle kb want ctx)
             ;; the row that can leave: the one standing on nothing but its own premise
@@ -371,7 +372,7 @@
     (let [p   (first (nm/args sentence))
           idx (:index kb)]
       (when (and (symbol? p) (not (sx/variable? p))
-                 (tax/has-prop? (:taxonomy kb) :symmetric p)
+                 (tax/has-prop? (reasoning/taxonomy kb) :symmetric p)
                  (pos? (reads/stored-count-with-functor idx p)))
         ;; snapshotted before the first write: the fold posts to the roots this walk
         ;; reads, and no index backend promises whether a posting read is a snapshot

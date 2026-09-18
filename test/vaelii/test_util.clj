@@ -37,8 +37,11 @@
             [vaelii.impl.config :as config]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.observe :as observe]
-            [vaelii.impl.protocols :as p])
-  (:import [java.io File]))
+            [vaelii.impl.protocols :as p]
+            [vaelii.impl.types.reasoning :as reasoning])
+  (:import [java.io File]
+           [java.nio.file Files]
+           [java.nio.file.attribute FileAttribute]))
 
 ;; ---- the switches, and the pin that hands their defaults back -----------
 ;;
@@ -91,16 +94,52 @@
    'vaelii.impl.resolution/*lead-side*
    'vaelii.impl.sentex/*min-indexed-depth*])
 
+(defn- naming-var
+  "The var, other than the switch `vr`, whose root is the function `f`, or nil.  First the
+  var `f`'s class names (`vaelii.impl.resolution$match_pattern` names
+  `#'vaelii.impl.resolution/match-pattern`), then any non-dynamic `vaelii.*` var holding
+  `f` itself."
+  [vr f]
+  (let [owner (some-> (class f) .getName clojure.lang.Compiler/demunge symbol)
+        named (when (namespace owner) (find-var owner))]
+    (if (and named (not= named vr) (identical? f (var-get named)))
+      named
+      (first (for [n     (all-ns)
+                   :when (str/starts-with? (str (ns-name n)) "vaelii.")
+                   [_ x] (ns-interns n)
+                   :when (and (not= x vr) (not (:dynamic (meta x))) (identical? f (var-get x)))]
+               x)))))
+
 (def shipped-defaults
-  "`{var -> root}` for every var the two rosters name, read before the switches below
-  install themselves — so this is what the engine ships and not a transcription of it."
-  (into {} (map (fn [sym] (let [vr (requiring-resolve sym)] [vr (var-get vr)])))
+  "`{var -> default}` for every var the two rosters name, read before the switches below
+  install themselves — so this is what the engine ships and not a transcription of it.
+
+  A default that is a function another var defines is held as that var: `*matcher*`'s is
+  `#'vaelii.impl.resolution/match-pattern`, not the function value.  An engine reload
+  (`vaelii.reload-test`, the development browser) redefines the function, and a captured
+  value would bind the code from before the reload — `chain/join-matches` then fails its
+  `identical?` test against the reloaded `res/match-pattern` and walks the trie.
+  `shipped-value` reads a default back."
+  (into {} (map (fn [sym] (let [vr (requiring-resolve sym) root (var-get vr)]
+                            [vr (or (when (fn? root) (naming-var vr root)) root)])))
         (concat (mapcat :vars sweeps) read-path-vars)))
+
+(defn shipped-value
+  "The shipped default of the rostered switch `vr` as it stands now: the root read at load,
+  or the current root of the var `shipped-defaults` holds for a function-valued one."
+  [vr]
+  (let [d (get shipped-defaults vr)]
+    (if (var? d) (var-get d) d)))
+
+(defn- shipped-bindings
+  "`{var -> shipped-value}` for the rostered switches `vars`, read at the call."
+  [vars]
+  (into {} (map (fn [vr] [vr (shipped-value vr)])) vars))
 
 (defn with-shipped-config*
   "Functional core of `with-shipped-config`."
   [f]
-  (with-bindings* shipped-defaults f))
+  (with-bindings* (shipped-bindings (keys shipped-defaults)) f))
 
 (defmacro with-shipped-config
   "Run `body` with every implementation switch bound to its shipped default, whatever the
@@ -130,15 +169,13 @@
   Every var must be one `shipped-defaults` rosters: an unrostered var is a pin that
   binds nil, which installs a third reader rather than the shipped one."
   [vars]
-  (let [pins (into {}
-                   (map (fn [vr]
-                          (when-not (contains? shipped-defaults vr)
-                            (throw (ex-info (str vr " is not a rostered switch — name it in "
-                                                 "`sweeps` or `read-path-vars` before pinning it")
-                                            {:type :unrostered-pin :var vr})))
-                          [vr (get shipped-defaults vr)]))
-                   vars)]
-    (fn [f] (with-bindings* pins f))))
+  (doseq [vr vars]
+    (when-not (contains? shipped-defaults vr)
+      (throw (ex-info (str vr " is not a rostered switch — name it in "
+                           "`sweeps` or `read-path-vars` before pinning it")
+                      {:type :unrostered-pin :var vr}))))
+  ;; the bindings are read per call, so a function-valued default follows a reload
+  (fn [f] (with-bindings* (shipped-bindings vars) f)))
 
 (defmacro without-entailing
   "Run `body` with the argument declarations read as **constraints only** — the opt-out
@@ -418,6 +455,78 @@
   []
   (v/open-kb isolated-space))
 
+;; ---- the supporter-visibility audit -----------------------------------------
+;;
+;; `VAELII_AUDIT_SUPPORT=<dir>` makes teardown write every stored justification whose
+;; conclusion's context does not see the context of one of its supporters — an antecedent,
+;; or the rule a firing names as its informant.  One EDN map per line, into a file per JVM
+;; (`<dir>/<pid>.edn`), so parallel shards never interleave a line.  Unset, teardown reads
+;; the environment once at load and does nothing else.
+
+(def ^:private support-audit-dir (System/getenv "VAELII_AUDIT_SUPPORT"))
+
+(defn- unseen-supporters
+  "The supporters of justification `j` whose context `j`'s conclusion's context does not
+  see, as `[{:sentence :context :rule?}]`.  A sentex with no context is seen from every
+  context, so it is never one of them."
+  [kb j]
+  (let [recs (:records kb)
+        cctx (:context (p/get-sentex recs (:consequence j)))
+        inf  (:informant j)]
+    (when cctx
+      (into []
+            (keep (fn [[h rule?]]
+                    (when-let [s (p/get-sentex recs h)]
+                      (when (and (:context s) (not (v/sees? kb cctx (:context s))))
+                        {:sentence (:sentence s) :context (:context s) :rule? rule?}))))
+            (cond-> (mapv #(vector % false) (:antecedents j))
+              (integer? inf) (conj [inf true]))))))
+
+(def ^:private support-audited
+  "The justification ids already audited, per live KB.  Weak on the KB, so a KB a test
+  drops takes its entry with it; a KB outlives the tests it serves, so its baseline is
+  read once rather than once per test."
+  (java.util.Collections/synchronizedMap (java.util.WeakHashMap.)))
+
+(defn audit-support!
+  "Write every justification stored in `kb` and not yet audited for it that rests on a
+  supporter its conclusion's context does not see, when `VAELII_AUDIT_SUPPORT` names a
+  directory.  Called on a live KB only, before teardown retracts or clears, so the
+  records and the taxonomy the visibility is read from describe one state.  Never throws:
+  a failure is written as an `:audit-error` line, so the audit cannot change a test's
+  outcome."
+  [kb]
+  (when support-audit-dir
+    (let [out  (File. ^String support-audit-dir
+                      (str (.pid (java.lang.ProcessHandle/current)) ".edn"))
+          test (some-> clojure.test/*testing-vars* first symbol)
+          recs (:records kb)
+          seen (or (.get support-audited kb) #{})
+          jids (remove seen (p/justification-ids recs))]
+      (.put support-audited kb (into seen jids))
+      (try
+        (doseq [jid jids
+                :let [j (p/get-justification recs jid)]
+                :when j
+                :let [unseen (unseen-supporters kb j)]
+                :when (seq unseen)
+                :let [c (p/get-sentex recs (:consequence j))]]
+          (spit out
+                (str (pr-str {:test       test
+                              :informant  (let [inf (:informant j)]
+                                            (if (integer? inf)
+                                              (let [r (p/get-sentex recs inf)]
+                                                (or (:sentence r)
+                                                    (list 'implies (:antecedent r) (:consequent r))))
+                                              inf))
+                              :conclusion {:sentence (:sentence c) :context (:context c)}
+                              :believed?  (boolean (v/in? kb (:consequence j)))
+                              :unseen     unseen})
+                     "\n")
+                :append true))
+        (catch Throwable e
+          (spit out (str (pr-str {:test test :audit-error (str e)}) "\n") :append true))))))
+
 (defn clear-kb!
   "Wipe the stores under a KB the fixtures hand back over and over.  `v/clear!` without
   the durability daemon's flush, plus the one piece of in-memory state a wipe must take
@@ -433,7 +542,7 @@
   ;; hands the KB back has to say so, or the next test's own asserts are refused against
   ;; a hazard declared for records it did not write.
   (kb/note-hazards! kb {:no-belief false :no-index false})
-  (some-> (:refused kb) (reset! {})))
+  (some-> (reasoning/refused kb) (reset! {})))
 
 (defn fresh
   "An empty, cleared KB on the shared scratch space."
@@ -452,6 +561,13 @@
    :space [::starter block-top]
    :recover? false :tms tms-kind})
 
+(defn- temp-dump-dir
+  "A new, empty directory under `java.io.tmpdir` whose name starts with `prefix`.
+  `Files/createTempDirectory` creates it atomically under a name no existing entry has,
+  so two test JVMs building a dump at the same moment get two directories."
+  ^File [prefix]
+  (.toFile (Files/createTempDirectory prefix (make-array FileAttribute 0))))
+
 (def ^:private starter-dump
   "An export dump of the starter ontology, built **once per JVM** and read back by
   `load-starter!`.
@@ -465,7 +581,7 @@
 
   A dump is a copy of the KB rather than a shortcut past building one: `import!` restores
   the records, the justifications and the premise marks, rebuilds the index, and installs
-  the belief image `export!` wrote (recovering belief when the image does not describe the
+  the reasoning image `export!` wrote (recovering belief when the image does not describe the
   records it landed), so what it produces is what `load-into` produces.
   `starter_copy_test` pins that — same sentences, same contexts, same truth, same
   strength, same belief.
@@ -473,9 +589,7 @@
   The directory is deleted on JVM exit, deepest entry first, since `deleteOnExit` runs
   its queue in reverse insertion order and will not remove a directory holding files."
   (delay
-    (let [dir (doto (File. (System/getProperty "java.io.tmpdir")
-                           (str "vaelii-starter-" (System/nanoTime)))
-                (.mkdirs))
+    (let [dir (temp-dump-dir "vaelii-starter-")
           ;; cleared first, for `fresh`'s reason: the space is opened `:recover? false`
           ;; over databases a previous run may have populated, and a write into a KB whose
           ;; belief was never built is refused (`:type :unrecovered-kb`)
@@ -522,16 +636,14 @@
   and the `neutral-fresh` fixtures rebuild a fresh core KB per test, so that cost is paid
   once for every such test.  A restored dump reaches the same state: `import!` restores
   the records, the justifications and the premise marks, rebuilds the index, and installs
-  the belief image `export!` wrote (recovering belief when the image does not describe the
+  the reasoning image `export!` wrote (recovering belief when the image does not describe the
   records it landed), so what it produces is what `load-into` produces — `core_copy_test`
   pins that, the genlCx edge `load-into` wires first included, because belief does not
   depend on the order the records were written.
 
   The directory is deleted on JVM exit, deepest entry first, as `starter-dump`'s is."
   (delay
-    (let [dir (doto (File. (System/getProperty "java.io.tmpdir")
-                           (str "vaelii-core-" (System/nanoTime)))
-                (.mkdirs))
+    (let [dir (temp-dump-dir "vaelii-core-")
           kb  (doto (v/open-kb core-build-space) (clear-kb!))]
       (core-context/load-into kb)
       (v/export! kb (.getPath dir))
@@ -760,6 +872,7 @@
   had asserted, and neither of those moves a record count — so this is the only check
   that sees either."
   [kb before]
+  (audit-support! kb)
   (retract-added! kb (:sentexes before))
   (let [{before-sx :sentexes before-dd :justifications before-pm :premises} before
         now-sx  (sentex-ids kb)
@@ -905,6 +1018,7 @@
   (let [kb (build-fn)]
     (try (body kb)
          (finally
+           (audit-support! kb)
            (clear-kb! kb)
            (is (= {:sentexes 0 :justifications 0} (content-count kb))
                "durable store not empty after clear teardown")))))

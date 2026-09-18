@@ -33,6 +33,7 @@ SCRIPTS=(
   scripts/lint-versions.sh
   scripts/lint-shellcheck.sh
   scripts/lint-conflict-markers.sh
+  scripts/lint-tools.sh
   scripts/check-reflection.sh
   scripts/asp-namespaces.sh
   scripts/ci-shard.sh
@@ -40,12 +41,16 @@ SCRIPTS=(
   scripts/check-breaking-siblings.sh
   scripts/coverage.sh
   scripts/gate.sh
+  scripts/perf.sh
   scripts/test-backends.sh
   scripts/test-sweeps.sh
   scripts/test-matrix.sh
   scripts/test-parallel.sh
+  scripts/test-selector.sh
   scripts/test-shuffle.sh
   scripts/lib/revision.sh
+  scripts/lib/runlog.sh
+  scripts/runlog-backfill.sh
   scripts/lib/slots.sh
   scripts/lib/suite-configs.sh
   scripts/lib/suite-marks.sh
@@ -54,6 +59,11 @@ SCRIPTS=(
   scripts/with-foreign.sh
   scripts/run-bench-caches.sh
   scripts/stage-mine.sh
+  scripts/lib/start.sh
+  scripts/start-vaelii.sh
+  scripts/start-vaelii-dev.sh
+  scripts/start-vaelii-server.sh
+  scripts/upgrade-kb.sh
 )
 
 if ! command -v shellcheck >/dev/null 2>&1; then

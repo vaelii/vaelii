@@ -29,7 +29,8 @@
             [taoensso.trove :as trove]
             [vaelii.impl.disk.durability :as dur]
             [vaelii.impl.disk.files :as f]
-            [vaelii.impl.kv :as kv]))
+            [vaelii.impl.kv :as kv]
+            [vaelii.impl.protocols :as p]))
 
 (defn- usable!
   "Throw `:compaction-failed` when `failed` holds the exception of a compaction that
@@ -81,7 +82,7 @@
 ;; the durability daemon's queued-task check runs outside this store's lock, so a close
 ;; can land between that check and `compact!` acquiring the lock — see `compact!`.
 (defrecord DiskKvBackend [dir data log log-path lock frames closed damaged failed]
-  kv/KvBackend
+  p/KvBackend
   (kv-get  [_ k]   (get @data k))
   (kv-put  [b k v] (apply-ops! b [[:put k v]]) nil)
   (kv-delete  [b k]   (apply-ops! b [[:delete k]]) nil)

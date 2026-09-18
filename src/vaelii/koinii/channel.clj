@@ -46,7 +46,10 @@
   (:require [taoensso.trove :as trove]
             [vaelii.client :as c]
             [vaelii.core :as v]
-            [vaelii.koinii.identity :as id]))
+            [vaelii.koinii.identity :as id]
+            [vaelii.koinii.types :as koinii-types
+             :refer [-assert -check-edit -edit -matching -query
+                     -sentex -subscribe]]))
 
 ;; ---- D7: the single-writer total order -----------------------------------
 
@@ -71,41 +74,6 @@
   :single-writer-total-order)
 
 ;; ---- the medium: the transport an agent coordinates over -----------------
-
-(defprotocol Medium
-  "The transport a channel runs over — a daemon connection (`wire`, cross-process) or an
-  in-process KB (`local`, single-process).  Everything above this protocol is written
-  once and runs over either; the two implementations differ only where the engine does —
-  in how a subscription is delivered."
-  (-assert [medium sentence context opts]
-    "Assert `sentence` in `context` with `opts` (carrying `:creator`), returning the
-    handle.  The daemon stamps `:creator` from the opts — the cooperative identity
-    annotation crossing the wire (`identity`), since `*creator*` is a var in the daemon's
-    process, not the client's.")
-  (-sentex [medium handle] "The stored sentex `handle` names, as a map (`:sentence` …).")
-  (-matching [medium sentence context]
-    "The believed sentexes matching `sentence` in `context` (a `?ctx` matches anywhere).")
-  (-check-edit [medium batch]
-    "`check-edit` over an `{:add […] :remove […]}` batch — the dry run, storing nothing.
-    A vector of problems, empty when admissible.")
-  (-edit [medium batch] "Apply an `{:add […] :remove […]}` batch in one settle.")
-  (-subscribe [medium goal context callback opts]
-    "Register `callback` for events matching `goal` in `context` (nil `goal` = every
-    change).  Returns `{:token … :stop (fn []) …}`.  Where the two media genuinely
-    diverge — a wire poll loop off the agent's thread, vs an in-process listener.")
-  (-query [medium goal context]
-    "Solutions for `goal` in `context` as binding maps — the ANCESTOR-SET-AWARE read (walks the
-    genlCx ancestor set, unlike `-matching`, so a channel read sees its agents' own-context
-    sentexes).  The snapshot half of catch-up (`catchup`) reads through this.")
-  (-feed-open [medium goal context]
-    "Open a raw change-feed subscription with a cursor — `{:token :cursor :max-events}`.
-    The wire feed's cursor primitive that catch-up (`catchup`) resumes from; `-subscribe`
-    wraps it for the happy path, this exposes it for the durable-cursor / lag case.  A
-    local (in-process) medium THROWS: `core/watch` is callback-based with no ring or
-    cursor, so there is nothing to fall off and nothing to resume.")
-  (-feed-poll [medium token cursor opts]
-    "Read a raw subscription forward — `{:events :cursor :lagged}`.  `:lagged` non-zero is
-    the whole point of catch-up: the cursor fell off the ring.  Local THROWS, as above."))
 
 ;; ---- wire: the cross-process shape, the poll loop off the agent's thread --
 
@@ -199,35 +167,35 @@
              (try (c/unwatch conn token) (catch Exception _ nil)))}))
 
 (defrecord WireMedium [conn]
-  Medium
-  (-assert     [_ s ctx opts] (c/assert conn s ctx opts))
-  (-sentex     [_ h]          (c/sentex conn h))
-  (-matching   [_ s ctx]      (c/sentexes-matching conn s ctx))
-  (-check-edit [_ batch]      (c/call conn :check-edit [batch]))
-  (-edit       [_ batch]      (c/call conn :edit [batch]))
-  (-subscribe  [_ goal ctx cb opts] (wire-subscribe conn goal ctx cb opts))
-  (-query      [_ goal ctx]   (c/query conn goal ctx))
-  (-feed-open  [_ goal ctx]   (if goal (c/watch conn goal ctx) (c/watch conn)))
-  (-feed-poll  [_ token cursor opts]
+  koinii-types/Medium
+  (-assert     [{:keys [conn]} s ctx opts] (c/assert conn s ctx opts))
+  (-sentex     [{:keys [conn]} h]          (c/sentex conn h))
+  (-matching   [{:keys [conn]} s ctx]      (c/sentexes-matching conn s ctx))
+  (-check-edit [{:keys [conn]} batch]      (c/call conn :check-edit [batch]))
+  (-edit       [{:keys [conn]} batch]      (c/call conn :edit [batch]))
+  (-subscribe  [{:keys [conn]} goal ctx cb opts] (wire-subscribe conn goal ctx cb opts))
+  (-query      [{:keys [conn]} goal ctx]   (c/query conn goal ctx))
+  (-feed-open  [{:keys [conn]} goal ctx]   (if goal (c/watch conn goal ctx) (c/watch conn)))
+  (-feed-poll  [{:keys [conn]} token cursor opts]
     (if opts (c/poll conn token cursor opts) (c/poll conn token cursor))))
 
 ;; ---- local: the single-process shape, a plain in-process listener --------
 
 (defrecord LocalMedium [kb]
-  Medium
-  (-assert     [_ s ctx opts] (v/assert kb s ctx opts))
-  (-sentex     [_ h]          (v/sentex kb h))
-  (-matching   [_ s ctx]      (v/sentexes-matching kb s ctx))
-  (-check-edit [_ batch]      (v/check-edit kb batch))
-  (-edit       [_ batch]      (v/edit! kb batch))
-  (-subscribe  [_ goal ctx cb _opts]
+  koinii-types/Medium
+  (-assert     [{:keys [kb]} s ctx opts] (v/assert kb s ctx opts))
+  (-sentex     [{:keys [kb]} h]          (v/sentex kb h))
+  (-matching   [{:keys [kb]} s ctx]      (v/sentexes-matching kb s ctx))
+  (-check-edit [{:keys [kb]} batch]      (v/check-edit kb batch))
+  (-edit       [{:keys [kb]} batch]      (v/edit! kb batch))
+  (-subscribe  [{:keys [kb]} goal ctx cb _opts]
     ;; `core/watch` IS the in-process feed; the callback runs on the writing thread
     ;; (docs/feed.md), so a slow one slows the writer — acceptable single-process, and
     ;; the reason `wire` exists for the cross-process case.  No cursor / lag / wait: the
     ;; in-process feed has no ring, so the wire-only opts are ignored.
     (let [tok (if goal (v/watch kb goal ctx cb) (v/watch kb cb))]
       {:token tok :medium :local :stop (fn [] (v/unwatch kb tok))}))
-  (-query      [_ goal ctx]   (v/query kb goal ctx))
+  (-query      [{:keys [kb]} goal ctx]   (v/query kb goal ctx))
   (-feed-open  [_ _goal _ctx]
     (throw (ex-info (str "koinii: an in-process medium has no cursor feed — catch-up is a"
                          " wire-only concern, and there is no ring here to fall off."

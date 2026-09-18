@@ -77,11 +77,12 @@
             [vaelii.core :as v]
             [vaelii.impl.columnar :as col]
             [vaelii.impl.config :as config]
-            [vaelii.impl.dense-roots :as roots]
             [vaelii.impl.disk.backend :as disk]
             [vaelii.host.io.generate :as gen]
             [vaelii.impl.jtms :as jtms]
-            [vaelii.impl.protocols :as p])
+            [vaelii.impl.protocols :as p]
+            [vaelii.impl.types.reasoning :as reasoning]
+            [vaelii.impl.types.dense-roots :as dense-roots-types])
   (:import [java.nio Buffer ByteBuffer DoubleBuffer FloatBuffer IntBuffer LongBuffer ShortBuffer]))
 
 ;; ---- measurement ---------------------------------------------------------
@@ -271,7 +272,7 @@
             csr      (col/csr idx)
             skeleton (when csr [(:counts csr) (:offsets csr) (:edge-tok csr) (:edge-tgt csr)])
             leaves   (when csr [(:leaf-off csr) (:handles csr)])
-            rsec     (roots/sections (:roots idx))
+            rsec     (dense-roots-types/sections (:roots idx))
             columns  [(:keys rsec) (:offsets rsec)]
             handles  [(:handles rsec)]
             ;; the routed map is what the roots hold when nothing is mapped; the scope
@@ -295,8 +296,8 @@
 
 (def ^:private other-fields
   "The KB fields that are none of the four big structures — the caches, rosters, memos and
-  statistics `vaelii.impl.kb`'s `KB` record carries beside its two stores, its network and
-  its taxonomy.  Named exhaustively rather than derived by subtraction: jol dedupes shared
+  statistics a KB carries beside its two stores, its network and its taxonomy, on the
+  `KB` record and on its `Reasoning` value.  Named exhaustively rather than derived by subtraction: jol dedupes shared
   structure *within* a call, so `retained [kb]` is strictly less than the sum of its
   parts, and a remainder taken against it goes negative the moment two rows legitimately
   share anything.  A row here can still be reached from another root — the attribution is
@@ -389,14 +390,15 @@
         ;; A field that reaches code rather than data kills the walk (see
         ;; `other-fields`), so a new one is reported as unmeasured instead of taking the
         ;; run down — a bench that dies on the last row has measured nothing.
-        other-o  (try (doall (map #(get kb %) other-fields))
+        other-o  (try (doall (map #(get (merge (into {} kb) (into {} (reasoning/of kb))) %)
+                                  other-fields))
                       (catch Throwable t
                         (println (format "    (other: not measured — %s)" (.getMessage t)))
                         nil))]
     (merge {:index    (:whole idx)
             :sections (dissoc idx :whole)}
-           (cumulative [[:taxonomy       [(:taxonomy kb)]]
-                        [:jtms           [(:tms kb)]]
+           (cumulative [[:taxonomy       [(reasoning/taxonomy kb)]]
+                        [:jtms           [(reasoning/tms kb)]]
                         [:record-rosters roster-o]
                         [:record-cache   cache-o]
                         [:record-premises premises-o]
@@ -453,7 +455,7 @@
                      :types 40 :predicates predicates :layers layers :chain? false})
   (when (pos? (double j-n))
     (doseq [[ante conseq] (rule-families j-n)]
-      (v/assert-rule kb [ante] conseq 'CxGenerated))
+      (v/assert-rule kb [ante] conseq 'CxGenerated {:direction :forward}))
     (v/forward-chain kb))
   kb)
 
@@ -488,11 +490,11 @@
       (let [kb    (open-kb-for backend dir :auto)
             _     (dorun (v/sentexes-matching kb '(?p ?x ?y) 'CxGenerated))
             n     (p/sentex-tally (:records kb))
-            nodes (count (jtms/datums (:tms kb)))
+            nodes (count (jtms/datums (reasoning/tms kb)))
             ;; a count, never a size: the dense network stores no justification object
             ;; and rebuilds one per call, so this allocates O(j) temporaries and
             ;; `bench-jtms`' warning applies to sizing what it returns, not to counting it
-            justs (count (jtms/justifications (:tms kb)))]
+            justs (count (jtms/justifications (reasoning/tms kb)))]
         (assoc (kb-structures kb)
                :facts n :requested facts :nodes nodes :justs justs
                :j-n (if (pos? nodes) (/ (double justs) nodes) 0.0)))

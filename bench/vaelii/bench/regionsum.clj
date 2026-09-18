@@ -37,7 +37,8 @@
             [vaelii.host.io.generate :as gen]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.protocols :as p]
-            [vaelii.impl.reindex :as reindex]))
+            [vaelii.impl.reindex :as reindex]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 ;; ---- plumbing -----------------------------------------------------------
 
@@ -88,7 +89,7 @@
   [^String dir order-fn]
   (let [kb      (reopen-cold dir)
         _       (reindex/reindex kb)
-        tms     (:tms kb)
+        tms     (reasoning/tms kb)
         rec     (:records kb)
         live    (p/sentex-ids rec)
         stored? (fn [h] (or (not (integer? h)) (some? (p/get-sentex rec h))))]

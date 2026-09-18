@@ -28,6 +28,7 @@
             [vaelii.core :as v]
             [vaelii.impl.checks :as checks]
             [vaelii.impl.rules :as vr]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -252,11 +253,11 @@
         (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse)
         (v/assert kb (list dog_t Muffet) 'CxUniverse)
         (v/assert kb (list cat_t Muffet) 'CxUniverse)
-        (is (= 1 (count (:pairs @(:clashes kb)))) "the pair is remembered")
+        (is (= 1 (count (:pairs @(reasoning/clashes kb)))) "the pair is remembered")
         (testing "retracting the separation retires it, and it is forgotten"
           (v/retract! kb (v/handle-of kb (list 'disjoint dog_t cat_t) 'CxUniverse))
           (is (empty? (v/contradictions kb)))
-          (is (empty? (:pairs @(:clashes kb)))
+          (is (empty? (:pairs @(reasoning/clashes kb)))
               "both members still stored and believed, and they no longer clash"))
         (testing "and re-declaring it finds the pair again through the region"
           (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse)
@@ -280,13 +281,13 @@
         ;; differ under position 2, so only position 1 convicts this pair
         (v/assert kb (list linkPred 1 Shared) 'CxUniverse)
         (v/assert kb (list linkPred 2 Shared) 'CxUniverse)
-        (is (= 1 (count (:pairs @(:clashes kb)))) "position 1 convicts the pair")
+        (is (= 1 (count (:pairs @(reasoning/clashes kb)))) "position 1 convicts the pair")
         (is (= 1 (count (v/contradictions kb))))
         (testing "retracting position 1 retires it, though position 2 keeps linkPred marked"
           (v/retract! kb (v/handle-of kb (list 'functionalInArg linkPred 1) 'CxUniverse))
           (is (empty? (v/contradictions kb))
               "the constraint that convicted the pair is gone")
-          (is (empty? (:pairs @(:clashes kb)))
+          (is (empty? (:pairs @(reasoning/clashes kb)))
               "and the pair is forgotten, not carried forward stale"))))))
 
 (tu/deftest-kb a-standing-pair-is-not-re-derived-by-an-unrelated-settle
@@ -304,17 +305,17 @@
         (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse)
         (v/assert kb (list dog_t Muffet) 'CxUniverse)
         (v/assert kb (list cat_t Muffet) 'CxUniverse)
-        (let [pair  (first (keys (:nogoods @(:clashes kb))))
-              entry (get (:nogoods @(:clashes kb)) pair)]
+        (let [pair  (first (keys (:nogoods @(reasoning/clashes kb))))
+              entry (get (:nogoods @(reasoning/clashes kb)) pair)]
           (is (some? entry))
           (testing "a settle that moves nothing of the pair's carries it forward"
             (v/assert kb (list dog_t Rex) 'CxUniverse)
-            (is (identical? entry (get (:nogoods @(:clashes kb)) pair))
+            (is (identical? entry (get (:nogoods @(reasoning/clashes kb)) pair))
                 "re-derived, so the memo is not being used"))
           (testing "and moving the vocabulary does re-derive it"
             ;; the separation itself changing is what the memo may never take on trust
             (v/retract! kb (v/handle-of kb (list 'disjoint dog_t cat_t) 'CxUniverse))
-            (is (nil? (get (:nogoods @(:clashes kb)) pair)))
+            (is (nil? (get (:nogoods @(reasoning/clashes kb)) pair)))
             (is (empty? (v/contradictions kb)))))))))
 
 (tu/deftest-kb a-pair-with-a-defeated-member-is-kept
@@ -327,7 +328,7 @@
               'CxUniverse)
     (let [h (v/handle-of kb (list fish_t Rex) 'CxUniverse)]
       (is (not (v/in? kb h)) "the derived side lost")
-      (is (= 1 (count (:pairs @(:clashes kb))))
+      (is (= 1 (count (:pairs @(reasoning/clashes kb))))
           "and the pair is retained, so the clash is re-reported if it revives"))))
 
 (tu/deftest-kb a-carried-report-still-names-a-side-s-second-derivation
@@ -715,13 +716,13 @@
         (v/assert kb (list cat_t Muffet) CxSpec)
         (v/assert kb (list dog_t Muffet) CxGen)
         (is (= 1 (count (v/contradictions kb))))
-        (is (= 1 (count (:pairs @(:clashes kb)))) "the pair is remembered")
+        (is (= 1 (count (:pairs @(reasoning/clashes kb)))) "the pair is remembered")
         (testing "the edge leaving takes the joint view with it"
           (v/retract! kb (v/handle-of kb (list 'genlCx CxSpec CxGen)
                                       'CxUniverse))
           (is (not (v/sees? kb CxSpec CxGen)))
           (is (empty? (v/contradictions kb)))
-          (is (empty? (:pairs @(:clashes kb)))
+          (is (empty? (:pairs @(reasoning/clashes kb)))
               "both members still believed, and no context sees them together")
           (is (v/ask? kb (list dog_t Muffet) CxGen))
           (is (v/ask? kb (list cat_t Muffet) CxSpec)))

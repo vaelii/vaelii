@@ -18,6 +18,7 @@
             [vaelii.host.seed :as seed]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.sign :as sign]
+            [vaelii.impl.types.prover :as prover-types]
             [vaelii.test-util :as tu])
   (:import [vaelii.impl.sign SignProver]))
 
@@ -316,9 +317,9 @@
 
 (tu/deftest-kb the-prover-names-what-it-answers-and-what-it-reads
   (let [pr (sign/sign-prover)]
-    (is (= '#{signOf trendOf} (provers/support-functors pr)))
+    (is (= '#{signOf trendOf} (prover-types/support-functors pr)))
     (is (= '#{signOf trendOf qualitativeSum qualitativeDifference qualitativeProduct
               derivativeOf greaterInMagnitudeThan}
-           (provers/support-sources pr))
+           (prover-types/support-sources pr))
         "everything the reading reads, so a datum on one of them re-joins the rules
          carrying a sign antecedent rather than arriving too late to be seen")))

@@ -11,6 +11,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [vaelii.impl.asp.clasp :as clasp]
             [vaelii.impl.asp.clingo :as clingo]
+            [vaelii.impl.asp.edge :as edge]
             [vaelii.impl.asp.solver :as solver]
             [vaelii.impl.solve :as solve])
   (:import [com.sun.jna.ptr PointerByReference]))
@@ -92,6 +93,42 @@
       (let [r (fold :optimal [(m ["a"] [] false) (m ["b"] [] false)])]
         (is (= 2 (count (:models r))))
         (is (nil? (:optimum r)))))))
+
+(deftest a-solve-with-no-objective-reads-one-model-of-a-program-with-many
+  ;; `:label` streams every improving model so a cancelled optimization keeps its best.
+  ;; A program with no objective has nothing to improve, and the same flags enumerate
+  ;; every model: a 10k-node 3-coloring's solve ran to the time limit and parsed
+  ;; gigabytes of witnesses.  `:sat` stops at the first, and so does a `:label` solve
+  ;; handed a program with no minimize statement, whichever caller built it.  Twelve
+  ;; unconstrained choices have 4,096 models.
+  (let [ids     (set (range 1 13))
+        content (into {} (map (fn [i] [i {:sentence (list 'chosen i) :context 'C}])) ids)
+        bare    (edge/translate (solve/program ids [] content)
+                                {:tiebreak? false :keep-belief? false})
+        kept    (edge/translate (solve/program ids [] content) {:tiebreak? false})]
+    (when (clasp/available?)
+      (testing "clasp"
+        (doseq [mode [:sat :label]]
+          (let [r (clasp/solve (:aspif bare) mode)]
+            (is (= :sat (:status r)) (str mode))
+            (is (= 1 (count (-> r :raw :Call first :Witnesses))) (str mode))))
+        (testing "a program with an objective still solves to its optimum"
+          (let [r (clasp/solve (:aspif kept) :label)]
+            (is (= :optimum (:status r)))
+            (is (= 12 (count (:atoms r))) "every unconstrained choice is kept")))))
+    (when (clingo/available?)
+      (testing "clingo"
+        (doseq [mode [:sat :label]]
+          (let [r (clingo/solve bare mode)]
+            (is (= :sat (:status r)) (str mode))
+            (is (= 1 (count (-> r :raw :models))) (str mode))))
+        (testing "a program with an objective still solves to its optimum"
+          (let [r (clingo/solve kept :label)]
+            ;; clingo flags no model proven under `--opt-mode=opt`, so a finished
+            ;; optimization reads `:sat` here where clasp says `:optimum`; `edge` reads
+            ;; both as an answer set
+            (is (contains? #{:optimum :sat} (:status r)))
+            (is (= 12 (count (:atoms r))))))))))
 
 (deftest content-key-survives-an-ambient-print-length
   ;; the key decides which side of a tie gives way; under a REPL's *print-length*

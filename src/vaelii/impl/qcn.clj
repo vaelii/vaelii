@@ -33,8 +33,10 @@
   and a non-entailment is \"not provable\", never \"provably false\"."
   (:require [clojure.set :as set]
             [vaelii.impl.caches :as caches]
-            [vaelii.impl.naming :as nm])
-  (:import [java.util ArrayDeque BitSet LinkedHashSet]))
+            [vaelii.impl.naming :as nm]
+            [vaelii.impl.types.qcn :as qcn-types])
+  (:import [java.util ArrayDeque BitSet LinkedHashSet]
+           [vaelii.impl.types.qcn IRelationOps]))
 
 (defn constraint
   "The constraint on `[i j]` in `net` under `algebra`: the identity on the diagonal,
@@ -112,57 +114,6 @@
 
 (def ^:private decode-cache-limit 8192)
 
-;; The two table-driven operations, over masks.  A protocol rather than a pair of
-;; closures so the calls in the tightening step are **primitive**: a Clojure function
-;; taking and returning a long boxes both ways through `IFn.invoke`, which at one
-;; composition per triple is the largest allocation left in a cubic loop — precisely what
-;; masks are here to retire.
-(definterface IRelationOps
-  (^long compose [^long m1 ^long m2])
-  (^long converse [^long m]))
-
-(deftype DenseOps [^longs comp-tbl ^longs conv-tbl ^long size]
-  IRelationOps
-  ;; `comp-tbl` holds the composition of a single relation with any mask, so composing two
-  ;; is one read per relation set on the left, and a converse is one read flat.
-  (compose [_ m1 m2]
-    (loop [a m1, acc 0]
-      (if (zero? a)
-        acc
-        (let [i (Long/numberOfTrailingZeros a)]
-          (recur (bit-and a (dec a))
-                 (bit-or acc (aget comp-tbl (+ (* i size) m2))))))))
-  (converse [_ m] (aget conv-tbl m)))
-
-(defn- union-row
-  "The union of `base[i][j]` over the relations set in `m`: one row of the base table,
-  masked — the composition of a single relation with a whole constraint."
-  ^long [^longs base ^long k ^long i ^long m]
-  (loop [b m, acc 0]
-    (if (zero? b)
-      acc
-      (let [j (Long/numberOfTrailingZeros b)]
-        (recur (bit-and b (dec b))
-               (bit-or acc (aget base (+ (* i k) j))))))))
-
-(deftype SparseOps [^longs comp-base ^longs conv-base ^long k]
-  IRelationOps
-  ;; the fallback for an algebra too wide to hold a whole-mask table: the same unions, read
-  ;; one base pair at a time rather than one row at a time.  Still no allocation.
-  (compose [_ m1 m2]
-    (loop [a m1, acc 0]
-      (if (zero? a)
-        acc
-        (let [i (Long/numberOfTrailingZeros a)]
-          (recur (bit-and a (dec a))
-                 (bit-or acc (union-row comp-base k i m2)))))))
-  (converse [_ m]
-    (loop [a m, acc 0]
-      (if (zero? a)
-        acc
-        (let [i (Long/numberOfTrailingZeros a)]
-          (recur (bit-and a (dec a)) (bit-or acc (aget conv-base i))))))))
-
 (defn- compile-algebra
   "Compile a relation algebra into its bitmask form:
 
@@ -204,8 +155,8 @@
                     (bit-or (aget comp-tbl (+ (* r size) rest))
                             (aget comp-base (+ (* r k) low))))))))
       (let [^IRelationOps ops (if dense?
-                                (DenseOps. comp-tbl conv-tbl size)
-                                (SparseOps. comp-base conv-base k))
+                                (qcn-types/->DenseOps comp-tbl conv-tbl size)
+                                (qcn-types/->SparseOps comp-base conv-base k))
             cache (atom {})
             decode
             (fn [^long m]
@@ -224,11 +175,12 @@
          :decode-cache cache
          :no-op?   (= uni (.compose ops uni uni))}))))
 
-(def ^:private compiled-cache
-  "Compiled algebras, keyed on the algebra map itself.  Each calculus holds its algebra
+(defonce ^{:private true
+           :doc "Compiled algebras, keyed on the algebra map itself.  Each calculus holds its algebra
   as one stable value, so this fills once per algebra and never turns over; the cap is
   the same cleared-wholesale bound the other caches here take, for a caller building
-  algebras on the fly."
+  algebras on the fly."}
+  compiled-cache
   (atom {}))
 
 (def ^:private compiled-cache-limit 64)

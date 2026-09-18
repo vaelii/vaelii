@@ -288,7 +288,7 @@ a firing there is enumerable at one trigger and not at the other:
 - **A mirrored antecedent** — a binary literal whose predicate is `symmetric`. The join
   probes both argument orders (`res/raw-match`) where the trigger unify does not, so a
   mirrored hit is a firing the join can make and the arriving datum cannot.
-- **A computed antecedent**, whose handles are what a `provers/SupportingProver` read
+- **A computed antecedent**, whose handles are what a `prover-types/SupportingProver` read
   out of the store rather than the tuple that satisfied the position.
 - **An inherited antecedent**, satisfied by a claim nobody stored, whose handles name
   the stated claim, the declaration and the reach edges rather than a matched fact.
@@ -1741,14 +1741,14 @@ moved with. Four ship in this state, and the last two are in the default registr
 |---|---|---|
 | `stp/TemporalDistanceProver` | `temporalDistance` | every `temporalDistance` in the network, and the unit table |
 | `duration/DurationProver` | `totalDuration`, `overlapDuration` | `length`, the Allen relations, `startOf`/`endOf`, the metric constraints, the unit table |
-| `provers/QuantityProver` | the five measure comparisons | `dimensionOf`, `conversionFactor` |
-| `provers/TransitivePredicateProver` | every `(transitive P)` predicate this KB declares | the believed `P` edges its walk crosses — sub-predicate spellings and `inverse` partners included |
+| `prover-types/QuantityProver` | the five measure comparisons | `dimensionOf`, `conversionFactor` |
+| `prover-types/TransitivePredicateProver` | every `(transitive P)` predicate this KB declares | the believed `P` edges its walk crosses — sub-predicate spellings and `inverse` partners included |
 
 A forward firing that named none of those would keep its conclusion after the row behind
 it was retracted — belief resting on a reason nothing can take away, which is the failure
 [nmtms.md](nmtms.md) rules out everywhere else.
 
-**`provers/SupportingProver` is the protocol that closes it.** A prover implements it beside
+**`prover-types/SupportingProver` is the protocol that closes it.** A prover implements it beside
 `Prover` and gains three methods: `support-functors` (what it answers with support),
 `support-sources` (what it reads), and `solve-with-support`, which answers exactly what
 `solve` answers with each solution paired with the handles it was read from. An
@@ -2041,7 +2041,7 @@ reasoner, an external service) plugs in.
 `EvaluableProver` and `EvaluateProver` are each a hand-written record for one built-in
 functor. **`add-evaluatable kb pred f opts`** is the same two shapes made generic — the
 one-liner for a *computed* relation, so a calculated predicate need not be a five-method
-`provers/Prover`. `f` is a plain Clojure fn the caller supplies as a **value** (never
+`prover-types/Prover`. `f` is a plain Clojure fn the caller supplies as a **value** (never
 `clojure.core/eval` of KB data), in one of two shapes chosen by `opts`:
 
 - a **check** predicate (no `:result`) — `(add-evaluatable kb 'evenSum (fn [a b] (even?

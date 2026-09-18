@@ -209,8 +209,8 @@ it out correctly; the reviewer is the one who was misled. It is refused on every
 on the two that promise the context is the caller's (`propose-page`, `propose-text`) it is
 the only way that promise can be broken, and on the two where the model writes contexts a
 line whose displayed context contradicts where it lands is still a bad line to show
-anyone. A rule *consequent* `ist` is left alone: placing derived conclusions is what that
-form is for, and it is written out in a line the reviewer reads.
+anyone. A rule consequent `ist` is not this row's: the check chain refuses an `ist` in
+any rule position as `:not-well-formed`.
 
 That is a **deterministic** critic rather than a model-judged one, which is what lets
 the repair loop terminate on a fact. Post-settle, `apply-proposal!` reports the same
@@ -430,7 +430,7 @@ Other options: `:system` (override the generated prompt), `:prompt-opts`,
 `:tool-opts` (`:only` / `:exclude` a set of ops), `:model`, `:max-tokens`, `:effort`,
 `:thinking-display`.
 
-`kb` is an **in-process** KB, not an `vaelii.host.access` handle: the critic calls the
+`kb` is an **in-process** KB, not an `vaelii.browser.access` handle: the critic calls the
 engine's check predicates directly, and those read the taxonomy and the index rather
 than going over a wire. The browser's attach-to-daemon mode would need the loop to run
 on the daemon side (where the KB is) and only the proposal to cross the wire.

@@ -37,6 +37,7 @@
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (defn- merged-at?
@@ -117,10 +118,10 @@
       (v/assert kb (list 'genlCx CxSub CxLeft) 'CxCore {:strength :monotonic})
       (v/assert kb (list 'genlCx CxPlain CxSub) 'CxCore {:strength :monotonic})
       (let [edge (v/assert kb (list 'genlCx CxHidden CxSub) 'CxCore {:strength :monotonic})]
-        (is (contains? (set (tax/context-down (:taxonomy kb) CxSub)) CxHidden)
+        (is (contains? (set (tax/context-down (reasoning/taxonomy kb) CxSub)) CxHidden)
             "in the swept set before the except")
         (v/assert kb (list 'except (sx/sentex-handle edge)) CxHidden {:strength :monotonic})
-        (is (not (contains? (set (tax/context-down (:taxonomy kb) CxSub)) CxHidden))
+        (is (not (contains? (set (tax/context-down (reasoning/taxonomy kb) CxSub)) CxHidden))
             "and out of it after"))
       (v/assert kb (list 'genlCx CxSub CxRight) 'CxCore {:strength :monotonic})
       (testing "the excepted reader cannot see the joined branch, so it holds no merge"

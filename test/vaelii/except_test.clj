@@ -360,6 +360,30 @@
       (is (empty? (v/sentexes-matching kb (list flies Opus) CxHome)))
       (is (nil? (v/handle-of kb (list flies Opus) CxHome))))))
 
+;; The exception's **own** context is scoped the same way.  An `exceptWhen` is a
+;; sentex, so a context reasons with the exceptions its genlCx ancestor set holds and no
+;; others: one stated in a context below the conclusion's blocks nothing there, even
+;; when the query it asks holds in the conclusion's context.
+
+(tu/deftest-kb an-exception-stated-below-the-placement-context-does-not-block
+  (tu/with-terms [bird penguin flies Opus CxGen CxSpec CxSide]
+    (let [rule (v/assert kb (default-rule [(list bird '?b)] (list flies '?b)) CxGen)]
+      (v/assert kb (list 'genlCx CxSpec CxGen) 'CxUniverse)
+      (v/assert kb (list bird Opus) CxGen)
+      (v/assert kb (list penguin Opus) CxGen)
+      (is (not (v/sees? kb CxGen CxSpec)) "test precondition")
+      (v/assert kb (list 'exceptWhen (list penguin '?b) (sx/sentex-handle rule)) CxSpec)
+      (testing "the query holds in CxGen, but CxGen cannot see the exception"
+        (is (seq (v/sentexes-matching kb (list flies Opus) CxGen)))
+        (is (seq (v/query kb (list flies Opus) CxGen {:max-depth 2}))))
+      (testing "an exception in an unrelated context blocks once a genlCx edge exposes it"
+        (v/assert kb (list 'exceptWhen (list penguin '?b) (sx/sentex-handle rule)) CxSide)
+        (is (seq (v/sentexes-matching kb (list flies Opus) CxGen)))
+        (let [edge (v/assert kb (list 'genlCx CxGen CxSide) 'CxUniverse)]
+          (is (empty? (v/sentexes-matching kb (list flies Opus) CxGen)))
+          (v/retract! kb edge)
+          (is (seq (v/sentexes-matching kb (list flies Opus) CxGen))))))))
+
 ;; ---- 13. the exception is not materialized per-instance -----------------
 ;; DECISION (The exception is never materialized): materializing the ground
 ;; exception "stores the negative space" — a probe `(penguin X)` for every

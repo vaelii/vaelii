@@ -13,6 +13,7 @@
   (:require [clojure.set :as set]
             [clojure.string :as str]
             [taoensso.trove :as trove]
+            [vaelii.impl.capabilities :as cap]
             [vaelii.impl.chain :as chain]
             [vaelii.impl.checks :as checks]
             [vaelii.impl.feed :as feed]
@@ -21,6 +22,7 @@
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.naming :as nm]
+            [vaelii.impl.observe :as observe]
             [vaelii.impl.predicates :as pr]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.provers :as provers]
@@ -33,6 +35,8 @@
             [vaelii.impl.special :as special]
             [vaelii.impl.strength :as strength]
             [vaelii.impl.taxonomy :as tax :refer [*exposure-instance-budget*]]
+            [vaelii.impl.types.reasoning :as reasoning]
+            [vaelii.impl.types.solve :as solve-types]
             [vaelii.impl.violations :as violations]))
 
 ;; ---- the facet contract -------------------------------------------------
@@ -143,7 +147,7 @@
   superseded body answers nothing here, which is the correct reading of a spelling that
   has been restated (docs/equality.md)."
   [kb body share-a-view?]
-  (let [tms (:tms kb)
+  (let [tms (reasoning/tms kb)
         neg (vec (kb/sentexes-matching-as-stored kb (list 'not body) '?ctx)) ; believed (not body)
         pos (vec (kb/sentexes-matching-as-stored kb body '?ctx))]            ; believed body
     {:neg (into #{} (map :context) neg)
@@ -153,12 +157,12 @@
            (for [nx    neg
                  :let  [ctxN (:context nx)]
                  sx    pos
-                 :let  [ctxX (:context sx)]
-                 :when (and (not= (:id sx) (:id nx))
-                            (share-a-view? ctxN ctxX))]
+                 :let  [ctxX (:context sx)
+                        vs   (share-a-view? ctxN ctxX)]
+                 :when (and (not= (:id sx) (:id nx)) vs)]
              (let [p (max (strength/rank-of (jtms/defeat-class tms (:id nx)))
                           (strength/rank-of (jtms/defeat-class tms (:id sx))))]
-               {:nogood #{(:id nx) (:id sx)} :priority p
+               {:nogood #{(:id nx) (:id sx)} :priority p :vantages vs
                 :sentence (list 'contradicts body (:sentence nx))})))}))
 
 (defn- moved-bodies
@@ -219,7 +223,7 @@
   polarities drop out, which on a KB with a handful of contradictions is nearly all of
   them."
   [kb handles]
-  (let [opposed @(:opposed kb)]
+  (let [opposed @(reasoning/opposed kb)]
     (when (seq opposed)
       (into #{} (comp (keep #(p/get-sentex (:records kb) %))
                       (map #(kb/body-under-not (:sentence %)))
@@ -247,7 +251,7 @@
   one context stores one boolean however many of them it holds — and re-reading them
   costs the **context vocabulary** rather than the standing set."
   [tax ks]
-  (into {} (map (fn [[a b :as k]] [k (tax/common-descendant? tax [a b])])) ks))
+  (into {} (map (fn [[a b :as k]] [k (tax/maximal-common-descendant-contexts tax [a b])])) ks))
 
 (defn- moved-verdicts
   "The recorded verdicts that no longer read the way they read at the last stamp.
@@ -265,7 +269,7 @@
   never walked at all."
   [tax views]
   (reduce-kv (fn [acc [a b :as k] v]
-               (cond-> acc (not= v (tax/common-descendant? tax [a b])) (conj k)))
+               (cond-> acc (not= v (tax/maximal-common-descendant-contexts tax [a b])) (conj k)))
              #{} views))
 
 (defn- bodies-crossing
@@ -307,7 +311,7 @@
                       (remove before)
                       (keys after))]
     (when-let [bodies (seq (opposed-bodies-of kb flipped))]
-      (swap! (:negations kb) update :dirty (fnil into #{}) bodies))))
+      (swap! (reasoning/negations kb) update :dirty (fnil into #{}) bodies))))
 
 (defn- negation-nogoods
   "Believed contradictions: every believed `(not X)` paired with a believed `X` when
@@ -391,14 +395,14 @@
   `scan` is the settle's region-read carried across defeat rounds, and `region` the
   round's `touched` as a delay (`moved-bodies`)."
   [kb scan region]
-  (let [opposed @(:opposed kb)]
+  (let [opposed @(reasoning/opposed kb)]
     (if (empty? opposed)
       ;; nothing is stored in both polarities, so nothing can pair — and this is the one
       ;; place the whole memo can be dropped rather than re-examined, exactly as
       ;; `constraint-nogoods` drops `:clashes` when nothing separates anything
-      (do (reset! (:negations kb) {}) #{})
-      (let [tax   (:taxonomy kb)
-            prev  @(:negations kb)
+      (do (reset! (reasoning/negations kb) {}) #{})
+      (let [tax   (reasoning/taxonomy kb)
+            prev  @(reasoning/negations kb)
             vocab (tax/relation-gen tax :genlCx)
             ;; a memo with no stamp at all carries nothing — a fresh KB, a `recover`, or
             ;; the empty-`:opposed` reset above — so the whole opposed set is re-derived.
@@ -417,7 +421,11 @@
                      opposed
                      (cond-> (moved-bodies kb opposed (:dirty prev) scan region)
                        (seq shifted) (into (bodies-crossing carry shifted))))
-            share-a-view? (memoize (fn [ca cb] (tax/common-descendant? tax [ca cb])))
+            ;; the vantages of a pair — the maximal common descendants of its two
+            ;; contexts — or nil when no context sees both
+            share-a-view? (memoize (fn [ca cb]
+                                     (not-empty (tax/maximal-common-descendant-contexts
+                                                 tax [ca cb]))))
             by-body (reduce (fn [m b]
                               (let [{:keys [neg pos nogoods] :as entry}
                                     (body-nogoods kb b share-a-view?)]
@@ -431,7 +439,7 @@
                             carry
                             moved)]
         (loop []
-          (let [cur    @(:negations kb)
+          (let [cur    @(reasoning/negations kb)
                 ;; `:dirty` only grows between the read of `prev` and this write, and
                 ;; only this fn clears it — so the difference is exactly the posts that
                 ;; landed while the bodies above were being re-derived
@@ -455,7 +463,7 @@
                                            tax (into #{} (mapcat visibility-pairs)
                                                      (vals (select-keys kept moved))))))
                         :dirty   posted}]
-            (if (compare-and-set! (:negations kb) cur next)
+            (if (compare-and-set! (reasoning/negations kb) cur next)
               (into #{} (mapcat :nogoods) (vals kept))
               (recur))))))))
 
@@ -490,7 +498,7 @@
                           (mapcat #(inherit/moved-predicates kb (sx/sentence-of %) pairs)))
                     @region)]
     (-> #{}
-        (into @(:preserved-clashes kb))
+        (into @(reasoning/preserved-clashes kb))
         (into @region)
         (into (mapcat #(reads/as-stored-with-functor (:index kb) %)) moved))))
 
@@ -535,11 +543,11 @@
   honest read of \"does this KB declare any preservation\" is a cardinality read per
   declaration functor, and this runs once per settle, which is once per assert."
   [kb region]
-  (let [pairs @(:preserving kb)]
+  (let [pairs @(reasoning/preserving kb)]
     (if (empty? pairs)
-      (do (reset! (:preserved-clashes kb) #{}) #{})
+      (do (reset! (reasoning/preserved-clashes kb) #{}) #{})
       (let [recs  (:records kb)
-            tms   (:tms kb)
+            tms   (reasoning/tms kb)
             preds (into #{} (map first) (keys pairs))
             found (keep (fn [h]
                           (when (jtms/in? tms h)
@@ -552,7 +560,7 @@
                         ;; answer is keyed on its own handle — but the ask is a query and a
                         ;; sorted one is reproducible, which is what the order sweeps read
                         (sort (preserving-candidates kb (set (keys pairs)) region)))]
-        (reset! (:preserved-clashes kb) (into #{} (map first) found))
+        (reset! (reasoning/preserved-clashes kb) (into #{} (map first) found))
         (into #{}
               (map (fn [[h s c]]
                      (let [members (into #{h (:claim c)} (:handles c))
@@ -563,6 +571,8 @@
                        {:nogood   members
                         :priority (reduce max (map #(strength/rank-of (jtms/defeat-class tms %))
                                                    members))
+                        ;; judged from the stored claim's own context (docs/inherit.md)
+                        :vantages #{(:context s)}
                         :kind     :inherited
                         :sentence (list 'contradicts a b)
                         ;; the half of the report that is not a stored sentex: the claim
@@ -572,6 +582,94 @@
                         :inherited {:sentence (:sentence c) :context (:context c)
                                     :claim (:claim c) :via (vec (:handles c))}})))
               found)))))
+
+(defn- class-at
+  "`h`'s defeat-class as `vantage` reads it, or nil when `vantage` reads `h` as OUT.  The
+  network's class, unless `vantage` withdraws part of what supports `h`; then the class is
+  recomputed over the withdrawn region (`jtms/classes-in-region`).  A nil vantage is the
+  network's own reading."
+  [kb h vantage]
+  (let [tms (reasoning/tms kb)
+        {:keys [region in]} (when vantage (res/withdrawal kb vantage))]
+    (if (contains? region h)
+      (when (contains? in h) (get (jtms/classes-in-region tms region in) h))
+      (jtms/defeat-class tms h))))
+
+(defn- live-at?
+  "Does `vantage` read every member of `nogood` as believed?  A nil vantage asks the
+  network alone."
+  [kb nogood vantage]
+  (let [tms (reasoning/tms kb)
+        hid (when vantage (res/hidden-fn kb vantage))]
+    (every? #(and (jtms/in? tms %) (not (and hid (hid %)))) nogood)))
+
+(defn- live-vantages
+  "The vantages of `ngmap` that read every member as believed, in content order.  A nogood
+  its source gave no vantage is weighed by the network alone, as the nil vantage."
+  [kb {:keys [nogood vantages]}]
+  (filterv #(live-at? kb nogood %) (if (seq vantages) (sort vantages) [nil])))
+
+(defn- global-defeat?
+  "Does a defeat of `h` weighed at `vantage` reach every reader of `h`?
+
+  A defeat at a vantage reaches that vantage and every context below it.  The readers of
+  `h` are its own context and every context below that.  The vantage sees every member, so
+  it is at or below `h`'s context; when `h`'s context also sees the vantage, the two are
+  one context or one `genlCx` component, every reader of `h` is at or below the vantage,
+  and the network's defeated set is the defeat.  Otherwise it is a scoped defeat.  A nil
+  vantage is the network's own reading, so its defeat is global."
+  [kb h vantage]
+  (or (nil? vantage)
+      (let [c (:context (p/get-sentex (:records kb) h))]
+        (or (nil? c) (tax/sees? (reasoning/taxonomy kb) c vantage)))))
+
+(defn- scope-defeats!
+  "Record `pairs`, each `[vantage handle]`, as scoped defeats.  Every read with a context
+  at or below a vantage then reads its handle as withdrawn (`res/withdrawal`).  Moves the
+  change clock, since the literal and closure caches are stamped on it and a scoped defeat
+  changes what a read answers with no store or network mutation."
+  [kb pairs]
+  (swap! (reasoning/scoped-defeats kb)
+         (fn [m] (reduce (fn [m [v h]] (update m v (fnil conj #{}) h)) m pairs)))
+  (res/clear-withdrawn! kb)
+  (observe/note-change))
+
+(defn- note-vantage-disagreements!
+  "Record, for each nogood in `weighed` whose vantages defeated **different** members, the
+  `{vantage -> handle}` map of what each vantage decided.  `weighed` is `[[ngmap vantage
+  decision] …]`, the whole round's weighing.
+
+  A nogood is decided once per vantage, and two vantages that see different support for the
+  same member can rank it differently: one defeats the member the other keeps.  Each verdict
+  holds where it was decided, and a reader below both sees two verdicts.  `res/withdrawal`
+  reads this roster and takes neither, so that reader believes every member, and
+  `disagreement-reports` is what `core/contradictions` reports the nogood from."
+  [kb weighed]
+  (let [entries (into []
+                      (comp (map (fn [[ngmap decided]]
+                                   {:ngmap ngmap
+                                    :by    (into {} (keep (fn [[v d]]
+                                                            (when-let [h (:defeat d)] [v h])))
+                                                 decided)}))
+                            (filter (fn [{:keys [by]}] (< 1 (count (distinct (vals by)))))))
+                      (reduce (fn [m [ngmap v d]]
+                                (update m ngmap (fnil conj []) [v d]))
+                              {} weighed))]
+    (when (seq entries)
+      (swap! (reasoning/vantage-disagreements kb)
+             (fn [v] (into v (remove (set v)) entries)))
+      (res/clear-withdrawn! kb)
+      (observe/note-change))))
+
+(defn- clear-scoped-defeats!
+  "Empty the scoped defeats, as `jtms/clear-defeats!` empties the network's defeated set at
+  the start of a settle, so a defeat whose nogood no longer stands is not re-applied."
+  [kb]
+  (when (or (seq @(reasoning/scoped-defeats kb)) (seq @(reasoning/vantage-disagreements kb)))
+    (reset! (reasoning/scoped-defeats kb) {})
+    (reset! (reasoning/vantage-disagreements kb) [])
+    (observe/note-change))
+  (res/clear-withdrawn! kb))
 
 (defn- decide-nogood
   "Decide a nogood from its members' defeat-classes alone: defeat the strictly-weakest
@@ -599,10 +697,13 @@
   equal defaults are a three-sided dilemma reported whole, exactly as two are reported as
   a pair.  Choosing among tied minima on any other ground would be choosing on content
   the engine has no ordering for; choosing on the handle would be choosing on arrival
-  order.  Over a two-member nogood this is the pairwise reading term for term."
-  [kb {:keys [nogood] :as ngmap}]
-  (let [tms     (:tms kb)
-        classed (mapv (fn [h] [h (jtms/defeat-class tms h)]) nogood)
+  order.  Over a two-member nogood this is the pairwise reading term for term.
+
+  **Weighed at one vantage.**  `vantage` is a context that sees every member, and each
+  member's class is the class that context reads (`class-at`).  A member whose support that
+  vantage partly withdraws can rank lower there than in the network."
+  [kb {:keys [nogood] :as ngmap} vantage]
+  (let [classed (mapv (fn [h] [h (class-at kb h vantage)]) nogood)
         ranked  (mapv (fn [[h c]] [h c (strength/rank-of c)]) classed)
         floor   (reduce min (map peek ranked))
         weakest (filterv #(= floor (peek %)) ranked)]
@@ -634,7 +735,7 @@
   Classes are read here, before any defeat lands, because `defeat-class` reports nil
   once a datum is OUT — after the fact the check is unavailable."
   [kb contested]
-  (let [tms (:tms kb)]
+  (let [tms (reasoning/tms kb)]
     (when-let [bad (seq (remove #(strength/defeasible? (jtms/defeat-class tms %)) contested))]
       (throw (ex-info (str "known-true content reached the edge solver: handle(s) "
                            (pr-str (vec bad)) " have defeat class "
@@ -665,7 +766,7 @@
     accepted))
 
 (defn- live-nogood?
-  "Are both members of a nogood still believed?
+  "Does some vantage of a nogood still read every member as believed (`live-vantages`)?
 
   **Every** nogood is filtered through this before it is decided, and neither source can
   be trusted to arrive live.  A round that defeats one member must not be handed the same
@@ -675,8 +776,8 @@
   are carried per body across settles (`negation-nogoods`), so a defeat leaves the carried
   entry standing until the region that moved asks for its body again.  Two different
   reasons, one filter, and it costs two map reads."
-  [tms {:keys [nogood]}]
-  (every? #(jtms/in? tms %) nogood))
+  [kb ngmap]
+  (boolean (seq (live-vantages kb ngmap))))
 
 (defn- believed-excepts
   "The believed visibility-`except` handles, as a set — the instrument the settle
@@ -735,7 +836,7 @@
   after the defeat — the caller reads it once and the next round shares the value."
   [kb touched]
   (special/reconcile-belief-change kb touched)
-  (tax/restore-depths (:taxonomy kb)))
+  (tax/restore-depths (reasoning/taxonomy kb)))
 
 (defn- preserved-rejoins-for
   "The forward rules whose preserving joins may have moved because arbitration
@@ -787,33 +888,57 @@
   [kb constraint region]
   (loop [solver-violated [], rejoin #{}, scan (volatile! {:seen #{} :bodies #{}}), region region]
     (let [active (seq (into #{}
-                            (filter #(live-nogood? (:tms kb) %))
+                            (filter #(live-nogood? kb %))
                             (concat constraint
                                     (phases/with-phase :discovery (negation-nogoods kb scan region))
                                     (phases/with-phase :discovery (preserving-nogoods kb region)))))]
       (if-not active
         {:violated solver-violated :dilemmas [] :rejoin rejoin :region region}
-        (let [decisions (map #(decide-nogood kb %) active)
-              clears    (into #{} (keep :defeat decisions))
+        ;; Each nogood is weighed at every vantage that reads it whole.  A loser whose
+        ;; vantage is its own context is defeated in the network; a loser weighed at a
+        ;; vantage below its own context is defeated there and below, and nowhere else.
+        (let [weighed   (for [ng active, v (live-vantages kb ng)]
+                          [ng v (decide-nogood kb ng v)])
+              decisions (map peek weighed)
+              clears    (into #{} (keep (fn [[_ v d]]
+                                          (when-let [h (:defeat d)]
+                                            (when (global-defeat? kb h v) h))))
+                              weighed)
+              scoped    (into #{} (keep (fn [[_ v d]]
+                                          (when-let [h (:defeat d)]
+                                            (when-not (global-defeat? kb h v) [v h]))))
+                              weighed)
               defeat!   (fn [handles]
                           (phases/with-phase :belief
-                            (jtms/defeat (:tms kb) handles)
-                            (let [t (jtms/touched (:tms kb))]
+                            (jtms/defeat (reasoning/tms kb) handles)
+                            (res/clear-withdrawn! kb)
+                            (let [t (jtms/touched (reasoning/tms kb))]
                               (refresh-after-defeat kb t)
                               (delay t))))]
-          (if (seq clears)
+          (cond
+            (seq clears)
             (let [region (defeat! clears)]
+              (note-vantage-disagreements! kb weighed)
+              (when (seq scoped) (scope-defeats! kb scoped))
               (recur solver-violated (into rejoin (preserved-rejoins-for kb clears)) scan region))
+
+            ;; the network did not move, so the region the pass shares stands
+            (seq scoped)
+            (do (note-vantage-disagreements! kb weighed)
+                (scope-defeats! kb scoped)
+                (recur solver-violated rejoin scan region))
+
+            :else
             (let [contested (into #{} (mapcat :contested decisions))
-                  hard      (vec (keep :hard decisions))
-                  dilemmas  (vec (keep :dilemma decisions))]
+                  hard      (vec (distinct (keep :hard decisions)))
+                  dilemmas  (vec (distinct (keep :dilemma decisions)))]
               (if (empty? contested)
                 {:violated (into solver-violated hard) :dilemmas dilemmas :rejoin rejoin
                  :region region}
                 (let [_    (check-solver-eligible kb contested)
                       prog (solve/program contested active (contested-content kb contested))
-                      _    (reset! (:program kb) prog)   ; the tie, before belief erases it
-                      res  (solve/solve @(:solver kb) prog)
+                      _    (reset! (reasoning/program kb) prog)   ; the tie, before belief erases it
+                      res  (solve-types/solve @(:solver kb) prog)
                       ;; A solve that decided nothing is a result now rather than an
                       ;; exception unwinding a settle that has already defeated things
                       ;; (`asp.edge`), and the settle finishes with the contested pair
@@ -864,8 +989,8 @@
   settle, never a sentex: `(contradicts X Y)` asserted would be a premise needing truth
   maintenance of its own, and it would go stale the moment either side moved
   (resources/kb/CxCore.txt says so of the predicate itself)."
-  [kb {:keys [nogood priority sentence kind inherited]}]
-  (let [tms   (:tms kb)
+  [kb {:keys [nogood priority sentence kind inherited] ::keys [vantage-verdicts]}]
+  (let [tms   (reasoning/tms kb)
         recs  (:records kb)
         ;; The list inside each side follows the same rule as the sides themselves:
         ;; `jtms/supports` is a set of allocation-ordered ids, so it is sorted by the
@@ -903,7 +1028,12 @@
       ;; the one member of a clash that is **not** a stored sentex, so it cannot be a
       ;; side: the claim nobody wrote.  Present only on `:inherited`, where the sides are
       ;; the stored claim it contradicts and the sentexes it was read from
-      inherited (assoc :inherited inherited))))
+      inherited (assoc :inherited inherited)
+      ;; `{vantage handle}` — present only on a nogood whose vantages defeated different
+      ;; members, naming what each one decided.  The clash is a dilemma for a reader that
+      ;; sees two of these vantages and decided for one that sees a single one, which is
+      ;; what `core/contradictions`' reader arity reads it for
+      vantage-verdicts (assoc :vantages vantage-verdicts))))
 
 (defn- report-order
   "One clash report's place in a reading, as content: each side's sentence then its
@@ -937,12 +1067,44 @@
   in **one** atom (`:clash-readings`): they are one publication, and a reader taking them
   off separate atoms could land between two writes and read one settle's conflicts beside
   another's contradictions."
-  [kb] (:conflicts @(:clash-readings kb)))
+  [kb] (:conflicts @(reasoning/clash-readings kb)))
 
 (defn contradictions-of
   "The settle's dilemma reports, in arrival order — `conflicts-of`'s other half, and
   `ranked` orders a reading of either."
-  [kb] (:contradictions @(:clash-readings kb)))
+  [kb] (:contradictions @(reasoning/clash-readings kb)))
+
+(defn disagreement-reports
+  "One `clash-report` per standing vantage disagreement, each carrying `:vantages` — the
+  `{vantage handle}` map of what each vantage decided.
+
+  Built at the read rather than recorded by the settle: a disagreement is standing state,
+  re-decided into `:vantage-disagreements` by every settle, where the dilemmas
+  `record-clashes!` publishes are the ones the settle's own rounds weighed.  A settle whose
+  region does not reach the pair weighs it in no round, so the report has to come off the
+  roster to survive one (`core/contradictions`).  Empty on one deref for a KB holding no
+  disagreement.
+
+  **Built once per settle, not once per read.**  A report reads a sentence and the
+  supporting justifications of every side and sorts them on content, which is what
+  `record-clashes!` publishes once per settle rather than per read to keep off the read
+  path.  This one is cached beside the per-reader withdrawals in `:withdrawn`, emptied by
+  `res/clear-withdrawn!` at every point the settle moves belief or either roster — so a
+  reader between two settles builds it once, and a settle that re-decides the roster
+  discards it."
+  [kb]
+  (let [ds @(reasoning/vantage-disagreements kb)]
+    (if (empty? ds)
+      []
+      (let [cache (reasoning/withdrawn kb)
+            hit   (get @cache ::disagreement-reports ::absent)]
+        (if (identical? ::absent hit)
+          (let [rs (mapv (fn [{:keys [ngmap by]}]
+                           (clash-report kb (assoc ngmap ::vantage-verdicts by)))
+                         ds)]
+            (swap! cache assoc ::disagreement-reports rs)
+            rs)
+          hit)))))
 
 (defn- record-clashes!
   "Publish the settle's two readings, rebuilding only the reports that could have moved.
@@ -984,7 +1146,7 @@
   `:clash-readings` atom rather than sitting in three, and no reader can land between two
   of them."
   [kb violated dilemmas touched]
-  (let [prev  (:reports @(:clash-readings kb))
+  (let [prev  (:reports @(reasoning/clash-readings kb))
         moved (set touched)
         build (fn [ng]
                 (or (when-not (some moved (:nogood ng))
@@ -1015,7 +1177,7 @@
                               (vary-meta assoc ::order (report-order r))))
         vs    (mapv (comp keyed build) violated)
         ds    (mapv (comp keyed build) dilemmas)]
-    (reset! (:clash-readings kb)
+    (reset! (reasoning/clash-readings kb)
             {:reports        (into {} (map (juxt :nogood identity)) (concat vs ds))
              :conflicts      vs
              :contradictions ds})))
@@ -1047,7 +1209,7 @@
   re-checks outright rather than merely delaying them.  `jtms/swap-with-result!` states
   the same rule for the network's own state."
   [kb]
-  (let [a (:recheck kb)]
+  (let [a (reasoning/recheck kb)]
     (loop []
       (let [old @a]
         (if (compare-and-set! a old {})
@@ -1121,7 +1283,7 @@
   The property reads are **global on purpose**: over-keeping a candidate costs one
   re-evaluation, under-keeping one is a missed withdrawal."
   [kb pred]
-  (let [tx (:taxonomy kb)]
+  (let [tx (reasoning/taxonomy kb)]
     (or (contains? provers/transitive-predicates pred)
         (contains? provers/evaluable-predicates pred)
         (= 'evaluate pred)
@@ -1149,7 +1311,7 @@
   sides or on neither, and the answer can only broaden.  A context-narrowed read would
   cost a visibility predicate per firing to buy nothing but a missed re-check."
   [kb]
-  (when (tax/merged-term-pred (:taxonomy kb))
+  (when (tax/merged-term-pred (reasoning/taxonomy kb))
     (fn [lit] (res/representative-term kb nil lit))))
 
 (defn- trigger-shapes
@@ -1182,7 +1344,7 @@
   extra candidate is a re-check that changes nothing, a missing one is a lost
   withdrawal."
   [kb pred lit]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (if (sx/negation? lit)
       (into (tax/specs-global tax pred) (tax/genls-global tax pred))
       (tax/specs-global tax pred))))
@@ -1237,7 +1399,7 @@
   every rule of the pass, for the reason `firing-reachable?` records, and so is the
   partition's `norm`."
   [kb queued]
-  (let [tms     (:tms kb)
+  (let [tms     (reasoning/tms kb)
         cross?  (memoize #(cross-argument-predicate? kb %))
         norm    (merge-normalizer kb)]
     (into #{}
@@ -1299,7 +1461,7 @@
   remembers that a justification was blocked a pass ago, so belief cannot depend on
   the order the exceptions were discovered in."
   [kb queued]
-  (let [tms   (:tms kb)
+  (let [tms   (reasoning/tms kb)
         cands (exception-candidates kb queued)
         held  (into #{} (remove cands) (jtms/blocked tms))]
     (into held
@@ -1362,6 +1524,25 @@
   the re-seed — the relabelled one and `*unmerged-sink*`'s."
   false)
 
+(def ^:dynamic *whole-store-region?*
+  "Does this settle's moved region hold every stored sentex?
+
+  `recovery/recover-from-records` binds it around the settle that follows `rebuild-tms`.
+  `rebuild-tms` makes a node for every stored sentex, and only `settle-finish` clears the
+  touched set, so that settle's region is the whole store.  `clash-candidates` reads it
+  to skip the retroactive sweeps: they return only believed positive sentexes, and a
+  region holding the whole store already holds every one of those.
+
+  `clash-candidates` checks the binding before acting on it, and skips only when the
+  region is also at least as large as the store's sentex count.  Inside a recover the
+  region holds only stored handles, so that count means the region is the store.  A
+  settle the binding reaches with a smaller region, such as the second pass `settle` runs
+  after an un-merge, runs the sweeps.
+
+  On the 12.26M-sentex `:refuse` store the sweeps made recover's closing settle fill a
+  40 GB heap and spend 66 of its 94 minutes in full garbage collection."
+  false)
+
 (def ^:dynamic ^:private *unmerged-sink*
   "A volatile holding the spellings an **un-merge** gave back, or nil.
 
@@ -1383,7 +1564,7 @@
   it along with everything resting on it.  Each deleted fact is itself a re-check
   trigger: removing it may release some *other* rule's exception."
   [kb newly-blocked]
-  (let [tms   (:tms kb)
+  (let [tms   (reasoning/tms kb)
         seeds (when *sweep?*
                 (into #{} (keep #(:consequence (jtms/justification tms %))) newly-blocked))]
     (when (seq seeds)
@@ -1407,7 +1588,7 @@
   Read before the sweep runs, so a justification the sweep is about to delete is still
   there to be asked for its informant."
   [kb was new]
-  (let [tms (:tms kb)]
+  (let [tms (reasoning/tms kb)]
     (into #{}
           (keep (fn [jid]
                   (let [inf (:informant (jtms/justification tms jid))]
@@ -1437,7 +1618,7 @@
   A rule whose record overflowed keeps no entries to re-ask, so it is named instead: the
   caller re-joins it, which is the coarse fallback the cap buys its way out of."
   [kb queued]
-  (let [refused @(:refused kb)]
+  (let [refused @(reasoning/refused kb)]
     (if (empty? refused)
       {:free [] :overflow []}
       (let [cross? (memoize #(cross-argument-predicate? kb %))
@@ -1508,7 +1689,7 @@
   `region` is the pass's `touched` as a delay, which `jtms/revived` narrows."
   [kb done region]
   (when-not *rebuilding?*
-    (into [] (remove done) (jtms/revived (:tms kb) @region))))
+    (into [] (remove done) (jtms/revived (reasoning/tms kb) @region))))
 
 (defn- blanket-recheck-rules
   "The queued rules with no triggering sentence (`:all` — a taxonomy edge moved, or the
@@ -1568,7 +1749,7 @@
   (let [live (filter (fn [rh]
                        (let [rsx (p/get-sentex (:records kb) rh)]
                          (and rsx (rules/rule? rsx) (rules/forward-sentex? rsx)
-                              (jtms/in? (:tms kb) rh))))
+                              (jtms/in? (reasoning/tms kb) rh))))
                      rule-handles)]
     (when (seq live) (chain/chain kb live nil))))
 
@@ -1589,7 +1770,7 @@
   violations ledger is scoped to the caller's run and must not be cleared from inside
   settling."
   [kb seeds]
-  (let [live (filter (fn [h] (and (p/get-sentex (:records kb) h) (jtms/in? (:tms kb) h)))
+  (let [live (filter (fn [h] (and (p/get-sentex (:records kb) h) (jtms/in? (reasoning/tms kb) h)))
                      seeds)]
     (when (seq live) (chain/chain kb live nil))))
 
@@ -1625,7 +1806,7 @@
   (docs/equality.md)."
   [kb]
   (comp (keep #(p/get-sentex (:records kb) %))
-        (filter #(jtms/in? (:tms kb) (:id %)))
+        (filter #(jtms/in? (reasoning/tms kb) (:id %)))
         (filter #(not (sx/negative? %)))))
 
 (defn- believed-in-ancestors
@@ -1642,7 +1823,7 @@
   (for [c     (filter symbol? contexts)
         s     (keep #(p/get-sentex (:records kb) %)
                     (reads/as-stored-in-context (:index kb) c))
-        :when (and (jtms/in? (:tms kb) (:id s)) (not (sx/negative? s)))]
+        :when (and (jtms/in? (reasoning/tms kb) (:id s)) (not (sx/negative? s)))]
     s))
 
 (defn- believed-at-arg
@@ -1762,7 +1943,7 @@
   is tested against every pair a term's memberships form, which is quadratic in them
   where the closures are not."
   [kb x focus {:keys [disjoint? visible-from]} arbitrated]
-  (let [tax (:taxonomy kb)
+  (let [tax (reasoning/taxonomy kb)
         ms  (believed-memberships kb x)
         gs  (when (not= :all focus) (mapv (fn [[t _]] (tax/genls-global tax t)) ms))
         implicated? (fn [i j]
@@ -1910,12 +2091,12 @@
   symbol — OpenCyc separates thousands of reified NATs — and a compound heads no stored
   membership, so it could not be one end of a pair even if it were enumerated."
   [kb types]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (for [t     (filter symbol? types)
           t'    (filter symbol? (tax/specs-global tax t))
           s     (keep #(p/get-sentex (:records kb) %)
                       (reads/as-stored-with-functor (:index kb) t'))
-          :when (and (jtms/in? (:tms kb) (:id s))
+          :when (and (jtms/in? (reasoning/tms kb) (:id s))
                      (not (sx/negative? s))
                      (= 1 (count (rest (:sentence s))))
                      (symbol? (second (:sentence s))))]
@@ -1929,7 +2110,7 @@
   whole graph, so sorting it before the first term came out cost
   `retract-context-cycle-scaling` a 3.4x growth against a 2x bound."
   [kb sub]
-  (for [s     (believed-in-ancestors kb (tax/context-up (:taxonomy kb) sub))
+  (for [s     (believed-in-ancestors kb (tax/context-up (reasoning/taxonomy kb) sub))
         :let  [sen (:sentence s)]
         :when (and (sequential? sen) (= 2 (count sen))
                    (symbol? (first sen)) (symbol? (second sen)))]
@@ -1988,7 +2169,7 @@
                (and (sequential? sen) (= 2 (count sen))
                     (contains? closure (first sen))
                     (not (sx/negative? s))
-                    (jtms/in? (:tms kb) (:id s))))))
+                    (jtms/in? (reasoning/tms kb) (:id s))))))
          (reads/as-stored-with-arg (:index kb) 1 term))))
 
 (defn- holds-two-members?
@@ -2006,7 +2187,7 @@
                           ;; argument-root posting here does it: a sentence that is not a
                           ;; sequence has no arity to compare and `count` throws on it
                           (if (and (sequential? sen) (= 2 (count sen)) (not (sx/negative? s))
-                                   (jtms/in? (:tms kb) (:id s)))
+                                   (jtms/in? (reasoning/tms kb) (:id s)))
                             (let [seen' (into seen (owner (first sen)))]
                               (if (> (count seen') 1) (reduced seen') seen'))
                             seen))
@@ -2052,7 +2233,7 @@
   functor is a symbol, so a compound-functor membership could not be one end of a pair
   even if it were enumerated."
   [kb as bs roots]
-  (let [tax (:taxonomy kb)
+  (let [tax (reasoning/taxonomy kb)
         ca  (spec-closure tax as)
         cb  (spec-closure tax bs)]
     (if (or (empty? ca) (empty? cb))
@@ -2099,7 +2280,7 @@
   * `(genlCx Sub Super)` — visibility itself moved, so the roots are `:all` and
     the same gate applies."
   [kb sen]
-  (let [tax (:taxonomy kb)
+  (let [tax (reasoning/taxonomy kb)
         f   (nm/functor sen)]
     (case f
       disjoint
@@ -2146,7 +2327,7 @@
   Separate from `declaration-reach` because the sentence is an ordinary unary
   membership — only the taxonomy says it declares anything at all."
   [kb mt t]
-  (two-sided-reach kb [t] (disj (set (tax/metatype-members (:taxonomy kb) mt)) t) #{t}))
+  (two-sided-reach kb [t] (disj (set (tax/metatype-members (reasoning/taxonomy kb) mt)) t) #{t}))
 
 ;; ---- definitional clashes as nogoods -------------------------------------
 ;;
@@ -2335,7 +2516,7 @@
        (= 2 (count sen))
        (let [f (nm/functor sen)]
          (and (symbol? f) (symbol? (second sen))
-              (tax/disjoint-metatype? (:taxonomy kb) f)))))
+              (tax/disjoint-metatype? (reasoning/taxonomy kb) f)))))
 
 (defn- membership-sentexes
   "The believed unary-membership sentexes of `term` — its candidate side of a
@@ -2424,7 +2605,7 @@
   (when (symbol? pred)
     (for [s     (keep #(p/get-sentex (:records kb) %)
                       (reads/as-stored-with-functor (:index kb) pred))
-          :when (and (jtms/in? (:tms kb) (:id s)) (not (sx/negative? s)))]
+          :when (and (jtms/in? (reasoning/tms kb) (:id s)) (not (sx/negative? s)))]
       s)))
 
 (defn- predicate-subtree
@@ -2452,7 +2633,7 @@
   (into (sorted-set)
         (comp (filter symbol?)
               (filter #(pos? (reads/stored-count-with-functor (:index kb) %))))
-        (when (symbol? pred) (tax/specs-global (:taxonomy kb) pred))))
+        (when (symbol? pred) (tax/specs-global (reasoning/taxonomy kb) pred))))
 
 (defn- subtree-facts
   "The believed facts of `pred` and of every predicate beneath it — the candidates a
@@ -2520,7 +2701,7 @@
   ancestor set is what a fact stored there gains sight of, exactly as `members-in-ancestors`
   reads the sub for disjointness."
   [kb sub]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (for [s     (believed-in-ancestors kb (tax/context-up tax sub))
           :let  [sen (:sentence s)]
           :when (and (sequential? sen)
@@ -2588,7 +2769,7 @@
   the deciding one."
   [kb sen left]
   (let [[f a] sen
-        tax (:taxonomy kb)
+        tax (reasoning/taxonomy kb)
         ;; both type-separating shapes end the same way: bound the enumeration, keep the
         ;; terms that could really be convicted, and take their memberships
         ;; A KB separating no two types can convict no membership, so the enumeration is
@@ -2750,18 +2931,38 @@
   re-checks, under-sweeping would miss a clash — and a trigger it did not finish is
   recorded in `*arbitration-cut*` rather than passed over in silence.
 
-  **The sweep runs on a rebuild too, and that is not an oversight.**  Where the region
-  really is every stored sentex the sweep is redundant — `moved` already holds every
-  believed sentex, and everything the sweep can yield is a believed membership or fact —
-  so skipping it there would be free.  But `*rebuilding?*` does not say the region is
-  everything: `recover` binds it around two settles, and the second one's region is only
-  what re-recording the refusals moved.  A declaration sitting in *that* region needs its
-  sweep, and a KB that came up without it would disagree with one that never restarted —
-  the same objection `constraint-nogoods` records for staying on through a rebuild.  So
-  the flag gates the *report* (`report-arbitration-cut!`) and not the work: a cheap
-  proxy is the wrong thing to hang belief on."
+  **A region holding every stored sentex skips the sweeps.**  Such a region's `moved`
+  already holds every believed positive sentex, and the sweeps yield nothing else, so
+  running them adds no candidate.  The sweeps would also spend the budget on that region
+  and file what they did not reach as a trigger left unswept, which says content went
+  undecided in the one settle that decided all of it (`report-arbitration-cut!`).  A KB's
+  own first settle is such a region: the bootstrap load moves every sentex the store then
+  holds, and its 1,446 sentexes carry `(genlCx CxUniverse CxCore)`, whose reach is the
+  store.
+
+  The test is `moved`'s size against the store's sentex count, since `moved` holds one
+  stored sentex per handle and nothing else.  The store is tallied only when the region
+  carries a declaration or a retract left an exception pair to re-arm: a settle with
+  neither sweeps nothing whatever the tally says, and a store that answers the tally with
+  a query would pay for it once per settle.
+
+  `recover` binds `*whole-store-region?*` around the settle that follows `rebuild-tms`,
+  and this function takes that binding as the whole answer when the region is also at
+  least as large as the store — ahead of naming the region's declarations, so a
+  12.26M-sentex region is not walked to decide a skip the binding already decided.  A
+  recover's region can also hold sentexes belief leaves out, which is why the binding is
+  read against `touched` rather than against `moved`.  `*rebuilding?*` cannot stand in for
+  that check: `recover` binds it around two settles, and the second one's region is only
+  what re-recording the refusals moved.  A declaration in *that* region needs its sweep,
+  and a KB that came up without it would disagree with one that never restarted — the same
+  objection `constraint-nogoods` records for staying on through a rebuild.  So
+  `*rebuilding?*` gates the *report* (`report-arbitration-cut!`) and not the work."
   [kb touched revisit]
   (let [believed  (believed-xf kb)
+        tally     (fn [] (cap/count-sentexes (:records kb)))
+        ;; Inside a recover the region holds only stored handles, so a region at least as
+        ;; large as the store's sentex count is the whole store.
+        recovered? (and *whole-store-region?* (>= (count touched) (tally)))
         ;; `revisit` ahead of `touched` and each half in content order: the sweep below
         ;; is budgeted, so which triggers it reaches must not depend on the handle order
         ;; either set came back in (`content-order`).
@@ -2775,23 +2976,38 @@
         ;; membership test apiece.
         moved (into (vec (content-order (into [] believed revisit)))
                     (content-order (into [] believed (remove revisit touched))))
-        left  (volatile! (long *exposure-instance-budget*))
-        swept (mapcat (fn [s]
-                        (let [sen (:sentence s)]
-                          (when (and (sequential? sen)
+        ;; the region as the candidate set holds it, and the count the store is compared
+        ;; against: one entry per believed positive stored handle, so a count at least the
+        ;; store's tally means the region holds every sentex the sweeps could return
+        region (set moved)
+        ;; the pairs a retract left to re-arm, read once and passed to `rearm-reaches`
+        dirty  (when-not recovered? @(reasoning/sib-exc-dirty kb))
+        ;; The region's declarations, named ahead of the sweep rather than inside it, so
+        ;; the tally below is asked only on a settle that has one to sweep.
+        triggers (when-not recovered?
+                   (filterv (fn [s]
+                              (let [sen (:sentence s)]
+                                (and (sequential? sen)
                                      (or (contains? clash-declaration-functors (nm/functor sen))
-                                         (metatype-member? kb sen)))
-                            ;; A trigger reached after the budget is spent went unswept
-                            ;; as surely as one cut off mid-reach, so it is asked the
-                            ;; same question rather than filed on the arithmetic — which
-                            ;; is what `take-budgeted`'s probe past the cap buys, and
-                            ;; why a declaration whose reach is empty is not counted
-                            ;; here as one this settle failed to finish.
-                            (let [{:keys [cut? sentexes]}
-                                  (declaration-implicates kb sen left)]
-                              (when cut? (note-arbitration-cut! sen))
-                              sentexes))))
-                      moved)
+                                         (metatype-member? kb sen)))))
+                            moved))
+        covers-store? (or recovered?
+                          (and (or (seq triggers) (seq dirty))
+                               (>= (count region) (tally))))
+        left  (volatile! (long *exposure-instance-budget*))
+        swept (when-not covers-store?
+                (mapcat (fn [s]
+                          ;; A trigger reached after the budget is spent went unswept
+                          ;; as surely as one cut off mid-reach, so it is asked the
+                          ;; same question rather than filed on the arithmetic — which
+                          ;; is what `take-budgeted`'s probe past the cap buys, and
+                          ;; why a declaration whose reach is empty is not counted
+                          ;; here as one this settle failed to finish.
+                          (let [sen (:sentence s)
+                                {:keys [cut? sentexes]} (declaration-implicates kb sen left)]
+                            (when cut? (note-arbitration-cut! sen))
+                            sentexes))
+                        triggers))
         ;; ...and the memberships a **retracted** exception re-armed — the one trigger the
         ;; region does not carry, since the retracted declaration is gone from the store
         ;; and the pair it spared ab initio was never a clash to be revisited.  Budgeted off
@@ -2799,10 +3015,11 @@
         ;; same settle share one bound.  Run under either policy for the sweep's reason: a
         ;; recover's region holds the re-armed pair, so a KB that skipped it here would
         ;; decide the pair only after a restart.
-        rearmed (mapcat (fn [{:keys [terms]}]
-                          (mapcat #(membership-sentexes kb %) terms))
-                        (rearm-reaches kb @(:sib-exc-dirty kb) left note-arbitration-cut!))]
-    (-> (set moved) (into swept) (into rearmed))))
+        rearmed (when-not covers-store?
+                  (mapcat (fn [{:keys [terms]}]
+                            (mapcat #(membership-sentexes kb %) terms))
+                          (rearm-reaches kb dirty left note-arbitration-cut!)))]
+    (-> region (into swept) (into rearmed))))
 
 (def ^:dynamic *incremental-clashes*
   "Discover definitional clashes **incrementally** — the default, and what a KB runs.
@@ -2827,7 +3044,7 @@
   [kb]
   (into [] (comp (keep #(p/get-sentex (:records kb) %))
                  (filter #(not (sx/negative? %))))
-        (jtms/in-datums (:tms kb))))
+        (jtms/in-datums (reasoning/tms kb))))
 
 (defn- clash-vocabulary
   "Everything a clash's existence depends on **beyond the two sentexes and the `genl`
@@ -2983,7 +3200,7 @@
          (symbol? (nm/functor sen))
          (let [as  (rest sen)
                f   (nm/functor sen)
-               tax (:taxonomy kb)
+               tax (reasoning/taxonomy kb)
                k   (count as)]
            (or (case k
                  1 (let [x (first as)]
@@ -3057,7 +3274,7 @@
         as  (vec (nm/args sen))
         own (:id s)
         f   (nm/functor sen)
-        tax (:taxonomy kb)
+        tax (reasoning/taxonomy kb)
         k   (count as)
         ;; **The unnarrowed shapes, read separately and unioned rather than folded into
         ;; the `case` below.**  A `functionalInArg` mark declared at exactly `k` names
@@ -3203,7 +3420,7 @@
   a general claim it was never about.  Where one context sees the other the maximum is
   that context, which is the ordinary case and one `sees?` probe."
   [kb s]
-  (let [tax (:taxonomy kb)
+  (let [tax (reasoning/taxonomy kb)
         c   (:context s)]
     (into #{}
           (comp (remove #(= c %))
@@ -3270,12 +3487,12 @@
   down: compare the region against what the cache rests on, rather than a stamp anything
   can bump."
   [kb touched]
-  (let [tms   (:tms kb)
+  (let [tms   (reasoning/tms kb)
         recs  (:records kb)
-        tax   (:taxonomy kb)
+        tax   (reasoning/taxonomy kb)
         vocab (clash-vocabulary tax)
         gen   (tax/relation-gen tax :genl)
-        prev  @(:clashes kb)
+        prev  @(reasoning/clashes kb)
         ;; A pair already known to clash is re-derived only when this settle could have
         ;; changed the answer: one of its members moved (belief is computed from the
         ;; relabelled region, so an untouched member's label is exactly what it was), or
@@ -3368,6 +3585,9 @@
                                                    (cons (:sentence s))
                                                    (sort nm/compare-form))]
                                      {:nogood   hs
+                                      ;; the asker convicted on what it sees, so it
+                                      ;; sees every member: it is a vantage
+                                      :vantages #{asker}
                                       :kind     (:type v)
                                       :priority (+ 2 (reduce max (map #(strength/rank-of
                                                                         (jtms/defeat-class tms %))
@@ -3383,8 +3603,13 @@
     ;; content-ordered above) and `:priority`, so `:kind` then `:sentence` decides,
     ;; compared structurally rather than by a `pr-str` of the whole map.
     (let [derived (into {} (map (fn [[pr es]]
-                                  [pr (first (sort-by (juxt :kind :sentence)
-                                                      nm/compare-form es))]))
+                                  [pr (assoc (first (sort-by (juxt :kind :sentence)
+                                                             nm/compare-form es))
+                                             ;; every asker that convicted, keeping the
+                                             ;; most general: a defeat at a context
+                                             ;; covers every context below it
+                                             :vantages (tax/maximal-contexts
+                                                        tax (into #{} (mapcat :vantages) es)))]))
                         (group-by :nogood entries))
           answer  (merge carried derived)
           ngs     (into #{} (vals answer))
@@ -3423,7 +3648,7 @@
             ;; added, and it added exactly the pairs `pairs` gained, so a count that still
             ;; agrees is a domain that still agrees.
             ks    (cond-> ks (not= (count ks) (count pairs)) (select-keys pairs))]
-        (reset! (:clashes kb)
+        (reset! (reasoning/clashes kb)
                 {:vocab   vocab
                  :gen     gen
                  :nogoods answer
@@ -3480,7 +3705,7 @@
 
   `region` is the pass's `touched` as a delay, forced only past the gate."
   [kb region]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (if (not (or (separations? tax) (tuple-marks? tax)))
       ;; Nothing separates anything and no predicate carries one of the three tuple
       ;; marks, so no set of sentexes can clash — which makes this the one place the whole
@@ -3488,7 +3713,7 @@
       ;; here: the gate short-circuits `clash-nogoods`, so retracting the last
       ;; separation would otherwise leave its pairs remembered with nothing ever able
       ;; to look at them again.
-      (do (reset! (:clashes kb) {}) #{})
+      (do (reset! (reasoning/clashes kb) {}) #{})
       ;; one `clash-marked-below` for the pass, past the gate that already proved a mark
       ;; exists.  `could-clash?` asks per candidate and `declaration-implicates` asks per
       ;; `genl` trigger, so the askers scale with the region while the answer does not.
@@ -3524,7 +3749,7 @@
   shared instance budget, and a trigger whose sweep is cut short is returned in
   `:truncated`."
   [kb touched]
-  (let [tax    (:taxonomy kb)
+  (let [tax    (reasoning/taxonomy kb)
         left   (volatile! (long *exposure-instance-budget*))
         trunc  (volatile! [])
         ;; `terms` is what the budget bounds — a record fetch each, and the extent
@@ -3572,7 +3797,7 @@
        (reduce (fn [m {:keys [roots terms]}]
                  (reduce #(merge-focus %1 %2 roots) m terms))
                m
-               (rearm-reaches kb @(:sib-exc-dirty kb) left #(vswap! trunc conj %))))
+               (rearm-reaches kb @(reasoning/sib-exc-dirty kb) left #(vswap! trunc conj %))))
      :truncated @trunc}))
 
 (defn exposed-clashes
@@ -3603,7 +3828,7 @@
   walk below it is over every stored sentex — the one place in this namespace that is —
   so a KB declaring no disjointness must not pay it to be told there is nothing to say."
   [kb]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (if-not (separations? tax)
       []                                             ; nothing separates anything
       (let [probes (exposure-probes tax)
@@ -3632,7 +3857,7 @@
   are *decided*, not merely visible, so they are reported by `conflicts` /
   `contradictions` and must not be filed here as well."
   [kb touched arbitrated]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (when (and (not *rebuilding?*) (seq touched) (separations? tax))
       (let [{:keys [candidates truncated]} (exposure-candidates kb touched)
             probes  (exposure-probes tax)
@@ -3779,7 +4004,7 @@
   is therefore an asker (`constraint-exposure-entries`), and `:unswept` the triggers whose
   reach the budget cut short, so a bounded sweep never reads as full coverage."
   [kb touched]
-  (let [tax   (:taxonomy kb)
+  (let [tax   (reasoning/taxonomy kb)
         declared? (fn [s]
                     (let [sen (:sentence s)]
                       (and (sequential? sen)
@@ -3884,8 +4109,8 @@
   A chain convicted by `anti_transitive` files **one** entry naming three halves, not
   three pairwise ones: the members cannot all hold, and no two of them are the clash."
   [kb candidates stale arbitrated]
-  (let [tms (:tms kb)
-        tax (:taxonomy kb)
+  (let [tms (reasoning/tms kb)
+        tax (reasoning/taxonomy kb)
         ;; **Content order, and the context is half of it.**  `nm/compare-form` compares
         ;; the `[sentence context]` half element by element, so it reads the sentence
         ;; *then* the context for a reason that bites here: the converse of `(P a a)` is
@@ -4035,7 +4260,7 @@
   Off while `*rebuilding?*`, where *newly* has no meaning, exactly as the disjointness
   pass is."
   [kb touched arbitrated]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (when (and (not *rebuilding?*)
                (seq touched)
                (not (checks/arbitrating? kb))
@@ -4178,7 +4403,7 @@
   is content-ordered, so what a cut prefix costs is coverage and never a different reading
   of the same coverage."
   [kb sub]
-  (for [s     (believed-in-ancestors kb (tax/context-down (:taxonomy kb) sub))
+  (for [s     (believed-in-ancestors kb (tax/context-down (reasoning/taxonomy kb) sub))
         :let  [sen (:sentence s)
                f   (when (sequential? sen) (nm/functor sen))]
         :when (symbol? f)]
@@ -4194,7 +4419,7 @@
   and an edge revealing only the second binds a predicate no declaration in the ancestor set
   names."
   [kb super]
-  (for [s     (believed-in-ancestors kb (tax/context-up (:taxonomy kb) super))
+  (for [s     (believed-in-ancestors kb (tax/context-up (reasoning/taxonomy kb) super))
         :let  [sen  (:sentence s)
                pred (when (sequential? sen) (arity-bound-by kb sen (:context s)))]
         :when pred]
@@ -4218,7 +4443,7 @@
   closure is cached and read off three fixed roots, so the gate stays a handful of
   cardinalities rather than a walk."
   [kb]
-  (let [tax (:taxonomy kb)]
+  (let [tax (reasoning/taxonomy kb)]
     (or (seq (tax/arity-declarations tax))
         (boolean (some (fn [t]
                          (some #(pos? (reads/stored-count-with-functor (:index kb) %))
@@ -4336,7 +4561,7 @@
                           believed))
           roots (reduce
                  (fn [acc e]
-                   (let [tax         (:taxonomy kb)
+                   (let [tax         (reasoning/taxonomy kb)
                          [sub super] (nm/args (:sentence e))
                          ;; the smaller end, sized off `count-in-context` so choosing
                          ;; costs no walk — and a function of stored content, so two
@@ -4383,7 +4608,7 @@
           ;; the vocabulary rather than of the handle order the region came back in
           preds (into (sorted-set)
                       (filter #(pos? (reads/stored-count-with-functor (:index kb) %)))
-                      (tax/specs-of-all (:taxonomy kb) roots))
+                      (tax/specs-of-all (reasoning/taxonomy kb) roots))
           ;; one membership reader per context met, not one per fact.  A reader memoizes
           ;; for the life of one caller, and a subtree's facts share few contexts between
           ;; them, so building one per question paid the retrieval every question and
@@ -4534,6 +4759,51 @@
                                                   " this settle")})]
       (violations/report kb [cut]))))
 
+(def ^:dynamic *scoped-before*
+  "What the settle in progress read about the scoped defeats before it cleared them
+  (`scoped-snapshot`), or nil when there were none.  `settle-finish` reads it to publish the
+  belief a scoped defeat moved, which no relabel records."
+  nil)
+
+(defn- scoped-snapshot
+  "`{:region :withdrawn}` for the current scoped defeats, or nil when there are none.
+  `:region` is the forward consequence closure of the scoped-defeated handles, the only
+  handles whose own-context belief a scoped defeat can move.  `:withdrawn` is the part of
+  it that is IN in the network and withdrawn from its own context (`res/believed-at?`)."
+  [kb]
+  (let [sd @(reasoning/scoped-defeats kb)]
+    (when (seq sd)
+      (let [tms    (reasoning/tms kb)
+            recs   (:records kb)
+            region (:region (jtms/grounded-in-region tms (into #{} (mapcat val) sd)))]
+        {:region    region
+         :withdrawn (into #{} (filter (fn [h]
+                                        (and (jtms/in? tms h)
+                                             (when-let [s (p/get-sentex recs h)]
+                                               (not (res/believed-at? kb h (:context s)))))))
+                          region)}))))
+
+(defn- scoped-moves
+  "The belief the scoped defeats moved in this settle, which no relabel records, as
+  `{:moved :was-in :withdrawn-before}` for `settle-finish`'s window.
+
+  `:moved` is the closure of the scoped defeats before the settle and after it, a superset
+  of the handles whose own-context belief a scoped defeat moved.  `:was-in` is the part of
+  it outside the relabelled `region` that is IN in the network: a label the settle did not
+  relabel is the label it had when the settle began.  `:withdrawn-before` is the part its
+  own context read as withdrawn when the settle began, which the window's `was-in` must not
+  hold, since its own context did not believe it."
+  [kb region]
+  (let [before *scoped-before*
+        cand   (into (set (:region before)) (:region (scoped-snapshot kb)))]
+    (if (empty? cand)
+      {:moved #{} :was-in #{} :withdrawn-before #{}}
+      {:moved            cand
+       :was-in           (into #{} (filter #(and (not (contains? region %))
+                                                 (jtms/in? (reasoning/tms kb) %)))
+                               cand)
+       :withdrawn-before (set (:withdrawn before))})))
+
 (defn- settle-finish
   "Reconcile the derived caches with settled belief and record the readings.
 
@@ -4568,7 +4838,7 @@
   ;; potential loose — repairing it per edge is proportional to that edge's
   ;; descendants, which is what the deferral exists to avoid — so the one repair the
   ;; batch owes is paid here, in one O(V+E) pass.  Free when nothing deferred.
-  (tax/restore-depths (:taxonomy kb))
+  (tax/restore-depths (reasoning/taxonomy kb))
   ;; Belief may have moved; reconcile the cached transitive closures with it.
   ;; A defeated `(genl dog animal)` must leave the closure, or `isa?` would keep
   ;; answering through an edge nothing believes any more — and a revived one must
@@ -4588,11 +4858,11 @@
   ;; the reconcile below is.  Two locals rather than a write straight into the sinks:
   ;; three destinations now want the same answer — the caller's two sinks and the change
   ;; feed — and what "the region this settle moved" is should be decided in one place.
-  (let [region   (delay (jtms/touched (:tms kb)))
+  (let [region   (delay (jtms/touched (reasoning/tms kb)))
         extra    (volatile! #{})     ; region members no relabel recorded
         extra-in (volatile! #{})     ; ...of which these were believed until this settle
         note!  (fn [m] (vswap! extra into (keys m)))
-        before (doto (jtms/superseded (:tms kb)) note!)]
+        before (doto (jtms/superseded (reasoning/tms kb)) note!)]
     ;; Record the relabelled region's size for `settle-phases`, guarded so the read forces
     ;; the region delay only on a timing run — off one, this is a `nil?` check and no
     ;; extra `jtms/touched` (which `settle_region_cost_test` counts at `passes + 1`).
@@ -4609,12 +4879,12 @@
       ;; arrival-order dependence that choice exists to remove (docs/contexts.md).  Free
       ;; when nothing went loose — every belief move that touches no cycle, which is
       ;; nearly all of them.
-      (tax/restore-depths (:taxonomy kb)))
+      (tax/restore-depths (reasoning/taxonomy kb)))
     (special/refresh-supersessions kb nil @region)
     ;; A datum superseded *by this settle* was believed until it was, and no relabel
     ;; says so — the flip subtracts from reported belief without moving a label.  So a
     ;; caller diffing belief is told by hand, or a merge would read as "nothing left".
-    (vswap! extra-in into (clojure.core/remove before) (keys (jtms/superseded (:tms kb))))
+    (vswap! extra-in into (clojure.core/remove before) (keys (jtms/superseded (reasoning/tms kb))))
     ;; Supersession is *also* a belief change `belief-moved?` does not see: a
     ;; type/predicate merge (docs/equality.md, round two) supersedes a `genl` /
     ;; `disjoint` / metadata **declaration**, dropping its `in?` while no label was
@@ -4629,7 +4899,7 @@
     ;; needs this second, post-supersession reconcile.  The moved set is the relabelled
     ;; regions *plus* every superseded handle (old and new), since a supersession flip
     ;; leaves no relabel to record it (perf-review #11).
-    (let [after (jtms/superseded (:tms kb))]
+    (let [after (jtms/superseded (reasoning/tms kb))]
       (note! after)
       ;; the negation memo needs the same hand-off, and for the same reason: a
       ;; supersession flip moves what pairs without moving a label
@@ -4645,7 +4915,7 @@
       ;; where the answer exists, and the loop has already converged by the time it does.
       (when-let [sink (and (not *rebuilding?*) *unmerged-sink*)]
         (vswap! sink into
-                (filter #(jtms/in? (:tms kb) %))
+                (filter #(jtms/in? (reasoning/tms kb) %))
                 (clojure.core/remove after (keys before)))))
     ;; The cross-context exposure reads the same moved region, after the reconciles —
     ;; `:edge-ctxs` and `:cache-ctxs` now reflect settled belief, which is what the
@@ -4657,7 +4927,7 @@
     ;; (`clash-candidates`) and the exposure pass have read it: the pairs a retract left
     ;; here have been swept into `:clashes` or the ledger, and a later settle re-deriving
     ;; them off a queue nothing refilled would be work with no answer to change.
-    (reset! (:sib-exc-dirty kb) #{})
+    (reset! (reasoning/sib-exc-dirty kb) #{})
     ;; ...and the three kinds the disjointness pass does not answer — across the same
     ;; edge, and beneath a mark the region carried in after the facts it convicts.
     ;; `:refuse` only: under `:arbitrate` the vantages are asked, the declaration's own
@@ -4700,15 +4970,21 @@
           ;; declines a rebuild for the same reason).
           fed?    (and (not *rebuilding?*) (feed/wants-region? kb))]
       (when (or sink in-sink fed?)
-        (let [moved  (into @extra @region)
-              was-in (into @extra-in (jtms/touched-in (:tms kb)))]
+        ;; ...plus the handles a scoped defeat moved for their own context, which no
+        ;; relabel records, and a `was-in` read as each handle's own context read it
+        (let [scoped (scoped-moves kb @region)
+              moved  (-> @extra (into @region) (into (:moved scoped)))
+              was-in (-> @extra-in
+                         (into (jtms/touched-in (reasoning/tms kb)))
+                         (into (:was-in scoped))
+                         (set/difference (:withdrawn-before scoped)))]
           (when sink    (swap! sink into moved))
           (when in-sink (swap! in-sink into was-in))
           (when fed?    (feed/note-region! kb moved was-in)))))
     ;; Clear the touched set now that everything has read it: the next settle's window
     ;; starts empty (perf-review #11).
-    (jtms/reset-touched! (:tms kb))
-    (swap! (:settle-stats kb)
+    (jtms/reset-touched! (reasoning/tms kb))
+    (swap! (reasoning/settle-stats kb)
            (fn [s] (-> s
                        (assoc :iterations moved :passes passes)
                        (update-in [:histogram moved] (fnil inc 0))))))
@@ -4733,8 +5009,12 @@
   path takes.  Off a timing run this is `settle-finish` and three `nil?` checks."
   [kb passes moved violated dilemmas belief-moved? arbitrated]
   (phases/note-passes! passes)
+  (res/clear-withdrawn! kb)
   (let [r (phases/with-phase :finish
             (settle-finish kb passes moved violated dilemmas belief-moved? arbitrated))]
+    ;; `settle-finish` refreshes the supersessions, which moves the network, so the
+    ;; readers after this settle compute what they read as withdrawn afresh
+    (res/clear-withdrawn! kb)
     (phases/end-settle!)
     r))
 
@@ -4768,13 +5048,21 @@
   ;; the pre-clear defeated set now; `settle-finish` folds it with the post-resolve
   ;; defeated set and the moved count into the `belief-moved?` gate on the cache
   ;; reconcile.  Both reads are of the small defeated set, never the graph.
-  (binding [*arbitration-cut* (when-not *rebuilding?* (volatile! []))]
-    (let [defeated-before  (jtms/defeated (:tms kb))
+  (binding [*arbitration-cut* (when-not *rebuilding?* (volatile! []))
+            ;; read before the settle clears the scoped defeats, for `settle-finish`'s window
+            *scoped-before*   (scoped-snapshot kb)]
+    (let [defeated-before  (jtms/defeated (reasoning/tms kb))
           defeated-before? (boolean (seq defeated-before))
-          moved? (fn [moved] (or defeated-before?
-                                 (boolean (seq (jtms/defeated (:tms kb))))
+          ;; a scoped defeat moves belief for the readers below its vantage, as a
+          ;; network defeat moves it for every reader
+          scoped-before?   (boolean (seq @(reasoning/scoped-defeats kb)))
+          moved? (fn [moved] (or defeated-before? scoped-before?
+                                 (boolean (seq (jtms/defeated (reasoning/tms kb))))
+                                 (boolean (seq @(reasoning/scoped-defeats kb)))
                                  (pos? moved)))]
-      (phases/with-phase :belief (jtms/clear-defeats! (:tms kb)))
+      (phases/with-phase :belief
+        (jtms/clear-defeats! (reasoning/tms kb))
+        (clear-scoped-defeats! kb))
       ;; ...and reconcile the belief-derived caches with what that revived, **before**
       ;; anything asks them a question.  `clear-defeats!` lifts a defeat, so a `genl` or
       ;; `genlCx` edge defeated last settle is believed again as of this line — but
@@ -4797,11 +5085,11 @@
       ;; and hands the pass the last read back, current because the last round defeated
       ;; nothing.  What a pass relabels after that (blocking, sweeping, re-chaining) is
       ;; the next pass's read.
-      (let [region        (delay (jtms/touched (:tms kb)))
+      (let [region        (delay (jtms/touched (reasoning/tms kb)))
             revival-flips (phases/with-phase :belief
                             (when defeated-before?
                               (special/reconcile-belief-change kb @region)
-                              (tax/restore-depths (:taxonomy kb))
+                              (tax/restore-depths (reasoning/taxonomy kb))
                               ;; ...and an except among the revived is a visibility flip:
                               ;; what it hid is seeable again, and only this settle knows
                               ;; the defeat was lifted
@@ -4812,12 +5100,15 @@
           ;; defeat round only ever withdraws belief and so can retire a pair but never
           ;; make one.  `resolve-contradictions` filters the set to what is still believed
           ;; before each of its own rounds.
-          (let [ngs    (phases/with-phase :discovery (constraint-nogoods kb region))
+          (let [;; the previous pass blocked, swept and re-chained, so what each reader
+                ;; reads as withdrawn is re-read from the network as it now stands
+                _      (res/clear-withdrawn! kb)
+                ngs    (phases/with-phase :discovery (constraint-nogoods kb region))
                 ;; accumulated across passes, because the exposure pass at the end has to
                 ;; know about every pair this settle decided, not only the last pass's
                 arbitrated (into seen (map :nogood) ngs)
                 ex-before  (believed-excepts kb)
-                defeated-pre (set (jtms/defeated (:tms kb)))
+                defeated-pre (set (jtms/defeated (reasoning/tms kb)))
                 {:keys [violated dilemmas rejoin region]}
                 (phases/with-phase :resolution (resolve-contradictions kb ngs region))
                 ;; a resolution that defeated (or revived) a visibility except flipped
@@ -4835,7 +5126,7 @@
                 flips  (into flips
                              (released-by-defeat
                               kb (remove (into defeated-pre defeated-before)
-                                         (jtms/defeated (:tms kb)))))
+                                         (jtms/defeated (reasoning/tms kb)))))
                 queued (drain-recheck! kb)
                 ;; A context-visibility transition carries `:all-rejoin` because there is no
                 ;; arriving sentence narrow enough to identify the one firing it may
@@ -4852,7 +5143,7 @@
                 revived (revived-seeds kb reseeded region)]
             (if (and (empty? queued) (empty? revived) (empty? rejoin))
               (finish-settle kb pass moved violated dilemmas (moved? moved) arbitrated)
-              (let [was  (jtms/blocked (:tms kb))
+              (let [was  (jtms/blocked (reasoning/tms kb))
                     new  (exception-blocked-set kb queued)
                     ;; a rule an arrival can *release* is owed a re-join whether or not
                     ;; anything blocked — a count that rose, or a nested NAF whose witness
@@ -4869,7 +5160,7 @@
                   (finish-settle kb pass moved violated dilemmas (moved? moved) arbitrated)   ; unproductive pass: converged
                   ;; read before the sweep, which deletes justifications
                   (let [released (released-rules kb was new)]
-                    (jtms/set-blocked (:tms kb) new)
+                    (jtms/set-blocked (reasoning/tms kb) new)
                     (sweep-excepted! kb (into #{} (remove was) new))
                     ;; A released refusal is re-derived from the bindings it recorded, not
                     ;; re-joined: `place-conclusion` with the firing's own conclusion,
@@ -4895,10 +5186,10 @@
                                                               over
                                                               flips
                                                               rejoin
-                                                              (keys @(:recheck kb)))))
+                                                              (keys @(reasoning/recheck kb)))))
                     (if (< pass max-settle-passes)
                       (recur (inc pass) (inc moved) arbitrated #{} (into reseeded revived)
-                             (delay (jtms/touched (:tms kb))))
+                             (delay (jtms/touched (reasoning/tms kb))))
                       (do (trove/log! {:level :warn :id ::exception-fixpoint
                                        :msg  (str "exception re-check did not converge in "
                                                   max-settle-passes " passes; giving up")
@@ -4976,6 +5267,6 @@
             ;; queue is already empty and it is a no-op; on a throwing path it clears what
             ;; the round could not (the departed pairs go un-rearmed, the right trade
             ;; against a permanent wedge).
-            (reset! (:sib-exc-dirty kb) #{})))]
+            (reset! (reasoning/sib-exc-dirty kb) #{})))]
     (feed/deliver! kb)
     violated))

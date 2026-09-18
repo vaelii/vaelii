@@ -103,7 +103,8 @@
             [vaelii.impl.profile :as prof]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.roster :as roster]
-            [vaelii.impl.strength :as strength]))
+            [vaelii.impl.strength :as strength]
+            [vaelii.impl.types.store :as store-types]))
 
 (def ^:private kind-names ["sentexes" "justifications" "provenance"])
 
@@ -139,14 +140,6 @@
   (java.util.Collections/synchronizedMap
    (proxy [java.util.LinkedHashMap] [16 0.75 true]
      (removeEldestEntry [_] (> (.size ^java.util.LinkedHashMap this) cap)))))
-
-;; `compacting` boxes the copy-on-write compactor's state while a compaction is in
-;; flight, else nil.  `store!`/`kill!` fold the ids they touch into `:touched`, and
-;; `clear-records!` sets `:aborted` — both under the kind lock, so the compactor's
-;; delta reconcile sees a consistent view.  See `compact-kind!`.  `failed` holds the
-;; failure of a compaction that could not install its result past the commit point,
-;; else nil; while set, every read and write refuses (`usable!`).
-(defrecord Kind [log idx lock live-ids log-path idx-path compacting failed cache enc dec])
 
 ;; The kind lock is a `ReentrantReadWriteLock`, not a bare monitor.  It serializes a read
 ;; against a concurrent append + slot rewrite (`store!`/`kill!`/compaction), which is what
@@ -245,8 +238,8 @@
                              (roster/live-add! live id)
                              (when slot-tap (slot-tap id flags))))
           (roster/live-optimize! live)
-          (->Kind log idx (java.util.concurrent.locks.ReentrantReadWriteLock.) live log-path idx-path (atom nil) (atom nil)
-                  (when (pos? cache-cap) (lru cache-cap)) enc dec))
+          (store-types/->Kind log idx (java.util.concurrent.locks.ReentrantReadWriteLock.) live log-path idx-path (atom nil) (atom nil)
+                              (when (pos? cache-cap) (lru cache-cap)) enc dec))
         (catch Throwable t
           (f/close! log)
           (f/close! idx)
@@ -451,7 +444,7 @@
 ;;
 ;; `epoch` holds the store's clear epoch: nil for a store no `clear-records!` has emptied,
 ;; else the random long the latest wipe minted.  The counters blob carries it, and both
-;; slot fingerprints fold it in (`slot-fingerprint`, `belief-fingerprint`).
+;; slot fingerprints fold it in (`slot-fingerprint`, `reasoning-fingerprint`).
 (defrecord DiskRecordStore [dir kinds counter synced-seq premises dict counters-lock epoch]
   p/RecordStore
   (next-id [_] (long (dec (swap! counter inc))))
@@ -683,8 +676,8 @@
   [{:keys [kinds epoch]}]
   (kind-fingerprint (:sentexes kinds) @epoch))
 
-(defn belief-fingerprint
-  "The stamp a belief image is validated against: `{:sentexes fp :justifications fp}`,
+(defn reasoning-fingerprint
+  "The stamp a reasoning image is validated against: `{:sentexes fp :justifications fp}`,
   each a `kind-fingerprint`.  Belief reads both kinds — the sentexes, whose slots also
   move when a premise mark re-stores one, and the justifications — so a change to
   either moves the stamp, where `slot-fingerprint` alone misses a justification stored

@@ -17,6 +17,7 @@
             [vaelii.impl.budget :as budget]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.resolution :as res]
+            [vaelii.impl.types.prover :as prover-types]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -125,7 +126,7 @@
   ;; is exercised the way an application would reach it: a registered prover that
   ;; declares itself expensive, and a goal only it answers.
   (tu/with-terms [reachable Tom Ann CxFam]
-    (let [costly (reify provers/Prover
+    (let [costly (reify prover-types/Prover
                    (applicable?  [_ _ goal _] (= reachable (first goal)))
                    (est-bindings [_ _ _ _] 1)
                    (cost         [_ _ _ _] :search)

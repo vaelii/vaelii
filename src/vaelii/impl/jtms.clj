@@ -119,18 +119,8 @@
                                                -update-blocked -supersede -retract -sweep
                                                -snapshot]]
             [vaelii.impl.observe :as observe]
-            [vaelii.impl.strength :as strength]))
-
-;; A justification's `strength` is the defeat-class it confers, capping the derived
-;; datum's class (:monotonic for a bare rule, :default for a defeasible one).
-;;
-;; `informant` is a rule handle or a symbol (`:premise`, `rewriteOf`, a special
-;; predicate's name).  A rule handle is an **implicit antecedent**: `valid?` needs the
-;; rule believed, and the adjacency lists the justification under the rule's node, so
-;; retracting or defeating a rule withdraws everything it licensed.  The record names the
-;; rule once, in `informant`; `antecedents` never repeats it (`without-informant`), and
-;; `rests-on` is the two together.
-(defrecord Justification [id informant antecedents consequence bindings strength])
+            [vaelii.impl.strength :as strength]
+            [vaelii.impl.types.tms :as tms-types]))
 
 (defn- without-informant
   "`antecedents` as a vector, with a rule-handle `informant` taken out of it.  A firing
@@ -165,8 +155,8 @@
   ([id informant antecedents consequence bindings]
    (->just id informant antecedents consequence bindings :monotonic))
   ([id informant antecedents consequence bindings strength]
-   (->Justification id informant (without-informant informant antecedents) consequence
-                    bindings (or strength :monotonic))))
+   (tms-types/->Justification id informant (without-informant informant antecedents) consequence
+                              bindings (or strength :monotonic))))
 
 (defn graph-just
   "The part of a justification the **network** is made of — everything except the
@@ -186,8 +176,8 @@
   representations store a value equal to each other's.  `:bindings` is nil rather
   than dropped, keeping the record shape fixed for every reader."
   [j]
-  (->Justification (:id j) (:informant j) (without-informant (:informant j) (:antecedents j))
-                   (:consequence j) nil (or (:strength j) :monotonic)))
+  (tms-types/->Justification (:id j) (:informant j) (without-informant (:informant j) (:antecedents j))
+                             (:consequence j) nil (or (:strength j) :monotonic)))
 
 ;; ---- labelling ----------------------------------------------------------
 
@@ -690,7 +680,6 @@
   ;; shape, so there is nothing to materialize.
   clojure.lang.IDeref
   (deref [_] @state)
-
   Tms
   (-believed? [_ datum]
     (let [s @state]
@@ -1243,6 +1232,47 @@
       (into (into #{} (remove #(or (contains? region %) (contains? supersede %))) (in-datums tms))
             (remove supersede)
             in))))
+
+(defn classes-in-region
+  "The defeat-classes of the datums `in` holds inside `region`, where `region` and `in`
+  are a `grounded-in-region` answer: the classes belief carries with that answer's `extra`
+  forced OUT, the rest of the graph held at its current classes.
+
+  The least fixpoint `region-classes` computes during a relabel, over the same equation —
+  a datum's class is the strongest of its premise strength and what each valid
+  justification confers, and a justification confers the weakest of its own strength and
+  its antecedents' classes.  Every member starts at `:default`, the bottom, and the
+  operator is monotone, so iterating to stability reaches the least fixpoint whatever the
+  visit order.  Built on the protocol reads, like `grounded-in-region`, so both network
+  representations answer it without implementing a method.
+
+  The settle's reader of it is a nogood weighed at a vantage that withdraws part of what
+  supports a member (docs/nmtms.md, \"A defeat is scoped to its vantage\")."
+  [tms region in]
+  (let [blocked-set (blocked tms)
+        members     (filterv #(contains? in %) region)
+        believed?*  (fn [d] (if (contains? region d)
+                              (contains? in d)
+                              (or (in? tms d) (superseded? tms d))))
+        class-of    (fn [classes d] (if (contains? region d)
+                                      (get classes d :default)
+                                      (or (defeat-class tms d) :default)))
+        node-class  (fn [classes d]
+                      (let [prem (when (premise? tms d) (or (premise-strength tms d) :default))
+                            strs (for [jid  (supports tms d)
+                                       :let [j (justification tms jid)]
+                                       :when (and j
+                                                  (every? believed?* (:antecedents j))
+                                                  (let [inf (:informant j)]
+                                                    (or (not (integer? inf)) (believed?* inf)))
+                                                  (not (contains? blocked-set (:id j))))]
+                                   (reduce (fn [c a] (strength/min c (class-of classes a)))
+                                           (or (:strength j) :monotonic)
+                                           (:antecedents j)))]
+                        (reduce strength/max :default (remove nil? (cons prem strs)))))]
+    (loop [classes (zipmap members (repeat :default))]
+      (let [next (reduce (fn [m d] (assoc m d (node-class classes d))) classes members)]
+        (if (= next classes) classes (recur next))))))
 
 (defn retract!
   "Dependency-directed retraction (drop premise / relabel / sweep).  Returns

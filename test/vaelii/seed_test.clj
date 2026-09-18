@@ -40,13 +40,6 @@
     (is (thrown? clojure.lang.ExceptionInfo (seed/read-sentences 'CxNoSuch)))
     (is (thrown? clojure.lang.ExceptionInfo (seed/load-context nil 'CxNoSuch)))))
 
-(deftest the-dotted-rest-pattern-round-trips-through-the-reader
-  ;; CxCore.txt carries the one form an EDN reader could choke on
-  (let [core (seed/read-sentences 'CxCore)]
-    (is (some #(= % '(set/inertRule
-                      (implies (?pred . ?args) (ist CxUniverse (?pred . ?args)))))
-              core))))
-
 ;; ---- a file's order is its terms', not its dependencies' ------------------
 
 (tu/deftest-kb a-sentence-refused-for-what-has-not-arrived-yet-is-retried

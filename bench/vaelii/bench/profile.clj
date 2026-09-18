@@ -51,7 +51,8 @@
             [vaelii.impl.profile :as prof]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.sentex :as sx]
-            [vaelii.host.starter :as starter]))
+            [vaelii.host.starter :as starter]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 (defn- ms [t0] (/ (- (System/nanoTime) t0) 1e6))
 
@@ -920,7 +921,7 @@
   got.  Reporting only on the way out is how an arm prints its header and then nothing."
   [kb ^long limit ^long pair-ms]
   (banner "the churn arm — what retracting and re-asserting costs the index (REAL)")
-  (let [tms      (:tms kb)
+  (let [tms      (reasoning/tms kb)
         ;; **premises only.**  A derived conclusion is an ordinary literal sentex with no
         ;; antecedent, so filtering on that alone churns the rule engine's own output —
         ;; and a conclusion a rule drew past an argument constraint does not go back in

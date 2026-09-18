@@ -114,7 +114,8 @@
             [vaelii.impl.kv :as kv]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.sentex :as sx]
-            [vaelii.impl.tokens :as tok])
+            [vaelii.impl.tokens :as tok]
+            [vaelii.impl.types.dense-roots :as dense-roots-types])
   (:import [java.io File RandomAccessFile]
            [java.nio Buffer ByteBuffer ByteOrder IntBuffer LongBuffer]
            [java.nio.channels FileChannel FileChannel$MapMode]
@@ -556,7 +557,7 @@
       ;; and rewriting it would be pure loss: `snapshot-columns` thaws the roots to read
       ;; them, which would pull the whole cold tail back into heap at the very moment the
       ;; KB is closing.  A write would have thawed one or both halves and this is false.
-      (and (col/mapped? store) (roots/mapped? (:roots store)))
+      (and (col/mapped? store) (dense-roots-types/mapped? (:roots store)))
       {:index :skipped :reason :unchanged}
 
       :else
@@ -603,7 +604,7 @@
                 ;; array clone, never a buffer read.
                 etgt  (aclone ^ints (:edge-tgt csr))
                 _     (sort-edge-runs! (:offsets csr) etok etgt (:nodes csr))
-                cols  (merge (roots/snapshot-columns rts remap)
+                cols  (merge (dense-roots-types/snapshot-columns rts remap)
                              (roots/argfam-table rts remap))
                 tstat (write-trie!  (tmp (trie-path root))
                                     (assoc csr :edge-tok etok :edge-tgt etgt))
@@ -747,11 +748,11 @@
             o4 (+ o3 (* 4 h))
             o5 (+ o4 (* 4 a))]
         (roots/load-argfam! (:roots store) (read-ints ch o4 a) (read-ints ch o5 a) a)
-        (roots/install-mapped! (:roots store)
-                               (map-longs ch o1 k)          ; resident enough to be read
-                               (map-ints  ch o2 (inc k))
-                               (map-ints  ch o3 h)
-                               k)))))
+        (dense-roots-types/install-mapped! (:roots store)
+                                           (map-longs ch o1 k)          ; resident enough to be read
+                                           (map-ints  ch o2 (inc k))
+                                           (map-ints  ch o3 h)
+                                           k)))))
 
 (defn- load-dictionary!
   "Rebuild the in-RAM dictionary from the durable log, **in id order**, so an in-RAM id is

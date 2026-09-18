@@ -18,7 +18,8 @@
 # `--update` rewrites the entries and keeps this header and each line's reason, so an
 # interior divider would survive one refresh and be wrong after the next.
 
-vaelii.host.web/dev-repl  # REACHED requiring-resolve in project.clj's :browser :init
+vaelii.browser.web/dev-repl  # REACHED requiring-resolve in project.clj's :browser :init
+vaelii.foreign-contract-test/versionless-dump-reader  # REACHED quoted-symbol registry, foreign/register in the same test file
 vaelii.impl.asp.clingo/classify-both  # REACHED requiring-resolve, impl/asp/solver.clj
 vaelii.impl.asp.clingo/solve  # REACHED requiring-resolve, impl/asp/solver.clj
 vaelii.impl.asp.label/label-dilemmas  # REACHED quoted-symbol registry, impl/imperative.clj

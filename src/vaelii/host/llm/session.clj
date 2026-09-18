@@ -55,7 +55,7 @@
 ;; an `Exception` catch lets past — and it then escapes the turn loop entirely, where an
 ;; answer that cannot be read is the *ordinary* outcome these arms exist to report as a
 ;; status.  The model's output is untrusted input on every path here, so the depth of a
-;; form is not something the parser gets to assume.  `vaelii.host.web` reads its textarea
+;; form is not something the parser gets to assume.  `vaelii.browser.web` reads its textarea
 ;; the same way and says so at the site.
 
 (def ^:private fence
@@ -115,9 +115,8 @@
   be broken; it is refused on the other two as well, because a line whose displayed
   context contradicts where it lands is a bad line to show a reviewer whoever wrote it.
 
-  Only a **top-level** `ist`.  A rule *consequent* may legitimately be one — that is how a
-  rule says where its conclusions are placed (docs/contexts.md) — and it is written out in
-  a line the reviewer reads, so it is visible rather than hidden."
+  Only a **top-level** `ist`.  The check chain refuses an `ist` in any rule position as
+  `:not-well-formed` (docs/contexts.md), so this check does not repeat that refusal."
   [entry]
   (let [[sentence context] (when (sequential? entry) entry)]
     ;; `sequential?`, not `seq?`: the line is model-written EDN, and a bracketed

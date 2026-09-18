@@ -16,7 +16,7 @@ that *drive* it. There are five:
 | CLI | `vaelii.cli` | `lein cli <cmd> …` | driving a KB from a shell |
 | Daemon | `vaelii.serve` | `lein serve [port [dir]]` | one process owns a KB, serves it over HTTP |
 | Client | `vaelii.client` | *(library)* | talking to a daemon from Clojure |
-| Access | `vaelii.host.access` | *(library)* | a read that resolves to a local KB or a remote daemon |
+| Access | `vaelii.browser.access` | *(library)* | a read that resolves to a local KB or a remote daemon |
 
 All five go through `vaelii.core` alone — the same boundary the rest of the repo keeps
 ([api.md](api.md)). None of them is a separate repo: the
@@ -50,7 +50,7 @@ lein cli repl --starter                                                    # int
 - **Commands:** `assert`, `assert-rule`, `match` (`sentexes-matching`, sentences only),
   `query`, `query?`, `ask`, `prove`, `provable?`, `retract`, `why`, `why-not`, `in`,
   `isa`, `types-of`, `describe`, `handle-of`, `types`, `contexts`, `conflicts`,
-  `contradictions`, `quality`, `load`, `export`, `diff`, `repl`. `--depth n` is how the line says how far to expand rules,
+  `contradictions`, `quality`, `load`, `export`, `diff`, `upgrade`, `repl`. `--depth n` is how the line says how far to expand rules,
   and `query` without one expands none. A sentence is
   written as an EDN string (`'(dog Muffet)'`), a context as a symbol, a handle as an
   integer, and a path as itself — an argument that reads as no EDN form is kept as the
@@ -67,6 +67,20 @@ lein cli repl --starter                                                    # int
   argument, and a whole directory is one order-insensitive pass ([api.md](api.md)). It is
   the inverse of `export --format text`, and the format the shipped ontology under
   `resources/kb/` is authored in.
+- **`upgrade --dir <path>`** brings an existing store up to the running engine. It opens
+  the store under the backend its files were written by, installs its reasoning image or,
+  when the image was written under another image layout, other engine source or other
+  policies, recovers belief from the records and writes a new image; closing the store
+  then writes the index image a rebuilt index leaves due. It prints whether the image was
+  `:current`, `:rebuilt` or `:written`, and refuses a directory holding no store
+  (`:unknown-source`). The records are read and never rewritten.
+  `scripts/upgrade-kb.sh [KB-DIR...]` runs it once per directory, defaulting to
+  `checkouts/kb`, with the heap from `VAELII_HEAP`. Run it after pulling engine
+  changes, so the next open installs belief in about a minute rather than recovering it.
+  **`--verify`** moves the image to
+  `reasoning.prev/`, recovers and writes a new image, and reports whether the two agree:
+  `:labels` compares the believed sets, and `:network` and `:state` compare the files byte
+  for byte. The script passes the flag to every directory.
 - **`describe <term>`** prints everything the KB holds about one term, shaped by the
   term's role ([api.md](api.md)) — the shell spelling of "what can I ask about this?".
   **`--context <CxName>`** is the vantage: the argument declarations, the grants and the
@@ -128,8 +142,15 @@ string) and the REPL (which reads forms off the line) share one command table.
 
 ```sh
 lein serve 4200 /var/lib/vaelii                             # disk-backed; omit the dir for in-memory
+lein serve 4200 --starter                                   # in memory, with the starter schema
 VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-machine (opt-in)
 ```
+
+- **`--starter` loads the shipped starter schema** (`vaelii.host.starter/load-into`) into
+  the KB after it opens and before the port is bound, so `GET /health` answers only once
+  the schema is in. The flag takes no value and sits anywhere among the arguments. Over a
+  directory that already holds the schema, every starter sentence dedups to its stored
+  handle, and the load still reads every starter file.
 
 - **It binds loopback**, and exposing it is an explicit choice. `POST /op` is the write
   route of the *single writer*, so the default answers only the machine it runs on — the
@@ -388,6 +409,18 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
 - `serve/app` is a pure `request -> response` handler (reitit-ring), so it is tested
   without a socket; `serve/start` runs it on jetty and returns the `Server`.
 
+- **The browser serves the protocol too.** `vaelii.browser.web` answers `GET /health` and
+  `POST /op` over its active KB by calling the daemon's handler (`serve/handle-op`), so a
+  native client connects to `http://127.0.0.1:3000` as it connects to a daemon. The op
+  table, guards, ceilings and refusals are the daemon's. The monitor is the browser's
+  `write-monitor`, which the browser's own write routes take, so the browser process stays
+  the KB's one writer. Three refusals precede the op: **404** `:not-found` when the browser
+  reads a remote daemon (`--attach`), and **409** `:still-loading` or `:still-exporting`
+  while a job writes or an export walks the active KB. The two 409s refuse reads as well,
+  because the op table does not mark which ops write. The token rule is the browser's:
+  a loopback bind asks for none, and `--listen` with an address requires it on every
+  route, `GET /health` included ([web.md](web.md)).
+
 ## Client — `vaelii.client`
 
 ```clojure
@@ -471,10 +504,10 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   caller must read: non-zero, the daemon's ring dropped that many events before this
   poll reached them.
 
-## Browsing a live daemon — `vaelii.host.access`
+## Browsing a live daemon — `vaelii.browser.access`
 
 The browser (`vaelii.web`) reaches a KB through the `vaelii.core` surface alone. That
-surface is re-exported by `vaelii.host.access` as a facade whose every op takes a
+surface is re-exported by `vaelii.browser.access` as a facade whose every op takes a
 *target* that is either an in-process KB or a remote daemon — the reads the browser
 renders with (`check` among them: it writes nothing, so it is a read), plus the four
 writes it performs: `edit!`, `edit-with-consequences!`, `forward-chain`, and `preview`
@@ -704,9 +737,11 @@ the read still found one of them. Set a new floor by rounding the first mention 
 | `VAELII_MAX_BODY_BYTES` | `src/vaelii/host/guard.clj:160+` | a positive whole number of bytes | `16777216` (16 MiB) | The request-body ceiling both servers refuse above, with 413. |
 | `VAELII_MAX_QUERY_MS` | `src/vaelii/impl/config.clj:330+` | a whole number of milliseconds, 0 or more | `30000` | The wall clock a served read may name. A request may name less and is refused (`:over-ceiling`, 400) for naming more; a read naming none is given this, the four backward-search entry points included. `0` lifts the ceiling. |
 | `VAELII_MAX_QUERY_DEPTH` | `src/vaelii/impl/config.clj:340+` | a whole number of rule expansions, 0 or more | `256` | The rule-expansion depth a served read may name, refused the same way. `0` lifts it. |
-| `VAELII_WEB_PORT` | `src/vaelii/host/web.clj:5830+` | a port number | `3000` | The port the browser binds. An unparseable value falls through to the property rather than failing the start. |
-| `vaelii.web.port` | `src/vaelii/host/web.clj:5830+` | a port number | `3000` | The same port, read after the variable. |
-| `VAELII_DEV` | `src/vaelii/impl/config.clj:240+` | the boolean vocabulary | `false` | Whether the browser runs the hot-reload handler (re-resolving `#'app` per request, `docs/web.md`) and re-reads its stylesheet per request, serving it uncached. |
+| `VAELII_WEB_PORT` | `src/vaelii/browser/web.clj:5830+` | a port number | `3000` | The port the browser binds. An unparseable value falls through to the property rather than failing the start. |
+| `vaelii.web.port` | `src/vaelii/browser/web.clj:5830+` | a port number | `3000` | The same port, read after the variable. |
+| `VAELII_KB_DIR` | `src/vaelii/browser/web.clj:6930+` | a KB directory: a store, a dump or a corpus; blank is unset | unset | The directory the browser loads at startup, as a catalog job with belief recovered, while it serves the starter. The KB becomes the active one when the load finishes. A path holding no KB is logged and the browser stays on the starter. The three `scripts/start-vaelii*.sh` set it. |
+| `VAELII_HEAP` | `scripts/lib/start.sh:20+` | a JVM heap size (`40g`, `24g`) | `40g` | The `-Xmx` the three `scripts/start-vaelii*.sh` add to `JVM_OPTS`, beside `-XX:+ExitOnOutOfMemoryError`. |
+| `VAELII_DEV` | `src/vaelii/impl/config.clj:240+` | the boolean vocabulary | `false` | Whether `lein browser` hot-reloads source edits (`docs/web.md`) and re-reads its stylesheet per request, serving it uncached. Set only by `scripts/start-vaelii-dev.sh`; `-main` never hot-reloads. |
 | `VAELII_PROFILER` | `src/vaelii/impl/config.clj:240+` | the boolean vocabulary | `false` | Whether the browser starts the sampling profiler's UI. Off unless asked for: it attaches an agent to the JVM and serves on a port of its own with no authentication. The dependency ships in the `:repl` profile, so `lein browser` has it and `lein run -m vaelii.web` does not — with it absent the start logs a line and `/caches` says so rather than linking to nothing. |
 | `VAELII_PROFILER_PORT` | `src/vaelii/impl/config.clj:250+` | a port number | `8080` | Where that UI binds. Read only when the switch above says to start one. |
 | `VAELII_LOG_LEVEL` | `src/vaelii/impl/config.clj:280+` | `error` `warn` `info` `debug` `trace`, case-insensitive | unset | The level the engine's own statements print at, installed as the engine loads. Unset installs no backend at all, which is a setting rather than a default. |
@@ -748,16 +783,16 @@ representation nobody chose.
 | `vaelii.disk.lock` | `src/vaelii/impl/config.clj:210+` | the boolean vocabulary | `true` | Whether the single-writer `FileLock` is taken when a directory opens. Off removes the enforcement and not the contract. |
 | `vaelii.index.snapshot` | `src/vaelii/impl/config.clj:230+` | none — the domain is empty and every value is refused | unset | **Refused, not read.** The mapped index image is an index representation, so it is named in the KB's opts (`{:backend :disk-snapshot}`) and not process-wide. `config/check!` reads it at every `open-kb`, so a `-D` left over from an older unit file fails the open with `:unknown-option` naming the backend to take instead — rather than a KB quietly rebuilding the index the property was meant to save. |
 | `vaelii.index.snapshot-drift` | `src/vaelii/impl/config.clj:250+` | a ratio, 0–1 | `0.5` | How far a `:disk-snapshot` KB's live index may drift from its image — in indexed roots, against the count the image holds — before the writer rewrites it. The rewrite happens on the writer's thread and is a full image write, so `vaelii.disk.compact-min-interval-ms` floors how often it can happen. **`0` is the most eager setting in the range, not the off one**: as a threshold it means "any drift at all", so it rewrites the image on every write past the floor — 400 asserts under it measured 401 images. `vaelii.disk.auto-compact=false` is what turns the mid-life refresh off. Only `assert` drives the cadence: a store filled by `reindex` or by an import gets one image, at the close, whatever this says. |
-| `vaelii.belief.snapshot` | `src/vaelii/impl/config.clj:270+` | none — the domain is empty and every value is refused | unset | **Refused, not read.** A belief image is written and installed for every `{:backend :disk-snapshot}` KB on the dense network ([storage.md](storage.md#the-belief-image)), and no property turns it on or off. `config/check!` reads it at every `open-kb`, so a `-D` left in a unit file fails the open with `:unknown-option` naming the backend to take instead. |
+| `vaelii.belief.snapshot` | `src/vaelii/impl/config.clj:270+` | none — the domain is empty and every value is refused | unset | **Refused, not read.** A reasoning image is written and installed for every `{:backend :disk-snapshot}` KB on the dense network ([storage.md](storage.md#the-reasoning-image)), and no property turns it on or off. `config/check!` reads it at every `open-kb`, so a `-D` left in a unit file fails the open with `:unknown-option` naming the backend to take instead. |
 
 **Finding a KB.**
 
 | Switch | Read at | Legal values | Default | What it decides |
 |---|---|---|---|---|
-| `VAELII_KB_PATH` | `src/vaelii/host/catalog.clj:20+` | `:`-separated directory list | `./kbs` and `~/.vaelii/kbs` | The directories KB discovery walks. |
-| `vaelii.kb.path` | `src/vaelii/host/catalog.clj:250+` | as above | as above | The same list, read after the variable. |
-| `VAELII_KB_CATALOG` | `src/vaelii/host/catalog.clj:20+` | a file path | `~/.vaelii/catalog.edn` | The file naming KBs that live outside the search path. |
-| `vaelii.kb.catalog` | `src/vaelii/host/catalog.clj:260+` | a file path | as above | The same file, read after the variable. |
+| `VAELII_KB_PATH` | `src/vaelii/browser/catalog.clj:20+` | `:`-separated directory list | `./kbs` and `~/.vaelii/kbs` | The directories KB discovery walks. |
+| `vaelii.kb.path` | `src/vaelii/browser/catalog.clj:250+` | as above | as above | The same list, read after the variable. |
+| `VAELII_KB_CATALOG` | `src/vaelii/browser/catalog.clj:20+` | a file path | `~/.vaelii/catalog.edn` | The file naming KBs that live outside the search path. |
+| `vaelii.kb.catalog` | `src/vaelii/browser/catalog.clj:260+` | a file path | as above | The same file, read after the variable. |
 
 **What the engine reasons with.**
 
@@ -813,6 +848,7 @@ CI sets these too; nothing in a deployment does.
 | `VAELII_TEST_BACKEND` | `test/vaelii/test_util.clj:210+` | a `<records>-<index>` backend name (`memory`, `disk-log`, `memory-columnar`, …), or `overlay` | `memory` | Which of the eight stores the whole suite runs on. |
 | `VAELII_TEST_TMS` | `test/vaelii/test_util.clj:60+` | `reference` `dense` | `dense` | Which truth-maintenance representation the suite runs on. |
 | `VAELII_TEST_SPACE` | `test/vaelii/test_util.clj:190+` | a whole number from 5 to 15 | `15` | The top of the two-space block the suite's KBs live on, so two runs can have distinct directories. |
+| `VAELII_AUDIT_SUPPORT` | `test/vaelii/test_util.clj:460+` | a directory that exists | unset (no audit) | Makes the suite's teardown write, one EDN map per line into `<dir>/<pid>.edn`, every stored justification whose conclusion's context does not see the context of one of its supporters — an antecedent, or the rule a firing names. Changes no test's outcome. |
 | `VAELII_TEST_TMPDIR` | `test/vaelii/truncation_fuzz_test.clj:70+` | a directory that exists | unset (the platform temp directory) | Where the `^:fuzz` truncation sweep builds each probe's directory. A probe's whole cost is one device cache flush, so pointing this at a tmpfs (`/dev/shm`) takes the sweep from ~10 minutes to a couple. Nothing else reads it. |
 | `VAELII_TEST_LOG_LEVEL` | `project.clj:130+` | `error` `warn` `info` `debug` `trace` | `error` | The floor the `:test` profile installs the engine's logging at, through `set-log-level` itself. |
 | `VAELII_TEST_NS_COUNTS` | `project.clj:150+` | any non-empty value | unset | Prints one `NSCOUNT <namespace> <assertions>` line per test namespace. Two runs diffed name the namespace whose count moved, which is what `test-backends.sh`'s assertion-count check cannot say on its own. |
@@ -834,6 +870,7 @@ CI sets these too; nothing in a deployment does.
 | `SUITE_PROGRESS` | `scripts/lib/suite-marks.sh:40+` | `marks` `lines` `auto` | `auto` | How `lein test-backends` and `lein test-sweeps` report a namespace as it finishes: `marks` is the ✔/✘ rows a terminal animates, `lines` is one named, counted and timed line each — what a log, a pipe or CI gets, since a row of ticks in a file names nothing. `auto` reads the terminal. **Unpinned.** |
 | `TEST_MATRIX_OUT` | `scripts/test-matrix.sh:50+` | a directory | `logs/test-matrix/run-<pid>` | Where `lein test-matrix` writes one log per configuration, plus `summary.tsv`; per-run, with `latest` pointing at the newest. Under `logs/` (gitignored), not `target/`, so a concurrent `lein clean` cannot delete a live run; old run dirs are pruned to the last `MATRIX_KEEP_RUNS` (20), sparing any touched in the last 24h. **Unpinned.** |
 | `MATRIX_JOBS` | `scripts/test-matrix.sh:50+` | a whole number | performance cores − 2, less the vaelii JVMs already running (`scripts/lib/slots.sh`) | How many of the thirteen configurations run at once. One run is about one core of test work, so more slots than cores buys nothing and costs a JVM each. **Unpinned.** |
+| `TEST_MATRIX_SEED` | `scripts/test-matrix.sh:50+` | a whole number | a fresh one per run | The seed the launch order is shuffled with. `lein test-matrix` shuffles by default, so a run stopped early — by `--fail-fast`, by ^C, by the box — has covered a random subset of the roster rather than the same prefix every time; the seed is printed with the header and again with the verdict, and giving it back runs that order again. `--ordered` ignores it and schedules the longest configuration first instead, which is ~1 minute faster over the routine roster. **Unpinned.** |
 | `MATRIX_JVM_OPTS` | `scripts/test-matrix.sh:50+` | JVM flags | unset | Extra `JVM_OPTS` for every configuration. `-XX:ActiveProcessorCount=2` is the one worth measuring on a loaded box — each JVM otherwise sizes its GC and JIT pools from every core while doing one core of work. It lands in each configuration's log header (`# env … lein test …`, under the revision stamp), so a run stays reproducible by copying that line. **Unpinned.** |
 | `MATRIX_HEARTBEAT` | `scripts/test-matrix.sh:50+` | seconds; `0` disables | `60` | How often `lein test-matrix` prints how far each running configuration has got. Thirteen interleaved per-namespace streams are not readable, so this is what replaces them. **Unpinned.** |
 

@@ -24,6 +24,7 @@
             [vaelii.impl.protocols :as p]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh #(doto (tu/fresh) (tu/load-core!))))
@@ -73,7 +74,7 @@
                  (list parentOf E F)]]
       (let [got   (proj (res/match-pattern kb pat '?ctx))
             manual (proj (mapcat (fn [f'] (res/raw-match kb (cons f' (rest pat)) '?ctx))
-                                 (tax/specs-global (:taxonomy kb) parentOf)))]
+                                 (tax/specs-global (reasoning/taxonomy kb) parentOf)))]
         (is (= manual got) (str "match-pattern diverged from the spec-union on " (pr-str pat)))))))
 
 (tu/deftest-kb forward-chaining-fires-through-subsumption
@@ -126,7 +127,7 @@
           (is (contains? (res/concluding-rule-handles kb parentOf) rule)))
         (testing "and it is exactly specs(parentOf) ∩ rules-by-consequent"
           (is (= (into #{} (mapcat #(seq (p/rules-by-consequent (:index kb) %)))
-                       (tax/specs-global (:taxonomy kb) parentOf))
+                       (tax/specs-global (reasoning/taxonomy kb) parentOf))
                  (res/concluding-rule-handles kb parentOf))))
         (testing "retracting the edge withdraws the rule from the parentOf goal"
           (v/retract! kb edge)

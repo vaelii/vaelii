@@ -340,10 +340,9 @@
   ;; in the KB comes back, so a variadic rule collects two unrelated predicates' demands
   ;; on one variable — (arg typeToInstancePred 2 instance_relation_predicate) beside
   ;; (genlArg arg1 2 thing) — and is refused for a clash neither declaration is about.
-  ;; CxCore ships exactly such a rule.
-  (testing "the shipped ist lifting rule checks clean"
+  (testing "an inert variadic rule checks clean"
     (is (= [] (v/check kb '(set/inertRule
-                            (implies (?pred . ?args) (ist CxUniverse (?pred . ?args))))
+                            (implies (?pred . ?args) (holdsIn CxCore (?pred . ?args))))
                        'CxCore))))
   (testing "a bare variadic rule keeps its OWN refusal and loses only the spurious one"
     ;; :not-indexable is the right refusal for a variable functor in an antecedent, and

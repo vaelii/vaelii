@@ -35,7 +35,8 @@
             [vaelii.impl.nat :as nat]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reads :as reads]
-            [vaelii.impl.special :as special]))
+            [vaelii.impl.special :as special]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 (def ^:private universal-context 'CxUniverse)
 
@@ -109,7 +110,7 @@
                (let [[_ k e] (:sentence sx)]
                  (when (and (= universal-context (:context sx))
                             (= 'termOfUnit (nm/functor (:sentence sx)))
-                            (jtms/in? (:tms kb) (:id sx))
+                            (jtms/in? (reasoning/tms kb) (:id sx))
                             (nat/reified-context-symbol? k)
                             (sequential? e) (= f (first e)))
                    [k e (:id sx)]))))
@@ -177,7 +178,7 @@
   an edge already believed widens no ancestor set, so it owes none at all."
   [kb sub super antes]
   (let [edge (list 'genlCx sub super)
-        tms  (:tms kb)]
+        tms  (reasoning/tms kb)]
     (when-not (special/inadmissible kb edge universal-context)
       (let [[h2 s2 new?] (kb/find-or-create-sentex kb edge universal-context)
             _            (when new? (special/derived-sentex-added kb s2 h2))

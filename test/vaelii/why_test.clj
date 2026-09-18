@@ -214,6 +214,25 @@
     (testing "an unknown handle"
       (is (= :not-stored (:reason (v/why-not kb 99999999)))))))
 
+(tu/deftest-kb why-not-of-a-sentence-reads-the-context-the-reader-inherits-it-from
+  ;;   CxUniverse
+  ;;     └─ CxGen      (dog Muffet), defeated there
+  ;;          └─ CxSpec   stores nothing
+  ;; `ask?` from CxSpec walks the genlCx edge, so `why-not` asked from CxSpec explains the
+  ;; sentex CxGen stores instead of reporting it as unstored.
+  (tu/with-terms [dog Muffet CxGen CxSpec]
+    (v/assert kb (list 'genl dog 'thing) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxGen 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxSpec CxGen) 'CxUniverse)
+    (let [h (v/assert kb (list dog Muffet) CxGen)]
+      (testing "a believed sentence the reader inherits"
+        (is (true? (:believed? (v/why-not kb (list dog Muffet) CxSpec))))
+        (is (= h (:handle (v/why-not kb (list dog Muffet) CxSpec)))))
+      (testing "reported under the context that stores it"
+        (is (= CxGen (:context (v/why-not kb (list dog Muffet) CxSpec))))))
+    (testing "a sentence no visible context stores is still :not-stored"
+      (is (= :not-stored (:reason (v/why-not kb (list dog 'NoSuchThing) CxSpec)))))))
+
 ;; ---- the two are complements -------------------------------------------
 
 (tu/deftest-kb why-and-why-not-agree-on-belief

@@ -113,6 +113,26 @@ expand_configs() {
   done
 }
 
+# ---- the launch order ------------------------------------------------------
+#
+# Fisher-Yates over the global array SHUF, in place and IN THIS SHELL — not a function
+# that echoes its result through `< <(…)`.  Process substitution forks a subshell, and
+# bash reseeds `$RANDOM` in a subshell from the pid, so a seeded sequence produced there
+# is NOT the seed's sequence, and the seed a run reports would name an order it never
+# produced.  `$RANDOM` is a builtin; `shuf` is GNU coreutils, which macOS ships no more
+# than it ships bash 4's namerefs (3.2).
+#
+# The caller seeds `RANDOM` itself and prints the seed it used, so a run's order can be
+# replayed by giving that seed back.  `test-shuffle.sh` and `test-matrix.sh` both shuffle
+# their roster this way, and both accept the seed in an environment variable.
+shuffle_inplace() {
+  local i j tmp n=${#SHUF[@]}
+  for (( i = n - 1; i > 0; i-- )); do
+    j=$(( RANDOM % (i + 1) ))
+    tmp="${SHUF[i]}"; SHUF[i]="${SHUF[j]}"; SHUF[j]="$tmp"
+  done
+}
+
 # ---- what a changed FILE owes ----------------------------------------------
 #
 # The matrix's claim is that the suite is failing-set-identical across configurations,

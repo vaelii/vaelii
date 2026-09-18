@@ -26,11 +26,11 @@
   (`genls`, `context-up`, …) are specced too, since a wrong-arity call to one of
   them is exactly the kind of mistake instrumentation should surface early.
 
-  **Seventeen publics that take an option map are outside it**, and instrumenting says
+  **Eighteen publics that take an option map are outside it**, and instrumenting says
   nothing about their arguments: the batch writes (`assert-many`,
   `bulk-assert-facts!`), the fork and the two consequence readers over it (`fork`,
   `preview`, `edit-with-consequences!`), the store transfers (`import!`, `export!`,
-  `export-text!`),
+  `export-text!`, and `load-foreign!`, whose options belong to the reader plugin),
   the two search-back reads (`search-tree`, `compare-tacticians`) and the truncation
   report (`query-status`), the evaluatable-prover
   registration (`add-evaluatable`), the four-valued epistemic-status read (`argue`), and
@@ -70,8 +70,8 @@
 ;; `::id` stay the real thing for returns and record fields.
 (s/def ::handle-arg (s/nilable ::handle))
 (s/def ::term some?)                       ; any indexable term (symbol, number, compound)
-(s/def ::prover some?)                     ; a vaelii.impl.provers/Prover
-(s/def ::solver some?)                     ; a vaelii.impl.solve/Solver
+(s/def ::prover some?)                     ; a vaelii.impl.types.prover/Prover
+(s/def ::solver some?)                     ; a vaelii.impl.types.solve/Solver
 
 ;; ---- the assert option map ----------------------------------------------
 ;; The **roster** is `vaelii.core/assert-opt-keys`, which refuses a key `assert` does
@@ -134,7 +134,7 @@
 ;; present; a literal adds `:sentence`, and a rule `:antecedent` / `:consequent` /
 ;; `:direction` in its place (`core/sentence-of` builds a rule's `implies` form).
 ;; Treat the result as a map: callers should key into it, never depend on the
-;; concrete `vaelii.impl.sentex/LiteralSentex` / `RuleSentex` record class, which is an internal
+;; concrete `vaelii.impl.types.sentex/LiteralSentex` / `RuleSentex` record class, which is an internal
 ;; detail free to change.
 (s/def ::sentex-map (s/keys :req-un [::id ::context]
                             :opt-un [::sentence ::strength]))
@@ -412,7 +412,7 @@
   `clojure.spec.test.alpha/instrument` / `unstrument`.  This is the single-item
   shape-carrying surface: everything that takes a handle, context, level, strength
   or direction, the option and budget maps those carry, plus the taxonomy and
-  equality reads.  The sixteen opts-taking publics it does **not** reach are named in
+  equality reads.  The eighteen opts-taking publics it does **not** reach are named in
   this namespace's docstring and pinned by `vaelii.spec-test`."
   '[vaelii.core/open-kb
     vaelii.core/assert

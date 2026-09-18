@@ -13,6 +13,7 @@
             [vaelii.host.seed :as seed]
             [vaelii.impl.nat :as nat]
             [vaelii.impl.provers :as provers]
+            [vaelii.impl.types.prover :as prover-types]
             [vaelii.test-util :as tu]))
 
 ;; a fresh KB per test: the CxCore grammar (`unreifiable_function`,
@@ -251,7 +252,7 @@
 ;; ---- check-only: an open goal is refused, not enumerated -----------------
 
 (tu/deftest-kb an-open-measure-goal-is-refused
-  (let [applicable? #(provers/applicable? (provers/->QuantityProver) kb % C)]
+  (let [applicable? #(prover-types/applicable? (provers/->QuantityProver) kb % C)]
     (testing "both arguments ground measures ⇒ claimed"
       (is (applicable? '(sameQuantity (QuantityFn 5 Kilogram) (QuantityFn 5 Kilogram)))))
     (testing "a variable, a bare number, or a non-measure compound ⇒ refused"

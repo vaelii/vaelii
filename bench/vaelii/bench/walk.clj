@@ -35,7 +35,8 @@
   Run: `lein bench-walk [n] [big-n]`  (default 2000 8000)."
   (:require [vaelii.core :as v]
             [vaelii.impl.literal-cache :as lc]
-            [vaelii.impl.protocols :as p]))
+            [vaelii.impl.protocols :as p]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 ;; ---- a record store that counts what is asked of it ---------------------
 
@@ -100,7 +101,7 @@
   would measure the second twice.  Only that cache is dropped — clearing the literal cache
   or the hot-record LRU here would move the very costs being attributed."
   [kb]
-  (reset! (:closures kb) {})
+  (reset! (reasoning/closures kb) {})
   (ancestor-ask kb))
 
 (defn- ms [f] (let [t (System/nanoTime)] (f) (/ (- (System/nanoTime) t) 1e6)))

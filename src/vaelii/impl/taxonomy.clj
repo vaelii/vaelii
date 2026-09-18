@@ -87,7 +87,8 @@
             [vaelii.impl.naming :as nm]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.predicates :as pr]
-            [vaelii.impl.strength :as strength]))
+            [vaelii.impl.strength :as strength]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 (defn- term-key
   "A total order on terms keyed on **content only**.  Representative choice may never
@@ -1563,10 +1564,15 @@
   "Active edges are those with at least one *believed* supporter, carrying the
   believed supporters' contexts.  Applies the difference edge by edge rather than
   rebuilding, so a settle whose region names no edge returns the relation untouched.
-  Where it names edges the pass is not free of belief: the `want` seed evaluates
+  Where it names edges the pass is not free of belief: one classifying pass evaluates
   `believed-ctxs` over every named edge's supporters before any arm runs, so a settle
   that changed no belief still pays one belief test per supporter of every edge in its
   region and the three arms then find nothing to apply.
+
+  The classifying pass keeps only the edges whose state changes, each under the arm it
+  needs.  The memory the pass holds is therefore proportional to the edges that change,
+  not to the region.  A recovery names every edge, and holds no per-edge context map of
+  the whole taxonomy while the arms run.
 
   Scoped to `moved-edges` — an edge no moved handle supports and no writer left dirty is
   provably unchanged, so belief is never evaluated for it and it cannot enter either
@@ -1592,23 +1598,35 @@
   (let [touched (moved-edges rel moved)]
     (if (empty? touched)
       rel
-      (let [rel (assoc rel :dirty #{})           ; this pass is what discharges them
+      (let [rel     (assoc rel :dirty #{})       ; this pass is what discharges them
             support (:support rel)
-            want (reduce (fn [m e]
-                           (let [cs (believed-ctxs (get support e) believed?)]
-                             (if (seq cs) (assoc m e cs) m)))
-                         {} touched)
-            want-edges (into #{} (keys want))
-            have (:edges rel)]
+            have    (:edges rel)
+            ctxs    (:edge-ctxs rel)
+            ;; `drops` is a hash set and `adds` a hash map (`hash-map`, never an array map),
+            ;; so the deactivate and activate arms meet their edges in hash order, the order
+            ;; they take.  `retarget` skips an active edge whose believed contexts equal its
+            ;; recorded ones: `set-edge-ctxs` would leave it untouched, and neither earlier
+            ;; arm writes another edge's `:edge-ctxs`.
+            [drops adds retarget]
+            (reduce (fn [[drops adds retarget :as acc] e]
+                      (let [cs (believed-ctxs (get support e) believed?)]
+                        (cond
+                          (contains? have e)
+                          (cond (empty? cs)         [(conj! drops e) adds retarget]
+                                (= cs (get ctxs e)) acc
+                                :else               [drops adds (assoc! retarget e cs)])
+                          (seq cs) [drops (assoc! adds e cs) retarget]
+                          :else    acc)))
+                    [(transient #{}) (transient (hash-map)) (transient (hash-map))]
+                    touched)]
         (as-> rel r
           (reduce (fn [r [a b :as e]]
                     (-> r (deactivate a b) (update :edge-ctxs dissoc e)))
-                  r (set/difference (into #{} (filter have) touched) want-edges))
-          (reduce (fn [r [a b :as e]]
-                    (-> r (activate a b) (set-edge-ctxs e (want e))))
-                  r (set/difference want-edges have))
-          (reduce (fn [r e] (set-edge-ctxs r e (want e)))
-                  r (set/intersection want-edges have)))))))
+                  r (persistent! drops))
+          (reduce-kv (fn [r [a b :as e] cs]
+                       (-> r (activate a b) (set-edge-ctxs e cs)))
+                     r (persistent! adds))
+          (reduce-kv set-edge-ctxs r (persistent! retarget)))))))
 
 ;; The add writers take the asserting sentex's context; the one-shorter arity is for
 ;; a caller with none to record — a probe, or a test driving the closure math — and
@@ -3971,7 +3989,7 @@
   take.  O(relations), and every `count` inside it is O(1) on a Clojure map, which is
   what keeps a polling page off the hierarchy itself."
   [kb f]
-  (when-let [tax (:taxonomy kb)]
+  (when-let [tax (reasoning/taxonomy kb)]
     (reduce + 0 (map (comp f val) @(:closure-memo @tax)))))
 
 (defn- drop-memo-level
@@ -3980,7 +3998,7 @@
   recomputes exactly what was dropped."
   [kb f ks]
   (let [n (or (memo-level kb f) 0)]
-    (when-let [tax (:taxonomy kb)]
+    (when-let [tax (reasoning/taxonomy kb)]
       (swap! (:closure-memo @tax)
              (fn [m] (reduce-kv (fn [acc rel e]
                                   (assoc acc rel (reduce #(assoc %1 %2 {}) e ks)))
@@ -4029,8 +4047,8 @@
   :note     (str "The interned set of asserting contexts each reader can see, one per "
                  "relation and context. Bounded by the context census rather than by "
                  "the read count, and recomputed when its stamp moves.")
-  :read     (fn [kb] {:entries (some-> (:taxonomy kb) deref :vis-index deref count)})
-  :clear    (fn [kb] (let [v (some-> (:taxonomy kb) deref :vis-index)
+  :read     (fn [kb] {:entries (some-> (reasoning/taxonomy kb) deref :vis-index deref count)})
+  :clear    (fn [kb] (let [v (some-> (reasoning/taxonomy kb) deref :vis-index)
                            n (if v (count @v) 0)]
                        (some-> v (reset! {}))
                        n))})

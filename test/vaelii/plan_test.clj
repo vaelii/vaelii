@@ -28,6 +28,7 @@
             [vaelii.impl.profile :as prof]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 ;; The planner is pinned ON here whatever the run installed.  `VAELII_PLAN=0` runs the
@@ -1242,7 +1243,7 @@
                                       (+ acc (#'plan/prefix-estimate
                                               ix (list t' a) p/count-at)))
                                     0
-                                    (tax/specs (:taxonomy kb) t CxPlan))))))
+                                    (tax/specs (reasoning/taxonomy kb) t CxPlan))))))
           est    (fn [goal bound] (plan/est-matches kb goal bound {:context CxPlan}))]
       (testing "the hierarchy is deep enough that the fan is the branch under test"
         (is (< 100 types))

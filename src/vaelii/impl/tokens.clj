@@ -1,6 +1,7 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
-(ns vaelii.impl.tokens
+(ns ^{:clojure.tools.namespace.repl/load false :clojure.tools.namespace.repl/unload false}
+ vaelii.impl.tokens
   "A bidirectional **token dictionary** — `path-token ↔ int` — the first new durable
   ground truth the dense (`:memory-columnar`) index rests on.
 
@@ -30,7 +31,9 @@
   answers.
 
   **Single-writer**, like the index it serves: the maps are mutated in place under the
-  one-writer contract, no atom."
+  one-writer contract, no atom.
+
+  A held namespace (`vaelii.impl.types.prover` states what that means): it defines the `Key` and `TokenDict` types and the `ITokens` protocol, and requires no vaelii namespace, so the development browser's reloader never re-evaluates it, and an edit to it takes a restart."
   (:import [java.util HashMap ArrayList]))
 
 ;; The flat-map index keys its trie on a `PersistentHashMap`, so two tokens that are

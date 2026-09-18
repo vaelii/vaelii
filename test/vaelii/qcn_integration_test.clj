@@ -19,6 +19,7 @@
             [vaelii.impl.qcn-kb :as qkb]
             [vaelii.impl.space :as space]
             [vaelii.impl.stp :as stp]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 ;; both spatial calculi and the interval one, all three provers registered — the point
@@ -441,11 +442,11 @@
       ;; a calculus names its key with an unqualified keyword; every other resident read
       ;; on this atom keys off its own namespace, which is what keeps them apart
       (is (= #{[:rcc8 C] [:allen C]}
-             (into #{} (filter (comp simple-keyword? first)) (keys @(:qcn kb))))))
+             (into #{} (filter (comp simple-keyword? first)) (keys @(reasoning/qcn kb))))))
     (testing "and the Allen read leaves its narrowing's own read resident beside them —
               the metric problem, under a key of `stp`'s namespace rather than a calculus
               name, so the two cannot collide either"
-      (is (contains? (set (keys @(:qcn kb))) [::stp/problem C])))
+      (is (contains? (set (keys @(reasoning/qcn kb))) [::stp/problem C])))
     (testing "three top-level queries with nothing between them read once"
       ;; the clock is bumped by hand so the first of the three pays a build; without it
       ;; the count is zero, the KB already holding what the asserts above left resident
@@ -663,8 +664,8 @@
     (is (= #{} (:moved (qkb/join-delta kb space/rcc8 C)))
         "nothing has moved since the network was joined over")
     (let [pressure 400]
-      (dotimes [i pressure] (observe/cached (:qcn kb) [::pressure i] (fn [_] i)))
-      (is (< (count @(:qcn kb)) pressure)
+      (dotimes [i pressure] (observe/cached (reasoning/qcn kb) [::pressure i] (fn [_] i)))
+      (is (< (count @(reasoning/qcn kb)) pressure)
           "the resident cache clears wholesale rather than growing past its bound"))
     (is (= #{} (:moved (qkb/join-delta kb space/rcc8 C)))
         "and the baseline is where it was left, so the next re-join is still a delta")))
@@ -682,9 +683,9 @@
              (v/add-prover (space/spatial-prover)))]
     (v/assert kb (list 'nonTangentialProperPart 'TmpWipedA 'TmpWipedB) C)
     (qkb/note-joined kb space/rcc8 C (:baseline (qkb/join-delta kb space/rcc8 C)))
-    (is (seq @(:qcn-joined kb)) "a baseline is standing")
+    (is (seq @(reasoning/qcn-joined kb)) "a baseline is standing")
     (v/clear! kb)
-    (is (= {} @(:qcn-joined kb))
+    (is (= {} @(reasoning/qcn-joined kb))
         "the wipe took it with the rest of the resident state")
     (is (= :all (:moved (qkb/join-delta kb space/rcc8 C)))
         "so the next re-join runs over everything, as it does on a KB never joined")

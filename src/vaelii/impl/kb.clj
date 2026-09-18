@@ -37,115 +37,9 @@
             [vaelii.impl.rules :as rules]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.solve :as solve]
-            [vaelii.impl.taxonomy :as tax]))
-
-;; `solver`, `conflicts`, and `program` are atoms: the solver is swappable (the ASP
-;; backend in vaelii.impl.asp.edge); `conflicts` holds the last settle's
-;; unsatisfiable contradictions — the "solve result" surfaced by `core/conflicts`;
-;; `program` holds the last edge Program handed to the solver.
-;;
-;; `program` is kept because belief is *self-erasing evidence*: once settle defeats
-;; one side of a tie, that side stops matching, so the very nogood that produced the
-;; contested set is no longer derivable from the KB.  Recomputing it after the fact
-;; yields nothing.  Anything wanting to ask what the tie *was* — which beliefs were
-;; forced and which were an arbitrary pick (`asp.edge/classify`) — has to read the
-;; program the decision was actually made from.
-;;
-;; `violations` holds the definitional constraints a *derived* conclusion would have
-;; broken during the last chaining run — see `place-conclusion` and `violations`.
-;;
-;; `contradictions` holds the coexisting P/¬P pairs the last settle left standing.
-;; Those are *represented dilemmas*, not conflicts: neither rule named the other's
-;; case, so there is nothing to arbitrate and both sides stay believed at :default
-;; (docs/exceptions.md, "What surfaces where").  `conflicts` is now only the
-;; irreducible clashes among known-true content.
-;;
-;; `recheck` is the exception re-check queue: `{rule-handle -> triggers}` for the rules
-;; whose `exceptWhen` query may have flipped since the last settle, posted by the
-;; triggers (a fact arriving or leaving on one of the exception's predicates, or any
-;; genl/genlCx edge change) and drained by `settle`.  `triggers` is the set of
-;; sentences that moved — which firings of that rule to re-evaluate — or `:all` when
-;; there is no such sentence and all of them must be.  Nothing here caches whether an
-;; exception *holds* — the queue says what to re-evaluate, and the re-evaluation says
-;; what is true.
-;;
-;; `settle-stats` is instrumentation for the exception fixpoint: `:iterations` counts
-;; the passes in which the blocked set actually moved (0 = nothing blocked, 1 = one
-;; pass sufficed), `:passes` the total loop passes including the confirming one, and
-;; `:histogram` the distribution of `:iterations` since the last reset.
-;;
-;; `qcn` is where a qualitative constraint network **lives between reads**: an atom of
-;; `{[calculus-name context] -> {:read … :clock n}}`, stamped with `observe/change-clock`
-;; and re-derived the moment that has moved (`vaelii.impl.qcn-kb`).  Per KB rather than
-;; global, because two KBs in one JVM share the clock but not their content.
-;;
-;; `matches` is the literal cache (`vaelii.impl.literal-cache`): an atom of
-;; `{[canonical-literal context hierarchical? arg-root?] -> {:value … :clock n}}` holding
-;; what `matches-visible` answered, α-renamed so two spellings of one question share an
-;; entry and stamped with `observe/change-clock` so any mutation retires it.  Per KB for
-;; the same reason `qcn` is: two KBs in one JVM share the clock but not their content, so
-;; a global cache would serve one KB's extent as another's.  A **declared field** rather
-;; than a bare key on the map, because `matches-visible` reads it on every retrieval and
-;; an extension-map key costs a hash lookup where a field costs none.
-;; `reports` memoizes the `contradicts` reports `conflicts` and `contradictions` hand
-;; back — `{#{h1 h2} -> report}` for the pairs the last settle reported, and nothing else,
-;; so it is bounded by what is standing rather than by what ever stood.  Why an entry the
-;; settle's region does not hold can be carried forward, and what removing it costs:
-;; docs/nmtms.md, "The reports are rebuilt only where the region moved".
-;;
-;; `negations` is the memo beside `:opposed`, and the two answer different halves of one
-;; question: `:opposed` says *which bodies could contradict*, kept O(1) per mutation at the
-;; store and removal choke points; `:negations` says *what each of those bodies currently
-;; contradicts about*, as `{body #{nogood}}`.  `:dirty` is the bodies a store or a removal
-;; touched since the last settle drained it (`note-opposed!` posts them, the same choke
-;; points that maintain `:opposed`); `:vocab` is the genlCx generation the
-;; joint-visibility test reads through, so a context edge retires the whole memo.  Which
-;; three things move a pairing, and the measured cost of dropping either narrowing:
-;; docs/nmtms.md, "Soft, prioritized contradictions".
-;;
-;; `feed` is the change feed's listeners and the region a settle files for them
-;; (`vaelii.impl.feed`).  A field rather than a bare key for the same reason as
-;; `:naming`: every settle reads it to decide whether to accumulate anything, and a KB
-;; nobody is listening to should pay a field read and not a hash lookup.
-;; `rule-antecedents` and `rule-contexts` are the rule rosters `special` bumps on every
-;; rule index/unindex and reads per settle for the visibility seeds — fields for the
-;; same reason as `:matches` and `:feed`.  Neither is stored, and recovery replays
-;; belief and the taxonomy rather than rule indexing, so `rebuild-rule-roster!` is what
-;; refills them on a recovered, reopened or forked KB.
-;;
-;; `excepted` is the visibility roster beside `:opposed`, and kept the same way: `{context
-;; -> {except-handle -> hidden-handle}}` for the stored `(except (sentexHandle H))` facts,
-;; maintained O(1) at the store and removal choke points and rebuilt by `recover`.  It
-;; holds **storage**, not belief — an except's own handle is what a reader checks `in?`
-;; against — for the reason `:opposed` holds storage: belief moves without a sentex
-;; arriving or leaving, so a roster that tried to track it would be maintained at a choke
-;; point that does not exist.  A field rather than a bare key because `res/excepted-handles`
-;; reads it per placement and per candidate justification (docs/exceptions.md, "Visibility
-;; removal").
-;; `dir` is the record store's directory when the records are durable, else nil. It is
-;; here so `core/close!` can release the exclusive FileLock the disk backend takes:
-;; without it a long-running process could not hand a directory to another process, or
-;; reopen it elsewhere, until the JVM exited.
-;; `snapshot-dir` is that same directory again, and non-nil only on a KB whose index is
-;; the mapped image — the write entry point's whole gate on the image cadence
-;; (`create-sentex`).  A separate field rather than a test on `dir`, because `dir` is set
-;; for every durable-records KB and the cadence is for one of them: reading `dir` there
-;; put the refresh call, its root-count argument and a `realpath` on the write path of
-;; `:disk-memory`, `:disk-dense`, `:disk-columnar` and `:disk-log` alike, none of which
-;; has an image.  Resolved once at `open-kb`, so nothing on the write path canonicalizes
-;; a path this one already did.
-;; `unrecovered` is the write side of "this KB's derived state was never built over a
-;; store that already held records" — `{:no-belief bool :no-index bool :announced? bool}`,
-;; each key absent until something asks.  Reads over that state answer nothing and can be
-;; re-asked; a write lands content the store keeps, so the write entry points ask
-;; `write-hazards` below.  An atom because `recover` and `reindex` clear what they build.
-;; `oplog` is the operation log (`vaelii.impl.oplog`) this KB records its public writes
-;; into, or nil.  A field, because every public write reads it to decide whether to record.
-(defrecord KB [records index tms taxonomy provers solver conflicts program violations
-               contradictions recheck refused settle-stats chain-stats opposed excepted
-               negations clashes supersessions reports qcn qcn-joined matches closures
-               naming constraints rule-antecedents rule-contexts feed dir snapshot-dir
-               index-space unrecovered oplog])
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.kb :as kb-types]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 ;; ---- storage selection: two independent axes ------------------------------
 ;;
@@ -1089,11 +983,15 @@
     :warn          leave them empty and log that the store holds records nothing can
                    answer out of
     false          leave them empty, in silence
+    :background    as :auto, except that a `:disk-snapshot` reasoning image declined only
+                   for its engine source is installed, and belief is rebuilt under this
+                   build on a daemon thread and then replaces the image's
+                   (`vaelii.impl.recovery`).  Writes are refused until then
 
   `true` is an **alias**, not a fifth behaviour: a `?`-suffixed option is indistinguishable from a
   boolean, and a caller who writes one is asking for the recovery rather than for the
   warning."
-  {:auto :auto, true :auto, :warn :warn, false false})
+  {:auto :auto, true :auto, :background :background, :warn :warn, false false})
 
 (defn- check-recover!
   "`:recover?` as one of `recover-modes`, or a refusal.  Beside `check-naming!` for the
@@ -1106,7 +1004,7 @@
   (if (contains? recover-modes recover?)
     (get recover-modes recover?)
     (throw (ex-info (str "unknown :recover? setting " (pr-str recover?)
-                         " — open-kb reads :auto (or true), :warn, and false"
+                         " — open-kb reads :auto (or true), :background, :warn, and false"
                          ;; `:or` does not fire on a key that is present holding nil, so
                          ;; a caller threading an optional through lands here rather than
                          ;; on the default, and the bare roster reads as if it should not
@@ -1114,7 +1012,7 @@
                            (str ".  An explicit nil is not the default: omit the key"
                                 " for :auto, or pass false to open in silence")))
                     {:type :unknown-option :mismatch :bad-value :recover? recover?
-                     :options [:auto true :warn false]}))))
+                     :options [:auto true :background :warn false]}))))
 
 ;; ---- the write side of an unbuilt derived state --------------------------
 ;;
@@ -1161,6 +1059,29 @@
   store a KB of `assert-inert` sentexes has.  Such a load says `{:no-belief true}` here."
   [kb hazards] (swap! (:unrecovered kb) into hazards) kb)
 
+(defn stop-rebuild!
+  "Stop the belief rebuild running for `kb` (`vaelii.impl.recovery`), and return nil once
+  it has stopped.  A no-op when none runs.  The rebuild files its stop function under
+  `:stop-rebuild` in the `:unrecovered` atom, beside the `:stale-belief` hazard it
+  raises and the `:install-pending` marker `read-view` reads.  `write-hazards` reads only
+  the boolean entries there, less `:announced?` and `:install-pending`."
+  [kb]
+  (when-let [stop! (:stop-rebuild @(:unrecovered kb))] (stop!))
+  nil)
+
+(defn read-view
+  "`kb`, or, while a background rebuild's install is pending (`vaelii.impl.recovery`), a
+  copy of `kb` whose `:reasoning` volatile holds the `Reasoning` value `kb` holds now and is
+  never reset.  The rebuild files `:install-pending` in the `:unrecovered` atom before the
+  open returns, and the install retires it after replacing `kb`'s belief.
+  `vaelii.core`'s public reads run against the view, so a read that takes the network and
+  then the taxonomy takes both from one belief, even when the install lands between the
+  two.  Answers `kb` itself for a `kb` that is not a KB."
+  [kb]
+  (if-let [u (:unrecovered kb)]
+    (if (:install-pending @u) (assoc kb :reasoning (volatile! (reasoning/of kb))) kb)
+    kb))
+
 (defn write-hazards
   "What about this KB makes a write into it wrong, as a map of the hazards that hold —
   `{:no-belief true}`, `{:no-index true}`, both, or `{}` when neither does.  The write
@@ -1188,7 +1109,9 @@
   distinguishes the two cases.  Only ever asked when something is claimed: the healthy
   answer reads the atom and no store."
   [kb]
-  (let [held (into {} (filter (comp true? val)) (dissoc @(:unrecovered kb) :announced?))]
+  ;; `:install-pending` marks a pending install for `read-view`; it is no write hazard
+  (let [held (into {} (filter (comp true? val))
+                   (dissoc @(:unrecovered kb) :announced? :install-pending))]
     (cond
       (empty? held)                                   {}
       (some? (cap/some-sentex-id (:records kb)))      held
@@ -1214,7 +1137,9 @@
   Costs a map read on a KB with no hazard standing, which is every healthy one after its
   first write; the store read behind it is reached only while a hazard stands."
   [kb]
-  (let [held (into {} (filter (comp true? val)) (dissoc @(:unrecovered kb) :announced?))]
+  ;; `:install-pending` marks a pending install for `read-view`; it is no write hazard
+  (let [held (into {} (filter (comp true? val))
+                   (dissoc @(:unrecovered kb) :announced? :install-pending))]
     (boolean
      (when (and (seq held) (nil? (cap/some-sentex-id (:records kb))))
        (note-hazards! kb {:no-belief false :no-index false})
@@ -1258,6 +1183,186 @@
   map (`{:index :mapped}` or `{:index :rebuild :reason r}`)."
   [dir istore rstore]
   (snapshot/load! dir istore #(drs/slot-fingerprint rstore)))
+
+(defn empty-reasoning
+  "The reasoning state a KB opens with, all of it empty, as one `Reasoning` value
+  (`vaelii.impl.types.reasoning`): the belief network of kind `tms`, the taxonomy, and every
+  atom a recover or a settle fills.  `open-kb` builds a KB holding one, and `rebuild-kb`
+  builds a second KB over the same stores holding another, so a field added to `Reasoning`
+  and here starts empty in both."
+  [tms]
+  ;; by name rather than positionally: seventeen `(atom {})`s in a row is a
+  ;; miscount waiting to happen, and a miscount here hands one subsystem another's
+  ;; state with nothing to notice it — every field is an atom, so the shapes do not
+  ;; even disagree until something reads one.
+  (reasoning/map->Reasoning
+   {:tms     (create-tms tms)
+    :taxonomy (tax/create-taxonomy)
+    ;; The settle's two readings and the memo it rebuilds them from,
+    ;; in **one** atom because they are one publication: `record-clashes!`
+    ;; derives all three from a single pass and installs them together,
+    ;; and `core/conflicts` / `core/contradictions` are read entry points a
+    ;; thread beside the writer may call at any moment.  Three atoms
+    ;; would let such a reader land between two of the resets and take
+    ;; one settle's conflicts beside another's contradictions — a reading
+    ;; of no state the KB was ever in (`settle/record-clashes!`).  Not
+    ;; `:clashes` below, which is the definitional-pair memo rather than
+    ;; a reading of one.
+    :clash-readings (atom {:reports {} :conflicts [] :contradictions []})
+    :program   (atom nil)
+    :violations (atom [])
+    :recheck   (atom {})
+    ;; `{rule-handle -> #{refusal} | :overflow}` — the firings
+    ;; `chain/place-conseq` declined to place because a re-checkable
+    ;; block condition already held.  A blocked justification is how
+    ;; the engine remembers a suppressed firing, and a *refused* one
+    ;; never becomes a justification at all, so it needs the same
+    ;; memory one level earlier (docs/exceptions.md, "A refused firing
+    ;; is remembered as bindings").  Derived state, in memory beside
+    ;; `jtms/blocked` rather than in it: these are not justifications
+    ;; and must never be labelled.
+    :refused   (atom {})
+    :settle-stats (atom {:iterations 0 :passes 0 :histogram {}})
+    :chain-stats  (atom {:runs 0 :last nil})
+    :opposed   (atom #{})
+    ;; `{[P R] -> how many sentexes declare it}` — the argument-preservation
+    ;; declarations, as storage.  `settle/preserving-nogoods` reads it as
+    ;; its gate and as its vocabulary, and the point of the roster is that
+    ;; both reads cost **nothing off the index**: a KB that declares no
+    ;; preservation — which is nearly every KB — is told so by one
+    ;; `empty?`, where `inherit/declarations-exist?` is two cardinality
+    ;; reads and would land on the assert path once per settle.  Kept at
+    ;; the same two choke points as `:opposed`, from the sentence's shape
+    ;; alone, and rebuilt by `recover` for the same reason.
+    ;; Reference-counted rather than a set: one declaration stated in two
+    ;; contexts is two sentexes, and the first retraction must not retire
+    ;; what the second still says.
+    :preserving (atom {})
+    ;; The candidates `settle/preserving-nogoods` reported a clash for
+    ;; last settle, so a standing report survives an unrelated assert:
+    ;; `conflicts` and `contradictions` are recomputed from scratch every
+    ;; settle and the region is only what that settle moved.  `:clashes`
+    ;; beside it does the same job for the definitional pairs; this holds
+    ;; one handle rather than a pair, since the other side of an
+    ;; inherited clash is not a sentex.
+    :preserved-clashes (atom #{})
+    ;; `{context -> {except-handle -> hidden-handle}}` — which stored
+    ;; `(except (sentexHandle H))` facts sit in which context, so a
+    ;; reader takes the visible ones off the map rather than fetching
+    ;; every except record in the KB.  Kept at the same two choke
+    ;; points as `:opposed`, and rebuilt by `recover` for the same
+    ;; reason: it is derived from storage and no store holds it
+    :excepted  (atom {})
+    ;; How many stored excepts target another except's handle.  When
+    ;; zero, `except-in-force?` is trivially true for every except
+    ;; and `excepted-handles` can skip the cascade entirely.  Maintained
+    ;; at the same choke points as `:excepted` and rebuilt by `recover`.
+    :meta-except-count (atom 0)
+    ;; `{vantage -> #{handle}}` — the losers the settle disbelieved at a
+    ;; vantage strictly below their own context.  Derived, cleared and
+    ;; re-decided each settle like the network's defeated set, so neither
+    ;; `recover` nor a store has anything to replay.
+    :scoped-defeats (atom {})
+    ;; `[{vantage -> handle} …]` — one entry per nogood whose live vantages
+    ;; defeated different members.  A reader seeing two of an entry's
+    ;; vantages reads every member as believed (`res/withdrawal`).  Derived
+    ;; and re-decided each settle, like `:scoped-defeats`.
+    :vantage-disagreements (atom [])
+    ;; `{reader -> #{handle}}` — what each reader reads as withdrawn:
+    ;; hidden by an except, scoped-defeated at a vantage it sees, or
+    ;; resting only on those (`res/withdrawn-set`).  A cache, emptied
+    ;; whenever the network, `:excepted` or `:scoped-defeats` moves.
+    :withdrawn (atom {})
+    ;; `{antecedent-key -> how many rules take it}` — the roster
+    ;; `special/visibility-seeds` enumerates instead of walking a context
+    ;; ancestor set.  A key is a predicate, or `[:not pred]` for a negated
+    ;; antecedent (`rules/antecedent-key`).  Kept O(1) at the rule
+    ;; index/unindex choke points, exactly as `:opposed` is kept at the
+    ;; store's, and rebuilt by `rebuild-rule-roster!` — recovery replays
+    ;; belief and the taxonomy, never rule indexing, so nothing else puts
+    ;; it back.  Reference-counted rather than a set: two rules on one
+    ;; antecedent must not have the first retraction retire the predicate
+    ;; the second still reads.
+    :rule-antecedents (atom {})
+    ;; `{context -> how many rules are stated there}` — the other half
+    ;; of the same question: an edge only needs seeding when one side
+    ;; holds a rule that could newly reach the other side's facts, and
+    ;; wiring an empty context under a full one holds none.  Kept and
+    ;; rebuilt with the roster above, in the same two places.
+    :rule-contexts (atom {})
+    :negations (atom {})
+    :clashes   (atom {})
+    ;; `#{#{x y} …}` — the sibling-disjointness exception pairs a retract
+    ;; just removed, posted at the disintegrate choke point.  Retracting
+    ;; an exception that was present ab initio re-arms a clash the pair
+    ;; never entered the clash set as, so the settle's re-arm sweep reads
+    ;; this to drive `two-sided-reach` over each departed pair, then
+    ;; `settle-finish` clears it.  Belief-quiet asserts never post to it.
+    :sib-exc-dirty (atom #{})
+    ;; the equality state `special/refresh-supersessions` last
+    ;; reconciled the superseded set against (`special/supersession-stamp`).
+    ;; nil means "not reconciled yet", which reads as *reconcile
+    ;; everything* — the same shape `:closures` uses, and the same
+    ;; direction: a stamp that cannot be compared costs a full pass and
+    ;; never a wrong answer
+    :supersessions (atom nil)
+    :qcn       (atom {})
+    ;; the join baselines beside the network cache, never inside it:
+    ;; the resident cache clears wholesale at its bound, and a baseline
+    ;; is bookkeeping whose loss degrades every later delta join to a
+    ;; full one — bounded by (calculi × reader contexts), not by reads
+    :qcn-joined (atom {})
+    :matches   (atom {})
+    ;; one shape, not a map of stamped entries: every entry in it is
+    ;; retired by the same clock move, so the stamp belongs to the map
+    ;; (`provers/closure-answers`)
+    :closures  (atom {})}))
+
+(defn- attach-visibility!
+  "Install the taxonomy's two visibility callbacks (`tax/install-supporter-visibility!`)
+  on the `Reasoning` value `b`, which `kb` holds.  The callbacks read a copy of `kb` whose
+  `:reasoning` volatile holds `b` and is never reset, so they read `b`'s network and roster
+  even after an install replaces `kb`'s belief."
+  [kb b]
+  (let [view (assoc kb :reasoning (volatile! b))]
+    (tax/install-supporter-visibility! (:taxonomy b)
+                                       #(res/supporter-filter-roster view)
+                                       (partial res/supporter-believed? view))))
+
+(def rebuild-shared
+  "The KB fields a rebuild KB (`rebuild-kb`) takes from the KB it rebuilds: the two
+  stores, and the configuration the stores are read under.  Every KB field other than
+  `:reasoning` is in exactly one of `rebuild-shared` and `rebuild-own`, `:reasoning` holds a
+  new `empty-reasoning`, and `background_rebuild_test` fails on a field in none of them."
+  [:records :index :provers :solver :naming :constraints])
+
+(def rebuild-own
+  "The KB fields a rebuild KB holds for itself.  `:dir`, `:snapshot-dir` and
+  `:index-space` are nil, so a close, an image write and a derived-index release stay the
+  open KB's.  `:oplog` is nil, so the rebuild logs no operation.  `:feed` and
+  `:unrecovered` are new, so no listener hears the rebuild's settles and the rebuild's
+  hazards are its own."
+  [:dir :snapshot-dir :index-space :oplog :feed :unrecovered])
+
+(defn rebuild-kb
+  "A second KB over `kb`'s stores, for rebuilding `kb`'s belief beside `kb`
+  (`vaelii.impl.recovery`).  It takes the `rebuild-shared` fields from `kb`, a new empty
+  `empty-reasoning` under `:reasoning`, and fresh `rebuild-own` fields.  A field named in none
+  of these is not copied, so a field added to the KB reaches a rebuild only once one of
+  them names it."
+  [kb]
+  (let [r (kb-types/map->KB (merge (select-keys kb rebuild-shared)
+                                   {:feed        (feed/create-feed)
+                                    :unrecovered (atom {})
+                                    :reasoning   (volatile! (empty-reasoning :dense))}))]
+    (attach-visibility! r (reasoning/of r))
+    r))
+
+(def ^:dynamic *background-belief?*
+  "True while `open-kb` recovers a KB opened with `:recover? :background`.
+  `vaelii.impl.recovery/recover` reads it: an image declined only for its engine source is
+  then installed, and belief is rebuilt behind it."
+  false)
 
 (defn open-kb
   "Construct a KB — the implementation behind `vaelii.core/open-kb`, which owns the
@@ -1400,165 +1505,57 @@
         index-space (when (and (not (:durable? (index-axes ikind)))
                                (contains? #{:disk :sqlite :pg} rkind))
                       (derived-index-space rkind opts))
-        ;; by name rather than positionally: seventeen `(atom {})`s in a row is a
-        ;; miscount waiting to happen, and a miscount here hands one subsystem another's
-        ;; state with nothing to notice it — every field is an atom, so the shapes do not
-        ;; even disagree until something reads one.
-        kb (map->KB {:records rstore
-                     :index   istore
-                     ;; The directory `close!` releases, when the records are durable.
-                     ;; A fork's is its **own** writable half's: that directory takes the
-                     ;; same exclusive lock and holds the same file handles, so without
-                     ;; this a durable fork could never be handed to another process
-                     ;; short of exiting the JVM.  The base's directory is not this KB's
-                     ;; to release — it is mounted read-only and shared by every fork
-                     ;; over it, which is exactly why nothing here names it.
-                     ;; The durable **index** puts a directory here too, even when the
-                     ;; records are elsewhere: `:pg-disk-log` writes its index under
-                     ;; `:dir` and takes that directory's exclusive lock on open, and
-                     ;; without this `close!` would leave the lock held for the JVM's life
-                     ;; over a KB whose records are on a server.
-                     :dir     kb-dir
-                     ;; ...and the same directory again, for the KB whose index is the
-                     ;; mapped image and only that one.  The write entry point's gate on the
-                     ;; cadence is a nil check on this field, so every other durable
-                     ;; backend pays a field read per assert and nothing else.
-                     :snapshot-dir (when snapshot? kb-dir)
-                     ;; the RAM derived-index registry key `close!` forgets (nil unless the
-                     ;; index is derived and the records durable) — `release-index-space!`
-                     :index-space index-space
-                     :tms     (create-tms tms)
-                     :taxonomy (tax/create-taxonomy)
-                     :provers  (atom provers/default-provers)
-                     :solver   (atom solve/local-solver)
-                     ;; The settle's two readings and the memo it rebuilds them from,
-                     ;; in **one** atom because they are one publication: `record-clashes!`
-                     ;; derives all three from a single pass and installs them together,
-                     ;; and `core/conflicts` / `core/contradictions` are read entry points a
-                     ;; thread beside the writer may call at any moment.  Three atoms
-                     ;; would let such a reader land between two of the resets and take
-                     ;; one settle's conflicts beside another's contradictions — a reading
-                     ;; of no state the KB was ever in (`settle/record-clashes!`).  Not
-                     ;; `:clashes` below, which is the definitional-pair memo rather than
-                     ;; a reading of one.
-                     :clash-readings (atom {:reports {} :conflicts [] :contradictions []})
-                     :program   (atom nil)
-                     :violations (atom [])
-                     :recheck   (atom {})
-                     ;; `{rule-handle -> #{refusal} | :overflow}` — the firings
-                     ;; `chain/place-conseq` declined to place because a re-checkable
-                     ;; block condition already held.  A blocked justification is how
-                     ;; the engine remembers a suppressed firing, and a *refused* one
-                     ;; never becomes a justification at all, so it needs the same
-                     ;; memory one level earlier (docs/exceptions.md, "A refused firing
-                     ;; is remembered as bindings").  Derived state, in memory beside
-                     ;; `jtms/blocked` rather than in it: these are not justifications
-                     ;; and must never be labelled.
-                     :refused   (atom {})
-                     :settle-stats (atom {:iterations 0 :passes 0 :histogram {}})
-                     :chain-stats  (atom {:runs 0 :last nil})
-                     :opposed   (atom #{})
-                     ;; `{[P R] -> how many sentexes declare it}` — the argument-preservation
-                     ;; declarations, as storage.  `settle/preserving-nogoods` reads it as
-                     ;; its gate and as its vocabulary, and the point of the roster is that
-                     ;; both reads cost **nothing off the index**: a KB that declares no
-                     ;; preservation — which is nearly every KB — is told so by one
-                     ;; `empty?`, where `inherit/declarations-exist?` is two cardinality
-                     ;; reads and would land on the assert path once per settle.  Kept at
-                     ;; the same two choke points as `:opposed`, from the sentence's shape
-                     ;; alone, and rebuilt by `recover` for the same reason.
-                     ;; Reference-counted rather than a set: one declaration stated in two
-                     ;; contexts is two sentexes, and the first retraction must not retire
-                     ;; what the second still says.
-                     :preserving (atom {})
-                     ;; The candidates `settle/preserving-nogoods` reported a clash for
-                     ;; last settle, so a standing report survives an unrelated assert:
-                     ;; `conflicts` and `contradictions` are recomputed from scratch every
-                     ;; settle and the region is only what that settle moved.  `:clashes`
-                     ;; beside it does the same job for the definitional pairs; this holds
-                     ;; one handle rather than a pair, since the other side of an
-                     ;; inherited clash is not a sentex.
-                     :preserved-clashes (atom #{})
-                     ;; `{context -> {except-handle -> hidden-handle}}` — which stored
-                     ;; `(except (sentexHandle H))` facts sit in which context, so a
-                     ;; reader takes the visible ones off the map rather than fetching
-                     ;; every except record in the KB.  Kept at the same two choke
-                     ;; points as `:opposed`, and rebuilt by `recover` for the same
-                     ;; reason: it is derived from storage and no store holds it
-                     :excepted  (atom {})
-                     ;; How many stored excepts target another except's handle.  When
-                     ;; zero, `except-in-force?` is trivially true for every except
-                     ;; and `excepted-handles` can skip the cascade entirely.  Maintained
-                     ;; at the same choke points as `:excepted` and rebuilt by `recover`.
-                     :meta-except-count (atom 0)
-                     ;; `{antecedent-key -> how many rules take it}` — the roster
-                     ;; `special/visibility-seeds` enumerates instead of walking a context
-                     ;; ancestor set.  A key is a predicate, or `[:not pred]` for a negated
-                     ;; antecedent (`rules/antecedent-key`).  Kept O(1) at the rule
-                     ;; index/unindex choke points, exactly as `:opposed` is kept at the
-                     ;; store's, and rebuilt by `rebuild-rule-roster!` — recovery replays
-                     ;; belief and the taxonomy, never rule indexing, so nothing else puts
-                     ;; it back.  Reference-counted rather than a set: two rules on one
-                     ;; antecedent must not have the first retraction retire the predicate
-                     ;; the second still reads.
-                     :rule-antecedents (atom {})
-                     ;; `{context -> how many rules are stated there}` — the other half
-                     ;; of the same question: an edge only needs seeding when one side
-                     ;; holds a rule that could newly reach the other side's facts, and
-                     ;; wiring an empty context under a full one holds none.  Kept and
-                     ;; rebuilt with the roster above, in the same two places.
-                     :rule-contexts (atom {})
-                     :negations (atom {})
-                     :clashes   (atom {})
-                     ;; `#{#{x y} …}` — the sibling-disjointness exception pairs a retract
-                     ;; just removed, posted at the disintegrate choke point.  Retracting
-                     ;; an exception that was present ab initio re-arms a clash the pair
-                     ;; never entered the clash set as, so the settle's re-arm sweep reads
-                     ;; this to drive `two-sided-reach` over each departed pair, then
-                     ;; `settle-finish` clears it.  Belief-quiet asserts never post to it.
-                     :sib-exc-dirty (atom #{})
-                     ;; the equality state `special/refresh-supersessions` last
-                     ;; reconciled the superseded set against (`special/supersession-stamp`).
-                     ;; nil means "not reconciled yet", which reads as *reconcile
-                     ;; everything* — the same shape `:closures` uses, and the same
-                     ;; direction: a stamp that cannot be compared costs a full pass and
-                     ;; never a wrong answer
-                     :supersessions (atom nil)
-                     :qcn       (atom {})
-                     ;; the join baselines beside the network cache, never inside it:
-                     ;; the resident cache clears wholesale at its bound, and a baseline
-                     ;; is bookkeeping whose loss degrades every later delta join to a
-                     ;; full one — bounded by (calculi × reader contexts), not by reads
-                     :qcn-joined (atom {})
-                     :matches   (atom {})
-                     ;; one shape, not a map of stamped entries: every entry in it is
-                     ;; retired by the same clock move, so the stamp belongs to the map
-                     ;; (`provers/closure-answers`)
-                     :closures  (atom {})
-                     :feed      (feed/create-feed)
-                     ;; a plain value, not an atom: which conventions the public entry point
-                     ;; holds content to is settled when the KB is opened, and a store
-                     ;; whose policy moved under it would hold two vocabularies with
-                     ;; nothing recording which sentence arrived under which
-                     :naming    naming
-                     ;; likewise, and nil on purpose — the caller said nothing, so
-                     ;; `checks/arbitrating?` reads the process default
-                     :constraints constraints
-                     ;; empty rather than `{:no-belief false :no-index false}`: a key
-                     ;; absent means *nobody has asked yet*, which is not the same
-                     ;; answer as "no".  The store is not populated until the branch
-                     ;; below runs (or an import fills it after this open returns), so
-                     ;; the belief half is settled by whoever first needs it and the
-                     ;; index half by this open — see `write-hazards`
-                     :unrecovered (atom {})})]
+        kb (kb-types/map->KB
+            (merge
+             {:records rstore
+              :index   istore
+              ;; The directory `close!` releases, when the records are durable.
+              ;; A fork's is its **own** writable half's: that directory takes the
+              ;; same exclusive lock and holds the same file handles, so without
+              ;; this a durable fork could never be handed to another process
+              ;; short of exiting the JVM.  The base's directory is not this KB's
+              ;; to release — it is mounted read-only and shared by every fork
+              ;; over it, which is exactly why nothing here names it.
+              ;; The durable **index** puts a directory here too, even when the
+              ;; records are elsewhere: `:pg-disk-log` writes its index under
+              ;; `:dir` and takes that directory's exclusive lock on open, and
+              ;; without this `close!` would leave the lock held for the JVM's life
+              ;; over a KB whose records are on a server.
+              :dir     kb-dir
+              ;; ...and the same directory again, for the KB whose index is the
+              ;; mapped image and only that one.  The write entry point's gate on the
+              ;; cadence is a nil check on this field, so every other durable
+              ;; backend pays a field read per assert and nothing else.
+              :snapshot-dir (when snapshot? kb-dir)
+              ;; the RAM derived-index registry key `close!` forgets (nil unless the
+              ;; index is derived and the records durable) — `release-index-space!`
+              :index-space index-space
+              :provers  (atom provers/default-provers)
+              :solver   (atom solve/local-solver)
+              :feed      (feed/create-feed)
+              ;; a plain value, not an atom: which conventions the public entry point
+              ;; holds content to is settled when the KB is opened, and a store
+              ;; whose policy moved under it would hold two vocabularies with
+              ;; nothing recording which sentence arrived under which
+              :naming    naming
+              ;; likewise, and nil on purpose — the caller said nothing, so
+              ;; `checks/arbitrating?` reads the process default
+              :constraints constraints
+              ;; empty rather than `{:no-belief false :no-index false}`: a key
+              ;; absent means *nobody has asked yet*, which is not the same
+              ;; answer as "no".  The store is not populated until the branch
+              ;; below runs (or an import fills it after this open returns), so
+              ;; the belief half is settled by whoever first needs it and the
+              ;; index half by this open — see `write-hazards`
+              :unrecovered (atom {})
+              ;; the derived state, as one value: a background rebuild's install
+              ;; replaces it whole (`vaelii.impl.types.reasoning`)
+              :reasoning (volatile! (empty-reasoning tms))}))]
     ;; Taxonomy owns derived structures; the KB owns whether one recorded supporter
     ;; is believed and visible from a reader after context-scoped exceptions.  Install
     ;; the observer only after the mutually-referential KB exists, and before recovery can
     ;; ask any scoped cache question.
-    (tax/install-supporter-visibility!
-     (:taxonomy kb)
-     #(seq @(:excepted kb))
-     (partial res/supporter-believed? kb))
+    (attach-visibility! kb (reasoning/of kb))
     (when snapshot? (register-index-snapshot! (disk/disk-dir opts) istore rstore))
     ;; **Whose records is this index of?**  For `:disk` records the question cannot arise —
     ;; the index and the records are one directory.  For `:pg` they are a directory and a
@@ -1731,9 +1728,10 @@
       (some? (cap/some-sentex-id (:records kb)))
       (do
         (when recover?
-          (if (= :auto recover?)
+          (if (#{:auto :background} recover?)
             (if index-durable?
-              (recover-fn kb)
+              (binding [*background-belief?* (= :background recover?)]
+                (recover-fn kb))
               ;; A derived index is rebuilt from the records here — unless a **mapped
               ;; snapshot** of it survives and still describes them, in which case the
               ;; rebuild is replaced by reading its bytes back
@@ -1743,7 +1741,8 @@
               (let [snap (when snapshot?
                            (map-index-snapshot! (disk/disk-dir opts) istore rstore))]
                 (if (= :mapped (:index snap))
-                  (recover-fn kb)
+                  (binding [*background-belief?* (= :background recover?)]
+                    (recover-fn kb))
                   ;; O(records), paid on every open — the standing cost of not persisting
                   ;; the index, and the number that decides whether persisting a snapshot
                   ;; of one is worth it, so it is reported rather than absorbed silently
@@ -1782,7 +1781,7 @@
         ;; the dispatch above actually left rather than which arm it took — a mapped
         ;; index snapshot populates the derived index without a `reindex`, and a
         ;; `:recover? :warn` recovers nothing at all.
-        (note-hazards! kb {:no-belief (not (jtms/any-node? (:tms kb)))
+        (note-hazards! kb {:no-belief (not (jtms/any-node? (reasoning/tms kb)))
                            :no-index  (zero? (long (p/count-at (:index kb) [])))})
         ;; ...and saying so, which `{:recover? false}` was silent about entirely.  The
         ;; warning above describes what a *read* gets, and `false` asks not to hear it —
@@ -1791,7 +1790,9 @@
         ;; by name, which is a different fact with a different repair, and this is the
         ;; only moment before the refusal at which it can be said.  At `:info`, so
         ;; `{:recover? false}` stays as quiet as it promised at `:warn` and above.
-        (when-let [hz (seq (write-hazards kb))]
+        ;; `:stale-belief` is left out: belief was built, by an earlier engine build, and
+        ;; the rebuild behind it logs its own start and finish (`vaelii.impl.recovery`).
+        (when-let [hz (seq (dissoc (write-hazards kb) :stale-belief))]
           (let [index? (contains? (into {} hz) :no-index)]
             (trove/log! {:level :info :id ::unrecovered-store-writes
                          :msg (str "this KB is open over a store whose "
@@ -1890,10 +1891,10 @@
   ([kb x] (types-of kb x '?ctx))
   ([kb x context]
    (let [recs     (:records kb)
-         tms      (:tms kb)
+         tms      (reasoning/tms kb)
          visible? (if (sx/variable? context)
                     (constantly true)
-                    (let [up (tax/context-up (:taxonomy kb) context)] #(contains? up %)))
+                    (let [up (tax/context-up (reasoning/taxonomy kb) context)] #(contains? up %)))
          hidden?  (or (res/hidden-fn kb context) (constantly false))]
      ;; the argument root goes straight to the sentexes holding x in argument
      ;; position 1, instead of every sentex mentioning x anywhere (any position, any
@@ -1929,7 +1930,7 @@
   type a term actually holds is one chain, cached, and once read every constraint on
   that term is one set membership."
   [kb x context]
-  (let [tax (:taxonomy kb)
+  (let [tax (reasoning/taxonomy kb)
         ts  (vec (types-of kb x context))]
     {:types ts :closures (mapv #(tax/genls tax % context) ts)}))
 
@@ -1955,7 +1956,7 @@
   ([kb x t] (isa? kb x t '?ctx))
   ([kb x t context]
    (if (and (symbol? x) (not (sx/variable? x)))
-     (let [tax (:taxonomy kb)]
+     (let [tax (reasoning/taxonomy kb)]
        (boolean (some #(contains? (tax/genls tax % context) t) (types-of kb x context))))
      (exists-in? kb (list t x) context))))
 
@@ -1970,8 +1971,8 @@
   each edge supporter (docs/taxonomy.md, \"Strength of a subsumption path\")."
   ([kb rel-key sub super] (reach-strength kb rel-key sub super nil))
   ([kb rel-key sub super context]
-   (tax/reach-strength (:taxonomy kb) rel-key sub super context
-                       #(jtms/defeat-class (:tms kb) %))))
+   (tax/reach-strength (reasoning/taxonomy kb) rel-key sub super context
+                       #(jtms/defeat-class (reasoning/tms kb) %))))
 
 (defn membership-reader
   "A `term -> `memberships`` reader, memoized for the life of one caller.
@@ -1996,8 +1997,8 @@
   "Are types `a` and `b` provably disjoint (via disjoint declarations, closed
   under genl) — anywhere, or (with `context`) using only the declarations and
   genl edges visible from it?"
-  ([kb a b] (tax/disjoint? (:taxonomy kb) a b))
-  ([kb a b context] (tax/disjoint? (:taxonomy kb) a b context)))
+  ([kb a b] (tax/disjoint? (reasoning/taxonomy kb) a b))
+  ([kb a b context] (tax/disjoint? (reasoning/taxonomy kb) a b context)))
 
 ;; ---- storage helpers ----------------------------------------------------
 
@@ -2011,7 +2012,7 @@
   symmetric would otherwise stamp the one shared empty set — KB-B reading KB-A's
   handles."
   [kb]
-  [(:records kb) (tax/props (:taxonomy kb) :symmetric)])
+  [(:records kb) (tax/props (reasoning/taxonomy kb) :symmetric)])
 
 ;; A forward-chain run binds the handle cache over its whole fixpoint
 ;; (`chain/chain-all`), so every sentex the run *creates* is cached.  For a functor
@@ -2238,11 +2239,11 @@
   [kb sentence]
   (let [b   (sx/canon (body-under-not sentence))
         now (opposed? (:index kb) b)]
-    (when (or now (contains? @(:opposed kb) b))
-      (swap! (:opposed kb) (if now conj disj) b)
-      (swap! (:negations kb) (fn [m] (-> m
-                                         (update :by-body dissoc b)
-                                         (update :dirty (fnil conj #{}) b)))))))
+    (when (or now (contains? @(reasoning/opposed kb) b))
+      (swap! (reasoning/opposed kb) (if now conj disj) b)
+      (swap! (reasoning/negations kb) (fn [m] (-> m
+                                                  (update :by-body dissoc b)
+                                                  (update :dirty (fnil conj #{}) b)))))))
 
 (defn rebuild-opposed!
   "Recompute `:opposed` from storage — the scan `recover` needs, since the set is
@@ -2257,8 +2258,8 @@
   settle repopulates it whole."
   [kb]
   (let [idx (:index kb)]
-    (reset! (:negations kb) {})
-    (reset! (:opposed kb)
+    (reset! (reasoning/negations kb) {})
+    (reset! (reasoning/opposed kb)
             (into #{} (comp (filter #(opposed? idx %)) (map sx/canon))
                   (p/children idx [:false])))))
 
@@ -2300,7 +2301,7 @@
   and not one the roster should forget."
   [kb sentence add?]
   (when-let [pr (preservation-pair sentence)]
-    (swap! (:preserving kb)
+    (swap! (reasoning/preserving kb)
            (fn [m] (let [n (+ (get m pr 0) (if add? 1 -1))]
                      (if (pos? n) (assoc m pr n) (dissoc m pr)))))))
 
@@ -2314,7 +2315,7 @@
   maintained one cannot disagree about what a declaration is."
   [kb]
   (let [idx (:index kb) recs (:records kb)]
-    (reset! (:preserving kb)
+    (reset! (reasoning/preserving kb)
             (reduce (fn [m h]
                       (if-let [pr (some-> (p/get-sentex recs h) :sentence preservation-pair)]
                         (update m pr (fnil inc 0))
@@ -2395,7 +2396,7 @@
   (when-let [target (except-target (:sentence sentex))]
     (let [ctx (:context sentex)
           eh  (:id sentex)]
-      (swap! (:excepted kb) (if add? roster-add roster-drop) ctx target eh)
+      (swap! (reasoning/excepted kb) (if add? roster-add roster-drop) ctx target eh)
       ;; Maintain the meta-except counter so it always equals what `rebuild-excepted!`
       ;; computes: the number of stored excepts whose target resolves to a stored except.
       ;; Two roles change that when this except is stored or removed.
@@ -2406,7 +2407,7 @@
       ;; here — role (2) discounted it when that target left.
       (when-let [target-sentex (p/get-sentex (:records kb) target)]
         (when (except-target (:sentence target-sentex))
-          (swap! (:meta-except-count kb) (if add? inc dec))))
+          (swap! (reasoning/meta-except-count kb) (if add? inc dec))))
       ;; (2) This except *as a target*.  Removing it strands every meta-except that named
       ;; it — each stops resolving to a stored except — so discount them here, while the
       ;; roster still holds them (they live in records this removal does not touch).  This
@@ -2417,11 +2418,11 @@
       ;; Gated on the counter itself: a KB with no meta-except (all but a handful) can
       ;; strand nothing, so it skips the roster scan entirely and the common except
       ;; removal stays O(1) — only a KB that actually holds a meta-except pays the walk.
-      (when (and (not add?) (pos? @(:meta-except-count kb)))
+      (when (and (not add?) (pos? @(reasoning/meta-except-count kb)))
         (let [stranded (reduce-kv (fn [n _ctx targets] (+ n (count (get targets eh))))
-                                  0 @(:excepted kb))]
+                                  0 @(reasoning/excepted kb))]
           (when (pos? stranded)
-            (swap! (:meta-except-count kb) - stranded)))))))
+            (swap! (reasoning/meta-except-count kb) - stranded)))))))
 
 (defn rebuild-excepted!
   "Recompute `:excepted` from storage — the scan `recover` needs, since the roster is
@@ -2458,8 +2459,8 @@
     ;; before handing it to anybody, and the maintenance path (`note-except!`) keeps the
     ;; count in step one write at a time.  A reader beside the writer reads them only
     ;; through the query path (`resolution/excepted?`), which is after both.
-    (reset! (:excepted kb) roster)
-    (reset! (:meta-except-count kb) meta-count)))
+    (reset! (reasoning/excepted kb) roster)
+    (reset! (reasoning/meta-except-count kb) meta-count)))
 
 ;; ---- the rule rosters ----------------------------------------------------
 
@@ -2509,8 +2510,8 @@
                     acc))
                 [{} {}]
                 (p/lookup (:index kb) rule-key-pattern))]
-    (reset! (:rule-antecedents kb) antes)
-    (reset! (:rule-contexts kb) ctxs)))
+    (reset! (reasoning/rule-antecedents kb) antes)
+    (reset! (reasoning/rule-contexts kb) ctxs)))
 
 (defn create-sentex
   "Store `sentence` in `context` as a new sentex, index it, and return `[handle sentex]`.
@@ -2947,7 +2948,7 @@
         (res/without-excepted kb context)
         (res/without-retired kb context)
         (stored-once-per-handle
-         (sx/symmetric-literal? sentence #(tax/has-prop? (:taxonomy kb) :symmetric %))))))
+         (sx/symmetric-literal? sentence #(tax/has-prop? (reasoning/taxonomy kb) :symmetric %))))))
 
 (defn sentexes-matching
   "*Believed* sentexes matching `sentence` in `context` — the implementation behind

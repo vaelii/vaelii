@@ -24,20 +24,10 @@
   holds the protocol and one deterministic local solver behind it; the answer-set backend is
   `vaelii.impl.asp.edge/edge-solver`, installed with `core/set-solver` (docs/asp.md)."
   (:require [clojure.set :as set]
-            [vaelii.impl.naming :as nm]))
+            [vaelii.impl.naming :as nm]
+            [vaelii.impl.types.solve :as solve-types]))
 
-(defprotocol Solver
-  (solve [solver program]
-    "Assign truth to `program`'s contested assumptions.  Return
-       {:defeat   #{handle ...}   ; assumptions to disbelieve
-        :violated [nogood ...]}   ; contradictions left unsatisfiable (the result)"))
-
-(defrecord Program
-           [assumptions        ; #{handle} — contested defeasible nodes (never known-true)
-            fixed              ; #{handle} — known-true background referenced by a contradiction
-            contradictions     ; [{:nogood #{handle} :priority int :sentence any}]
-            content            ; {handle {:sentence s :context c}} — what each assumption SAYS
-            cardinalities])    ; [{:op :at-most|:at-least :k int :members #{handle} :hard bool
+    ; [{:op :at-most|:at-least :k int :members #{handle} :hard bool
                                ;   :priority int :sentence any}] — a bound on how many of a set
                                ;   of choice heads may/must hold.  A labeling-only construct
                                ;   (docs/solving.md): `solve-context` grounds a `asp/atMost` /
@@ -69,7 +59,7 @@
    (let [contested (set contested)
          relevant  (filterv #(seq (set/intersection (nogood-members %) contested)) nogoods)
          fixed     (into #{} (comp (mapcat nogood-members) (remove contested)) relevant)]
-     (->Program contested fixed relevant (select-keys content contested) (vec cardinalities)))))
+     (solve-types/->Program contested fixed relevant (select-keys content contested) (vec cardinalities)))))
 
 (defn content-key
   "A stable total order on contested assumptions, derived from **what they assert**.
@@ -103,7 +93,7 @@
   overlapping *pairs* can cost two defeats where a real backend would spend one on
   the shared member (docs/nmtms.md).  What it must not do is spend a defeat on a
   nogood that is already satisfied; see the first `cond` branch."
-  (reify Solver
+  (reify solve-types/Solver
     (solve [_ {:keys [assumptions contradictions] :as program}]
       (loop [defeated #{}
              violated []

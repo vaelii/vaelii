@@ -4,7 +4,7 @@
   "How a record is shaped on its way into a log frame, and back.
 
   nippy freezes a Clojure record by writing its **type tag and every field name** into
-  the frame — so a store of 100M sentexes writes `vaelii.impl.sentex.LiteralSentex` and
+  the frame — so a store of 100M sentexes writes `vaelii.impl.types.sentex.LiteralSentex` and
   `:sentence :context :id :strength` 100M times.  Measured on the real corpus,
   that scaffolding is **56% of the store** (87 of 155 B/record) and it says nothing a
   frame needs to carry: the field layout is a property of the code, identical in every
@@ -44,7 +44,8 @@
   The older tags each carry one or both of those fields, and decoding reads past them."
   (:require [vaelii.impl.disk.tokens :as dtok]
             [vaelii.impl.jtms :as jtms]
-            [vaelii.impl.sentex :as sx])
+            [vaelii.impl.sentex :as sx]
+            [vaelii.impl.types.sentex :as sentex-types])
   (:import [java.io ByteArrayOutputStream]))
 
 ;; Tags 0–3 hold a polarity field after the id, and their rule shapes hold the rule's
@@ -72,10 +73,10 @@
   "An `LiteralSentex` or `RuleSentex` as a positional vector; anything else unchanged."
   [sx]
   (condp instance? sx
-    vaelii.impl.sentex.LiteralSentex
+    vaelii.impl.types.sentex.LiteralSentex
     [literal-tag (:sentence sx) (:context sx) (:id sx) (:strength sx)]
 
-    vaelii.impl.sentex.RuleSentex
+    vaelii.impl.types.sentex.RuleSentex
     [rule-tag (:context sx) (:id sx) (:antecedent sx) (:consequent sx) (:strength sx)
      (:varmap sx) (:direction sx) (:defeasible sx) (:assumption sx) (:constraint sx)]
 
@@ -87,10 +88,10 @@
   `:sentence` keys, anything else as it thawed."
   [v]
   (cond
-    (instance? vaelii.impl.sentex.LiteralSentex v)
+    (instance? vaelii.impl.types.sentex.LiteralSentex v)
     (dissoc v :polarity)
 
-    (instance? vaelii.impl.sentex.RuleSentex v)
+    (instance? vaelii.impl.types.sentex.RuleSentex v)
     (dissoc v :polarity :sentence)
 
     (not (vector? v))
@@ -101,20 +102,20 @@
           tag (nth v 0)]
       (cond
         (= literal-tag tag)
-        (sx/->LiteralSentex (f 1) (f 2) (nth v 3) (nth v 4))
+        (sentex-types/->LiteralSentex (f 1) (f 2) (nth v 3) (nth v 4))
         (= rule-tag tag)
-        (sx/->RuleSentex (f 1) (nth v 2) (f 3) (f 4) (nth v 5) (f 6)
-                         (nth v 7) (nth v 8) (nth v 9) (nth v 10))
+        (sentex-types/->RuleSentex (f 1) (nth v 2) (f 3) (f 4) (nth v 5) (f 6)
+                                   (nth v 7) (nth v 8) (nth v 9) (nth v 10))
         ;; the rule's sentence sits at 1 and is read past
         (= sentence-rule-tag tag)
-        (sx/->RuleSentex (f 2) (nth v 3) (f 4) (f 5) (nth v 6) (f 7)
-                         (nth v 8) (nth v 9) (nth v 10) (nth v 11))
+        (sentex-types/->RuleSentex (f 2) (nth v 3) (f 4) (f 5) (nth v 6) (f 7)
+                                   (nth v 8) (nth v 9) (nth v 10) (nth v 11))
         ;; the polarity field sits at 4 and is read past, and a rule's sentence at 1
         (= polarity-literal-tag tag)
-        (sx/->LiteralSentex (f 1) (f 2) (nth v 3) (nth v 5))
+        (sentex-types/->LiteralSentex (f 1) (f 2) (nth v 3) (nth v 5))
         (= polarity-rule-tag tag)
-        (sx/->RuleSentex (f 2) (nth v 3) (f 5) (f 6) (nth v 7) (f 8)
-                         (nth v 9) (nth v 10) (nth v 11) (nth v 12))
+        (sentex-types/->RuleSentex (f 2) (nth v 3) (f 5) (f 6) (nth v 7) (f 8)
+                                   (nth v 9) (nth v 10) (nth v 11) (nth v 12))
         ;; a tag this build does not read is a frame from some other build — refused
         ;; by name, never misread as a literal record whose fields land in the wrong
         ;; slots (the tokenized tags decode on their own path, dictionary in hand)
@@ -135,7 +136,7 @@
 (defn encode-justification
   "A `Justification` as a positional vector; anything else unchanged."
   [d]
-  (if (instance? vaelii.impl.jtms.Justification d)
+  (if (instance? vaelii.impl.types.tms.Justification d)
     [(:id d) (:informant d) (:antecedents d) (:consequence d) (:bindings d) (:strength d)]
     d))
 
@@ -148,7 +149,7 @@
     (jtms/->just (nth v 0) (sx/intern-deep (nth v 1)) (nth v 2) (nth v 3)
                  (sx/intern-deep (nth v 4)) (nth v 5))
 
-    (instance? vaelii.impl.jtms.Justification v)
+    (instance? vaelii.impl.types.tms.Justification v)
     (jtms/->just (:id v) (:informant v) (:antecedents v) (:consequence v) (:bindings v)
                  (:strength v))
 
@@ -275,11 +276,11 @@
 
 (defn- encode-sentex-tok [dict sx]
   (condp instance? sx
-    vaelii.impl.sentex.LiteralSentex
+    vaelii.impl.types.sentex.LiteralSentex
     (let [[bs lits] (encode-body dict [(:sentence sx) (:context sx) (:strength sx)])]
       [literal-tok-tag bs lits (:id sx)])
 
-    vaelii.impl.sentex.RuleSentex
+    vaelii.impl.types.sentex.RuleSentex
     (let [[bs lits] (encode-body dict [(:context sx)
                                        (:antecedent sx) (:consequent sx) (:strength sx)
                                        (:varmap sx) (:direction sx) (:defeasible sx)
@@ -307,10 +308,10 @@
       (let [_sentence (when sentence? (rd)) context (rd) _polarity (sign)
             antecedent (rd) consequent (rd) strength (rd) varmap (rd) direction (rd)
             defeasible (rd) assumption (rd) constraint (rd)]
-        (sx/->RuleSentex context id antecedent consequent strength varmap
-                         direction defeasible assumption constraint))
+        (sentex-types/->RuleSentex context id antecedent consequent strength varmap
+                                   direction defeasible assumption constraint))
       (let [sentence (rd) context (rd) _polarity (sign) strength (rd)]
-        (sx/->LiteralSentex sentence context id strength)))))
+        (sentex-types/->LiteralSentex sentence context id strength)))))
 
 ;; ---- the per-kind table -------------------------------------------------
 

@@ -45,6 +45,7 @@
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.wiring :as wiring]))
 
 (def nat-namespace
@@ -206,7 +207,7 @@
   no sentence can contain a reifiable NAT, so the reify pass and the rename/remove NAT
   steps short-circuit to a no-op.  Two in-memory taxonomy-prop reads."
   [kb]
-  (let [tx (:taxonomy kb)]
+  (let [tx (reasoning/taxonomy kb)]
     (boolean (or (seq (tax/props tx :reifiable))
                  (seq (tax/props tx :context-denoting))))))
 
@@ -216,7 +217,7 @@
   no `cx/` context to order, so the structural-genlCx producer's revival re-run is a no-op
   without even paying the `any-context-subrelations?` functor-count index read."
   [kb]
-  (boolean (seq (tax/props (:taxonomy kb) :context-denoting))))
+  (boolean (seq (tax/props (reasoning/taxonomy kb) :context-denoting))))
 
 (defn context-denoting-function?
   "True iff `(context_denoting_function head)` is believed — head reifies to a `cx/`
@@ -226,7 +227,7 @@
   [kb head]
   (and (symbol? head)
        (not (reified-nat-symbol? head))
-       (tax/has-prop? (:taxonomy kb) :context-denoting head)))
+       (tax/has-prop? (reasoning/taxonomy kb) :context-denoting head)))
 
 (defn reifiable-function?
   "True iff `head` reifies its ground applications — either `(reifiable_function head)`
@@ -237,8 +238,8 @@
   [kb head]
   (and (symbol? head)
        (not (reified-nat-symbol? head))
-       (or (tax/has-prop? (:taxonomy kb) :reifiable head)
-           (tax/has-prop? (:taxonomy kb) :context-denoting head))))
+       (or (tax/has-prop? (reasoning/taxonomy kb) :reifiable head)
+           (tax/has-prop? (reasoning/taxonomy kb) :context-denoting head))))
 
 (defn- ground-form?
   "True iff `form` contains no pattern variables anywhere (any nesting)."
@@ -494,7 +495,7 @@
   (->> (kb/find-sentexes kb f)
        (filter #(and (= universal-context (:context %))
                      (= 'termOfUnit (nm/functor (:sentence %)))
-                     (jtms/in? (:tms kb) (:id %))))
+                     (jtms/in? (reasoning/tms kb) (:id %))))
        (keep (fn [{[_ k E] :sentence}]
                (when (and (seq? E) (= f (first E))) [E k])))
        distinct))
@@ -565,7 +566,7 @@
   NAT here would probe for `(Quote <constant>)`, which was never stored, and the fact
   would read back as no-match."
   [kb form]
-  (let [E (if (tax/quoting-function? (:taxonomy kb) (first form))
+  (let [E (if (tax/quoting-function? (reasoning/taxonomy kb) (first form))
             (apply list form)
             (apply list (first form)
                    (map #(if (reifiable-ground-nat? kb %) (reify-nat-for-read kb %) %)
@@ -640,12 +641,12 @@
   the constant it collided with (they hold the same expression), so one term-index
   read per merged term reaches both sides of every pair."
   [kb terms]
-  (let [rep #(tax/representative (:taxonomy kb) %)]
+  (let [rep #(tax/representative (reasoning/taxonomy kb) %)]
     (->> (into #{} (mapcat #(kb/find-sentexes kb %))
                (into #{} (mapcat (fn [t] [t (rep t)])) terms))
          (filter (fn [sx] (and (= universal-context (:context sx))
                                (= 'termOfUnit (nm/functor (:sentence sx)))
-                               (jtms/in? (:tms kb) (:id sx)))))
+                               (jtms/in? (reasoning/tms kb) (:id sx)))))
          (map :sentence)
          group-collisions)))
 
@@ -698,7 +699,7 @@
   (let [s (:sentence sx)]
     (and (= 'genlCx (nm/functor s))
          (= universal-context (:context sx))
-         (let [tms (:tms kb)
+         (let [tms (reasoning/tms kb)
                h   (:id sx)
                js  (jtms/supports tms h)]
            (and (not (jtms/premise? tms h))
@@ -782,7 +783,7 @@
     (if (and ctx? (pos? (long (reads/stored-count-in-context (:index kb) k))))
       false
       (let [all  (kb/find-sentexes kb k)
-            live (filterv #(jtms/in? (:tms kb) (:id %)) all)]
+            live (filterv #(jtms/in? (reasoning/tms kb) (:id %)) all)]
         (boolean
          (when-let [E (authoritative-expression (mapped-expressions k live))]
            (let [minted (delay (minted-for kb k E))]
@@ -910,7 +911,7 @@
   to a `sameAs` merge."
   ([kb form] (reify-or-mint-nat kb form true))
   ([kb form chain?]
-   (let [E (if (tax/quoting-function? (:taxonomy kb) (first form))
+   (let [E (if (tax/quoting-function? (reasoning/taxonomy kb) (first form))
              (apply list form)
              (apply list (first form)
                     (map #(if (reifiable-ground-nat? kb %) (reify-or-mint-nat kb % chain?) %)

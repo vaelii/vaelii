@@ -75,7 +75,8 @@
             [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
-            [vaelii.impl.taxonomy :as tax]))
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 (def default-limit
   "How many rules and how many heavy predicates the report lists before it says it
@@ -211,7 +212,7 @@
   the counts beside it are not — two loads of the same knowledge reporting the same totals
   over different examples."
   [kb pass handles limit progress!]
-  (let [tms   (:tms kb)
+  (let [tms   (reasoning/tms kb)
         hs    (vec handles)
         total (count hs)]
     (progress! {:phase :rules :done 0 :total total})
@@ -394,7 +395,7 @@
   Reachability is **reflexive**, as `genls` is: the root reaches itself, so `:rooted`
   counts it and `:islands` is exactly the edged types outside the root's ancestor set."
   [kb pass progress!]
-  (let [taxo  (:taxonomy kb)
+  (let [taxo  (reasoning/taxonomy kb)
         ;; Memoized: the reach walk below asks this once per node AND once per ancestor
         ;; of every node, which on the 124k-type conversion above is a few million calls
         ;; over a name set two orders of magnitude smaller.  Each call reads the
@@ -479,7 +480,7 @@
                            (distinct)
                            (keep #(p/get-sentex (:records kb) %))
                            (filter #(not (sx/negative? %)))
-                           (filter #(jtms/in? (:tms kb) (:id %))))
+                           (filter #(jtms/in? (reasoning/tms kb) (:id %))))
                      declaration-functors)]
     (progress! {:phase :declarations :done 0 :total (count stored)})
     (let [found   (into []
@@ -739,7 +740,7 @@
     (when (and (not= (:handle r1) (:handle r2))
                (<= (count (:antecedent r1)) (count (:antecedent r2)))
                (available-at-least? r1 r2)
-               (tax/sees? (:taxonomy kb) context (:context r1)))
+               (tax/sees? (reasoning/taxonomy kb) context (:context r1)))
       (let [[freeze unfreeze] (freezing (cons (:consequent r2) (:antecedent r2)))
             c2    (sx/rename-vars (:consequent r2) freeze)
             a2    (mapv #(sx/rename-vars % freeze) (:antecedent r2))
@@ -754,7 +755,7 @@
   it.  Scoped by `r2`'s context, which is the vantage the subsumption is claimed from, so
   an edge invisible there cannot make one rule cover another."
   [kb index r2]
-  (let [tax   (:taxonomy kb)
+  (let [tax   (reasoning/taxonomy kb)
         reach (if (= :negative (:polarity r2))
                 (tax/genls tax (:functor r2) (:context r2))
                 (tax/specs tax (:functor r2) (:context r2)))]
@@ -825,7 +826,7 @@
    ;; `into #{}` and not the set literal: two rules in one context is the ordinary case,
    ;; and `#{x x}` is a duplicate-key throw rather than a one-element set
    (tax/maximal-common-descendant-contexts
-    (:taxonomy kb) (into #{} [(:context a) (:context b)]))))
+    (reasoning/taxonomy kb) (into #{} [(:context a) (:context b)]))))
 
 (defn- functional-marks-by-position
   "`{1 #{pred …} 2 #{pred …}}` — the predicates carrying a functional-family mark on each
@@ -918,7 +919,7 @@
     `asymmetric` anywhere above either.  A self tuple `(P a a)` is not one: the ontology
     admits it, so a σ identifying the two arguments is no clash."
   [kb a b context]
-  (let [tax (:taxonomy kb)
+  (let [tax (reasoning/taxonomy kb)
         fa  (:functor a)
         fb  (:functor b)]
     (cond
@@ -968,7 +969,7 @@
   one thing the joint-satisfiability test reads a declaration for, and it reads the same
   one the consequent side does."
   [kb lits context]
-  (let [tax     (:taxonomy kb)
+  (let [tax     (reasoning/taxonomy kb)
         by-term (reduce (fn [m l]
                           (let [f (nm/functor l)]
                             (if (and (= 1 (nm/arity l)) (symbol? f) (not (sx/variable? f)))
@@ -1014,7 +1015,7 @@
   A declaration read, not an inference: nothing is derived and no fact is consulted, the
   same standing `separated-antecedents?` has beside it."
   [kb lits context]
-  (let [tax     (:taxonomy kb)
+  (let [tax     (reasoning/taxonomy kb)
         by-term (reduce (fn [m l]
                           (if-let [n (literal-arity-claim tax l context)]
                             (update m (second l) (fnil conj #{}) n)
@@ -1061,7 +1062,7 @@
   no shipped rule concludes a unary type from a `genlArg`-typed antecedent, so no
   `:disjoint` pair ever carries one to prune."
   [kb lits context]
-  (let [tax     (:taxonomy kb)
+  (let [tax     (reasoning/taxonomy kb)
         demands (reduce
                  (fn [m l]
                    (let [f  (nm/functor l)
@@ -1173,7 +1174,7 @@
   distinct unary conclusion functors (only where the KB declares some separation at all),
   and the marked groups for the two predicate properties."
   [kb views]
-  (let [tax (:taxonomy kb)
+  (let [tax (reasoning/taxonomy kb)
         pos (filterv #(= :positive (:polarity %)) views)]
     {:by-key   (by-consequent views)
      :unary-fs (when (or (seq (tax/disjoint-pairs tax))
@@ -1192,7 +1193,7 @@
   from either would drop a pair the context that can see both would find.  An
   over-approximated candidate merely fails `consequent-clash` and yields nothing."
   [kb {:keys [by-key unary-fs marked]} a]
-  (let [tax  (:taxonomy kb)
+  (let [tax  (reasoning/taxonomy kb)
         f    (:functor a)
         pos? (= :positive (:polarity a))]
     (distinct

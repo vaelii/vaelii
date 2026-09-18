@@ -1,7 +1,7 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.impl.asp.edge
-  "The real ASP backend behind `vaelii.impl.solve/Solver` — the edge solver.
+  "The real ASP backend behind `vaelii.impl.types.solve/Solver` — the edge solver.
 
   `solve.clj` describes *what* an edge solve is: most of the KB is monotonic or
   default-true with no conflict, so only the contested defeasible nodes are sent,
@@ -128,7 +128,8 @@
    [vaelii.impl.asp.atoms :as atoms]
    [vaelii.impl.asp.solver :as solver]
    [vaelii.impl.naming :as nm]
-   [vaelii.impl.solve :as solve]))
+   [vaelii.impl.solve :as solve]
+   [vaelii.impl.types.solve :as solve-types]))
 
 ;; Objective levels.  Violations sit above both, at 2 + the rank of the caller's
 ;; priority; these two are the fixed floor.
@@ -501,19 +502,19 @@
   {:defeat #{} :violated (vec (:doomed t)) :error err})
 
 (def edge-solver
-  "An ASP-backed `solve/Solver`.  Install with `(core/set-solver kb edge-solver)`.
+  "An ASP-backed `solve-types/Solver`.  Install with `(core/set-solver kb edge-solver)`.
 
   Falls back to `solve/local-solver` when **no** ASP backend is reachable, so this is
   safe to install unconditionally; check `(solver/available?)` if you need to know which
   one will run.  With a backend present it answers from the backend or decides nothing —
   it never mixes the two, and it never throws (see the ns docstring, and `undecided`)."
-  (reify solve/Solver
+  (reify solve-types/Solver
     (solve [_ program]
       (let [{:keys [aspif] :as t} (translate program)]
         (cond
           ;; nothing contested — only the structurally hopeless remain
           (nil? aspif)             {:defeat #{} :violated (vec (:doomed t))}
-          (not (solver/available?)) (solve/solve solve/local-solver program)
+          (not (solver/available?)) (solve-types/solve solve/local-solver program)
           :else
           ;; Only the backend call is guarded, and it is guarded against `Throwable`:
           ;; a native call fails as an `Error` as readily as an exception, and a
@@ -535,7 +536,7 @@
               (do (trove/log! {:level :warn :id ::unsat
                                :msg  "the ASP program was unsatisfiable; deciding with the local solver"
                                :data {:assumptions (count (:assumptions t))}})
-                  (solve/solve solve/local-solver program))
+                  (solve-types/solve solve/local-solver program))
               ;; `:interrupted` / `:unknown` (no witness), and `:best-effort` (a witness,
               ;; but one a longer budget might improve): all decide nothing here.  The
               ;; imperative `:one` reader takes a `:best-effort` model — a caller asked for

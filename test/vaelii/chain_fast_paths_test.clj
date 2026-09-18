@@ -26,6 +26,7 @@
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rules :as vr]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (defn- fwd [antes conseq]
@@ -37,7 +38,7 @@
   consequence, informant and antecedents mapped from handles to [sentence context]."
   [kb]
   (let [recs (:records kb)
-        tms  (:tms kb)
+        tms  (reasoning/tms kb)
         sent (fn [h] (let [s (p/get-sentex recs h)] [(:sentence s) (:context s)]))]
     {:sentexes
      (sort-by pr-str

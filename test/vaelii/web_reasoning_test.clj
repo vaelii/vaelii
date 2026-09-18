@@ -13,10 +13,10 @@
   table against the KB. This one is about the page."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
+            [vaelii.browser.examples :as ex]
+            [vaelii.browser.sandbox :as sandbox]
+            [vaelii.browser.web :as web]
             [vaelii.core :as v]
-            [vaelii.host.examples :as ex]
-            [vaelii.host.sandbox :as sandbox]
-            [vaelii.host.web :as web]
             [vaelii.test-util :as tu]))
 
 (def ^:dynamic *app* nil)

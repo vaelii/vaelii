@@ -17,6 +17,7 @@
             [vaelii.core :as v]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.rules :as vr]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -350,7 +351,7 @@
   fine on a test KB and is what makes it an oracle rather than a re-implementation."
   [kb]
   (into {} (map (fn [h] [h (v/readable-sentence (v/sentex kb h))]))
-        (jtms/in-datums (:tms kb))))
+        (jtms/in-datums (reasoning/tms kb))))
 
 (defn- edit-diff
   "The belief diff a real `edit` of `batch` produces, as `{:added #{S} :removed #{S}}`."

@@ -38,9 +38,11 @@
             [vaelii.core :as v]
             [vaelii.impl.dense-jtms]
             [vaelii.impl.jtms :as jtms]
-            [vaelii.impl.protocols :as p])
+            [vaelii.impl.protocols :as p]
+            [vaelii.impl.types.reasoning :as reasoning])
   (:import [org.roaringbitmap RoaringBitmap]
-           [vaelii.impl.dense_jtms DenseTms HeapColumns]))
+           [vaelii.impl.dense_jtms DenseTms]
+           [vaelii.impl.types.tms HeapColumns]))
 
 (defn- mb [b] (/ (double b) 1048576.0))
 (defn- retained ^long [objs] (postings/retained objs))
@@ -85,7 +87,7 @@
        (try (v/assert kb s 'CxBench {:chain? false :strength strength})
             (catch Exception _ nil)))
      ;; a rule and facts that fire it, so :justs and the derived nodes are populated
-     (v/assert-rule kb '[(likes ?x ?y)] '(knows ?x ?y) 'CxBench)
+     (v/assert-rule kb '[(likes ?x ?y)] '(knows ?x ?y) 'CxBench {:direction :forward})
      (let [inds (u/terms "J" (max 10 (quot m 2)))
            icum (u/zipf-cumulative (count inds) 1.1)]
        (doseq [_ (range m)]
@@ -180,11 +182,11 @@
   Built twice from scratch rather than converted, because the point is what a running
   KB costs, not what a translation costs."
   [n m st]
-  (let [size    (fn [kb] [(retained [(:tms kb)])
-                          (retained (just-structures (:tms kb)))])
+  (let [size    (fn [kb] [(retained [(reasoning/tms kb)])
+                          (retained (just-structures (reasoning/tms kb)))])
         ref-kb  (build-kb n m st :reference)
         [ref-b ref-j] (size ref-kb)
-        nodes   (count (jtms/datums (:tms ref-kb)))
+        nodes   (count (jtms/datums (reasoning/tms ref-kb)))
         _       (p/clear-records! (:records ref-kb))
         dns-kb  (build-kb n m st :dense)
         [dns-b dns-j] (size dns-kb)
@@ -225,7 +227,7 @@
          rng (java.util.Random. 20260725)
          who (u/terms "K" inds)]
      (p/clear-records! (:records kb)) (p/clear-index! (:index kb))
-     (v/assert-rule kb '[(rel ?x ?y) (rel ?y ?z)] '(linked ?x ?z) 'CxBench)
+     (v/assert-rule kb '[(rel ?x ?y) (rel ?y ?z)] '(linked ?x ?z) 'CxBench {:direction :forward})
      (doseq [_ (range edges)]
        (try (v/assert kb (list 'rel (nth who (.nextInt rng inds)) (nth who (.nextInt rng inds)))
                       'CxBench {:strength strength})
@@ -276,11 +278,11 @@
   "3.5 again on the rules-heavy corpus — where the justification copy, not the node
   graph, is what the network is made of."
   [inds edges st]
-  (let [size    (fn [kb] [(retained [(:tms kb)])
-                          (retained (just-structures (:tms kb)))])
+  (let [size    (fn [kb] [(retained [(reasoning/tms kb)])
+                          (retained (just-structures (reasoning/tms kb)))])
         ref-kb  (build-join-kb inds edges st :reference)
         [ref-b ref-j] (size ref-kb)
-        state   @(:tms ref-kb)
+        state   @(reasoning/tms ref-kb)
         nodes   (count (:nodes state))
         justs   (count (:justs state))]
     (println (format "\n══ Phase 3.7: the rules-heavy corpus — %,d nodes, %,d justifications (%.1f per node) ══"
@@ -309,7 +311,7 @@
         ;; :default — so measure that, not only the monotonic case.
         st (keyword (or (nth args 2 nil) "default"))
         kb (build-kb n m st)
-        state @(:tms kb)]
+        state @(reasoning/tms kb)]
     (println (format "vaelii Phase-3 JTMS measurement — %,d nodes, %,d justifications, facts at %s"
                      (count (:nodes state)) (count (:justs state)) st))
     (println "Density (jol retained heap) is TRUSTED — structural, so contention-immune.")

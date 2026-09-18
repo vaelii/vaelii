@@ -9,8 +9,10 @@
 
 `vaelii.core` is the engine's whole API. Five thin entry points are public beside it —
 `vaelii.client`, `vaelii.starter`, `vaelii.web`, `vaelii.serve`, `vaelii.cli` — and
-those six namespaces are the compatibility boundary. Everything else is `vaelii.impl.*`
-and free to change: the engine internals, the ontology content, and the browser. Tests
+those six namespaces are the compatibility boundary. Everything else is private and free
+to change: the engine internals and the ontology content under `vaelii.impl.*`, the
+servers, CLI, loaders and LLM stack under `vaelii.host.*`, and the two applications over
+this API, `vaelii.koinii.*` and the browser (`vaelii.browser.*`). Tests
 reach into `impl` freely, which is what unit tests are for; nothing outside this repo
 should. The file map is [namespaces.md](namespaces.md). Entry points are `lein run` (→
 `vaelii.core`) and `lein run -m vaelii.web`.
@@ -88,6 +90,11 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ;  naming the claim nobody stored, docs/inherit.md)
                                                ; both lists are ordered by CONTENT, entries and sides
                                                ; alike, so (first (contradictions kb)) is stable
+(contradictions kb context)                    ; the pairs standing for ONE reader: it sees every
+                                               ; side's context, and a pair its vantages decided
+                                               ; differently (:vantages {vantage handle}) is a dilemma
+                                               ; only for a reader seeing two of those vantages
+                                               ; (docs/nmtms.md, "Vantages that disagree")
 (settle-stats kb) / (reset-settle-stats! kb)     ; the exceptWhen fixpoint's iteration instrumentation
 (chain-stats kb)                               ; {:runs n :last {:derived n :truncated? bool}} — a capped run is visible
 (chain-report kb)                              ; the per-rule breakdown behind chain-stats: per forward rule
@@ -116,6 +123,10 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; thing that reaches wider — it zeroes the :process hit/miss
                                                 ; rates every KB in the JVM reports, and names what it
                                                 ; touched under :counters-reset
+(install-memory-guard! {:kbs thunk})            ; attach the GC listener that shrinks the caches over
+                                                ; the old-generation high mark and grows them back
+                                                ; under the low one; :kbs answers the live KBs whose
+                                                ; per-KB caches it trims.  Idempotent
 (exposed-clashes kb)                            ; the standing cross-context disjointness clashes, asked
                                                 ; of the whole KB — settle files what a change newly
                                                 ; exposes, this answers what the KB holds now
@@ -137,7 +148,7 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; tuple [functor pred a b], displacing nothing
 (last-program kb)                              ; the last edge Program solved — the tie, before belief erased it
 (set-solver kb :asp)                           ; the real answer-set backend, by name (:stub is the default)
-(set-solver kb solver)                         ; or any vaelii.impl.solve/Solver value
+(set-solver kb solver)                         ; or any vaelii.impl.types.solve/Solver value
 ;; The context argument on the seven reads below — sentexes-matching, query, prove, ask
 ;; and the ? variants of the last three — takes a real Cx… context, a ?var, or one
 ;; of the three QUERY CONTEXTS — names for a way of reading rather than a place
@@ -264,6 +275,14 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; with no :dir (every in-memory backend, an ephemeral
                                                ; fork), so it is safe in a `finally`; the KB must not
                                                ; be used after — open-kb the directory to read again
+(write-hazards kb)                             ; what makes a write wrong: {:no-belief true},
+                                               ; {:no-index true}, both, or {}.  The write entry
+                                               ; points refuse on a non-empty answer
+(store-state kb [ks])                          ; {:readable? :network? :believes? :recoverable?} —
+                                               ; records read back as sentexes (else :thawed-keys),
+                                               ; a belief network exists, something is IN, and
+                                               ; recover has premises or justifications to read;
+                                               ; ks limits it to the keys asked for
 (export-text! kb dir opts?)                    ; write its PREMISES out as a text KB — one
                                                ; <Context>.txt per context, the format the shipped
                                                ; ontology is authored in; opts {:context C} or
@@ -303,6 +322,16 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; deductions that went with them — as against
                                                ; the deductions a dump simply hangs off
                                                ; sentexes it never carried
+(read-manifest file)                           ; a dump's or store's meta.edn / format.edn, read
+                                               ; under a byte bound: :manifest-too-large past it,
+                                               ; :malformed-manifest for content EDN cannot parse
+(store-backend dir)                            ; the :backend the store in dir was written by —
+                                               ; :disk-snapshot, :disk-log or :disk-columnar —
+                                               ; or nil when dir holds no store; an open under
+                                               ; the wrong one returns an empty KB
+(load-foreign! kb kind path opts)              ; load a directory through the foreign reader
+                                               ; plugin for kind (:cyc-corpus); no plugin, or one
+                                               ; that loads no directory, is :no-foreign-reader
 (isa? kb individual type [context])            ; transitive type membership (context-scoped)
 (types-of kb x [context])                      ; the believed types asserted of an individual
                                                ; — the matcher's own three filters:
@@ -396,6 +425,13 @@ default-chain-opts                              ; the bounds a chain run takes w
 ;; was loaded.  The key is built once per element, and the default comparator walks a key
 ;; instead of printing it (9 before 10, and no *print-* var can elide two keys to one).
 (sort-by-content keyfn [cmp] coll)              ; coll ordered by (keyfn element)
+(negative? sentex)                              ; is it a negative literal, (not S)?  false for a rule
+(rests-on justification)                        ; the handles it needs believed: antecedents, plus
+                                                ; the informant when that is a rule handle
+query-contexts                                  ; the set of reading modes spelled as a context
+                                                ; (?ctx and its siblings); a write given one is refused
+assertable-strengths                            ; #{:monotonic :default}, the set `assert` checks
+                                                ; {:strength s} against
 ;; reified non-atomic terms (docs/nat.md).  The constant is term *identity*, not a name
 ;; anybody wrote, so a display shows the expression: `reified-term?` is a pure test on
 ;; the symbol and gates the read, `term-expression` is one hop (an argument that is
@@ -445,11 +481,13 @@ default-chain-opts                              ; the bounds a chain run takes w
 (add-provenance kb handle m)                     ; merge application fields into it
 (retract! kb handle)                            ; teardown -> {:removed-sentexes n :removed-justifications n}
 (in? kb handle)                                 ; raw structural JTMS IN, before contextual exceptions
-(believed? kb handle context)                   ; IN after exceptions visible from context, before
+(believed? kb handle context)                   ; IN and not withdrawn from context (an except, a
+                                                ; scoped defeat, or resting only on one), before
                                                 ; assertion-context inheritance
 (belief-status kb handle context)               ; deterministic diagnostic map:
                                                 ; {:handle :view-context :stored? :in?
                                                 ;  :assertion-context :exceptions :excepted?
+                                                ;  :withdrawn? :scoped-vantages
                                                 ;  :inherited-path :believed? :visible?}
                                                 ; :exceptions is context/content ordered; every node
                                                 ; is {:handle :in? :in-force? :excepted-by}
@@ -520,6 +558,9 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; VAELII_LOG_LEVEL unset leaves: a KB you opened
                                                 ; must not replace the logging of the
                                                 ; application that opened it
+(switch-value "VAELII_DEV")                     ; a VAELII_* / vaelii.* switch read against its
+                                                ; domain, as open-kb's check reads it; an unknown
+                                                ; name or an out-of-domain value is :unknown-option
 
 ;; the six public dynamic vars — process- or thread-scoped settings, `binding`-shaped
 ;; because they are about a whole batch rather than one call
@@ -569,7 +610,7 @@ arity.  Retrieval answers the sentexes stored in `Ctx`; the reasoning entry poin
 everything `Ctx` inherits.  A wrong arity is refused `:shape`, and an `(ist …)` standing as
 a **conjunct** of a vector goal is refused `:not-well-formed` — a join's conjuncts share
 their bindings, so there is no per-literal context to honor; ask the whole conjunction in
-`Ctx`.  There is no `ist` on a rule's antecedent side (docs/contexts.md).
+`Ctx`.  A rule is refused an `ist` in any position (docs/contexts.md).
 
 A **sentex map** has the stable keys `:id` (the handle) and `:context`; a literal adds
 `:sentence`, and a rule `:antecedent` / `:consequent` / `:direction` / `:defeasible` in its
@@ -577,7 +618,7 @@ place. A rule map carries no `:sentence` — `sentence-of` builds its `implies` 
 `readable-sentence` the same form in the author's variable names. A negative literal's
 `:sentence` is `(not S)`; no separate key carries the sign.
 Key into it.
-The concrete record class behind it (`vaelii.impl.sentex/LiteralSentex` / `RuleSentex`) is an
+The concrete record class behind it (`vaelii.impl.types.sentex/LiteralSentex` / `RuleSentex`) is an
 `impl` detail and not part of the contract — never `instance?`-test it.
 
 **The sentex-map readers are lazy, over live state.**  `sentexes-matching` and the three

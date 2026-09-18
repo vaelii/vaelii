@@ -205,8 +205,8 @@
 
 (defn contradictions
   "The coexisting P/¬P dilemmas."
-  [conn]
-  (c/contradictions conn))
+  ([conn] (c/contradictions conn))
+  ([conn context] (c/contradictions conn context)))
 
 (defn violations
   "The recorded definitional violations."
