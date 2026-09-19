@@ -1511,7 +1511,7 @@
 (def arbitrable-kinds
   "The definitional violations that name **other believed sentexes** rather than a
   malformed sentence, so `settle` can arbitrate them like any other contradiction."
-  #{:disjoint :functional :asymmetric :anti-transitive})
+  #{:disjoint :functional :asymmetric :anti-transitive :cover})
 
 (defn opposing-handles
   "The believed sentexes a violation is *against*, as a vector of handles — empty when
@@ -1733,6 +1733,87 @@
                  :opposing-handle h
                  :message (str "disjointness violated: " x " cannot be both "
                                t " and " t')}))))))))
+
+(defn- negation-handles
+  "The handles of the believed `(not (t x))` sentexes visible from `context` — the
+  negative twin of `membership-handles`, built the same way and for the same reason: the
+  handle named is the sentex a violation is *reported as*, so it is chosen by content
+  rather than by whichever the retrieval enumerated first."
+  [kb t x context]
+  (let [target (list 'not (list t x))]
+    (handle-namings (res/matches-visible kb target context) target)))
+
+(defn- cover-refutations
+  "A cover every one of whose parts is denied of a term the whole holds, as violation
+  maps.
+
+  `(covering W A B)` says that an instance of `W` is an `A` or a `B`. With `(W X)`
+  believed and `(not (A X))` and `(not (B X))` believed beside it, the declaration itself
+  is refuted — a contradiction among believed sentexes, which is a nogood rather than a
+  malformed sentence, so `settle` weighs the declaration, the membership and the
+  negations and defeats the weakest, exactly as it weighs the two memberships of a
+  disjointness clash.
+
+  Asked of the **negation**, which is the sentence that completes the refutation in the
+  order a KB reaches it: the parts are ruled out one at a time and the last one convicts.
+  The other two arrival orders are `settle`'s — a `(W X)` arriving last is an ordinary
+  membership candidate in the moved region, and a declaration arriving last is swept by
+  `declaration-reach`.
+
+  `:opposing-handles` names every other member of the nogood, the declaration included,
+  for the reason `:anti-transitive` names both steps of its chain: the contradiction is
+  not a pair, and arbitration that could see only one side of it would defeat the one
+  sentex it could name whatever the rest were worth.
+
+  Scoped to the asserting context throughout, as `disjoint-problems` is: the declaration,
+  the membership and each negation must be visible from `context`, since a context is
+  refused only on grounds it can see."
+  [kb sentence context]
+  (let [tax  (reasoning/taxonomy kb)
+        neg? (sx/negation? sentence)
+        lit  (if neg? (second sentence) sentence)]
+    (when (and (sequential? lit) (= 1 (nm/arity lit)) (symbol? (nm/functor lit)))
+      (let [;; `part` is the part this sentence rules out, or nil when the sentence is
+            ;; the whole's own membership.  The two shapes are the two arrival orders an
+            ;; entry point sees: the last negation completing a refutation, and the
+            ;; membership arriving under negations already stored.
+            part (when neg? (nm/functor lit))
+            x    (first (nm/args lit))]
+        (when (checkable-term? x)
+          (let [decls (if neg?
+                        (mapv (fn [[whole parts _]] [whole parts])
+                              (tax/covers-naming-visible tax part context))
+                        (tax/covers-over tax (nm/functor lit) context))]
+            (for [[whole parts] decls
+                  :when (or (nil? part)
+                            (provers/conjunction-derivable? kb [(list whole x)] {} context))
+                  ;; every part *but this one*: on the refusal path the sentence under
+                  ;; assertion is not stored yet and holds by assumption, and on the
+                  ;; settle path it is stored and would answer here anyway.
+                  :when (every? (fn [p]
+                                  (or (= p part)
+                                      (provers/conjunction-derivable?
+                                       kb [(list 'not (list p x))] {} context)))
+                                parts)]
+              {:type :cover :sentence sentence :types (vec (cons whole parts))
+               ;; The membership and the other negations, and **not** the declaration
+               ;; the conviction is read through — `disjoint`'s rule, for `disjoint`'s
+               ;; reason: a nogood holding the declaration would, on defeating it, read a
+               ;; taxonomy without the cover on the next pass, find no violation, revive
+               ;; the declaration and oscillate.  The evidence is what a refuted cover
+               ;; convicts; the cover is the standing claim it is convicted against.
+               :opposing-handles
+               (into (if part (vec (membership-handles kb whole x context)) [])
+                     (mapcat #(when-not (= % part) (negation-handles kb % x context))
+                             parts))
+               :message (str "coverage violated: " x " is a " whole
+                             ", which every part of the declared cover "
+                             (str/join ", " parts) " is now denied of")})))))))
+
+(defn- cover-refutation
+  "The first refuted cover, for the refusal paths."
+  [kb sentence context]
+  (first (cover-refutations kb sentence context)))
 
 (defn- disjoint-problem
   "The first disjointness clash, for the refusal paths."
@@ -2389,6 +2470,7 @@
         (args-quoted-problem kb chk context types decls)
         (declaration-problem kb chk context types)
         (disjoint-problem kb chk context types)
+        (cover-refutation kb chk context)
         (asymmetry-problem kb chk context)
         (functional-problem kb chk context)
         (irreflexivity-problem kb chk context)
@@ -2909,6 +2991,7 @@
    (let [chk   (checked-sentence sentence)
          types (kb/membership-reader kb context)]
      (->> (concat (disjoint-problems kb chk context types)
+                  (cover-refutations kb chk context)
                   (functional-problems kb chk context)
                   (asymmetry-problems kb chk context home)
                   (antitransitivity-problems kb chk context home))

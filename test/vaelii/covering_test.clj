@@ -1,7 +1,7 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.covering-test
-  "covering and partitionedInto — named parts that exhaust a whole.
+  "covering and partition — named parts that exhaust a whole.
 
   The declaration half: what a cover states about the taxonomy, what a partition
   separates, and what each is refused for.  The coverage inference itself — n−1 explicit
@@ -70,7 +70,7 @@
 
 (tu/deftest-kb a-partition-separates-its-parts-without-a-disjoint-sentex
   (tu/with-terms [animal dog cat Rex]
-    (v/assert kb (list 'partitionedInto animal dog cat) 'CxUniverse)
+    (v/assert kb (list 'partition animal dog cat) 'CxUniverse)
     (testing "every pair of parts is disjoint"
       (is (v/disjoint? kb dog cat))
       (is (v/disjoint? kb cat dog)))
@@ -82,7 +82,7 @@
 
 (tu/deftest-kb a-partition-separates-the-subtypes-of-its-parts
   (tu/with-terms [animal dog cat poodle Rex]
-    (v/assert kb (list 'partitionedInto animal dog cat) 'CxUniverse)
+    (v/assert kb (list 'partition animal dog cat) 'CxUniverse)
     (v/assert kb (list 'genl poodle dog) 'CxUniverse)
     (is (v/disjoint? kb poodle cat)
         "disjointness is inherited downward through genl, as every other arm's is")
@@ -91,7 +91,7 @@
 
 (tu/deftest-kb dropping-a-partition-releases-every-pair-at-once
   (tu/with-terms [animal dog cat bird]
-    (let [h (v/assert kb (list 'partitionedInto animal dog cat bird) 'CxUniverse)]
+    (let [h (v/assert kb (list 'partition animal dog cat bird) 'CxUniverse)]
       (is (v/disjoint? kb dog cat))
       (is (v/disjoint? kb cat bird))
       (v/retract! kb h)
@@ -100,7 +100,7 @@
 
 (tu/deftest-kb an-exception-exempts-one-pair-of-parts
   (tu/with-terms [perception reading touch Braille]
-    (v/assert kb (list 'partitionedInto perception reading touch) 'CxUniverse)
+    (v/assert kb (list 'partition perception reading touch) 'CxUniverse)
     (is (v/disjoint? kb reading touch))
     (v/assert kb (list 'siblingDisjointException reading touch) 'CxUniverse)
     (testing "the roster is read by the same test the metatype clique is"

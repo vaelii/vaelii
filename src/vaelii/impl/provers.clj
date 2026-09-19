@@ -2104,7 +2104,7 @@
 ;;
 ;; The shape is `DefnSufficientProver`'s — a ground unary membership goal, decided by
 ;; bounded level-6 subqueries, declining in one map lookup on a KB whose covers name
-;; nothing about the goal's collection.  A `partitionedInto` declaration is recorded as a
+;; nothing about the goal's collection.  A `partition` declaration is recorded as a
 ;; cover too, so it licenses the same inference; what it adds is the separation, which is
 ;; `disjointness-test`'s and not this one's.
 

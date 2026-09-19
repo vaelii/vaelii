@@ -907,7 +907,7 @@
     ;; would otherwise separate; stored as adjacency exactly as `:disjoint-index` is, so
     ;; the read is one map lookup behind the `genl-related?` guard it sits beside.
     :sib-exception (index-symmetric t :sib-exception-index a true)  ; a = #{x y}
-    ;; `:cover` is one `(covering W P1 P2 …)` or `(partitionedInto W P1 P2 …)`
+    ;; `:cover` is one `(covering W P1 P2 …)` or `(partition W P1 P2 …)`
     ;; declaration: `a` is `[whole parts]` with the parts sorted, and `b` is whether the
     ;; declaration separates them.  Three tables, because three readers ask three
     ;; different questions of one roster: `:covers` answers what covers a whole
@@ -3287,7 +3287,7 @@
 ;; ---- covering: the parts that exhaust a whole ----------------------------
 ;;
 ;; `(covering W P1 P2 …)` says that every instance of `W` is an instance of some named
-;; part; `(partitionedInto W P1 P2 …)` says that and separates the parts.  The roster is
+;; part; `(partition W P1 P2 …)` says that and separates the parts.  The roster is
 ;; recorded here rather than expanded: a partition's separation is read by
 ;; `separation-frame` the way a metatype's member set is, and the coverage inference
 ;; belongs to `provers/CoveringProver`, so neither writes a sentex per pair.  The `genl`
@@ -3337,6 +3337,23 @@
   "Every declaration covering `whole`, as `[parts partition?]`."
   [tax whole]
   (get-in @tax [:covers whole] #{}))
+
+(defn covers-over
+  "Every declaration covering `t` or any of its supertypes, as `[whole parts]` — what a
+  membership `(t x)` puts `x` under.  Scoped: the declarations `context` cannot see are
+  dropped, as they are in `covers-naming-visible`."
+  [tax t context]
+  (let [scoped? (scoped-context? context)
+        as      (if scoped? (genls tax t context) (genls-global tax t))]
+    (into []
+          (mapcat (fn [whole]
+                    (keep (fn [[parts partition?]]
+                            (when (or (not scoped?)
+                                      (cache-entry-visible?
+                                       tax [:cover [whole parts] partition?] context))
+                              [whole parts]))
+                          (covers-of tax whole))))
+          as)))
 
 (def ^:dynamic *separation-frame-cache*
   "An optional atom `{[a context] frame}` for a **read-only** pass (see
@@ -3520,7 +3537,7 @@
   "The types a **visible declaration** separates `a` from: every `y` such that some
   supertype of `a` is declared `(disjoint x y)` with `x` ≠ `y`, shares a disjoint
   metatype with `y`, stands beside `y` as a proper specialization of one
-  `(sibling_disjoint C)` parent, or stands beside `y` in one `partitionedInto` roster —
+  `(sibling_disjoint C)` parent, or stands beside `y` in one `partition` roster —
   the same four arms `disjointness-test` tests, with the same global genl-relatedness and
   exemption guards on the latter three.
 
@@ -3629,7 +3646,7 @@
                       (not (exempt? x y)))]
        [x y])
      ;; each partition contributes its parts against each other, under the same two
-     ;; guards — the metatype arm's roster, read off a `partitionedInto` declaration
+     ;; guards — the metatype arm's roster, read off a `partition` declaration
      (for [[whole ps] (:partitions t)
            :when (vis? [:cover [whole ps] true])
            x  ps
@@ -3645,7 +3662,7 @@
   *different* supertype of b are separated — by a declared `(disjoint x y)`, by both
   being members of one disjoint metatype, by both being non-genl-related proper
   specializations of one `(sibling_disjoint C)` parent, or by both being parts of one
-  `partitionedInto` roster.  Every way, disjointness is
+  `partition` roster.  Every way, disjointness is
   inherited downward through genl (subtypes of disjoint types are disjoint), which
   is what the walk over both up-closures buys.
 

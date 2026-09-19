@@ -217,6 +217,7 @@ without storing anything, and answers with the identical problem.
 | `:arg-type` / `:arg-genl` | an `arg` / `genlArg` constraint convicted it — [argtypes.md](argtypes.md) |
 | `:arg-variable` | a **rule** variable two argument constraints demand disjoint types of — [taxonomy.md](taxonomy.md) |
 | `:disjoint` / `:functional` / `:asymmetric` | a definitional clash — [exceptions.md](exceptions.md) |
+| `:cover` | a `covering` declaration every part of which is now denied of a term the whole holds — [taxonomy.md](taxonomy.md) |
 | `:unknown-option` | an option key nothing reads, or a non-map `opts` — `:mismatch` says which. A refused `VAELII_*` or `vaelii.*` switch is named under `:switch`, and under `:property`, the older key |
 
 The one worth knowing in advance: **snake_case means arity 1.** An underscored functor
@@ -523,6 +524,7 @@ so one vocabulary reads both.
 | `:choice-head-not-positive` | an `assumptionRule` head is negated, and a choice head must be a positive literal | [solving.md](solving.md) |
 | `:compaction-failed` | a record or index log compaction failed after its commit point — the store refuses writes until it is reopened | [storage.md](storage.md) |
 | `:context-escape` | a proposed sentence is an `ist`, so it would file itself somewhere other than the context the caller named | [llm.md](llm.md) |
+| `:cover` | a coverage claim refuted: a term holds the whole and every named part is explicitly denied of it — see [`assert` refused it](#assert-refused-it) | [taxonomy.md](taxonomy.md) |
 | `:cross-origin` | the daemon refused a request whose `Origin` names another site | [operations.md](operations.md) |
 | `:daemon-error` | the daemon refused and its reply carried no `:type` of its own — the client's fallback | [operations.md](operations.md) |
 | `:damaged-dictionary` | a tokenized frame cites a token id the dictionary has no entry for | [storage.md](storage.md) |

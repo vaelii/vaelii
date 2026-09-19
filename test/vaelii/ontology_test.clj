@@ -305,8 +305,8 @@
   data context sits below the collector and sees the whole upper spindle — so a member
   declaring `(arg parentOf 1 animal)` over CxOrganism's `animal` is checked where it bites and
   is not misplaced."
-  '#{genl disjoint typeGenl genlInverse intersection partitionedByType partitionedInto
-     siblingDisjointException})
+  '#{genl disjoint typeGenl genlInverse intersection partitionedByType
+     covering partition siblingDisjointException})
 
 (tu/deftest-kb no-authored-type-relation-names-a-term-its-own-context-cannot-see
   ;; The scoped complement of `every-shipped-type-is-placed-under-the-root`.  That test asks

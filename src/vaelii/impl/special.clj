@@ -3826,7 +3826,7 @@
     (do (when-let [v *edge-replay-skips*] (vswap! v inc)) tax)))
 
 (defn- cover-parts
-  "The `[whole parts]` one `(covering W P …)` or `(partitionedInto W P …)` sentence
+  "The `[whole parts]` one `(covering W P …)` or `(partition W P …)` sentence
   declares, or nil when the stored sentence is not one.
 
   `recover` replays **stored** sentexes rather than checked ones, so a foreign or stale
@@ -3843,7 +3843,7 @@
       [whole (distinct parts)])))
 
 (defn- cover-arms
-  "The integrate / disintegrate / rebuild triple `covering` and `partitionedInto` share,
+  "The integrate / disintegrate / rebuild triple `covering` and `partition` share,
   differing only in `partition?` — whether the roster also separates its parts.
 
   Each arm does two things, because the declaration says two things. The roster goes
@@ -3937,7 +3937,7 @@
                              (replay-edge tax/add-genlCx tax sentence 'genlCx id ctx))
              :wff          wff/genlCx-problems}
     'covering        (cover-arms false)
-    'partitionedInto (cover-arms true)
+    'partition (cover-arms true)
     'disjoint {:integrate    (fn [kb sx h]
                                (let [[_ a b] (:sentence sx)]
                                  (tax/add-disjoint (reasoning/taxonomy kb) a b h (:context sx))))

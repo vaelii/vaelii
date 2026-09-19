@@ -1,7 +1,7 @@
 # Taxonomy: types, genl, and disjointness
 
 - **Covers:** how the `genl` type hierarchy is cached and queried, how `disjoint` /
-  `disjoint_metatype` are enforced, how `covering` / `partitionedInto` state exhaustion,
+  `disjoint_metatype` are enforced, how `covering` / `partition` state exhaustion,
   and how `arg` / `genlArg` constrain arguments as a
   rejection check — of a ground sentence, and of a rule's shared variables.
 - **Not here:** `genlCx`, the sibling closure over contexts rather than types →
@@ -1024,7 +1024,7 @@ partition: an instance of the whole belongs to at least one named part.
 
 ```clojure
 (covering        Whole Part1 Part2 …)   ; the parts exhaust Whole, and may overlap
-(partitionedInto Whole Part1 Part2 …)   ; the same, and the parts are pairwise disjoint
+(partition Whole Part1 Part2 …)   ; the same, and the parts are pairwise disjoint
 ```
 
 Both relations are variable-arity, and each takes a whole followed by two or more
@@ -1057,10 +1057,15 @@ Negation as failure is a separate operator, spelled `unknown`, and it stays a qu
 operator that nothing stores ([naf.md](naf.md)).
 
 Ruling out *every* part falsifies the cover. `(W X)` with `(not (A X))`, `(not (B X))`
-and `(not (C X))` is a contradiction, reported through the same nogood path a
-disjointness clash takes.
+and `(not (C X))` is a contradiction, refused at the entry point as `:cover` and
+arbitrated by `settle` as any other definitional clash is — whichever of the two shapes
+completes it, the last negation or the membership arriving under negations already
+stored. The nogood names the membership and the negations and **not** the declaration,
+which is `disjoint`'s rule and is there for `disjoint`'s reason: a nogood that could
+defeat the cover would read a taxonomy without it on the next pass, find no violation,
+and revive it.
 
-### `partitionedInto` adds no separation mechanism
+### `partition` adds no separation mechanism of its own
 
 A partition's part roster is recorded the way a `disjoint_metatype`'s member set is: held
 in the taxonomy, consulted by `disjointness-test`, and never written out as `(disjoint

@@ -1630,6 +1630,7 @@
    :arg-variable         "arg var"
    :arity                "arity"
    :disjoint             "disjoint"
+   :cover                "no part left"
    :asymmetric           "both ways"
    :functional           "functional"
    :irreflexive          "self tuple"

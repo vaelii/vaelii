@@ -97,7 +97,7 @@
     (conj (str a " and " b " are genl-related, so they overlap and can't be disjoint"))))
 
 (defn covering-problems
-  "`covering` and `partitionedInto` — a whole followed by two or more distinct parts.
+  "`covering` and `partition` — a whole followed by two or more distinct parts.
 
   What is checked is what the declaration *cannot* mean.  A missing `(genl part whole)`
   edge is not among it: the declaration states that edge rather than requiring one, so

@@ -319,14 +319,15 @@
   Variable-arity, and the arity is content: two parts and three parts are two claims
   about one whole, so the roster is part of the key rather than something accumulated
   under the whole."
-  [target & {:keys [facets notes sweeps] :or {facets #{}}}]
+  [target & {:keys [facets notes sweeps opposing-read] :or {facets #{}}}]
   (cond-> {:shape   {:args [:type] :variadic :type}
            :storage [:roster target]
            :checked true
            :facets  (conj facets :cached :derived)
            :family  nil}
-    sweeps (assoc :sweeps sweeps)
-    notes  (assoc :notes notes)))
+    sweeps        (assoc :sweeps sweeps)
+    opposing-read (assoc :opposing-read opposing-read)
+    notes         (assoc :notes notes)))
 
 (defn- wff-only
   "A declaration `special/entries` gives a well-formedness arm and nothing else — read
@@ -475,21 +476,33 @@
      ;; :derived, like the separations above and for the same argument — a rule may
      ;; conclude a cover, and a `decontextualized_predicate` lift copies one into
      ;; CxUniverse, and neither may wait for a restart to reach the taxonomy.  The
-     ;; sweep is `:type-separating` for both spellings: `partitionedInto` separates its
+     ;; sweep is `:type-separating` for both spellings: `partition` separates its
      ;; parts from each other, and a bare `covering` installs a `genl` edge per part, so
      ;; either arriving after the memberships implicates the terms it names.
      ['covering
-      (enforced (roster :cover :facets #{:reach :convicts}
+      (enforced (roster :cover :facets #{:reach :convicts :arbitrable}
                         :sweeps :type-separating
+                        :opposing-read
+                        (str "the nogood holds the whole's membership and the negations,"
+                             " and the declaration the conviction is read through is not a"
+                             " member of it — disjoint's rule, for disjoint's reason: a"
+                             " nogood defeating the cover would read a taxonomy without it"
+                             " on the next pass, find no violation, and revive it.")
                         :notes (str "the coverage half is answered by provers/CoveringProver"
                                     " and convicts through settle's cover violation; the"
                                     " genl edge per part is installed by the integrate arm,"
                                     " against the covering sentex's own handle."))
                 (str "taxonomy/add-cover — the part roster consulted, never stored as a"
                      " sentex per part, plus one taxonomy/add-genl per part"))]
-     ['partitionedInto
-      (enforced (roster :cover :facets #{:reach :convicts}
+     ['partition
+      (enforced (roster :cover :facets #{:reach :convicts :arbitrable}
                         :sweeps :type-separating
+                        :opposing-read
+                        (str "the nogood holds the whole's membership and the negations,"
+                             " and the declaration the conviction is read through is not a"
+                             " member of it — disjoint's rule, for disjoint's reason: a"
+                             " nogood defeating the cover would read a taxonomy without it"
+                             " on the next pass, find no violation, and revive it.")
                         :notes (str "covering's storage exactly, with the separating flag"
                                     " set: one key and one table, so the coverage half"
                                     " needs no second reader and no genl edge between the"
