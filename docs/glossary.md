@@ -352,7 +352,8 @@ not assertible. See [equality.md](equality.md).
 **Direction** ![kb](../.github/badges/cat-kb.svg): Whether a rule chains
 `:forward`, `:backward`, `:both`, `:forward-only`, or `:inert`. `:forward` and `:both` are
 one class — forward + backward — so a `set/forwardRule` rule answers backward goals too;
-`:forward-only` (`set/forwardOnlyRule`) forward-chains but never backchains, a tests-only
+`:forward-only` (`set/forwardOnlyRule`) forward-chains but never backchains, the direction
+for a rule a backward walk would cycle on, a tests-only
 mode the ontology avoids. The `set/*Rule` wrappers canonicalize into the record's
 `:direction` field; a bare `implies` needs none and reads `:backward`, the tractable
 default, since forward chaining materializes a conclusion per match. The chainers read the

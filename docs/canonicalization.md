@@ -133,14 +133,49 @@ stores as one sentex however the parts are ordered:
 | `(commutativeInArgs P p1 p2 …)` | exactly the named positions; every other stays put |
 | `(commutativeInArgAndRest P f)` | position `f` through the application's own end |
 
-`commutativeInArgAndRest` is the one the canonicalizer reads. `commutative` is declarative
-sugar: a CxCore rule derives `(commutativeInArgAndRest P 1)` from it, and the reverse rule
-gives back the equivalence the engine has no `iff` to state. `(genl symmetric commutative)`
-classifies every symmetric predicate, and `(commutative P)` with `(arity P 2)` concludes
-`(symmetric P)` — commutativity at two arguments **is** symmetry, where commutativity at
-any other arity implies neither symmetry nor arity 2.
+All three install a group directly, at their own arm in the special-predicate table, and
+`(commutative P)` installs the group `[:rest 1]` beside the `:commutative` prop it is
+queried by. So no spelling is derived from another: the canonicalizer reads one table
+whichever one was written.
 
-The two written spellings reduce to one runtime descriptor, and
+The equivalence between `(commutative P)` and `(commutativeInArgAndRest P 1)` stays in
+CxCore as two `set/inertRule`s — believed, indexed and queryable, run by neither engine —
+because the engine has no `iff` to state it with and neither mark has to derive the
+other any more.
+
+`(genl symmetric commutative)` classifies every symmetric predicate, and `(commutative P)`
+with `(arity P 2)` concludes `(symmetric P)` — commutativity at two arguments **is**
+symmetry, where commutativity at any other arity implies neither symmetry nor arity 2.
+That last one is a `set/forwardOnlyRule`, and the three directions around it are what
+this vocabulary costs a backward search if they are written any other way.
+
+### A bridge between two marks is a cycle backward
+
+`set/forwardRule` adds forward chaining **without taking the backward use away**
+(`rules/backward?` accepts `:forward`), so a rule written with it answers goals too. Three
+rules here conclude a mark that another of them needs:
+
+- `(commutative ?p)` → `(commutativeInArgAndRest ?p 1)` and back, the two directions of
+  one equivalence.
+- `(commutative ?p) ∧ (arity ?p 2)` → `(symmetric ?p)`, whose conclusion `(genl symmetric
+  commutative)` makes a **spec** of `commutative` — and `provers/candidate-rules` offers a
+  rule concluding a spec as a candidate for the supertype goal. So the rule answers the
+  goal its own antecedent poses.
+
+`provers/candidate-rules` carries no ancestor-goal guard, so nothing stops the descent.
+The depth bound (`inference/*max-depth*`) does stop it, which turns the cycle into an
+exponential frontier inside that depth rather than a refusal, and `(genl commutative
+relation)` puts `(commutative ?p)` under every open `(relation ?x)` query — so the cost
+reached every caller of the inference engine, not only a caller asking about
+commutativity. Forward chaining has no such trouble with any of the three: it derives each
+conclusion once and reaches a fixpoint, and an unfounded pair is labelled as one
+([nmtms.md](nmtms.md)).
+
+So the equivalence is inert (the marks install directly, and it derives nothing either
+way) and the arity bridge is forward-only (it derives, and a backward walk of it is the
+cycle). Writing any of the three as `set/forwardRule` returns the stall.
+
+The three written spellings reduce to one runtime descriptor, and
 `sentex/commuting-components` turns the descriptors a predicate carries into the position
 **components** one literal permutes. Three things that reduction decides:
 
@@ -191,7 +226,7 @@ alone.
 direction is written, so like `not`/`implies` it canonicalizes **into the record**:
 `:direction` (`:forward`/`:backward`/`:both`/`:forward-only`/`:inert`, `:backward` for a
 bare `implies` — the tractable default, since forward chaining materializes a conclusion
-per match; `:forward-only` from `set/forwardOnlyRule` is a tests-only mode) and
+per match; `:forward-only` from `set/forwardOnlyRule` forward-chains and never backchains) and
 `:defeasible` (from `set/defaultRule`). Wrappers may nest — a
 defeasible forward rule — and never reach the stored sentence. The `:direction`
 opt on `assert` and `assert-rule` is just the programmatic spelling: it wraps, and

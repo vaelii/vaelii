@@ -463,14 +463,15 @@
                              (str "taxonomy prop :symmetric — canonical argument order, so both spellings"
                                   " are one sentex; also a binary_predicate type"))]
      ['commutative (enforced (prop :commutative :facets #{:reach :answers}
-                                   :notes (str "declarative sugar and a queryable"
-                                               " classification: a CxCore rule derives"
-                                               " (commutativeInArgAndRest P 1), which is"
-                                               " what the canonicalizer reads, so there is"
-                                               " no second all-arguments code path. Its"
-                                               " reach is that derived spelling's."))
-                             (str "taxonomy prop :commutative — the all-arguments mark, which derives"
-                                  " (commutativeInArgAndRest P 1); also a binary_predicate-free"
+                                   :notes (str "the all-arguments spelling, and a queryable"
+                                               " classification. Its arm installs the"
+                                               " commuting group [:rest 1] beside the prop,"
+                                               " so the canonicalizer reads one table for"
+                                               " all three spellings and no rule derives"
+                                               " (commutativeInArgAndRest P 1) from it."
+                                               " Its reach is that group's."))
+                             (str "taxonomy prop :commutative, and the commuting group [:rest 1] its"
+                                  " arm installs alongside; also a binary_predicate-free"
                                   " relation mark, since it holds at any arity"))]
      ['asymmetric  (enforced (assoc (prop :asymmetric :facets #{:reach :convicts :arbitrable
                                                                 :answers}
@@ -632,8 +633,8 @@
      ;; positions — and share the `:commuting` table, since the two written shapes reduce
      ;; to one runtime group descriptor (`sentex/commuting-components`).  `commutative`
      ;; is the third spelling and sits with the definitional marks above: it is a
-     ;; one-place mark, and the CxCore rule deriving `(commutativeInArgAndRest P 1)` from
-     ;; it is what puts its group in this table.
+     ;; one-place mark, and its arm installs the group `[:rest 1]` in this table beside
+     ;; the `:commutative` prop it also maintains.
      ['commutativeInArgAndRest
       (enforced {:shape   {:args [:relation :position]}
                  :storage [:pred-commuting :commuting]

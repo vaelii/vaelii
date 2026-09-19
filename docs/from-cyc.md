@@ -217,7 +217,7 @@ and believed or not.
 | in Cyc | here |
 |---|---|
 | assert a rule | `(v/assert-rule kb [antecedents] consequent context opts)` |
-| `forwardRule` | `set/forwardRule` / `{:direction :forward}` — here that forward-chains **and** answers backward goals (Cyc's forward-only is `set/forwardOnlyRule`, a tests-only mode) |
+| `forwardRule` | `set/forwardRule` / `{:direction :forward}` — here that forward-chains **and** answers backward goals (Cyc's forward-only is `set/forwardOnlyRule`) |
 | `backwardRule` — the default | bare `(implies …)`, or `set/backwardRule` / `{:direction :backward}` |
 | `:code` direction | `{:direction :inert}`, or `set/inertRule` — believed and indexed, fires neither way |
 | rule variables | `?x` |

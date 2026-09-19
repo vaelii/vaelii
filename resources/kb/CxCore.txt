@@ -1059,29 +1059,49 @@
 (arg commutativeInArgAndRest 1 relation)
 (arg commutativeInArgAndRest 2 positive_integer)
 
-;; The two bridges between the three spellings, and the two to symmetric.
+;; The two bridges between the three spellings, and the one to symmetric.
 ;;
 ;; commutative and (commutativeInArgAndRest P 1) are the same licence, and the engine has
-;; no iff, so the equivalence is written as the two supported directions. The pair is a
-;; cycle by construction: each conclusion justifies the other, so neither stands on the
-;; other alone — withdrawing the last external support withdraws both, which is the
-;; ordinary unfounded-cycle labelling (docs/nmtms.md).
-(set/forwardRule (implies (and (commutative ?p)) (commutativeInArgAndRest ?p 1)))
-(set/forwardRule (implies (and (commutativeInArgAndRest ?p 1)) (commutative ?p)))
+;; no iff. Each mark installs the commuting group [:rest 1] at its own arm in
+;; special/arms, so the canonicalizer reads one table whichever spelling was written and
+;; neither spelling has to be derived from the other. The two directions stay here as
+;; set/inertRule: believed, indexed and queryable, run by neither engine.
+;;
+;; They are inert rather than forward rules because a derivation between them is a cycle —
+;; each conclusion justifies the other — and set/forwardRule adds forward chaining without
+;; taking the backward use away. Forward chaining survives a cycle: the pair is unfounded
+;; and the JTMS labels it so (docs/nmtms.md). Backward search does not.
+;; provers/candidate-rules carries no ancestor-goal guard, so (commutative ?p) expands to
+;; (commutativeInArgAndRest ?p 1) and back with no binding arriving to close it off. The
+;; depth bound stops the descent, which makes the cycle an exponential frontier inside
+;; that depth rather than a refusal, and (genl commutative relation) puts the goal under
+;; every open (relation ?x) query — which is what made vaelii.arity-vocabulary-test never
+;; finish under VAELII_QUERY_ENGINE=inference.
+(set/inertRule (implies (and (commutative ?p)) (commutativeInArgAndRest ?p 1)))
+(set/inertRule (implies (and (commutativeInArgAndRest ?p 1)) (commutative ?p)))
 
 ;; Every symmetric relation is commutative over its two arguments, stated as a genl edge.
-;; The membership it gives is inherited rather than stored, and the first rule above still
-;; fires on it, so a symmetric P ends up carrying (commutativeInArgAndRest P 1) as well.
-;; That is a second licence over the two positions symmetric already sorts, and it is
-;; harmless rather than redundant work: both spellings sort the same pair by the same
-;; term order, so the canonical form is the one symmetric alone produced, and the match
-;; fan is the same mirror probe.
-;;
+;; The membership it gives is inherited rather than stored. The two rules above are inert,
+;; so a symmetric P carries no second group: symmetric sorts its own two arguments, and
+;; the canonical form is the one it already produced.
+(genl symmetric commutative)
+
 ;; The converse needs the arity, and is a rule because it concludes a mark the engine
 ;; enforces: commutativity at two arguments IS symmetry, where commutativity at any other
 ;; arity implies neither symmetry nor arity 2.
-(genl symmetric commutative)
-(set/forwardRule (implies (and (commutative ?p) (arity ?p 2)) (symmetric ?p)))
+;;
+;; forwardOnlyRule, not forwardRule: set/forwardRule adds forward chaining without taking
+;; the backward use away, and backward this rule is a cycle. The genl edge above makes
+;; symmetric a spec of commutative, so provers/candidate-rules offers a rule concluding
+;; (symmetric ?p) as a candidate for the goal (commutative ?p) — which is the very goal
+;; this rule's own antecedent poses. Nothing stops the descent: candidate-rules carries
+;; no ancestor-goal guard, and the depth bound turns the cycle into an exponential
+;; frontier rather than a refusal. (genl commutative relation) puts that goal under every
+;; open (relation ?x) query, so the cycle reached every caller of the inference engine.
+;; Forward chaining has no such trouble — it derives (symmetric P) once and reaches a
+;; fixpoint — so the rule keeps the direction that does its work and drops the one that
+;; does not.
+(set/forwardOnlyRule (implies (and (commutative ?p) (arity ?p 2)) (symmetric ?p)))
 
 (comment asymmetric
          "(asymmetric ?predicate) means that ?predicate cannot hold both ways. (?predicate a b) and (?predicate b a) are contradictory, and a strict order such as largerThan is the usual case. Read as a nogood: the mirror of a claim denies it, so a strict claim conflicts with its converse instead of silently coexisting with it. The conviction needs a believed opposing claim, so a self tuple (?predicate a a) is admitted rather than refused. Also a type: (asymmetric P) classifies P as a binary_predicate.")

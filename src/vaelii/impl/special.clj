@@ -3995,18 +3995,46 @@
                      (when (and (symbol? pred) (integer? n) (pos? n))
                        (tax/add-functional-in-arg tax pred n id ctx)))
      :wff          wff/functional-in-arg-problems}
-    ;; The two commutativity relations.  `(commutativeInArgAndRest P f)` licences every
+    ;; The three commutativity relations.  `(commutativeInArgAndRest P f)` licences every
     ;; position from `f` to the literal's own arity to permute; `(commutativeInArgs P p …)`
-    ;; licences exactly the positions named.  Both are cached for `arity`'s reason twice
+    ;; licences exactly the positions named; `(commutative P)` licences every position,
+    ;; which is the tail from position 1.  All three are cached for `arity`'s reason twice
     ;; over: the canonicalizer reads them on **every** assert, not only on a declaration,
     ;; so a re-query per write would be a read on the hottest path the engine has.
     ;;
-    ;; One table between them, since the two written shapes are one runtime group
+    ;; One table between them, since the three written shapes are one runtime group
     ;; descriptor (`sentex/commuting-components`).  Registered here rather than through
     ;; `prop-entry`, which carries no position, and unlike `functionalInArg` these read
     ;; **down** to nothing: the mark is read off the literal's exact functor, because a
     ;; sentex has one key and a `genl` edge below a commutative predicate does not make
     ;; the sub-predicate commutative (`res/kb-sentex`, `tax/commuting-groups`).
+    ;;
+    ;; `commutative` installs its group **here**, beside the `:commutative` prop the mark
+    ;; is queried by, rather than through a CxCore rule deriving `(commutativeInArgAndRest
+    ;; P 1)`.  The two spellings state one licence, and a derivation between them is a
+    ;; rule whose conclusion re-derives its own premise: the pair was written as a cycle
+    ;; and the backward engine has no ancestor-goal guard to stop on it
+    ;; (`provers/candidate-rules`).  Installing both marks at their own arms leaves the
+    ;; canonicalizer one table to read and the resolution prover no cycle to walk, and the
+    ;; equivalence stays in CxCore as two `set/inertRule`s that document it.
+    'commutative
+    {:integrate    (fn [kb sx h]
+                     (let [pred (second (:sentence sx))
+                           tax  (reasoning/taxonomy kb)]
+                       (when (symbol? pred)
+                         (tax/mark-prop tax (pr/prop-kind 'commutative) pred h (:context sx))
+                         (tax/add-commuting tax pred [:rest 1] h (:context sx)))))
+     :disintegrate (fn [kb sx]
+                     (let [pred (second (:sentence sx))
+                           tax  (reasoning/taxonomy kb)]
+                       (when (symbol? pred)
+                         (tax/unmark-prop! tax (pr/prop-kind 'commutative) pred (:id sx))
+                         (tax/del-commuting! tax pred [:rest 1] (:id sx)))))
+     :rebuild      (fn [tax {[_ pred] :sentence id :id ctx :context}]
+                     (when (symbol? pred)
+                       (tax/mark-prop tax (pr/prop-kind 'commutative) pred id ctx)
+                       (tax/add-commuting tax pred [:rest 1] id ctx)))
+     :wff          wff/prop-problems}
     'commutativeInArgAndRest
     {:integrate    (fn [kb sx h]
                      (let [[_ pred n] (:sentence sx)]
@@ -4187,8 +4215,12 @@
     ;; current (docs/labeling.md).
     'bravely        {:wff wff/brave-cautious-problems}
     'cautiously     {:wff wff/brave-cautious-problems}}
-   ;; the nine predicate-metadata marks, each differing only in the `:props` kind its
-   ;; declaration names.  `anti_symmetric` and `anti_transitive` sit in the same list as
+   ;; the eight predicate-metadata marks, each differing only in the `:props` kind its
+   ;; declaration names.  `commutative` is the ninth mark and is **not** here: it
+   ;; maintains a `:props` kind like these and a commuting group besides, so its arms are
+   ;; written out above rather than built by `prop-entry`.
+   ;;
+   ;; `anti_symmetric` and `anti_transitive` sit in the same list as
    ;; the six below them because the kind is read off the declaration: theirs are the two
    ;; functors whose keyword is not their own spelling (`anti_transitive` stores under
    ;; `:anti-transitive`), so converting the functor would put them somewhere else
@@ -4200,7 +4232,7 @@
    ;; (`tax/props-over`) is what makes a `parentOf` mark convict a `fatherOf` chain.
    (into {} (map (fn [f] [f (prop-entry f tax/closure-relations)]))
          '[transitive symmetric asymmetric reflexive functional irreflexive
-           anti_symmetric anti_transitive commutative])
+           anti_symmetric anti_transitive])
    ;; the three equality relations share one entry-shape
    (into {} (map (fn [f] [f equality-entry])) kb/equality-predicates)
    (into {} (map (fn [f] [f {:wff wff/naf-problems}])) (keys sx/aggregate-functors))))

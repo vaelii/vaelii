@@ -166,7 +166,10 @@
 ;;                     the backward use away) — the forward mode the ontology uses.
 ;;   :backward         backward only (the default).
 ;;   :forward-only     forward-chains but is NOT usable in backward proof (set/forwardOnlyRule).
-;;                     A tests-only mode — the shipped ontology never uses it.
+;;                     The direction for a rule whose conclusion answers a goal its own
+;;                     antecedent poses — CxCore's commutative/symmetric bridge is the one
+;;                     the ontology ships, and `candidate-rules` says what a backward walk
+;;                     of such a rule costs.
 ;;   :inert            neither engine (documentation).
 ;; The *index* is complete either way — a rule is filed under both its antecedent and its
 ;; consequent predicates whatever its direction (`special/index-rule-sentex`) — and the
@@ -570,7 +573,7 @@
   "The surface `set/*Rule` wrapper each direction rewraps and exports to.  `:backward` is
   the default (a bare implies), so it needs no wrapper; `:both` and `:forward` both mean
   forward + backward and write as `set/forwardRule`; `:forward-only` (forward, never
-  backward — a tests-only mode) writes `set/forwardOnlyRule`; `:inert` writes
+  backward) writes `set/forwardOnlyRule`; `:inert` writes
   `set/inertRule`."
   '{:forward set/forwardRule :both set/forwardRule
     :forward-only set/forwardOnlyRule :inert set/inertRule})

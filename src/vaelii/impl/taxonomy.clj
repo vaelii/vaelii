@@ -919,9 +919,10 @@
     ;; descriptor — `[:rest f]` for `(commutativeInArgAndRest P f)`, `[:args [p1 p2 …]]`
     ;; for `(commutativeInArgs P p1 p2 …)`.  One predicate may carry several groups at
     ;; once, so this accumulates: `(commutativeInArgs P 1 2)` and `(commutativeInArgs P
-    ;; 3 4)` are two independent permutation licences, both live.  `commutative` is not
-    ;; here — it is a `:props` mark, and the CxCore rule deriving `(commutativeInArgAndRest
-    ;; P 1)` from it is what puts the runtime group in this table.
+    ;; 3 4)` are two independent permutation licences, both live.  `commutative` reaches
+    ;; this table too: it is a `:props` mark *and* a group, and its arm installs `[:rest 1]`
+    ;; here beside the prop rather than deriving `(commutativeInArgAndRest P 1)` through a
+    ;; rule (`special/arms` says why the derivation went).
     :commuting (update-in t [:commuting a] (fnil conj #{}) b)))                    ; a = pred, b = group
 
 (defn- cache-uninstall

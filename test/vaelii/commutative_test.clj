@@ -23,9 +23,12 @@
     an argument between them.
   - **Multiplicity lost.**  Sorting a sequence is not deduping one: `(P W a b b)` keeps
     three tail arguments.
-  - **The bridge cycle self-supporting.**  `commutative` and `commutativeInArgAndRest … 1`
-    derive each other, so the pair is a cycle by construction; withdrawing the last
-    external support has to withdraw both, and `recover` has to agree."
+  - **One spelling leaning on the other.**  `commutative` and `commutativeInArgAndRest … 1`
+    state one licence, and each installs it at its own arm rather than deriving the other.
+    Each has to licence the permutation alone, withdraw it alone, and survive `recover`
+    alone.  The CxCore bridges between the marks carry the directions that are not a
+    backward cycle — two `set/inertRule`s for the equivalence, `set/forwardOnlyRule` for
+    the arity bridge to `symmetric` — and a row below pins each one."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.sentex :as sx]
@@ -248,32 +251,61 @@
       (is (not (v/ask? kb (list 'symmetric comm3) U)))
       (is (not (v/ask? kb (list 'arity comm3 2) U))))))
 
-(tu/deftest-kb the-sugar-and-the-runtime-spelling-derive-each-other
-  (tu/with-terms [mixes tails]
+(tu/deftest-kb either-spelling-licences-the-permutation-on-its-own
+  ;; The two spellings state one licence and neither derives the other: each arm installs
+  ;; the group `[:rest 1]` itself.  So the canonicalizer has to fold a permutation under
+  ;; whichever spelling was written, with the other never asserted and never believed.
+  (tu/with-terms [mixes tails A B C]
     (v/assert kb (list 'commutative mixes) U)
-    (is (v/ask? kb (list 'commutativeInArgAndRest mixes 1) U)
-        "the sugar derives the spelling the canonicalizer reads")
+    (is (= (v/assert kb (list mixes A B C) U)
+           (v/assert kb (list mixes C B A) U))
+        "the sugar alone folds every permutation onto one handle")
     (v/assert kb (list 'commutativeInArgAndRest tails 1) U)
-    (is (v/ask? kb (list 'commutative tails) U)
-        "and an independently supported tail-at-1 derives the sugar")))
+    (is (= (v/assert kb (list tails A B C) U)
+           (v/assert kb (list tails C B A) U))
+        "and the tail-at-1 spelling alone folds the same permutations")
+    (testing "neither spelling is derived from the other"
+      (is (not (v/ask? kb (list 'commutativeInArgAndRest mixes 1) U))
+          "the equivalence is inert, so the sugar concludes no tail-at-1")
+      (is (not (v/ask? kb (list 'commutative tails) U))
+          "and a tail-at-1 concludes no sugar"))))
 
-(tu/deftest-kb the-bridge-cycle-is-not-self-supporting
-  ;; The pair is a cycle by construction — each conclusion justifies the other — so
-  ;; retracting the last external support has to withdraw both rather than leave them
-  ;; propping each other up (docs/nmtms.md's unfounded cycle).  The row the prompt said
-  ;; would find bugs, so it is written before the ones it depends on.
+(tu/deftest-kb no-bridge-between-the-marks-is-walkable-backward
+  ;; Three CxCore rules bridge these marks, and each concludes something another of them
+  ;; needs.  `set/forwardRule` adds forward chaining *without* taking the backward use
+  ;; away (`rules/backward?` accepts `:forward`), so written that way all three answer
+  ;; goals — and `provers/candidate-rules` carries no ancestor-goal guard to stop the
+  ;; descent.  `(genl commutative relation)` puts `(commutative ?p)` under every open
+  ;; `(relation ?x)` query, so the cost reached every caller of the inference engine:
+  ;; `vaelii.arity-vocabulary-test` never finished under `VAELII_QUERY_ENGINE=inference`.
+  ;;
+  ;; The two directions of the equivalence are **inert** — each mark installs its group
+  ;; at its own arm, so neither has to derive the other.  The arity bridge is
+  ;; **forward-only** — it does derive, and only its backward direction is the cycle.
+  ;; Either one written as `set/forwardRule` returns the stall, which is what this pins.
+  (doseq [[rule want]
+          [['(implies (and (commutative ?p)) (commutativeInArgAndRest ?p 1))      :inert]
+           ['(implies (and (commutativeInArgAndRest ?p 1)) (commutative ?p))      :inert]
+           ['(implies (and (commutative ?p) (arity ?p 2)) (symmetric ?p)) :forward-only]]]
+    (let [h (v/handle-of kb rule 'CxCore)]
+      (is (some? h) (str "the bridge is still written down: " (pr-str rule)))
+      (is (= want (:direction (v/sentex kb h)))
+          (str "a backward-walkable bridge here is the cycle: " (pr-str rule))))))
+
+(tu/deftest-kb retracting-the-sugar-withdraws-its-licence
+  ;; The mark installs the group, so withdrawing the mark has to uninstall it: a
+  ;; permutation written afterwards is a claim of its own.
   (tu/with-terms [mixes A B C]
     (let [h (v/assert kb (list 'commutative mixes) U)]
-      (is (v/ask? kb (list 'commutativeInArgAndRest mixes 1) U))
+      (is (= (v/assert kb (list mixes A B C) U)
+             (v/assert kb (list mixes C B A) U))
+          "the licence holds while the mark is believed")
       (v/retract! kb h)
       (is (not (v/ask? kb (list 'commutative mixes) U))
-          "the asserted half goes")
-      (is (not (v/ask? kb (list 'commutativeInArgAndRest mixes 1) U))
-          "and the derived half goes with it — neither stands on the other alone")
-      (testing "and the licence goes with the belief"
-        (is (not= (v/assert kb (list mixes A B C) U)
-                  (v/assert kb (list mixes C B A) U))
-            "a permutation asserted after the retraction is a claim of its own")))))
+          "the mark goes")
+      (is (not= (v/assert kb (list mixes A C B) U)
+                (v/assert kb (list mixes B C A) U))
+          "and the licence goes with it"))))
 
 ;; ---- the refusals --------------------------------------------------------
 
@@ -350,19 +382,42 @@
       (is (= live (v/assert back (list covering W B C A) U))
           "and a permutation written after the restart still resolves to that row"))))
 
-(tu/deftest-kb a-restart-agrees-about-the-bridge-cycle
-  ;; The two rules derive each other, so the pair rests on the asserted half alone.  A
-  ;; rebuild that re-justified the cycle from itself would revive a licence the live KB
-  ;; had withdrawn.
-  (tu/with-terms [mixes]
+(tu/deftest-kb a-restart-replays-the-sugars-group-too
+  ;; `(commutative P)` installs `[:rest 1]` at its own arm, so its `:rebuild` arm has to
+  ;; replay the group as well as the `:commutative` prop.  A rebuild that replayed only
+  ;; the prop would answer queries — the records are already spelled canonically — and
+  ;; start storing a second row for the next permutation written, which is the failure
+  ;; `a-restart-reads-the-commuting-table-back-off-the-records` describes for the other
+  ;; two spellings.
+  (tu/with-terms [mixes A B C]
+    (v/assert kb (list 'commutative mixes) U)
+    (let [live (v/assert kb (list mixes A B C) U)
+          back (restarted)]
+      (is (v/ask? back (list 'commutative mixes) U)
+          "the mark comes back")
+      (is (= 1 (count (handles back (list mixes '?a '?b '?c))))
+          "the recovered store holds the one row the live KB holds")
+      (is (= live (v/assert back (list mixes C B A) U))
+          "and a permutation written after the restart still resolves to that row"))))
+
+(tu/deftest-kb a-restart-revives-no-withdrawn-licence
+  ;; The mark's group is supported by the mark's own handle, so a retraction before the
+  ;; restart has to stay retracted: a rebuild replays the stored declaration sentexes,
+  ;; and a withdrawn one is not among them.
+  (tu/with-terms [mixes A B C]
     (let [h (v/assert kb (list 'commutative mixes) U)]
       (v/retract! kb h)
       (let [back (restarted)]
-        (is (= (v/ask? kb (list 'commutative mixes) U)
-               (v/ask? back (list 'commutative mixes) U)))
-        (is (= (v/ask? kb (list 'commutativeInArgAndRest mixes 1) U)
-               (v/ask? back (list 'commutativeInArgAndRest mixes 1) U))
-            "the restarted KB does not prop the withdrawn cycle back up")))))
+        (is (not (v/ask? back (list 'commutative mixes) U))
+            "the withdrawn mark stays withdrawn")
+        ;; two rows for one proposition is the failure, so the probe has to write both
+        ;; and then take them back — the fixture holds this namespace net-neutral.
+        (let [one (v/assert back (list mixes A B C) U)
+              two (v/assert back (list mixes C B A) U)]
+          (is (not= one two)
+              "and the licence it installed does not come back with the restart")
+          (v/retract! back one)
+          (v/retract! back two))))))
 
 ;; ---- bulk load ----------------------------------------------------------
 

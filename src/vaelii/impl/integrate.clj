@@ -330,14 +330,15 @@
   one that moves a spelling.  Four spellings reach one sweep:
 
   * `(symmetric P)` — the two arguments of a binary `P` sort.
-  * `(commutativeInArgAndRest P f)` and `(commutativeInArgs P p …)` — the arguments inside
-    the component named sort, at any arity.
+  * `(commutativeInArgAndRest P f)`, `(commutativeInArgs P p …)` and `(commutative P)` —
+    the arguments inside the component named sort, at any arity.
 
-  `(commutative P)` is deliberately **absent**.  It installs no group of its own: the
-  CxCore rule deriving `(commutativeInArgAndRest P 1)` is what the canonicalizer reads, and
-  that conclusion reaches this sweep through `chain/place-fact-conclusion` like any other
-  derived declaration.  Enrolling the sugar as well would walk `P`'s whole extent a second
-  time to re-spell nothing.
+  `(commutative P)` installs the group `[:rest 1]` at its own arm (`special/arms`), so it
+  re-spells `P`'s stored facts exactly as the other two spellings do and is asked about
+  here on the same terms.  The sugar used to be absent, because a CxCore rule derived
+  `(commutativeInArgAndRest P 1)` from it and that conclusion reached this sweep through
+  `chain/place-fact-conclusion`.  That rule is inert now, so the mark carries the sweep
+  itself.
 
   The mark must also be **installed**, not merely written: a declaration the taxonomy has
   not taken up re-spells nothing, and asking here is what keeps the walk off a store the
@@ -353,7 +354,8 @@
                                               (tax/has-prop? tax :symmetric p))
                                      p)
           (commutativeInArgAndRest
-           commutativeInArgs)      (when (seq (tax/commuting-groups tax p)) p)
+           commutativeInArgs
+           commutative)            (when (seq (tax/commuting-groups tax p)) p)
           nil)))))
 
 (defn commute-existing

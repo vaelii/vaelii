@@ -33,11 +33,25 @@ it — `git show v0.16.0:CHANGELOG.md`.
   would make the stored form depend on which was applied first. A declaration arriving
   after the facts re-spells what is already stored, as a late `symmetric` does.
 
-  `commutativeInArgAndRest` is the runtime spelling; `commutative` is sugar deriving it
-  at position 1, and the reverse rule gives back the equivalence the engine has no `iff`
-  for. `(genl symmetric commutative)` classifies, and `(commutative P)` with
-  `(arity P 2)` concludes `(symmetric P)` — commutativity at two arguments is symmetry,
-  where commutativity at any other arity implies neither symmetry nor arity 2.
+  Each of the three installs its permutation group at its own arm, so no spelling is
+  derived from another and the canonicalizer reads one table whichever was written. The
+  equivalence between `(commutative P)` and `(commutativeInArgAndRest P 1)` stays in
+  CxCore as two `set/inertRule`s, believed and queryable but run by neither engine.
+  `(genl symmetric commutative)` classifies, and `(commutative P)` with `(arity P 2)`
+  concludes `(symmetric P)` — commutativity at two arguments is symmetry, where
+  commutativity at any other arity implies neither symmetry nor arity 2 — as a
+  `set/forwardOnlyRule`.
+
+  Those three directions are what the vocabulary costs a backward search. `set/forwardRule`
+  adds forward chaining **without** taking the backward use away, so written that way each
+  of the three answers goals as well; and each concludes a mark another of them needs —
+  the equivalence directly, the arity bridge because `(genl symmetric commutative)` makes
+  its conclusion a spec of `commutative`, which `provers/candidate-rules` offers as a
+  candidate for the supertype goal its own antecedent poses. No ancestor-goal guard stops
+  the descent, the depth bound turns the cycle into an exponential frontier rather than a
+  refusal, and `(genl commutative relation)` puts `(commutative ?p)` under every open
+  `(relation ?x)` query. Any KB that loaded CxCore and read through the inference engine
+  stalled, whether or not it asked about commutativity.
   *Class:* **Additive**.
   [#55](https://github.com/vaelii/vaelii/issues/55),
   [docs/canonicalization.md](docs/canonicalization.md)

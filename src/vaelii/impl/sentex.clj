@@ -1406,8 +1406,8 @@
 ;; reduce to one runtime descriptor the functions below read:
 ;;
 ;;   [:rest f]        every position from f to the literal's own arity — the runtime form
-;;                    of `(commutativeInArgAndRest P f)`, and of `(commutative P)`, which
-;;                    a CxCore rule derives `(commutativeInArgAndRest P 1)` from
+;;                    of `(commutativeInArgAndRest P f)`, and of `(commutative P)`, whose
+;;                    own arm installs `[:rest 1]` (`special/arms`)
 ;;   [:args [p …]]    exactly the named positions — `(commutativeInArgs P p1 p2 …)`
 ;;
 ;; Positions are 1-based over the arguments, so position 1 is `(second form)`.  The
