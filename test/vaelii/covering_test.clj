@@ -141,3 +141,44 @@
       (v/assert kb (list 'covering animal cat dog) 'CxUniverse)
       (is (= 1 (count (tax/covers-of tx animal)))
           "one roster, whichever order the parts arrived in"))))
+
+;; ---- separating: the separation without the coverage --------------------
+
+(tu/deftest-kb separating-separates-its-parts-and-claims-no-coverage
+  (tu/with-terms [animal dog cat Rex]
+    (v/assert kb (list 'separating animal dog cat) 'CxUniverse)
+    (testing "every pair of parts is disjoint, as a partition's are"
+      (is (v/disjoint? kb dog cat))
+      (is (empty? (v/find-sentexes kb {:pattern (list 'disjoint dog cat)}))))
+    (testing "and each part is a subtype of the whole, as a cover's are"
+      (is (v/ask? kb (list 'genl dog animal) 'CxUniverse)))
+    (testing "a whole instance belonging to no part violates nothing"
+      (v/assert kb (list animal Rex) 'CxUniverse)
+      (is (empty? (v/conflicts kb))))))
+
+(tu/deftest-kb separating-licenses-no-coverage-inference
+  (tu/with-terms [animal dog cat Rex]
+    (v/assert kb (list 'separating animal dog cat) 'CxUniverse)
+    (v/assert kb (list animal Rex) 'CxUniverse)
+    (v/assert kb (list 'not (list dog Rex)) 'CxUniverse)
+    (testing "ruling out one part proves nothing about the other"
+      (is (not (v/ask? kb (list cat Rex) 'CxUniverse))))
+    (testing "and ruling out both refutes nothing"
+      (is (= :ok (outcome kb (list 'not (list cat Rex)) 'CxUniverse))))))
+
+(deftest the-two-claims-are-what-the-three-spellings-are-made-of
+  (testing "the kinds are closed, and each spelling is one of them"
+    (is (= #{:covering :separating :partition} tax/cover-kinds)))
+  (testing "and the two readings a cache arm takes of a kind partition them"
+    (is (= #{:covering :partition} (set (filter tax/covering-kind? tax/cover-kinds))))
+    (is (= #{:separating :partition} (set (filter tax/separating-kind? tax/cover-kinds))))))
+
+(tu/deftest-kb the-three-spellings-are-three-declarations-over-one-roster
+  (tu/with-terms [animal dog cat]
+    (let [c (v/assert kb (list 'covering animal dog cat) 'CxUniverse)]
+      (is (not (v/disjoint? kb dog cat)) "covering alone separates nothing")
+      (v/assert kb (list 'separating animal dog cat) 'CxUniverse)
+      (is (v/disjoint? kb dog cat) "the separating roster does")
+      (v/retract! kb c)
+      (is (v/disjoint? kb dog cat)
+          "and dropping the coverage claim leaves the separation standing"))))

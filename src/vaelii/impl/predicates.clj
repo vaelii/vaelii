@@ -476,9 +476,10 @@
      ;; :derived, like the separations above and for the same argument — a rule may
      ;; conclude a cover, and a `decontextualized_predicate` lift copies one into
      ;; CxUniverse, and neither may wait for a restart to reach the taxonomy.  The
-     ;; sweep is `:type-separating` for both spellings: `partition` separates its
-     ;; parts from each other, and a bare `covering` installs a `genl` edge per part, so
-     ;; either arriving after the memberships implicates the terms it names.
+     ;; sweep is `:type-separating` for all three spellings: `separating` and
+     ;; `partition` separate their parts from each other, and every one of them installs
+     ;; a `genl` edge per part, so any of them arriving after the memberships implicates
+     ;; the terms it names.
      ['covering
       (enforced (roster :cover :facets #{:reach :convicts :arbitrable}
                         :sweeps :type-separating
@@ -494,6 +495,16 @@
                                     " against the covering sentex's own handle."))
                 (str "taxonomy/add-cover — the part roster consulted, never stored as a"
                      " sentex per part, plus one taxonomy/add-genl per part"))]
+     ['separating
+      (enforced (roster :cover :facets #{:reach :convicts}
+                        :sweeps :type-separating
+                        :notes (str "the separation half alone: the roster reaches"
+                                    " disjointness-test and no coverage inference, so no"
+                                    " nogood of its own and no :arbitrable facet. The genl"
+                                    " edge per part is installed as covering's is."))
+                (str "taxonomy/add-cover — the part roster read by disjointness-test, which"
+                     " separates the parts the way it separates a disjoint metatype's"
+                     " members, plus one taxonomy/add-genl per part"))]
      ['partition
       (enforced (roster :cover :facets #{:reach :convicts :arbitrable}
                         :sweeps :type-separating

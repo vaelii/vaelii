@@ -2274,9 +2274,9 @@
     genl-relatedness exception is left to the conviction, which re-reads `disjoint?`.
   * `(M T)`, a new member of a disjoint metatype — the terms below `T` that also hold
     one of `M`'s *other* members.
-  * `(partition W P …)` — the parts are pairwise disjoint, so a candidate is a
-    term below **two distinct parts**: `disjoint_metatype`'s arm over the declaration's
-    own roster.
+  * `(partition W P …)` / `(separating W P …)` — the parts are pairwise disjoint, so a
+    candidate is a term below **two distinct parts**: `disjoint_metatype`'s arm over the
+    declaration's own roster.
   * `(covering W P …)` — the roster separates nobody, and the `genl` edge the
     declaration installs per part does: `genl`'s arm, over every part at once.
   * `(genl A B)` — `A`'s instances gain `B`'s ancestors, so the second half of a
@@ -2317,10 +2317,11 @@
          :keep?     #(pairable? kb %)
          :roots     #{a}})
 
-      ;; `(partition W P1 P2 …)` — the parts are pairwise disjoint, so a candidate
-      ;; is a term below **two distinct parts**: the `disjoint_metatype` arm over a roster
-      ;; read off the declaration rather than off a recorded member set.
-      partition
+      ;; `(partition W P1 P2 …)` and `(separating W P1 P2 …)` — the parts are pairwise
+      ;; disjoint, so a candidate is a term below **two distinct parts**: the
+      ;; `disjoint_metatype` arm over a roster read off the declaration rather than off a
+      ;; recorded member set.
+      (partition separating)
       (let [parts (distinct (drop 2 sen))
             owner (member-owners tax parts)]
         {:enumerate (instances-below kb parts)

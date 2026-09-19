@@ -882,6 +882,23 @@
                       (assoc-in t [k a] left)))))]
     (-> t (one x y) (one y x))))
 
+(def cover-kinds
+  "The three claims a whole-and-parts declaration can make about its roster, as the
+  keyword each is cached under.  Closed, and the two questions below are the whole of
+  what a reader asks of one: `covering` says the parts leave nothing of the whole
+  uncovered, `separating` says no two of them share an instance, and `partition` says
+  both.  Two independent claims, so the third kind is their conjunction rather than a
+  mechanism of its own."
+  #{:covering :separating :partition})
+
+(defn covering-kind?
+  "Does a declaration of this kind claim that its parts exhaust the whole?"
+  [kind] (not= kind :separating))
+
+(defn separating-kind?
+  "Does a declaration of this kind claim that no two of its parts share an instance?"
+  [kind] (not= kind :covering))
+
 (defn- cache-install
   "Install the derived cache entry for support key `k` into taxonomy state `t`.  The
   single definition of what an *active* entry is, shared by the assert-time
@@ -907,22 +924,26 @@
     ;; would otherwise separate; stored as adjacency exactly as `:disjoint-index` is, so
     ;; the read is one map lookup behind the `genl-related?` guard it sits beside.
     :sib-exception (index-symmetric t :sib-exception-index a true)  ; a = #{x y}
-    ;; `:cover` is one `(covering W P1 P2 …)` or `(partition W P1 P2 …)`
-    ;; declaration: `a` is `[whole parts]` with the parts sorted, and `b` is whether the
-    ;; declaration separates them.  Three tables, because three readers ask three
-    ;; different questions of one roster: `:covers` answers what covers a whole
-    ;; (the contradiction check), `:cover-parts` answers what covers name a part
-    ;; (`CoveringProver`), and `:partitions` is the separating subset `separation-frame`
-    ;; walks the way it walks `:disjoint-metatypes`.  The part roster is the member set
-    ;; of a `disjoint_metatype` under another name, so it is recorded here and never
+    ;; `:cover` is one whole-and-parts declaration: `a` is `[whole parts]` with the parts
+    ;; sorted and `b` is the `cover-kinds` keyword saying which of the two claims it
+    ;; makes.  Three tables, because three readers ask three different questions of one
+    ;; roster: `:covers` answers what covers a whole (the contradiction check),
+    ;; `:cover-parts` answers what covers name a part (`CoveringProver`), and
+    ;; `:partitions` is the separating subset `separation-frame` walks the way it walks
+    ;; `:disjoint-metatypes`.  A declaration enters the first two only if it *covers* and
+    ;; the third only if it *separates*, so `separating` reaches the disjointness test and
+    ;; no coverage inference, and `covering` the reverse.  The part roster is the member
+    ;; set of a `disjoint_metatype` under another name, so it is recorded here and never
     ;; written out as a `(disjoint …)` sentex per pair.
     :cover (let [[whole parts] a]
              (as-> t t'
-               (update-in t' [:covers whole] (fnil conj #{}) [parts b])
-               (reduce (fn [t p] (update-in t [:cover-parts p] (fnil conj #{})
-                                            [whole parts b]))
-                       t' parts)
-               (cond-> t' b (update :partitions conj [whole parts]))))
+               (cond-> t' (covering-kind? b)
+                       (update-in [:covers whole] (fnil conj #{}) [parts b]))
+               (cond-> t' (covering-kind? b)
+                       (as-> t'' (reduce (fn [t p] (update-in t [:cover-parts p]
+                                                              (fnil conj #{}) [whole parts b]))
+                                         t'' parts)))
+               (cond-> t' (separating-kind? b) (update :partitions conj [whole parts b]))))
     :prop     (update-in t [:props a] (fnil conj #{}) b)             ; a = prop-kind, b = pred
     :inverse  (index-symmetric t :inverse a true)                  ; a = #{p q}
     :arity    (update-in t [:arity a] (fnil conj #{}) b)                          ; a = pred, b = n
@@ -967,9 +988,11 @@
                                (assoc-in t path left)
                                (update-in t (pop path) dissoc (peek path)))))]
              (as-> t t'
-               (drop-in t' [:covers whole] [parts b])
-               (reduce (fn [t p] (drop-in t [:cover-parts p] [whole parts b])) t' parts)
-               (cond-> t' b (update :partitions disj [whole parts]))))
+               (cond-> t' (covering-kind? b) (drop-in [:covers whole] [parts b]))
+               (cond-> t' (covering-kind? b)
+                       (as-> t'' (reduce (fn [t p] (drop-in t [:cover-parts p] [whole parts b]))
+                                         t'' parts)))
+               (cond-> t' (separating-kind? b) (update :partitions disj [whole parts b]))))
     :prop     (update-in t [:props a] (fnil disj #{}) b)
     :inverse  (index-symmetric t :inverse a false)
     :arity    (let [ns' (disj (get-in t [:arity a] #{}) b)]
@@ -3296,28 +3319,29 @@
 ;; other reader disagrees about.
 
 (defn cover-key
-  "The support key one covering declaration is held under: `[:cover [whole parts]
-  partition?]`, with `parts` deduplicated and sorted by printed name.  Sorted here rather
-  than trusted from the sentence, so a KB whose commutativity marks are absent records
-  the key a canonicalized one records."
-  [whole parts partition?]
-  [:cover [whole (vec (sort-by nm/print-key (distinct parts)))] (boolean partition?)])
+  "The support key one whole-and-parts declaration is held under: `[:cover [whole parts]
+  kind]`, with `parts` deduplicated and sorted by printed name.  Sorted here rather than
+  trusted from the sentence, so a KB whose commutativity marks are absent records the key
+  a canonicalized one records."
+  [whole parts kind]
+  [:cover [whole (vec (sort-by nm/print-key (distinct parts)))] kind])
 
 (defn add-cover
-  ([tax whole parts partition? handle] (add-cover tax whole parts partition? handle nil))
-  ([tax whole parts partition? handle ctx]
-   (let [k (cover-key whole parts partition?)]
+  ([tax whole parts kind handle] (add-cover tax whole parts kind handle nil))
+  ([tax whole parts kind handle ctx]
+   (let [k (cover-key whole parts kind)]
      (swap! tax supported-add k handle ctx #(cache-install % k)))
    tax))
 
-(defn del-cover! [tax whole parts partition? handle]
-  (let [k (cover-key whole parts partition?)]
+(defn del-cover! [tax whole parts kind handle]
+  (let [k (cover-key whole parts kind)]
     (swap! tax supported-del k handle #(cache-uninstall % k)))
   tax)
 
 (defn covers-naming
-  "Every declaration naming `part` among its parts, as `[whole parts partition?]`.  Empty
-  for every type no cover mentions, which is the lookup `CoveringProver` declines on."
+  "Every **covering** declaration naming `part` among its parts, as `[whole parts kind]`.
+  Empty for every type no cover mentions, which is the lookup `CoveringProver` declines
+  on — and empty for a `separating` roster, which claims no coverage to infer from."
   [tax part]
   (get-in @tax [:cover-parts part] #{}))
 
@@ -3328,13 +3352,13 @@
   [tax part context]
   (let [ds (covers-naming tax part)]
     (if (scoped-context? context)
-      (filterv (fn [[whole parts partition?]]
-                 (cache-entry-visible? tax [:cover [whole parts] partition?] context))
+      (filterv (fn [[whole parts kind]]
+                 (cache-entry-visible? tax [:cover [whole parts] kind] context))
                ds)
       (vec ds))))
 
 (defn covers-of
-  "Every declaration covering `whole`, as `[parts partition?]`."
+  "Every covering declaration over `whole`, as `[parts kind]`."
   [tax whole]
   (get-in @tax [:covers whole] #{}))
 
@@ -3347,10 +3371,10 @@
         as      (if scoped? (genls tax t context) (genls-global tax t))]
     (into []
           (mapcat (fn [whole]
-                    (keep (fn [[parts partition?]]
+                    (keep (fn [[parts kind]]
                             (when (or (not scoped?)
                                       (cache-entry-visible?
-                                       tax [:cover [whole parts] partition?] context))
+                                       tax [:cover [whole parts] kind] context))
                               [whole parts]))
                           (covers-of tax whole))))
           as)))
@@ -3404,8 +3428,9 @@
                       (fn [c] (cache-entry-visible? tax [:sib-disjoint c] context))
                       (fn [_] true))
         part-vis?   (if scoped?
-                      (fn [whole ps] (cache-entry-visible? tax [:cover [whole ps] true] context))
-                      (fn [_ _] true))
+                      (fn [whole ps kind]
+                        (cache-entry-visible? tax [:cover [whole ps] kind] context))
+                      (fn [_ _ _] true))
         ;; `a`'s separable supertypes, each with what it is declared disjoint from
         seps  (let [didx (:disjoint-index t)]
                 (into [] (keep (fn [x] (when-let [ys (get didx x)] [x ys]))) as))
@@ -3436,8 +3461,8 @@
         ;; is the metatype arm's roster read off `:partitions` — and it is empty unless a
         ;; partition names a supertype of `a`, giving the same short-circuit.
         parts (into []
-                    (keep (fn [[whole ps]]
-                            (when (part-vis? whole ps)
+                    (keep (fn [[whole ps kind]]
+                            (when (part-vis? whole ps kind)
                               (let [in-a (filterv #(contains? as %) ps)]
                                 (when (seq in-a) [ps in-a])))))
                     (:partitions t))]
@@ -3647,8 +3672,8 @@
        [x y])
      ;; each partition contributes its parts against each other, under the same two
      ;; guards — the metatype arm's roster, read off a `partition` declaration
-     (for [[whole ps] (:partitions t)
-           :when (vis? [:cover [whole ps] true])
+     (for [[whole ps kind] (:partitions t)
+           :when (vis? [:cover [whole ps] kind])
            x  ps
            y  ps
            :when (and (not= x y)

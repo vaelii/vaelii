@@ -3826,8 +3826,8 @@
     (do (when-let [v *edge-replay-skips*] (vswap! v inc)) tax)))
 
 (defn- cover-parts
-  "The `[whole parts]` one `(covering W P …)` or `(partition W P …)` sentence
-  declares, or nil when the stored sentence is not one.
+  "The `[whole parts]` one `(covering W P …)`, `(separating W P …)` or `(partition W P
+  …)` sentence declares, or nil when the stored sentence is not one.
 
   `recover` replays **stored** sentexes rather than checked ones, so a foreign or stale
   store reaches the rebuild arm with a two-element row or a non-symbol part, and reading
@@ -3843,8 +3843,9 @@
       [whole (distinct parts)])))
 
 (defn- cover-arms
-  "The integrate / disintegrate / rebuild triple `covering` and `partition` share,
-  differing only in `partition?` — whether the roster also separates its parts.
+  "The integrate / disintegrate / rebuild triple the three whole-and-parts declarations
+  share, differing only in `kind` — which of the two claims the roster makes
+  (`tax/cover-kinds`).
 
   Each arm does two things, because the declaration says two things. The roster goes
   into the taxonomy under one key (`tax/add-cover`), which is what `disjointness-test`
@@ -3857,7 +3858,7 @@
 
   A part equal to the whole installs no edge — `wff/covering-problems` refuses the
   declaration, and the rebuild arm replays a store that never passed it."
-  [partition?]
+  [kind]
   (letfn [(edges! [kb tax h ctx whole parts]
             (doseq [p parts :when (not= p whole)]
               (tax/add-genl tax p whole h ctx)
@@ -3865,12 +3866,12 @@
     {:integrate    (fn [kb sx h]
                      (when-let [[whole parts] (cover-parts (:sentence sx))]
                        (let [tax (reasoning/taxonomy kb) ctx (:context sx)]
-                         (tax/add-cover tax whole parts partition? h ctx)
+                         (tax/add-cover tax whole parts kind h ctx)
                          (edges! kb tax h ctx whole parts))))
      :disintegrate (fn [kb sx]
                      (when-let [[whole parts] (cover-parts (:sentence sx))]
                        (let [tax (reasoning/taxonomy kb)]
-                         (tax/del-cover! tax whole parts partition? (:id sx))
+                         (tax/del-cover! tax whole parts kind (:id sx))
                          (doseq [p parts :when (not= p whole)]
                            (tax/del-genl! tax p whole (:id sx))
                            (recheck-genl-edge kb p whole)))))
@@ -3879,7 +3880,7 @@
      ;; per edge.
      :rebuild      (fn [tax {sentence :sentence id :id ctx :context}]
                      (if-let [[whole parts] (cover-parts sentence)]
-                       (do (tax/add-cover tax whole parts partition? id ctx)
+                       (do (tax/add-cover tax whole parts kind id ctx)
                            (doseq [p parts :when (not= p whole)]
                              (tax/add-genl tax p whole id ctx))
                            tax)
@@ -3936,8 +3937,9 @@
              :rebuild      (fn [tax {sentence :sentence id :id ctx :context}]
                              (replay-edge tax/add-genlCx tax sentence 'genlCx id ctx))
              :wff          wff/genlCx-problems}
-    'covering        (cover-arms false)
-    'partition (cover-arms true)
+    'covering   (cover-arms :covering)
+    'separating (cover-arms :separating)
+    'partition  (cover-arms :partition)
     'disjoint {:integrate    (fn [kb sx h]
                                (let [[_ a b] (:sentence sx)]
                                  (tax/add-disjoint (reasoning/taxonomy kb) a b h (:context sx))))

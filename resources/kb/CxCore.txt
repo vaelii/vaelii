@@ -550,19 +550,29 @@
          "(disjoint_metatype ?metatype) means that every pair of ?metatype's member types is disjoint. The clique is consulted rather than stored, so it adds no work quadratic and retraction reaches all of it: dropping ?metatype releases every pair at once, and dropping one member releases exactly that member's pairs.")
 (unary_predicate disjoint_metatype)
 
-;; ---- exhaustion: the parts that cover a whole -----------------------------
-;; The other half of a partition.  disjoint and its two clique marks say that types do
-;; not overlap; these two say that named parts leave nothing of the whole uncovered.
-;; Both are variable-arity with the whole in position 1, so the part roster commutes and
-;; a roster written in another order is one sentex.  docs/taxonomy.md states the
+;; ---- a whole and the parts named against it -------------------------------
+;; Two independent claims about one roster, and the three spellings they make: covering
+;; says the parts leave nothing of the whole uncovered, separating says no two of them
+;; share an instance, and partition says both.  disjoint and its two clique marks make
+;; the separating claim about pairs and about cliques rather than about a named roster.
+;; All three are variable-arity with the whole in position 1, so the part roster commutes
+;; and a roster written in another order is one sentex.  docs/taxonomy.md states the
 ;; inference and what it deliberately does not do.
 (comment covering
-         "(covering ?whole ?part1 ?part2 ...) means that every instance of ?whole is an instance of at least one named part. Each part is a subtype of ?whole, which the declaration states rather than requires of the ontology beforehand: asserting the cover installs the genl edge per part, supported by the covering sentex and carrying its context, so a cover asserted before its parts carry any other fact settles where one asserted after them does. The parts may overlap; partition is the spelling that separates them as well. Coverage is actionable only on explicit negation: (not (?part ?x)) for every part but one proves the remaining membership, and a whole instance with nothing else known stays unknown rather than being assigned a part. Negating every part contradicts the cover. At least two distinct parts, since one part covering a whole says only that the two have the same instances.")
+         "(covering ?whole ?part1 ?part2 ...) means that every instance of ?whole is an instance of at least one named part. Each part is a subtype of ?whole, which the declaration states rather than requires of the ontology beforehand: asserting the cover installs the genl edge per part, supported by the covering sentex and carrying its context, so a cover asserted before its parts carry any other fact settles where one asserted after them does. The parts may overlap; partition is the spelling that separates them as well, and separating is the separation without the coverage. Coverage is actionable only on explicit negation: (not (?part ?x)) for every part but one proves the remaining membership, and a whole instance with nothing else known stays unknown rather than being assigned a part. Negating every part contradicts the cover. At least two distinct parts, since one part covering a whole says only that the two have the same instances.")
 (variable_arity_predicate covering)
 (genlArg covering 1 thing)
 (argAndRestGenl covering 2 thing)
 (arityMin covering 3)
 (commutativeInArgAndRest covering 2)
+
+(comment separating
+         "(separating ?whole ?part1 ?part2 ...) means that no two of the named parts share an instance. The separation half of partition without the coverage half: it says nothing about whether the parts exhaust ?whole, so an instance of ?whole belonging to none of them violates nothing. Each part is a subtype of ?whole, stated by the declaration as covering states it. The roster is recorded the way a disjoint_metatype's member set is, which is what this spelling is for — a named few types separated from each other, where disjoint_metatype needs a metatype term to hang them on and sibling_disjoint separates every specialization of the parent rather than the ones named.")
+(variable_arity_predicate separating)
+(genlArg separating 1 thing)
+(argAndRestGenl separating 2 thing)
+(arityMin separating 3)
+(commutativeInArgAndRest separating 2)
 
 (comment partition
          "(partition ?whole ?part1 ?part2 ...) means that the named parts cover ?whole and that no two of them share an instance. The coverage half is covering's exactly, and both declarations are recorded under one roster, so the coverage inference reads a partition as the cover it is. The separation half is recorded the way a disjoint_metatype's member set is — consulted by the disjointness test, never written out as a (disjoint …) sentex per pair — so siblingDisjointException exempts a pair of parts the way it exempts a pair of metatype members, and dropping the declaration releases every pair at once. disjoint_metatype keeps its own meaning and claims no coverage.")
@@ -578,10 +588,13 @@
 ;; partition and a bare cover the same way — and what the edge would add is a query for
 ;; one spelling answering the other.
 
-;; `partition` is the exhaustive counterpart of the two clique marks, which separate
-;; without covering.
+;; `partition` is the exhaustive counterpart of the two clique marks, and `separating` is
+;; their roster-shaped twin: the same separation over a named few rather than over a
+;; metatype's members or a parent's every specialization.
 (termsRelated disjoint_metatype partition)
 (termsRelated sibling_disjoint partition)
+(termsRelated disjoint_metatype separating)
+(termsRelated sibling_disjoint separating)
 
 ;; ---- definitional collection relations -----------------------------------
 ;; Three relations tie a collection's membership to a defining condition on the member

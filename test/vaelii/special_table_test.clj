@@ -112,6 +112,7 @@
     [sibling_disjoint                  [:integrate :disintegrate :rebuild :wff]       nil                        true]
     [siblingDisjointException         [:integrate :disintegrate :rebuild :wff]       nil                        true]
     [covering                         [:integrate :disintegrate :rebuild :wff]       nil                        true]
+    [separating                       [:integrate :disintegrate :rebuild :wff]       nil                        true]
     [partition                        [:integrate :disintegrate :rebuild :wff]       nil                        true]
     [transitive                       [:integrate :disintegrate :rebuild :wff]       :transitive                true]
     [symmetric                        [:integrate :disintegrate :rebuild :wff]       :symmetric                 true]

@@ -13,11 +13,15 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
-- **Named subtypes can state that they exhaust their parent.** `(covering Whole Part1
-  Part2 …)` says every instance of the whole is an instance of at least one named part,
-  and `(partition Whole Part1 Part2 …)` says that and separates the parts. Both are
-  variable-arity with the whole in position 1 and a commuting part roster, so a roster
-  written in another order is one sentex. A cover *states* the specialization it rests on:
+- **Named subtypes can state that they exhaust their parent.** Two independent claims
+  about a named roster of parts, and three spellings that make them: `(covering Whole
+  Part1 Part2 …)` says every instance of the whole is an instance of at least one named
+  part, `(separating Whole Part1 Part2 …)` says no two parts share an instance, and
+  `(partition Whole Part1 Part2 …)` says both. `separating` is the roster-shaped spelling
+  of what `disjoint_metatype` and `sibling_disjoint` say about a metatype's members and a
+  parent's every specialization — the same separation over a named few, with no metatype
+  term to invent. All three are variable-arity with the whole in position 1 and a
+  commuting part roster, so a roster written in another order is one sentex. A cover *states* the specialization it rests on:
   the integrate arm installs a `genl` edge per part against the covering sentex's own
   handle, so a cover asserted before its parts answers what one asserted after them does,
   and retracting it drops the edges with it. A partition's roster is recorded the way a
