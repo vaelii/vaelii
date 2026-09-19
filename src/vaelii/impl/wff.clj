@@ -96,6 +96,49 @@
     (and (not= a b) (or (tax/genl? tax a b context) (tax/genl? tax b a context)))
     (conj (str a " and " b " are genl-related, so they overlap and can't be disjoint"))))
 
+(defn covering-problems
+  "`covering` and `partitionedInto` — a whole followed by two or more distinct parts.
+
+  What is checked is what the declaration *cannot* mean.  A missing `(genl part whole)`
+  edge is not among it: the declaration states that edge rather than requiring one, so
+  demanding it here would refuse every cover written before its parts and make the answer
+  a function of assertion order.  What is refused is a shape no edge could be installed
+  for — a part that is the whole, and a part the closure already places above the whole,
+  where the edge would close a cycle `genl-problems` refuses in as many words.  A part
+  already disjoint from the whole is refused for the same reason: the edge would make a
+  type a subtype of one it shares no instance with.
+
+  The genl and disjointness reads are scoped to the asserting context, as
+  `disjoint-problems`' are: a declaration is well-formed where it is written."
+  [tax [f whole & parts :as s] context]
+  (cond-> []
+    ;; four elements: the functor, the whole, and two parts.  One part covering a whole
+    ;; says only that the two have the same instances, which `genl` in both directions
+    ;; already says.
+    (< (count s) 4)
+    (conj (str f " takes a whole and at least two parts"))
+
+    (nm/individual? whole)
+    (conj (str whole " is an individual; " f " relates types"))
+
+    (some nm/individual? parts)
+    (conj (str (first (filter nm/individual? parts)) " is an individual; " f
+               " relates types"))
+
+    (not= (count parts) (count (distinct parts)))
+    (conj (str f " names a part twice; each part covers a different piece of " whole))
+
+    (some #(= % whole) parts)
+    (conj (str whole " is named as a part of itself"))
+
+    (some #(and (not= % whole) (tax/genl? tax whole % context)) parts)
+    (conj (str (first (filter #(and (not= % whole) (tax/genl? tax whole % context)) parts))
+               " is already a supertype of " whole ", so it cannot be a part of it"))
+
+    (some #(tax/disjoint? tax whole % context) parts)
+    (conj (str (first (filter #(tax/disjoint? tax whole % context) parts))
+               " is disjoint from " whole ", so it cannot be a part of it"))))
+
 (defn disjoint-metatype-problems [_ [_ m :as s] _context]
   (cond-> []
     (not= 2 (count s)) (conj "disjoint_metatype takes one argument")

@@ -182,7 +182,8 @@
         "as a set: the vector's order is entries' order and is read by nobody"))
   (testing "what each declaration's arrival puts back in question"
     (is (= '{:both             #{genl}
-             :type-separating  #{genlCx disjoint disjoint_metatype sibling_disjoint}
+             :type-separating  #{genlCx disjoint disjoint_metatype sibling_disjoint
+                                 covering partitionedInto}
              :predicate-marked #{functional asymmetric anti_transitive functionalInArg}}
            @#'settle/clash-declaration-kinds)))
   (testing "and what arity each trigger is written at"
@@ -193,13 +194,16 @@
     (is (= '#{functional asymmetric anti_transitive} @#'settle/definitional-mark-symbols))
     (is (= '#{:functional :asymmetric :anti-transitive} @#'settle/definitional-mark-keywords))
     (is (= '#{genl genlCx disjoint disjoint_metatype sibling_disjoint
+              covering partitionedInto
               functional asymmetric anti_transitive functionalInArg}
            @#'settle/clash-declaration-functors))
-    (is (= '#{genl genlCx disjoint disjoint_metatype sibling_disjoint}
+    (is (= '#{genl genlCx disjoint disjoint_metatype sibling_disjoint
+              covering partitionedInto}
            @#'settle/type-reach-functors)
         "the reach over terms, which is :type-separating and :both and not the marks")
     (is (= '{genl :both, genlCx :type-separating, disjoint :type-separating,
              disjoint_metatype :type-separating, sibling_disjoint :type-separating,
+             covering :type-separating, partitionedInto :type-separating,
              functional :predicate-marked, asymmetric :predicate-marked,
              anti_transitive :predicate-marked, functionalInArg :predicate-marked}
            @#'settle/clash-declaration-kind))))

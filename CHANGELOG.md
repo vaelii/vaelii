@@ -13,6 +13,20 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+- **Named subtypes can state that they exhaust their parent.** `(covering Whole Part1
+  Part2 …)` says every instance of the whole is an instance of at least one named part,
+  and `(partitionedInto Whole Part1 Part2 …)` says that and separates the parts. Both are
+  variable-arity with the whole in position 1 and a commuting part roster, so a roster
+  written in another order is one sentex. A cover *states* the specialization it rests on:
+  the integrate arm installs a `genl` edge per part against the covering sentex's own
+  handle, so a cover asserted before its parts answers what one asserted after them does,
+  and retracting it drops the edges with it. A partition's roster is recorded the way a
+  `disjoint_metatype`'s member set is — consulted by `disjointness-test`, never written
+  out as a `(disjoint …)` sentex per pair — so `siblingDisjointException` exempts a pair
+  of parts exactly as it exempts a pair of metatype members. `disjoint_metatype` keeps its
+  own meaning and claims no coverage. *Class:* **Additive**.
+  [docs/taxonomy.md](docs/taxonomy.md)
+
 - **A term page shows where a term sits rather than restating it.** The three prose lines
   it opened with — Supertypes, Subtypes, Disjoint with — are gone. A supertype line
   rendered `genl` sentexes the argument groups already list, so the page said twice what

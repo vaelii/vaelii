@@ -550,6 +550,39 @@
          "(disjoint_metatype ?metatype) means that every pair of ?metatype's member types is disjoint. The clique is consulted rather than stored, so it adds no work quadratic and retraction reaches all of it: dropping ?metatype releases every pair at once, and dropping one member releases exactly that member's pairs.")
 (unary_predicate disjoint_metatype)
 
+;; ---- exhaustion: the parts that cover a whole -----------------------------
+;; The other half of a partition.  disjoint and its two clique marks say that types do
+;; not overlap; these two say that named parts leave nothing of the whole uncovered.
+;; Both are variable-arity with the whole in position 1, so the part roster commutes and
+;; a roster written in another order is one sentex.  docs/taxonomy.md states the
+;; inference and what it deliberately does not do.
+(comment covering
+         "(covering ?whole ?part1 ?part2 ...) means that every instance of ?whole is an instance of at least one named part. Each part is a subtype of ?whole, which the declaration states rather than requires of the ontology beforehand: asserting the cover installs the genl edge per part, supported by the covering sentex and carrying its context, so a cover asserted before its parts carry any other fact settles where one asserted after them does. The parts may overlap; partitionedInto is the spelling that separates them as well. Coverage is actionable only on explicit negation: (not (?part ?x)) for every part but one proves the remaining membership, and a whole instance with nothing else known stays unknown rather than being assigned a part. Negating every part contradicts the cover. At least two distinct parts, since one part covering a whole says only that the two have the same instances.")
+(variable_arity_predicate covering)
+(genlArg covering 1 thing)
+(argAndRestGenl covering 2 thing)
+(arityMin covering 3)
+(commutativeInArgAndRest covering 2)
+
+(comment partitionedInto
+         "(partitionedInto ?whole ?part1 ?part2 ...) means that the named parts cover ?whole and that no two of them share an instance. The coverage half is covering's exactly, and both declarations are recorded under one roster, so the coverage inference reads a partition as the cover it is. The separation half is recorded the way a disjoint_metatype's member set is — consulted by the disjointness test, never written out as a (disjoint …) sentex per pair — so siblingDisjointException exempts a pair of parts the way it exempts a pair of metatype members, and dropping the declaration releases every pair at once. disjoint_metatype keeps its own meaning and claims no coverage.")
+(variable_arity_predicate partitionedInto)
+(genlArg partitionedInto 1 thing)
+(argAndRestGenl partitionedInto 2 thing)
+(arityMin partitionedInto 3)
+(commutativeInArgAndRest partitionedInto 2)
+;; No (genl partitionedInto covering) edge, though every partition is a cover: a genl
+;; edge between two variable-arity predicates puts two unrooted nodes in the type graph,
+;; which is what kb-quality reports as an island.  The engine needs no edge — both
+;; declarations are recorded under one taxonomy roster, so the coverage inference reads a
+;; partition and a bare cover the same way — and what the edge would add is a query for
+;; one spelling answering the other.
+
+;; partitionedInto is the exhaustive counterpart of the two clique marks, which separate
+;; without covering.
+(termsRelated disjoint_metatype partitionedInto)
+(termsRelated sibling_disjoint partitionedInto)
+
 ;; ---- definitional collection relations -----------------------------------
 ;; Three relations tie a collection's membership to a defining condition on the member
 ;; ?x, each expanded into ordinary forward rules at assert (docs/defns.md).  The fact is
@@ -1019,7 +1052,7 @@
          "(set/inertRule ?rule) means that ?rule is asserted inert. Stored and documented but never used for inference in either direction, which is how a rule stating something the engine implements in code gets written down where a reader will find it. A virtual wrapper interpreted on assert.")
 
 (comment sibling_disjoint
-         "(sibling_disjoint ?collection) means that any two specializations of ?collection — the types below it under genl — share no instance, unless one is itself a genl of the other. The clique is consulted rather than stored, exactly as disjoint_metatype's is: no (disjoint …) sentex per pair, dropping the mark releases every pair at once, and a specialization arriving as a later genl edge is separated the moment it is believed. The genl-relatedness exception is what keeps a specialization disjoint from its siblings without being separated from its own supertypes, which are specializations of ?collection too; it is read over the whole KB, the way (disjoint a b) refuses a genl-related pair. Whether those specializations cover ?collection is a separate claim this one does not make.")
+         "(sibling_disjoint ?collection) means that any two specializations of ?collection — the types below it under genl — share no instance, unless one is itself a genl of the other. The clique is consulted rather than stored, exactly as disjoint_metatype's is: no (disjoint …) sentex per pair, dropping the mark releases every pair at once, and a specialization arriving as a later genl edge is separated the moment it is believed. The genl-relatedness exception is what keeps a specialization disjoint from its siblings without being separated from its own supertypes, which are specializations of ?collection too; it is read over the whole KB, the way (disjoint a b) refuses a genl-related pair. Whether those specializations cover ?collection is a separate claim this one does not make, and covering states it over a named roster.")
 (unary_predicate sibling_disjoint)
 (genlArg sibling_disjoint 1 thing)
 

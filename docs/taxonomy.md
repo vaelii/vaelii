@@ -1,7 +1,8 @@
 # Taxonomy: types, genl, and disjointness
 
 - **Covers:** how the `genl` type hierarchy is cached and queried, how `disjoint` /
-  `disjoint_metatype` are enforced, and how `arg` / `genlArg` constrain arguments as a
+  `disjoint_metatype` are enforced, how `covering` / `partitionedInto` state exhaustion,
+  and how `arg` / `genlArg` constrain arguments as a
   rejection check — of a ground sentence, and of a rule's shared variables.
 - **Not here:** `genlCx`, the sibling closure over contexts rather than types →
   [contexts.md](contexts.md); `arg` / `genlArg` read as an entailment that mints a
@@ -712,12 +713,11 @@ Three mechanisms declare that types share no instance; all are closed under `gen
   visibility, so a descendant context never separates a pair the whole edge set knows
   overlaps.
 
-  **Covering is out of scope.** `sibling_disjoint` says the specializations do not
-  *overlap*; it does not say they *exhaust* `C`. There is no declaration that an
-  instance of `C` must belong to one of its specializations, so a bare `C` with no
-  further membership violates nothing. Disjointness is the half a truth-maintained KB
-  can refuse a write against; exhaustiveness would be a closed-world claim over an
-  open-world extent.
+  **A mark says nothing about covering.** `sibling_disjoint` says the specializations
+  do not *overlap*; it does not say they *exhaust* `C`, so a bare `C` carrying no
+  further membership violates the mark in no way. Exhaustion is declared separately and
+  by name, over a named roster rather than over every specialization at once —
+  [covering](#covering-the-parts-that-exhaust-a-whole), below.
 - `(siblingDisjointException X Y)` — an escape hatch exempting the one pair `X`, `Y` that
   a `sibling_disjoint` mark (or a `disjoint_metatype`) would otherwise force disjoint. It is
   keyed as an unordered pair exactly like `disjoint` (`:sib-exception-index`,
@@ -1016,6 +1016,69 @@ is the one to ask of a KB that arrived all at once — a `recover` rebuilds beli
 than changing it, so the settle pass sits it out (`settle/*rebuilding?*`) and left
 unbounded there it was a quarter of the wall clock of an OpenCyc import — the one
 [kbs.md](kbs.md) is the route to, measured the once.
+
+## Covering: the parts that exhaust a whole
+
+`disjoint` says that two types share no instance. **Covering** states the other half of a
+partition: an instance of the whole belongs to at least one named part.
+
+```clojure
+(covering        Whole Part1 Part2 …)   ; the parts exhaust Whole, and may overlap
+(partitionedInto Whole Part1 Part2 …)   ; the same, and the parts are pairwise disjoint
+```
+
+Both relations are variable-arity, and each takes a whole followed by two or more
+distinct parts. Argument 1 is the whole, and the part roster commutes
+(`(commutativeInArgAndRest covering 2)`), so a roster written in another order is the
+same sentex rather than a second one.
+
+### A cover states the specialization it rests on
+
+Each part is a subtype of the whole, and the declaration **states** that edge rather than
+demanding that one already exist. The `covering` integrate arm installs a `genl` edge per
+part through `tax/add-genl`, supported by the covering sentex and carrying its context,
+exactly as a stated `(genl Part Whole)` does. Three consequences follow: `(Part1 X)`
+answers `(Whole X)` with no second declaration written by hand, every reader of the
+closure sees one taxonomy rather than two, and defeating or retracting the cover drops
+the edges with it. A cover asserted before its parts carry any other fact therefore
+settles to the state a cover asserted after them does.
+
+### The coverage inference is gated on explicit negation
+
+For `(covering W A B C)` and a term `X`, a believed `(W X)` together with a believed
+`(not (A X))` and `(not (B X))` proves `(C X)`. `CoveringProver` answers that goal the
+way `DefnSufficientProver` answers a definitional membership: a ground goal, one bounded
+subquery per premise, and no enumeration of a part's extent.
+
+Nothing fires on absence. `(W X)` with no part known stays unknown — the cover invents no
+membership, picks no part, and reports no violation. A ruled-out part must be **known
+not**: a believed `(not (Part X))`, never a `(Part X)` that merely cannot be proved.
+Negation as failure is a separate operator, spelled `unknown`, and it stays a query
+operator that nothing stores ([naf.md](naf.md)).
+
+Ruling out *every* part falsifies the cover. `(W X)` with `(not (A X))`, `(not (B X))`
+and `(not (C X))` is a contradiction, reported through the same nogood path a
+disjointness clash takes.
+
+### `partitionedInto` adds no separation mechanism
+
+A partition's part roster is recorded the way a `disjoint_metatype`'s member set is: held
+in the taxonomy, consulted by `disjointness-test`, and never written out as `(disjoint
+…)` sentexes. `siblingDisjointException`, the genl-relatedness guard and the nogood
+reporting therefore read a partition exactly as they read a metatype. A bare `covering`
+records no separation at all, so two of its parts may overlap and `disjoint?` answers
+false for the pair.
+
+`disjoint_metatype` keeps its own meaning — pairwise disjointness among members, with no
+claim that the members exhaust anything.
+
+### What a cover is refused for
+
+`wff/covering-problems` rejects a declaration that states nothing or cannot hold: fewer
+than two parts, a repeated part, an individual in any position, a part equal to the
+whole, a part the closure already places above the whole (the `genl` edge would close a
+cycle), and a part already disjoint from the whole. Each refusal takes the structured
+`:not-well-formed` path rather than throwing, as every other `wff` arm does.
 
 ## Predicate metadata
 

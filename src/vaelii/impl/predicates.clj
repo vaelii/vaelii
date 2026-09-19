@@ -139,6 +139,7 @@
     :keyed-pair               ; a table keyed on the argument pair — (F a b)
     :pred-position            ; a table keyed on [predicate position] — (F P n)
     :pred-commuting           ; a table keyed on [predicate group] — (F P n) / (F P p …)
+    :roster                   ; a table keyed on [whole parts] — (F whole part part …)
     :none})                   ; nothing is cached; the declaration is read back per use
 
 (def facet-contract
@@ -311,6 +312,22 @@
     sweeps (assoc :sweeps sweeps)
     notes  (assoc :notes notes)))
 
+(defn- roster
+  "A whole-and-parts declaration — `(F whole part part …)` — cached in a table keyed on
+  the whole and its sorted part roster together (`tax/cover-key`).
+
+  Variable-arity, and the arity is content: two parts and three parts are two claims
+  about one whole, so the roster is part of the key rather than something accumulated
+  under the whole."
+  [target & {:keys [facets notes sweeps] :or {facets #{}}}]
+  (cond-> {:shape   {:args [:type] :variadic :type}
+           :storage [:roster target]
+           :checked true
+           :facets  (conj facets :cached :derived)
+           :family  nil}
+    sweeps (assoc :sweeps sweeps)
+    notes  (assoc :notes notes)))
+
 (defn- wff-only
   "A declaration `special/entries` gives a well-formedness arm and nothing else — read
   back through the index per use rather than cached."
@@ -452,6 +469,34 @@
                 (str "taxonomy/add-sib-exception — exempts one pair the sibling clique or a"
                      " disjoint_metatype would separate; read globally in disjointness-test,"
                      " and a retract re-arms through settle's :sib-exc-dirty sweep"))]
+
+     ;; ---- exhaustion: the parts that cover a whole ------------------------
+     ;;
+     ;; :derived, like the separations above and for the same argument — a rule may
+     ;; conclude a cover, and a `decontextualized_predicate` lift copies one into
+     ;; CxUniverse, and neither may wait for a restart to reach the taxonomy.  The
+     ;; sweep is `:type-separating` for both spellings: `partitionedInto` separates its
+     ;; parts from each other, and a bare `covering` installs a `genl` edge per part, so
+     ;; either arriving after the memberships implicates the terms it names.
+     ['covering
+      (enforced (roster :cover :facets #{:reach :convicts}
+                        :sweeps :type-separating
+                        :notes (str "the coverage half is answered by provers/CoveringProver"
+                                    " and convicts through settle's cover violation; the"
+                                    " genl edge per part is installed by the integrate arm,"
+                                    " against the covering sentex's own handle."))
+                (str "taxonomy/add-cover — the part roster consulted, never stored as a"
+                     " sentex per part, plus one taxonomy/add-genl per part"))]
+     ['partitionedInto
+      (enforced (roster :cover :facets #{:reach :convicts}
+                        :sweeps :type-separating
+                        :notes (str "covering's storage exactly, with the separating flag"
+                                    " set: one key and one table, so the coverage half"
+                                    " needs no second reader and no genl edge between the"
+                                    " two spellings."))
+                (str "taxonomy/add-cover — the same roster, read additionally by"
+                     " disjointness-test, which separates the parts the way it separates"
+                     " a disjoint metatype's members"))]
 
      ;; ---- the definitional marks -----------------------------------------
      ['transitive  (enforced (prop :transitive :facets #{:answers})

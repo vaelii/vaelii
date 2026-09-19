@@ -3825,6 +3825,67 @@
     (add tax (second sentence) (nth sentence 2) id ctx)
     (do (when-let [v *edge-replay-skips*] (vswap! v inc)) tax)))
 
+(defn- cover-parts
+  "The `[whole parts]` one `(covering W P …)` or `(partitionedInto W P …)` sentence
+  declares, or nil when the stored sentence is not one.
+
+  `recover` replays **stored** sentexes rather than checked ones, so a foreign or stale
+  store reaches the rebuild arm with a two-element row or a non-symbol part, and reading
+  it positionally would record a cover over nil.  The guard `replay-edge` applies to a
+  taxonomy edge, applied to a roster: at least three elements, every one of them a
+  symbol, and at least two distinct parts."
+  [sentence]
+  (let [[_ whole & parts] sentence]
+    (when (and (>= (count sentence) 3)
+               (symbol? whole)
+               (every? symbol? parts)
+               (> (count (distinct parts)) 1))
+      [whole (distinct parts)])))
+
+(defn- cover-arms
+  "The integrate / disintegrate / rebuild triple `covering` and `partitionedInto` share,
+  differing only in `partition?` — whether the roster also separates its parts.
+
+  Each arm does two things, because the declaration says two things. The roster goes
+  into the taxonomy under one key (`tax/add-cover`), which is what `disjointness-test`
+  reads for a partition and what `CoveringProver` reads for either. And a `genl` edge
+  per part goes in **against the covering sentex's own handle**, so the specialization
+  the cover rests on is one the closure holds rather than one every reader has to
+  re-derive: belief follows the declaration through the same supporter map an asserted
+  edge uses, and retracting the cover drops the edges with it. The edges post the
+  exception re-check the `genl` arm posts, for the reason that arm posts it.
+
+  A part equal to the whole installs no edge — `wff/covering-problems` refuses the
+  declaration, and the rebuild arm replays a store that never passed it."
+  [partition?]
+  (letfn [(edges! [kb tax h ctx whole parts]
+            (doseq [p parts :when (not= p whole)]
+              (tax/add-genl tax p whole h ctx)
+              (recheck-genl-edge kb p whole)))]
+    {:integrate    (fn [kb sx h]
+                     (when-let [[whole parts] (cover-parts (:sentence sx))]
+                       (let [tax (reasoning/taxonomy kb) ctx (:context sx)]
+                         (tax/add-cover tax whole parts partition? h ctx)
+                         (edges! kb tax h ctx whole parts))))
+     :disintegrate (fn [kb sx]
+                     (when-let [[whole parts] (cover-parts (:sentence sx))]
+                       (let [tax (reasoning/taxonomy kb)]
+                         (tax/del-cover! tax whole parts partition? (:id sx))
+                         (doseq [p parts :when (not= p whole)]
+                           (tax/del-genl! tax p whole (:id sx))
+                           (recheck-genl-edge kb p whole)))))
+     ;; The rebuild arm takes `tax` alone, so it replays both halves and posts no
+     ;; re-check — `recover` re-evaluates every exception after the replay rather than
+     ;; per edge.
+     :rebuild      (fn [tax {sentence :sentence id :id ctx :context}]
+                     (if-let [[whole parts] (cover-parts sentence)]
+                       (do (tax/add-cover tax whole parts partition? id ctx)
+                           (doseq [p parts :when (not= p whole)]
+                             (tax/add-genl tax p whole id ctx))
+                           tax)
+                       (do (when-let [v *edge-replay-skips*] (vswap! v inc)) tax)))
+     :wff          wff/covering-problems}))
+
 (def ^:private arms
   "What the engine *does* about each functor it interprets, keyed by functor: the
   integrate / disintegrate / rebuild triple and the structural `:wff` check.
@@ -3875,6 +3936,8 @@
              :rebuild      (fn [tax {sentence :sentence id :id ctx :context}]
                              (replay-edge tax/add-genlCx tax sentence 'genlCx id ctx))
              :wff          wff/genlCx-problems}
+    'covering        (cover-arms false)
+    'partitionedInto (cover-arms true)
     'disjoint {:integrate    (fn [kb sx h]
                                (let [[_ a b] (:sentence sx)]
                                  (tax/add-disjoint (reasoning/taxonomy kb) a b h (:context sx))))
