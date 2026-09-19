@@ -747,6 +747,16 @@ Three things it does differently, each because a node has no rule frame to hide 
 decremented only for the one actually rewritten, so the conjunct expanded first cannot
 spend the whole allowance the way a single per-frame depth lets it.
 
+**A repeated conjunct collapses to one.** The splice can put a literal into a
+conjunction that already holds it, and conjunction is idempotent, so the two spellings
+are one question under two keys. The kept copy takes the **largest** depth of the copies
+folded onto it, because a deeper copy admits every rewrite a shallower copy admits. The
+rewrite window then reopens at the position a copy folded onto, which is what makes that
+depth reachable. Without the collapse a rule graph containing a cycle adds a conjunct
+per turn: `(relation ?x)` over CxCore with three bridge rules chaining forward expands
+192,971 nodes at depth 5 without the collapse and 710 with it, and completes depth 8 in
+11,446 nodes, where without the collapse that query does not finish.
+
 Dedup is global rather than per-path — a key is claimed with a compare-and-set before a
 node is enqueued, and a second arrival at an equivalent node is dropped. The key is the
 node's literals, their depths, the map back to the asker's variables, the **set of
@@ -981,13 +991,14 @@ subgoal, and a needle is precisely the query where none of the other provers can
 
 `inference/*max-depth*` is not a tuning knob, and its root value is **nil**: the node
 engine refuses a query that names no depth rather than picking one. A residual grows a
-conjunct per rewrite, and the claimed-key set cannot stop that — each rewrite yields a
-longer conjunction and so a key nothing has claimed. The DFS terminates on the **data**
-(it substitutes as it goes, so a chain of length n ends after n steps whatever bound it
-was given, and a term a rule grows past what the path has already met is cut by the
-term-growth ceiling); the node engine terminates on the **bound**. So a derivation deeper than the
-bound is found by one and not the other, and the depth a query needs is a property of the
-data, which is why there is no default to pick.
+conjunct per rewrite, and the claimed-key set cannot stop that — a rewrite naming a
+literal the conjunction does not already hold yields a longer conjunction, and so a key
+nothing has claimed. The DFS terminates on the **data** (it substitutes as it goes, so a
+chain of length n ends after n steps whatever bound it was given, and a term a rule grows
+past what the path has already met is cut by the term-growth ceiling); the node engine
+terminates on the **bound**. So a derivation deeper than the bound is found by one and
+not the other, and the depth a query needs is a property of the data, which is why there
+is no default to pick.
 
 Within the bound the two return the same answer **set**, which is what
 `inference_parity_test` holds them to directly and what `VAELII_QUERY_ENGINE=inference`

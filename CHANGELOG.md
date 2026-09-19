@@ -56,6 +56,22 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [#55](https://github.com/vaelii/vaelii/issues/55),
   [docs/canonicalization.md](docs/canonicalization.md)
 
+- **An open query under the node engine converges on a rule graph containing a cycle.**
+  A node is a conjunction of literals, and `children` rewrites one literal through one
+  rule by splicing the rule's antecedents in where that literal stood. The splice kept a
+  conjunct the conjunction already held. Conjunction is idempotent, so `A ∧ B ∧ B` and
+  `A ∧ B` are one question under two `node-key`s, and the claimed-key set could not
+  recognize the state as one it had already expanded: each turn of the cycle added a
+  conjunct instead of returning to a claimed key. A repeat now collapses onto the first
+  copy, which takes the largest depth of the copies folded onto it, so no rewrite a copy
+  admitted is refused; the rewrite window reopens at the position a copy folded onto,
+  which is what makes that depth reachable. `(relation ?x)` over CxCore with three bridge
+  rules chaining forward expanded 192,971 nodes at depth 5 and did not finish depth 6
+  within 411 s; the same query expands 710 nodes and 1,843, and completes at depth 8 —
+  the bound the suite runs under — in 11,446 nodes and 4.1 s. The answers are the same
+  121 at every depth. *Class:* **Fix**.
+  [docs/inference.md](docs/inference.md)
+
 - **A bulk load no longer stores a permutation of a row it already holds.** The fast
   path skips the dedup probe because a distinct corpus never hits an existing sentex —
   but a permutation of a stored row is not distinct, and the caller cannot tell:
