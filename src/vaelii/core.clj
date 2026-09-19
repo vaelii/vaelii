@@ -1106,9 +1106,10 @@
     exposure pass off.  A store can accumulate content its own constraints forbid,
     indefinitely, with every instrument green.
   - **Two writes land under the wrong key.**  `res/kb-sentex` sorts a symmetric
-    predicate's arguments only when the taxonomy says the predicate is symmetric, so
-    `(siblingOf Bob Ann)` is stored where a recovered KB writes `(siblingOf Ann Bob)`;
-    and a `:forced-decontextualized` predicate lands in the caller's context instead of
+    predicate's arguments only when the taxonomy says the predicate is symmetric, and a
+    commutative one's only when it says which positions commute, so `(siblingOf Bob Ann)`
+    is stored where a recovered KB writes `(siblingOf Ann Bob)`; and a
+    `:forced-decontextualized` predicate lands in the caller's context instead of
     `CxUniverse`.
   - **On a derived index, dedup misses everything.**  `assert` dedups through
     `kb/find-sentex-handle`, so every assert mints a fresh handle for a sentence already
@@ -1621,19 +1622,24 @@
             ;; the record is born carrying its strength, so `mark-premise` below has
             ;; nothing to re-store — see `kb/create-sentex`.
             ;;
-            ;; **A symmetric predicate keeps the probe.**  `create-sentex` canonicalizes
-            ;; the arguments (`res/kb-sentex` sorts a `(symmetric P)` literal), so the bulk
-            ;; row is *stored* in canonical order — but skipping the probe stored it beside
-            ;; a mirror already there, two records for one proposition, which the caller
-            ;; cannot pre-dedup: telling `(siblingOf Bob Ann)` from a stored
-            ;; `(siblingOf Ann Bob)` needs exactly the `(symmetric P)` read the fast path
-            ;; is avoiding.  So for a symmetric functor the row takes `find-or-create` (one
-            ;; taxonomy read per row for a rare mark), which is what makes the bulk result
-            ;; identical to loading one-by-one (`integrate/symmetrize-existing`, vaelii#61).
-            ;; The `has-prop?` read is inside the `*bulk-load?*` `and`, so `and` short-
-            ;; circuits it away on the non-bulk path, which never reaches it.
+            ;; **A predicate that permutes keeps the probe.**  `create-sentex` canonicalizes
+            ;; the arguments (`res/kb-sentex` sorts a `(symmetric P)` literal, and the
+            ;; commuting component of a commutative one), so the bulk row is *stored* in
+            ;; canonical order — but skipping the probe stored it beside a permutation
+            ;; already there, two records for one proposition, which the caller cannot
+            ;; pre-dedup: telling `(siblingOf Bob Ann)` from a stored `(siblingOf Ann Bob)`
+            ;; needs exactly the `(symmetric P)` read the fast path is avoiding, and
+            ;; `(covering W C A B)` from a stored `(covering W A B C)` the commuting-group
+            ;; read.  So for such a functor the row takes `find-or-create` (one taxonomy
+            ;; read per row for a rare mark), which is what makes the bulk result identical
+            ;; to loading one-by-one (`integrate/commute-existing`, vaelii#61).  Both reads
+            ;; are inside the `*bulk-load?*` `and`, so `and` short-circuits them away on the
+            ;; non-bulk path, which never reaches them.
             [h s _]  (if (and *bulk-load?*
-                              (not (and pred (tax/has-prop? (reasoning/taxonomy kb) :symmetric pred))))
+                              (not (and pred
+                                        (let [tax (reasoning/taxonomy kb)]
+                                          (or (tax/has-prop? tax :symmetric pred)
+                                              (seq (tax/commuting-groups tax pred)))))))
                        (let [[h s] (kb/create-sentex kb sentence context strength)] [h s true])
                        (kb/find-or-create-sentex kb sentence context strength))]
         (mark-premise kb h strength)
@@ -1692,7 +1698,7 @@
               ;; the entry point, so the rows stored before it are spelled the way no row stored
               ;; after it will be — and a mirrored pair is two records for one
               ;; proposition, each retractable without the other (vaelii#61)
-              sym  (integrate/symmetrize-existing kb sentence h)
+              sym  (integrate/commute-existing kb sentence h)
               mig  (merge-with into {:new [] :superseded [] :violations []}
                                eq own fnl fex fdn asym axe axd cxe sym)]
           ;; Only when this assert actually merged something.  The reconcile re-examines

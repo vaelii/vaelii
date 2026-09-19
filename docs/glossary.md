@@ -203,8 +203,8 @@ between the pipeline and the store. See [reading.md](reading.md).
 
 **Canonical form** ![kb](../.github/badges/cat-kb.svg): The normalized shape a
 sentence is stored in so logically identical knowledge stores once — canonical
-variables, canonical literal order, symmetric-argument sorting, and comparison
-folding. See [canonicalization.md](canonicalization.md).
+variables, canonical literal order, symmetric- and commuting-argument sorting, and
+comparison folding. See [canonicalization.md](canonicalization.md).
 
 **`closed_extent_predicate`** ![kb](../.github/badges/cat-kb.svg): The grant that
 a predicate's **believed** extent is complete, so nothing answering `(P a)` at
@@ -217,6 +217,15 @@ ancestor set, so it is a policy of the theory that closes the extent; a closed
 `(comment <term> "…")` — that lets the CxCore vocabulary document itself in
 its own representation, read back by `core-context/comment-of`. See
 [inference.md](inference.md).
+
+**Commuting component** ![kb](../.github/badges/cat-kb.svg): The set of argument
+positions one literal may permute, reduced from the commutativity marks a relation
+carries — `commutative`, `commutativeInArgs` and `commutativeInArgAndRest`. A ground
+fact stores sorted within each component and a pattern is fanned over its arrangements
+at match time, which is symmetric-argument sorting at any arity. Overlapping marks merge
+into one component, and a tail is closed by the literal's own arity, so two arities of a
+variable-arity relation stay two claims. See
+[canonicalization.md](canonicalization.md).
 
 **Composition table** ![qr](../.github/badges/cat-qr.svg): `r1 ∘ r2` → the base
 relations still possible between *x* and *z* given `r1`(x,y) and `r2`(y,z). The

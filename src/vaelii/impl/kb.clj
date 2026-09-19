@@ -2150,7 +2150,7 @@
   and therefore to one trie key: a mirrored second probe reads the leaf the first one just
   read.  What makes a fact stored under the *other* spelling findable is that no such fact
   survives its predicate's `(symmetric P)` declaration — the mark migrates the rows stored
-  before it (`integrate/symmetrize-existing`), so the store holds the spelling this probe
+  before it (`integrate/commute-existing`), so the store holds the spelling this probe
   builds."
   [kb sentence context]
   (let [stamp (canon-stamp kb)]
@@ -2564,7 +2564,7 @@
   caller just wrote through the entry point, and different for one the store already holds under
   a spelling the taxonomy has since stopped canonicalizing to: a `(symmetric P)` mark
   arriving after `(P b a)` was stored is the case, and telling the two apart is what
-  `integrate/symmetrize-existing` sweeps on."
+  `integrate/commute-existing` sweeps on."
   [kb sentence context]
   (:sentence (res/kb-sentex kb sentence context)))
 
@@ -2585,7 +2585,7 @@
 
   **For a re-canonicalization, not for a rewrite.**  The one caller is a late `(symmetric
   P)` mark bringing a stored fact into the argument order the declaration puts every later
-  one in (`integrate/symmetrize-existing`): same predicate, same arguments, same truth, so
+  one in (`integrate/commute-existing`): same predicate, same arguments, same truth, so
   nothing a justification or a premise records about the handle stops being true.  A
   caller changing what the sentex *says* would be lying to the TMS about what its
   supporters support, and the assert entry point is the way to say something else.
@@ -2881,6 +2881,17 @@
 
 ;; ---- matching ------------------------------------------------------------
 
+(defn- permuting-literal?
+  "Does `sentence` reach `res/raw-match`'s arrangement fan — a symmetric literal, or one
+  whose predicate declares a commuting group?  The gate `stored-once-per-handle` opens
+  on, and the same question `raw-match` asks itself, so the reader pays for the dedup set
+  exactly where a fan can put one handle in the result twice."
+  [kb sentence]
+  (let [tax (reasoning/taxonomy kb)
+        f   (when (sequential? sentence) (first sentence))]
+    (or (sx/symmetric-literal? sentence #(tax/has-prop? tax :symmetric %))
+        (boolean (and (symbol? f) (seq (tax/commuting-groups tax f)))))))
+
 (defn- stored-once-per-handle
   "The stored sentex of each match, **one per handle**, keeping the first.
 
@@ -2896,10 +2907,10 @@
   realized reader would fetch them all per page.  So the `seen` set grows with what the
   consumer walks rather than with the extent.
 
-  **Only a literal that can duplicate pays for it.**  The mirror probe is the only thing
-  that answers one handle twice, and `raw-match` runs it for a symmetric literal alone —
-  so for every other sentence the set would be built, grown per element and never consulted
-  to any purpose.  That is not free where it matters: `settle`'s walk over the P/¬P
+  **Only a literal that can duplicate pays for it.**  The arrangement fan is the only
+  thing that answers one handle twice, and `raw-match` runs it for a symmetric literal or
+  a commuting one alone — so for every other sentence the set would be built, grown per
+  element and never consulted to any purpose.  That is not free where it matters: `settle`'s walk over the P/¬P
   coincidence set reads this twice per opposed body, and paying a set insert per member
   there turns an arbitration that is bookkeeping into one that allocates with the standing
   set (`negation-arbitration`)."
@@ -2947,8 +2958,7 @@
    (->> (res/raw-match kb sentence context)
         (res/without-excepted kb context)
         (res/without-retired kb context)
-        (stored-once-per-handle
-         (sx/symmetric-literal? sentence #(tax/has-prop? (reasoning/taxonomy kb) :symmetric %))))))
+        (stored-once-per-handle (permuting-literal? kb sentence)))))
 
 (defn sentexes-matching
   "*Believed* sentexes matching `sentence` in `context` — the implementation behind

@@ -276,7 +276,7 @@
           :equality (empty-equality)
           :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
           :sibling-disjoint #{} :sib-exception-index {}
-          :props {} :inverse {} :arity {} :functional-in-arg {}
+          :props {} :inverse {} :arity {} :functional-in-arg {} :commuting {}
           :cache-support {} :cache-handle-keys {} :cache-dirty #{} :cache-ctxs {}
           ;; A KB installs two read-only callbacks after construction: whether any
           ;; supporter needs exception-aware scoping, and whether one supporter is
@@ -914,7 +914,15 @@
     ;; nowhere to put one.  A predicate may hold several positions at once, so this
     ;; accumulates rather than replacing — `(functionalInArg P 2)` and
     ;; `(functionalInArg P 3)` are two constraints, both live.
-    :functional-in-arg (update-in t [:functional-in-arg a] (fnil conj #{}) b)))    ; a = pred, b = n
+    :functional-in-arg (update-in t [:functional-in-arg a] (fnil conj #{}) b)      ; a = pred, b = n
+    ;; `:commuting` is `:functional-in-arg`'s shape over a richer value: `b` is a group
+    ;; descriptor — `[:rest f]` for `(commutativeInArgAndRest P f)`, `[:args [p1 p2 …]]`
+    ;; for `(commutativeInArgs P p1 p2 …)`.  One predicate may carry several groups at
+    ;; once, so this accumulates: `(commutativeInArgs P 1 2)` and `(commutativeInArgs P
+    ;; 3 4)` are two independent permutation licences, both live.  `commutative` is not
+    ;; here — it is a `:props` mark, and the CxCore rule deriving `(commutativeInArgAndRest
+    ;; P 1)` from it is what puts the runtime group in this table.
+    :commuting (update-in t [:commuting a] (fnil conj #{}) b)))                    ; a = pred, b = group
 
 (defn- cache-uninstall
   "Remove the derived cache entry for support key `k` — the exact inverse of
@@ -942,7 +950,16 @@
     (let [ns' (disj (get-in t [:functional-in-arg a] #{}) b)]
       (if (seq ns')
         (assoc-in t [:functional-in-arg a] ns')
-        (update t :functional-in-arg dissoc a)))))
+        (update t :functional-in-arg dissoc a)))
+    ;; The same emptied-key discipline, for the same reason: `commuting-groups` gates on
+    ;; the predicate's entry being present, so a predicate whose last group left must not
+    ;; linger as a key mapping to `#{}` — a literal would then take the group-aware
+    ;; canonicalization path and pay for a licence it no longer has.
+    :commuting
+    (let [gs' (disj (get-in t [:commuting a] #{}) b)]
+      (if (seq gs')
+        (assoc-in t [:commuting a] gs')
+        (update t :commuting dissoc a)))))
 
 ;; ---- incremental adjacency maintenance ----------------------------------
 ;; Only the O(V+E) direct adjacency is stored; the closure is answered on demand
@@ -2320,7 +2337,7 @@
          :equality (empty-equality)
          :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
          :sibling-disjoint #{} :sib-exception-index {}
-         :props {} :inverse {} :arity {} :functional-in-arg {}
+         :props {} :inverse {} :arity {} :functional-in-arg {} :commuting {}
          :cache-support {} :cache-handle-keys {} :cache-dirty #{} :cache-ctxs {}
          :rewrite-support {} :rewrite-active {})
   ;; The read memo is stamped with each relation's `:gen`, which the fresh
@@ -2752,8 +2769,17 @@
   past *that* cap the order-dependence is in whether a merge is derived at all, not only
   in when.  It is bounded the same way and reported the same way (a
   `:context-edge-exposure-truncated` violation per cut), and below the cap it is exact;
-  what it is not is covered by the sentence above."
-  4096)
+  what it is not is covered by the sentence above.
+
+  **Why 8192 and not 4096.**  The cap bounds a sweep against a *large* extent, and 4096
+  was not doing that: the shipped ontology plus a 200-fact generated corpus
+  (`generate_test/a-generated-kb-derives-cleanly`) exhausted it with under 3% to spare —
+  measured, the threshold sat between 4096 and 4224 — so three terms added to `CxCore`
+  cut five triggers short, and the next three would have done the same.  A cap a
+  mid-size KB reaches by existing truncates a normal sweep rather than refusing an
+  unbounded one.  8192 restores the headroom; which sweeps the cap refuses is unchanged,
+  and so is every KB that never came near it."
+  8192)
 
 ;; ---- genlCx (contexts) ---------------------------------------------------
 
@@ -3899,6 +3925,60 @@
   `metatype-members` moves when a member leaves a still-marked metatype.  One map read,
   no walk."
   [tax] (get @tax :functional-in-arg {}))
+
+(defn add-commuting
+  "Install a commutativity group on `pred`.  `group` is `[:rest f]` or `[:args [p1 p2 …]]`
+  — the two written spellings reduced to the one descriptor `commuting-components` reads."
+  ([tax pred group handle] (add-commuting tax pred group handle nil))
+  ([tax pred group handle ctx]
+   (let [k [:commuting pred group]]
+     (swap! tax supported-add k handle ctx #(cache-install % k)))
+   tax))
+
+(defn del-commuting! [tax pred group handle]
+  (let [k [:commuting pred group]]
+    (swap! tax supported-del k handle #(cache-uninstall % k)))
+  tax)
+
+(defn commuting-groups
+  "The commutativity group descriptors declared of `pred` itself, as a set.  Empty when
+  none are, which is the answer for all but a handful of predicates.
+
+  **The exact functor, and global**, unlike `functional-in-arg-over`, which walks up.
+  Two separate reasons, and they point the same way:
+
+  - A commutativity mark *canonicalizes* where the argument constraints *convict*.  A
+    sentex has one key, so whether a predicate permutes its arguments cannot vary by who
+    is asking, and a reader-scoped read here would store one literal under two keys —
+    `kb-sentex`'s key discipline, stated at that function.
+  - A `genl` edge below a commutative predicate does not make the sub-predicate
+    commutative, exactly as it does not make it symmetric (`integrate/commute-existing`,
+    `constraint_descension_test`).  A row re-spelled at a sub-predicate would be one the
+    assert entry point stores the other way round on the very next write.
+
+  One map read, no closure walk, so an unmarked predicate pays a single miss — which is
+  what lets this sit on the canonicalization path every assert runs."
+  [tax pred] (get-in @tax [:commuting pred] #{}))
+
+(defn commuting-predicates-among
+  "The members of `specs` carrying any commutativity group, as a set, or **nil** when none
+  do — `commuting-groups` mirrored for a caller holding a whole spec closure rather than
+  one probe predicate.
+
+  **Driven from the table, and in one pass.**  The marked predicates are a handful where a
+  broad functor's spec closure is the whole type hierarchy, so the membership test runs
+  the small side against the large one — `props`' own trade, and `matches-hierarchical`
+  makes it for `symmetric` a few lines above the caller.  Iterating the entries rather
+  than the key set is what keeps a retrieval off an allocation: the key set would be built
+  and thrown away once per matched literal, and on a KB carrying the CxCore bridge every
+  symmetric predicate is in this table.
+
+  Nil rather than an empty set, so the caller's gate is a `nil?` and the common answer
+  allocates nothing at all."
+  [tax specs]
+  (let [table (get @tax :commuting {})]
+    (when (seq table)
+      (not-empty (into #{} (comp (map key) (filter #(contains? specs %))) table)))))
 
 (defn functional-family-declared?
   "Does the taxonomy carry a functional-family mark of **either** spelling — the global,

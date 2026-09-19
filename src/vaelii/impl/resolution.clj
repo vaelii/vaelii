@@ -875,13 +875,19 @@
   same sentex.  Every construction that stores or looks one up must go through this —
   otherwise an asserted form and a queried form could key differently.
 
+  The commutativity marks generalize the same sorting to a declared set of positions at
+  any arity, and are read here the same way: `tax/commuting-groups` off the literal's own
+  functor, one map read that misses for every predicate declaring nothing.
+
   The property read is **global on purpose**: a sentex has one key, so whether a
   predicate sorts its arguments cannot vary by who is asking — a reader-scoped read
   here would store one literal under two keys and break dedup, retraction, and the
   mirror probe at once."
   [kb sentence context]
-  (sx/sentex sentence context
-             {:symmetric? #(tax/has-prop? (reasoning/taxonomy kb) :symmetric %)}))
+  (let [tax (reasoning/taxonomy kb)]
+    (sx/sentex sentence context
+               {:symmetric? #(tax/has-prop? tax :symmetric %)
+                :groups-of  (fn [f _arity] (tax/commuting-groups tax f))})))
 
 (def ^:dynamic *prefetch-candidates*
   "Candidate handles per **prefetch hint** a retrieval path gives its record store, or
@@ -1030,14 +1036,37 @@
   Lazy through the mirror: `lazy-cat` defers the second probe *and* the `seen` set
   that dedupes it, so a consumer answered by the direct hits never pays for either."
   [kb sentence context]
-  (let [hits (match-one kb sentence context)]
-    ;; the global property, matching kb-sentex's key discipline — the mirror probe
-    ;; exists because storage sorted the arguments, and storage does not vary by reader
-    (if (sx/symmetric-literal? sentence #(tax/has-prop? (reasoning/taxonomy kb) :symmetric %))
-      (lazy-cat hits
-                (let [seen (into #{} (map (fn [[h b]] [h b])) hits)]
-                  (remove (fn [[h b]] (contains? seen [h b]))
-                          (match-one kb (sx/mirror-literal sentence) context))))
+  (let [hits (match-one kb sentence context)
+        tax  (reasoning/taxonomy kb)
+        ;; the global property, matching kb-sentex's key discipline — the mirror probe
+        ;; exists because storage sorted the arguments, and storage does not vary by reader
+        others (if (sx/symmetric-literal? sentence #(tax/has-prop? tax :symmetric %))
+                 [(sx/mirror-literal sentence)]
+                 ;; The commutativity marks generalize the mirror to a declared component:
+                 ;; `commuting-arrangements` returns the literal first and then the other
+                 ;; arrangements a stored fact can have, so `rest` is the fan-out.  The
+                 ;; declaration read stands in front of it so an unmarked predicate — which
+                 ;; is all but a handful, on a path every literal-context match runs — pays
+                 ;; one map lookup and builds neither the closure nor the vector.
+                 (let [f (when (sequential? sentence) (first sentence))]
+                   (when (and (symbol? f) (seq (tax/commuting-groups tax f)))
+                     (rest (sx/commuting-arrangements
+                            sentence (fn [g _] (tax/commuting-groups tax g)))))))]
+    (if (seq others)
+      ;; Lazy the whole way down: each probe filters against what the *earlier* probes
+      ;; emitted, and the set it hands the next one is not built until a consumer walks
+      ;; past its own hits.  So a consumer answered by the direct hits pays for no probe
+      ;; and no set, exactly as the single mirror cost before the fan generalized it.
+      (letfn [(step [forms seen]
+                (when-let [form (first forms)]
+                  (let [hs (remove (fn [[h b]] (contains? seen [h b]))
+                                   (match-one kb form context))]
+                    (if (next forms)
+                      (concat hs (lazy-seq
+                                  (step (rest forms)
+                                        (into seen (map (fn [[h b]] [h b])) hs))))
+                      hs))))]
+        (lazy-cat hits (step others (into #{} (map (fn [[h b]] [h b])) hits))))
       hits)))
 
 (defn sub-predicates
@@ -1203,8 +1232,6 @@
   (and (hierarchical-literal? sentence)
        (boolean (some sx/indexable-term? (rest sentence)))))
 
-(defn- mirror-pos [pos] (if (= pos 1) 2 1))
-
 (def ^:dynamic *arg-intersect*
   "How `lead-candidates` narrows a NON-symmetric literal with **≥2 indexable ground
   arguments**: the multi-column argument-root probe.  Rather than lead with the single
@@ -1295,22 +1322,31 @@
   filter is satisfied by construction.  A variable functor reads the predicate-agnostic
   union instead (`sentexes-with-arg`, over the slot roster), which spans every functor;
   with no bound argument at all, the sub-predicates' functor extents.  A symmetric
-  sub-predicate may store the term at the mirror position, so when any sub-predicate is
-  symmetric both positions are taken.
+  sub-predicate may store the term at the mirror position, and a commutative one at any
+  position of the term's commuting component, so when any sub-predicate permutes that
+  position every position it reaches is taken.
 
   Lazy so an existence check short-circuits without realizing the whole candidate set:
   each posting set is handed back by reference and the per-spec fan is `lazy-mapcat`,
   so buckets are read one sub-predicate at a time as `matches-hierarchical` consumes
-  them.  The symmetric two-position concat can repeat a handle stored at both
-  positions; `matches-hierarchical`'s `seen` set dedups the emitted matches, so the
+  them.  The permuted multi-position concat can repeat a handle stored at more than one
+  of them; `matches-hierarchical`'s `seen` set dedups the emitted matches, so the
   result stays the identical set."
-  [kb specs args sym?]
+  [kb specs args alts]
   (let [ix     (:index kb)
+        ;; `alts` is nil when nothing about this literal permutes, and otherwise a
+        ;; function from a position to the **other** positions a match may be stored at:
+        ;; the mirror slot for a symmetric literal, the rest of the commuting component
+        ;; for a commutative one.  A superset is safe here — `matches-hierarchical`
+        ;; filters every candidate through `unify` — so the components are unioned over
+        ;; the sub-predicates rather than asked per candidate.
+        alt    (fn [pos] (when alts (seq (alts pos))))
         ground (keep-indexed (fn [i a] (when (sx/indexable-term? a) [(inc i) a])) args)]
     (if (seq ground)
       (let [cnt (fn [[pos term]]
-                  (cond-> (p/count-with-arg ix pos term)
-                    sym? (+ (p/count-with-arg ix (mirror-pos pos) term))))
+                  (reduce (fn [n pz] (+ n (p/count-with-arg ix pz term)))
+                          (p/count-with-arg ix pos term)
+                          (alt pos)))
             ;; A lone ground column needs no count: there is nothing to compare it
             ;; against, so pricing it here would be a read the belief-settle diet (`≤1`
             ;; ground column) never spends.  Count only with ≥2 columns — one agnostic
@@ -1337,7 +1373,7 @@
             ;; mirror matches a forward intersection would drop.  The intersection is a
             ;; subset of that leading column and a superset of the matches, so the answer
             ;; set is unchanged (`*arg-intersect*`).
-            cols   (when (and (not sym?) sorted) (multi-cols sorted))]
+            cols   (when (and (nil? alts) sorted) (multi-cols sorted))]
         (cond
           (seq cols)
           (let [pt (into {} cols)]                     ; {pos term} — positions are unique
@@ -1347,8 +1383,11 @@
               (p/sentexes-with-args ix nil pt)))
 
           (seq specs)
-          (if sym?
-            (lazy-mapcat (fn [pd] (concat (scoped pd pos) (scoped pd (mirror-pos pos)))) specs)
+          (if-let [azs (alt pos)]
+            (lazy-mapcat (fn [pd]
+                           (reduce (fn [acc pz] (concat acc (scoped pd pz)))
+                                   (scoped pd pos) azs))
+                         specs)
             ;; One scoped bucket per sub-predicate is one index probe per spec, which a
             ;; broad functor's spec closure makes O(|hierarchy|) — the dominant cost of a
             ;; cold rebuild's clash retrieval, where the queried type sits high and its
@@ -1366,9 +1405,10 @@
           ;; A variable functor names no predicate, so there is no scope to read: the
           ;; predicate-agnostic root (a union over the slot roster) is the whole
           ;; candidate set, and `unify` binds the functor per candidate.
-          sym?
-          (concat (p/sentexes-with-arg ix pos term)
-                  (p/sentexes-with-arg ix (mirror-pos pos) term))
+          (alt pos)
+          (reduce (fn [acc pz] (concat acc (p/sentexes-with-arg ix pz term)))
+                  (p/sentexes-with-arg ix pos term)
+                  (alt pos))
           :else
           (p/sentexes-with-arg ix pos term)))
       (mapcat #(p/sentexes-with-functor ix %) specs))))
@@ -1415,6 +1455,42 @@
                      (= 2 (count args))
                      (boolean (some #(contains? specs %) (tax/props tax :symmetric))))
           sym-preds (when sym? (tax/props tax :symmetric))
+          ;; the same question for the commutativity marks, driven the same way round and
+          ;; for the same reason: the marked predicates are a handful where a broad
+          ;; functor's spec closure is the whole hierarchy.  A variable functor declares
+          ;; nothing, so it permutes nothing here either.
+          comm-preds (when-not var-fn? (tax/commuting-predicates-among tax specs))
+          ;; the positions one argument may also be stored at, unioned over the
+          ;; permuting sub-predicates — `lead-candidates`' bucket gate, where a superset
+          ;; is safe.  Nil when nothing permutes, which is the shape all but a handful of
+          ;; literals have and the one that keeps multi-column narrowing on.
+          alts  (let [comps (concat (when sym? [[1 2]])
+                                    (mapcat #(sx/commuting-components
+                                              (tax/commuting-groups tax %) (count args))
+                                            comm-preds))
+                      m (reduce (fn [m c]
+                                  (reduce (fn [m pos] (update m pos (fnil into #{})
+                                                              (remove #{pos} c)))
+                                          m c))
+                                {} comps)]
+                  (when (seq m) m))
+          ;; the argument lists a candidate of functor `f` may be probed under, `args`
+          ;; first — the generalization of the symmetric mirror, memoized per functor so
+          ;; a posting of one functor over many contexts builds them once.
+          alt-args (volatile! {})
+          args-for (fn [f]
+                     (or (get @alt-args f)
+                         (let [v (if (and f (or (contains? sym-preds f)
+                                                (contains? comm-preds f)))
+                                   (mapv #(vec (rest %))
+                                         (if (contains? sym-preds f)
+                                           [(cons f args) (cons f (reverse args))]
+                                           (sx/commuting-arrangements
+                                            (cons f args)
+                                            (fn [g _] (tax/commuting-groups tax g)))))
+                                   [(vec args)])]
+                           (vswap! alt-args assoc f v)
+                           v)))
           seen  (volatile! #{})
           ;; the **unify-attempt** tally: candidates that clear the cheap
           ;; liveness/predicate/context filters and reach `unify`.  `prof?` is captured
@@ -1441,12 +1517,14 @@
           ;; substituting it away would unify fine and bind nothing, losing the very
           ;; binding the caller asked for.  So one pattern serves every candidate there.
           pat-functor (if var-fn? (constantly (first sentence)) identity)
-          pat-for (fn [f' pctx rev?]
+          ;; `i` indexes `args-for`'s arrangement vector rather than naming the argument
+          ;; list, so the key stays three scalars and a candidate costs no vector hash.
+          pat-for (fn [f' pctx i]
                     (let [pf (pat-functor f')
-                          k  [pf pctx rev?]]
+                          k  [pf pctx i]]
                       (if-some [p (get @pats k)]
                         p
-                        (let [p (kb-sentex kb (cons pf (if rev? (reverse args) args)) pctx)]
+                        (let [p (kb-sentex kb (cons pf (nth (args-for f') i)) pctx)]
                           (vswap! pats assoc k p)
                           p))))]
       ;; the second retrieval decision in this namespace, and the one `candidate-handles`
@@ -1457,7 +1535,7 @@
                    (seq specs)                          :hier-scoped-roots
                    :else                                :hier-agnostic-roots)
             _    (when prof? (prof/record-literal sentence path))
-            cands (hinting kb (lead-candidates kb specs args sym?))
+            cands (hinting kb (lead-candidates kb specs args alts))
             ;; A candidate that can answer at all: live, fetched, and past the
             ;; predicate-hierarchy filter (the sub-predicate closure) and the
             ;; context-hierarchy filter (the genlCx up-closure), in memory.  An
@@ -1476,15 +1554,15 @@
             ;; the unify attempt in one argument order.  Concrete view: bind no ?ctx
             ;; (match at the fact's own context, which is in the up-closure); variable
             ;; view: bind ?ctx, exactly as match-one does.
-            order (fn [stored rev?]
+            order (fn [stored i]
                     (let [pat (pat-for (some-> (sx/body stored) first)
                                        (if up? (:context stored) '?ctx)
-                                       rev?)]
+                                       i)]
                       (when (= (sx/negative? pat) (sx/negative? stored))
                         (unify (:context pat) (:context stored)
                                (unify (:sentence pat) (:sentence stored))))))
             out
-            (if-not sym?
+            (if-not (or sym? comm-preds)
               ;; Nothing under this functor is symmetric, so one candidate answers at
               ;; most once and the handle is the whole dedup key — the shape all but a
               ;; handful of literals have, and the one the closure walks ask for a node
@@ -1497,13 +1575,14 @@
                       (when-not (contains? @seen h)
                         (when-let [stored (admit h)]
                           (when prof? (vswap! unifs inc))
-                          (when-let [b (order stored false)]
+                          (when-let [b (order stored 0)]
                             (vswap! seen conj h)
                             [h b stored]))))
                     cands)
-              ;; A symmetric sub-predicate, so one candidate really can answer twice —
-              ;; an all-variable pattern binds a stored `(sibOf Rex Tib)` both ways
-              ;; round — and the dedup keys on `[handle bindings]`, which leaves no
+              ;; A permuting sub-predicate, so one candidate really can answer more than
+              ;; once — an all-variable pattern binds a stored `(sibOf Rex Tib)` both ways
+              ;; round, and a commuting component of three binds a stored triple six ways
+              ;; — and the dedup keys on `[handle bindings]`, which leaves no
               ;; handle-keyed early exit to skip the fetch with.  That pairing is what
               ;; makes the two retrieval paths return one set (`raw-match` says why the
               ;; pair is the honest key).
@@ -1511,17 +1590,13 @@
                (fn [h]
                  (when-let [stored (admit h)]
                    (when prof? (vswap! unifs inc))
-                   (let [;; both orders, not the first that answers: a pattern with two
-                         ;; variable arguments binds one stored fact twice and
+                   (let [;; every arrangement, not the first that answers: a pattern with
+                         ;; two variable arguments binds one stored fact twice and
                          ;; differently, and those are two answers about one handle.  A
-                         ;; palindrome, or any pattern the mirror binds as the direct
-                         ;; order did, is one — the `not=` is what keeps it one.
-                         b0 (order stored false)
-                         b1 (when (contains? sym-preds (some-> (sx/body stored) first))
-                              (order stored true))
-                         bs (cond-> []
-                              b0                     (conj b0)
-                              (and b1 (not= b1 b0))  (conj b1))]
+                         ;; palindrome, or any arrangement binding as an earlier one did,
+                         ;; is one — `distinct` is what keeps it one.
+                         n  (count (args-for (some-> (sx/body stored) first)))
+                         bs (into [] (comp (keep #(order stored %)) (distinct)) (range n))]
                      (into []
                            (comp (remove #(contains? @seen [h %]))
                                  (map (fn [b]

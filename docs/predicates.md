@@ -98,7 +98,7 @@ which key the prose was written under.
 Entries are written through constructors — `prop`, `mark`, `pair`, `wff-only`, `operator`,
 `collection`, `structural` — for the same reason the vocabularies below are closed: an entry
 a couple of parameters *construct* has no way for its fields to disagree with each other,
-and the twenty-two predicate marks `prop` builds differ in exactly one keyword.
+and the twenty-seven predicate marks `prop` builds differ in exactly one keyword.
 `symmetric`'s entry is the whole of what the engine is told about it:
 
 ```clojure

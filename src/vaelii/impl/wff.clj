@@ -265,6 +265,51 @@
     (not (and (integer? n) (pos? n)))
     (conj (str f " position must be a positive integer"))))
 
+(defn commutative-in-arg-and-rest-problems
+  "`commutativeInArgAndRest` — a predicate and a positive-integer position, and nothing
+  else.  `functional-in-arg-problems` above is the shape, and the position is held to the
+  same positive integer for the same reason: argument positions are one-based throughout,
+  so position 0 names no slot.
+
+  **A position past the predicate's declared arity is not refused**, exactly as
+  `functionalInArg`'s is not.  The declaration may legitimately arrive before the arity
+  does, so refusing it against a visible arity would make the KB depend on which of the
+  two was written first — and a tail starting past the end simply forms no component, so
+  a literal at that arity is left alone (`sentex/commuting-components`).  The issue this
+  closes asks for the refusal; the order dependence is why it is not here."
+  [_ [f pred n :as s] _context]
+  (cond-> []
+    (not= 3 (count s))    (conj (str f " takes two arguments"))
+    (nm/individual? pred) (conj (str pred " is an individual; " f " marks a relation"))
+    (not (and (integer? n) (pos? n)))
+    (conj (str f " position must be a positive integer"))))
+
+(defn commutative-in-args-problems
+  "`commutativeInArgs` — a predicate and at least two distinct positive-integer
+  positions.
+
+  **Two positions, not one.**  A component of one position licences no permutation, so a
+  one-position declaration would be stored, believed and inert — the shape
+  `settle/definitional-mark` refuses elsewhere, and the reason the arity is checked here
+  where `commutativeInArgAndRest`'s is not: a tail is open-ended and may reach two
+  positions at a higher arity, where a named set is everything it will ever name.
+
+  **Distinct positions**, for the same reason read the other way: `(commutativeInArgs P 1
+  1)` names one slot twice and so names one position, which is the case above wearing a
+  longer spelling.
+
+  A position past the declared arity is not refused — `commutative-in-arg-and-rest-problems`
+  gives the argument."
+  [_ [f pred & positions :as s] _context]
+  (let [ps (vec positions)]
+    (cond-> []
+      (< (count s) 4)       (conj (str f " takes a relation and at least two positions"))
+      (nm/individual? pred) (conj (str pred " is an individual; " f " marks a relation"))
+      (not-every? #(and (integer? %) (pos? %)) ps)
+      (conj (str f " positions must be positive integers"))
+      (and (every? integer? ps) (not= (count ps) (count (distinct ps))))
+      (conj (str f " names a position twice; the positions must be distinct")))))
+
 (defn prop-problems [_ [f pred :as s] _context]
   (cond-> []
     (not= 2 (count s))    (conj (str f " takes one argument"))

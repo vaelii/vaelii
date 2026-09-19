@@ -145,7 +145,7 @@
     (testing "every functor settle sweeps for is declared :reach"
       (is (set/subset? clash (pr/by-facet :reach))))
     (testing "and the terms that reach some *other* way are named, because :reach is one
-              facet over three mechanisms"
+              facet over four mechanisms"
       ;; `arity` and the three predicate-type memberships — the second way to write an
       ;; arity — reach through `settle/report-arity-reach!`, which *names* the facts a
       ;; late declaration convicts and moves no belief, deliberately: the arity table
@@ -156,7 +156,15 @@
       ;; same mechanism at one remove, the bridge rule's `arg` conclusion being what
       ;; entail-existing reads: a late `(arg1 owns person)` mints `(person Ann)` over an
       ;; `(owns Ann Rex)` stored before it, exactly as the ternary spelling does.
-      (is (= (into '#{arity arg genlArg interArg arg1 arg2 arg3}
+      ;;
+      ;; The commutativity marks reach through the fourth mechanism,
+      ;; `integrate/commute-existing`: a declaration that moves a *spelling* re-spells
+      ;; the records already stored, which neither convicts nor mints — it is a write,
+      ;; and the one retroactive arm that writes records rather than deriving content.
+      ;; `commutative` reaches at one remove the way `arg1` does, the CxCore rule's
+      ;; `(commutativeInArgAndRest P 1)` conclusion being what the sweep fires on.
+      (is (= (into '#{arity arg genlArg interArg arg1 arg2 arg3
+                      commutative commutativeInArgs commutativeInArgAndRest}
                    (keys checks/exact-arity-classes))
              (set/difference (pr/by-facet :reach) clash))))))
 

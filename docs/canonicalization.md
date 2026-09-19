@@ -1,8 +1,8 @@
 # Sentex canonicalization (`vaelii.impl.sentex`)
 
-- **Covers:** how a sentence's variable names, antecedent order, symmetric arguments, and
-  comparison direction fold to one stored handle, and how a conjunctive consequent or a
-  disjunctive antecedent unfolds into several.
+- **Covers:** how a sentence's variable names, antecedent order, symmetric and commuting
+  arguments, and comparison direction fold to one stored handle, and how a conjunctive
+  consequent or a disjunctive antecedent unfolds into several.
 - **Not here:** which spellings are legal for a predicate, individual, type or context →
   [naming.md](naming.md); how the canonical form becomes the trie key →
   [indexing.md](indexing.md).
@@ -94,7 +94,7 @@ both spellings of one pair were written, two records for one proposition, each r
 without the other. Match-time probing does not close that: it makes both records answer,
 which reports the fact twice rather than once.
 
-So the declaration migrates what is stored (`integrate/symmetrize-existing`), which is the
+So the declaration migrates what is stored (`integrate/commute-existing`), which is the
 one retroactive arm that writes records rather than deriving content. A row with no mirror
 stored is **re-spelled where it lies** — same handle, same TMS node, same premise mark,
 same justifications, since for a re-canonicalization nothing resting on the row is about
@@ -120,6 +120,58 @@ every `recover` from records that still spell the fact two ways, and consulted f
 after by matching, retraction, the TMS and every handle entry point. Migrating leaves the records
 themselves canonical, so `recover` reads a store that needs no reconciling
 (`recover_independence_test`).
+
+## Commuting arguments sorted — the same sort at any arity
+
+`symmetric` commutes the two arguments of a binary predicate. Three marks state the same
+licence over any set of positions at any arity, and `(covering Engine Piston Rod Valve)`
+stores as one sentex however the parts are ordered:
+
+| Declaration | What permutes |
+|---|---|
+| `(commutative P)` | every argument, at each arity `P` is applied at |
+| `(commutativeInArgs P p1 p2 …)` | exactly the named positions; every other stays put |
+| `(commutativeInArgAndRest P f)` | position `f` through the application's own end |
+
+`commutativeInArgAndRest` is the one the canonicalizer reads. `commutative` is declarative
+sugar: a CxCore rule derives `(commutativeInArgAndRest P 1)` from it, and the reverse rule
+gives back the equivalence the engine has no `iff` to state. `(genl symmetric commutative)`
+classifies every symmetric predicate, and `(commutative P)` with `(arity P 2)` concludes
+`(symmetric P)` — commutativity at two arguments **is** symmetry, where commutativity at
+any other arity implies neither symmetry nor arity 2.
+
+The two written spellings reduce to one runtime descriptor, and
+`sentex/commuting-components` turns the descriptors a predicate carries into the position
+**components** one literal permutes. Three things that reduction decides:
+
+- **Overlapping groups merge.** `(commutativeInArgs P 1 2)` beside `(commutativeInArgs P 2
+  3)` says 1 and 2 interchange and 2 and 3 do, so 1 and 3 interchange through 2. Sorting
+  the two groups in sequence would make the stored form depend on which ran first, which
+  is an order dependence in the storage key.
+- **A `:rest` group is closed by the literal's own arity.** So `(covering W A B)` and
+  `(covering W A B C)` are two claims, and no permutation moves an argument between them.
+- **A component of one position is dropped.** A mark whose positions fall past the
+  literal's arity leaves it alone, and a unary predicate marked `commutative` is
+  identity-only without a special case.
+
+Sorting is the same rule as `symmetric`'s: ground literals only, within each component,
+other positions fixed. Repeats keep their multiplicity — commutativity changes order,
+never content or arity.
+
+Lookup fans the pattern over its arrangements where the symmetric path probes the mirror,
+and the fan is **pruned to what a stored fact can hold**: storage sorts the ground
+arguments inside a component, so an arrangement holding them out of order matches nothing
+and is not probed. With `v` variables among a component of `g` positions that is
+`g!/(g-v)!` probes rather than `g!` — a ground tail probes once however long it is, and
+one variable in it probes `g` times. Where the fan really is factorial the *answer set*
+is too: `g` distinct variables match one stored fact `g!` ways, each a different binding,
+which is `(siblingOf ?a ?b)` matching a stored pair twice, at a longer arity.
+
+The mark is read off the literal's **exact functor**, like `symmetric`'s: a sentex has one
+key, so whether a predicate sorts its arguments cannot vary by who is asking, and a `genl`
+edge below a commutative predicate does not make the sub-predicate commutative. A late
+declaration reaches the facts already stored through the same `integrate/commute-existing`
+migration described above.
 
 ## Comparison siblings folded
 
@@ -292,7 +344,7 @@ same answers, same depth-first pre-order.
 
 ## Result
 
-So rules identical up to **variable names, antecedent order, symmetric argument
+So rules identical up to **variable names, antecedent order, symmetric or commuting argument
 order, and comparison direction** all dedup to one handle — with one carve-out the
 hold-back above states: a *deferred* literal and the *recursive* literal keep the
 author's relative order, since their position is operational, so two spellings that

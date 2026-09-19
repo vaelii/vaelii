@@ -1399,6 +1399,208 @@
   [form]
   (let [[p x y] form] (list p y x)))
 
+;; ---- commuting argument groups -------------------------------------------
+;;
+;; `symmetric` above commutes the two arguments of a binary predicate.  The three
+;; commutativity marks generalize that to a declared set of positions at any arity, and
+;; reduce to one runtime descriptor the functions below read:
+;;
+;;   [:rest f]        every position from f to the literal's own arity — the runtime form
+;;                    of `(commutativeInArgAndRest P f)`, and of `(commutative P)`, which
+;;                    a CxCore rule derives `(commutativeInArgAndRest P 1)` from
+;;   [:args [p …]]    exactly the named positions — `(commutativeInArgs P p1 p2 …)`
+;;
+;; Positions are 1-based over the arguments, so position 1 is `(second form)`.  The
+;; descriptors come from the KB (`taxonomy/commuting-groups`); everything here is pure,
+;; so a KB-free construction permutes nothing.
+
+(defn- group-positions
+  "The positions one group descriptor names at runtime arity `arity`, as a sorted vector.
+  A `:rest` group is open-ended, so the literal's own arity is what closes it — which is
+  how two runtime arities of a variable-arity predicate stay two claims rather than one:
+  each gets its own position set, and a permutation never moves an argument across them."
+  [[kind v] arity]
+  (case kind
+    :rest (vec (range (max 1 (long v)) (inc arity)))
+    :args (vec (sort (distinct (filter #(<= 1 (long %) arity) v))))))
+
+(defn commuting-components
+  "The **components** `groups` licences at runtime arity `arity`: sorted position vectors,
+  themselves in sorted order, each holding at least two positions.
+
+  Overlapping groups are merged rather than applied one after another.  Two groups that
+  share a position do not describe two independent permutations — `(commutativeInArgs P 1
+  2)` beside `(commutativeInArgs P 2 3)` says 1 and 2 interchange and 2 and 3 do, so 1 and
+  3 interchange through 2 — and sorting the two separately is not even well defined: the
+  result would depend on which was applied first, which is an order dependence in the
+  storage key.  Merging into connected components makes the canonical form a function of
+  the declaration *set*.
+
+  A component of one position licences nothing and is dropped, so a mark whose positions
+  fall outside the literal's arity leaves the literal alone: `(commutativeInArgAndRest P
+  3)` on a binary `(P a b)` names position 3 only, and the empty result is what makes a
+  one-argument predicate marked `commutative` identity-only rather than a special case."
+  [groups arity]
+  (when (and (seq groups) (pos? arity))
+    (let [sets (into [] (comp (map #(group-positions % arity))
+                              (filter #(> (count %) 1))
+                              (map set))
+                     groups)]
+      (when (seq sets)
+        (loop [[x & more] sets, done []]
+          (if (nil? x)
+            (not-empty (vec (sort-by first (map (comp vec sort) done))))
+            ;; merge `x` with every component it touches, then carry the union forward
+            (let [touches? (fn [c] (boolean (some c x)))
+                  hit      (filterv touches? done)
+                  miss     (filterv (complement touches?) done)]
+              (recur more (conj miss (reduce into x hit))))))))))
+
+(defn- sort-commuting-args
+  "Put the arguments of a **fully ground** literal into canonical order within each
+  commuting component, so every permitted permutation of a fact stores as one sentex.
+  Positions outside a component keep the slot they were written in.
+
+  `groups-of` is `(fn [functor arity] -> groups)`; a predicate that declares nothing
+  answers nil, and the literal is returned untouched.
+
+  **The declaration read comes before the groundness walk.**  This runs on every literal
+  the assert entry point canonicalizes, and `ground-term?` descends the whole argument
+  list where `groups-of` is one map lookup — so an unmarked predicate, which is all but a
+  handful, pays the lookup and a `count` and nothing else.  `sort-symmetric-args` above
+  reads the same way round for the same reason, its arity-2 test standing in front of
+  the walk.
+
+  Ground literals only, for `sort-symmetric-args`' reason: a literal holding a variable
+  is a *pattern*, variables sort last, and sorting one would move its ground arguments
+  off the positions the stored fact has them at.  Order-insensitive lookup is handled at
+  match time instead (`res/raw-match` fans the pattern over its permitted arrangements).
+
+  Repeats keep their multiplicity — this sorts a sequence, it does not dedup one.
+  Commutativity changes order, never content or arity."
+  [form groups-of]
+  (if-not (and (sequential? form) (symbol? (first form)) (next form))
+    form
+    (let [args  (vec (rest form))
+          comps (commuting-components (groups-of (first form) (count args)) (count args))]
+      (if-not (and comps
+                   (not-any? #(= dot-marker %) form)
+                   (every? ground-term? args))
+        form
+        (let [args' (reduce (fn [acc positions]
+                              (let [sorted (sort cmp-term (map #(nth acc (dec %)) positions))]
+                                (reduce (fn [a [pos t]] (assoc a (dec pos) t))
+                                        acc
+                                        (map vector positions sorted))))
+                            args
+                            comps)]
+          (if (= args' args) form (apply list (first form) args')))))))
+
+(defn- ordered-slot-choices
+  "Every way to place `k` distinguishable items into `n` slots, as vectors of `k` distinct
+  slot indices — the ordered selections, `n!/(n-k)!` of them.  `[[]]` for `k` of 0."
+  [n k]
+  (if (zero? k)
+    [[]]
+    (reduce (fn [acc _]
+              (into [] (for [prefix acc
+                             i      (range n)
+                             :when  (not (some #(= i %) prefix))]
+                         (conj prefix i))))
+            [[]]
+            (range k))))
+
+(defn- cartesian
+  "The cartesian product of a sequence of collections, as a lazy sequence of vectors."
+  [colls]
+  (if (empty? colls)
+    [[]]
+    (for [x (first colls) more (cartesian (rest colls))] (into [x] more))))
+
+(defn- component-arrangements
+  "Every argument list the terms `ts` of one commuting component may be probed under,
+  with the ground terms held in sorted order.  See `commuting-arrangements`."
+  [ts]
+  (let [vars   (filterv (complement ground-term?) ts)
+        consts (vec (sort cmp-term (filterv ground-term? ts)))
+        n      (count ts)]
+    (mapv (fn [slots]
+            (let [at (zipmap slots vars)]
+              (loop [i 0, cs consts, out []]
+                (if (= i n)
+                  out
+                  (if-let [v (find at i)]
+                    (recur (inc i) cs (conj out (val v)))
+                    (recur (inc i) (rest cs) (conj out (first cs))))))))
+          (ordered-slot-choices n (count vars)))))
+
+(defn arrangements-over
+  "`commuting-arrangements` against components already in hand — the form a caller takes
+  when it knows the components from somewhere other than the literal's own functor.
+
+  Forward chaining is that caller: a datum arrives and the rule antecedent it is matched
+  against may name a **super-predicate** of the datum's functor, while what licences the
+  permutation is the datum's own declaration (`chain/symmetric-mirror` states the same
+  rule for the binary case).  So the components come off the fact and the arrangements
+  are built over the antecedent."
+  [form comps]
+  (if-not (and (sequential? form) (symbol? (first form)) (next form)
+               comps
+               (not-any? #(= dot-marker %) form))
+    [form]
+    (let [args     (vec (rest form))
+          comps    (filterv #(every? (fn [p] (<= p (count args))) %) comps)
+          per-comp (mapv (fn [positions]
+                           (component-arrangements
+                            (mapv #(nth args (dec %)) positions)))
+                         comps)]
+      (if (empty? comps)
+        [form]
+        (into []
+              (distinct)
+              (cons form
+                    (map (fn [choice]
+                           (apply list (first form)
+                                  (reduce (fn [acc [positions ts]]
+                                            (reduce (fn [a [pos t]] (assoc a (dec pos) t))
+                                                    acc (map vector positions ts)))
+                                          args
+                                          (map vector comps choice))))
+                         (cartesian per-comp))))))))
+
+(defn commuting-arrangements
+  "Every rearrangement of `form` a lookup has to probe for, given the components
+  `groups-of` licences at this literal's arity.  `form` itself is first; a literal that
+  commutes nothing yields just the one.
+
+  **Pruned to the arrangements a stored fact can actually have.**  Storage sorts a ground
+  literal within each component (`sort-commuting-args`), so a stored fact never holds its
+  ground arguments out of order inside a component — and an arrangement that does can be
+  skipped without losing an answer.  The argument: unification is positional, so an
+  arrangement's ground argument at a slot must equal the stored fact's, and a sorted
+  sequence read at any subset of its slots is itself sorted; an arrangement that unifies
+  therefore already holds its ground arguments in order, and is one of these.
+
+  That rests on the stored fact being canonical under the declaration the fan is reading,
+  which `integrate/commute-existing` is what maintains — the same precondition
+  `sort-symmetric-args` has made since the mirror probe existed, and the reason a late
+  declaration migrates what is stored rather than leaving lookup to find both spellings.  That is what keeps the fan off the factorial: with
+  `v` variables among a component of `g` positions the probes are `g!/(g-v)!` rather than
+  `g!`, so a pattern whose tail is ground probes once however long the tail is, and one
+  holding a single variable probes `g` times.  Where the fan really is factorial the
+  *answer set* is too — a pattern of `g` distinct variables matches one stored fact `g!`
+  ways, each a different binding, exactly as `(sibOf ?a ?b)` matches a stored pair twice
+  (`res/raw-match`).
+
+  Distinct by form: two arrangements that write the same literal are one probe, which is
+  what collapses a repeated variable (`(P ?a ?a)`) back to a single probe."
+  [form groups-of]
+  (if-not (and (sequential? form) (symbol? (first form)) (next form))
+    [form]
+    (arrangements-over form
+                       (commuting-components (groups-of (first form) (dec (count form)))
+                                             (dec (count form))))))
+
 (defn- sort-conjunction
   "One conjunction in canonical order: conjuncts sorted blind to variable names,
   repeats dropped, a lone conjunct unwrapped.  Nil when there is nothing to rewrite
@@ -1450,8 +1652,15 @@
   (let [[polarity body] (peel-not form)]
     (if (= polarity :negative) (list 'not body) body)))
 
-(defn- normalize-literal [form symmetric?]
-  (-> form elim-double-not fold-comparison sort-naf-conjuncts (sort-symmetric-args symmetric?)))
+(defn- normalize-literal
+  "One literal in canonical form.  `marks` carries the two KB reads canonicalization
+  makes — `:symmetric?`, whether a functor is declared symmetric, and `:groups-of`, the
+  commutativity groups it declares at a given arity.  Both default to answering nothing,
+  so a KB-free construction reorders no arguments."
+  [form {:keys [symmetric? groups-of]}]
+  (-> form elim-double-not fold-comparison sort-naf-conjuncts
+      (sort-symmetric-args symmetric?)
+      (sort-commuting-args groups-of)))
 
 ;; ---- chained comparisons collapse into one variable-arity literal -------
 
@@ -1728,8 +1937,8 @@
   An `exceptWhen` exception is not part of the rule and takes no part here: it is a
   separate meta-sentex whose variables are aligned to this rule's `varmap` when the
   exception is asserted (`vaelii.core`)."
-  [antes conseq symmetric?]
-  (let [norm       #(normalize-literal % symmetric?)
+  [antes conseq marks]
+  (let [norm       #(normalize-literal % marks)
         all        (collapse-comparison-chains (mapv norm antes))
         conseq0    (norm conseq)
         conseq-pred (framed-pred conseq0)
@@ -1834,7 +2043,7 @@
   "The ordinary sentex construction: peel the direction / default / assumption / (surface)
   exceptWhen wrappers, then canonicalize a rule or a fact.  Split out of `sentex` so the
   exceptWhen meta-sentex short-circuit there reads cleanly."
-  [sentence context symmetric?]
+  [sentence context marks]
   (let [[dir def? _exc assum con inner0] (peel-rule-wrapper sentence)
         ctx              (intern-sym context)
         inner            (canon inner0)
@@ -1860,7 +2069,7 @@
         (check-naf-closed antes0 conseq0 nil)
         (let [antes1 (desugar-there-exists antes0)      ; standalone thereExists -> body
               [antes conseq varmap]
-              (canonicalize-rule antes1 conseq0 symmetric?)
+              (canonicalize-rule antes1 conseq0 marks)
               ;; A bare implies is backward by default.  Forward chaining materializes a
               ;; conclusion per match, which is intractable on a large KB, so it is opt-in
               ;; (`set/forwardRule`).  A generator is the one exception: it stamps a rule by
@@ -1881,7 +2090,7 @@
                                  " instead")
                             {:type :not-well-formed :sentence sentence})))
           (sentex-types/->RuleSentex ctx nil antes conseq nil varmap dir* def? assum con)))
-      (let [b      (normalize-literal body symmetric?)
+      (let [b      (normalize-literal body marks)
             stored (if (= polarity :negative) (list not-functor b) b)]
         ;; a wrapper on a non-rule is meaningless; it is stripped and ignored
         (sentex-types/->LiteralSentex stored ctx nil nil)))))
@@ -1892,12 +2101,16 @@
   docstring).  Context defaults to 'default; id defaults to nil until the record store
   assigns a handle.
 
-  `opts` may carry `:symmetric?` — a predicate telling whether a functor is declared
-  symmetric, so its arguments can be sorted.  Without it no predicate is treated as
-  symmetric (a pure, KB-free construction)."
+  `opts` may carry the two canonicalization reads: `:symmetric?`, a predicate telling
+  whether a functor is declared symmetric, so its two arguments can be sorted, and
+  `:groups-of`, `(fn [functor arity] -> groups)` giving the commutativity groups the
+  functor declares, so the arguments inside each component can be.  Without them no
+  predicate commutes anything (a pure, KB-free construction)."
   ([sentence] (sentex sentence 'default))
   ([sentence context] (sentex sentence context nil))
-  ([sentence context {:keys [symmetric?] :or {symmetric? (constantly false)}}]
+  ([sentence context {:keys [symmetric? groups-of]
+                      :or   {symmetric? (constantly false) groups-of (constantly nil)}
+                      :as   _opts}]
    ;; A `(exceptWhen <query> (sentexHandle H))` meta-sentex is stored **verbatim** as a
    ;; Literal — `peel-rule-wrapper` would otherwise strip the exceptWhen and drop the
    ;; query, since it cannot tell the stored meta form from the surface wrapper.  This is
@@ -1906,7 +2119,8 @@
    ;; Literal — exempt from the ground-fact check by the assert layer.
    (if (exceptWhen-meta? sentence)
      (sentex-types/->LiteralSentex (canon sentence) (intern-sym context) nil nil)
-     (constructed-sentex sentence context symmetric?))))
+     (constructed-sentex sentence context
+                         {:symmetric? symmetric? :groups-of groups-of}))))
 
 (defn body
   "The positive atomic form a sentex asserts (a fact's sentence without its `not`);

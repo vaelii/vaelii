@@ -1497,7 +1497,7 @@ the region.
 
 `n` is the store, `r` the relabelled region (`jtms/touched`), `k` the standing defeats and
 dilemmas, `q` the rules the recheck queue holds, `B` the sweep budget
-`tax/*exposure-instance-budget*` (4096).
+`tax/*exposure-instance-budget*` (8192).
 
 ```
 write entry point (assert / retract)                          bound

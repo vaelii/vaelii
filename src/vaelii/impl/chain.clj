@@ -978,24 +978,51 @@
         (let [m (sx/mirror-literal fact)]
           (when-not (= m fact) m))))))
 
+(defn- commuting-components-of
+  "The commuting components `fact`'s own predicate licences at its own arity, or nil.
+
+  Asked of the **fact** for `symmetric-mirror`'s reason: it is the fact's declaration that
+  makes its permutations true, and a super-predicate carrying the mark says nothing about
+  the sub the fact is stated at.  Read once per datum, since every antecedent position
+  asks the same fact."
+  [kb fact]
+  (when (and (sequential? fact) (next fact))
+    (let [f (nm/functor fact)]
+      (when (and (symbol? f) (not (sx/variable? f)))
+        (sx/commuting-components (tax/commuting-groups (reasoning/taxonomy kb) f)
+                                 (dec (count fact)))))))
+
 (defn- trigger-bindings
   "The binding maps a datum makes at one antecedent position: what `fact` unifies to,
-  and what its symmetric `mirror` unifies to when there is one and it binds differently.
+  what its symmetric `mirror` unifies to, and what each **arrangement of the antecedent**
+  under `comps` unifies to — each kept when it binds differently.
 
-  Two rather than one is what keeps a symmetric antecedent at the *trigger* position
-  reading the same as it does at a join position, and with it the run's independence from
-  arrival order.  Distinct, because an antecedent that binds both orientations the same
-  way (a repeated variable, or a position the mirror does not reach) has made one firing,
-  not two — and a duplicate would be a second justification for a conclusion the first
-  already carries."
-  [kb ante fact mirror]
-  (let [b0 (res/match1 kb ante fact)
-        b1 (when mirror (res/match1 kb ante mirror))]
-    (cond
-      (and b0 b1 (not= b0 b1)) [b0 b1]
-      b0                       [b0]
-      b1                       [b1]
-      :else                    nil)))
+  More than one is what keeps a permuting antecedent at the *trigger* position reading the
+  same as it does at a join position, and with it the run's independence from arrival
+  order.  The join runs `*matcher*`, which fans the arrangements; the trigger runs
+  `res/match1`, a plain unify that does not — so `(covering ?w C A B)` joined finds the
+  stored `(covering W A B C)`, while that same fact arriving as a datum unifies against
+  the antecedent as written and reaches no firing at all.
+
+  **The antecedent is what is rearranged, not the fact.**  A stored fact is canonical
+  already (`sentex/sort-commuting-args`), so its own permutations are not what is missing;
+  what is missing is the antecedent spelled the way the fact holds it.  Rearranging the
+  pattern is also what keeps the fan pruned — `sentex/arrangements-over` drops an
+  arrangement whose ground arguments are out of order, which is exactly the set a
+  canonical fact cannot match.  The binary `mirror` stays as it was: at two positions the
+  fact's mirror and the antecedent's are the same swap, and that path is what the
+  symmetric rows pin.
+
+  Distinct, because an antecedent that binds two arrangements the same way (a repeated
+  variable, or a position the arrangement does not move) has made one firing, not two —
+  and a duplicate would be a second justification for a conclusion the first already
+  carries."
+  [kb ante fact mirror comps]
+  (let [b0   (res/match1 kb ante fact)
+        b1   (when mirror (res/match1 kb ante mirror))
+        alts (when comps
+               (keep #(res/match1 kb % fact) (rest (sx/arrangements-over ante comps))))]
+    (not-empty (into [] (comp (remove nil?) (distinct)) (concat [b0 b1] alts)))))
 
 (def ^:dynamic *evaluatable-preds*
   "Per-run cache of the KB's `add-evaluatable` predicate functors
@@ -1545,7 +1572,7 @@
               ;; exactly as an asserted one does — the mark sorts arguments at the entry point,
               ;; so without this whether one proposition is one record would depend on
               ;; whether the declaration was written or inferred
-              symx (when new? (integrate/symmetrize-existing kb conseq h))
+              symx (when new? (integrate/commute-existing kb conseq h))
               ;; nil when nothing merged, which is every conclusion on a KB that states
               ;; no equality and every re-derivation on one that does — and a fixpoint
               ;; re-derives the same conclusion on every round of every defaults pass, so
@@ -2539,6 +2566,9 @@
         ;; read once per datum, not per candidate position: what makes the mirror true is
         ;; the fact's own `symmetric` declaration, and every position asks the same fact
         mirror   (symmetric-mirror kb fact)
+        ;; and, at any arity, the components the fact's own predicate licences — read
+        ;; once per datum for the same reason the mirror is
+        comps    (commuting-components-of kb fact)
         ;; a positive fact's predicate and its supertypes; a negative fact's `[:not q]`
         ;; keys for the specs `q` of its body's predicate, which is the direction a genl
         ;; edge carries through a negation — read off the rule roster rather than off
@@ -2632,7 +2662,7 @@
                                    nh3
                                    (complete-antecedents kb antecedents i datum b0 cpred)))
                          nh2
-                         (trigger-bindings kb (nth antecedents i) fact mirror)))
+                         (trigger-bindings kb (nth antecedents i) fact mirror comps)))
                       nh
                       (range (count antecedents)))))))
       []

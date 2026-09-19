@@ -325,11 +325,43 @@
           :else           (do (fold-row! kb mirror self witness)
                               (:id (respell! kb (p/get-sentex (:records kb) self) want))))))))
 
-(defn symmetrize-existing
-  "When a `(symmetric P)` declaration arrives, bring `P`'s **already stored** facts into
-  the argument order the declaration puts every later one in.  `{:new [handles]}` — the
-  rows whose spelling moved, which are new content to every rule that reads the canonical
-  one — or nil when `sentence` declares nothing symmetric.
+(defn- recanonicalizing-subject
+  "The predicate whose stored facts a declaration re-spells, or nil when `sentence` is not
+  one that moves a spelling.  Four spellings reach one sweep:
+
+  * `(symmetric P)` — the two arguments of a binary `P` sort.
+  * `(commutativeInArgAndRest P f)` and `(commutativeInArgs P p …)` — the arguments inside
+    the component named sort, at any arity.
+
+  `(commutative P)` is deliberately **absent**.  It installs no group of its own: the
+  CxCore rule deriving `(commutativeInArgAndRest P 1)` is what the canonicalizer reads, and
+  that conclusion reaches this sweep through `chain/place-fact-conclusion` like any other
+  derived declaration.  Enrolling the sugar as well would walk `P`'s whole extent a second
+  time to re-spell nothing.
+
+  The mark must also be **installed**, not merely written: a declaration the taxonomy has
+  not taken up re-spells nothing, and asking here is what keeps the walk off a store the
+  arriving sentex does not actually move."
+  [kb sentence]
+  (when (and (sequential? sentence) (symbol? (nm/functor sentence)))
+    (let [tax (reasoning/taxonomy kb)
+          f   (nm/functor sentence)
+          p   (first (nm/args sentence))]
+      (when (and (symbol? p) (not (sx/variable? p)))
+        (case f
+          symmetric                (when (and (= 1 (nm/arity sentence))
+                                              (tax/has-prop? tax :symmetric p))
+                                     p)
+          (commutativeInArgAndRest
+           commutativeInArgs)      (when (seq (tax/commuting-groups tax p)) p)
+          nil)))))
+
+(defn commute-existing
+  "When a declaration that *re-spells* arrives — `symmetric`, or either commutativity
+  relation — bring the named predicate's **already stored** facts into the argument order
+  the declaration puts every later one in.  `{:new [handles]}` — the rows whose spelling
+  moved, which are new content to every rule that reads the canonical one — or nil when
+  `sentence` declares nothing that moves a spelling.
 
   A declaration has to reach the facts already stored exactly as it reaches the facts that
   follow, which is `equate-existing`'s rule and holds here for a blunter reason: the entry point
@@ -367,17 +399,14 @@
   is a declaration reaching the facts, so it is linear in the facts it reaches, and a
   predicate marked before it has any is free."
   [kb sentence witness]
-  (when (and (sequential? sentence) (= 'symmetric (nm/functor sentence))
-             (= 1 (nm/arity sentence)))
-    (let [p   (first (nm/args sentence))
-          idx (:index kb)]
-      (when (and (symbol? p) (not (sx/variable? p))
-                 (tax/has-prop? (reasoning/taxonomy kb) :symmetric p)
-                 (pos? (reads/stored-count-with-functor idx p)))
-        ;; snapshotted before the first write: the fold posts to the roots this walk
-        ;; reads, and no index backend promises whether a posting read is a snapshot
-        {:new (into []
-                    (keep (fn [h]
-                            (when-let [sx (p/get-sentex (:records kb) h)]
-                              (symmetrize-row! kb sx witness))))
-                    (vec (reads/as-stored-with-functor idx p)))}))))
+  (let [p (recanonicalizing-subject kb sentence)]
+    (when p
+      (let [idx (:index kb)]
+        (when (pos? (reads/stored-count-with-functor idx p))
+          ;; snapshotted before the first write: the fold posts to the roots this walk
+          ;; reads, and no index backend promises whether a posting read is a snapshot
+          {:new (into []
+                      (keep (fn [h]
+                              (when-let [sx (p/get-sentex (:records kb) h)]
+                                (symmetrize-row! kb sx witness))))
+                      (vec (reads/as-stored-with-functor idx p)))})))))

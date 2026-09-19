@@ -139,7 +139,9 @@
 
   These sentences move what a level-6 query answers about a predicate without being
   *on* that predicate, and without touching its extent.  `(symmetric sibOf)` makes a
-  stored `(sibOf Ann Bob)` answer `(sibOf Bob Ann)`; `(inverse childOf parentOf)`
+  stored `(sibOf Ann Bob)` answer `(sibOf Bob Ann)`, and the three commutativity marks
+  do the same at any arity — a stored `(covering W A B C)` answers a goal naming the
+  parts in any order; `(inverse childOf parentOf)`
   makes it answer a goal on the partner predicate; `(asymmetric typL)` is what gives
   the converse the standing to deny a claim, so it decides whether
   `TransitiveInArgProver` finds anything against one.  The re-check index is keyed on
@@ -169,6 +171,9 @@
     symmetric            [1]
     asymmetric           [1]
     reflexive            [1]
+    commutative              [1]
+    commutativeInArgs        [1]
+    commutativeInArgAndRest  [1]
     inverse              [1 2]
     transitiveInArg        [1]
     transitiveInArgInverse [1]})
@@ -2151,7 +2156,7 @@
   `eqs` are the witnesses that migrated the sentex — the meta twin exists *because* the
   sentex did, so it rests on the same merge.  Public because a `(symmetric P)` mark folding
   two mirrored rows into one owes its doomed row's metas the same carry, and hands the
-  declaration itself as the single witness (`integrate/symmetrize-existing`): what raises a
+  declaration itself as the single witness (`integrate/commute-existing`): what raises a
   twin differs between the two callers, what a stranded meta costs does not.
 
   Rewrites read from `reader`, the vantage the twin's own form was elected from
@@ -3637,6 +3642,21 @@
 
 ;; ---- the table -----------------------------------------------------------
 
+(defn- commuting-args-group
+  "The runtime group descriptor a `(commutativeInArgs P p1 p2 …)` sentence names, or nil
+  when it names none.  **Sorted and deduped**, so the three arms below key on one value
+  however the author wrote the positions: `(commutativeInArgs P 2 1)` installs and
+  uninstalls the same entry `(commutativeInArgs P 1 2)` does, and a rebuild of either
+  finds it.  Nil for a declaration naming fewer than two distinct positions, which
+  `wff/commutative-in-args-problems` refuses at the entry point and `recover` may still
+  replay from an older or foreign store."
+  [sentence]
+  (let [ps (vec (sort (distinct (drop 2 sentence))))]
+    (when (and (symbol? (second sentence))
+               (> (count ps) 1)
+               (every? #(and (integer? %) (pos? %)) ps))
+      [:args ps])))
+
 (defn- prop-entry
   "The arms for a predicate-metadata mark — `(transitive P)`, `(symmetric P)`, … —
   which differ only in the `:props` key they maintain, and which they now read off
@@ -3975,6 +3995,44 @@
                      (when (and (symbol? pred) (integer? n) (pos? n))
                        (tax/add-functional-in-arg tax pred n id ctx)))
      :wff          wff/functional-in-arg-problems}
+    ;; The two commutativity relations.  `(commutativeInArgAndRest P f)` licences every
+    ;; position from `f` to the literal's own arity to permute; `(commutativeInArgs P p …)`
+    ;; licences exactly the positions named.  Both are cached for `arity`'s reason twice
+    ;; over: the canonicalizer reads them on **every** assert, not only on a declaration,
+    ;; so a re-query per write would be a read on the hottest path the engine has.
+    ;;
+    ;; One table between them, since the two written shapes are one runtime group
+    ;; descriptor (`sentex/commuting-components`).  Registered here rather than through
+    ;; `prop-entry`, which carries no position, and unlike `functionalInArg` these read
+    ;; **down** to nothing: the mark is read off the literal's exact functor, because a
+    ;; sentex has one key and a `genl` edge below a commutative predicate does not make
+    ;; the sub-predicate commutative (`res/kb-sentex`, `tax/commuting-groups`).
+    'commutativeInArgAndRest
+    {:integrate    (fn [kb sx h]
+                     (let [[_ pred n] (:sentence sx)]
+                       (when (and (symbol? pred) (integer? n) (pos? n))
+                         (tax/add-commuting (reasoning/taxonomy kb) pred [:rest n] h (:context sx)))))
+     :disintegrate (fn [kb sx]
+                     (let [[_ pred n] (:sentence sx)]
+                       (when (and (symbol? pred) (integer? n) (pos? n))
+                         (tax/del-commuting! (reasoning/taxonomy kb) pred [:rest n] (:id sx)))))
+     :rebuild      (fn [tax {[_ pred n] :sentence id :id ctx :context}]
+                     (when (and (symbol? pred) (integer? n) (pos? n))
+                       (tax/add-commuting tax pred [:rest n] id ctx)))
+     :wff          wff/commutative-in-arg-and-rest-problems}
+    'commutativeInArgs
+    {:integrate    (fn [kb sx h]
+                     (when-let [g (commuting-args-group (:sentence sx))]
+                       (tax/add-commuting (reasoning/taxonomy kb) (second (:sentence sx))
+                                          g h (:context sx))))
+     :disintegrate (fn [kb sx]
+                     (when-let [g (commuting-args-group (:sentence sx))]
+                       (tax/del-commuting! (reasoning/taxonomy kb) (second (:sentence sx))
+                                           g (:id sx))))
+     :rebuild      (fn [tax {sentence :sentence id :id ctx :context}]
+                     (when-let [g (commuting-args-group sentence)]
+                       (tax/add-commuting tax (second sentence) g id ctx)))
+     :wff          wff/commutative-in-args-problems}
     'inverse {:integrate    (fn [kb sx h]
                               (let [[_ p q] (:sentence sx)]
                                 (tax/add-inverse (reasoning/taxonomy kb) p q h (:context sx))))
@@ -4129,7 +4187,7 @@
     ;; current (docs/labeling.md).
     'bravely        {:wff wff/brave-cautious-problems}
     'cautiously     {:wff wff/brave-cautious-problems}}
-   ;; the eight predicate-metadata marks, each differing only in the `:props` kind its
+   ;; the nine predicate-metadata marks, each differing only in the `:props` kind its
    ;; declaration names.  `anti_symmetric` and `anti_transitive` sit in the same list as
    ;; the six below them because the kind is read off the declaration: theirs are the two
    ;; functors whose keyword is not their own spelling (`anti_transitive` stores under
@@ -4142,7 +4200,7 @@
    ;; (`tax/props-over`) is what makes a `parentOf` mark convict a `fatherOf` chain.
    (into {} (map (fn [f] [f (prop-entry f tax/closure-relations)]))
          '[transitive symmetric asymmetric reflexive functional irreflexive
-           anti_symmetric anti_transitive])
+           anti_symmetric anti_transitive commutative])
    ;; the three equality relations share one entry-shape
    (into {} (map (fn [f] [f equality-entry])) kb/equality-predicates)
    (into {} (map (fn [f] [f {:wff wff/naf-problems}])) (keys sx/aggregate-functors))))

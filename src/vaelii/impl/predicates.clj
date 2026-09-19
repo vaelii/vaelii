@@ -138,6 +138,7 @@
     :edge                     ; a cached transitive closure — (F sub super)
     :keyed-pair               ; a table keyed on the argument pair — (F a b)
     :pred-position            ; a table keyed on [predicate position] — (F P n)
+    :pred-commuting           ; a table keyed on [predicate group] — (F P n) / (F P p …)
     :none})                   ; nothing is cached; the declaration is read back per use
 
 (def facet-contract
@@ -260,7 +261,7 @@
 ;;
 ;; Written rather than spelled out, for the reason `special/prop-entry` is: an entry a
 ;; couple of parameters *construct* has no way for its fields to disagree with each
-;; other, and the twenty-two predicate marks `prop` builds differ in exactly one keyword.
+;; other, and the twenty-seven predicate marks `prop` builds differ in exactly one keyword.
 
 (defn- prop
   "A one-place predicate mark — `(F P)` — cached as taxonomy prop `kind`.
@@ -387,7 +388,7 @@
 ;; ---- the entries ---------------------------------------------------------
 
 (def entries
-  "`[term spec]` pairs, ordered.  `special/entries`' fifty functors first, in the table's
+  "`[term spec]` pairs, ordered.  `special/entries`' fifty-nine functors first, in the table's
   own order — that order is replayed by `rebuild-taxonomy` and so is content — then the
   rest of the grammar `vocabulary/roster` covers.
 
@@ -461,6 +462,16 @@
      ['symmetric   (enforced (prop :symmetric :facets #{:answers})
                              (str "taxonomy prop :symmetric — canonical argument order, so both spellings"
                                   " are one sentex; also a binary_predicate type"))]
+     ['commutative (enforced (prop :commutative :facets #{:reach :answers}
+                                   :notes (str "declarative sugar and a queryable"
+                                               " classification: a CxCore rule derives"
+                                               " (commutativeInArgAndRest P 1), which is"
+                                               " what the canonicalizer reads, so there is"
+                                               " no second all-arguments code path. Its"
+                                               " reach is that derived spelling's."))
+                             (str "taxonomy prop :commutative — the all-arguments mark, which derives"
+                                  " (commutativeInArgAndRest P 1); also a binary_predicate-free"
+                                  " relation mark, since it holds at any arity"))]
      ['asymmetric  (enforced (assoc (prop :asymmetric :facets #{:reach :convicts :arbitrable
                                                                 :answers}
                                           :sweeps :predicate-marked)
@@ -614,6 +625,37 @@
                                       " read for the goal's own predicate and licenses"
                                       " them. The two sit on opposite sides of the"
                                       " prover/checker divide.")}]
+     ;; ---- the commutativity marks ----------------------------------------
+     ;;
+     ;; `symmetric` above commutes the two arguments of a binary predicate.  These two
+     ;; state the same licence at any arity — a tail from a position, or a named set of
+     ;; positions — and share the `:commuting` table, since the two written shapes reduce
+     ;; to one runtime group descriptor (`sentex/commuting-components`).  `commutative`
+     ;; is the third spelling and sits with the definitional marks above: it is a
+     ;; one-place mark, and the CxCore rule deriving `(commutativeInArgAndRest P 1)` from
+     ;; it is what puts its group in this table.
+     ['commutativeInArgAndRest
+      (enforced {:shape   {:args [:relation :position]}
+                 :storage [:pred-commuting :commuting]
+                 :checked true
+                 :facets  #{:cached :derived :reach :answers}
+                 :family  nil
+                 :notes   (str "the canonical runtime spelling of commutativity: the assert entry point sorts the arguments inside the component it names, so every permitted permutation of a ground fact is one sentex and one handle. A canonicalization mark, not a conviction — it refuses nothing and licenses nothing, so it carries no sweep and reaches no clash roster.")}
+                (str "sentex/sort-commuting-args at the assert entry point, and"
+                     " integrate/commute-existing for the facts already stored"))]
+     ['commutativeInArgs
+      (enforced {:shape   {:args [:relation] :variadic :position}
+                 :storage [:pred-commuting :commuting]
+                 :checked true
+                 :facets  #{:cached :derived :reach :answers}
+                 :family  nil
+                 :notes   (str "the named-set spelling of the same licence: exactly the"
+                               " positions written interchange and every unnamed position"
+                               " stays where it was. Two declarations that share a position"
+                               " are one component rather than two permutations applied in"
+                               " sequence — sentex/commuting-components says why.")}
+                (str "sentex/sort-commuting-args at the assert entry point, and"
+                     " integrate/commute-existing for the facts already stored"))]
      ['inverse (enforced (assoc (pair :inverse :predicate) :facets #{:cached :derived :answers})
                          "taxonomy/add-inverse — the prover that hands the swapped goal back")]
 

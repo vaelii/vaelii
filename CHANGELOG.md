@@ -11,6 +11,58 @@ several releases is still a grep for the name you call. The full entry prose for
 released version is in this file's git history, at the tag of the release that shipped
 it — `git show v0.16.0:CHANGELOG.md`.
 
+## Unreleased
+
+- **A relation can state that its arguments commute.** `symmetric` said it of the two
+  arguments of a binary predicate and nothing else, so a variable-arity relation whose
+  arguments are unordered could not be stated at all. Three marks say it at any arity:
+
+  ```clojure
+  (commutative P)                    ; every argument, at each arity P is applied at
+  (commutativeInArgs P 1 2)          ; exactly the named positions; the rest stay put
+  (commutativeInArgAndRest P 2)      ; position 2 through the application's own end
+  ```
+
+  Every permitted permutation of a ground fact stores as **one sentex and one handle**,
+  so queries, rule matching, context visibility and retraction all follow from the
+  sentence being stored once. `(covering Engine Piston Rod Valve)` answers a goal naming
+  the parts in any order, off the one stored row. A tail is closed by the literal's own
+  arity, so `(covering W A B)` and `(covering W A B C)` stay two claims and no
+  permutation moves an argument between them; repeats keep their multiplicity;
+  overlapping marks merge into one component rather than applying in sequence, which
+  would make the stored form depend on which was applied first. A declaration arriving
+  after the facts re-spells what is already stored, as a late `symmetric` does.
+
+  `commutativeInArgAndRest` is the runtime spelling; `commutative` is sugar deriving it
+  at position 1, and the reverse rule gives back the equivalence the engine has no `iff`
+  for. `(genl symmetric commutative)` classifies, and `(commutative P)` with
+  `(arity P 2)` concludes `(symmetric P)` — commutativity at two arguments is symmetry,
+  where commutativity at any other arity implies neither symmetry nor arity 2.
+  *Class:* **Additive**.
+  [#55](https://github.com/vaelii/vaelii/issues/55),
+  [docs/canonicalization.md](docs/canonicalization.md)
+
+- **A bulk load no longer stores a permutation of a row it already holds.** The fast
+  path skips the dedup probe because a distinct corpus never hits an existing sentex —
+  but a permutation of a stored row is not distinct, and the caller cannot tell:
+  separating `(covering W C A B)` from a stored `(covering W A B C)` needs exactly the
+  taxonomy read the fast path avoids. Three permutations bulk-loaded landed as three
+  records for one proposition, each retractable without the others. A commuting
+  relation now keeps the probe, as a symmetric one already did. *Class:* **Fix**.
+
+- **The rete alpha matcher fans a commuting literal's arrangements.** Under
+  `VAELII_RETE=1` a rule whose antecedent named a commuting relation's arguments in an
+  order the stored row does not hold them in derived nothing, where the same rule fired
+  on the default retrieval path. The two now fan identically. *Class:* **Fix**.
+
+- **The exposure sweep budget is 8192.** `tax/*exposure-instance-budget*` bounds a sweep
+  against a large extent, and 4096 was not doing that: the shipped ontology plus a
+  200-fact generated corpus exhausted it with the threshold measured between 4096 and
+  4224, so any three terms added to `CxCore` cut five triggers short and left the
+  clashes they implicate unreported for that settle. Which sweeps the cap refuses is
+  unchanged, and so is every KB that never came near it. *Class:* **Fix**.
+  [docs/nmtms.md](docs/nmtms.md)
+
 ## 0.20.0 — 2026-09-17 — "a defeated fact stays believed outside the context that decided the clash, and the belief record is renamed Reasoning"
 
 - **A clash's defeated member is disbelieved only where the clash is seen.** A nogood is

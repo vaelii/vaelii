@@ -1037,6 +1037,52 @@
 (decontextualized_predicate symmetric)
 (genl symmetric binary_predicate)
 
+(comment commutative
+         "(commutative ?relation) means that every argument of ?relation may be permuted without changing the proposition, at each arity the relation is applied at. The generalization of symmetric off its two fixed argument positions: symmetric commutes the two arguments of a binary predicate, this commutes all of them at any arity. Declarative sugar and a queryable classification rather than a second mechanism — a rule below derives (commutativeInArgAndRest ?relation 1), the tail-from-a-position spelling the engine canonicalizes with, so all-argument commutativity and the tail beginning at argument 1 are one licence written two ways. A one-argument relation marked commutative permutes nothing: one position is no permutation, and the mark stays queryable. Declared of a relation such as intersection, for instance. See docs/canonicalization.md.")
+(unary_predicate commutative)
+(decontextualized_predicate commutative)
+(genl commutative relation)
+
+(comment commutativeInArgs
+         "(commutativeInArgs ?relation ?position1 ?position2 ...) means that the arguments of ?relation at the named positions may be permuted without changing the proposition, and that every position not named stays where it was written. At least two distinct positive positions, or the declaration licences nothing and is refused at the entry point. Two declarations sharing a position are one licence and not two applied in turn: positions 1 and 2 interchanging while 2 and 3 do means 1 and 3 interchange through 2, so the engine merges them into one component before it sorts. A named position past the relation's arity in some application simply forms no component there. See docs/canonicalization.md.")
+(variable_arity_predicate commutativeInArgs)
+(decontextualized_predicate commutativeInArgs)
+(arityMin commutativeInArgs 3)
+(arg commutativeInArgs 1 relation)
+(argAndRest commutativeInArgs 2 positive_integer)
+
+(comment commutativeInArgAndRest
+         "(commutativeInArgAndRest ?relation ?position) means that the arguments of ?relation from ?position through the end of an application may be permuted without changing the proposition, while every earlier argument stays where it was written. The canonical runtime spelling of commutativity: the other two marks reduce to it, and the assert entry point sorts the arguments inside the component it names, so every permitted permutation of a ground fact is one sentex and one handle. Variable arity is respected rather than flattened — the component is closed by the application's own arity, so a relation applied at three arguments and at four states two claims and no permutation moves an argument between them. Repeated argument values keep their multiplicity: commutativity changes order, never content. Declared of a whole-and-parts relation at position 2, so the whole stays in position 1 and only the parts commute, for instance. See docs/canonicalization.md.")
+(binary_predicate commutativeInArgAndRest)
+(decontextualized_predicate commutativeInArgAndRest)
+(instance_relation_predicate commutativeInArgAndRest)
+(arg commutativeInArgAndRest 1 relation)
+(arg commutativeInArgAndRest 2 positive_integer)
+
+;; The two bridges between the three spellings, and the two to symmetric.
+;;
+;; commutative and (commutativeInArgAndRest P 1) are the same licence, and the engine has
+;; no iff, so the equivalence is written as the two supported directions. The pair is a
+;; cycle by construction: each conclusion justifies the other, so neither stands on the
+;; other alone — withdrawing the last external support withdraws both, which is the
+;; ordinary unfounded-cycle labelling (docs/nmtms.md).
+(set/forwardRule (implies (and (commutative ?p)) (commutativeInArgAndRest ?p 1)))
+(set/forwardRule (implies (and (commutativeInArgAndRest ?p 1)) (commutative ?p)))
+
+;; Every symmetric relation is commutative over its two arguments, stated as a genl edge.
+;; The membership it gives is inherited rather than stored, and the first rule above still
+;; fires on it, so a symmetric P ends up carrying (commutativeInArgAndRest P 1) as well.
+;; That is a second licence over the two positions symmetric already sorts, and it is
+;; harmless rather than redundant work: both spellings sort the same pair by the same
+;; term order, so the canonical form is the one symmetric alone produced, and the match
+;; fan is the same mirror probe.
+;;
+;; The converse needs the arity, and is a rule because it concludes a mark the engine
+;; enforces: commutativity at two arguments IS symmetry, where commutativity at any other
+;; arity implies neither symmetry nor arity 2.
+(genl symmetric commutative)
+(set/forwardRule (implies (and (commutative ?p) (arity ?p 2)) (symmetric ?p)))
+
 (comment asymmetric
          "(asymmetric ?predicate) means that ?predicate cannot hold both ways. (?predicate a b) and (?predicate b a) are contradictory, and a strict order such as largerThan is the usual case. Read as a nogood: the mirror of a claim denies it, so a strict claim conflicts with its converse instead of silently coexisting with it. The conviction needs a believed opposing claim, so a self tuple (?predicate a a) is admitted rather than refused. Also a type: (asymmetric P) classifies P as a binary_predicate.")
 (unary_predicate asymmetric)
