@@ -68,8 +68,64 @@
       (is (not (contains? (set (:terms (:genls d))) 'dog))))
     (testing "what it is disjoint from"
       (is (contains? (set (:terms (:disjoint d))) 'cat)))
+    (testing "and the maximally-general reading of the same separation"
+      (is (contains? (set (:terms (:disjoint-maximal d))) 'cat)))
     (testing "and how many instances are stored"
       (is (pos? (:instance-count d))))))
+
+(tu/deftest-kb a-subsumption-is-answered-twice-as-the-closure-and-as-the-edge
+  ;; `:genls` / `:specs` are the closures a membership check is against; `:genls-direct` /
+  ;; `:specs-direct` are the single `genl` edges the KB was told.  The closure restates one
+  ;; fact as many — `thing` reaches 110,128 subtypes on the OpenCyc import — and it is
+  ;; reflexive where the edge reading is not.
+  (let [d (v/describe tu/*kb* 'dog '?ctx)]
+    (testing "the edge is what was declared"
+      (is (= #{'mammal} (set (:terms (:genls-direct d)))))
+      (is (true? (:exact? (:genls-direct d)))))
+    (testing "the closure reaches past it, and holds the term itself"
+      (is (contains? (set (:terms (:genls d))) 'animal) "reached, not declared")
+      (is (not (contains? (set (:terms (:genls-direct d))) 'animal)))
+      (is (not (contains? (set (:terms (:genls-direct d))) 'dog))
+          "and the edge reading is not reflexive, where the closure is"))
+    (testing "a leaf has no subtype edges at all, rather than a window over none"
+      (is (empty? (:terms (:specs-direct d))))
+      (is (zero? (:total (:specs-direct d)))))))
+
+(tu/deftest-kb a-separation-is-answered-twice-as-the-closure-and-as-what-was-declared
+  ;; Two readings of one separation, because they answer different questions.  `:disjoint`
+  ;; is every type the separation reaches, which is what a membership check is against;
+  ;; `:disjoint-maximal` is the types it was declared between, which is what a reader
+  ;; asking "what is this not" can hold in their head.  One collection in the OpenCyc
+  ;; import is disjoint from 79,638 types and separated from 43 of them.
+  (tu/with-terms [left_type right_type]
+    (v/assert kb (list 'genl left_type 'thing) 'CxUniverse {:chain? false})
+    (v/assert kb (list 'genl right_type 'thing) 'CxUniverse {:chain? false})
+    (v/assert-many kb (for [i (range 400)]
+                        (list 'genl (symbol (str (name right_type) "_kid" i)) right_type))
+                   'CxUniverse {:chain? false})
+    (v/assert kb (list 'disjoint left_type right_type) 'CxUniverse {:chain? false})
+    (let [d (v/describe kb left_type 'CxUniverse)]
+      (testing "the closure reaches the partner's 400 subtypes"
+        (is (= 401 (:total (:disjoint d))))
+        (is (true? (:exact? (:disjoint d)))))
+      (testing "the maximal reading is the one type it was declared against"
+        (is (= [right_type] (:terms (:disjoint-maximal d))))
+        (is (= 1 (:total (:disjoint-maximal d))))
+        (is (true? (:exact? (:disjoint-maximal d)))))
+      (testing "and the maximal set is a subset of the closure, never a name beside it"
+        (is (every? (set (:terms (:disjoint d))) (:terms (:disjoint-maximal d))))))
+    (testing "past the sort budget the closure is bounded on a sum and says so, and the
+             maximal reading — which walks no closure — is unaffected"
+      ;; 43 partners spanning 290,000 subtypes took 1.5 s of union to produce a list
+      ;; nobody can read: past `describe-sortable` the sum of the closure sizes is taken
+      ;; as the bound (free, every closure being a cached set) and only the window walked
+      (with-redefs-fn {(ns-resolve 'vaelii.core 'describe-sortable) 100}
+        #(let [d (v/describe kb left_type 'CxUniverse)]
+           (is (= 50 (count (:terms (:disjoint d)))) "capped")
+           (is (false? (:exact? (:disjoint d)))
+               "and the total is the bound it is — a sum of closures over-counts an overlap")
+           (is (= [right_type] (:terms (:disjoint-maximal d))))
+           (is (true? (:exact? (:disjoint-maximal d)))))))))
 
 (tu/deftest-kb a-type-names-the-predicates-whose-declarations-admit-it
   ;; The question behind it: I have a `dog`, what may I say about one?  A predicate

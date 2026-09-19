@@ -46,7 +46,8 @@ term and no idea what the KB will accept about it.  One read answers it.
 ;; {:role :predicate :arity 2
 ;;  :arg-declarations [{:kind :arg :sentence (arg parentOf 1 animal) :context CxLife} …]
 ;;  :props #{} :inverse childOf :extent-count 0 :comment ["(parentOf ?parent ?child) …"]
-;;  :genls {…} :specs {…} :disjoint {…}}
+;;  :genls {…} :specs {…} :disjoint {…}
+;;  :genls-direct {…} :specs-direct {…} :disjoint-maximal {…}}
 ```
 
 The answer is shaped by the term's **role**, so ask about a type and you get its

@@ -186,15 +186,21 @@
              :markerWidth "5" :markerHeight "5" :orient "auto-start-reverse"}
     [:path {:d "M 0 0 L 10 5 L 0 10 z" :class "g-arrowhead"}]]])
 
+(def ^:private node-corner
+  "The corner radius of a node box.  A box, not a pill: a label is set flush left-to-right
+  inside a rectangle, where a fully-rounded end eats the width a long term needs and makes
+  two adjacent nodes read as one capsule.  Three pixels is a corner rather than a curve."
+  3)
+
 (defn- node-el
-  "One placed node: a pill in the term's role colour, labelled, and **linked to the
+  "One placed node: a box in the term's role colour, labelled, and **linked to the
   term's page** — the graph is navigation, not decoration.  The colour is a class, so it
   resolves to the same CSS custom property the links beside it use and cannot drift from
   them."
   [{:keys [x y w h label class href title]}]
   (let [g [:g {:class (str "g-node " class)}
            [:rect {:x (long (Math/round (- x (/ w 2.0)))) :y (long (Math/round (- y (/ h 2.0))))
-                   :width w :height h :rx (long (/ h 2)) :class "g-pill"}]
+                   :width w :height h :rx node-corner :class "g-box"}]
            [:text {:x x :y (+ y 4) :text-anchor "middle" :class "g-label"} label]
            [:title (str title)]]]
     (if href [:a {:href href} g] g)))

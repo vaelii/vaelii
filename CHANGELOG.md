@@ -13,6 +13,46 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+- **A term page shows where a term sits rather than restating it.** The three prose lines
+  it opened with — Supertypes, Subtypes, Disjoint with — are gone. A supertype line
+  rendered `genl` sentexes the argument groups already list, so the page said twice what
+  it says once; the one reading of a taxonomy those rows cannot give is position, and that
+  is what the concept graph above them draws. On an imported ontology the lines were also
+  the largest thing on the page: `thing` has 110,128 subtypes there and one collection is
+  disjoint from 79,638 types. `vaelii.core/describe` still answers all six readings — the
+  three closures and the three declarations — for a caller that wants them.
+  *Class:* **Additive**.
+  [docs/web.md](docs/web.md)
+
+- **A term page counts a large root extent instead of reading it.** Every group on the
+  page comes off an index read bounded by its answer except the two extents: reading a
+  root materializes every handle under it before one record can be taken off it — 0.9 s
+  for `genl`'s 2,381,749 on a 12.26M-sentex corpus, 4.6 s for a context's 9,040,392 — to
+  render sixty rows. Past `extent-defer-cap` (20,000) the group now renders its O(1)
+  stored count alone and fetches its first page of rows on the same `revealed` trigger
+  every later page of it already used, which the largest-last extent order had put at the
+  bottom of the page anyway. A smaller extent is read with the page as before.
+  `/term?q=genl` went from 1.04 s to 0.09 s. *Class:* **Fix**.
+  [docs/web.md](docs/web.md)
+
+- **A context page no longer walks a term index its own count had already bounded.** The
+  remainder walk is guarded by a lower bound on the term index built from counts in hand,
+  because a walk that is going to be truncated is not worth taking — and the context root
+  was left out of that bound on the reasoning that a sentex asserted in a context does not
+  mention it. The term index is keyed on `kv/sentex-terms`, which is a sentex's indexable
+  terms **plus its context**, so a context's extent bounds its term index below exactly as
+  a predicate's functor root does. `CxWell` was spending 4.2 s a page reading 50,000
+  records of a 9,040,399-entry index and discarding them as truncated; `/term?q=CxWell`
+  went from 4.2 s to 0.07 s, and every term page of that corpus now renders under 100 ms.
+  *Class:* **Fix**.
+  [docs/web.md](docs/web.md)
+
+- **A concept-graph node is a box.** The nodes were pills — fully rounded ends — which
+  ate the width a long term name needs and let two adjacent nodes read as one capsule.
+  They are rectangles with a 3px corner (`.g-box`), same colours, same layout arithmetic.
+  *Class:* **Additive**.
+  [docs/web.md](docs/web.md)
+
 - **A relation can state that its arguments commute.** `symmetric` said it of the two
   arguments of a binary predicate and nothing else, so a variable-arity relation whose
   arguments are unordered could not be stated at all. Three marks say it at any arity:
@@ -92,6 +132,118 @@ it — `git show v0.16.0:CHANGELOG.md`.
   clashes they implicate unreported for that settle. Which sweeps the cap refuses is
   unchanged, and so is every KB that never came near it. *Class:* **Fix**.
   [docs/nmtms.md](docs/nmtms.md)
+
+- **A term page reads from what the term is to what uses it.** The index groups were
+  ordered with the functor extent first, so `dog` opened on every instance ever asserted
+  and the sentences that *declare* it — its comment, its `genl` edge, its argument
+  constraints — were below them. The argument-position groups now lead, ascending, then
+  the rules and the deeper nestings, then the two extents ("As predicate", "As context")
+  last. Inside a group the term's own `(comment …)` sorts first: it is part of the sort
+  key rather than a row lifted out, because paging re-slices that sequence at an offset.
+  The `[edit]` beside the heading follows, opening on the declarations rather than the
+  extent. *Class:* **Additive**.
+  [docs/web.md](docs/web.md)
+
+- **A term page can leave out what the engine concluded.** **hide derived**, beside the
+  "Sentexes by index" heading, lists only what the KB was told — on a settled ontology
+  most of a term's rows are conclusions drawn from a handful of premises. One query
+  parameter, one cookie (persistent, so the choice carries to the next term) and a
+  re-render: no script and no per-row state. No belief moves and no count changes; the
+  heading still says how many sentexes are stored in the group, and the discriminant is
+  the one the badge already draws a ring for — a `:strength` on the record — so a row the
+  reader sees as derived is a row the filter leaves out. The filter walks at most
+  `derived-scan` (5,000) records per page, and an offset indexes the group's records
+  rather than the rows that survived, so a reader who toggles part way down a list
+  neither sees a row twice nor steps over one. *Class:* **Additive**.
+  [docs/web.md](docs/web.md)
+
+- **`describe` answers what a term was declared, beside the closures that follow from
+  it.** `:genls-direct` and `:specs-direct` are the one-step `genl` edges — the parents
+  and children, not reflexive — and `:disjoint-maximal` is the types a separation was
+  declared between. The difference is the reason: `dog` reaches seven supertypes and was
+  told one, `thing`'s subtype closure is 110,128 names on an imported ontology, and one
+  collection in the OpenCyc import is disjoint from 79,638 types and separated from 43 of
+  them. `:genls`, `:specs` and `:disjoint` are unchanged
+  and are still what a subsumption or membership check reads. *Class:* **Additive**.
+  [docs/api.md](docs/api.md), [docs/web.md](docs/web.md)
+
+- **`describe` reads a term's separations off the index instead of probing the store.**
+  It asked for the stored `(disjoint ?y x)` and `(disjoint x ?y)` sentexes of every one
+  of the term's supertypes, two pattern reads apiece; it now reads
+  `tax/separating-partners`, the enumeration `disjoint?` is the membership test of. That
+  is 4.3 ms to 0.014 ms for `dog`, whose up-closure is eight — `describe` on it went from
+  7.75 ms to 2.10 ms, and the probe loop was the term page's single largest cost. The
+  answers also **gain** the separations a `(sibling_disjoint C)` parent induces, which
+  store no pair for a probe to find and were missing from `:disjoint` before.
+  *Class:* **Fix**.
+
+- **A term page's index groups are in one fixed order.** "Argument position 1", 2, … N;
+  then "Rule conclusion", then "Rule condition" (two groups where there was one "In
+  rules", because a rule's two halves say different things); then "Nested elsewhere",
+  then "Predicate extent" and "Context extent". The two extents are ordered
+  **largest-last**, the one place size decides rather than directness: the bottom of the page is where a list goes
+  on loading as a reader scrolls, so an extent of millions there is a list they walk
+  into, where the same list above a short one is a wall to get past. The headings drop
+  their prepositions with the order fixed: an order that no longer has to be argued for
+  per term does not need each heading to say how it got there.
+  *Class:* **Additive**. [docs/web.md](docs/web.md)
+
+- **Parens are coloured by how deep they are nested.** A sentence is a tree printed as a
+  line and the parens are the only thing saying where a subterm ends, but every subterm
+  was already coloured by its role and the structure had no colour at all. The depth now
+  counts along the nine-step spectrum from `--rb1` and wraps at nine, so a matching pair
+  is one colour and no pair is the colour of the one inside it. The palette and the
+  classes were both named for this and neither was ever wired to the other — vaelii.com's
+  stylesheet has described these nine as "the engine's browser draws them" since before
+  the browser drew any. *Class:* **Fix**. [docs/web.md](docs/web.md)
+
+- **A rule renders across lines, one antecedent literal to a line.**
+
+  ```
+  (implies (and (weightOf ?x ?wx)
+                (weightOf ?y ?wy)
+                (quantityGreaterThan ?wx ?wy))
+           (heavierThan ?x ?y))
+  ```
+
+  A rule read as one line is a rule read by counting parentheses: which literals are the
+  conditions and which one is the conclusion is what a single line runs together. The
+  indent is counted
+  in characters, which is exact because a sentence is set in the monospace face and the
+  span holding the newlines is `white-space: pre-wrap`. *Class:* **Additive**.
+  [docs/web.md](docs/web.md)
+
+- **A sentex row is a circle and a sentence, and the sentence has its own box.** The
+  badge and the sentence were one run of inline content, so a laid-out rule counted its
+  indent from the row's left edge: every line after the first started under the badge
+  rather than under `(implies`, and the context and `[edit]` after the sentence rode up
+  beside its first line. The sentence is now its own block, and both count from where it
+  starts. The badge itself stays a circle — every case it distinguishes is already one
+  colour, so a word beside it said the colour twice; the reading is its `title`.
+  *Class:* **Fix**. [docs/web.md](docs/web.md)
+
+- **The editor lays a rule out the way the page does.** A rule opened for editing arrived
+  as one long line. It now breaks one antecedent literal to a line, aligned through the
+  `(set/backwardRule …)` wrapper that carries a rule's direction. The whitespace is not
+  read back — the editor reads EDN forms and the save diffs by content — so the sentence
+  reaching the KB is the one that was there. *Class:* **Additive**.
+  [docs/web.md](docs/web.md)
+
+- **A handle inside a sentence renders as the sentence it names.** The browser printed
+  `(except (sentexHandle 41))` verbatim, which tells a reader that a sentex is hidden and
+  not which one — and the handle is the one thing on the page they could not look up
+  without leaving it. It now renders the referenced sentence, badged and linked, wherever
+  a meta-sentex is printed: a term-page row, the sentex page, a proposal's `excepts` line.
+  The expansion carries the ids already on the path, because the browser reads what is
+  stored and a stored sentence naming a handle that reaches back to it was a stack
+  overflow rather than a page. *Class:* **Fix**.
+  [docs/web.md](docs/web.md)
+
+- **A second `Set-Cookie` no longer replaces the browser's session cookie.** The sandbox
+  middleware wrote the header with an `assoc`, so a response that already carried a
+  cookie lost one of the two. Both now go through an append, which Ring serves as a
+  repeated header. Nothing set a second cookie before this release, so no session was
+  affected. *Class:* **Fix**.
 
 ## 0.20.0 — 2026-09-17 — "a defeated fact stays believed outside the context that decided the clash, and the belief record is renamed Reasoning"
 

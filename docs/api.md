@@ -382,8 +382,15 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; :type, or nil — decided most-specific first
 (describe kb term [context] [opts])            ; EVERYTHING the KB holds about one term, in one map,
                                                ; keyed by the term's role — "what can I ask about X?"
-                                               ; every shape: :term :role :context :comment and the
-                                               ; three closure lines :genls :specs :disjoint
+                                               ; every shape: :term :role :context :comment, the
+                                               ; three closure lines :genls :specs :disjoint, and
+                                               ; the three DECLARED readings beside them —
+                                               ; :genls-direct / :specs-direct (one genl edge, not
+                                               ; reflexive) and :disjoint-maximal (the types the
+                                               ; separation was declared between).  One collection
+                                               ; in the OpenCyc import is disjoint from 79,638 types
+                                               ; and separated from 43; `thing` reaches 110,128
+                                               ; subtypes and was told a handful
                                                ; :predicate adds :arity :arg-declarations :props
                                                ;   :inverse :extent-count and the four grants
                                                ;   :closed-extent? :abducible? :modal?

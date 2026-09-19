@@ -307,6 +307,59 @@
 ;; the length of one request: the type set read at most once, and a belief cache the
 ;; row renderers fill in **batch** through `prime-belief!`.
 
+(def ^:private derived-cookie
+  "The cookie carrying the hide-derived reading preference: `hide` or `show`."
+  "vaelii-derived")
+
+(def ^:private derived-cookie-re
+  "`derived-cookie`'s value off the raw `Cookie` header.  One cookie is read here and the
+  header split lives in `vaelii.browser.sandbox`, which parses the whole thing for the
+  session token; a second full parse to answer one question is not worth the coupling."
+  (re-pattern (str "(?:^|;\\s*)" derived-cookie "=([^;]*)")))
+
+(def ^:private derived-cookie-max-age
+  "How long the hide-derived preference outlives the request that set it — one year in
+  seconds.  A **persistent** cookie, where the sandbox's is a session one
+  (`sandbox/set-cookie`): a sandbox is scoped to the sitting and one that outlived the
+  browser would be a sandbox nobody remembers making, while a reading preference asked
+  again on every visit is the preferences panel this exists instead of."
+  31536000)
+
+(defn- asked-derived
+  "`\"hide\"`, `\"show\"`, or nil — what this request said about derived rows, if
+  anything.  Read off `:params`, so it arrives the same way from a link's query string."
+  [req]
+  (#{"hide" "show"} (some-> (get-in req [:params "derived"]) str/trim str/lower-case)))
+
+(defn- hide-derived?
+  "Does this request want the derived rows of a term page's index groups left out?
+
+  The request's own answer first, then the cookie, then no.  Derived is read off the
+  record — an asserted sentex carries a `:strength` and a derived one does not — which is
+  the same discriminant `badge` draws a ring for, so a row the reader sees as derived is
+  a row this leaves out.  Not `vaelii.core/premise?`, which asks the network whether
+  anything concludes the sentex: a sentex can be asserted **and** derivable, and the two
+  answers then disagree with each other and with what the page drew."
+  [req]
+  (if-let [a (asked-derived req)]
+    (= "hide" a)
+    (= "hide" (second (re-find derived-cookie-re
+                               (str (get-in req [:headers "cookie"])))))))
+
+(defn- remember-derived
+  "`resp` carrying this request's hide-derived choice forward in a cookie, when it made
+  one.  `HttpOnly` because no script reads it, and `SameSite=Lax` because no other site
+  has business setting how this one reads — the same reasoning as the sandbox cookie.
+
+  `sandbox/wrap-session` may be setting its own cookie on the same response, so both go
+  through `sandbox/add-cookie`, which appends."
+  [resp req]
+  (if-let [a (asked-derived req)]
+    (sandbox/add-cookie resp (str derived-cookie "=" a
+                                  "; Path=/; Max-Age=" derived-cookie-max-age
+                                  "; HttpOnly; SameSite=Lax"))
+    resp))
+
 (defn- fragment-request?
   "Is htmx asking for the `#main` fragment rather than a whole document?  `HX-Request`
   marks every htmx-issued request, so the answer can skip the chrome the client would
@@ -331,6 +384,10 @@
    ;; `set` below is only for a target that does not.
    :types     (delay (let [t (v/types kb)] (if (set? t) t (set t))))
    :fragment? (fragment-request? req)
+   ;; whether this reader wants only what the KB was told, not what it concluded.  It
+   ;; rides the view rather than a parameter because a group's continuation
+   ;; (`/term/rows`) has to page the same sequence the page it continues did.
+   :hide-derived? (hide-derived? req)
    ;; which scratch context this session writes to by default.  Naming it adds no work
    ;; — `sandbox/context-of` reads a cookie — and the context itself is not created
    ;; until something is actually written to it.  Whether it *has* been is a KB read, so
@@ -639,6 +696,15 @@
 ;; unreified structural NAT compound, or another reified term, which renders as *its* expression.
 (declare render-form)
 
+;; The second cycle: a `(sentexHandle N)` subterm renders as the sentence N holds, whose
+;; own subterms go back through `render-form`.  `handle-ref` is below because it needs
+;; the badge, so the two cannot be ordered.
+(declare handle-ref)
+
+;; The third: `laid-out-form` breaks a rule across lines and hands every non-connective
+;; part back to `render-form`, which reaches for the layout when a sentence is a rule.
+(declare laid-out-form)
+
 (defn- nat-ref
   "A reified term, rendered as the expression it was minted from with **bold parens**.
   The opening paren links to the constant's own page — the one place its `termOfUnit`
@@ -672,13 +738,126 @@
                 :href  (str "/term?q=" (url-enc (pr-str t)))}
             (term-text view t seen)])))
 
+(def ^:private rb-depths
+  "How many steps the paren colours count along the spectrum before repeating —
+  `--rb1` … `--rb9` (vaelii.css), the nine vaelii.com's stylesheet draws in the same
+  order.  Nine because that is the scale the rest of the browser already counts along:
+  a graph's series and the palette both start at red and wrap here."
+  9)
+
+(defn- paren
+  "One parenthesis, coloured by how deep it is nested.  `depth` counts from 0 at a
+  sentence's outermost paren and wraps at `rb-depths`, so a **matching pair is always
+  one colour** and no pair is the colour of the one immediately inside it.
+
+  A sentence is a tree printed as a line, and the parens are the only thing that says
+  where a subterm ends — `(implies (and (weightOf ?x ?wx) …` is four opening parens
+  before the first argument.  Every subterm here is already coloured by its role, so the
+  structure was the one thing on the page with no colour at all."
+  [depth s]
+  [:span {:class (str "rb" (inc (mod depth rb-depths)))} s])
+
+(defn- sentex-reference
+  "The id a `(sentexHandle N)` subterm names, or nil for any other form.
+
+  A meta-sentex points at a stored sentence by its handle — `(except (sentexHandle 41))`
+  hides one, `(exceptWhen <query> (sentexHandle 41))` guards a rule — and the handle is
+  an ordinary ground compound rather than a reified term, so nothing else on the page
+  treats it as a reference.  Matched by shape here rather than through
+  `vaelii.impl.sentex/sentex-handle?`: this namespace holds no engine require (the
+  ledger above), and the shape is the same four conditions that function tests."
+  [form]
+  (when (and (sequential? form)
+             (= 'sentexHandle (first form))
+             (= 2 (count form))
+             (integer? (second form)))
+    (second form)))
+
+(def ^:private laid-out-connectives
+  "The n-ary connectives a sentence is broken across lines at, one argument per line.
+  `implies` is not here — it takes two parts rather than a list, and `laid-out-form`
+  gives it its own arm."
+  '#{and or})
+
+(defn- laid-out-form
+  "`form` rendered across lines, its first argument `col` characters from the left
+  margin and every later one aligned under it:
+
+      (implies (and (weightOf ?x ?wx)
+                    (weightOf ?y ?wy))
+               (heavierThan ?x ?y))
+
+  A rule read as one line is a rule read by counting parentheses: which literals are the
+  conditions and which one is the conclusion is exactly what a single line runs together.
+  One literal to a line separates them, and the indent says which side of the arrow each
+  is on.
+
+  The indent is **characters**, which is exact rather than approximate because every
+  sentence on this page is set in the monospace face (`--mono`, vaelii.css) and the
+  container holding the newlines is `white-space: pre-wrap`.  So the alignment is the
+  printed width of the functor and its two parentheses, the same arithmetic a Clojure
+  editor does, and it survives a reader's own font size because both sides scale with it.
+
+  Anything that is not a connective is one line, through `render-form`: an antecedent
+  literal is a unit, and breaking inside one would be indenting argument positions.
+  `depth` is the paren colour's, carried through unchanged so a rule's parens count
+  along the same scale a fact's do (`paren`)."
+  [view form seen col depth]
+  (let [pad  (fn [n] (str "\n" (apply str (repeat n \space))))
+        head (fn [f] (+ col 1 (count (name f)) 1))]
+    (cond
+      (and (sequential? form) (= 'implies (first form)) (= 3 (count form)))
+      (let [k (head 'implies)]
+        [:span.sx (paren depth "(") (term-link view 'implies seen) " "
+         (laid-out-form view (nth form 1) seen k (inc depth))
+         (pad k)
+         (laid-out-form view (nth form 2) seen k (inc depth))
+         (paren depth ")")])
+
+      (and (sequential? form)
+           (contains? laid-out-connectives (first form))
+           (> (count form) 2))
+      (let [k (head (first form))]
+        [:span.sx (paren depth "(") (term-link view (first form) seen) " "
+         (interpose (pad k) (map #(laid-out-form view % seen k (inc depth)) (rest form)))
+         (paren depth ")")])
+
+      :else (render-form view form seen depth))))
+
 (defn- render-form
   "Render a sentence (or subterm) with every atomic subterm an individually
-  role-colored link, structure shown with parentheses."
-  ([view form] (render-form view form #{}))
-  ([view form seen]
+  role-colored link, structure shown with parentheses.
+
+  A `(sentexHandle N)` subterm renders as **the sentence N holds**, linked, rather than
+  as the integer: a reader shown `(except (sentexHandle 41))` has been told a sentex is
+  hidden and not which one, and the handle is the one thing on the page they cannot look
+  up without leaving it.  One branch covers every surface that prints a meta-sentex — a
+  term-page row, the sentex page, a proposal's `excepts` line.
+
+  The expansion carries the ids already on the path, so a stored sentence naming a
+  handle that reaches back to it renders the back-edge rather than overflowing the
+  stack.  `seen` holds terms for the reified-term walk, so a handle is marked with a
+  vector, which no term is."
+  ([view form] (render-form view form #{} 0))
+  ([view form seen] (render-form view form seen 0))
+  ([view form seen depth]
    (cond
-     (sequential? form) [:span.sx "(" (interpose " " (map #(render-form view % seen) form)) ")"]
+     (sentex-reference form)
+     (let [h (sentex-reference form)]
+       (if (seen [::handle h])
+         [:span.muted "#" h " (above)"]
+         (handle-ref view h (conj seen [::handle h]))))
+
+     ;; a whole rule, and only a whole one: the layout separates an implication's two
+     ;; sides, so it starts at the left margin and nothing below it re-enters here
+     (and (sequential? form) (= 'implies (first form)) (= 3 (count form)))
+     [:span.sx-rule (laid-out-form view form seen 0 depth)]
+
+     (sequential? form)
+     [:span.sx (paren depth "(")
+      (interpose " " (map #(render-form view % seen (inc depth)) form))
+      (paren depth ")")]
+
      (string? form)     [:span.sx (pr-str form)]
      :else              (term-link view form seen))))
 
@@ -700,10 +879,18 @@
     black    an inert rule — stored, and chaining in neither direction
 
   Filled means asserted, a ring means derived, and a dimmed circle is stored and not
-  believed (OUT).  It links to the sentex page, and its `title` carries the handle and a
-  plain-English reading, so the number is one hover away.  It keys only on the record `s`
-  the caller already fetched, plus belief — every field survives the daemon's sentex→map
-  projection, so a remote-attached browser badges identically."
+  believed (OUT).
+
+  **The circle is the whole of the badge**, and the reading is its `title`.  Every case
+  above is one colour, so a word beside it says the colour twice: `backward rule` next to
+  the purple circle adds nothing to a reader who has the scale and is two words of noise
+  to one who is reading the sentence.  The handle is what `data-h`, the link and the
+  `title` carry, and belief is `state-tag`'s, which names the *reason* a row is OUT and
+  says nothing on a row that is IN.  So the row is a circle and a sentence.
+
+  It links to the sentex page, and keys only on the record `s` the caller already
+  fetched, plus belief — every field survives the daemon's sentex→map projection, so a
+  remote-attached browser badges identically."
   [view s]
   (let [h         (:id s)
         rule?     (some? (:antecedent s))
@@ -726,12 +913,18 @@
         classes   (cond-> ["badge" hue]
                     (not asserted?) (conj "badge-open")
                     (not in?)       (conj "badge-out"))
-        label     (str (if rule?
-                         (str (name dir) " rule"
-                              (when (:defeasible s) ", defeasible"))
-                         (str (if asserted? (str (name strength) " asserted") "derived")
-                              (if neg? " negative fact" " fact")))
-                       " · #" h (when-not in? " · out"))]
+        ;; the reading the circle stands for, in the order a reader asks it: what kind of
+        ;; sentex, how it got here, and whether the KB believes it now
+        kind      (str (when neg? "negative ")
+                       (cond rule?     (str (case dir
+                                              :forward-only "forward rule"
+                                              :backward     "backward rule"
+                                              :inert        "inert rule"
+                                              "rule, both ways")
+                                            (when (:defeasible s) ", defeasible"))
+                             asserted? (str (name strength) " premise")
+                             :else     "derived"))
+        label     (str kind " · #" h (when-not in? " · out"))]
     [:a.badge-link {:href (str "/sentex/" h) :title label}
      [:span {:class (str/join " " classes)}]]))
 
@@ -739,18 +932,23 @@
   "A colour-coded handle badge (see `badge`) placed BEFORE the sentence, then the
   sentence rendered with individually-linked subterms.  It takes the **record**, which
   every listing already holds — re-fetching it by handle here is the N+1 that turns one
-  page into one store read (or one round-trip) per row."
-  [view s]
-  [:span (badge view s) (render-form view (readable s))])
+  page into one store read (or one round-trip) per row.
+
+  `seen` is the expansion path `render-form` carries, so a sentence reached through a
+  `(sentexHandle N)` subterm cannot expand its way back to the one it came from."
+  ([view s] (sentex-ref view s #{}))
+  ([view s seen]
+   [:span (badge view s) (render-form view (readable s) seen)]))
 
 (defn- handle-ref
   "`sentex-ref` for a caller holding only a handle — a justification's antecedent, a
-  contradictor — so it fetches the one record it needs.  A handle whose record is gone
-  renders as such rather than vanishing."
-  [{:keys [kb] :as view} h]
-  (if-let [s (v/sentex kb h)]
-    (sentex-ref view s)
-    [:span.muted "#" h " (gone)"]))
+  contradictor, a `(sentexHandle N)` subterm — so it fetches the one record it needs.  A
+  handle whose record is gone renders as such rather than vanishing."
+  ([view h] (handle-ref view h #{}))
+  ([{:keys [kb] :as view} h seen]
+   (if-let [s (v/sentex kb h)]
+     (sentex-ref view s seen)
+     [:span.muted "#" h " (gone)"])))
 
 (defn- state-tag
   "The belief-state pill for a sentex: IN when the JTMS believes it, else the `why-not`
@@ -782,15 +980,24 @@
   so a row can be replaced where it sits.
 
   The row carries no selection state and no script.  A sentence is text a reader copies,
-  so a press-drag across it selects that text; editing is the row's own `[edit]`."
+  so a press-drag across it selects that text; editing is the row's own `[edit]`.
+
+  **The badge and the sentence are two boxes, not one run of inline content.**  A rule is
+  laid out with newlines (`laid-out-form`), and a newline in inline content returns to the
+  left edge of the *row* — so every line after the first would start under the badge
+  rather than under `(implies`, and the context and `[edit]` after the sentence would ride
+  up beside its first line.  The sentence gets its own block, and the indent and the
+  trailing context both count from where the sentence starts."
   [view s]
   [:li {:data-h (:id s) :class "sx-item"}
-   (sentex-ref view s) " @ " (term-link view (:context s))
-   ;; the handle badge dims an OUT row; the reason pill says WHY it is out
-   ;; (superseded / defeated / unsupported) — shown only when not believed, so a
-   ;; believed row stays clean.  Its proof is a click away on the sentex page.
-   (when-not (believed? view (:id s)) (list " " (state-tag view (:id s))))
-   " " (edit-link (str "handles=" (:id s)) (str "edit sentex " (:id s)))])
+   (badge view s)
+   [:span.sx-body
+    (render-form view (readable s)) " @ " (term-link view (:context s))
+    ;; the handle badge dims an OUT row; the reason pill says WHY it is out
+    ;; (superseded / defeated / unsupported) — shown only when not believed, so a
+    ;; believed row stays clean.  Its proof is a click away on the sentex page.
+    (when-not (believed? view (:id s)) (list " " (state-tag view (:id s))))
+    " " (edit-link (str "handles=" (:id s)) (str "edit sentex " (:id s)))]])
 
 (defn- sx-list
   "A list of sentex rows, labelled for a reader who arrives at it out of context."
@@ -988,6 +1195,29 @@
   `comment-rows` already pages the functor roots in."
   20000)
 
+(def ^:private extent-defer-cap
+  "How large a root extent may be and still have its first page of rows built with the
+  page.  Past it, the group renders its O(1) count and fetches the rows on the same
+  reveal every later page of it takes (`group-rows`).
+
+  Every other group on a term page comes off a read bounded by its answer.  A root extent
+  does not: reading one materializes every handle under the root before a single record
+  can be taken off it — 0.9 s for the 2,381,749 of `genl` on the audited corpus, 4.6 s for
+  the 9,040,392 of its largest context — and the page shows sixty.  Twenty thousand is
+  ~8 ms of that build, which is under the rest of the page; it is also `group-sort-cap`,
+  the size past which the group stops ordering by context, so one number describes the
+  point where an extent stops behaving like a list and starts behaving like a root."
+  20000)
+
+(defn- mentions?
+  "Does `form` hold `term` anywhere inside it?  A rule's own two halves are what this is
+  asked of — which side of the arrow the term is on — so it walks one formula rather
+  than reading an index, and a formula is bounded where an extent is not."
+  [term form]
+  (cond (= term form)      true
+        (sequential? form) (boolean (some #(mentions? term %) form))
+        :else              false))
+
 (defn- direct-arg-positions
   "The 1-based argument positions at which `term` sits directly in some stored fact —
   exactly the positions the predicate-scoped argument roots (`[:argument-root pred pos
@@ -1007,12 +1237,34 @@
 (defn- term-index-groups
   "Every stored sentex containing `term`, grouped by the **index** that reaches it,
   each group carrying its cheap count (O(1) for the roots, one O(1) read per predicate
-  at the slot for the argument groups): the functor root `[:functor-root]`, the argument-position
-  groups `[:argument-slot pos]` (the roster the predicate-agnostic read unions the scoped
-  roots over), the context root `[:context-root]` (when the term is a context), then the
-  term-index remainder `[:term-index]` split into rules and deeper nestings.  The roots are a
-  subset of the term index, so the remainder is `find-sentexes` minus what a root
-  claimed.
+  at the slot for the argument groups): the argument-position groups `[:argument-slot
+  pos]` (the roster the predicate-agnostic read unions the scoped roots over), then the
+  term-index remainder `[:term-index]` split into rules and deeper nestings, then the two
+  extents — the functor root `[:functor-root]` and the context root `[:context-root]`
+  (when the term is a context).  The roots are a subset of the term index, so the
+  remainder is `find-sentexes` minus what a root claimed.
+
+  **The order is fixed, and it goes from what the term IS to what uses it**: argument
+  position 1, 2, … N, then the rules that conclude about it, then the rules that require
+  it, then the deeper nestings, then the extents.  A term sits in an argument of the
+  sentences that declare it — `(comment dog \"…\")`, `(genl dog mammal)`, `(arg parentOf
+  1 animal)` — and those are what a reader arriving at the page came for.  A rule's
+  conclusion is the next most direct thing said about the term, and its conditions are
+  what a rule says about something else.  The extents are the other direction:
+  `[:functor-root]` is every fact written with the term as predicate (2,381,749 of them
+  at `genl`) and `[:context-root]` is everything asserted in it, each a list whose first
+  sixty rows say nothing about the term itself.
+
+  **The extents are ordered largest-last**, the one place size decides rather than
+  directness: the bottom of the page is where a list goes on loading as a reader
+  scrolls, so an extent of millions there is a list they walk into, where the same list
+  above a short one is a wall to get past.
+
+  **An extent carries a `:fetch`, not a `:sentexes`** (`group-sentexes`), and a large one
+  is `:deferred?` — its rows are not read until a reader reaches the group
+  (`extent-defer-cap`).  Every other group here comes off an index read bounded by its
+  answer; a root extent does not, and the largest-last order already puts it where a
+  reader arrives last.
 
   `text` is how the term is *written* in the key each group displays — the page's own
   spelling, so a reified term's key names the expression the rest of the page shows
@@ -1027,19 +1279,17 @@
   one and implying there is nothing there."
   ([kb term] (term-index-groups kb term (pr-str term)))
   ([kb term text]
-   (let [functor   (v/sentexes-with-functor kb term)
-         positions (direct-arg-positions kb term)
+   (let [positions (direct-arg-positions kb term)
          arg-grps  (for [p positions
                          :let [ss (v/sentexes-with-arg kb p term)]
                          :when (seq ss)]
                      ;; `:pos` is what the group is *about*, and the concept graph reads
                      ;; its ego edges off these groups rather than paying a second extent
                      ;; read — an arrow needs to know which end of the fact the term is
-                     {:label (str "In argument position " p)
+                     {:label (str "Argument position " p)
                       :idx (str "[:argument-slot " p " " text "]")
                       :pos p :count (v/count-with-arg kb p term) :sentexes ss})
          ctx?      (= :context (v/term-role term))
-         ctx-ss    (when ctx? (v/sentexes-in-context kb term))
          ;; a root's claim is decided per record rather than against a set of every id a
          ;; root holds: building that set is the extent read the walk below is bounded to
          ;; avoid, and `genl` holds 2.4M of them.  An argument claims a record only at a
@@ -1052,35 +1302,67 @@
                                 (boolean (some #(= term %) (take arg-position-cap (rest body)))))
                            (and ctx? (= term (:context s))))))
          ;; a lower bound on the term index, out of counts already in hand: every sentex
-         ;; a root holds contains the term, so the widest root is at least that many
-         ;; entries.  Past the scan the walk is going to be truncated, and this is how the
-         ;; page knows that without paying for the walk to find out — the `genl` term
-         ;; index costs ~750 ms to begin reading whatever is taken off it.  The context
-         ;; root is **not** in the bound: a sentex asserted in a context does not mention
-         ;; it, so the term index need not hold one
-         floor     (reduce max 0 (cons (v/count-with-functor kb term) (map :count arg-grps)))
+         ;; a root holds is one the term index holds too, so the widest root is at least
+         ;; that many entries.  Past the scan the walk is going to be truncated, and this
+         ;; is how the page knows that without paying for the walk to find out — reading
+         ;; the `genl` term index costs 0.9 s before it yields its first record, and a
+         ;; large context's 4.2 s.
+         ;;
+         ;; **The context root is in the bound.**  A sentex asserted in a context does not
+         ;; mention it, but the term index is keyed on `kv/sentex-terms` — the indexable
+         ;; content terms *plus the context* — so a context's own extent bounds its term
+         ;; index below exactly as a predicate's functor root does.  Leaving it out cost
+         ;; `CxWell` 4.2 s a page to build a scan it then discarded as truncated.
+         fn-count  (v/count-with-functor kb term)
+         cx-count  (if ctx? (v/count-in-context kb term) 0)
+         floor     (reduce max 0 (list* fn-count cx-count (map :count arg-grps)))
          scanned   (when (<= floor remainder-scan)
                      (into [] (take (inc remainder-scan)) (v/find-sentexes kb term)))
          whole?    (and (<= floor remainder-scan) (<= (count scanned) remainder-scan))
          remainder (when whole? (remove claimed? scanned))
          rules     (filter :antecedent remainder)
-         nested    (remove :antecedent remainder)]
+         ;; a rule that both concludes about the term and reads it is listed under the
+         ;; conclusion: what a rule *says* about a term outranks what it needs of it
+         concl     (filter #(mentions? term (:consequent %)) rules)
+         conds     (remove #(mentions? term (:consequent %)) rules)
+         nested    (remove :antecedent remainder)
+         ;; the two extents, largest last (the docstring's one size rule), and each a
+         ;; `:fetch` rather than a seq: the read behind an extent is the one read on this
+         ;; page that is not bounded by the index, so it happens when a reader reaches the
+         ;; group and not when the page is built (`group-sentexes`)
+         extents   (sort-by :count
+                            (concat
+                             (when (pos? fn-count)
+                               [{:label "Predicate extent" :idx (str "[:functor-root " text "]")
+                                 :count fn-count :extent? true
+                                 :deferred? (> fn-count extent-defer-cap)
+                                 :fetch #(v/sentexes-with-functor kb term)}])
+                             (when (pos? cx-count)
+                               [{:label "Context extent" :idx (str "[:context-root " text "]")
+                                 :count cx-count :extent? true
+                                 :deferred? (> cx-count extent-defer-cap)
+                                 :fetch #(v/sentexes-in-context kb term)}])))]
      {:remainder? whole?
       :groups
       (concat
-       (when (seq functor)
-         [{:label "As predicate" :idx (str "[:functor-root " text "]")
-           :count (v/count-with-functor kb term) :sentexes functor}])
        arg-grps
-       (when (seq ctx-ss)
-         [{:label "As context" :idx (str "[:context-root " text "]")
-           :count (v/count-in-context kb term) :sentexes ctx-ss}])
-       (when (seq rules)
-         [{:label "In rules" :idx "[:rule-index] · [:term-index]"
-           :count (count rules) :sentexes rules}])
+       (when (seq concl)
+         [{:label "Rule conclusion" :idx "[:rule-index] · [:term-index]"
+           :count (count concl) :sentexes concl}])
+       (when (seq conds)
+         [{:label "Rule condition" :idx "[:rule-index] · [:term-index]"
+           :count (count conds) :sentexes conds}])
        (when (seq nested)
          [{:label "Nested elsewhere" :idx (str "[:term-index " text "]")
-           :count (count nested) :sentexes nested}]))})))
+           :count (count nested) :sentexes nested}])
+       extents)})))
+
+(defn- group-sentexes
+  "The records behind one group of `term-index-groups`: the seq it already holds, or — for
+  an extent — the root read its `:fetch` defers.  Called where rows are rendered and
+  nowhere else, so a page that shows an extent's count without its rows does no root read."
+  [{:keys [sentexes fetch]}]
+  (if fetch (fetch) sentexes))
 
 ;; ---- ordering what a page lists ------------------------------------------
 ;;
@@ -1106,8 +1388,23 @@
   (binding [*print-length* nil *print-level* nil *print-meta* false]
     (mapv second (sort-by first (mapv (fn [x] [(pr-str x) x]) coll)))))
 
+(defn- comment-first
+  "0 for a `(comment term \"…\")` sentex and 1 for everything else — the leading component
+  of `group-order`'s key, so a term's own description is the first row of the group it
+  lands in.
+
+  A comment sits at argument position 1, so it lands in the arg-1 group beside the
+  declarations, and allocation order puts it wherever it happened to be asserted.  It is
+  what the term *says it is*, so it is read first.  Part of the sort key rather than a
+  row lifted out of the sequence: paging re-slices this sequence at an offset, and a
+  prepend would show the comment again at the top of every page."
+  [s]
+  (let [body (fact-body (:sentence s))]
+    (if (and (sequential? body) (= 'comment (first body))) 0 1)))
+
 (defn- group-order
-  "A group's sentexes in display order — by context, then handle.
+  "A group's sentexes in display order — the term's own comment, then by context, then
+  handle.
 
   **Handle order is allocation order, and that is the ordering by design.**  Paging is a
   re-slice of this sequence at an offset, so the order has to be one a later request
@@ -1123,25 +1420,68 @@
   extent and printing a context per member to show sixty rows."
   [sentexes n]
   (if (<= (long n) group-sort-cap)
-    (sort-by (juxt (comp print-key :context) :id) sentexes)
+    (sort-by (juxt comment-first (comp print-key :context) :id) sentexes)
     sentexes))
 
+(def ^:private derived-scan
+  "How many of a group's sentexes the hide-derived filter walks to fill one page.
+
+  Hiding the derived rows turns a page from a slice into a search, and a search with no
+  bound is the whole extent: a term whose group is 2.4M derived facts and one premise
+  would read all of them to render one row.  Five thousand is 83 pages' worth of records
+  for one page of rows, so a group where one row in eighty is a premise still fills a
+  page in one request, and a sparser one fills it over several — each bounded, each
+  resumable, none of them the extent."
+  5000)
+
+(defn- group-page
+  "One page of a group, as `{:rows :next-offset}`: the sentexes to render, and the offset
+  into `ordered` the continuation resumes at (nil when the group is exhausted).
+
+  With derived rows shown, a page is `group-cap` consecutive records and `:next-offset` is
+  `offset + group-cap` — the slice paging has always taken.  With them hidden, the page
+  is the premises among at most `derived-scan` consecutive records, and `:next-offset` is
+  the offset just past the last record **looked at** rather than past the last row shown.  So
+  an offset means the same thing under either setting: a reader who toggles part way down
+  a list neither sees a row twice nor steps over one, and the walk still terminates."
+  [ordered offset hide?]
+  (if-not hide?
+    (let [rows (into [] (take (inc group-cap)) (drop offset ordered))]
+      {:rows        (into [] (take group-cap) rows)
+       :next-offset (when (> (count rows) group-cap) (+ offset group-cap))})
+    (loop [ss   (seq (drop offset ordered))
+           seen 0
+           kept []]
+      (if (or (nil? ss) (= group-cap (count kept)) (= seen derived-scan))
+        {:rows kept :next-offset (when (some? ss) (+ offset seen))}
+        (recur (next ss) (inc seen)
+               (cond-> kept (some? (:strength (first ss))) (conj (first ss))))))))
+
 (defn- group-rows
-  "One page of a group's rows, plus the sentinel that fetches the next page when it is
-  reached.  Belief for the whole page is read once (`prime-belief!`), so a page of 60
-  rows costs one belief read rather than 60.  `total` is the group's stored count, so
-  the sentinel still says how many are behind it."
-  [view term g offset total sentexes]
-  (let [rows (into [] (take (inc group-cap)) (drop offset (group-order sentexes total)))
-        page (take group-cap rows)]
-    (prime-belief! view (map :id page))
-    ;; data-h is what a save's out-of-band swap addresses; the handle badge dims an
-    ;; OUT sentex and `sentex-row` names the reason it is out
-    (list (map #(sentex-row view %) page)
-          (when (> (count rows) group-cap)
-            (more-rows (str "/term/rows?q=" (url-enc (pr-str term))
-                            "&g=" g "&offset=" (+ offset group-cap))
-                       (str "show " (max 0 (- total offset group-cap)) " more"))))))
+  "One group's `page` (`group-page`) as rows, plus the sentinel that fetches the next one
+  when it is reached.  Belief for the whole page is read once (`prime-belief!`), so a
+  page of 60 rows costs one belief read rather than 60.  `total` is the group's stored
+  count, so the sentinel says how many records are behind it.
+
+  With derived rows hidden the sentinel carries no number: what is behind it is records,
+  not rows, and how many of them are premises is not known until they are read.  A count
+  that said sixty and delivered four would be worse than no count.
+
+  `page` is **nil** for a group whose first page is deferred — a large root extent, whose
+  read is the one on a term page not bounded by its answer (`extent-defer-cap`).  That
+  group renders as the sentinel alone, at offset 0, so its records arrive on the same
+  reveal every later page of it does."
+  [view term g {:keys [rows next-offset] :as page} total]
+  (prime-belief! view (map :id rows))
+  ;; data-h is what a save's out-of-band swap addresses; the handle badge dims an
+  ;; OUT sentex and `sentex-row` names the reason it is out
+  (list (map #(sentex-row view %) rows)
+        (when-let [next-offset (if (nil? page) 0 next-offset)]
+          (more-rows (str "/term/rows?q=" (url-enc (pr-str term))
+                          "&g=" g "&offset=" next-offset)
+                     (if (:hide-derived? view)
+                       "show more"
+                       (str "show " (max 0 (- total next-offset)) " more"))))))
 
 (def ^:private term-edit-cap
   "How many of a term's sentexes its `[edit]` opens the editor on.  A textarea holding a
@@ -1157,16 +1497,25 @@
   [{:keys [kb]} term]
   (if (nil? term)
     []
-    (let [{:keys [sentexes] n :count} (first (:groups (term-index-groups kb term)))]
-      (into [] (comp (take term-edit-cap) (map :id)) (group-order sentexes n)))))
+    ;; an extent is the last group `[edit]` will head, and a deferred one it will not head
+    ;; at all: `[edit]` opens what the term *is*, and reading 2.4M handles to find twenty
+    ;; rows that say nothing about the term is the one read this control cannot justify
+    (let [gs (:groups (term-index-groups kb term))
+          {n :count :as g} (or (first (remove :extent? gs)) (first gs))]
+      (if (:deferred? g)
+        []
+        (into [] (comp (take term-edit-cap) (map :id))
+              (group-order (group-sentexes g) n))))))
 
 (defn- index-group
   "Render one index group as a framed region: its number, its name, the index key it
-  reads and its stored count in the top border, then its sentexes a page at a time."
-  [view term [g {:keys [label idx count sentexes]}]]
+  reads and its stored count in the top border, then its sentexes a page at a time.
+  `page` is the group's first page, built once by the caller so the page's single belief
+  read covers exactly the rows it is about to render."
+  [view term [g {:keys [label idx count]} page]]
   [:div.idxgrp {:data-panel (inc g)}
    [:h4 (fold-button (inc g)) label " " [:code idx] " " [:span.muted "· " count " stored"]]
-   (sx-list label (group-rows view term g 0 count sentexes))])
+   (sx-list label (group-rows view term g page count))])
 
 ;; ---- proposing knowledge: the model, on a term page ---------------------
 ;;
@@ -3295,57 +3644,58 @@
       (trove/log! {:level :warn :id ::graph-failed :data {:term term :error (ex-message t)}})
       nil)))
 
-;; ---- the three type lines, bounded --------------------------------------
-;;
-;; Supertypes, subtypes, and what the term is separated from.  On the shipped schema each
-;; is a handful and the temptation is to render the lot; on an imported ontology `thing`
-;; has 110,128 subtypes and one NAT collection is disjoint from 79,638 types, and a page
-;; that renders those is 14 MB of links — not slow, unusable, and unclickable once it
-;; arrives.  So each line is capped, and each says what it left out.
+(defn- derived-switch
+  "The control that leaves the **derived** rows out of every index group on the page, or
+  brings them back — a sentex the engine concluded rather than was told
+  (`vaelii.core/premise?`), which on a term of a settled ontology is most of what the
+  groups hold.
 
-(defn- type-line
-  "One of those three lines, from one of `describe`'s `{:terms :total :exact? :sorted?}`
-  answers: the terms it holds, then — only when that window is not the whole answer —
-  what was shown out of what there is.  A total that is a *bound* rather than a count
-  says so, since the alternative to over-counting is a walk whose whole point was not to
-  be taken; a window that is not in name order says that too, since fifty
-  alphabetically-first is a different claim from fifty of them.
-
-  **The cap is `describe`'s** (`vaelii.core/default-describe-limit`), not one applied
-  again here: the read that decides how much to sort is the read that has to decide how
-  much to return, and a second cap on top of it could only ever disagree with `:total`."
-  [view label {:keys [terms total exact? sorted?]}]
-  (when (seq terms)
-    [:div
-     [:p label ": " (interpose ", " (map #(term-link view %) terms))]
-     (when (> total (count terms))
-       (elided (count terms)
-               (str (when-not exact? "up to ") (or (commas total) total))
-               (when-not sorted? "in index order")))]))
+  An ordinary link, not a button and not a script: `hx-boost` swaps `#main` for it like
+  any other navigation, so the whole feature is one query parameter, one cookie and a
+  re-render.  A page arrived at with the parameter is the same page when its URL is
+  shared, and the cookie is what carries the choice onto the next term
+  (`remember-derived`)."
+  [{:keys [hide-derived?]} term]
+  [:a.action {:href  (str "/term?q=" (url-enc (pr-str term))
+                          "&derived=" (if hide-derived? "show" "hide"))
+              :title (if hide-derived?
+                       "also list what the engine concluded"
+                       "list only what the KB was told, not what it concluded")}
+   (if hide-derived? "show derived" "hide derived")])
 
 (defn term-page
   "A term's page: the concept graph, the three type lines, the sentexes grouped by the
   index root that reaches them, and the proposal panel.
 
-  **The three type lines are `describe`'s**, not a second computation beside it.  One
-  call answers the supertype, subtype and disjointness closures, each already windowed at
-  `vaelii.core/default-describe-limit` with `:total` beside it and `:exact?` / `:sorted?`
-  saying what kind of window it is — so the page and `vaelii.core/describe` cannot come to
-  disagree about what a term is, and against a remote daemon the three lines cost one round
-  trip rather than a read apiece (docs/api.md).  Everything else on the page keeps its own
-  budget: the index groups are bounded in rows (`group-cap`) and the graph in reads
-  (`graph-side-budget`), neither of which is a question about terms."
+  **What a term is, the page says by listing what the KB was told** — the index groups —
+  and by drawing it, not by restating a closure in prose.  A supertype line is a rendering
+  of `genl` sentexes the argument groups already hold, and on an imported ontology the
+  closures behind it run to six figures; the one reading of them a reader cannot get from
+  the rows is *position*, and that is the picture.  `vaelii.core/describe` still answers
+  all six readings for a caller that wants them (docs/api.md).
+
+  Every part of the page is bounded, and each by its own budget: the index groups in rows
+  (`group-cap`), their root extents deferred to a reveal (`group-sentexes`), and the graph
+  in reads (`graph-side-budget`)."
   [{:keys [kb] :as view} term]
   (let [about  (v/describe kb term '?ctx)
+        ;; the one thing the page reads off `describe`: whether the term has anything
+        ;; above or below it, which is what decides the graph it draws
         gls    (:terms (:genls about))
         sps    (:terms (:specs about))
-        djs    (:disjoint about)
         text   (term-text view term)
         {:keys [groups remainder?]} (term-index-groups kb term text)
-        groups (vec groups)]
+        groups (vec groups)
+        ;; a large extent's first page is deferred with the rest of it, so rendering this
+        ;; page reads no root it cannot afford: the group shows its O(1) count and fetches
+        ;; its rows when a reader scrolls it into view (`extent-defer-cap`)
+        pages  (mapv #(when-not (:deferred? %)
+                        (group-page (group-order (group-sentexes %) (:count %)) 0
+                                    (:hide-derived? view)))
+                     groups)]
     ;; one belief read for the whole page: every group's first page of rows, **and** the
     ;; sentexes the graph reads its ego edges out of, in the same batch
-    (prime-belief! view (concat (mapcat #(map :id (take group-cap (group-order (:sentexes %) (:count %)))) groups)
+    (prime-belief! view (concat (mapcat #(map :id (:rows %)) pages)
                                 (flank-handles groups)))
     (render view (str "term " text)
             [:h2 "Term " (term-link view term) " "
@@ -3360,19 +3710,15 @@
             (term-graph view term gls sps groups)
             [:p [:a.action {:href (str "/assert?q=" (url-enc (pr-str term)))} "Assert a sentex"]
              [:span.muted " — the form opens with this term already in it."]]
-            (when (or (seq gls) (seq sps) (seq (:terms djs)))
-              [:div
-               (type-line view "Supertypes" (:genls about))
-               (type-line view "Subtypes" (:specs about))
-               (type-line view "Disjoint with" djs)])
             [:h3 "Sentexes by index "
-             [:span.muted "(most direct first)"]]
+             [:span.muted "(arguments, rules, nestings, extents)"] " "
+             (derived-switch view term)]
             (when-not remainder?
               [:p.muted "This term reaches more than " (commas remainder-scan)
                " sentexes, so the page did not walk the term index for what the roots "
                "below do not claim. The groups it does show are complete."])
             (if (seq groups)
-              (map-indexed #(index-group view term [%1 %2]) groups)
+              (map-indexed #(index-group view term [%1 %2 (nth pages %1)]) groups)
               [:p.muted "none"])
             ;; last on the page, and deliberately: what the KB holds is the page, and
             ;; what a model would add is a question to ask after reading it
@@ -3385,7 +3731,10 @@
   [{:keys [kb] :as view} term g offset]
   (let [groups (vec (:groups (term-index-groups kb term)))]
     (frag (if-let [grp (get groups g)]
-            (group-rows view term g offset (:count grp) (:sentexes grp))
+            (group-rows view term g
+                        (group-page (group-order (group-sentexes grp) (:count grp))
+                                    offset (:hide-derived? view))
+                        (:count grp))
             ""))))
 
 (defn- term-href [term] (str "/term?q=" (url-enc (pr-str term))))
@@ -5254,6 +5603,50 @@
                                                     "or an options map — got "
                                                     (pr-str form))})))))))
 
+(defn- breaks-across-lines?
+  "Is `form` one of the two shapes `pretty-sentence` lays out — an implication, or a
+  connective over more than one argument?"
+  [form]
+  (and (sequential? form)
+       (or (and (= 'implies (first form)) (= 3 (count form)))
+           (and (contains? laid-out-connectives (first form)) (> (count form) 2)))))
+
+(defn- pretty-sentence
+  "`form` as **text**, laid out the way a row lays a rule out (`laid-out-form`) — the
+  editor's copy of the same alignment, so a rule reads in the field the way it reads on
+  the page it was opened from.  `col` is the column the form starts at.
+
+  Three shapes break: an implication, a connective over more than one argument, and a
+  one-argument wrapper around either — `(set/backwardRule <rule>)`, which is how a rule's
+  direction is written back, and which would otherwise put the whole rule on one line
+  inside it.  Everything else is one line.
+
+  The whitespace is not read back: `read-entries` reads EDN **forms** and the save diffs
+  by content, so the layout is for the reader and the sentence reaching the KB is the one
+  that was there."
+  [form col]
+  (let [pad  (fn [n] (str "\n" (apply str (repeat n \space))))
+        head (fn [f] (+ col 1 (count (print-key f)) 1))]
+    (cond
+      (and (sequential? form) (= 'implies (first form)) (= 3 (count form)))
+      (let [k (head 'implies)]
+        (str "(implies " (pretty-sentence (nth form 1) k)
+             (pad k) (pretty-sentence (nth form 2) k) ")"))
+
+      (and (sequential? form)
+           (contains? laid-out-connectives (first form))
+           (> (count form) 2))
+      (let [k (head (first form))]
+        (str "(" (print-key (first form)) " "
+             (str/join (pad k) (map #(pretty-sentence % k) (rest form)))
+             ")"))
+
+      (and (sequential? form) (= 2 (count form)) (breaks-across-lines? (second form)))
+      (let [k (head (first form))]
+        (str "(" (print-key (first form)) " " (pretty-sentence (second form) k) ")"))
+
+      :else (print-key form))))
+
 (defn- seed-text
   "The editor's text for a set of sentexes, in the order the handles name them: a context
   on its own line, then its sentences, then the next context — and an options map where
@@ -5275,7 +5668,8 @@
                                (and (not= c cx) (seq lines)) (conj "")
                                (not= c cx)                   (conj (pr-str c))
                                (not= o op)                   (conj (pr-str (or o {})))
-                               :always (conj (pr-str (selection/wrapped-sentence sx))))}))
+                               :always (conj (pretty-sentence
+                                              (selection/wrapped-sentence sx) 0)))}))
                  {:cx nil :op nil :lines []})
          :lines
          (str/join "\n"))))
@@ -6930,15 +7324,18 @@
          ["/term"       {:get (fn [req]
                                 (let [q (get-in req [:query-params "q"])
                                       w (view (current target) req)]
-                                  (cond
-                                    (str/blank? q)
-                                    (render w "term" [:p "Pass ?q=<term>"])
-                                    (some? (->form q))
-                                    (term-page w (->form q))
-                                    :else
-                                    (render w "term"
-                                            [:h2 "Term"]
-                                            [:p.muted "Not a readable term: " [:code q] "."]))))}]
+                                  ;; `?derived=hide|show` is the reading preference this
+                                  ;; request chose; the response carries it forward
+                                  (-> (cond
+                                        (str/blank? q)
+                                        (render w "term" [:p "Pass ?q=<term>"])
+                                        (some? (->form q))
+                                        (term-page w (->form q))
+                                        :else
+                                        (render w "term"
+                                                [:h2 "Term"]
+                                                [:p.muted "Not a readable term: " [:code q] "."]))
+                                      (remember-derived req))))}]
          ;; the continuation routes: a capped list ends in a sentinel that fetches its
          ;; next page from here, so every long list is walkable without loading it whole
          ["/term/rows"  {:get (fn [req]

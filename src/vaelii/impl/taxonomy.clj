@@ -2464,6 +2464,32 @@
     (closure-of-vis tax :genl :rev t scope)
     (closure-of tax :genl :rev t)))
 
+(defn- direct-neighbours
+  "`t`'s `dir-key` neighbours across **one** `genl` edge, scoped like `genls` / `specs`.
+  Not reflexive: the closures include `t` because transitivity is reflexive, and a step
+  is not."
+  [tax dir-key t context]
+  (if-some [scope (relation-scope tax :genl context)]
+    (into #{} (visible-neighbours :genl (:genl @tax) dir-key scope t))
+    (get-in @tax [:genl dir-key t] #{})))
+
+(defn direct-genls
+  "The types `t` is a subtype of by **one** declared `genl` edge — its direct parents,
+  where `genls` is everything those parents in turn reach.
+
+  O(degree), off the `:fwd` adjacency the closure walk is built on, against a closure
+  read that is O(1) only because it is memoized.  The two answer different questions: the
+  closure is what a subsumption check needs, and the parents are what the term was
+  *told*, which is what a reader is shown and what an editor edits."
+  [tax t context]
+  (direct-neighbours tax :fwd t context))
+
+(defn direct-specs
+  "The types that are a subtype of `t` by **one** declared `genl` edge — its direct
+  children.  `direct-genls`' reasoning, the other direction."
+  [tax t context]
+  (direct-neighbours tax :rev t context))
+
 (defn specs-of-all
   "The union of `specs` over every node in `nodes`, walked **once**.
 

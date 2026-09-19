@@ -16,6 +16,7 @@
             [vaelii.host.guard :as guard]
             [vaelii.host.serve :as serve]
             [vaelii.impl.jtms :as jtms]
+            [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]
             [vaelii.world :as world]))
@@ -220,20 +221,31 @@
   ;; function term — a NAT — and that is a `PersistentList`, which `compare` throws on
   ;; instead of ordering.  So every list the browser sorts is sorted by *name*: it is what
   ;; the list is read in, and it is the one ordering that exists for every term a KB can
-  ;; hold.  Injected at the two taxonomy reads `describe` makes — the page's three type
-  ;; lines are its answer (docs/web.md) — because nothing the assert path stores is one.
+  ;; hold.  Injected at the taxonomy reads `describe` makes — which is what a term page
+  ;; asks for the graph it draws (docs/web.md) — because nothing the assert path stores is
+  ;; one.  All four are injected, because each sorts what it answers: the two **direct**
+  ;; edge reads, the separation enumeration, and the spec closure `:disjoint` walks.
   (let [nat        '(QuantityFn 5 Meter)
         real-types v/types
-        real-specs v/specs]
+        real-specs v/specs
+        real-sep   tax/separating-partners
+        real-dgls  tax/direct-genls]
     (with-redefs [v/types (fn [kb & args] (conj (set (apply real-types kb args)) nat))
                   v/specs (fn [kb t & args]
                             (cond-> (apply real-specs kb t args)
-                              (= 'cat t) (conj nat)))]
+                              (= 'cat t) (conj nat)))
+                  tax/separating-partners (fn [tx a ctx]
+                                            (cond-> (real-sep tx a ctx) (= 'dog a) (conj nat)))
+                  tax/direct-genls (fn [tx t ctx]
+                                     (cond-> (real-dgls tx t ctx) (= 'dog t) (conj nat)))]
       (let [r (GET "/term" "q=dog")]                        ; dog ⊥ cat, so cat's specs are read
-        (is (= 200 (:status r)))
-        (is (re-find #"Disjoint with" (:body r)))
-        (is (re-find #"QuantityFn" (:body r))
-            "and the compound is listed rather than being what killed the page")))))
+        (is (= 200 (:status r)) "rendered rather than thrown on")
+        (is (re-find #"Sentexes by index" (:body r))))
+      (testing "and in every one of describe's readings, each of which sorts it"
+        (let [d (v/describe tu/*kb* 'dog '?ctx)]
+          (is (contains? (set (:terms (:genls-direct d))) nat))
+          (is (contains? (set (:terms (:disjoint-maximal d))) nat))
+          (is (contains? (set (:terms (:disjoint d))) nat)))))))
 
 (tu/deftest-kb a-term-past-the-probed-argument-positions-is-in-a-remainder-group
   ;; the page probes argument positions 1 to 12; a fact naming the term only at 13 has no
@@ -575,9 +587,9 @@
 (deftest term-page-lists-sentexes-and-taxonomy
   (let [r (GET "/term" "q=dog")]
     (is (= 200 (:status r)))
-    (testing "taxonomy info and containing sentexes"
-      (is (re-find #"Supertypes" (:body r)))            ; dog is a type
-      (is (re-find #"Disjoint with" (:body r)))         ; dog ⊥ cat
+    (testing "the taxonomy is the picture, and the sentexes are the rows under it"
+      (is (re-find #"<svg" (:body r)))                  ; dog is a type: it has a graph
+      (is (re-find #"genl" (:body r)))                  ; (genl dog mammal)
       (is (re-find #"Muffet" (:body r)))))                ; (dog Muffet)
   (testing "an individual's sentexes are found by term"
     (is (re-find #"parentOf" (:body (GET "/term" "q=Bob"))))))
@@ -587,15 +599,67 @@
     (let [r (GET "/term" "q=dog")]
       (is (= 200 (:status r)))
       (is (re-find #"Sentexes by index" (:body r)))
-      (is (re-find #"As predicate" (:body r)))            ; (dog Muffet) is a functor-root fact
+      (is (re-find #"Predicate extent" (:body r)))        ; (dog Muffet) is a functor-root fact
       (is (re-find #"\[:functor-root dog\]" (:body r)))
       (is (re-find #"stored" (:body r)))                  ; the O(1) stored count is shown
       (is (re-find #"Muffet" (:body r)))))                  ; still reachable, now under a group
   (testing "an individual is grouped by the argument position it fills"
     (let [r (GET "/term" "q=Bob")]
-      (is (re-find #"argument position" (:body r)))
+      (is (re-find #"Argument position" (:body r)))
       (is (re-find #"\[:argument-slot" (:body r)))
       (is (re-find #"parentOf" (:body r))))))
+
+(defn- group-labels
+  "The index-group headings of a term page, in the order the page renders them."
+  [body]
+  (mapv second (re-seq #"type=\"button\">\d+</button>([^<]+?) <code>" body)))
+
+(deftest a-term-page-reads-from-what-the-term-is-to-what-uses-it
+  ;; The order is fixed and it is the claim: a reader arrives at `dog` for the sentences
+  ;; that *declare* it, and `(dog Muffet)` — every instance ever asserted, 2.4M of them
+  ;; at `genl` — is the other direction.  Argument positions lead, ascending; then what
+  ;; a rule concludes about the term; then what a rule requires of it; then the deeper
+  ;; nestings; then the extents, however small they happen to be here.
+  (let [labels (group-labels (:body (GET "/term" "q=dog")))]
+    (is (= ["Argument position 1" "Argument position 2" "Predicate extent"] labels))
+    (is (= (count labels) (count (distinct labels))) "one heading per group"))
+  (testing "a rule's two halves are two groups, the conclusion first"
+    ;; `parentOf` is concluded about by one rule and read by others — what a rule *says*
+    ;; about a term outranks what it needs of it
+    (is (= ["Argument position 1" "Rule conclusion" "Rule condition"
+            "Predicate extent"]
+           (group-labels (:body (GET "/term" "q=parentOf"))))))
+  (testing "a term only ever read by a rule gets the condition group and not the other"
+    (let [labels (group-labels (:body (GET "/term" "q=weightOf")))]
+      (is (some #{"Rule condition"} labels))
+      (is (not-any? #{"Rule conclusion"} labels))))
+  (testing "a context lists what is in it last, under the same rule"
+    (let [labels (group-labels (:body (GET "/term" "q=CxNaturalWorld")))]
+      (is (seq labels))
+      (is (= "Context extent" (last labels)))))
+  (testing "and the editor opens on the group the page renders first"
+    ;; `term-main-handles` is the head of the most direct group, which is now the
+    ;; arg-1 declarations rather than the extent
+    (let [hs (#'web/term-main-handles (web/view tu/*kb* {}) 'dog)]
+      (is (seq hs))
+      (is (= '(comment dog) (take 2 (:sentence (v/sentex tu/*kb* (first hs)))))))))
+
+(deftest a-terms-own-comment-is-the-first-row-of-its-group
+  ;; `(comment dog "…")` sits at argument position 1 like every declaration, and
+  ;; allocation order puts it wherever it was asserted.  It is what the term says it is,
+  ;; so it is read first — part of the sort key, never a row lifted out of the sequence,
+  ;; because paging re-slices this sequence at an offset.
+  (let [body  (:body (GET "/term" "q=dog"))
+        grp   (second (re-find #"aria-label=\"Argument position 1\" class=\"sx-list\">(.*?)</ul>" body))
+        first-row (second (re-find #"<li[^>]*>(.*?)</li>" grp))]
+    (is (re-find #">comment</a>" first-row)
+        "the comment leads the group it lands in"))
+  (testing "the key is total, so the order is one a continuation reproduces"
+    (let [rows (fn [off] (re-seq #"data-h=\"(\d+)\""
+                                 (:body (GET "/term/rows" (str "q=dog&g=0&offset=" off)))))
+          a (rows 0)
+          b (rows 0)]
+      (is (= a b) "the same request twice is the same rows in the same order"))))
 
 ;; ---- the concept graph at the top of a term page ------------------------
 ;;
@@ -619,7 +683,7 @@
 (defn- rects
   "Every node box, as `[x y w h]`."
   [svg]
-  (for [[_ w h x y] (re-seq #"<rect class=\"g-pill\" height=\"(\d+)\" rx=\"\d+\" width=\"(\d+)\" x=\"(-?\d+)\" y=\"(-?\d+)\"" (or svg ""))]
+  (for [[_ w h x y] (re-seq #"<rect class=\"g-box\" height=\"(\d+)\" rx=\"\d+\" width=\"(\d+)\" x=\"(-?\d+)\" y=\"(-?\d+)\"" (or svg ""))]
     (mapv #(Long/parseLong %) [x y h w])))
 
 (defn- segments
@@ -645,14 +709,13 @@
     (testing "and it says which claim the vertical axis is"
       (is (re-find #"class=\"g-edge g-genl\"" svg))
       (is (re-find #"arrows point at the more general type" body)))
-    (testing "the prose the picture approximates is still there, unchanged"
-      (is (re-find #"Supertypes: " body))
-      (is (re-find #"Subtypes: " body))
-      (is (re-find #"Sentexes by index" body)))))
+    (testing "and the rows the picture approximates are under it"
+      (is (re-find #"Sentexes by index" body))
+      (is (re-find #"Argument position 1" body)))))
 
 (deftest a-context-page-draws-the-relation-a-context-has
-  ;; `genl` says nothing about contexts, so the three type lines are empty on this page and
-  ;; the picture is the only thing on it that shows the lattice at all
+  ;; `genl` says nothing about contexts, so the picture is the only thing on the page that
+  ;; shows the lattice at all
   (let [svg (svg-of (:body (GET "/term" "q=CxNaturalWorld")))]
     (is (some? svg))
     (is (re-find #"class=\"g-edge g-genlCx\"" svg)
@@ -712,28 +775,242 @@
           (str q ": " (count stray) " arrow end(s) not on a node — "
                (str/join ", " (take 8 stray)))))))
 
-;; ---- the three type lines are bounded too -------------------------------
+;; ---- what a term is, the page shows rather than restates ----------------
 ;;
-;; Same claim as the front page's, in the one place it was still missing.  Unbounded they
-;; are what makes a term page of an imported ontology unusable rather than slow: `thing`
-;; has 110,128 subtypes there and one NAT collection is disjoint from 79,638 types, which
-;; renders as 14 MB of links a browser cannot even be clicked through afterwards.
+;; A term page used to open with three prose lines — Supertypes, Subtypes, Disjoint with
+;; — each a window onto a `describe` reading.  They are gone: a supertype line renders
+;; `genl` sentexes the argument groups already list, and the one reading of a taxonomy a
+;; reader cannot get from those rows is *position*, which is the picture.  `describe`
+;; still answers all six readings for a caller that wants them (`describe_test`).
 
-(defn- type-line-of
-  "The links in one of the three type lines, and the elision note that follows it."
-  [body label]
-  (let [i (str/index-of body (str "<p>" label ": "))
-        j (when i (str/index-of body "</div>" i))
-        s (when i (subs body i (or j (count body))))]
-    {:links (count (re-seq #"href=\"/term\?q=" (or s "")))
-     :note  (second (re-find #"showing (\d+ of [^<]*)" (or s "")))}))
+(deftest a-term-page-shows-its-taxonomy-rather-than-restating-it
+  (let [body (:body (GET "/term" "q=dog"))]              ; dog is a mammal, and dog ⊥ cat
+    (is (not (re-find #"Supertypes: " body)))
+    (is (not (re-find #"Subtypes: " body)))
+    (is (not (re-find #"Disjoint with" body)))
+    (testing "the edge it was told is still on the page, as the sentex that says it"
+      (is (re-find #"Argument position 1" body))
+      (is (re-find #"mammal" body)))
+    (testing "and where it sits is still drawn"
+      (is (some? (svg-of body))))))
 
-(defn- wide-type!
-  "A type with `n` direct subtypes, all temporaries the fixture takes back."
-  [kb t n]
-  (v/assert kb (list 'genl t 'thing) 'CxUniverse {:chain? false})
-  (v/assert-many kb (for [i (range n)] (list 'genl (symbol (str (name t) "_kid" i)) t))
-                 'CxUniverse {:chain? false}))
+(defn- rule-lines
+  "The `sx-rule` span of a rendered page as plain text lines — the layout a reader sees,
+  read off the page rather than off the hiccup, since the newlines are what is being
+  checked and only the rendered document has them."
+  [body]
+  ;; `(?s)` because the content is the newlines being checked, and `.` does not cross one
+  (some-> (re-find #"(?s)<span class=\"sx-rule\">(.*?)@ <a class=\"sx t-context\"" body)
+          second
+          (str/replace #"<[^>]+>" "")
+          (str/replace #"&quot;" "\"")
+          str/trimr
+          str/split-lines))
+
+(deftest a-rule-is-laid-out-one-antecedent-to-a-line
+  ;; A rule read as one line is a rule read by counting parentheses: which literals are
+  ;; the conditions and which one is the conclusion is what the line runs together.  So
+  ;; the conjuncts go one to a line, each aligned under the first.  The indent is counted in
+  ;; characters, which is exact because a sentence is set in the monospace face and the
+  ;; span holding the newlines is `pre-wrap`.
+  ;;
+  ;;     (implies (and (weightOf ?x ?wx)
+  ;;                   (weightOf ?y ?wy)
+  ;;                   (quantityGreaterThan ?wx ?wy))
+  ;;              (heavierThan ?x ?y))
+  (let [rows (rule-lines (:body (GET "/term" "q=heavierThan")))
+        ind  (fn [n] (apply str (repeat n \space)))]
+    (is (= 4 (count rows)) "three conditions and the conclusion, one to a line")
+    (is (str/starts-with? (first rows) "(implies (and ("))
+    (testing "each later conjunct starts under the first, past `(implies (and `"
+      (doseq [r (subvec (vec rows) 1 3)]
+        (is (str/starts-with? r (str (ind 14) "(")))
+        (is (not (str/starts-with? r (ind 15))))))
+    (testing "and the conclusion under the antecedent, past `(implies `"
+      (is (str/starts-with? (nth rows 3) (str (ind 9) "(")))
+      (is (not (str/starts-with? (nth rows 3) (ind 10))))))
+  (testing "a fact is one line — the layout separates an implication's two sides"
+    (let [body (:body (GET "/term" "q=dog"))]      ; nine facts, no rule among them
+      (is (not (str/includes? body "sx-rule")))
+      (is (nil? (rule-lines body)))
+      (is (not (re-find #"</a>\n" body)) "and no row carries a newline of its own"))))
+
+(deftest a-row-is-a-circle-and-a-sentence
+  ;; Every case the badge distinguishes is one colour, so a word beside it says the
+  ;; colour twice: `backward rule` next to the purple circle adds nothing to a reader who
+  ;; has the scale and is two words of noise to one reading the sentence.  The reading
+  ;; stays in the `title`, where it costs the row nothing.
+  (let [body (:body (GET "/term" "q=dog"))]
+    (is (not (re-find #"badge-kind|badge-h" body)) "no words beside the circle")
+    (is (re-find #"title=\"default premise · #\d+\"" body) "the reading is the title's")
+    (is (re-find #"title=\"derived · #\d+\"" body)))
+  (testing "a rule's direction is the title's too, and the circle's colour"
+    (let [body (:body (GET "/term" "q=heavierThan"))]
+      (is (re-find #"title=\"backward rule · #\d+\"" body))
+      (is (re-find #"badge badge-backward" body))))
+  (testing "the belief state is state-tag's, which speaks only when a row is OUT"
+    (let [body (:body (GET "/term" "q=dog"))]
+      (is (not-any? #(str/includes? % "IN")
+                    (map second (re-seq #"title=\"([^\"]*)\"><span class=\"badge" body)))))))
+
+(tu/deftest-kb the-editor-lays-a-rule-out-the-way-the-page-does
+  ;; A rule opened for editing arrived as one long line, where the row above it was laid
+  ;; out.  The whitespace is not read back — `read-entries` reads EDN forms and the save
+  ;; diffs by content — so this is for the reader and the sentence reaching the KB is the
+  ;; one that was there.
+  (tu/with-terms [pA pB pC pD CxEd]
+    (let [h    (v/assert-rule kb [(list pA '?x) (list pB '?x) (list pC '?x)]
+                              (list pD '?x) CxEd {:direction :backward})
+          rows (str/split-lines (#'web/seed-text kb [h]))
+          ind  (fn [n] (apply str (repeat n \space)))]
+      (is (= CxEd (symbol (first rows))) "the context on a line of its own, as before")
+      (is (= 5 (count rows))
+          "then three conditions and the conclusion, one to a line, under it")
+      (testing "aligned through the wrapper that carries the direction"
+        ;; `(set/backwardRule ` is 18 wide, `(implies ` 9 more, `(and ` 5 more
+        (is (str/starts-with? (second rows) "(set/backwardRule (implies (and ("))
+        (doseq [r (subvec (vec rows) 2 4)]
+          (is (str/starts-with? r (str (ind 32) "(")) "conjuncts under the first")
+          (is (not (str/starts-with? r (ind 33)))))
+        (is (str/starts-with? (nth rows 4) (str (ind 27) "("))
+            "and the conclusion under the antecedent")
+        (is (not (str/starts-with? (nth rows 4) (ind 28)))))
+      (testing "and it reads back as the sentence it was"
+        ;; the property the layout has to have: it is whitespace, so the form the save
+        ;; reads is the form it would have read off one line
+        (is (= (read-string (str/join "\n" (rest rows)))
+               (read-string (str/replace (str/join " " (rest rows)) #"\s+" " ")))
+            "one EDN form, and the same one with the layout collapsed")
+        (is (= 'set/backwardRule (first (read-string (str/join "\n" (rest rows)))))
+            "still inside the wrapper that carries the direction"))))
+  (testing "a fact is one line, as it always was"
+    (let [h (:id (first (v/find-sentexes tu/*kb* 'Muffet)))]
+      (is (= 2 (count (str/split-lines (#'web/seed-text tu/*kb* [h]))))))))
+
+(deftest the-larger-extent-goes-last-so-the-page-ends-in-the-list-that-continues
+  ;; The one place size decides rather than directness.  The bottom of the page is where
+  ;; a list goes on loading as a reader scrolls, so the bigger extent belongs there;
+  ;; above a short one it is a wall to get past.
+  ;;
+  ;; A term is a context or a predicate by its spelling, so nothing this KB's own assert
+  ;; path stores gives one term both extents.  An import is the other way in, and the
+  ;; browser reads what is **stored** — injected at the access facade, as the front
+  ;; page's self-disjoint test is, for the same reason.
+  (let [row     {:id -3 :sentence '(CxSize Whatever) :context 'CxUniverse
+                 :strength :monotonic}
+        real-ss acc/sentexes-with-functor
+        real-c  acc/count-with-functor]
+    (with-redefs [acc/sentexes-with-functor (fn [t p & a]
+                                              (if (= 'CxSize p) [row] (apply real-ss t p a)))
+                  acc/count-with-functor    (fn [t p & a]
+                                              (if (= 'CxSize p) 1 (apply real-c t p a)))]
+      (let [labels (group-labels (:body (GET "/term" "q=CxSize")))
+            tail   (drop-while #(not (#{"Predicate extent" "Context extent"} %)) labels)]
+        (is (= ["Predicate extent" "Context extent"] tail)
+            "one stored fact under it, many sentexes in it — the longer list ends the page")
+        (is (= (count tail) (count (filter #{"Predicate extent" "Context extent"} labels)))
+            "and the two extents are contiguous at the end, nothing between them")))))
+
+(deftest parens-are-coloured-by-how-deep-they-are-nested
+  ;; A sentence is a tree printed as a line, and the parens are the only thing saying
+  ;; where a subterm ends.  Every subterm is already coloured by its role, so the
+  ;; structure was the one thing on the page with no colour at all — and vaelii.com's
+  ;; stylesheet has been drawing these nine for a page the engine did not emit.
+  (let [out (str (#'web/render-form (web/view tu/*kb* {}) '(arg parentOf 1 (FooFn bar))))]
+    (is (= 2 (count (re-seq #"\"rb1\"" out))) "the outer pair, both halves one colour")
+    (is (= 2 (count (re-seq #"\"rb2\"" out))) "the nested pair, a colour along")
+    (is (not (re-find #"\"rb3\"" out)) "and no third depth to colour"))
+  (testing "the scale wraps rather than running out"
+    (let [deep (reduce (fn [f _] (list 'f f)) 'x (range 10))
+          out  (str (#'web/render-form (web/view tu/*kb* {}) deep))]
+      (is (re-find #"\"rb9\"" out))
+      (is (= 4 (count (re-seq #"\"rb1\"" out))) "depth 0 and depth 9 share a colour")))
+  (testing "a rule's parens count along the same scale"
+    (let [body (:body (GET "/term" "q=heavierThan"))]
+      (is (re-find #"sx-rule\"><span class=\"sx\"><span class=\"rb1\">\(</span>" body)))))
+
+(defn- set-cookies
+  "The `Set-Cookie` values on a response, as a vector — Ring allows a header to carry a
+  string or a collection of them, and this browser sets two."
+  [r]
+  (let [v (get-in r [:headers "Set-Cookie"])]
+    (cond (nil? v) [] (string? v) [v] :else (vec v))))
+
+(defn- derived-badges
+  "How many rows of a body are derived — one badge class per row (`web/badge`)."
+  [body]
+  (count (re-seq #"badge-derived" body)))
+
+(deftest a-reader-can-read-only-what-the-kb-was-told
+  ;; `dog` sits in nine arg-1 sentexes, five of them conclusions the engine drew from the
+  ;; other four.  Hiding those is a reading preference and nothing else: no belief moves,
+  ;; no count changes, and the group still says how many sentexes are stored in it.
+  (let [shown (:body (GET "/term" "q=dog"))
+        hid   (GET "/term" "q=dog&derived=hide")]
+    (is (pos? (derived-badges shown)) "the page shows them by default")
+    (is (zero? (derived-badges (:body hid))) "and leaves them out when asked")
+    (is (re-find #"show derived" (:body hid)) "the control now offers the other direction")
+    (is (re-find #"· 9 stored" (:body hid))
+        "the heading still counts what is stored, not what is rendered")
+    (testing "the choice is remembered, with an expiry, and does not clobber the session cookie"
+      (let [cs (set-cookies hid)]
+        (is (some #(re-find #"^vaelii-derived=hide;" %) cs))
+        (is (some #(re-find #"Max-Age=\d+" %) cs) "persistent, unlike the sandbox cookie")
+        (is (some #(re-find #"HttpOnly" %) cs))
+        (is (some #(re-find #"^vaelii-sandbox=" %) cs)
+            "and the token this request minted survived being set alongside it")))
+    (testing "a later request carrying the cookie reads the same way, with no parameter"
+      (let [again (GET "/term" "q=dog" {"cookie" "vaelii-derived=hide"})]
+        (is (zero? (derived-badges (:body again))))
+        (is (not-any? #(re-find #"^vaelii-derived=" %) (set-cookies again))
+            "nothing was chosen, so the preference is not re-set"))
+      (testing "and so does a group's continuation, which pages the same sequence"
+        (let [rows (GET "/term/rows" "q=dog&g=0&offset=0" {"cookie" "vaelii-derived=hide"})]
+          (is (zero? (derived-badges (:body rows)))))))
+    (testing "asking to show them again clears it"
+      (let [back (GET "/term" "q=dog&derived=show" {"cookie" "vaelii-derived=hide"})]
+        (is (pos? (derived-badges (:body back))))
+        (is (some #(re-find #"^vaelii-derived=show;" %) (set-cookies back)))))))
+
+(deftest hiding-derived-rows-pages-the-same-sequence-it-would-have
+  ;; The offset means the same thing under either setting — it indexes the group's
+  ;; records, not the rows that survived the filter — so a reader who toggles part way
+  ;; down a list neither sees a row twice nor steps over one.
+  (let [page (fn [off cookie]
+               (mapv second (re-seq #"data-h=\"(\d+)\""
+                                    (:body (GET "/term/rows" (str "q=dog&g=0&offset=" off)
+                                             (when cookie {"cookie" cookie}))))))
+        all  (page 0 nil)
+        kept (page 0 "vaelii-derived=hide")]
+    (is (seq kept))
+    (is (< (count kept) (count all)) "fewer rows")
+    (is (= kept (filterv (set kept) all))
+        "and they are the rows the unfiltered page had, in the order it had them")))
+
+(tu/deftest-kb a-handle-inside-a-sentence-renders-as-the-sentence-it-names
+  ;; `(except (sentexHandle 41))` tells a reader that a sentex is hidden and not which
+  ;; one, and the handle is the one thing on the page they cannot look up without leaving
+  ;; it.  `render-form` expands it, so every surface that prints a meta-sentex is fixed at
+  ;; once.
+  (tu/with-terms [wingsOf Pip CxHide]
+    (let [h    (v/assert kb (list wingsOf Pip) CxHide)
+          _    (v/assert kb (list 'except (list 'sentexHandle h)) CxHide)
+          view (web/view kb {})
+          out  (str (#'web/render-form view (list 'except (list 'sentexHandle h))))]
+      (is (re-find (re-pattern (name wingsOf)) out)
+          "the sentence the handle names, not the integer")
+      (is (re-find (re-pattern (str "/sentex/" h)) out) "linked to the sentex it names")
+      (is (not (re-find (re-pattern (str ">" h "<")) out))
+          "and the bare handle is not what is printed"))
+    (testing "a handle whose record is gone still says so"
+      (is (re-find #"gone" (str (#'web/render-form (web/view kb {}) '(except (sentexHandle 999999)))))))
+    (testing "a sentence naming a handle that reaches back to it renders the back-edge"
+      ;; nothing the assert path stores can be one — a handle predates the sentex naming
+      ;; it — so the cycle is injected at the read the expansion makes
+      (let [self {:id 7 :sentence '(except (sentexHandle 7)) :context 'CxUniverse
+                  :strength :monotonic}]
+        (with-redefs [acc/sentex (fn [& _] self)]
+          (is (re-find #"\(above\)" (str (#'web/render-form (web/view kb {}) '(except (sentexHandle 7)))))))))))
 
 (tu/deftest-kb a-compound-type-node-colours-as-a-type-not-a-number
   ;; An imported ontology names a type it has no atomic name for with a function term, so a
@@ -747,41 +1024,6 @@
       (let [body (:body (GET "/term" (str "q=" (java.net.URLEncoder/encode (pr-str nat) "UTF-8"))))]
         (is (re-find #"<h2>Term <a class=\"sx t-type\"" body))
         (is (not (re-find #"<h2>Term <a class=\"sx t-num\"" body)))))))
-
-(tu/deftest-kb a-type-line-shows-its-cap-and-says-what-it-left-out
-  (tu/with-terms [wide_type]
-    (wide-type! kb wide_type 400)
-    (let [body (:body (GET "/term" (str "q=" wide_type)))
-          subs (type-line-of body "Subtypes")]
-      (is (= 50 (:links subs)) "capped — 400 subtypes are not 400 links")
-      (is (= "50 of 400" (:note subs)) "with the exact count, which a cached closure gives free")
-      (testing "a line that fits is untouched — the shipped schema reads exactly as it did"
-        (let [sup (type-line-of body "Supertypes")]
-          (is (pos? (:links sup)))
-          (is (nil? (:note sup))))))))
-
-(tu/deftest-kb a-separation-too-wide-to-union-is-capped-on-a-bound
-  ;; The line is the union of the partners' spec closures, and building it to show fifty is
-  ;; the "capping the render is not bounding the read" defect: 43 partners spanning 290,000
-  ;; subtypes took 1.5s of union to produce a list nobody can read.  Past the sort budget
-  ;; (`core/describe-sortable`, the line being `describe`'s answer) the sum of the closure
-  ;; sizes — free, every closure being a cached set — is taken as the bound and only the
-  ;; window is walked.
-  (tu/with-terms [left_type right_type]
-    (v/assert kb (list 'genl left_type 'thing) 'CxUniverse {:chain? false})
-    (wide-type! kb right_type 400)
-    (v/assert kb (list 'disjoint left_type right_type) 'CxUniverse {:chain? false})
-    (let [cap  (ns-resolve 'vaelii.core 'describe-sortable)
-          body (with-redefs-fn {cap 100}
-                 #(:body (GET "/term" (str "q=" left_type))))
-          djs  (type-line-of body "Disjoint with")]
-      (is (= 50 (:links djs)) "capped")
-      (is (re-find #"^50 of up to \d" (:note djs))
-          "and the total is worded as the bound it is — a sum of closures over-counts an overlap")
-      (testing "under the budget it is the exact answer, sorted, as before"
-        (let [exact (type-line-of (:body (GET "/term" (str "q=" left_type))) "Disjoint with")]
-          (is (= 50 (:links exact)))
-          (is (= "50 of 401" (:note exact))))))))
 
 (tu/deftest-kb a-hub-draws-its-cap-and-says-what-it-left-out
   (tu/with-terms [hub_type]
@@ -965,10 +1207,8 @@
     (let [r (GET "/term" "q=animal")]
       (is (= 200 (:status r)))
       (is (nil? (svg-of (:body r))))
-      (is (re-find #"Supertypes: " (:body r)))
-      (is (re-find #"Disjoint with" (:body r)))
       (is (re-find #"Sentexes by index" (:body r)))
-      (is (re-find #"In argument position 1" (:body r))))))
+      (is (re-find #"Argument position 1" (:body r))))))
 
 ;; ---- reified terms: the constant is never what a reader sees ------------
 ;;
@@ -1548,6 +1788,56 @@
           (is (not (re-find #"class=\"more\"" (:body r)))))))
     (testing "a group index that names no group answers empty, not a 500"
       (is (= "" (:body (GET "/term/rows" (str "q=" (name many_of) "&g=99&offset=0"))))))))
+
+(tu/deftest-kb a-large-extent-renders-its-count-and-fetches-its-rows-on-reveal
+  ;; The one read a term page makes that is not bounded by its answer is a root extent:
+  ;; the handle set is built whole before a record can be taken off it — 0.9 s for `genl`'s
+  ;; 2,381,749 on the audited corpus — and the page shows sixty.  So past
+  ;; `extent-defer-cap` the group renders its O(1) count and nothing else, and the rows
+  ;; arrive on the reveal every later page of the group already used.
+  (tu/with-terms [many_of Thing]
+    (v/assert-many kb (for [i (range 8)] (list many_of (symbol (str (name Thing) i))))
+                   'CxUniverse {:chain? false})
+    (testing "under the cap the extent is read with the page, as every other group is"
+      (let [body (:body (GET "/term" (str "q=" many_of)))]
+        (is (re-find #"Predicate extent" body))
+        (is (= 8 (count (re-seq #"class=\"sx-item\"" body))))))
+    (with-redefs-fn {(ns-resolve 'vaelii.browser.web 'extent-defer-cap) 3}
+      #(let [body (:body (GET "/term" (str "q=" many_of)))]
+         (testing "past it the count is still exact — it is O(1), and never the reason to wait"
+           (is (re-find #"Predicate extent" body))
+           (is (re-find #"8 stored" body)))
+         (testing "and no row of it was read"
+           (is (zero? (count (re-seq #"class=\"sx-item\"" body))))
+           (is (re-find #"hx-get=\"[^\"]*/term/rows[^\"]*offset=0" body)
+               "the group is its own sentinel, at the offset a first page starts from"))
+         (testing "which the sentinel's own route then answers in full"
+           (let [r (GET "/term/rows" (str "q=" many_of "&g=0&offset=0"))]
+             (is (= 200 (:status r)))
+             (is (= 8 (count (re-seq #"class=\"sx-item\"" (:body r)))))))))))
+
+(deftest a-context-bounds-its-remainder-walk-on-the-extent-it-already-counted
+  ;; The remainder walk exists because no count says what a root did *not* claim, so it
+  ;; is guarded by a lower bound on the term index built from counts already in hand.  A
+  ;; context belongs in that bound: the term index is keyed on `kv/sentex-terms`, which is
+  ;; a sentex's indexable terms **plus its context**, so a context's own extent bounds its
+  ;; term index below.  Left out, `CxWell` walked 50,000 records of a 9,040,399-entry term
+  ;; index and discarded the result as truncated — 4.2 s a page.
+  ;;
+  ;; The walk is made to throw, so a page that renders is a page that did not take it.
+  (tu/with-cleared-kb [kb tu/isolated-fresh]
+    (let [app (web/app kb)]
+      (v/assert-many kb (for [i (range 6)] (list 'probes_p (symbol (str "Thing" i))))
+                     'CxProbe {:chain? false})
+      (with-redefs-fn {(ns-resolve 'vaelii.browser.web 'remainder-scan) 2}
+        #(with-redefs [acc/find-sentexes (fn [& _] (throw (ex-info "the walk ran" {})))]
+           (let [r (app {:request-method :get :uri "/term" :query-string "q=CxProbe"})]
+             (is (= 200 (:status r)))
+             (is (re-find #"Context extent" (:body r))
+                 "the extent is still the group, and its count is still O(1)")
+             (is (re-find #"6 stored" (:body r)))
+             (is (re-find #"did not walk the term index" (:body r))
+                 "and the page says it did not look, rather than showing an empty group")))))))
 
 (deftest a-term-with-thousands-of-sentexes-is-walkable-to-the-end
   ;; The term page caps a group at 60 rows and ends it with a continuation sentinel;

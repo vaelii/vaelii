@@ -144,7 +144,8 @@
             rr (GET remote-app "/term" "q=dog")]
         (is (= 200 (:status rr)))
         (is (re-find #"Muffet" (:body rr)) "the daemon's fact renders")
-        (is (re-find #"Disjoint" (:body rr)) "dog ⊥ cat renders from the daemon")
+        (is (re-find #"class=\"g-edge g-genl\"" (:body rr))
+            "and the taxonomy read behind the picture — one `describe` round trip — renders too")
         (is (= (kb-part (:body lr)) (kb-part (:body rr)))
             "remote browsing is identical to in-process browsing")))
     (testing "the one exception, and it says why rather than offering a dead button"

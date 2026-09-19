@@ -6499,42 +6499,40 @@
   [kb marker term context]
   (boolean (seq (visible-matches kb (list marker term) context))))
 
+(defn- disjoint-partners
+  "The **maximally-general** types `term` is separated from: every type a visible
+  declaration puts it apart from, before the separation is pushed down `genl`.
+
+  `tax/separating-partners` is the enumeration, which is the same frame `disjoint?` is
+  the membership test of, so the two cannot disagree — and it covers all three ways a
+  separation is declared, `(disjoint a b)`, a shared `disjoint_metatype`, and standing
+  beside a sibling under a `(sibling_disjoint C)` parent.  Belief and context scoping are
+  the frame's.
+
+  **Read off the index rather than by probing the store.**  Asking for the stored
+  `(disjoint ?y x)` and `(disjoint x ?y)` sentexes of each of the term's supertypes is
+  two pattern reads per supertype — 4.3 ms for `dog`, whose up-closure is eight, against
+  0.014 ms here, and it is the term page's single largest cost.  It also missed the
+  sibling arm, which stores no pair to find.
+
+  Filtered to the nodes of the genl hierarchy, which is what keeps this a subset of the
+  closure `disjoint-line` builds out of it: `specs` is reflexive, so a partner appears in
+  its own closure exactly when the same filter admits it there."
+  [kb context term]
+  (let [known (types kb)]
+    ;; `by-print-key`, never bare `sort`: a type node need not be a symbol.  A NAT —
+    ;; a function term standing for a collection an imported ontology has no atomic
+    ;; name for — is a list, and `compare` throws on one rather than ordering it.
+    (nm/by-print-key
+     (into #{} (filter known)
+           (tax/separating-partners (reasoning/taxonomy kb) term context)))))
+
 (defn- disjoint-line
-  "The types disjoint from a term whose reflexive genl up-closure is `up`, read from the
-  declarations in one pass rather than by asking `disjoint?` once per type in the KB.
-
-  `disjoint?` holds when some supertype of x and some *different* supertype of y are
-  separated, by a declared `(disjoint a b)` or by co-membership of a disjoint metatype.
-  Read from the side that inverts cleanly: whatever separates one of the term's own
-  supertypes names a **partner**, and the types disjoint from the term are exactly the
-  partners' spec closures — one closure read per partner, of which there are usually one
-  or two, instead of one `disjoint?` per type in the KB.
-
-  The partners are asked for per supertype, both argument orders (`disjoint` carries no
-  `symmetric` declaration, so the two orders are two stored shapes), each probe pinning a
-  ground argument so it is an argument-root read.  The metatypes are the exception and
-  are read whole: a metatype names its members rather than its pairs, so there is nothing
-  to pin, and an ontology declares them by the dozen."
-  [kb context up limit]
+  "The types disjoint from a term, as the spec closures of the `partners`
+  `disjoint-partners` read — every type the separation reaches, not only the types it was
+  declared between."
+  [kb context partners limit]
   (let [known    (types kb)
-        probe    (fn [x slot pattern]
-                   (for [s     (visible-matches kb pattern context)
-                         :let  [y (nth (:sentence s) slot nil)]
-                         :when (and (some? y) (not= x y))]
-                     y))
-        declared (mapcat (fn [x] (concat (probe x 1 (list 'disjoint '?y x))
-                                         (probe x 2 (list 'disjoint x '?y))))
-                         up)
-        induced  (for [m     (disjoint-metatypes kb)
-                       :let  [ms (metatype-members kb m)]
-                       :when (some up ms)
-                       y     ms
-                       :when (not (contains? up y))]
-                   y)
-        ;; `by-print-key`, never bare `sort`: a type node need not be a symbol.  A NAT —
-        ;; a function term standing for a collection an imported ontology has no atomic
-        ;; name for — is a list, and `compare` throws on one rather than ordering it.
-        partners (nm/by-print-key (into #{} (concat declared induced)))
         ;; the sum of the partners' closure sizes over-counts their union (an overlap
         ;; twice), which is exactly what makes it a sound bound on it, and it decides
         ;; whether building the union is affordable at all
@@ -6680,13 +6678,30 @@
    (let [limit (or (:limit opts) default-describe-limit)
          role  (described-role kb term)
          up    (genls kb term context)
+         ptns  (disjoint-partners kb context term)
+         tx    (reasoning/taxonomy kb)
          base  {:term     term
                 :role     role
                 :context  context
                 :comment  (comments-on kb term context)
                 :genls    (bounded-terms (disj up term) limit)
                 :specs    (bounded-terms (disj (specs kb term context) term) limit)
-                :disjoint (disjoint-line kb context up limit)}]
+                ;; the **declared** edges beside the closures they generate, one `genl`
+                ;; step and not reflexive.  A reader arriving at a term wants what it was
+                ;; told — `dog` is a `mammal` — where the closure is what a subsumption
+                ;; check needs and, at `thing`, is 110,128 names.  O(degree) off the same
+                ;; adjacency the closure walk is built on.
+                :genls-direct (bounded-terms (tax/direct-genls tx term context) limit)
+                :specs-direct (bounded-terms (tax/direct-specs tx term context) limit)
+                :disjoint (disjoint-line kb context ptns limit)
+                ;; both readings, because they answer different questions and the
+                ;; partners are already in hand.  `:disjoint` is every type the
+                ;; separation reaches, which is what a membership check is against;
+                ;; `:disjoint-maximal` is the handful of types it was declared between,
+                ;; which is what a reader asking "what is this NOT" can hold in their
+                ;; head — one collection in the OpenCyc import is disjoint from 79,638
+                ;; types and separated from 43 of them.
+                :disjoint-maximal (bounded-terms (set ptns) limit)}]
      (case role
        :predicate
        (assoc base

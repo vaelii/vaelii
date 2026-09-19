@@ -199,11 +199,11 @@ be traced through the stack, and any believed one has its whole proof a click aw
 
 ### A term's shape, drawn
 
-The three type lines on a term page say a term's supertypes, subtypes and disjointness
-exactly. What they cannot say is its **shape** — that `dog` sits under `mammal` under
-`animal`, that four things point at it and it points at two, that it is a leaf or a hub.
-Shape is what a picture gives for free and a list never gives at all, so a term page opens
-with one, above everything it says in prose.
+A term page lists what the KB was told about the term — the `genl` sentexes, the facts it
+takes part in, the rules that conclude about it — a row at a time. What a list never gives
+is **position**: that `dog` sits under `mammal` under `animal`, that four things point at
+it and it points at two, that it is a leaf or a hub. That is what a picture gives for free,
+so a term page opens with one, above the rows.
 
 **It renders live.** Server-drawn into the page, no click, no route, no state saying
 whether it is shown
@@ -254,8 +254,8 @@ reason a term page is slow**, so the bound is part of the work and not a follow-
 relates contexts, `wff` refuses the mixture, and the naming invariants keep the two
 vocabularies apart — so there is exactly one subsumption relation per term page and the
 class on its edges says which. That is also what makes a context page worth opening: `genl`
-says nothing about contexts, so the three type lines there are empty and the picture is the
-only thing on the page that shows the lattice at all.
+says nothing about contexts, so the picture is the only thing on the page that shows the
+lattice at all.
 
 **What is and is not an edge**, stated rather than left to fall out of the code. Binary
 facts only — a ternary `(arg parentOf 1 person)` relates three things and an arrow
@@ -288,10 +288,11 @@ from the text. Every node is an `<a href="/term?q=…">` — the graph is naviga
 decoration — and clicking one is the whole interaction model: no pan, no zoom, no drag, no
 physics.
 
-**The text stays.** The Supertypes / Subtypes / Disjoint-with lines are unchanged and in
-place; they are the accessible equivalent of the picture and the exact answer it
-approximates. The `<svg>` carries `role="img"` and an `aria-label` saying what it shows and
-that the same terms are listed below as text. And the whole thing is wrapped: this is the
+**The text stays.** Every term the picture draws is a row in the index groups under it —
+the `genl` sentexes an argument group lists are the edges it drew — so the rows are the
+accessible equivalent of the picture and the exact answer it approximates. The `<svg>`
+carries `role="img"` and an `aria-label` saying what it shows and that the same terms are
+listed below as text. And the whole thing is wrapped: this is the
 one part of the page that does arithmetic on KB-derived numbers, so a throw costs the
 figure and nothing else — the page is still 200 and still complete.
 
@@ -800,33 +801,117 @@ round-trip under `--attach`.
 - **A row renderer takes the record, not the handle.** Every listing already holds the
   sentexes it is rendering; `sentex-ref` takes one. `handle-ref` is the variant for a
   caller that genuinely holds only a handle (a justification's antecedent, a
-  contradictor), and it fetches exactly the one record it needs.
-- **The three type lines are `vaelii.core/describe`'s**, not a second computation beside
-  it. One call answers the supertype, subtype and disjointness closures, each already a
-  window with its size beside it — `{:terms :total :exact? :sorted?}` — so the page renders
-  what `describe` answered and applies no cap of its own. Two things follow. The page and
-  the API cannot come to disagree about what a term is, which they would the moment either
-  side's copy of the disjointness pass was edited. And against a remote daemon
-  (`--attach`) the three lines cost **one** round trip rather than a read apiece.
-- **Disjointness is one pass.** `disjoint?` holds when some supertype of x and some
-  different supertype of y are separated. Read from the term's side that inverts: the
-  separated partners of the term's own supertypes are what matter, and the types
-  disjoint from the term are exactly those partners' spec closures — a closure read per
-  partner (there are one or two) instead of a `disjoint?` per type in the KB.
-- **The three type lines are capped, and the widest of them is bounded before it is
-  built.** Supertypes and subtypes come off cached closures, so their counts are free and
-  exact and only the sort has to be given up past the sort budget. The separation line is a
-  *union* of the partners' closures, and building one to show fifty entries is the same
-  defect the graph avoids: an imported ontology gives one NAT collection 43 partners
-  spanning ~290k subtypes, and a union over all of them costs a second and a half to
-  produce a list nobody can read. The sum of the closure sizes is free — every closure is
-  a cached set — so it is taken as an upper bound (it counts an overlap twice) and, past
-  the budget, only the window is walked, `:exact?` comes back false and the caption says
-  "up to". The bound is what
-  keeps a term page of a real ontology usable rather than merely slow: on that ontology
-  `/term?q=thing` renders in a few hundred KB and well under half a second, the NAT
-  collection's page in tens of KB and less again. Unbounded, both are megabytes, and a
-  browser cannot be clicked through either once it arrives.
+  contradictor, a `(sentexHandle N)` subterm), and it fetches exactly the one record it
+  needs.
+- **A rule is laid out across lines, one antecedent literal to a line.**
+
+  ```
+  (implies (and (weightOf ?x ?wx)
+                (weightOf ?y ?wy)
+                (quantityGreaterThan ?wx ?wy))
+           (heavierThan ?x ?y))
+  ```
+
+  A rule read as one line is a rule read by counting parentheses: which literals are the
+  conditions and which one is the conclusion is exactly what a single line runs together.
+  One literal to a line separates them, and the indent says which side of the arrow each
+  is on. The indent is counted in **characters**, which is exact rather
+  than approximate because every sentence on this page is set in the monospace face
+  (`--mono`) and the span holding the newlines is `white-space: pre-wrap`; it is the
+  printed width of the functor and its parenthesis, the same arithmetic a Clojure editor
+  does, and it survives a reader's own font size because both sides scale with it.
+  `pre-wrap` rather than `pre` so a line too long for the viewport wraps instead of
+  widening the page. Only `implies` and the n-ary connectives break; an antecedent
+  literal is a unit, and breaking inside one would be indenting argument positions.
+
+  **The editor lays the same rule out the same way** (`pretty-sentence`), through the
+  wrapper that carries a rule's direction:
+
+  ```
+  CxSize
+  (set/backwardRule (implies (and (weightOf ?x ?wx)
+                                  (weightOf ?y ?wy)
+                                  (quantityGreaterThan ?wx ?wy))
+                             (heavierThan ?x ?y)))
+  ```
+
+  A rule opened for editing arrived as one long line where the row above it was laid
+  out. The whitespace is not read back — `read-entries` reads EDN **forms** and the save
+  diffs by content — so the layout is for the reader and the sentence reaching the KB is
+  the one that was there.
+- **Parens are coloured by how deep they are nested.** A sentence is a tree printed as a
+  line, and the parens are the only thing saying where a subterm ends — `(implies (and
+  (weightOf ?x ?wx) …` is three opening parens before the first argument. Every subterm
+  is already coloured by its role, so the structure was the one thing on the page with no
+  colour at all. The depth counts along the nine-step spectrum from `--rb1` and wraps at
+  nine (`paren`, `rb-depths`), so a **matching pair is always one colour** and no pair is
+  the colour of the one immediately inside it. vaelii.com's stylesheet draws the same
+  nine in the same order and has been describing them as "the engine's browser draws
+  them" since before the browser drew any.
+- **A row is a circle and a sentence.** Every case the badge distinguishes is already
+  one colour, so a word beside it says the colour twice: `backward rule` next to the
+  purple circle adds nothing to a reader who has the scale and is two words of noise to
+  one who is reading the sentence. The reading stays in the `title`, where it costs the
+  row nothing; the handle is what `data-h`, the link and the `title` carry; and belief is
+  `state-tag`'s, which names the *reason* a row is OUT and says nothing on a row that is
+  IN.
+- **The badge and the sentence are two boxes, not one run of inline content.** A rule is
+  laid out with newlines, and a newline in inline content returns to the left edge of the
+  containing block — so with one run that block is the *row*, every line after the first
+  starts under the badge rather than under `(implies`, and the context and `[edit]` after
+  the sentence ride up beside its first line. The sentence gets its own block
+  (`sentex-row`, `.sx-body`), and the indent and the trailing context both count from
+  where the sentence starts.
+- **A handle inside a sentence renders as the sentence it names.** A meta-sentex points
+  at a stored sentence by its handle — `(except (sentexHandle 41))` hides one,
+  `(exceptWhen <query> (sentexHandle 41))` guards a rule — and a reader shown the integer
+  has been told a sentex is hidden and not which one. `render-form` expands it through
+  `handle-ref`, so one branch covers every surface that prints a meta-sentex: a term-page
+  row, the sentex page, a proposal's `excepts` line. The expansion carries the ids
+  already on the path, because the browser reads what is **stored** and a stored sentence
+  naming a handle that reaches back to it is a stack overflow rather than a page.
+- **A term page shows its taxonomy rather than restating it in prose.** There are no
+  Supertypes / Subtypes / Disjoint-with lines. A supertype line renders `genl` sentexes
+  the argument groups already list, which is saying twice what the page says once; the one
+  reading of a taxonomy the rows cannot give is position, and that is the picture. On an
+  imported ontology such a line is also the largest thing the page renders: `thing` has
+  110,128 subtypes there and one NAT collection is disjoint from 79,638 types.
+  `vaelii.core/describe` answers all six readings — the three closures and the three
+  declarations, `:genls-direct` / `:specs-direct` / `:disjoint-maximal` — for a caller that
+  wants them ([api.md](api.md)); the page reads one, and only to decide which picture to
+  draw.
+- **Disjointness is one pass, off the index.** `disjoint?` holds when some supertype of
+  x and some different supertype of y are separated. `tax/separating-partners` is the
+  enumeration `disjoint?` is the membership test of, so the two cannot disagree, and it
+  covers all three ways a separation is declared — `(disjoint a b)`, a shared
+  `disjoint_metatype`, and standing beside a sibling under a `(sibling_disjoint C)`
+  parent. The types disjoint from the term are then those partners' spec closures: a
+  closure read per partner (there are one or two) instead of a `disjoint?` per type in
+  the KB. Asking the *store* instead — the `(disjoint ?y x)` and `(disjoint x ?y)`
+  sentexes of each supertype, two pattern reads apiece — was 4.3 ms for `dog`, whose
+  up-closure is eight, against **0.014 ms** here, and it was `describe`'s single largest
+  cost; it also missed the sibling arm, which stores no pair to find. `describe` on `dog`
+  went from 7.75 ms to 2.10 ms.
+- **A large root extent is counted, not read.** Every group on a term page comes off an
+  index read bounded by its answer — except the two extents. Reading a root materializes
+  every handle under it before a single record can be taken off it: 0.9 s for the
+  2,381,749 of `genl` on the audited 12.26M-sentex corpus, 4.6 s for the 9,040,392 of its
+  largest context, to render sixty rows. So past `extent-defer-cap` (20,000) the group
+  renders its O(1) stored count and **nothing else**, and its first page of rows arrives on
+  the same `revealed` trigger every later page of it already used — which the largest-last
+  extent order had put at the bottom of the page anyway. Under the cap the extent is read
+  with the page, as every other group is: a term whose whole extent is six rows shows six
+  rows. `/term?q=genl` went from 1.04 s to 0.09 s.
+- **The remainder walk is bounded on counts, and a context belongs in them.** Only a walk
+  can say what the roots did *not* claim, so the term index is walked for at most
+  `remainder-scan` (50,000) records — guarded by a lower bound on that index built from
+  counts already in hand, since a walk that is going to be truncated is a walk not worth
+  taking. The term index is keyed on `kv/sentex-terms`, which is a sentex's indexable terms
+  **plus its context**, so a context's own extent bounds its term index below exactly as a
+  predicate's functor root does. Left out of the bound, `CxWell` spent 4.2 s a page reading
+  50,000 records of a 9,040,399-entry index and discarded them as truncated;
+  `/term?q=CxWell` went from 4.2 s to 0.07 s. Every term page of that corpus now renders
+  under 100 ms.
 - **The concept graph is bounded before its first read, not after.** Its relation flank is
   read off the index groups the term page built anyway, its taxonomy is probed only where
   the closures the page already read say there is something, and every expansion is spent
@@ -840,9 +925,11 @@ round-trip under `--attach`.
   cheaper, and one of them at `isa` took 851 ms.
 - **A node label is a term, so it is set in the page's monospace face**, at `--g-label`
   (13.5px) raised by the sheet's `font-size-adjust`. `vaelii.browser.svg/char-w` is that
-  used size times Hasklig's .6em advance, so a pill's width is a width rather than the
+  used size times Hasklig's .6em advance, so a node's width is a width rather than the
   estimate an unknown proportional face forced; the CSS size, the x-height adjust and
-  `char-w` move together or the pills stop fitting their labels.
+  `char-w` move together or the boxes stop fitting their labels. A node is a **box** (a
+  3px corner, `.g-box`) rather than a pill: a fully-rounded end eats the width a long term
+  needs, and two adjacent nodes read as one capsule.
 - **Search reads the vocabulary, never the sentexes.** `/find` filters the index's term
   roster through `vaelii.core/find-terms`, so it costs the number of distinct terms.
   A query carrying no regex metacharacter is matched as a **substring** — exactly what
@@ -1454,7 +1541,8 @@ compared as a *set* against the group's extent rather than counted.
 
 **A listing is ordered by handle, and that is the ordering by design.** Handle order is
 allocation order, so a listing reads oldest-first; the sentex lists, the justification
-lists and every index group on a term page share it (`group-order`). It is chosen for
+lists and every index group on a term page share it (`group-order`), which leads with the
+term's own `(comment …)` and then falls to context and handle. It is chosen for
 exactly one property — paging is a re-slice of the same sequence at an offset, so the
 order has to be one a later request reproduces exactly, and a content ordering moves under
 every write, which would show a reader who scrolled past an offset a row twice or not at
@@ -1470,11 +1558,71 @@ per member to show sixty rows: at `genl`, whose functor root holds 2,381,749 sen
 that was 129 s, paid twice per page. The same cap governs the graph's flank window
 (`flank-scan`), where the alternative was sorting millions of records to pick forty.
 
+### A term page reads from what the term IS to what uses it
+
+**The index groups are in one fixed order**, and the order is the claim the page makes
+about them — not a ranking recomputed per term:
+
+1. **the argument positions**, ascending — `(comment dog "…")`, `(genl dog mammal)`,
+   `(arg parentOf 1 animal)`. A term sits in an argument of the sentences that *declare*
+   it, and those are what a reader arriving at the page came for. Inside the first of
+   them the term's own **comment sorts first**: it is what the term says it is, and
+   allocation order would otherwise put it wherever it happened to be asserted. Part of
+   the sort key, never a row lifted out of the sequence — paging re-slices that sequence
+   at an offset, and a prepend would show the comment again at the top of every page;
+2. **what a rule concludes about it**, then **what a rule requires of it**. A rule's two
+   halves are two groups, because they say different things: the conclusion is about the
+   term, and the condition is about whatever the rule concludes. A rule doing both is
+   listed under the conclusion;
+3. **the deeper nestings** — the term index minus what a root or a rule half claimed;
+4. **the extents, last**. `[:functor-root]` is every fact written with the term as
+   predicate (2,381,749 of them at `genl`) and `[:context-root]` is everything asserted
+   in a context, each a list whose first sixty rows say nothing about the term itself.
+
+**The extents are ordered largest-last**, the one place size decides rather than
+directness. The bottom of the page is where a list goes on loading as a reader scrolls,
+so an extent of millions there is a list they walk into, where the same list above a
+short one is a wall to get past.
+
+The `[edit]` beside the heading follows the same order — it opens on the head of the
+group the page renders first (`term-main-handles`), which is now the declarations rather
+than the extent.
+
+### Hiding what the engine concluded
+
+Most of what a term page lists on a settled ontology is **derived**: `dog` is told four
+things and concluded five from them. **hide derived**, beside the "Sentexes by index"
+heading, leaves the conclusions out of every group on the page. No belief moves and no
+count changes — the heading still says how many sentexes are *stored* in the group — and
+the discriminant costs no read of its own: an asserted record carries a `:strength` and a
+derived one does not, which is the same thing the badge draws a ring for, so a row the
+reader sees as derived is a row the filter leaves out. It is deliberately not
+`vaelii.core/premise?`, which asks the network whether anything concludes the sentex — a
+sentex can be asserted **and** derivable, and the two answers then disagree with each
+other and with what the page drew.
+
+It is one query parameter (`?derived=hide|show`), one cookie and a re-render: no script,
+no per-row state, and a page that is the same page when its URL is shared. The cookie is
+**persistent** (one year), unlike the sandbox's session cookie and unlike the proposal
+panel's density switch, which deliberately rides the request: a sandbox is scoped to the
+sitting, a density belongs to the entry point, and how much of a term page someone wants
+to read is neither.
+
+Two things it does not do. It does not make the page cheaper — the filter is over records
+the group was going to read anyway. And it does not turn a page into a scan: the walk is
+bounded at `derived-scan` (5,000) records per page, so a group holding one premise in a
+million still fills its pages one bounded, resumable request at a time. An offset means
+the same thing under either setting — it indexes the group's **records**, not the rows
+that survived the filter — so a reader who toggles part way down a list neither sees a
+row twice nor steps over one. The sentinel then carries no number: what is behind it is
+records, and how many of them are premises is not known until they are read.
+
 ### A term page reads what it can count, and says when it did not look
 
 Four of a term's groups come off roots with an **O(1) stored count** — the functor root,
-the argument-position roots, the context root. The two remainder groups ("In rules",
-"Nested elsewhere") are the term index **minus** what a root claimed, and no count answers
+the argument-position roots, the context root. The three remainder groups ("Rule
+conclusion", "Rule condition", "Nested elsewhere") are the term index **minus**
+what a root claimed, and no count answers
 that: the only way to know a sentex is not in a root is to look at it. So:
 
 - **Which argument positions a term sits at is asked of the counts**, not of the records.
@@ -1509,7 +1657,8 @@ A sentence is rendered structurally, not as one opaque string:
   and a **ring** is derived, which is what keeps a derived negation distinguishable from
   an asserted one; a **dimmed** one is stored and not believed. Negation outranks every other case, because a reader who misses
   a `not` has the sentex backwards and no other confusion costs that. Its `title` carries
-  the handle and a plain reading, so the number is a hover away and lists stay scannable;
+  the same reading in words and the handle, so the number and the scale are one hover
+  away and lists stay scannable;
 - **each subterm is its own link** to `/term?q=<subterm>` — click the predicate,
   an individual, or the context independently (nested compound subterms are also
   listed individually under a sentex's *Subterms*);

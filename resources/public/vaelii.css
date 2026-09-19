@@ -443,6 +443,32 @@ header.site {
 .badge-open      { background: none; border-width: 2px; }
 .badge-out       { opacity: .4; filter: grayscale(1); }  /* stored, not believed */
 
+/* A rule is laid out across lines, one antecedent literal to a line, each aligned under
+   the first (`laid-out-form`).  The indent is counted in characters, which is exact
+   because the sentence is set in --mono; `pre-wrap` is what keeps those characters and
+   still lets a line too long for the viewport wrap rather than widen the page. */
+/* `pre-wrap` keeps the newlines and the counted indent, and still lets a line too long
+   for the viewport wrap rather than widening the page.  The alignment itself is
+   `.sx-body`'s doing: a newline returns to the left edge of the containing block, and
+   that block is the sentence's rather than the row's (web/sentex-row). */
+.sx-rule { white-space: pre-wrap; }
+
+/* Depth-coloured parens (`web/paren`).  A sentence is a tree printed as a line, and the
+   parens are the only thing saying where a subterm ends; every subterm is already
+   coloured by its role, so the structure was the one thing with no colour at all.  The
+   depth counts along the spectrum from --rb1 and wraps at nine, so a matching pair is
+   one colour and no pair is the colour of the one immediately inside it.  vaelii.com's
+   stylesheet draws the same nine in the same order. */
+.rb1 { color: var(--rb1); }
+.rb2 { color: var(--rb2); }
+.rb3 { color: var(--rb3); }
+.rb4 { color: var(--rb4); }
+.rb5 { color: var(--rb5); }
+.rb6 { color: var(--rb6); }
+.rb7 { color: var(--rb7); }
+.rb8 { color: var(--rb8); }
+.rb9 { color: var(--rb9); }
+
 /* a small tag for a sentex's assumption strength / defeat class, rule flag, etc. */
 .tag {
   font-size: .78em;
@@ -621,7 +647,13 @@ a.stat:hover { border-color: var(--accent); text-decoration: none; }
 .sx-item {
   padding: .05rem .3rem;
   margin: 0 -.3rem;
+  /* two boxes, the badge and the sentence: a rule's newlines then count from where the
+     sentence starts, and the context after it stays on its last line (web/sentex-row) */
+  display: flex;
+  align-items: baseline;
+  gap: .45em;
 }
+.sx-body { min-width: 0; flex: 1 1 auto; }
 
 /* the row's way into the editor.  It is shown on hover or keyboard focus, so a page of
    rows reads as sentences rather than as a column of controls, and it holds its space
@@ -1397,7 +1429,7 @@ ul.why summary:focus-visible { outline: 2px solid var(--accent); outline-offset:
 .search-tree .est-line { overflow-wrap: anywhere; }
 ul.why > li .tag       { white-space: nowrap; }
 
-.g-pill { fill: var(--card); stroke: currentColor; stroke-width: 1; }
+.g-box { fill: var(--card); stroke: currentColor; stroke-width: 1; }
 .g-label { font-size: var(--g-label); fill: currentColor;
            font-family: var(--mono); font-size-adjust: var(--x-height); }
 .g-node { color: var(--t-pred); }
@@ -1407,9 +1439,9 @@ ul.why > li .tag       { white-space: nowrap; }
 .g-node.t-context { color: var(--t-context); }
 .g-node.t-num     { color: var(--t-num); }
 .g-node.t-var     { color: var(--t-var); }
-.g-node.g-centre .g-pill { fill: var(--sel-bg); stroke-width: 2; }
+.g-node.g-centre .g-box { fill: var(--sel-bg); stroke-width: 2; }
 /* the <a> wraps the <g>, so the hover comes from outside in */
-a:hover > .g-node .g-pill { fill: var(--btn-hover); }
+a:hover > .g-node .g-box { fill: var(--btn-hover); }
 
 .g-edge line { stroke: var(--muted); stroke-width: 1.2; fill: none; }
 .g-edge.g-genlCx line { stroke-dasharray: 5 3; }
