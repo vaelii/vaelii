@@ -102,7 +102,9 @@
              quotedArg :declares-quoted-arg, interArg :declares-inter-arg-isa,
              args :declares-args-isa, argsGenl :declares-args-genl,
              argAndRest :declares-arg-and-rest-isa,
-             argAndRestGenl :declares-arg-and-rest-genl}
+             argAndRestGenl :declares-arg-and-rest-genl,
+             interArgs :declares-inter-args-isa,
+             interArgAndRest :declares-inter-arg-and-rest-isa}
            tax/arg-declaration-props))
     (is (= tax/arg-declaration-props
            (select-keys (pr/by-storage :prop) (pr/family :argument-constraint)))))
@@ -264,7 +266,8 @@
         (is (= :bad-table-entry (:type data)))
         (is (= :family-roster (:mismatch data)))
         (is (= 'provers/meta-constraint-functors (:roster data)))
-        (is (= '#{quotedArg arg genlArg interArg args argsGenl argAndRest argAndRestGenl}
+        (is (= '#{quotedArg arg genlArg interArg args argsGenl argAndRest argAndRestGenl
+                  interArgs interArgAndRest}
                (:declared data))
             "and the throw names both sets, so the reader sees which half is missing")))
     (testing "and the other direction — a roster naming a spelling nothing declares"

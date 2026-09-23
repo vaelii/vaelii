@@ -285,6 +285,29 @@
 (arg interArg 4 positive_integer)
 (arg interArg 5 unary_predicate)
 
+;; The homogeneity constraints are interArg over a whole suffix: a type one argument of the
+;; suffix is known to hold is demanded of every other argument there.  interArgs covers
+;; every position and interArgAndRest the positions from a start onward.  The type is the
+;; trigger and the target at once, so MetaConstraintProver answers both only up the
+;; predicate hierarchy, never along genl at the type: of (interArgs R animal) and
+;; (interArgs R mammal), neither entails the other.  interArgs is interArgAndRest at
+;; start 1, and the two rules below derive each spelling from the other the way arg1 and
+;; (arg ?reln 1 ?type) do.
+(comment interArgAndRest
+         "(interArgAndRest ?relation ?position ?type) means that whenever an argument of ?relation at ?position or later is a ?type, every argument at ?position or later must be a ?type. Suffix homogeneity: the arguments before ?position are unconstrained. The general form of interArgs, which states what (interArgAndRest ?relation 1 ?type) states. It convicts as interArg does and does not entail: the triggering argument must be known to be a ?type, and another argument in the suffix is convicted only when the KB places it in the hierarchy outside ?type, so an argument whose type is unknown neither triggers nor violates, and no type is minted for it. Checked over the positions a sentence actually has; the boundary is documented in docs/argtypes.md.")
+(ternary_predicate interArgAndRest)
+(arg interArgAndRest 1 relation)
+(arg interArgAndRest 2 positive_integer)
+(arg interArgAndRest 3 unary_predicate)
+
+(comment interArgs
+         "(interArgs ?relation ?type) means that whenever any argument of ?relation is a ?type, every argument must be a ?type. Full argument homogeneity: (interArgs sameKindAs animal) lets two plants or two animals be compared and refuses an animal beside a plant. The every-position form of interArgAndRest, and it states what (interArgAndRest ?relation 1 ?type) states; each spelling derives the other. It convicts as interArg does and does not entail.")
+(binary_predicate interArgs)
+(arg interArgs 1 relation)
+(arg interArgs 2 unary_predicate)
+(set/forwardRule (implies (and (interArgs ?reln ?type)) (interArgAndRest ?reln 1 ?type)))
+(set/forwardRule (implies (and (interArgAndRest ?reln 1 ?type)) (interArgs ?reln ?type)))
+
 ;; `fixed_arity` and `variable_arity` each declare their one argument position, and
 ;; nothing below them declares one.  Two things make that the right split.  The parent's
 ;; declaration already descends the predicate hierarchy, so (fixed_arity_predicate Fred)

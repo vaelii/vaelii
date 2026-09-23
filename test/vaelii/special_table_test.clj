@@ -147,6 +147,8 @@
     [genlArg                          [:integrate :disintegrate :rebuild :wff]       :declares-arg-genl         true]
     [quotedArg                        [:integrate :disintegrate :rebuild :wff]       :declares-quoted-arg       true]
     [interArg                         [:integrate :disintegrate :rebuild :wff]       :declares-inter-arg-isa    true]
+    [interArgs                        [:integrate :disintegrate :rebuild :wff]       :declares-inter-args-isa   true]
+    [interArgAndRest                  [:integrate :disintegrate :rebuild :wff]       :declares-inter-arg-and-rest-isa true]
     [args                             [:integrate :disintegrate :rebuild :wff]       :declares-args-isa         true]
     [argsGenl                         [:integrate :disintegrate :rebuild :wff]       :declares-args-genl        true]
     [argAndRest                       [:integrate :disintegrate :rebuild :wff]       :declares-arg-and-rest-isa true]

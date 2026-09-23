@@ -899,6 +899,54 @@
                                               " where every other type position reads up genl."))
                            "checks/inter-args-problem — the conditional form, same two paths")]
 
+     ;; ---- the homogeneity constraints: interArg over a whole suffix ------
+     ;; `interArgs` / `interArgAndRest` demand of every argument in a suffix a type one
+     ;; argument there is known to hold.  Convict-and-answer only, like the covering
+     ;; forms: each stops short of `:reach` because the family's reach mints and a
+     ;; homogeneity constraint mints nothing, and short of `:retriggers` because it posts
+     ;; no exception re-check.
+     ['interArgs (enforced (assoc (prop :declares-inter-args-isa :arg :relation
+                                        :facets #{:convicts :answers})
+                                  :shape  {:args [:relation :type]}
+                                  :family :argument-constraint
+                                  :stops-short
+                                  {:reach
+                                   (str "the family's reach is special/entail-existing, which"
+                                        " MINTS what a late declaration says about stored"
+                                        " tuples, and a homogeneity constraint mints nothing:"
+                                        " it convicts a mixed application, it does not draw a"
+                                        " membership.  A conviction reach over the stored"
+                                        " tuples a late interArgs rejects is a different"
+                                        " mechanism from this facet's — the stop-short args"
+                                        " records.")
+                                   :retriggers
+                                   (str "it answers goals about the predicate at argument 1 but"
+                                        " licenses no inference that is a stored sentex reaching"
+                                        " an exception, so it is absent from"
+                                        " special/declaration-subjects and posts no re-check —"
+                                        " the reason args records.")}
+                                  :notes (str "the every-position form of interArgAndRest, and"
+                                              " interArgAndRest at start 1: CxCore's two"
+                                              " forward rules derive each spelling from the"
+                                              " other, and the check reads both as one"
+                                              " declaration.  Its type is trigger and target"
+                                              " at once, so MetaConstraintProver answers it"
+                                              " down the predicate hierarchy and at the"
+                                              " stated type only."))
+                           "checks/inter-args-homogeneity-problem — every position, one type")]
+     ['interArgAndRest (enforced (assoc (prop :declares-inter-arg-and-rest-isa :arg :relation
+                                              :facets #{:convicts :answers})
+                                        :shape  {:args [:relation :position :type]}
+                                        :family :argument-constraint
+                                        :stops-short
+                                        {:reach "the same as interArgs — see interArgs."
+                                         :retriggers "the same as interArgs — see interArgs."}
+                                        :notes (str "the suffix form: position and every later"
+                                                    " one, the prefix below the start"
+                                                    " unconstrained.  interArgs is"
+                                                    " interArgAndRest at 1."))
+                                 "checks/inter-args-homogeneity-problem — position n onward, one type")]
+
      ;; ---- the covering constraints: a whole tail typed at once ------------
      ;; `args` / `argsGenl` type every accepted position, `argAndRest` / `argAndRestGenl`
      ;; every position from a start onward — the generalizations of `arg` / `genlArg`

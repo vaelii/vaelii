@@ -487,6 +487,10 @@
    :disk-locked             #{:dir :holder}
    :duplicate-handle        #{:handle}
    :exception-not-closed    #{:unbound}
+   ;; the conditional refusal, raised by interArg's arm (inter-args-problem) and by the
+   ;; homogeneity arm (inter-args-homogeneity-problem) — the same payload at both
+   :inter-arg-type          #{:message :sentence :arg :expected :position
+                              :trigger :trigger-type :trigger-position}
    :labeling-run-blocked    #{:believed :into :orphaned}
    :llm-api-error           #{}
    :missing-adapter         #{:coordinate :records}

@@ -4253,6 +4253,10 @@
     'argsGenl       (assoc (prop-entry 'argsGenl)       :wff wff/covering-constraint-problems)
     'argAndRest     (assoc (prop-entry 'argAndRest)     :wff wff/covering-constraint-problems)
     'argAndRestGenl (assoc (prop-entry 'argAndRestGenl) :wff wff/covering-constraint-problems)
+    ;; the homogeneity constraints share the covering forms' shape — a relation, an
+    ;; optional start, a type — and so their wff arm
+    'interArgs       (assoc (prop-entry 'interArgs)       :wff wff/covering-constraint-problems)
+    'interArgAndRest (assoc (prop-entry 'interArgAndRest) :wff wff/covering-constraint-problems)
     ;; The two preservation declarations really are wff-only — read back per query, with
     ;; the transitivity of the relation they name checked here because `arg`'s open-world
     ;; reading cannot (docs/inherit.md).

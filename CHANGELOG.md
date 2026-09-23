@@ -13,6 +13,19 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+- **`interArgs` and `interArgAndRest` refuse an application that mixes a type with
+  arguments outside it.** `(interArgs R T)` demands a `T` of every argument of an `R`
+  application once one argument is known to be a `T`; `(interArgAndRest R n T)` makes the
+  same demand of positions `n` onward and leaves the earlier positions free. `interArgs`
+  is `interArgAndRest` at start 1, and CxCore's two forward rules derive each spelling from
+  the other. The refusal is `interArg`'s `:inter-arg-type`: the forms convict as
+  `interArg` does and do not entail, so an untyped argument is neither convicted nor given
+  a type. A declaration on a super-predicate binds a sub-predicate's tuples, and
+  `ask` answers a declaration at its stated type and start. A zero or negative start is
+  refused `:not-well-formed`. `inter_args_test` covers the forms at two, three and five
+  arguments. [argtypes.md](docs/argtypes.md#suffix-homogeneity-interargs-and-interargandrest)
+  *Class:* **Additive**. *Migration:* none.
+
 - **Named subtypes can state that they exhaust their parent.** Two independent claims
   about a named roster of parts, and three spellings that make them: `(covering Whole
   Part1 Part2 …)` says every instance of the whole is an instance of at least one named

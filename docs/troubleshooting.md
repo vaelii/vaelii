@@ -541,7 +541,7 @@ so one vocabulary reads both.
 | `:handle-ceiling` | a handle past the dense TMS's int-keyed ceiling | [density.md](density.md) |
 | `:argument-family-ceiling` | more distinct `(predicate, position)` pairs than the packed root key's 24-bit scope field holds; take `:index :memory` | [indexing.md](indexing.md) |
 | `:incomplete-racer` | a portfolio was handed a strategy with `:first-result?` on, which stops the search rather than steering it | [inference.md](inference.md) |
-| `:inter-arg-type` | an `interArg` constraint convicted one argument because of what another one is | [argtypes.md](argtypes.md) |
+| `:inter-arg-type` | an `interArg`, `interArgs` or `interArgAndRest` constraint convicted one argument because of what another one is | [argtypes.md](argtypes.md) |
 | `:internal-error` | the daemon caught a throwable carrying no `:type` of its own | [operations.md](operations.md) |
 | `:irreflexive` | a predicate declared `irreflexive` holds of a thing and itself | [taxonomy.md](taxonomy.md) |
 | `:job-busy` | a job holding this process's one writer is already running | [operations.md](operations.md) |

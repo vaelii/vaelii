@@ -2479,8 +2479,8 @@
     :exception-not-closed  an exceptWhen variable no antecedent of the rule binds
     :arg-type              an arg constraint on an argument
     :arg-genl              a genlArg constraint — the argument is not a subtype of the floor
-    :inter-arg-type        an interArg constraint whose trigger argument holds and whose
-                           target argument does not
+    :inter-arg-type        an interArg, interArgs or interArgAndRest constraint whose
+                           trigger argument holds and whose target argument does not
     :arg-position          a declaration constraining a position the predicate's
                            declared length does not have
     :arg-constraint-kind   a declaration of the wrong family for the predicate's
@@ -5342,7 +5342,7 @@
   | entry | means | detail |
   |---|---|---|
   | `:arg-type` / `:arg-genl` | an argument fails a declared constraint — `arg`'s type, or `genlArg`'s subtype floor | `:arg` `:expected` `:position` `:message` |
-  | `:inter-arg-type` | an `interArg` conditional constraint whose trigger argument holds and whose target argument does not | `:arg` `:expected` `:position` `:trigger` `:trigger-type` `:trigger-position` `:message` |
+  | `:inter-arg-type` | an `interArg` conditional constraint, or an `interArgs` / `interArgAndRest` homogeneity constraint, whose trigger argument holds and whose target argument does not | `:arg` `:expected` `:position` `:trigger` `:trigger-type` `:trigger-position` `:message` |
   | `:arg-position` | a *declaration* constrains an argument the predicate's declared length does not have | `:predicate` `:position` `:arity` `:via` `:message` |
   | `:arg-constraint-kind` | a declaration disagrees with the predicate's `relation_kind` — `genlArg` on an instance relation, `arg` on a type relation | `:predicate` `:message` |
   | `:arity` | a conclusion whose length disagrees with the arity the predicate declares or inherits | the check's problem map |

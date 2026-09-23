@@ -2549,7 +2549,9 @@
   (covariant — a stored subtype answers its supertypes) and those that reach DOWN
   (contravariant — a stored supertype answers its subtypes).  Only `interArg`'s
   trigger is contravariant; its target and the unconditional `arg`/`genlArg` type are
-  covariant.
+  covariant.  The homogeneity constraints `interArgs` / `interArgAndRest` hold their type
+  in `:fixed`, since one type that is both trigger and target has both variances and so
+  reaches neither way.
 
   **The whole `:argument-constraint` family, `quotedArg` included.**  Which predicates'
   declarations speak for a tuple is `res/constraining-predicates`, and
@@ -2582,7 +2584,15 @@
     args           {:pred 1 :types-up [2]}
     argsGenl        {:pred 1 :types-up [2]}
     argAndRest      {:pred 1 :fixed [2] :types-up [3]}
-    argAndRestGenl  {:pred 1 :fixed [2] :types-up [3]}})
+    argAndRestGenl  {:pred 1 :fixed [2] :types-up [3]}
+    ;; the homogeneity constraints: the one type is trigger and target at once, so it is
+    ;; covariant as a target and contravariant as a trigger and reaches neither way —
+    ;; `(interArgs R animal)` convicts a reptile beside a plant that `(interArgs R
+    ;; mammal)` admits, and the narrower one convicts a mammal beside a reptile the wider
+    ;; one admits.  The type and the start match a stored declaration exactly, and only
+    ;; the predicate position descends.
+    interArgs       {:pred 1 :fixed [2]}
+    interArgAndRest {:pred 1 :fixed [2 3]}})
 
 (def meta-constraint-functors
   "The argument constraints this prover answers along the `genl` closure, as a set —

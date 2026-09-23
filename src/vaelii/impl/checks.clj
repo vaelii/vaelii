@@ -143,7 +143,9 @@
     args           (args ?type)
     argsGenl        (argsGenl ?type)
     argAndRest      (argAndRest ?start ?type)
-    argAndRestGenl  (argAndRestGenl ?start ?type)})
+    argAndRestGenl  (argAndRestGenl ?start ?type)
+    interArgs       (interArgs ?type)
+    interArgAndRest (interArgAndRest ?start ?type)})
 
 (def constraint-declaration-functors
   "The argument constraints this namespace reads at the entry point, as a set — `declaration-
@@ -663,6 +665,14 @@
                  :when (and (integer? s) (pos? s))]
              [s (get b '?type) rk m]))))
 
+(defn- suffix-positions
+  "The one-based positions from `start` to the last argument of the argument vector `as`
+  — the walk every tail constraint makes, the covering forms and the homogeneity forms
+  alike.  Bounded by the arguments the sentence has, which `arity-problem` has already
+  held to a length the relation admits."
+  [as start]
+  (range start (inc (count as))))
+
 (defn- covering-clause
   "How a covering refusal names the position it convicts: `args, position N` for an
   every-position form, `argAndRest from M, position N` for a tail form."
@@ -689,7 +699,7 @@
                (covering-declared? kb [:declares-args-isa :declares-arg-and-rest-isa]))
       (first
        (for [[start t kind decl] (covering-triples decls 'args 'argAndRest)
-             pos   (range start (inc (count as)))
+             pos   (suffix-positions as start)
              :let  [arg (arg-at as pos)
                     r   (convicting-result-type kb nat/result-types pred arg t context)]
              :when (and arg (or r (and (not (entailment-covers? kb tax arg t context decl))
@@ -722,7 +732,7 @@
                (covering-declared? kb [:declares-args-genl :declares-arg-and-rest-genl]))
       (first
        (for [[start t kind decl] (covering-triples decls 'argsGenl 'argAndRestGenl)
-             pos   (range start (inc (count as)))
+             pos   (suffix-positions as start)
              :let  [arg (arg-at as pos)
                     r   (convicting-result-type kb nat/genl-result-types pred arg t context)
                     why (if r
@@ -742,6 +752,96 @@
          {:type :arg-genl :sentence sentence :arg arg :expected t :position pos
           :message (str "arg constraint: " why " (" (covering-clause kind start pos)
                         " of " pred (via-clause (declared-of decl) pred) ")")})))))
+
+;; ---- the homogeneity constraints -----------------------------------------
+;; `interArg` demands a type at one position once another position holds a type.
+;; `interArgs` / `interArgAndRest` demand ONE type of a whole suffix — every position, or
+;; every position from a start onward — once any argument in that suffix holds it.  The
+;; type is the trigger and the target at once, and the reading of each side is
+;; `inter-args-problem`'s: the trigger must be positively established, the target is
+;; convicted by absence.  The walk is over the positions the sentence has, for the reason
+;; the covering constraints give above.
+
+(defn- homogeneity-declarations
+  "The `interArgs` / `interArgAndRest` declarations binding a sentence's tuples, as
+  `[start type via]` entries in content order — start 1 for `interArgs`, the declared
+  start for `interArgAndRest` — with `via` the predicate the declaration is written of.
+
+  **One entry per constraint, whichever spelling states it.**  CxCore's two forward rules
+  derive `(interArgAndRest R 1 T)` from `(interArgs R T)` and `(interArgs R T)` from
+  `(interArgAndRest R 1 T)`, so a KB that states either spelling holds both, and a KB
+  without those rules holds the one it was told.  The entries are deduplicated on
+  `[start type via]` and sorted on a key that spells each of them as `interArgAndRest`, so
+  a sentence draws the same refusal whichever spelling arrived, and a stated declaration
+  with its derived twin convicts once.  A start that is not a positive integer is dropped,
+  as `covering-triples` drops one: `(arg interArgAndRest 2 positive_integer)` refuses it at
+  the entry point, so a stored one is a torn record rather than a live constraint."
+  [decls]
+  (->> (concat (for [m (decls 'interArgs)]
+                 [1 (get (nth m 1) '?type) (declared-of m)])
+               (for [m     (decls 'interArgAndRest)
+                     :let  [b (nth m 1) s (get b '?start)]
+                     :when (and (integer? s) (pos? s))]
+                 [s (get b '?type) (declared-of m)]))
+       distinct
+       (nm/sort-by-content-key (fn [[s t via]] (nm/print-key (list 'interArgAndRest via s t)))
+                               compare)))
+
+(defn- homogeneity-clause
+  "How a homogeneity refusal names the declaration: `interArgs` for start 1, which is
+  what both spellings state there, and `interArgAndRest from N` for a later start."
+  [start]
+  (if (= 1 start) "interArgs" (str "interArgAndRest from " start)))
+
+(defn- inter-args-homogeneity-problem
+  "First `(interArgs R T)` / `(interArgAndRest R n T)` violation for a sentence, or nil.
+
+  Per declaration, one pass over the suffix: the first position whose argument is
+  positively established as a `T` is the trigger, and the first position whose argument
+  is in the hierarchy and does not reach `T` is the target.  A suffix with no trigger is
+  unconstrained, so an application whose arguments all lie outside `T` passes, and so
+  does one whose other arguments are unknown.  Positions below the start are never read.
+  Positions are sentence content, so the first trigger and the first target are chosen
+  by content and never by a handle.
+
+  Both sides read `inter-args-problem`'s way, and each for its reason.  A **symbol**
+  argument is typed by its memberships (`types`, the shared per-assert reader, so a
+  position read as a trigger and as a target costs one retrieval).  A value or a compound
+  is neither a trigger nor a target, which is the reading `inter-args-problem` gives
+  both of its positions.
+
+  Convict-only.  Nothing is minted, so the entailment toggle does not change this arm.
+  Behind the taxonomy `:props` gate `covering-declared?` is, so a KB that declares no
+  homogeneity constraint pays two map lookups per assert and no index read."
+  [kb sentence _context types decls]
+  (let [pred (nm/functor sentence)
+        as   (vec (nm/args sentence))]
+    (when (and (symbol? pred)
+               (covering-declared? kb [:declares-inter-args-isa
+                                       :declares-inter-arg-and-rest-isa]))
+      (let [holds? (fn [t p] (let [x (arg-at as p)]
+                               (and (checkable-term? x)
+                                    (kb/isa-among? (:closures (types x)) t))))
+            fails? (fn [t p] (let [x (arg-at as p)]
+                               (and (checkable-term? x)
+                                    (let [cs (:closures (types x))]
+                                      (and (kb/isa-among? cs 'thing)
+                                           (not (kb/isa-among? cs t)))))))]
+        (first
+         (for [[start t via] (homogeneity-declarations decls)
+               :when (symbol? t)
+               :let  [suffix (suffix-positions as start)
+                      n      (first (filter #(holds? t %) suffix))]
+               :when n
+               :let  [m (first (filter #(fails? t %) suffix))]
+               :when m
+               :let  [target (arg-at as m)]]
+           {:type :inter-arg-type :sentence sentence :arg target :expected t :position m
+            :trigger (arg-at as n) :trigger-type t :trigger-position n
+            :message (str "arg constraint: " target " must be a " t " ("
+                          (homogeneity-clause start) ", position " m " of " pred
+                          (via-clause via pred)
+                          ", because position " n " is a " t ")")}))))))
 
 (defn- args-quoted-problem
   "First `(quotedArg pred n type)` violation for a sentence, or nil.
@@ -2464,6 +2564,7 @@
         (matches-pattern-problem chk)
         (args-problem kb chk context types decls)
         (inter-args-problem kb chk context types decls)
+        (inter-args-homogeneity-problem kb chk context types decls)
         (genls-problem kb chk context decls)
         (covering-args-problem kb chk context types decls)
         (covering-genls-problem kb chk context decls)

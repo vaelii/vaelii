@@ -10,11 +10,12 @@
 
 ## Relation-wide declarations and the runtime boundary
 
-`arg` (including `arg1` / `arg2` / `arg3`), `genlArg`, `quotedArg`, `interArg`, and the
-covering forms `args` / `argsGenl` / `argAndRest` / `argAndRestGenl` (below)
-accept a `relation` as their subject: either a predicate or a function. Accepting and
-storing a function's declaration does **not** yet guarantee recursive enforcement of
-its input constraints inside a nested function application. The current checks read
+`arg` (including `arg1` / `arg2` / `arg3`), `genlArg`, `quotedArg`, `interArg`, the
+covering forms `args` / `argsGenl` / `argAndRest` / `argAndRestGenl` (below), and the
+homogeneity forms `interArgs` / `interArgAndRest` (below) accept a `relation` as their
+subject: either a predicate or a function. Accepting and storing a function's declaration
+does **not** yet guarantee recursive enforcement of its input constraints inside a nested
+function application. The current checks read
 the asserted sentence's argument declarations. For `arg` / `genlArg`, a function
 application filling a constrained slot is checked through its `result` / `genlResult`,
 not by recursively checking every input against that function's declarations.
@@ -488,6 +489,55 @@ after the fact was admitted), and it is the same open-world non-reach
 [taxonomy.md](taxonomy.md#what-each-constraint-does-in-each-arrival-order) records for the
 whole family: a retroactive pass over it would have to decide whether pre-existing silence
 about a type is a violation, which is the policy question nobody has answered.
+
+## Suffix homogeneity: `interArgs` and `interArgAndRest`
+
+`(interArgs R T)` says that when any argument of an application of `R` is a `T`, every
+argument is a `T`. `(interArgAndRest R n T)` says the same of the positions from `n` to the
+end of each application and leaves the positions before `n` unconstrained. `(interArgs R
+T)` states what `(interArgAndRest R 1 T)` states, and two forward rules in CxCore derive
+each spelling from the other, the way `arg1` and `(arg R 1 T)` derive each other.
+
+The reading is `interArg`'s with one type in both roles. The trigger is an argument in the
+suffix that the KB knows to be a `T`; the target is an argument in the suffix that the KB
+places in the hierarchy outside `T`. An application with a trigger and a target is refused
+`:inter-arg-type`, the `interArg` refusal, carrying the trigger's position and the
+target's. An application with no trigger is unconstrained, so a suffix whose arguments all
+lie outside `T` stores. An argument with no type is neither trigger nor target. A value or
+a compound is neither trigger nor target either, which is the reading `interArg` gives
+both of its positions. The forms convict as `interArg` does and do not entail: where
+`interArg` under the entailment toggle mints the target type for an untyped target, these
+mint nothing.
+
+With `(interArgs sameKindAs animal)`, `(sameKindAs Rex Fido)` and `(sameKindAs Oak Elm)`
+store and `(sameKindAs Rex Oak)` is refused once `Rex` is an animal and `Oak` a plant.
+`(interArgAndRest groupedUnder 2 animal)` refuses `(groupedUnder Farm Rex Oak)` and stores
+`(groupedUnder Rex Oak Elm)`: position 1 is below the start, so the animal there triggers
+nothing.
+
+- **One constraint, read once.** `checks/inter-args-homogeneity-problem` reads both
+  spellings through the shared declaration reader and keys each on its start, type and
+  declaring predicate, so a stated `interArgs` and its derived `interArgAndRest` twin
+  convict once, and the refusal names `interArgs` at start 1 whichever spelling was stated.
+- **Descends the predicate hierarchy**, as every argument constraint does: a declaration on
+  a super-predicate binds a sub-predicate's tuples.
+- **Answered at the stated type.** `MetaConstraintProver` answers a goal from a stored
+  declaration on the goal's predicate or on a super-predicate, with the type and the start
+  matching exactly. The type is a trigger, which reads down `genl` like `interArg`'s
+  position 3, and a target, which reads up like its position 5, so it generalizes in
+  neither direction: `(interArgs R animal)` refuses a reptile beside a plant that
+  `(interArgs R mammal)` stores, and `(interArgs R mammal)` refuses a mammal beside a
+  reptile that `(interArgs R animal)` stores.
+- **Convict-only.** Nothing is minted, so the entailment toggle does not change the
+  reading, and the check is behind the taxonomy `:props` gate the covering forms use.
+
+**Arrival order.** The declaration and both memberships stored before the application is
+the covered order, in any of their six orders; `inter_args_test` runs all six. Three
+orders are not covered. A declaration arriving after the applications convicts none of
+them, the stop-short the covering forms record. A trigger's membership arriving after
+the application is `interArg`'s documented non-reach (above). A target's membership
+arriving after the application is `arg`'s non-reach, an argument that acquires its first
+type after the fact was admitted.
 
 ## The quoted twin
 
