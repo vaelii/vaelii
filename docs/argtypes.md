@@ -13,13 +13,61 @@
 `arg` (including `arg1` / `arg2` / `arg3`), `genlArg`, `quotedArg`, `interArg`, the
 covering forms `args` / `argsGenl` / `argAndRest` / `argAndRestGenl` (below), and the
 homogeneity forms `interArgs` / `interArgAndRest` (below) accept a `relation` as their
-subject: either a predicate or a function. Accepting and storing a function's declaration
-does **not** enforce its input constraints recursively inside a nested function
-application. The checks read the asserted sentence's argument declarations. For `arg` / `genlArg`, a function
-application filling a constrained slot is checked through its `result` / `genlResult`,
-not by recursively checking every input against that function's declarations.
-`quotedArg` instead exempts compound arguments from its value-kind check.
-No check enforces a function's input declarations recursively.
+subject: either a predicate or a function. A function's declarations are enforced on the
+inputs of every application of it, at any depth, and two readings run on each
+application:
+
+- **Where it sits**, the application is typed by its function's `result` / `genlResult`
+  against the declaration of the position it fills — what it denotes
+  ([nat.md](nat.md#typing-an-application-that-is-never-minted)).
+- **Inside it**, each input is checked against the function's own `arg`, `genlArg`,
+  `quotedArg`, `interArg` and covering declarations, with the function standing where the
+  predicate stands at the top level. A well-typed input does not rescue an application
+  whose result misses, and a result that reaches does not excuse an ill-typed input.
+
+```clojure
+(unreifiable_function InputGapFn)
+(arg InputGapFn 1 integer)
+(result InputGapFn thing)
+(arg inputGapObserver 1 thing)
+
+(inputGapObserver (InputGapFn 5))                 ; admitted
+(inputGapObserver (InputGapFn "not-an-integer"))  ; refused :arg-type — the string is
+                                                  ; arg 1 of InputGapFn, :application names
+                                                  ; (InputGapFn "not-an-integer")
+```
+
+The refusal carries the arm's own `:type`, `:arg`, `:expected` and `:position` (the
+position in the function), plus `:application`, the innermost application whose input
+failed. The boundary of the inner reading:
+
+- **The constraint reading only.** A nested input is convicted when its visible types
+  reach `thing` and miss the declared type; an input with no visible type is no evidence,
+  as at the top level. No entailment is drawn for a nested input, under
+  `*assertive-arg-types?*` or off it: a declaration arriving after the fact mints over
+  the facts it finds by predicate, and nothing finds the applications of a function
+  inside stored facts, so a nested mint would be drawn in one arrival order and not the
+  other. A refusal stores nothing, so it is the reading the nested level can take.
+- **Terms, not formulas.** A connective's argument (a genuine `(not (P …))`) and a
+  compound whose head the KB knows as a predicate are formulas, not applications, and
+  are not read as one. A head the KB has not classified is read as a function.
+- **A mention is not descended into.** A position a `quotedArg` declaration types holds
+  the term written there, so an application in it is syntax, and neither its result nor
+  its inputs are read. The same holds for the argument of a quoting predicate
+  (`termOfUnit`, `rewriteOf`) and of a `quoting_function`. A quoting function's own
+  declarations are still read over its application; only what it quotes is left alone.
+  `quotedArg` itself stays open-world about a compound argument's kind: no shape
+  classifier exists, so a compound in a `(quotedArg P n string)` position is neither a
+  string nor convicted of not being one.
+- **Reifiable and unreifiable alike.** `assert` mints a ground reifiable application into
+  a constant before the checks run, and the constant carries the result types, not the
+  inputs, so the inputs are read over the sentence as written, before the mint; a refused
+  sentence leaves no constant behind. `check` does not mint, reads the same inputs
+  structurally, and reaches the same verdict. A rule's applications are read when a
+  firing's conclusion is admitted, on the derivation path.
+- **Context-scoped.** The function's declarations are read from the asking context's
+  vantage, like every definitional check: a context below the one they are written in
+  inherits them, a sibling is not refused by them.
 
 ### A unary predicate declares a position only when its `genl` parent does not imply it
 

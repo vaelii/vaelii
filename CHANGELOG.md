@@ -11,6 +11,29 @@ several releases is still a grep for the name you call. The full entry prose for
 released version is in this file's git history, at the tag of the release that shipped
 it — `git show v0.16.0:CHANGELOG.md`.
 
+## Unreleased
+
+- **A function's argument declarations are read over the inputs of its applications.**
+  `(arg InputGapFn 1 integer)` was accepted and stored, and then read by nothing: an
+  application in an argument position was typed only by its function's `result`, so
+  `(inputGapObserver (InputGapFn "not-an-integer"))` was admitted and `check` reported no
+  problem (#78). Each application now has its inputs checked against its function's
+  `arg`, `genlArg`, `quotedArg`, `interArg` and covering declarations, at any depth,
+  beside the result reading rather than in place of it. The refusal carries the arm's own
+  `:type` (`:arg-type`, `:arg-genl`, …) and adds `:application`, the application whose
+  input failed. The inner reading is the constraint reading, open-world about an input
+  with no visible type, and mints nothing. A `quotedArg` position, a quoting predicate's
+  argument and a `quoting_function`'s argument are mentions and are not descended into.
+  A reifiable function's inputs are read before `assert` mints the application, so a
+  refusal leaves no constant behind, and `check` reaches the same verdict without minting.
+  [docs/argtypes.md](docs/argtypes.md#relation-wide-declarations-and-the-runtime-boundary)
+  *Class:* **Refusal** (a fact whose application is given an input its function's
+  declarations forbid, admitted before, is refused).
+  *Migration:* correct the input, or the function's declaration where the declaration is
+  what is wrong; a fact already stored is not re-read, as for every argument constraint.
+
+  *Breaks:* `assert`, `check`
+
 ## 0.21.0 — 2026-09-23 — "a definitional clash is decided at the context that sees it whole, and a relation can state that its arguments commute"
 
 - **`:refuse` weighs a definitional clash at its vantage, so `violations` is no longer

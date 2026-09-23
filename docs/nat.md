@@ -198,6 +198,11 @@ Four things fix what that reading is and is not.
   through this reading in the second. A reifiable function's application never reaches
   this arm at all.
 
+What an application is *given* is a separate reading from what it denotes: each input is
+checked against the function's own argument declarations, for a reifiable function before
+the mint replaces the application with its constant
+([argtypes.md](argtypes.md#relation-wide-declarations-and-the-runtime-boundary)).
+
 A **quoting predicate's** argument is left alone: `(termOfUnit K (FruitFn AppleTree))`
 and a compound-argument `(rewriteOf T E)` carry the expression as a verbatim payload
 rather than as a term used in that position, so typing it by what the function yields

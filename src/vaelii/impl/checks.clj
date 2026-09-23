@@ -176,19 +176,41 @@
   realized for the reason the single read was: `in-content-order` sorts before the
   first-violation walk starts, so there is no early exit for laziness to serve, and the
   sort is what keeps the refusal keyed on what the KB says rather than on which
-  super-predicate the closure happened to enumerate first."
-  [kb pred context]
-  (let [cache (volatile! {})]
-    (fn [kind]
-      (if-some [ds (get @cache kind)]
-        ds
-        (let [[f & tail] (declaration-queries kind)
-              ds         (when (symbol? pred)
-                           (into []
-                                 (mapcat #(res/matches-visible kb (list* f % tail) context))
-                                 (res/constraining-predicates kb kind pred context)))]
-          (vswap! cache assoc kind ds)
-          ds)))))
+  super-predicate the closure happened to enumerate first.
+
+  **Two arities.**  `(decls kind)` is the read above.  `(decls ::stored? functor)` is the
+  O(1) gate the gated arms stand behind — is any `functor` sentex stored at all
+  (`kind-stored?`) — memoized in `counts`, which a reader for a *nested* application
+  shares with the reader of the sentence it sits in (`(decls ::counts nil)`), so one check
+  pays each gate once however many applications it reads."
+  ([kb pred context] (declaration-reader kb pred context (volatile! {})))
+  ([kb pred context counts]
+   (let [cache (volatile! {})]
+     (fn
+       ([kind]
+        (if-some [ds (get @cache kind)]
+          ds
+          (let [[f & tail] (declaration-queries kind)
+                ds         (when (symbol? pred)
+                             (into []
+                                   (mapcat #(res/matches-visible kb (list* f % tail) context))
+                                   (res/constraining-predicates kb kind pred context)))]
+            (vswap! cache assoc kind ds)
+            ds)))
+       ([op functor]
+        (case op
+          ::counts  counts
+          ::stored? (if-some [b (get @counts functor)]
+                      b
+                      (let [b (pos? (reads/stored-count-with-functor (:index kb) functor))]
+                        (vswap! counts assoc functor b)
+                        b))))))))
+
+(defn- kind-stored?
+  "Is any `functor` sentex stored — the O(1) gate, asked through `decls` so a check pays it
+  once (`declaration-reader`)."
+  [decls functor]
+  (decls ::stored? functor))
 
 (defn- declared-of
   "The predicate a declaration match is *about* — its first argument, which is `pred`
@@ -333,7 +355,8 @@
 
   A **compound** is neither of the two readings and is not answered here.  It holds no
   membership and its kind is not the question; what it denotes is its function's business,
-  and `convicting-result-type` beside this is the arm that reads the function."
+  and `convicting-result-type` beside this is the arm that reads the function.  What it
+  is *given* is a separate question, `nested-input-problem`'s."
   [tax types arg t context]
   (if (checkable-term? arg)
     (let [ms (types arg)]
@@ -392,7 +415,8 @@
   would type a quotation by its referent.  It is also the one place a mint would pay for
   this: `mint-nat!` writes a `termOfUnit` per constant, and that write is where a KB
   declaring result types would otherwise buy a scoped retrieval it can never be convicted
-  by.
+  by.  A `quoting_function`'s argument is the same mention one level in, reached when
+  `nested-input-problem` reads the quoting function's own declarations.
 
   Behind `nat/any-result-declarations?` — two O(1) functor counts, reached only for a
   compound sitting at a position some declaration constrains, so a KB that has written no
@@ -403,7 +427,8 @@
              (nat/any-result-declarations? kb))
     (let [tax (reasoning/taxonomy kb)
           rs  (vec (declared kb (first x) context))]
-      (when (not-any? #(tax/genl? tax % t context) rs)
+      (when (and (not (tax/quoting-function? tax pred))
+                 (not-any? #(tax/genl? tax % t context) rs))
         (nm/min-by-content-key identity (filterv #(tax/genl? tax % 'thing context) rs))))))
 
 (defn- entailment-covers?
@@ -452,7 +477,9 @@
   KB can know about a term no membership can be asserted of: `(result QuantityFn
   measure)` refuses `(needs_dog (QuantityFn 5 Meter))` under `(arg needs_dog 1 dog)` and
   admits it under `(arg needsMeasure 1 measure)`.  `convicting-result-type` has that
-  argument, the open-world floor included.
+  argument, the open-world floor included.  The application's own inputs are not read
+  here: they answer to its function's declarations, and `application-input-problem` runs
+  this arm again one level in, with the function where `pred` stands.
 
   **Under `*assertive-arg-types?*` the symbol arm yields** to the entailment that reads
   the same declaration (`entailment-covers?`): where the declaration mints the type, the
@@ -523,11 +550,11 @@
   dominant per-fact cost — so a third retrieval that finds nothing is a tax on every write
   in every KB.  One `count-with-functor` says whether any such declaration is stored at
   all; zero means no scoped read can find one, so there is nothing to look for."
-  [kb sentence _context types decls]
+  [_kb sentence _context types decls]
   (let [pred (nm/functor sentence)
         as   (vec (nm/args sentence))]
     (when (and (symbol? pred)
-               (pos? (reads/stored-count-with-functor (:index kb) 'interArg)))
+               (kind-stored? decls 'interArg))
       (first
        (for [d       (in-content-order (decls 'interArg))
              :let  [b       (nth d 1)
@@ -873,7 +900,7 @@
         as   (vec (nm/args sentence))
         tax  (reasoning/taxonomy kb)]
     (when (and (symbol? pred)
-               (pos? (reads/stored-count-with-functor (:index kb) 'quotedArg)))
+               (kind-stored? decls 'quotedArg))
       (first
        (for [d     (in-content-order (decls 'quotedArg))
              :let  [b   (nth d 1)
@@ -894,6 +921,116 @@
           :message (str "quoted-arg constraint: " arg " must be a " t " as a term — it is a "
                         (if (= ks #{lit}) (str lit) (str/join " / " (sort ks)))
                         " (arg " n " of " pred (via-clause (declared-of d) pred) ")")})))))
+
+;; ---- the inputs of a function application ---------------------------------
+;; The arms above read the declarations of the sentence's own relation, and an
+;; application sitting in one of its positions is typed there by its function's
+;; `result` — what the application *denotes*.  That says nothing about what is written
+;; *inside* it: `(arg InputGapFn 1 integer)` constrains the input of every application
+;; of `InputGapFn`, and `(observes (InputGapFn "x"))` violates it whatever the result
+;; reading concludes.  So the argument arms run a second time, one level in, with the
+;; function standing where the predicate stood.  Both readings run; neither replaces
+;; the other.
+
+(defn- mentioned-positions
+  "The positions of the relation `decls` reads that a visible `quotedArg` declaration
+  types — the positions holding a **mention** of the term written there rather than a
+  use of it.  Through `decls` with no count gate of its own: the reader memoizes the
+  kind, so `args-quoted-problem`'s read of it over the same relation is the one read."
+  [decls]
+  (into #{} (map #(get (nth % 1) '?n)) (decls 'quotedArg)))
+
+(def ^:private formula-functors
+  "The frames whose arguments are formulas rather than terms — a `(not (P …))` reaches the
+  checks whole when the negation is genuine (`checked-sentence`), and its argument is a
+  sentence about `P`, not an application of it."
+  '#{not and or implies exceptWhen thereExists forAll ist unknown})
+
+(defn- formula-head?
+  "Does the compound `x`, written in an argument position, have a head the KB knows as a
+  predicate — is it an `atomic_formula`, the other half of `relation_application`
+  (CxCore), rather than a function applied to terms?  A formula written as an argument is
+  a sentence about its predicate's tuples, which that predicate's declarations do not
+  type from here.  A head the KB has not classified is read as a function: its
+  declarations are what it has, and a head with none convicts nothing.
+
+  A membership read, so `nested-input-problem` asks it only of an application something
+  inside convicted: the common application convicts nothing, and asking first would put
+  a read on every assert that carries a compound (`assert_cost_test`'s compound
+  workload)."
+  [types x]
+  (kb/isa-among? (:closures (types (first x))) 'predicate))
+
+(defn- nested-input-problem
+  "The first violation of a function's own argument declarations by an input written
+  inside one of `sentence`'s used arguments, at any depth, or nil.  The violation is the
+  arm's own, so its `:sentence` is the innermost application whose input failed.
+
+  **The constraint reading only.**  Under `*assertive-arg-types?*` the top-level `arg`
+  arm yields a symbol to the entailment that mints its declared type
+  (`entailment-covers?`), and that entailment has a retroactive twin: a declaration
+  arriving mints over the facts already stored, which it finds by predicate.  No index
+  finds the applications of a function inside stored facts, so a mint drawn from a
+  nested input would be drawn in one arrival order and not the other — belief varying
+  with order.  A refusal stores nothing, so the constraint reading is the one the nested
+  level can take, and the toggle is bound off for it.  The open-world floor is the top
+  level's unchanged: a symbol with no visible membership reaching `thing` convicts
+  nothing, and neither does a function that declares nothing.
+
+  **Terms, not formulas.**  A connective's argument, and a compound whose head is a known
+  predicate, is a formula (`formula-head?`), and nothing found inside one convicts.
+
+  **Mentions are not descended into.**  A position a `quotedArg` declaration types holds
+  the term written there, not a use of it, so an application in it is syntax and its
+  function's declarations about what its inputs denote do not reach it; the same holds
+  for the argument of a quoting predicate (`nat/nat-quoting-predicates`) and of a
+  `quoting_function`.  A quoting function's own declarations are still read over its
+  application — only what it quotes is left alone.
+
+  One declaration reader per application, built on reaching it, so a sentence with no
+  compound argument reads nothing: `application-term?` over its arguments is the whole
+  cost."
+  [kb sentence context types decls]
+  (let [pred (nm/functor sentence)
+        as   (nm/args sentence)]
+    (when (and (symbol? pred)
+               (not (contains? formula-functors pred))
+               (some application-term? as)
+               (not (contains? nat/nat-quoting-predicates pred))
+               (not (tax/quoting-function? (reasoning/taxonomy kb) pred)))
+      (let [mentioned (mentioned-positions decls)]
+        (first
+         (for [[n x] (map-indexed (fn [i a] [(inc i) a]) as)
+               :when (and (application-term? x)
+                          (not (contains? formula-functors (first x)))
+                          (not (contains? mentioned n)))
+               :let  [ds (declaration-reader kb (first x) context (decls ::counts nil))
+                      p  (or (binding [*assertive-arg-types?* false]
+                               (or (args-problem kb x context types ds)
+                                   (inter-args-problem kb x context types ds)
+                                   (inter-args-homogeneity-problem kb x context types ds)
+                                   (genls-problem kb x context ds)
+                                   (covering-args-problem kb x context types ds)
+                                   (covering-genls-problem kb x context ds)
+                                   (args-quoted-problem kb x context types ds)))
+                             (nested-input-problem kb x context types ds))]
+               :when (and p (not (formula-head? types x)))]
+           p))))))
+
+(defn- application-input-problem
+  "First violation of a function's argument declarations inside `sentence`'s arguments,
+  or nil — `nested-input-problem` reported against the sentence being checked.
+
+  The arm's `:type`, `:arg`, `:expected` and `:position` are kept, so a caller reads a
+  nested `:arg-type` exactly as it reads a top-level one and `conviction-watch` watches
+  the convicted input.  `:position` is the position in the application's function, and
+  `:application` names that application; the message says where it sits."
+  [kb sentence context types decls]
+  (when-let [p (nested-input-problem kb sentence context types decls)]
+    (assoc p
+           :sentence sentence
+           :application (:sentence p)
+           :message (str (:message p) ", inside " (pr-str (:sentence p))))))
 
 ;; ---- the argument constraints, checked against each other ----------------
 
@@ -2634,6 +2771,7 @@
         (covering-args-problem kb chk context types decls)
         (covering-genls-problem kb chk context decls)
         (args-quoted-problem kb chk context types decls)
+        (application-input-problem kb chk context types decls)
         (declaration-problem kb chk context types)
         (disjoint-problem kb chk context types)
         (cover-refutation kb chk context)
@@ -3094,6 +3232,32 @@
         (if refusal
           (throw (ex-info (:message refusal) (dissoc refusal :message)))
           entailments)))))
+
+(defn check-application-inputs
+  "Throw the first violation of a function's argument declarations inside `sentence` in
+  `context` — `application-input-problem`, asked of a fact **before** the reify pass.
+
+  `assert` mints every ground reifiable application into its constant before
+  `constraint-checks` runs, and the constant carries the function's result types, not
+  what the application was given: the inputs are gone by the time the arm that reads
+  them could look.  So the assert path asks this first, over the sentence as written,
+  from the writer's vantage — the same reading `constraint-checks` gives an unreifiable
+  application after the pass, and the one `check` gives both, since `check` does not
+  mint.  Asked before the mint, a refused sentence leaves no constant behind.
+
+  Nil for a sentence with no compound argument, before any reader is built."
+  [kb sentence context]
+  ;; the raw sentence's arguments first: a fact with no compound argument has none under
+  ;; any `not` either, and asking this before `checked-sentence` keeps the common fact
+  ;; off the canonicalization that reads through its negations
+  (when (and (sequential? sentence) (some application-term? (rest sentence)))
+    (let [chk (checked-sentence sentence)]
+      (when (and (symbol? (nm/functor chk)) (some application-term? (nm/args chk)))
+        (let [p (application-input-problem kb chk context
+                                           (kb/membership-reader kb context)
+                                           (declaration-reader kb (nm/functor chk) context))]
+          (when (refuses-assert? kb context p)
+            (throw (ex-info (:message p) (dissoc p :message)))))))))
 
 (defn constraint-admission
   "The derivation path's `constraint-checks`: one pass over the definitional checks,

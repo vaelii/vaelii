@@ -1584,6 +1584,36 @@
                    {:strength (p/premise-strength (:records kb) h)})
         (retract! kb h)))))
 
+(defn- check-reified-inputs!
+  "Refuse a fact whose function applications are given inputs their functions' argument
+  declarations forbid, asked of the sentence **before** the reify pass mints its ground
+  reifiable applications away (`checks/check-application-inputs`).
+
+  Routed the way `assert-entry/assert-one` routes what it stores, so the check reads the
+  fact that would be stored from the context it would be stored in: an imperative and a
+  rule are passed over (neither is a fact), an `(ist Ctx S)` is `S` in `Ctx`, a virtual
+  wrapper is peeled, and a forced-decontextualized predicate reads from CxUniverse.
+  Skipped under `*bulk-load?*`, which skips every definitional check, and in a KB
+  declaring no `reifiable_function`, where the pass mints nothing and
+  `constraint-checks` reads every application after it."
+  [kb sentence context]
+  (when (and (not *bulk-load?*) (nat/any-reifiable-functions? kb) (sequential? sentence))
+    (cond
+      (sx/do-form? sentence) nil
+
+      (= sx/ist-functor (first sentence))
+      (when-let [[ctx s] (entry/ist-parts sentence)]
+        (when (symbol? ctx) (check-reified-inputs! kb s ctx)))
+
+      (rules/rule-sentence? (rules/inner-rule sentence)) nil
+
+      :else
+      (let [s    (rules/inner-rule sentence)
+            pred (nm/functor s)
+            ctx  (if (and pred (tax/has-prop? (reasoning/taxonomy kb) :forced-decontextualized pred))
+                   special/universal-context context)]
+        (checks/check-application-inputs kb s ctx)))))
+
 (defn assert
   "Assert `sentence` in `context` (default 'CxUniverse) as a JTMS premise: enforce
   naming, arg, and disjointness constraints, persist, index (trie + term index),
@@ -1668,6 +1698,9 @@
          ;; so it never reaches the index as a raw structural compound.  Gated — a no-op
          ;; unless the KB declares quasiquotation.
          sentence (quasiquote/maybe-reduce kb sentence)
+         ;; a reifiable application's inputs are read here or nowhere: the pass below
+         ;; replaces it with a constant that carries its result types, not its inputs
+         _        (check-reified-inputs! kb sentence context)
          sentence (nat/maybe-reify-nats kb sentence (:chain? opts true))
          ;; An `(exceptWhen <query> <rule>)` is split into the bare rule (or a handle it
          ;; named directly) and the exception.  The rule is asserted normally and the
