@@ -116,12 +116,14 @@
            [(list (preds 0) '?a '?b) (list (preds 1) '?b '?c) (list (types 1) '?a)]
            [(list (types 1) '?x) (list (preds 0) '?x '?y) (list (preds 1) '?y '?z)]])))
 
-(deftest fan-and-post-hoc-agree-over-generated-lattices
+(defn- lattices-agree
+  "The property over the first `n` worlds `seed` generates."
+  [n]
   (let [r (Random. seed)
         answered (atom 0)
         ran      (atom 0)
         skipped  (atom 0)]
-    (dotimes [w worlds]
+    (dotimes [w n]
       (let [kb (tu/isolated-fresh)]
         (tu/load-starter! kb)
         (let [goals (build-world! kb r)]
@@ -151,7 +153,7 @@
                        "\n  post-hoc only: " (pr-str (sort-by str (remove fan post))))))))))
     (testing "the generator produced worlds that actually answer"
       (is (< 20 @answered)
-          (str "only " @answered " answers over " worlds
+          (str "only " @answered " answers over " n
                " worlds — a generator drifted into empty KBs agrees with itself trivially")))
     (testing "and post-hoc actually ran on most of them"
       ;; The failure this guards is a comparison that proves nothing.  `placeable?` hands
@@ -161,6 +163,14 @@
       (is (< @skipped @ran)
           (str "post-hoc ran on " @ran " goals and was skipped on " @skipped
                " — the comparison is mostly the fan against itself")))))
+
+(deftest fan-and-post-hoc-agree-over-generated-lattices
+  ;; four worlds at :default, 192 answers from them; `…-over-many-generated-lattices`
+  ;; runs all of `worlds`
+  (lattices-agree 4))
+
+(deftest ^:slow fan-and-post-hoc-agree-over-many-generated-lattices
+  (lattices-agree worlds))
 
 (deftest post-hoc-hands-a-rule-expanding-read-back-to-the-fan
   ;; The domain boundary, asserted rather than assumed.  An antecedent fact is not one of

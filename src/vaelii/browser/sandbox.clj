@@ -98,6 +98,23 @@
   [token]
   (str cookie-name "=" token "; Path=/; HttpOnly; SameSite=Lax"))
 
+(defn add-cookie
+  "`resp` with one more `Set-Cookie`.  Ring takes a header value as a string or as a
+  collection of them, so a second cookie **extends** the header rather than replacing
+  what is there.
+
+  Here rather than in `vaelii.browser.web`, which is the other caller: that namespace
+  requires this one, so a helper the two share can only live on this side of the edge.
+  The case is a response carrying both cookies the browser has — a reader who sets a
+  reading preference on the same request that mints their session token — where an
+  `assoc` drops whichever of the two ran first."
+  [resp c]
+  (update-in resp [:headers "Set-Cookie"]
+             (fn [prior]
+               (cond (nil? prior)    c
+                     (string? prior) [prior c]
+                     :else           (conj (vec prior) c)))))
+
 (defn wrap-session
   "Give every request a session token, minting one into a cookie the first time.
 
@@ -110,7 +127,7 @@
           token (or valid (mint-token))
           resp  (handler (assoc req ::token token))]
       (cond-> resp
-        (nil? valid) (assoc-in [:headers "Set-Cookie"] (set-cookie token))))))
+        (nil? valid) (add-cookie (set-cookie token))))))
 
 ;; ---- the context itself --------------------------------------------------
 

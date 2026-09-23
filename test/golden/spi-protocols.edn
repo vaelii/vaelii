@@ -39,6 +39,7 @@
   sentexes-with-terms "[[store terms]]",
   term-count "[[store]]",
   terms "[[store]]",
+  unary-sentexes-with-arg "[[store term]]",
   unindex-exception! "[[store handle preds]]",
   unindex-rule! "[[store handle ante-preds conseq-pred]]",
   unindex-sentex! "[[store sentex handle]]"},

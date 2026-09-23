@@ -127,15 +127,30 @@
 
 (deftest read-arg-keeps-a-path-a-path
   (testing "an argv string that reads as EDN is data — a sentence, a context, a handle"
-    (is (= (list 'dog 'Muffet) (cli/read-arg "(dog Muffet)")))
-    (is (= 'CxNaturalWorld (cli/read-arg "CxNaturalWorld")))
-    (is (= 3 (cli/read-arg "3"))))
+    (is (= (list 'dog 'Muffet) (cli/read-arg "assert" "(dog Muffet)")))
+    (is (= 'CxNaturalWorld (cli/read-arg "assert" "CxNaturalWorld")))
+    (is (= 3 (cli/read-arg "why" "3"))))
   (testing "and one that reads as none is the string it already was, which is what an
             absolute filesystem path is: /var/lib/vaelii has two slashes and is no symbol"
-    (is (= "/var/lib/vaelii" (cli/read-arg "/var/lib/vaelii"))))
+    (is (= "/var/lib/vaelii" (cli/read-arg "load" "/var/lib/vaelii"))))
   (testing "a path the reader *does* accept comes back as a symbol, so a command taking
             one reads it as text either way — which is why the path arms coerce"
-    (is (= "./kbs/a-dump" (str (cli/read-arg "./kbs/a-dump"))))))
+    (is (= "./kbs/a-dump" (str (cli/read-arg "export" "./kbs/a-dump")))))
+  (testing "and one argument is one form: a second is refused rather than dropped"
+    ;; `edn/read-string` answers the first form and drops the rest, so
+    ;; `assert '(dog Muffet) (cat Felix)' CxWell` stored the dog, printed its handle and
+    ;; exited 0 — a write that did less than the line asked for and reported success.
+    (let [d (ex-data (is (thrown? clojure.lang.ExceptionInfo
+                                  (cli/read-arg "assert" "(dog Muffet) (cat Felix)"))))]
+      (is (= :bad-args (:type d)))
+      (is (= "assert" (:op d)) "and names the command, as a wrong operand count does")
+      (is (= "(dog Muffet) (cat Felix)" (:arg d))))
+    (is (thrown? clojure.lang.ExceptionInfo (cli/read-arg "assert" "dog Muffet"))
+        "two bare symbols are two forms too")
+    (testing "a path with a space in it comes back whole: its first read fails outright"
+      (is (= "/var/lib/my kb" (cli/read-arg "export" "/var/lib/my kb"))))
+    (testing "and an empty argument is the empty string, which the sentence check refuses"
+      (is (= "" (cli/read-arg "assert" ""))))))
 
 (tu/deftest-kb export-writes-a-dump-the-catalog-offers-and-the-importer-reads
   (let [root (.toFile (Files/createTempDirectory "vaelii-cli-export-"
@@ -458,3 +473,62 @@
     ;; `-main` drops into the loop on a bare `lein cli --strength monotonic`, so the
     ;; flags belong to the session exactly as they do after the word `repl`
     (is (nil? (cli/check-flags! nil {:strength "monotonic" :depth "3"})))))
+
+(deftest a-count-flags-value-is-refused-by-name-when-it-is-not-a-number
+  ;; `Long/parseLong` on the raw string answered `For input string: "twice"` — one line
+  ;; and exit 1, so no stack trace, but java.lang's sentence rather than the engine's,
+  ;; naming neither the flag nor the command.  That is what `check-arity!` exists to stop
+  ;; being printed for an operand count, reached one argument further in.
+  (doseq [flag ["--depth" "--nearest"]]
+    (let [e (is (thrown? clojure.lang.ExceptionInfo (cli/count-option flag "twice"))
+                (str flag " with a word for a number is refused"))
+          d (ex-data e)]
+      (is (= :unknown-option (:type d)))
+      (is (= flag (:flag d)) "and the refusal names the flag")
+      (is (= "twice" (:value d)))
+      (is (re-find (re-pattern (str flag " takes a whole number")) (ex-message e)))))
+  (testing "a number still parses, however it arrived"
+    (is (= 3 (cli/count-option "--depth" "3")))
+    (is (= 3 (cli/count-option "--depth" 3)))))
+
+(tu/deftest-kb a-format-the-export-cannot-write-is-refused-rather-than-dropped
+  ;; `--format` names the one alternative to a dump, so a value that is not `text` names
+  ;; nothing.  Dropped, it wrote the dump the flag was there to replace and exited 0:
+  ;; `export --format texr` left a records dump and read from the outside exactly like
+  ;; `--format text`.  `--variant` and `--compression` are refused by the writer; this is
+  ;; the flag the writer never sees.
+  (let [root (temp-dir "format")
+        dest (io/file root "out")]
+    (try
+      (tu/with-terms [dog Muffet CxFormat]
+        (cli/dispatch kb "assert" [(list dog Muffet) CxFormat] {})
+        (let [d (ex-data (is (thrown? clojure.lang.ExceptionInfo
+                                      (cli/dispatch kb "export" [(.getPath dest)]
+                                                    {:format "yaml"}))))]
+          (is (= :unknown-option (:type d)))
+          (is (= "--format" (:flag d)))
+          (is (= "yaml" (:value d)))
+          (is (= ["text"] (:takes d)) "and the refusal names the one value it takes"))
+        (is (not (.exists dest)) "and nothing was written where the dump would have gone")
+        (testing "the two spellings it does take are unaffected"
+          (is (map? (cli/dispatch kb "export" [(.getPath (io/file root "text"))]
+                                  {:format "text"})))
+          (is (map? (cli/dispatch kb "export" [(.getPath (io/file root "dump"))]
+                                  {:compression "none"})))))
+      (finally (rm-rf! root)))))
+
+(deftest the-engines-own-log-lines-are-kept-out-of-the-data-stream
+  ;; A refusal is not the only thing that must stay off stdout: the engine logs through
+  ;; Trove's console backend, which prints to `*out*` — and `*out*` under the CLI is
+  ;; `lein cli match … > answers.edn`.  With the dial unset nothing is installed and
+  ;; Trove's own backend prints at `:info`, so an ordinary `export` (`::exported`) landed
+  ;; a line inside the answer with no variable set at all.
+  (let [out (java.io.StringWriter.)
+        err (java.io.StringWriter.)
+        emit (fn [ns _coords level id payload]
+               (println ns level id payload))]
+    (binding [*out* out *err* err]
+      ((cli/on-stderr emit) 'vaelii.impl.io.export [1 2] :info ::exported {:sentexes 4}))
+    (is (= "" (str out)) "nothing reached the data stream")
+    (is (re-find #"::exported|:vaelii.cli-test/exported" (str err))
+        "and the line itself is on stderr, not dropped")))

@@ -196,13 +196,6 @@
         (is (empty? (examples-of kb 'positiveExample))
             "an excepted example meta is not believed, so the sweep skips it")))))
 
-;; ---- kb-has-integrity: the umbrella the scope card checks against ---------
-
-(tu/deftest-kb kb-has-integrity
-  ;; The KB-integrity umbrella.  Currently just the believed-example sweep; two more
-  ;; integrity checks are planned to join it, so the namespace is staked out now.
-  (every-believed-example-holds-as-stated))
-
 ;; ---- borderline carries no obligation ------------------------------------
 
 (tu/deftest-kb a-borderline-example-is-truth-agnostic

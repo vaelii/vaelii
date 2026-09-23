@@ -23,8 +23,7 @@
 ;; but its own context's.
 (use-fixtures :each (tu/neutral-fresh
                      #(doto (tu/fresh)
-                        (core-context/load-into)
-                        (seed/load-context 'CxMeasure "upper"))))
+                        (tu/load-core-with! '[[CxMeasure "upper"]]))))
 
 (def ^:private C 'CxUniverse)
 

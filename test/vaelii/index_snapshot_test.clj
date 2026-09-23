@@ -27,7 +27,8 @@
             [vaelii.impl.kb :as kb]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reindex :as reindex]
-            [vaelii.impl.tokens :as tok])
+            [vaelii.impl.tokens :as tok]
+            [vaelii.impl.types.snapshot :as snapshot-types])
   (:import [java.io File RandomAccessFile]
            [java.nio.file CopyOption Files Paths StandardCopyOption]
            [java.nio.file.attribute FileAttribute]))
@@ -271,9 +272,9 @@
       (backend/close-dir! dir)
       (let [[kb2 _] (opening dir)
             idx     (:index kb2)]
-        (is (columnar/mapped? idx) "the trie opened mapped")
+        (is (snapshot-types/snapshot-mapped? (:trie idx)) "the trie opened mapped")
         (p/index-rule idx 987654 '[snapAnte] 'snapConsq)
-        (is (columnar/mapped? idx) "and the rule index left it so — only the roots thawed")
+        (is (snapshot-types/snapshot-mapped? (:trie idx)) "and the rule index left it so — only the roots thawed")
         (is (= :saved (:index (snap/save! dir idx #(drs/slot-fingerprint (:records kb2))))))
         (let [want (answers kb2)]
           (backend/close-dir! dir)
@@ -669,12 +670,12 @@
               (testing "and over one mapped back from its image, which the walk thaws"
                 (let [[kb2 rebuilds] (opening dir)]
                   (is (zero? rebuilds))
-                  (is (columnar/mapped? (:index kb2)) "the trie opened mapped")
+                  (is (snapshot-types/snapshot-mapped? (:trie (:index kb2))) "the trie opened mapped")
                   (reset! saves 0)
                   (let [want (walked kb2 '(parentOf ?x ?y) 'CxUniverse)]
                     (is (= want (walk-writing! kb2 '(parentOf ?x ?y) 'CxUniverse "SnapMapped"))))
                   (is (pos? @saves))
-                  (is (not (columnar/mapped? (:index kb2)))
+                  (is (not (snapshot-types/snapshot-mapped? (:trie (:index kb2))))
                       "and the walk's own writes thawed it, so the freeze ran over heap arrays")
                   (testing "and at a variable context, where the fan reads the index per reader"
                     (reset! saves 0)

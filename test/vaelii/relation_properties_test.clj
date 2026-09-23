@@ -242,6 +242,32 @@
         (v/retract! kb decl)
         (is (not (merged? kb alice bob CxFam)))))))
 
+(tu/deftest-kb a-merge-mark-in-a-sibling-merges-from-every-context-in-either-order
+  ;; `anti_symmetric` and `functional` are decontextualized, so a mark stated in CxStory
+  ;; is lifted into CxUniverse and read from every context.  A merge is placed where its
+  ;; mark is visible, so the copy derives the merge as well as the statement does
+  ;; (`special/copy-merges`): the mark stated after the facts merged below CxStory
+  ;; alone, where stated before them it merged at CxUniverse.
+  (tu/with-terms [CxFam CxStory]
+    (v/assert kb (list 'genlCx CxFam U) U)
+    (v/assert kb (list 'genlCx CxStory U) U)
+    (doseq [mark        ['anti_symmetric 'functional]
+            decl-first? [true false]]
+      (let [rel   (tu/tmp-pred "rel")
+            [a b c] (repeatedly 3 #(tu/tmp-ind "Party"))
+            [facts x y] (if (= 'anti_symmetric mark)
+                          [[(list rel a b) (list rel b a)] a b]
+                          [[(list rel a b) (list rel a c)] b c])
+            decl! #(v/assert kb (list mark rel) CxStory)]
+        (v/assert kb (list 'arity rel 2) U)
+        (when decl-first? (decl!))
+        (doseq [f facts] (v/assert kb f U))
+        (when-not decl-first? (decl!))
+        (testing (str mark (if decl-first? " stated before" " stated after") " the facts")
+          (is (= [true true true]
+                 (mapv #(= (v/representative kb x %) (v/representative kb y %))
+                       [U CxFam CxStory]))))))))
+
 ;;; ── anti_transitive: declared, chain conviction deferred ───────────────
 
 (tu/deftest-kb antitransitive-classifies-and-clashes-with-transitive

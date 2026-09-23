@@ -282,6 +282,13 @@
           (str "seed " seed " diverged at step " step " on " (pr-str op) "\n"
                (pr-str (diff si se)))))))
 
+(deftest a-seeded-stream-discovers-the-same-clashes
+  ;; One seed of the `^:slow` sweep above, so `:default` runs its harness; the sweep
+  ;; takes twelve.
+  (let [[step op si se] (run-trial 0 45)]
+    (is (nil? step)
+        (str "seed 0 diverged at step " step " on " (pr-str op) "\n" (pr-str (diff si se))))))
+
 ;; ---- oracle 2: the retroactive declaration ------------------------------
 ;;
 ;; The narrowing most likely to be wrong, isolated: a separation arriving over content

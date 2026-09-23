@@ -83,7 +83,7 @@ be decided → [solving.md](solving.md).
 | `siblingDisjointExceptions` (plural) | `siblingDisjointException` (**singular**, house style) | exempts one pair the sibling mark or a `disjoint_metatype` would force disjoint; read over the whole KB (no scoped variant, unlike Cyc's per-Mt exceptions), pair-local, and it does not leak to subtypes |
 | `SymmetricBinaryPredicate` | `(symmetric P)` | |
 | `AsymmetricBinaryPredicate` | `(asymmetric P)` | convicts a claim whose **converse** is believed; it does not make `P` irreflexive, and `(P a a)` is admitted |
-| `genlInverse` | an inert `genlInverse` declaration, or a forward rule | vaelii declares `genlInverse`, but wires it to no inference path yet (aspirational); a working inverse is a forward rule, and `(inverse P Q)` is the stronger biconditional |
+| `genlInverse` | an inert `genlInverse` declaration, or a forward rule | vaelii declares `genlInverse` as an inert predicate with no inference path; a working inverse is a forward rule, and `(inverse P Q)` is the stronger biconditional |
 | `unk` | `unknown` | negation as failure, ground-only, evaluated at level 6 and storing nothing. A conjunctive argument is joined, so its conjuncts may share a quantifier's variable, and `forall` is sugar for the nested case → [naf.md](naf.md) |
 | — | `(contradictions kb)` | no Cyc equivalent: the pairs that coexist, ordered by content |
 | `assertedMoreSpecifically` | — | no equivalent. Specificity is behavioral: a stated specific claim undercuts an inherited general one, so nothing is derived to arbitrate → [inherit.md](inherit.md) |
@@ -98,9 +98,9 @@ with its own handle rather than an absence:
 (v/assert-rule kb ['(dislikes ?x ?y)] '(not (likes ?x ?y))    'CxSomeContext)
 ```
 
-`(inverse P Q)` is the inverse that actually chains. vaelii now declares an inert
-`genlInverse` too, but the declaration carries no inference path yet, so a working
-one-directional inverse is still a forward rule. `(inverse P Q)` is stronger than that
+`(inverse P Q)` is the inverse that actually chains. vaelii declares an inert
+`genlInverse` too, and the declaration carries no inference path, so a working
+one-directional inverse is a forward rule. `(inverse P Q)` is stronger than that
 forward rule in three ways: it is stored under an unordered key so one declaration installs
 both directions, a predicate may declare **several** partners and all are live, and a
 partner declared on a sub-predicate answers the super-predicate's goal.
@@ -217,15 +217,16 @@ and believed or not.
 | in Cyc | here |
 |---|---|
 | assert a rule | `(v/assert-rule kb [antecedents] consequent context opts)` |
-| `forwardRule` | `set/forwardRule` / `{:direction :forward}` — here that forward-chains **and** answers backward goals (Cyc's forward-only is `set/forwardOnlyRule`, a tests-only mode) |
+| `forwardRule` | `set/forwardRule` / `{:direction :forward}` — here that forward-chains **and** answers backward goals (Cyc's forward-only is `set/forwardOnlyRule`) |
 | `backwardRule` — the default | bare `(implies …)`, or `set/backwardRule` / `{:direction :backward}` |
 | `:code` direction | `{:direction :inert}`, or `set/inertRule` — believed and indexed, fires neither way |
 | rule variables | `?x` |
 | range restriction | enforced: every consequent variable appears in an antecedent, the one exception being a marked head existential |
 
-Three refusals to expect. A literal whose functor is a **variable** is `:not-indexable`,
-in an antecedent or a consequent and whether or not something binds it — the index is
-keyed by predicate, so there is nothing to key on. A consequent variable appearing in no
+Three refusals to expect. A rule antecedent whose functor is a **variable** is
+`:not-indexable`, whether or not something binds it — the antecedent index is keyed by
+predicate, so there is nothing to key on. A variable functor in the consequent is legal
+and filed under a catch-all key every backward goal reads. A consequent variable appearing in no
 antecedent is `:not-range-restricted`. A cycle through negation is `:not-stratified`, and
 it is refused at assert time rather than diagnosed later.
 

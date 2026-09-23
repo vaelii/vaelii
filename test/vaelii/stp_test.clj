@@ -27,9 +27,7 @@
 ;; registering it is what turns stored constraints into a closure.
 (use-fixtures :each (tu/neutral-fresh
                      #(doto (tu/fresh)
-                        (core-context/load-into)
-                        (seed/load-context 'CxMeasure "upper")
-                        (seed/load-context 'CxTime "upper")
+                        (tu/load-core-with! '[[CxMeasure "upper"] [CxTime "upper"]])
                         (v/add-prover (stp/stp-prover)))))
 
 (def ^:private C 'CxUniverse)

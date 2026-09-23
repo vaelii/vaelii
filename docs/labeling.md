@@ -251,7 +251,7 @@ forced from arbitrary — which is precisely the thing enumeration buys.
 ## Reading brave/cautious without committing: `(bravely S)` / `(cautiously S)`
 
 `do/labeling` commits — it re-asserts the kept side at `:monotonic` and defeats the loser
-everywhere, taking `contradictions` from 1 to 0. That is right for making a choice, but it
+at `Ctx` and below, while the base still reports the dilemma in `contradictions`. That is right for making a choice, but it
 is the wrong tool for merely *asking* which beliefs are forced and which are arbitrary,
 because asking would destroy the dilemma it asks about. The `(bravely S)` / `(cautiously
 S)` prover answers that question as a read.
@@ -347,7 +347,7 @@ only adds.
 
 ## Status
 
-`labeling_test` covers this channel in 14 tests: the `do/` channel itself, the
+`labeling_test` covers this channel in 16 tests: the `do/` channel itself, the
 dilemma-to-`Program` bridge (`label/dilemma-program`), the solve-sourced labeling, and
 `label/label-dilemmas`. `label/classify-program`, `label/label-context`,
 `edge/edge-solver` and the clingo/clasp backends are `asp_label_test` /

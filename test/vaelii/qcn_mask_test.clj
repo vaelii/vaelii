@@ -102,7 +102,7 @@
                  (decode (composed compiled (encode #{a}) (encode #{b}))))
               (str "compose " a " " b)))))))
 
-(deftest ^:slow composition-agrees-with-the-algebra-on-whole-constraints
+(deftest composition-agrees-with-the-algebra-on-whole-constraints
   (doseq [[nm algebra] algebras]
     (testing (name nm)
       (let [{:keys [decode] :as compiled} (compile-algebra algebra)

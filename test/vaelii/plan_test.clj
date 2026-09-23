@@ -402,7 +402,7 @@
         (let [steps (plan/explain kb goals CxPlan)]
           (is (= [24 72 144] (map :est-prefix steps))))))))
 
-(tu/deftest-kb ^:slow the-join-estimate-stays-bounded-when-the-assumption-is-false
+(tu/deftest-kb the-join-estimate-stays-bounded-when-the-assumption-is-false
   ;; Independence is assumed and is false, so the interesting reading is not whether
   ;; the model is wrong — it is — but whether the error *compounds* with depth.  This
   ;; corpus is deliberately hostile: one hub value takes three quarters of the first
@@ -644,7 +644,7 @@
                        (every? (fn [v] (= 1 (counts v))) (vars %)))
                  conjuncts))))
 
-(tu/deftest-kb ^:slow planning-changes-no-answers-over-randomized-conjunctions
+(tu/deftest-kb planning-changes-no-answers-over-randomized-conjunctions
   ;; The invariant, over shapes nobody chose: whatever the planner did to a
   ;; conjunction, the answers are the answers.  This corpus is deliberately tiny —
   ;; relations of a few facts each, which is what makes an exhaustive check cheap —

@@ -60,6 +60,7 @@
     that path — an entry point that consulted it would extend the opt-out to reads nobody granted
     it to."
   (:require [vaelii.impl.jtms :as jtms]
+            [vaelii.impl.kv :as kv]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.types.reasoning :as reasoning]))
 
@@ -101,6 +102,18 @@
   variable-functor pattern."
   [index pred pos-terms]
   (p/sentexes-with-args index pred pos-terms))
+
+(defn as-stored-predicates-at-arg
+  "The predicates holding a **stored** fact, either polarity, with `term` at argument `pos`
+  — the slot roster's entry, no handle read and no belief consulted — or nil for an index
+  store that keeps no roster this can reach (`kv/slot-predicates`).
+
+  A roster read rather than a posting read, so it names predicates where the other
+  entry points here name handles.  A predicate enters with its first stored fact at the
+  slot and leaves with its last, so a defeated claim keeps it listed: the answer is for a
+  caller that must over-approximate which predicates a term could be claimed under."
+  [index pos term]
+  (kv/slot-predicates index pos term))
 
 (defn as-stored-with-term
   "Handles the inverted term index keys by `term` — belief unread.

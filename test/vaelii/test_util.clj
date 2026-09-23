@@ -32,6 +32,7 @@
             [vaelii.core :as v]
             [vaelii.host.core-context :as core-context]
             [vaelii.host.llm.ollama :as ollama]
+            [vaelii.host.seed :as seed]
             [vaelii.host.starter :as starter]
             [vaelii.impl.checks :as checks]
             [vaelii.impl.config :as config]
@@ -482,7 +483,7 @@
             (cond-> (mapv #(vector % false) (:antecedents j))
               (integer? inf) (conj [inf true]))))))
 
-(def ^:private support-audited
+(def ^:private ^java.util.Map support-audited
   "The justification ids already audited, per live KB.  Weak on the KB, so a KB a test
   drops takes its entry with it; a KB outlives the tests it serves, so its baseline is
   read once rather than once per test."
@@ -568,6 +569,33 @@
   ^File [prefix]
   (.toFile (Files/createTempDirectory prefix (make-array FileAttribute 0))))
 
+(defn- build-dump
+  "Build a KB on `space` with `load`, export it into a new directory named from `prefix`,
+  and answer that directory's path.
+
+  The export is the `:records+index` variant with its reasoning image, so `import!`
+  restores the records, the justifications and the premise marks, replays the index
+  entries and installs the image.  The entries and the image are each a cache checked
+  against the records they land beside — the index rebuilt, belief recovered, when they
+  do not describe them — so an import produces what `load` produces.  Replaying the index
+  rather than rebuilding it takes a warm starter import from 135 ms to 94 ms, and a CxCore
+  one from 57 ms to 44 ms.
+
+  The space is cleared first, for `fresh`'s reason: it is opened `:recover? false` over
+  databases a previous run may have populated, and a write into a KB whose belief was
+  never built is refused (`:type :unrecovered-kb`).  The directory is deleted on JVM exit,
+  deepest entry first, since `deleteOnExit` runs its queue in reverse insertion order and
+  will not remove a directory holding files."
+  [prefix space load]
+  (let [dir (temp-dump-dir prefix)
+        kb  (doto (v/open-kb space) (clear-kb!))]
+    (load kb)
+    (v/export! kb (.getPath dir) {:variant :records+index})
+    (clear-kb! kb)
+    (.deleteOnExit dir)
+    (run! #(.deleteOnExit ^File %) (file-seq dir))
+    (.getPath dir)))
+
 (def ^:private starter-dump
   "An export dump of the starter ontology, built **once per JVM** and read back by
   `load-starter!`.
@@ -577,29 +605,12 @@
   edges: each one sweeps the facts its widened ancestor set newly exposes and re-derives
   the functional equalities over them (`special/equate-under-context-edge`), which for
   one edge over the loaded starter is 145 ms and ~5,100 index queries.  Measured on this
-  tree: `load-into` 3,144 ms, `export!` 76 ms for an 89 KB dump, `import!` 267 ms.
+  tree: `load-into` 2,980 ms, `export!` 181 ms, `import!` 94 ms warm.
 
-  A dump is a copy of the KB rather than a shortcut past building one: `import!` restores
-  the records, the justifications and the premise marks, rebuilds the index, and installs
-  the reasoning image `export!` wrote (recovering belief when the image does not describe the
-  records it landed), so what it produces is what `load-into` produces.
+  A dump is a copy of the KB rather than a shortcut past building one (`build-dump`).
   `starter_copy_test` pins that — same sentences, same contexts, same truth, same
-  strength, same belief.
-
-  The directory is deleted on JVM exit, deepest entry first, since `deleteOnExit` runs
-  its queue in reverse insertion order and will not remove a directory holding files."
-  (delay
-    (let [dir (temp-dump-dir "vaelii-starter-")
-          ;; cleared first, for `fresh`'s reason: the space is opened `:recover? false`
-          ;; over databases a previous run may have populated, and a write into a KB whose
-          ;; belief was never built is refused (`:type :unrecovered-kb`)
-          kb  (doto (v/open-kb starter-build-space) (clear-kb!))]
-      (starter/load-into kb)
-      (v/export! kb (.getPath dir))
-      (clear-kb! kb)
-      (.deleteOnExit dir)
-      (run! #(.deleteOnExit ^File %) (file-seq dir))
-      (.getPath dir))))
+  strength, same belief."
+  (delay (build-dump "vaelii-starter-" starter-build-space starter/load-into)))
 
 (defn load-starter!
   "Load the starter ontology into `kb` and return `kb` — `starter/load-into`'s result,
@@ -634,23 +645,10 @@
 
   `core-context/load-into` re-asserts the whole `CxCore.txt` through the full write path,
   and the `neutral-fresh` fixtures rebuild a fresh core KB per test, so that cost is paid
-  once for every such test.  A restored dump reaches the same state: `import!` restores
-  the records, the justifications and the premise marks, rebuilds the index, and installs
-  the reasoning image `export!` wrote (recovering belief when the image does not describe the
-  records it landed), so what it produces is what `load-into` produces — `core_copy_test`
-  pins that, the genlCx edge `load-into` wires first included, because belief does not
-  depend on the order the records were written.
-
-  The directory is deleted on JVM exit, deepest entry first, as `starter-dump`'s is."
-  (delay
-    (let [dir (temp-dump-dir "vaelii-core-")
-          kb  (doto (v/open-kb core-build-space) (clear-kb!))]
-      (core-context/load-into kb)
-      (v/export! kb (.getPath dir))
-      (clear-kb! kb)
-      (.deleteOnExit dir)
-      (run! #(.deleteOnExit ^File %) (file-seq dir))
-      (.getPath dir))))
+  once for every such test.  A restored dump reaches the same state (`build-dump`) —
+  `core_copy_test` pins that, the genlCx edge `load-into` wires first included, because
+  belief does not depend on the order the records were written."
+  (delay (build-dump "vaelii-core-" core-build-space core-context/load-into)))
 
 (defn load-core!
   "Load the CxCore vocabulary into `kb` and return `kb` — `core-context/load-into`'s
@@ -663,6 +661,54 @@
   [kb]
   (v/import! kb @core-context-dump {:belief? true})
   kb)
+
+;; ---- any fixture KB, built once per key and copied ---------------------
+
+(def ^:private keyed-dumps
+  "`load-dumped!`'s dumps, one delay per key, each built on its own space the first time
+  a fixture asks for it."
+  (atom {}))
+
+(defn load-dumped!
+  "Load into `kb` the KB `build` makes of an empty one, and return `kb` — restored from a
+  dump built once per JVM for `key` rather than rebuilt, as `load-core!` does for CxCore.
+
+    (defn- channel-kb []
+      (tu/load-dumped! (tu/fresh) ::channel-kb
+                       #(doto % (core-context/load-into) (sa/load-speech-acts))))
+
+  `key` names what `build` makes, so two fixtures building different KBs must pass two
+  keys; a namespaced keyword keeps them apart.  `build` may only assert: a dump carries
+  the records, the index and belief, and nothing else the KB holds.  A prover is added
+  after the restore, since provers are not KB content."
+  [kb key build]
+  (let [space {:backend :memory :space [::dump key block-top]
+               :recover? false :tms tms-kind}
+        dump  (get (swap! keyed-dumps update key
+                          #(or % (delay (build-dump "vaelii-fixture-" space build))))
+                   key)]
+    (v/import! kb @dump {:belief? true})
+    kb))
+
+(defn load-core-with!
+  "Load CxCore and then the theory files `theories` names into `kb`, and return `kb` —
+  `core-context/load-into` followed by `seed/load-context` over each `[context dir]`
+  pair in order, restored through `load-dumped!`, one dump per distinct `theories`.
+
+    (use-fixtures :each (tu/neutral-fresh
+                         #(doto (tu/fresh)
+                            (tu/load-core-with! '[[CxSpace \"upper\"] [CxTime \"upper\"]])
+                            (v/add-prover (space/spatial-prover)))))
+
+  A per-test fixture asserting CxCore and two `kb/upper` files cost 600-1,200 ms a test;
+  the restore costs what `load-core!`'s does, plus the theories' records.  A test about
+  loading a theory file calls `seed/load-context` directly."
+  [kb theories]
+  (let [theories (vec theories)]
+    (load-dumped! kb [::theories theories]
+                  (fn [kb]
+                    (core-context/load-into kb)
+                    (doseq [[context dir] theories] (seed/load-context kb context dir))))))
 
 (defn isolated-fresh
   "An empty, cleared KB on the isolated space.  See `isolated-test-kb`."

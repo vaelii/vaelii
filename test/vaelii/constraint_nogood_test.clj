@@ -105,15 +105,300 @@
           (is (= 1 (count (v/contradictions kb)))))))))
 
 (tu/deftest-kb arbitration-never-admits-a-clash-with-known-true-content
-  ;; the one thing the var does not buy: admitting what the KB can never believe
+  ;; the one thing the var does not buy: admitting what the KB can never believe.
+  ;; **Never** is two readings, and both have to hold: the membership it opposes is
+  ;; known-true, *and* so is the separation that makes the two a pair.  A separation the
+  ;; KB can be told otherwise about is one the sentence outlives, so the declaration is
+  ;; known-true here — which is what the shipped upper ontology says of its own
+  ;; (`resources/kb/upper/`, `(set/monotonic (disjoint …))`).
+  (binding [checks/*arbitrate-constraints?* true]
+    (tu/with-kb [kb]
+      (tu/with-terms [dog_t cat_t Muffet]
+        (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
+        (v/assert kb (list dog_t Muffet) 'CxUniverse {:strength :monotonic})
+        (is (thrown? clojure.lang.ExceptionInfo
+                     (v/assert kb (list cat_t Muffet) 'CxUniverse)))
+        (is (nil? (v/handle-of kb (list cat_t Muffet) 'CxUniverse)))))))
+
+(tu/deftest-kb arbitration-admits-a-known-true-clash-whose-separation-is-defeasible
+  ;; ...and the other half of that reading, which is what makes the refusal a function of
+  ;; the KB rather than of the write.  Same known-true membership, same incoming
+  ;; sentence; the only difference is that the separation is a `:default` claim, so a
+  ;; later `(not (disjoint …))` retires the pair and the sentence a refusal would have
+  ;; thrown away is one the KB goes on to believe.  Admitted and weighed instead, where
+  ;; the arbitration can reach it.
   (binding [checks/*arbitrate-constraints?* true]
     (tu/with-kb [kb]
       (tu/with-terms [dog_t cat_t Muffet]
         (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse)
         (v/assert kb (list dog_t Muffet) 'CxUniverse {:strength :monotonic})
-        (is (thrown? clojure.lang.ExceptionInfo
-                     (v/assert kb (list cat_t Muffet) 'CxUniverse)))
-        (is (nil? (v/handle-of kb (list cat_t Muffet) 'CxUniverse)))))))
+        (is (v/assert kb (list cat_t Muffet) 'CxUniverse))
+        (testing "and the known-true side is the one belief keeps"
+          (is (v/ask? kb (list dog_t Muffet) 'CxUniverse))
+          (is (not (v/ask? kb (list cat_t Muffet) 'CxUniverse))))
+        ;; What a *decided* verdict does when the separation is withdrawn afterwards is
+        ;; the section below.
+        ))))
+
+(tu/deftest-kb the-functional-arm-reads-its-declaration-the-same-way
+  ;; The second policy-gated kind, and the same reading one relation over: what makes two
+  ;; fillers a clash is `(functional P)`, so a `:default` declaration is one a denial
+  ;; retires and the second filler is admitted and weighed rather than thrown away.
+  ;; Numbers, because two *symbols* under a functional predicate are co-reference and the
+  ;; KB derives an equality instead (docs/equality.md).
+  (binding [checks/*arbitrate-constraints?* true]
+    (testing "a defeasible functionality admits the second filler"
+      (tu/with-kb [kb]
+        (tu/with-terms [ageOfx Aa]
+          (v/assert kb (list 'binary_predicate ageOfx) 'CxUniverse)
+          (v/assert kb (list 'functional ageOfx) 'CxUniverse)
+          (v/assert kb (list ageOfx Aa 3) 'CxUniverse {:strength :monotonic})
+          (is (v/assert kb (list ageOfx Aa 4) 'CxUniverse))
+          (is (v/ask? kb (list ageOfx Aa 3) 'CxUniverse))
+          (is (not (v/ask? kb (list ageOfx Aa 4) 'CxUniverse))))))
+    (testing "and a known-true one still refuses it"
+      (tu/with-kb [kb]
+        (tu/with-terms [ageOfy Ab]
+          (v/assert kb (list 'binary_predicate ageOfy) 'CxUniverse)
+          (v/assert kb (list 'functional ageOfy) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list ageOfy Ab 3) 'CxUniverse {:strength :monotonic})
+          (is (thrown? clojure.lang.ExceptionInfo
+                       (v/assert kb (list ageOfy Ab 4) 'CxUniverse)))
+          (is (nil? (v/handle-of kb (list ageOfy Ab 4) 'CxUniverse))))))))
+
+(tu/deftest-kb the-metatype-arm-reads-every-ingredient-and-not-only-the-mark
+  ;; Three sentexes make a metatype separation — the mark on the collection, and each
+  ;; type's membership of it — and every one of them has to hold for the two types to be
+  ;; a pair.  So the weakest decides: a known-true mark over a membership the KB can be
+  ;; told otherwise about is a separation a denial of that membership retires, and the
+  ;; clash is weighed rather than refused.
+  (binding [checks/*arbitrate-constraints?* true]
+    (testing "a defeasible membership of the collection admits the clash"
+      (tu/with-kb [kb]
+        (tu/with-terms [species dog_t cat_t Muffet]
+          (v/assert kb (list 'disjoint_metatype species) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list species dog_t) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list species cat_t) 'CxUniverse)
+          (v/assert kb (list dog_t Muffet) 'CxUniverse {:strength :monotonic})
+          (is (v/assert kb (list cat_t Muffet) 'CxUniverse))
+          (is (v/ask? kb (list dog_t Muffet) 'CxUniverse))
+          (is (not (v/ask? kb (list cat_t Muffet) 'CxUniverse))))))
+    (testing "and all three known-true refuses it"
+      (tu/with-kb [kb]
+        (tu/with-terms [species dog_t cat_t Muffet]
+          (v/assert kb (list 'disjoint_metatype species) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list species dog_t) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list species cat_t) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list dog_t Muffet) 'CxUniverse {:strength :monotonic})
+          (is (thrown? clojure.lang.ExceptionInfo
+                       (v/assert kb (list cat_t Muffet) 'CxUniverse)))
+          (is (nil? (v/handle-of kb (list cat_t Muffet) 'CxUniverse))))))))
+
+(tu/deftest-kb the-sibling-arm-reads-the-steps-down-to-the-marked-parent
+  ;; `(sibling_disjoint Root)` separates Root's specializations, so what makes each side
+  ;; one of them is an ingredient of the derivation and not a premise of it.  A `:default`
+  ;; `genl` edge into the clique is a step a denial takes away, after which the two types
+  ;; are not siblings under that mark at all.
+  (binding [checks/*arbitrate-constraints?* true]
+    (testing "a defeasible step into the clique admits the clash"
+      (tu/with-kb [kb]
+        (tu/with-terms [root_t dog_t cat_t Muffet]
+          (v/assert kb (list 'sibling_disjoint root_t) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list 'genl dog_t root_t) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list 'genl cat_t root_t) 'CxUniverse)
+          (v/assert kb (list dog_t Muffet) 'CxUniverse {:strength :monotonic})
+          (is (v/assert kb (list cat_t Muffet) 'CxUniverse))
+          (is (v/ask? kb (list dog_t Muffet) 'CxUniverse))
+          (is (not (v/ask? kb (list cat_t Muffet) 'CxUniverse))))))
+    (testing "and a clique every step of which is known-true refuses it"
+      (tu/with-kb [kb]
+        (tu/with-terms [root_t dog_t cat_t Muffet]
+          (v/assert kb (list 'sibling_disjoint root_t) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list 'genl dog_t root_t) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list 'genl cat_t root_t) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list dog_t Muffet) 'CxUniverse {:strength :monotonic})
+          (is (thrown? clojure.lang.ExceptionInfo
+                       (v/assert kb (list cat_t Muffet) 'CxUniverse)))
+          (is (nil? (v/handle-of kb (list cat_t Muffet) 'CxUniverse))))))))
+
+(tu/deftest-kb the-cover-arm-reads-the-declaration-that-separates-the-parts
+  ;; `(partition Whole P1 P2)` separates its parts and writes the `genl` edges they rest
+  ;; on, so one declaration is the whole derivation and its own class is the answer.
+  (binding [checks/*arbitrate-constraints?* true]
+    (testing "a defeasible partition admits the clash"
+      (tu/with-kb [kb]
+        (tu/with-terms [animal_t dog_t cat_t Muffet]
+          (v/assert kb (list 'partition animal_t dog_t cat_t) 'CxUniverse)
+          (v/assert kb (list dog_t Muffet) 'CxUniverse {:strength :monotonic})
+          (is (v/assert kb (list cat_t Muffet) 'CxUniverse))
+          (is (v/ask? kb (list dog_t Muffet) 'CxUniverse))
+          (is (not (v/ask? kb (list cat_t Muffet) 'CxUniverse))))))
+    (testing "and a known-true one refuses it"
+      (tu/with-kb [kb]
+        (tu/with-terms [animal_t dog_t cat_t Muffet]
+          (v/assert kb (list 'partition animal_t dog_t cat_t) 'CxUniverse
+                    {:strength :monotonic})
+          (v/assert kb (list dog_t Muffet) 'CxUniverse {:strength :monotonic})
+          (is (thrown? clojure.lang.ExceptionInfo
+                       (v/assert kb (list cat_t Muffet) 'CxUniverse)))
+          (is (nil? (v/handle-of kb (list cat_t Muffet) 'CxUniverse))))))))
+
+(tu/deftest-kb the-functional-mark-is-read-in-either-spelling-and-down-the-hierarchy
+  ;; `(functional P)` speaks at argument 2 and `(functionalInArg P 2)` at the position it
+  ;; names; either carries the constraint alone, so the mark holds as strongly as its
+  ;; better spelling.  And a mark written of a general predicate reaches a specific one
+  ;; over `genl` edges, which are ingredients like any other: a defeasible descent is a
+  ;; descent a denial takes away.
+  (binding [checks/*arbitrate-constraints?* true]
+    (testing "a defeasible spelling beside a known-true one still refuses"
+      (tu/with-kb [kb]
+        (tu/with-terms [ageOfp Ac]
+          (v/assert kb (list 'binary_predicate ageOfp) 'CxUniverse)
+          (v/assert kb (list 'functional ageOfp) 'CxUniverse)
+          (v/assert kb (list 'functionalInArg ageOfp 2) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list ageOfp Ac 3) 'CxUniverse {:strength :monotonic})
+          (is (thrown? clojure.lang.ExceptionInfo
+                       (v/assert kb (list ageOfp Ac 4) 'CxUniverse))))))
+    (testing "a defeasible descent to the predicate the sentence names admits the clash"
+      (tu/with-kb [kb]
+        (tu/with-terms [measureOfq ageOfq Ad]
+          (v/assert kb (list 'binary_predicate measureOfq) 'CxUniverse)
+          (v/assert kb (list 'binary_predicate ageOfq) 'CxUniverse)
+          (v/assert kb (list 'functional measureOfq) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list 'genl ageOfq measureOfq) 'CxUniverse)
+          (v/assert kb (list ageOfq Ad 3) 'CxUniverse {:strength :monotonic})
+          (is (v/assert kb (list ageOfq Ad 4) 'CxUniverse))
+          (is (v/ask? kb (list ageOfq Ad 3) 'CxUniverse))
+          (is (not (v/ask? kb (list ageOfq Ad 4) 'CxUniverse))))))
+    (testing "and a known-true descent refuses it"
+      (tu/with-kb [kb]
+        (tu/with-terms [measureOfr ageOfr Ae]
+          (v/assert kb (list 'binary_predicate measureOfr) 'CxUniverse)
+          (v/assert kb (list 'binary_predicate ageOfr) 'CxUniverse)
+          (v/assert kb (list 'functional measureOfr) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list 'genl ageOfr measureOfr) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list ageOfr Ae 3) 'CxUniverse {:strength :monotonic})
+          (is (thrown? clojure.lang.ExceptionInfo
+                       (v/assert kb (list ageOfr Ae 4) 'CxUniverse))))))))
+
+(tu/deftest-kb the-grounds-read-takes-the-strongest-route-and-not-the-first
+  ;; The grounds of a separation are a `genl` walk up from each side, and a type with two
+  ;; parents has two routes to the same supertype.  `reach-strength` names the
+  ;; *widest-bottleneck* route — the one whose weakest edge is strongest — so a defeasible
+  ;; route beside a known-true one costs the refusal nothing, and only a defeasible step
+  ;; every route passes through makes the derivation defeasible.
+  ;;
+  ;; The read that stops at the first route it finds gets the middle case wrong, and the
+  ;; read that enumerates the routes instead of walking the adjacency gets it right and
+  ;; pays a path per answer (`bench/vaelii/bench/perf.clj`,
+  ;; `refusal-grounds-reading`).
+  (binding [checks/*arbitrate-constraints?* true]
+    (let [ladder (fn [kb [bot mid1 mid2 top other_t otop_t X] up1 up2]
+                   (v/assert kb (list 'genl bot mid1) 'CxUniverse {:strength :monotonic})
+                   (v/assert kb (list 'genl bot mid2) 'CxUniverse {:strength :monotonic})
+                   (v/assert kb (list 'genl mid1 top) 'CxUniverse {:strength up1})
+                   (v/assert kb (list 'genl mid2 top) 'CxUniverse {:strength up2})
+                   (v/assert kb (list 'genl other_t otop_t) 'CxUniverse {:strength :monotonic})
+                   (v/assert kb (list 'disjoint top otop_t) 'CxUniverse {:strength :monotonic})
+                   (v/assert kb (list other_t X) 'CxUniverse {:strength :monotonic}))]
+      (testing "every route known-true refuses the arriving membership"
+        (tu/with-kb [kb]
+          (tu/with-terms [bot_t mid1_t mid2_t top_t other_t otop_t Xa]
+            (ladder kb [bot_t mid1_t mid2_t top_t other_t otop_t Xa] :monotonic :monotonic)
+            (is (thrown? clojure.lang.ExceptionInfo
+                         (v/assert kb (list bot_t Xa) 'CxUniverse)))
+            (is (nil? (v/handle-of kb (list bot_t Xa) 'CxUniverse))))))
+      ;; both arrangements, since which of the two parents a shortest-path walk would
+      ;; reach first is a function of their minted names and not of the test
+      (doseq [[up1 up2] [[:default :monotonic] [:monotonic :default]]]
+        (testing (str "one defeasible route beside a known-true one refuses it too, "
+                      up1 " then " up2)
+          (tu/with-kb [kb]
+            (tu/with-terms [bot_t mid1_t mid2_t top_t other_t otop_t Xb]
+              (ladder kb [bot_t mid1_t mid2_t top_t other_t otop_t Xb] up1 up2)
+              (is (thrown? clojure.lang.ExceptionInfo
+                           (v/assert kb (list bot_t Xb) 'CxUniverse)))
+              (is (nil? (v/handle-of kb (list bot_t Xb) 'CxUniverse)))))))
+      (testing "and only a defeasible step on every route admits it"
+        (tu/with-kb [kb]
+          (tu/with-terms [bot_t mid1_t mid2_t top_t other_t otop_t Xc]
+            (ladder kb [bot_t mid1_t mid2_t top_t other_t otop_t Xc] :default :default)
+            (is (v/assert kb (list bot_t Xc) 'CxUniverse))
+            (is (v/ask? kb (list other_t Xc) 'CxUniverse))
+            (is (not (v/ask? kb (list bot_t Xc) 'CxUniverse)))))))))
+
+;;; ── a verdict lives as long as its grounds ────────────────────────────
+
+(tu/deftest-kb defeating-the-separation-revives-the-loser-decided-or-not
+  ;; A separation losing to a known-true denial does not lose *to* the pair it separated:
+  ;; it retires that pair.  `clear-defeats!` re-believes the declaration at the top of
+  ;; every settle, so a verdict taken in the same round as the declaration's own defeat is
+  ;; re-taken on a declaration that settle goes on to disbelieve — standing for as long as
+  ;; both records do, with `disjoint?` answering false and `why-not` naming nothing.
+  (binding [checks/*arbitrate-constraints?* true]
+    (doseq [dog-strength [:monotonic :default]]
+      (testing (str "with the pair " (if (= :monotonic dog-strength) "decided" "a dilemma"))
+        (tu/with-kb [kb]
+          (tu/with-terms [dog_t cat_t Muffet]
+            (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse)
+            (v/assert kb (list cat_t Muffet) 'CxUniverse)
+            (v/assert kb (list dog_t Muffet) 'CxUniverse {:strength dog-strength})
+            (v/assert kb (list 'not (list 'disjoint dog_t cat_t)) 'CxUniverse
+                      {:strength :monotonic})
+            (is (not (v/disjoint? kb dog_t cat_t)))
+            (is (v/ask? kb (list dog_t Muffet) 'CxUniverse))
+            (is (v/ask? kb (list cat_t Muffet) 'CxUniverse)
+                "the loser comes back with the separation that convicted it")
+            (is (empty? (v/contradictions kb)))
+            (is (:believed? (v/why-not kb (list cat_t Muffet) 'CxUniverse))
+                "and nothing is left defeated by a pair no reader can name")))))))
+
+(tu/deftest-kb defeating-the-edge-a-separation-is-read-over-revives-the-loser
+  ;; The same reading one relation over, and the arm `scoped_defeat_test` covers only at a
+  ;; vantage below the edge: an edge denied in the edge's own context is a global defeat,
+  ;; so it is not the scoped kind the resolution already takes first.
+  (binding [checks/*arbitrate-constraints?* true]
+    (tu/with-kb [kb]
+      (tu/with-terms [chi_t dog_t cat_t Kit]
+        (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
+        (v/assert kb (list 'genl chi_t dog_t) 'CxUniverse)
+        (v/assert kb (list chi_t Kit) 'CxUniverse)
+        (v/assert kb (list cat_t Kit) 'CxUniverse {:strength :monotonic})
+        (is (not (v/ask? kb (list chi_t Kit) 'CxUniverse)) "decided against the membership")
+        (v/assert kb (list 'not (list 'genl chi_t dog_t)) 'CxUniverse {:strength :monotonic})
+        (is (not (v/disjoint? kb chi_t cat_t)))
+        (is (v/ask? kb (list chi_t Kit) 'CxUniverse))
+        (is (v/ask? kb (list cat_t Kit) 'CxUniverse))))))
+
+(tu/deftest-kb defeating-a-functionality-revives-the-filler-it-convicted
+  ;; The second policy-gated kind, whose mark is withdrawn the same way.
+  (binding [checks/*arbitrate-constraints?* true]
+    (tu/with-kb [kb]
+      (tu/with-terms [ageOfs Af]
+        (v/assert kb (list 'binary_predicate ageOfs) 'CxUniverse)
+        (v/assert kb (list 'functional ageOfs) 'CxUniverse)
+        (v/assert kb (list ageOfs Af 3) 'CxUniverse {:strength :monotonic})
+        (v/assert kb (list ageOfs Af 4) 'CxUniverse)
+        (is (not (v/ask? kb (list ageOfs Af 4) 'CxUniverse)))
+        (v/assert kb (list 'not (list 'functional ageOfs)) 'CxUniverse {:strength :monotonic})
+        (is (v/ask? kb (list ageOfs Af 3) 'CxUniverse))
+        (is (v/ask? kb (list ageOfs Af 4) 'CxUniverse))))))
+
+(tu/deftest-kb retracting-the-separation-revives-the-loser-as-it-always-did
+  ;; The path that already worked, and the reason the denial did not: a retraction drops
+  ;; the flat-cache entry before any settle runs, so the discovery never sees the pair.
+  ;; It is here so a change to the denial half cannot quietly cost the retraction half.
+  (binding [checks/*arbitrate-constraints?* true]
+    (tu/with-kb [kb]
+      (tu/with-terms [dog_t cat_t Muffet]
+        (let [d (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse)]
+          (v/assert kb (list cat_t Muffet) 'CxUniverse)
+          (v/assert kb (list dog_t Muffet) 'CxUniverse {:strength :monotonic})
+          (is (not (v/ask? kb (list cat_t Muffet) 'CxUniverse)))
+          (v/retract! kb d)
+          (is (not (v/disjoint? kb dog_t cat_t)))
+          (is (v/ask? kb (list cat_t Muffet) 'CxUniverse))
+          (is (v/ask? kb (list dog_t Muffet) 'CxUniverse)))))))
 
 ;;; ── what stays a refusal ──────────────────────────────────────────────
 

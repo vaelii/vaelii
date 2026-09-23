@@ -10,17 +10,16 @@
 
 ## Relation-wide declarations and the runtime boundary
 
-`arg` (including `arg1` / `arg2` / `arg3`), `genlArg`, `quotedArg`, `interArg`, and the
-covering forms `args` / `argsGenl` / `argAndRest` / `argAndRestGenl` (below)
-accept a `relation` as their subject: either a predicate or a function. Accepting and
-storing a function's declaration does **not** yet guarantee recursive enforcement of
-its input constraints inside a nested function application. The current checks read
-the asserted sentence's argument declarations. For `arg` / `genlArg`, a function
+`arg` (including `arg1` / `arg2` / `arg3`), `genlArg`, `quotedArg`, `interArg`, the
+covering forms `args` / `argsGenl` / `argAndRest` / `argAndRestGenl` (below), and the
+homogeneity forms `interArgs` / `interArgAndRest` (below) accept a `relation` as their
+subject: either a predicate or a function. Accepting and storing a function's declaration
+does **not** enforce its input constraints recursively inside a nested function
+application. The checks read the asserted sentence's argument declarations. For `arg` / `genlArg`, a function
 application filling a constrained slot is checked through its `result` / `genlResult`,
 not by recursively checking every input against that function's declarations.
 `quotedArg` instead exempts compound arguments from its value-kind check.
-Recursive function-input enforcement is follow-up runtime work, not supplied by the
-vocabulary generalization.
+No check enforces a function's input declarations recursively.
 
 ### A unary predicate declares a position only when its `genl` parent does not imply it
 
@@ -240,7 +239,7 @@ The **check computes it; the post-store slot materializes it.**
 |---|---|
 | `checks/constraint-entailments` | reads the declarations, returns `{:assert :because :position :kind}` maps — **writes nothing** |
 | `checks/entailment-check` | walks the cascade of prospective mints at the entry point and refuses the first the KB could not admit — **writes nothing** |
-| `special/deduce-arg-types` | materializes them, beside `deduce-lifts`, in `core/assert-one` and `chain/place-conclusion` |
+| `special/deduce-arg-types` | materializes them, beside `deduce-lifts`, in `assert-entry/assert-one` and `chain/place-conclusion` |
 | `special/entail-existing` | the retroactive direction: a declaration arriving over facts already stored |
 
 Not because a check may not cause a write — `special/deduce-lifts` is a check-shaped
@@ -314,6 +313,14 @@ there is no second sentex to weigh and no pair to arbitrate ([taxonomy.md](taxon
 different orders can therefore hold different **facts** and must hold the same
 **entailments**.
 
+**A declared type the hierarchy does not hold yet mints nothing, and then everything.**
+`mintable-type?` asks whether the type reaches `thing`, and it reads the hierarchy as it
+stands, so a declaration and its facts stored before that edge minted nothing. The
+declaration is kept in the refusal record, and the settle that sees a `genl` generation
+move re-asks it; once the type is mintable, `entail-existing` runs for it again and mints
+over every fact stored meanwhile ([exceptions.md](exceptions.md), "A refused firing is
+remembered as bindings").
+
 `entail-existing` puts each stored sentex back through `constraint-entailments` in its
 *own* context and narrows the answers to the arriving declaration, rather than
 re-deciding the conditions. The two directions must agree about what a declaration
@@ -369,13 +376,58 @@ never materializes a supertype membership for *matching* is a different question
 matching fans the functor over the spec closure and needs no record. Here the declaration
 makes the claim, and being a record is the whole of what this adds.
 
+### Pruning what the KB says more specifically — `VAELII_PRUNE_SUBSUMED_MINTS`, off
+
+One narrowing is **not** of that kind, and the engine offers it as an opt-in: a mint the
+KB already holds more specifically. While `(dog Muffet)` is believed, the minted
+`(animal Muffet)` beside it is the same claim one step vaguer, and with
+`VAELII_PRUNE_SUBSUMED_MINTS=1` it is not stored. What makes this admissible where the
+narrowings above are not is that it reads **current belief**, not arrival: while the
+specific membership is believed there is no record, and when it stops being believed the
+mint is drawn. Three sentences in any of their six orders leave the same KB, which is
+what `every-arrival-order-prunes-the-same-way` asks.
+
+Both arrival orders reach that state, and neither remembers how it got there:
+
+* the specific membership **first** — `special/entail-arg-type` finds it
+  (`checks/subsumed-mint`) and writes no record, keeping the withheld sentence in the
+  refusal record under each antecedent that entails it (docs/exceptions.md);
+* the specific membership **last** — the mint is already stored, so `settle` blocks its
+  justifications (`special/subsumed-mint-blocks`) and the sweep that collects an excepted
+  conclusion collects it, with the same entry kept for the way back.
+
+The record comes back when the membership that displaced it stops being believed —
+retracted, defeated, or swept. Two conditions keep the withdrawal from eating what holds
+it up: the record has to be the entailment's own (no premise support, every justification
+an argument declaration's), and the subsuming membership must not itself rest on the mint.
+
+The KB **answers** the same either way: `isa?`, matching and the definitional checks all
+read the taxonomy, which reaches `animal` from `dog` with or without a record in between.
+Storage differs — the shipped starter holds 3,702 sentexes against 4,142, CxCore 1,256
+against 1,544 — and so does `why`, which shows the subsumption route rather than a minted
+record.
+
+**Why it is off.** Not for what it does but for what it costs: every settle that moves a
+membership has to ask what that membership displaces, and the answer is a term's records
+read and weighed. Measured at **+42%** on `distance-test`, a settle-dense qualitative
+workload (71 s to 101 s), spread evenly across the trigger, the candidate read and the
+decision. Turning it on by default wants a roster of minted handles by
+term, so the trigger is a map lookup rather than an index read; until that exists, a KB
+that wants the smaller store opts in and pays.
+
 ## The minted type is ordinary content
 
 It is a **chaining seed**: it joins `seeds` alongside `subsumption-seeds` in
 `assert-one`, so a rule with an `(animal ?x)` antecedent fires off a type the entailment
 minted *within the same assert*. Without that, the same knowledge would derive different
 things in different arrival orders — which is what this feature exists to fix, not to
-cause.
+cause. A minted `genl` edge is seeded as an asserted one is: the facts under its sub-type
+go back on the agenda through `special/minted-seeds`, which calls `subsumption-seeds`
+for each minted edge, so `(wolf Rex)` stored before `(genl wolf animal)` is minted fires
+a rule on `(animal ?x)`. That holds on `assert`, on a rule conclusion, and on the settle
+that releases a declaration whose type has just reached `thing`.
+`argtype_entail_test/a-minted-genl-edge-fires-the-rules-it-connects-in-every-order` runs
+all 120 orders.
 
 It is **checked**: `special/inadmissible` runs the same triple `place-conclusion` runs
 over a rule conclusion — naming, the definitional constraints, `wff`, and edge
@@ -425,6 +477,16 @@ With the toggle **off** an assert reads one dynamic var and stops. With it **on*
 default — and nothing to do, on/off straddles parity, which is as precise
 as this bench gets; the shared `declaration-reader` is what bought that. Where it mints,
 the run stores twice as many sentexes, so the ~1.9× is the minting, not the gate.
+
+**With `VAELII_PRUNE_SUBSUMED_MINTS=1` a settle pays one index read per membership it
+moves**, and nothing on a KB that declares no argument constraint. Three gates stand in
+front of it, and the first two read no index at all: the records the settle relabelled are
+filtered by shape (only a membership or a `genl` edge can subsume a mint) and by
+transition (a record that did not move subsumes what it subsumed before), and the
+declaration roster is the taxonomy's rather than the index's cardinality. Past them the
+term's records are read once and the network filters them, since `premise?` rejects most
+candidates for an O(1) read. With the switch off — the default — none of that runs, and
+`assert_cost_test`'s budgets are the ones the entailment alone sets.
 
 **`interArg` is read behind an O(1) gate where the other two are unconditional**, and
 the asymmetry is deliberate. `arg` is what a typed ontology is mostly made of, so its
@@ -488,6 +550,57 @@ after the fact was admitted), and it is the same open-world non-reach
 [taxonomy.md](taxonomy.md#what-each-constraint-does-in-each-arrival-order) records for the
 whole family: a retroactive pass over it would have to decide whether pre-existing silence
 about a type is a violation, which is the policy question nobody has answered.
+
+## Suffix homogeneity: `interArgs` and `interArgAndRest`
+
+`(interArgs R T)` says that when any argument of an application of `R` is a `T`, every
+argument is a `T`. `(interArgAndRest R n T)` says the same of the positions from `n` to the
+end of each application and leaves the positions before `n` unconstrained. `(interArgs R
+T)` states what `(interArgAndRest R 1 T)` states, and two forward rules in CxCore derive
+each spelling from the other, the way `arg1` and `(arg R 1 T)` derive each other.
+
+The reading is `interArg`'s with one type in both roles. The trigger is an argument in the
+suffix that the KB knows to be a `T`; the target is an argument in the suffix that the KB
+places in the hierarchy outside `T`. An application with a trigger and a target is refused
+`:inter-arg-type`, the `interArg` refusal, carrying the trigger's position and the
+target's. An application with no trigger is unconstrained, so a suffix whose arguments all
+lie outside `T` stores. An argument with no type is neither trigger nor target. A value or
+a compound is neither trigger nor target either, which is the reading `interArg` gives
+both of its positions. The forms convict as `interArg` does and do not entail: where
+`interArg` under the entailment toggle mints the target type for an untyped target, these
+mint nothing.
+
+With `(interArgs sameKindAs animal)`, `(sameKindAs Rex Fido)` and `(sameKindAs Oak Elm)`
+store and `(sameKindAs Rex Oak)` is refused once `Rex` is an animal and `Oak` a plant.
+`(interArgAndRest groupedUnder 2 animal)` refuses `(groupedUnder Farm Rex Oak)` and stores
+`(groupedUnder Rex Oak Elm)`: position 1 is below the start, so the animal there triggers
+nothing.
+
+- **One constraint, read once.** `checks/inter-args-homogeneity-problem` reads both
+  spellings through the shared declaration reader and keys each on its start, type and
+  declaring predicate, so a stated `interArgs` and its derived `interArgAndRest` twin
+  convict once, and the refusal names `interArgs` at start 1 whichever spelling was stated.
+- **Descends the predicate hierarchy**, as every argument constraint does: a declaration on
+  a super-predicate binds a sub-predicate's tuples.
+- **Answered at the stated type.** `MetaConstraintProver` answers a goal from a stored
+  declaration on the goal's predicate or on a super-predicate, with the type and the start
+  matching exactly. The type is a trigger, which reads down `genl` like `interArg`'s
+  position 3, and a target, which reads up like its position 5, so it generalizes in
+  neither direction: `(interArgs R animal)` refuses a reptile beside a plant that
+  `(interArgs R mammal)` stores, and `(interArgs R mammal)` refuses a mammal beside a
+  reptile that `(interArgs R animal)` stores.
+- **Convict-only.** Nothing is minted, so the entailment toggle does not change the
+  reading, and the check is behind the taxonomy `:props` gate the covering forms use.
+
+**Arrival order.** The declaration and both memberships stored before the application is
+the covered order, in any of their six orders; `inter_args_test` runs all six. Three
+orders are not covered. A declaration arriving after the applications convicts none of
+them, the stop-short the covering forms record. A trigger's membership arriving after
+the application is `interArg`'s documented non-reach (above). A target's membership
+arriving after the application is `arg`'s non-reach, an argument that acquires its first
+type after the fact was admitted. `entry_point_and_report_test` holds all three beside the
+family's other cells that read "nothing": the application stays stored and believed, no
+violation or pair is filed, and the identical claim one line later is refused.
 
 ## The quoted twin
 

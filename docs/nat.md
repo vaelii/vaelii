@@ -375,7 +375,7 @@ per-round orphan list are realized before the round's first retraction.
 
 **The sweep asks about the region the teardown removed, not about the KB.** A constant
 becomes an orphan only when something that referenced it goes, so the candidates are the
-constants the departing sentexes named (`constants-named-by`), and each is settled by one
+constants the departing sentexes named (`orphans-named-by`), and each is settled by one
 inverted-term-index read — `orphan?`, since a constant's uses, its map and its
 materialized types are all sentexes naming it ([indexing.md](indexing.md)). What a
 retraction costs is the size of what it removed, and a KB that has minted a hundred
@@ -384,7 +384,7 @@ thousand NATs the retraction is not about adds nothing to it.
 **A `cx/` context constant is collected at the same gate**, by the same rule with one more
 source of liveness: a context is somewhere sentexes *are* as well as something sentences
 name, so the last fact leaving its slot orphans it as surely as the last sentence dropping
-its name. `constants-named-by` reads a removed sentex's **context** beside its sentence for
+its name. `orphans-named-by` reads a removed sentex's **context** beside its sentence for
 that, and `orphan?` asks a context's extent — one O(1) `count-in-context` — before the term
 index. Its whole bookkeeping is the `termOfUnit`, the mint writing no result types for a
 place; what the structural producer **computed** off that map is not a reference to it, and
@@ -414,13 +414,19 @@ and the loop ends on the round that removes nothing.
   `correspondence-of` / `correspondence-value` / `corresponding-literal`),
   `expand-expression`, the shared reify walk in both modes, `mint-nat!`, and the
   rename / remove / correspondence maintenance — the orphan questions among it
-  (`orphan?` per constant, `orphaned-among` over a region, `orphaned-constants` over the
-  KB, `constants-named-by` / `reified-nats-in` for the candidates). Reads the store,
+  (`orphan?` per constant, `orphans-named-by` over a region, `orphaned-constants` over
+  the KB, `reified-nats-in` for the candidates) and `reconcile-nats!`, the collision
+  merge and the correspondence in the order the assert path runs them. Reads the store,
   taxonomy and belief directly, and reaches assertion through `wiring/assert-sentence`.
+- `vaelii.impl.nat-maintenance` — the sequencing the write paths run around that:
+  `reconcile-assert` once a sentence is stored (`reconcile-nats!`, then the structural
+  `genlCx` edges the fact entails and the merges those edges license) and
+  `collect-orphans!` on the `retract!` and `edit!` sweeps, which loops
+  `remove-orphaned-nats!` to a fixpoint. The teardown entry point is an argument, so the
+  engine requires nothing above it.
 - `vaelii.core` — the reify call sites: the write-path reify at the head of `assert`,
-  the read-path reify at the query entries, the post-assert maintenance hooks
-  (`merge-colliding-nats!`, `reconcile-correspondence!`), and `remove-orphaned-nats!`
-  on the `retract!` and `edit!` sweeps.
+  the read-path reify at the query entries, and one call into
+  `vaelii.impl.nat-maintenance` per maintenance site.
 - `vaelii.impl.integrate` — `*removed-sink*`, the removal choke point's record of what a
   teardown took away, which is the region the orphan sweep runs over.
 - `vaelii.impl.special` — the two function-kind prop marks, the correspondence's

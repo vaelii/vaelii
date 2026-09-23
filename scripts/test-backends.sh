@@ -75,8 +75,8 @@
 #
 # A leading-colon argument is a TEST SELECTOR, passed straight to `lein test`
 # (project.clj defines them).  `:default` — what a bare run takes — skips the
-# forty-one `^:slow` tests, the exhaustive cross-products and randomized oracles
-# that carry a hundred thousand of the suite's assertions; `:slow` is those alone;
+# thirty-four `^:slow` tests, the exhaustive cross-products and randomized oracles
+# that carry 80k of the suite's 283k assertions; `:slow` is those alone;
 # `:all` is both.  Nine backends multiply that gap by nine, which is why the
 # fast pass is the default here for the same reason it is in `lein test` — and
 # why the matrix is worth running at `:all` before a storage change lands.  A

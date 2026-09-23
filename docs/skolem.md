@@ -68,11 +68,11 @@ A single reifiable function `SkolemFn` carries all this in its arguments, so one
 `(reifiable_function SkolemFn)` declaration — asserted when the first existential-head
 rule is stored — turns the whole mechanism on, including the NAT orphan-cleanup gate.
 
-The witness *name* is arbitrary, as skolem constants are: the `nat/…` symbol is minted
-per KB, so two KBs holding the same knowledge may spell the same witness differently.
 The witness's stored *content* — the `termOfUnit` NAT — is a function of the rule's
-content and the frontier alone, so it is identical whatever order the KB was built in,
-and belief tie-breaking reads neither the symbol nor any handle.
+content and the frontier alone, and so is its *name*: the `nat/…` symbol is
+`constant-for`'s digest of that NAT ([nat.md](nat.md)). Two KBs holding the same
+knowledge spell the same witness alike, whatever order either was built in, and belief
+tie-breaking reads neither the symbol nor any handle.
 
 ## Belief-following
 

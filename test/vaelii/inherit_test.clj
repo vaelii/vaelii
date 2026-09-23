@@ -428,6 +428,30 @@
       (v/assert kb (list 'transitive begat3) 'CxUniverse)
       (is (v/ask? kb (list cursed3 A3) CxB)))))
 
+(tu/deftest-kb a-permuting-mark-is-read-from-every-context-on-this-kb-too
+  ;; The exception to the pair above.  `(symmetric R)` and the three commutativity marks
+  ;; decide the argument order a sentex is stored in, and a sentex has one key for every
+  ;; context, so the store answers the mirror of a fact from a context that cannot see the
+  ;; mark.  The engine lifts each statement of one into CxUniverse whatever the KB
+  ;; declares (`special/deduce-lifts`), so every other reader answers as the store does —
+  ;; here, with no `decontextualized_predicate` anywhere, as on a KB carrying CxCore.
+  (doseq [[kind mark] [[:symmetric #(list 'symmetric %)]
+                       [:commutative #(list 'commutative %)]
+                       [nil #(list 'commutativeInArgs % 1 2)]
+                       [nil #(list 'commutativeInArgAndRest % 1)]]]
+    (tu/with-terms [bondedTo Ann Bob CxA CxB]
+      (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxB 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'arity bondedTo 2) 'CxUniverse)
+      (v/assert kb (mark bondedTo) CxA)
+      (v/assert kb (list bondedTo Ann Bob) 'CxUniverse)
+      (doseq [reader ['CxUniverse CxA CxB]]
+        (testing (str (first (mark bondedTo)) " read from " reader)
+          (is (v/ask? kb (list bondedTo Bob Ann) reader) "the store answers the mirror")
+          (is (v/ask? kb (mark bondedTo) reader) "and the mark it answers it through holds")
+          (when kind
+            (is (v/has-prop? kb kind bondedTo reader) "and so is the property")))))))
+
 (tu/deftest-kb all-three-transitivities-compose-in-one-goal
   ;; Subsumption, preservation and visibility meet in one read: the claim is stored
   ;; under a *sub-predicate* of the goal's, about the *supertypes* of the goal's

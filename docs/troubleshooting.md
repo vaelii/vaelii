@@ -46,7 +46,8 @@ term and no idea what the KB will accept about it.  One read answers it.
 ;; {:role :predicate :arity 2
 ;;  :arg-declarations [{:kind :arg :sentence (arg parentOf 1 animal) :context CxLife} …]
 ;;  :props #{} :inverse childOf :extent-count 0 :comment ["(parentOf ?parent ?child) …"]
-;;  :genls {…} :specs {…} :disjoint {…}}
+;;  :genls {…} :specs {…} :disjoint {…}
+;;  :genls-direct {…} :specs-direct {…} :disjoint-maximal {…}}
 ```
 
 The answer is shaped by the term's **role**, so ask about a type and you get its
@@ -216,6 +217,7 @@ without storing anything, and answers with the identical problem.
 | `:arg-type` / `:arg-genl` | an `arg` / `genlArg` constraint convicted it — [argtypes.md](argtypes.md) |
 | `:arg-variable` | a **rule** variable two argument constraints demand disjoint types of — [taxonomy.md](taxonomy.md) |
 | `:disjoint` / `:functional` / `:asymmetric` | a definitional clash — [exceptions.md](exceptions.md) |
+| `:cover` | a `covering` declaration every part of which is now denied of a term the whole holds — [taxonomy.md](taxonomy.md) |
 | `:unknown-option` | an option key nothing reads, or a non-map `opts` — `:mismatch` says which. A refused `VAELII_*` or `vaelii.*` switch is named under `:switch`, and under `:property`, the older key |
 
 The one worth knowing in advance: **snake_case means arity 1.** An underscored functor
@@ -298,7 +300,7 @@ blind contexts each holding half of such a clash are not brought together.
 A mark *on* the last argument is covered, whatever the arity. At arity 1 the determinant
 is empty; above arity 2 it is composite, several positions at once — neither is a single
 argument root, so both reach an extent sweep bounded by
-`tax/*exposure-instance-budget*` rather than a posting read, and past that bound the pass
+`tax/*exposure-instance-budget*` rather than a posting read, and past that bound the settle
 files `:partner-sweep-truncated` rather than going quiet. Arity 2 is the one that *is* a
 single root and takes the same narrow path `functional` does.
 
@@ -522,6 +524,7 @@ so one vocabulary reads both.
 | `:choice-head-not-positive` | an `assumptionRule` head is negated, and a choice head must be a positive literal | [solving.md](solving.md) |
 | `:compaction-failed` | a record or index log compaction failed after its commit point — the store refuses writes until it is reopened | [storage.md](storage.md) |
 | `:context-escape` | a proposed sentence is an `ist`, so it would file itself somewhere other than the context the caller named | [llm.md](llm.md) |
+| `:cover` | a coverage claim refuted: a term holds the whole and every named part is explicitly denied of it — see [`assert` refused it](#assert-refused-it) | [taxonomy.md](taxonomy.md) |
 | `:cross-origin` | the daemon refused a request whose `Origin` names another site | [operations.md](operations.md) |
 | `:daemon-error` | the daemon refused and its reply carried no `:type` of its own — the client's fallback | [operations.md](operations.md) |
 | `:damaged-dictionary` | a tokenized frame cites a token id the dictionary has no entry for | [storage.md](storage.md) |
@@ -538,7 +541,7 @@ so one vocabulary reads both.
 | `:handle-ceiling` | a handle past the dense TMS's int-keyed ceiling | [density.md](density.md) |
 | `:argument-family-ceiling` | more distinct `(predicate, position)` pairs than the packed root key's 24-bit scope field holds; take `:index :memory` | [indexing.md](indexing.md) |
 | `:incomplete-racer` | a portfolio was handed a strategy with `:first-result?` on, which stops the search rather than steering it | [inference.md](inference.md) |
-| `:inter-arg-type` | an `interArg` constraint convicted one argument because of what another one is | [argtypes.md](argtypes.md) |
+| `:inter-arg-type` | an `interArg`, `interArgs` or `interArgAndRest` constraint convicted one argument because of what another one is | [argtypes.md](argtypes.md) |
 | `:internal-error` | the daemon caught a throwable carrying no `:type` of its own | [operations.md](operations.md) |
 | `:irreflexive` | a predicate declared `irreflexive` holds of a thing and itself | [taxonomy.md](taxonomy.md) |
 | `:job-busy` | a job holding this process's one writer is already running | [operations.md](operations.md) |

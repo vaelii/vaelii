@@ -115,7 +115,7 @@
             [vaelii.impl.protocols :as p]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.tokens :as tok]
-            [vaelii.impl.types.dense-roots :as dense-roots-types])
+            [vaelii.impl.types.snapshot :as snapshot-types])
   (:import [java.io File RandomAccessFile]
            [java.nio Buffer ByteBuffer ByteOrder IntBuffer LongBuffer]
            [java.nio.channels FileChannel FileChannel$MapMode]
@@ -554,10 +554,11 @@
           {:index :skipped :reason :empty})
 
       ;; Still reading out of the image it was opened from, so the image *is* this index
-      ;; and rewriting it would be pure loss: `snapshot-columns` thaws the roots to read
+      ;; and rewriting it would be pure loss: the roots' `snapshot-read` thaws them to read
       ;; them, which would pull the whole cold tail back into heap at the very moment the
       ;; KB is closing.  A write would have thawed one or both halves and this is false.
-      (and (col/mapped? store) (dense-roots-types/mapped? (:roots store)))
+      (and (snapshot-types/snapshot-mapped? (:trie store))
+           (snapshot-types/snapshot-mapped? (:roots store)))
       {:index :skipped :reason :unchanged}
 
       :else
@@ -577,7 +578,7 @@
             ;; on `frozen?` at call time (`vaelii.impl.columnar`), so the reader after this
             ;; reads the CSR and answers the same set.
             _     (col/compact! store)
-            csr   (col/csr store)
+            csr   (snapshot-types/snapshot-read (:trie store) nil)
             dict  (:dict store)
             rts   (:roots store)
             tmp   #(str % ".tmp")
@@ -599,12 +600,12 @@
                 etok  (remap-edges (:edge-tok csr) remap)
                 ;; a copy, because `sort-edge-runs!` permutes it and the live index's own
                 ;; array must not move.  The skeleton is heap `int[]` in every trie mode —
-                ;; only the leaf pair is ever mapped (`columnar/t-csr`), and the walk reads
+                ;; only the leaf pair is ever mapped (`trie/snapshot-read`), and the walk reads
                 ;; edge targets at every frontier node, so they never page — so this is an
                 ;; array clone, never a buffer read.
                 etgt  (aclone ^ints (:edge-tgt csr))
                 _     (sort-edge-runs! (:offsets csr) etok etgt (:nodes csr))
-                cols  (merge (dense-roots-types/snapshot-columns rts remap)
+                cols  (merge (snapshot-types/snapshot-read rts {:remap remap})
                              (roots/argfam-table rts remap))
                 tstat (write-trie!  (tmp (trie-path root))
                                     (assoc csr :edge-tok etok :edge-tgt etgt))
@@ -712,8 +713,8 @@
             o4  (+ o3 (* 4 e))
             o5  (+ o4 (* 4 e))
             o6  (+ o5 (* 4 (inc n)))]
-        (col/install-csr!
-         store
+        (snapshot-types/snapshot-install!
+         (:trie store)
          ;; resident: the skeleton the walk reads at every frontier node
          {:counts*   (read-ints ch o1 n)
           :offsets*  (read-ints ch o2 (inc n))
@@ -748,11 +749,12 @@
             o4 (+ o3 (* 4 h))
             o5 (+ o4 (* 4 a))]
         (roots/load-argfam! (:roots store) (read-ints ch o4 a) (read-ints ch o5 a) a)
-        (dense-roots-types/install-mapped! (:roots store)
-                                           (map-longs ch o1 k)          ; resident enough to be read
-                                           (map-ints  ch o2 (inc k))
-                                           (map-ints  ch o3 h)
-                                           k)))))
+        (snapshot-types/snapshot-install!
+         (:roots store)
+         {:keys    (map-longs ch o1 k)          ; resident enough to be read
+          :offsets (map-ints  ch o2 (inc k))
+          :handles (map-ints  ch o3 h)
+          :n       k})))))
 
 (defn- load-dictionary!
   "Rebuild the in-RAM dictionary from the durable log, **in id order**, so an in-RAM id is

@@ -5,7 +5,7 @@
 # a full one to run before a tag or a perf-sensitive land:
 #
 #   lein gate           FAST — lint + test:
-#     lint   static analysis  (scripts/lint.sh — glossary, links, drift, kondo, cljfmt, shellcheck)
+#     lint   static analysis  (scripts/lint.sh — eleven checks in three concurrent lanes)
 #     test   the suite        (`lein test`, `:default` selector, memory stores; incl. assert_cost_test)
 #
 #   lein release-gate   FULL — lint + test + perf:
@@ -316,7 +316,7 @@ announce () {                  # announce <name> <blurb> <cmd...>
 
 # ---- what each stage actually checked ------------------------------------
 #
-# A stage row is a verdict and not a roster.  `✓ lint` is nine independent checks
+# A stage row is a verdict and not a roster.  `✓ lint` is eleven independent checks
 # and `✓ perf` is forty-odd, and four green rows cannot tell a gate that covered
 # something from one that skipped it — which is the question somebody quoting a
 # green gate is actually being asked, and the reason `--only` and `--skip` exist
@@ -478,7 +478,10 @@ check_test_reflection () {
   [[ -r "$OUT/test.log" ]] || return 0
   local t0=$SECONDS rc=0
   revision_stamp reflect >"$OUT/reflect.log"
-  REFLECTION_LOG="$OUT/test.log" bash scripts/check-reflection.sh \
+  # `lein test-parallel` keeps each shard's compile output in that shard's log and puts
+  # only the summary in test.log, so the warnings are read from all of them.
+  cat "$OUT/test.log" "$OUT"/test.shard-*.log >"$OUT/test.reflect.log" 2>/dev/null
+  REFLECTION_LOG="$OUT/test.reflect.log" bash scripts/check-reflection.sh \
     >>"$OUT/reflect.log" 2>&1 || rc=$?
   report_stage reflect "$rc" "$((SECONDS - t0))"
 }

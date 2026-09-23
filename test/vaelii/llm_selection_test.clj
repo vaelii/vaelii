@@ -265,6 +265,24 @@
       (is (= 2 (count (str/split-lines (:lines r)))))
       (is (every? #(vector? (edn/read-string %)) (str/split-lines (:lines r)))))))
 
+(tu/deftest-kb the-batch-does-not-depend-on-selection-or-answer-order
+  ;; the diff keys on content, so neither the order the reader selected in nor the order
+  ;; the model answered in reaches the batch or the summary
+  (let [{:keys [h-parent h-dog fatherOf Tom Ann ctx]} (world kb)
+        dog-line (edn/read-string (:line (first (sel/selected kb [h-dog]))))
+        answer   [[(list fatherOf Tom Ann) ctx] dog-line]
+        run (fn [handles lines]
+              (let [r (session/propose-edit
+                       kb {:handles handles :message "be specific"
+                           :provider (stub/provider {:script [{:lines lines}]})})]
+                [(:status r) (set (:add (:batch r))) (set (:remove (:batch r))) (:summary r)]))
+        [a & others] (for [hs [[h-parent h-dog] [h-dog h-parent]]
+                           ls [answer (reverse answer)]]
+                       (run hs ls))]
+    (is (= :ok (first a)))
+    (is (= #{h-parent} (nth a 2)))
+    (is (every? #{a} others))))
+
 (tu/deftest-kb proposing-never-writes
   (let [{:keys [h-parent h-dog fatherOf Tom Ann ctx]} (world kb)
         before (set (map :id (v/sentexes-in-context kb ctx)))

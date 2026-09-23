@@ -169,14 +169,12 @@ solve enumerates. A cardinality bound has to be a **solver** cardinality atom th
 inside the search — which is what `atMost` / `atLeast` translate to, and `agg/count` is not
 in that path.
 
-**Every head weighs one, today.** A cardinality bound is `#count` — the unit-weight case
+**Every head weighs one.** A cardinality bound is `#count` — the unit-weight case
 of `#sum`, which is the aggregate `edge/translate`'s weight body actually emits (each
-member rides at weight 1). A weighted `asp/atMostSum` / `asp/atLeastSum` — each head
-contributing a weight read from a fact, so a bound on total tonnage rather than headcount —
-is the natural extension, and a small one: the encoding layer already carries arbitrary
-weights, so only the surface (a weight variable and the body that binds it) and the
-grounding's weight lookup are missing. It is unbuilt because no consumer needs a weighted
-bound yet; the count is what an at-most-`k` on a choice predicate is.
+member rides at weight 1). There is no weighted bound — no `asp/atMostSum` /
+`asp/atLeastSum`, where each head would contribute a weight read from a fact, so a bound
+on total tonnage rather than headcount cannot be stated. The encoding layer carries
+arbitrary weights; the surface and the grounding carry none.
 
 ## `minimize` / soft-constraint priorities — the objective surface
 

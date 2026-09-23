@@ -32,8 +32,8 @@
 
   What sits above this and *calls* the reify rather than reimplementing it:
   `vaelii.impl.skolem` mints the witness an existential rule head fires to, and
-  `vaelii.core` drops an orphaned reified NAT when its last use is retracted (it rides the
-  `retract!` sweep).
+  `vaelii.impl.nat-maintenance` sequences the post-assert reconciliation and drops an
+  orphaned reified NAT when its last use is retracted (it rides the `retract!` sweep).
 
   Reads the store, the taxonomy and belief directly (nat <- kb); reaches assertion only
   through the fns above."
@@ -809,7 +809,7 @@
        (filter reified-nat-symbol?)
        (filterv #(orphan? kb %))))
 
-(defn orphaned-among
+(defn- orphaned-among
   "The orphans among `candidates` — `orphaned-constants`' question asked of named
   constants rather than of every constant in the KB.
 
@@ -833,7 +833,7 @@
   [form]
   (into #{} (filter reified-nat-symbol?) (tree-seq sequential? seq form)))
 
-(defn constants-named-by
+(defn- constants-named-by
   "Every reified-NAT constant the `sentexes` reference — the candidate set a region-scoped
   orphan sweep asks `orphaned-among` about, given what a teardown removed.
 
@@ -848,6 +848,18 @@
                       (cond-> (reified-nats-in (sx/sentence-of sx))
                         (reified-context-symbol? (:context sx)) (conj (:context sx)))))
         sentexes))
+
+(defn orphans-named-by
+  "The orphans among the constants the removed `sentexes` named — the region-scoped
+  question a teardown's sweep asks each round, which is `constants-named-by` fed straight
+  to `orphaned-among`.
+
+  One entry point because the two halves are one question: a constant becomes an orphan
+  only when something referencing it goes, so the candidate set *is* what the departing
+  sentexes named, and asking the second half of anything else would be asking about a
+  constant no removal touched.  The whole-KB reading is `orphaned-constants`."
+  [kb sentexes]
+  (orphaned-among kb (constants-named-by sentexes)))
 
 (defn bookkeeping-handles
   "The bookkeeping sentex handles of constant `k` — its `termOfUnit` and materialized
@@ -1004,7 +1016,7 @@
        (reify-nat-for-read kb context))
      context)))
 
-(defn merge-colliding-nats!
+(defn- merge-colliding-nats!
   "Restore the 1:1 constant↔expression invariant the just-asserted equality
   `sentence` may have broken: when two reified constants have collapsed onto one
   expression, merge each group's extras into its lexicographically-smallest survivor
@@ -1078,7 +1090,7 @@
       (when-let [lit (corresponding-literal kb E k)]
         (wiring/assert-sentence kb lit universal-context {:strength :monotonic})))))
 
-(defn reconcile-correspondence!
+(defn- reconcile-correspondence!
   "The correspondence maintenance a just-asserted `sentence` calls for: a declaration
   reconciles the applications minted before it, and a fact on a corresponding predicate
   reconciles the one application it names a value for.  A no-op — one integer read —
@@ -1089,3 +1101,22 @@
       (when (symbol? (second sentence))
         (reconcile-declared-correspondence! kb (second sentence)))
       (merge-corresponding-nat! kb sentence))))
+
+(defn reconcile-nats!
+  "The reified-constant maintenance a just-asserted `sentence` owes, in the order the
+  assert path runs it: the collision merge first, then the correspondence.
+
+  An equality assert is a rename, and its migration can collapse two reified constants
+  onto one expression — so `merge-colliding-nats!` restores the 1:1
+  constant↔expression invariant, and only after an equality, since nothing else can
+  break it.  `reconcile-correspondence!` then equates an application with the value its
+  corresponding predicate names, whichever of the application, the fact and the
+  declaration arrived last.
+
+  Both are no-ops — one integer read each — on a KB that states no equality and declares
+  no correspondence.  `vaelii.impl.nat-maintenance/reconcile-assert` is the caller, and it
+  holds the `any-reifiable-functions?` gate ahead of this."
+  [kb sentence]
+  (when (kb/equality-sentence? sentence)
+    (merge-colliding-nats! kb sentence))
+  (reconcile-correspondence! kb sentence))

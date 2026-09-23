@@ -7,8 +7,9 @@
 
   It lives in its own namespace, apart from `vaelii.impl.jtms` (the reference
   network) and `vaelii.impl.dense-jtms` (the dense one), for two reasons.  Both
-  implementations depend on it and neither on the other, so the boundary is the one
-  thing they share.  And it is large — forty-odd methods, each documented — which
+  implementations depend on it, and the reference depends on nothing of the dense one, so
+  the boundary is the one thing they share; the dense network also calls two helpers of
+  the reference namespace (`graph-just`, `dissoc-all`).  And it is large — forty-odd methods, each documented — which
   makes the generated protocol map big enough that re-evaluating the form (as
   cloverage does, form by form, to instrument a namespace) overflows the JVM's
   64 KB per-method bytecode limit; isolated here, the protocol is loaded but not

@@ -17,17 +17,13 @@
   stays the sole complete method for its predicates under either polarity."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
-            [vaelii.host.core-context :as core-context]
-            [vaelii.host.seed :as seed]
             [vaelii.impl.interval :as iv]
             [vaelii.impl.space :as space]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh
                      #(doto (tu/fresh)
-                        (core-context/load-into)
-                        (seed/load-context 'CxSpace "upper")
-                        (seed/load-context 'CxTime "upper")
+                        (tu/load-core-with! '[[CxSpace "upper"] [CxTime "upper"]])
                         (v/add-prover (space/spatial-prover))
                         (v/add-prover (iv/allen-prover)))))
 

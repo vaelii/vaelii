@@ -201,6 +201,45 @@
         (is (empty? (doall (inf/search-seq sess))) "nothing supports either predicate")
         (is (zero? (:frontier (inf/tree-stats sess))) "the search did not terminate")))))
 
+(tu/deftest-kb a-repeated-conjunct-collapses-and-a-cycle-stops-growing-the-residual
+  ;; The cycle runs through a rule with a multi-literal antecedent, which is what grows
+  ;; a conjunction: a one-antecedent rule rewrites a literal into a literal and never
+  ;; writes a second copy of a sentence the conjunction already holds.
+  ;;
+  ;;   (alpha ?x) ∧ (beta ?x) ⇒ (paired ?x)
+  ;;   (paired ?x) ⇒ (alpha ?x)          (paired ?x) ⇒ (beta ?x)
+  ;;
+  ;; so (paired ?x) rewrites to (alpha ?x) ∧ (beta ?x), then to (paired ?x) ∧ (beta ?x),
+  ;; then to (alpha ?x) ∧ (beta ?x) ∧ (beta ?x), whose third conjunct is the repeat.
+  ;; Conjunction is idempotent, so the repeat collapses onto the copy already there and
+  ;; the search returns to a conjunction it holds a key for.  Carrying every repeat
+  ;; instead, this query expands 1,445 nodes at the bound below, and 15,130 at a bound
+  ;; of 7.
+  (tu/with-terms [alpha beta paired CxIdem]
+    (tu/with-terms [IdemBoth IdemHalf]
+      (v/assert kb (list alpha IdemBoth) CxIdem)
+      (v/assert kb (list beta IdemBoth) CxIdem)
+      (v/assert kb (list alpha IdemHalf) CxIdem)
+      (v/assert-rule kb [(list alpha '?x) (list beta '?x)] (list paired '?x) CxIdem
+                     {:direction :backward})
+      (v/assert-rule kb [(list paired '?x)] (list alpha '?x) CxIdem {:direction :backward})
+      (v/assert-rule kb [(list paired '?x)] (list beta '?x) CxIdem {:direction :backward})
+      (let [sess (inf/session kb [(list paired '?x)] CxIdem {:max-depth 6})
+            sols (set (doall (inf/search-seq sess)))
+            st   (inf/tree-stats sess)]
+        (is (= #{{'?x IdemBoth}} sols)
+            "the individual holding one half of the rule's antecedent is not paired")
+        (is (zero? (:frontier st)) "the search did not run to exhaustion")
+        (is (< (:nodes st) 200)
+            "the residual grew a conjunct per turn of the cycle")
+        (testing "and no node carries one sentence twice"
+          ;; counted rather than asserted node by node: a failure here is most of the
+          ;; tree, and printing the tree buries the count that says how much of it
+          (let [repeats (filter (fn [n] (let [ss (mapv :sentence (:literals n))]
+                                          (not= (count ss) (count (set ss)))))
+                                (vals @(:nodes sess)))]
+            (is (zero? (count repeats)) "nodes carrying a repeated conjunct")))))))
+
 ;; ---- deferred literals ---------------------------------------------------
 
 (tu/deftest-kb a-deferred-literal-is-computed-and-never-rewritten
@@ -522,3 +561,4 @@
     (testing "and the binding is the other"
       (binding [inf/*max-depth* 3]
         (is (some? (inf/session kb [goal] 'CxUniverse)))))))
+

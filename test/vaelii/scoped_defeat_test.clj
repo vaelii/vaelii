@@ -563,3 +563,367 @@
                       (v/ask? kb s c))))))
          (permutations [:rule :cat :dog :disjoint]))]
     (is (= #{[true false true false]} (set outcomes)))))
+
+;; ---- the vantage decides under `:refuse` too ----------------------------
+
+(defn- write!
+  "One of the three writes `vantage-world!` permutes, returning `:refused` when the
+  entry point turned it away and nil otherwise."
+  [kb w {:keys [cat dog Rex]} cat-ctx dog-ctx]
+  (try
+    (case w
+      :cat      (v/assert kb (list cat Rex) cat-ctx)
+      :dog      (v/assert kb (list dog Rex) dog-ctx {:strength :monotonic})
+      :disjoint (v/assert kb (list 'disjoint dog cat) 'CxUniverse))
+    nil
+    (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))
+
+(deftest under-refuse-a-pair-split-across-a-visibility-edge-is-decided-at-its-vantage
+  ;;   CxUniverse
+  ;;     └─ CxA        (cat Rex) default
+  ;;          └─ CxD   (dog Rex) monotonic
+  ;;   (disjoint dog cat) in CxUniverse, which every context sees
+  ;;
+  ;; CxD is the vantage: CxA does not see CxD, so CxA holds the pair's near half only.
+  ;; Cases b and d of the prompt's table — `(cat Rex)` written last, and the declaration
+  ;; written last — and both policies decide them the same way.
+  (doseq [[label build] [[":refuse" refusing-kb] [":arbitrate" arbitrating-kb]]]
+    (testing label
+      (let [outcomes
+            (into #{}
+                  (map (fn [order]
+                         (tu/with-neutral-kb [kb build]
+                           (tu/with-terms [CxA CxD cat dog Rex]
+                             (let [world {:cat cat :dog dog :Rex Rex}]
+                               (types! kb cat dog)
+                               (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+                               (v/assert kb (list 'genlCx CxD CxA) 'CxUniverse)
+                               (if (some #(write! kb % world CxA CxD) order)
+                                 :refused
+                                 [(v/ask? kb (list cat Rex) CxA)
+                                  (v/ask? kb (list cat Rex) CxD)
+                                  (v/ask? kb (list dog Rex) CxD)
+                                  (mapv :violation (v/violations kb))]))))))
+                  (permutations [:cat :dog :disjoint]))]
+        (testing "every order the entry point admits reaches one belief outcome"
+          (is (= #{[true false true []]} (disj outcomes :refused))
+              "the loser is defeated at the vantage and believed above it, and the
+               ledger has nothing to say about a pair somebody decided"))
+        (testing "and `:refuse` alone turns a writer away, on grounds that writer can see"
+          ;; case a: `(dog Rex)` written into CxD, which reads `(cat Rex)` through the
+          ;; edge — the one write of the six orders that is refused rather than weighed
+          (is (= (if (= ":refuse" label) #{:refused} #{}) (disj outcomes [true false true []]))))))))
+
+(deftest under-refuse-a-pair-two-sibling-contexts-wrote-is-decided-at-their-descendant
+  ;;   CxUniverse
+  ;;     ├─ CxB        (cat Rex) default
+  ;;     └─ CxC        (dog Rex) monotonic
+  ;;          CxE sees CxB and CxC
+  ;;   (disjoint dog cat) in CxUniverse
+  ;;
+  ;; CxE is the vantage, and neither writer's own context sees the far half — so no
+  ;; arrival order refuses, and case c reads the same under both policies.
+  (doseq [[label build] [[":refuse" refusing-kb] [":arbitrate" arbitrating-kb]]]
+    (testing label
+      (let [outcomes
+            (into #{}
+                  (map (fn [order]
+                         (tu/with-neutral-kb [kb build]
+                           (tu/with-terms [CxB CxC CxE cat dog Rex]
+                             (let [world {:cat cat :dog dog :Rex Rex}]
+                               (types! kb cat dog)
+                               (doseq [c [CxB CxC]]
+                                 (v/assert kb (list 'genlCx c 'CxUniverse) 'CxUniverse))
+                               (v/assert kb (list 'genlCx CxE CxB) 'CxUniverse)
+                               (v/assert kb (list 'genlCx CxE CxC) 'CxUniverse)
+                               (if (some #(write! kb % world CxB CxC) order)
+                                 :refused
+                                 [(v/ask? kb (list cat Rex) CxB)
+                                  (v/ask? kb (list cat Rex) CxE)
+                                  (v/ask? kb (list dog Rex) CxE)
+                                  (mapv :violation (v/violations kb))]))))))
+                  (permutations [:cat :dog :disjoint]))]
+        (is (= #{[true false true []]} outcomes)
+            "CxB keeps the claim it wrote, CxE reads the monotonic winner, and nothing
+             is refused")))))
+
+(deftest a-reader-that-disbelieves-a-genl-edge-stops-reaching-over-it
+  ;;   CxUniverse    (genl chi thing) (genl dog thing) (chi Rex)
+  ;;                 (transitiveInArg largerThan 1 genl)  (largerThan dog cat)
+  ;;     └─ CxA      (genl chi dog)                 :default
+  ;;          └─ CxB (not (genl chi dog))           :monotonic  ← the vantage
+  ;;     └─ CxC      a sibling of CxB, which sees neither the denial nor the vantage
+  ;; The edge is a supporter of the `genl` relation, so what the scoped defeat has to
+  ;; reach is the taxonomy's closures and not only the network label: `believed?` of the
+  ;; edge and every read that crosses it answer about one KB from one context.
+  (doseq [edge-first? [true false]]
+    (testing (if edge-first? "the edge arrives first" "the denial arrives first")
+      (tu/with-neutral-kb [kb arbitrating-kb]
+        (tu/with-terms [CxA CxB CxC chi_t dog_t cat_t largerThan Rex]
+          (types! kb chi_t dog_t cat_t)
+          (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+          (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+          (v/assert kb (list 'genlCx CxC CxA) 'CxUniverse)
+          (v/assert kb (list 'transitiveInArg largerThan 1 'genl) 'CxUniverse)
+          (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse)
+          (v/assert kb (list chi_t Rex) 'CxUniverse)
+          (let [edge!   #(v/assert kb (list 'genl chi_t dog_t) CxA)
+                denial! #(v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB
+                                   {:strength :monotonic})
+                _       (if edge-first? (do (edge!) (denial!)) (do (denial!) (edge!)))
+                h       (v/handle-of kb (list 'genl chi_t dog_t) CxA)
+                reads   (fn [rdr]
+                          [(v/believed? kb h rdr)
+                           (v/ask? kb (list 'genl chi_t dog_t) rdr)
+                           (v/genl? kb chi_t dog_t rdr)
+                           (v/isa? kb Rex dog_t rdr)
+                           (v/ask? kb (list largerThan chi_t cat_t) rdr)])]
+            (testing "the vantage disbelieves the edge and every read over it"
+              (is (= [false false false false false] (reads CxB))))
+            (testing "the context that states the edge reads all five as true"
+              (is (= [true true true true true] (reads CxA))))
+            (testing "and so does a sibling that sees neither the denial nor the vantage"
+              (is (= [true true true true true] (reads CxC))))
+            (testing "the context above the edge reaches over nothing, edge or no edge"
+              (is (= [true false false false false] (reads 'CxUniverse)))
+              "the edge is in CxA, which CxUniverse does not see")))))))
+
+(deftest lifting-the-denial-returns-every-reader-to-reaching
+  ;;   The lattice above, with the denial retracted.  The scoped closures are memoized
+  ;;   under a key carrying the supporter-visibility generation, so a lift that empties
+  ;;   the scoped-defeat roster has to move that generation or a reader keeps the closure
+  ;;   the defeat is gone from.
+  (tu/with-neutral-kb [kb arbitrating-kb]
+    (tu/with-terms [CxA CxB chi_t dog_t cat_t largerThan Rex]
+      (types! kb chi_t dog_t cat_t)
+      (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArg largerThan 1 'genl) 'CxUniverse)
+      (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse)
+      (v/assert kb (list chi_t Rex) 'CxUniverse)
+      (v/assert kb (list 'genl chi_t dog_t) CxA)
+      (let [d     (v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB {:strength :monotonic})
+            h     (v/handle-of kb (list 'genl chi_t dog_t) CxA)
+            reads (fn [rdr]
+                    [(v/believed? kb h rdr)
+                     (v/genl? kb chi_t dog_t rdr)
+                     (v/isa? kb Rex dog_t rdr)
+                     (v/ask? kb (list largerThan chi_t cat_t) rdr)])]
+        ;; read from CxB while the defeat stands, so a stale memo would have something
+        ;; to be stale from
+        (is (= [false false false false] (reads CxB)))
+        (v/retract! kb d)
+        (testing "every read CxB lost comes back"
+          (is (= [true true true true] (reads CxB))))
+        (testing "and CxA is where it was"
+          (is (= [true true true true] (reads CxA))))))))
+
+(deftest a-context-that-disbelieves-a-genlcx-edge-stops-seeing-over-it
+  ;;   CxUniverse  (genlCx CxB CxE), the edge under test
+  ;;     ├─ CxE    (marker Pin) monotonic, and where the edge is written
+  ;;     └─ CxB    (not (genlCx CxB CxE)) monotonic   ← the vantage
+  ;; The genlCx twin of the `genl` case.  This namespace's KBs hold no shipped
+  ;; ontology, so the mark CxCore declares is asserted here: `genlCx` is
+  ;; forced-decontextualized, which stores the edge in CxUniverse whatever context it
+  ;; is written into, and the test asserts that placement rather than hand-placing it.
+  ;; The denial's functor is `not`, so it is not decontextualized and stays in CxB — the
+  ;; asymmetry that gives a genlCx clash a vantage below CxUniverse at all.
+  ;;
+  ;; It is also the case the callback's recursion question is about: every ancestor-set
+  ;; read inside the withdrawal answer takes `tax/context-up-global`, so the filtered
+  ;; genlCx walk asks a question the unfiltered closure answers and never re-enters
+  ;; itself.
+  (doseq [edge-first? [true false]]
+    (testing (if edge-first? "the edge arrives first" "the denial arrives first")
+      (tu/with-neutral-kb [kb arbitrating-kb]
+        (tu/with-terms [CxB CxE marker_t Pin]
+          (types! kb marker_t)
+          (v/assert kb '(forced_decontextualized_predicate genlCx) 'CxUniverse)
+          (doseq [c [CxB CxE]] (v/assert kb (list 'genlCx c 'CxUniverse) 'CxUniverse))
+          (v/assert kb (list marker_t Pin) CxE {:strength :monotonic})
+          (let [edge!   #(v/assert kb (list 'genlCx CxB CxE) CxE)
+                denial! #(v/assert kb (list 'not (list 'genlCx CxB CxE)) CxB
+                                   {:strength :monotonic})
+                _       (if edge-first? (do (edge!) (denial!)) (do (denial!) (edge!)))
+                h       (v/handle-of kb (list 'genlCx CxB CxE) 'CxUniverse)]
+            (testing "the mark stored the edge in CxUniverse, not in the context it was written into"
+              (is (= ['CxUniverse]
+                     (mapv :context (v/sentexes-matching kb (list 'genlCx CxB CxE)))))
+              (is (some? h))
+              (is (true? (v/in? kb h))) "and it stands in the network")
+            (testing "the denial is not decontextualized, so the vantage is CxB"
+              (is (= [CxB] (mapv :context
+                                 (v/sentexes-matching
+                                  kb (list 'not (list 'genlCx CxB CxE)))))))
+            (testing "the vantage disbelieves the edge, and CxUniverse does not"
+              (is (false? (v/believed? kb h CxB)))
+              (is (true? (v/believed? kb h 'CxUniverse))))
+            (testing "and stops seeing the context the edge put above it"
+              (is (not (v/sees? kb CxB CxE)))
+              (is (not (contains? (set (v/context-up kb CxB)) CxE)))
+              (is (not (v/ask? kb (list marker_t Pin) CxB))))
+            (testing "CxB keeps the ancestor the edge under test did not give it"
+              (is (contains? (set (v/context-up kb CxB)) 'CxUniverse)))))))))
+
+(deftest a-definitional-clash-is-decided-on-the-hierarchy-its-vantage-reads
+  ;;   CxUniverse  (genl chi thing) (genl dog thing) (genl cat thing)  (disjoint dog cat)
+  ;;     └─ CxA    (genl chi dog)                  :default
+  ;;          └─ CxB (not (genl chi dog))          :monotonic   ← the vantage
+  ;;                 (chi Kit)  (cat Kit)
+  ;;
+  ;; CxB disbelieves the edge, so from CxB `chi` is not a `dog` and the two memberships
+  ;; of `Kit` clash with nothing.  No other context holds both, so no context sees a
+  ;; complete clash: both are believed at CxB and nothing is reported.
+  ;;
+  ;; The settle empties the scoped defeats before it discovers, so its discovery reads
+  ;; the hierarchy the KB holds globally and does mint the pair.  What keeps a verdict
+  ;; off that hierarchy is the resolution: the denial's own defeat of the edge is scoped,
+  ;; it is applied first and alone, and the round after it re-asks the pair's grounds at
+  ;; CxB (`reads-clash?`), which no longer reads them.
+  (doseq [cat-strength [:monotonic :default]]
+    (testing (str "(cat Kit) is " cat-strength)
+      (doseq [order (permutations [:denial :chi :cat])]
+        (testing (pr-str (vec order))
+          (tu/with-neutral-kb [kb arbitrating-kb]
+            (tu/with-terms [CxA CxB chi_t dog_t cat_t Kit]
+              (types! kb chi_t dog_t cat_t)
+              (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+              (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+              (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
+              (v/assert kb (list 'genl chi_t dog_t) CxA)
+              (let [write!  {:denial #(v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB
+                                                {:strength :monotonic})
+                             :chi    #(v/assert kb (list chi_t Kit) CxB)
+                             :cat    #(v/assert kb (list cat_t Kit) CxB
+                                                {:strength cat-strength})}
+                    stored? (try (doseq [k order] ((write! k))) true
+                                 (catch clojure.lang.ExceptionInfo _ false))]
+                (if-not stored?
+                  ;; The one order of the twelve the entry point refuses, and it is the
+                  ;; entry point's own reading rather than this: `(chi Kit)` is offered
+                  ;; while `(cat Kit)` is known-true and CxB still reads the separation,
+                  ;; the denial not having been written yet.
+                  (is (= [:monotonic [:cat :chi :denial]] [cat-strength (vec order)]))
+                  (do
+                    (testing "CxB reads no separation, so it believes both memberships"
+                      (is (false? (v/disjoint? kb chi_t cat_t CxB)))
+                      (is (true? (v/ask? kb (list chi_t Kit) CxB)))
+                      (is (true? (v/ask? kb (list cat_t Kit) CxB))))
+                    (testing "and nothing is reported, to CxB or to the KB"
+                      (is (empty? (v/contradictions kb CxB)))
+                      (is (empty? (v/contradictions kb))))
+                    (testing "CxA keeps the edge it stated and the separation over it"
+                      (is (contains? (set (v/genls kb chi_t CxA)) dog_t))
+                      (is (true? (v/disjoint? kb chi_t cat_t CxA))))
+                    (testing "and reads neither membership, which is written below it"
+                      (is (false? (v/ask? kb (list chi_t Kit) CxA)))
+                      (is (false? (v/ask? kb (list cat_t Kit) CxA))))))))))))))
+
+(deftest the-entry-point-reads-the-grounds-and-not-only-what-they-separate
+  ;;   The same lattice, written `(cat Kit)` known-true, then `(chi Kit)`, then the
+  ;;   denial.  At the moment `(chi Kit)` is offered, CxB reads `chi \u2291 dog` and
+  ;;   `dog \u2225 cat` and holds `(cat Kit)` as known-true — so what the membership opposes
+  ;;   can never be given up.  What makes the two a **pair** can: the separation reaches
+  ;;   `chi` over a `:default` `(genl chi dog)` edge, and a denial of that edge takes the
+  ;;   pair out of CxB's view entirely.
+  ;;
+  ;;   So the sentence is admitted and weighed rather than refused, and the weighing
+  ;;   gives the known-true side the belief until the denial arrives.  Refusing it would
+  ;;   have thrown away, on the strength of what had not been written yet, content that
+  ;;   five of the six write orders store and believe
+  ;;   (`order_independence_test/a-definitional-refusal-does-not-follow-the-write-order`).
+  (tu/with-neutral-kb [kb arbitrating-kb]
+    (tu/with-terms [CxA CxB chi_t dog_t cat_t Kit]
+      (types! kb chi_t dog_t cat_t)
+      (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+      (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'genl chi_t dog_t) CxA)
+      (v/assert kb (list cat_t Kit) CxB {:strength :monotonic})
+      (testing "admitted while CxB still reads the separation, and the known-true side wins"
+        (is (some? (v/assert kb (list chi_t Kit) CxB)))
+        (is (false? (v/ask? kb (list chi_t Kit) CxB)))
+        (is (true? (v/ask? kb (list cat_t Kit) CxB))))
+      (v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB {:strength :monotonic})
+      (testing "and believed once the denial has taken the pair away"
+        (is (false? (v/disjoint? kb chi_t cat_t CxB)))
+        (is (true? (v/ask? kb (list chi_t Kit) CxB)))
+        (is (true? (v/ask? kb (list cat_t Kit) CxB)))
+        (is (empty? (v/contradictions kb)))))))
+
+(deftest a-separation-that-cannot-be-given-up-still-refuses-at-the-entry-point
+  ;;   The control on the case above, and the line the reading does not cross.  Put the
+  ;;   edge `(genl chi dog)` in known-true and nothing in the derivation is defeasible:
+  ;;   no denial can retire the pair, so the membership is one the KB could never
+  ;;   believe and the writer is told so.  Only the class of that one edge differs from
+  ;;   the test above.
+  (tu/with-neutral-kb [kb arbitrating-kb]
+    (tu/with-terms [CxA CxB chi_t dog_t cat_t Kit]
+      (types! kb chi_t dog_t cat_t)
+      (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+      (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'genl chi_t dog_t) CxA {:strength :monotonic})
+      (v/assert kb (list cat_t Kit) CxB {:strength :monotonic})
+      (is (thrown? clojure.lang.ExceptionInfo (v/assert kb (list chi_t Kit) CxB)))
+      (is (empty? (v/sentexes-matching kb (list chi_t Kit)))))))
+
+(deftest retracting-the-denial-returns-the-verdict-it-withheld
+  ;;   The same lattice.  Retracting the denial puts `chi ⊑ dog` back in CxB's view, the
+  ;;   separation with it, and the clash is decided again: `(cat Kit)` is known-true, so
+  ;;   `(chi Kit)` is the loser.  Re-asserting the denial withdraws the grounds a second
+  ;;   time and the membership comes back, which is what makes the answer a function of
+  ;;   what stands rather than of what has happened.
+  (tu/with-neutral-kb [kb arbitrating-kb]
+    (tu/with-terms [CxA CxB chi_t dog_t cat_t Kit]
+      (types! kb chi_t dog_t cat_t)
+      (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+      (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'genl chi_t dog_t) CxA)
+      (let [denial! #(v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB
+                               {:strength :monotonic})
+            d       (denial!)
+            _       (v/assert kb (list chi_t Kit) CxB)
+            _       (v/assert kb (list cat_t Kit) CxB {:strength :monotonic})
+            reads   #(vector (v/disjoint? kb chi_t cat_t CxB)
+                             (v/ask? kb (list chi_t Kit) CxB)
+                             (v/ask? kb (list cat_t Kit) CxB))]
+        (is (= [false true true] (reads)))
+        (v/retract! kb d)
+        (testing "the grounds are back, so the clash is decided and the default loses"
+          (is (= [true false true] (reads))))
+        (denial!)
+        (testing "and withdrawn again, so the membership is believed again"
+          (is (= [false true true] (reads))))))))
+
+(deftest a-verdict-taken-at-a-vantage-reaches-the-contexts-below-it
+  ;;   CxUniverse  (genl chi thing) (genl dog thing) (genl cat thing)  (disjoint dog cat)
+  ;;     └─ CxA    (genl chi dog)                  :default
+  ;;          └─ CxB (chi Kit)  (cat Kit) monotonic          ← the vantage
+  ;;               └─ CxC  (not (genl chi dog))    :monotonic
+  ;;
+  ;;   The denial is now *below* both memberships.  CxB cannot see CxC, so CxB reads the
+  ;;   separation, sees the whole pair and decides it; the loser's own context is CxB, so
+  ;;   the defeat is the network's.  CxC reads no separation and would have decided
+  ;;   nothing, and it still reads `(chi Kit)` as defeated — a defeat at a vantage reaches
+  ;;   every context below it (docs/nmtms.md), and CxC is below.  The verdict rests on a
+  ;;   hierarchy its own vantage reads, which is the whole of what is owed here.
+  (tu/with-neutral-kb [kb arbitrating-kb]
+    (tu/with-terms [CxA CxB CxC chi_t dog_t cat_t Kit]
+      (types! kb chi_t dog_t cat_t)
+      (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxC CxB) 'CxUniverse)
+      (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'genl chi_t dog_t) CxA)
+      (v/assert kb (list 'not (list 'genl chi_t dog_t)) CxC {:strength :monotonic})
+      (v/assert kb (list chi_t Kit) CxB)
+      (v/assert kb (list cat_t Kit) CxB {:strength :monotonic})
+      (testing "the vantage reads the separation and decides on it"
+        (is (true? (v/disjoint? kb chi_t cat_t CxB)))
+        (is (false? (v/ask? kb (list chi_t Kit) CxB)))
+        (is (true? (v/ask? kb (list cat_t Kit) CxB))))
+      (testing "and the context below it reads no separation and the same verdict"
+        (is (false? (v/disjoint? kb chi_t cat_t CxC)))
+        (is (false? (v/ask? kb (list chi_t Kit) CxC)))))))

@@ -29,6 +29,10 @@
   * `fallbacks` is sent by default so a policy decline is re-served rather than
     returned as a dead turn.  It rides a beta header; pass `{:fallbacks nil}` to drop
     both if the org has not enabled it.
+  * **`:format` is structured outputs** — a JSON schema, sent as `output_config.format`.
+    Ollama takes the same schema under its own `format` key, so one neutral request
+    constrains decoding on either provider.  The paths that carry one are the tool-free
+    ones; the `propose` loop sends tools and reads a fenced block instead.
 
   **Credentials are resolved from the environment, never hardcoded and never logged**
   — see `credentials`."
@@ -177,17 +181,23 @@
 
 (defn- body
   [{:keys [model system messages tools max-tokens effort thinking-display fallbacks]
+    fmt :format
     :or {fallbacks "default"}}
    {:keys [stream?]}]
-  (cond-> {"model" (or model default-model)
-           "max_tokens" (or max-tokens (if stream? 64000 16000))
-           "messages" (mapv encode-message messages)}
-    (seq system)     (assoc "system" (encode-system system))
-    (seq tools)      (assoc "tools" (vec tools))
-    effort           (assoc "output_config" {"effort" effort})
-    thinking-display (assoc "thinking" {"type" "adaptive" "display" thinking-display})
-    fallbacks        (assoc "fallbacks" fallbacks)
-    stream?          (assoc "stream" true)))
+  ;; `:effort` and `:format` are two keys of one object, so one binding builds both: a
+  ;; second `assoc` of "output_config" drops whichever key arrived first.
+  (let [output-config (cond-> {}
+                        effort (assoc "effort" effort)
+                        fmt    (assoc "format" {"type" "json_schema" "schema" fmt}))]
+    (cond-> {"model" (or model default-model)
+             "max_tokens" (or max-tokens (if stream? 64000 16000))
+             "messages" (mapv encode-message messages)}
+      (seq system)        (assoc "system" (encode-system system))
+      (seq tools)         (assoc "tools" (vec tools))
+      (seq output-config) (assoc "output_config" output-config)
+      thinking-display    (assoc "thinking" {"type" "adaptive" "display" thinking-display})
+      fallbacks           (assoc "fallbacks" fallbacks)
+      stream?             (assoc "stream" true))))
 
 ;; ---- response decoding --------------------------------------------------
 

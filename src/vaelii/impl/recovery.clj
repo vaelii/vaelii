@@ -294,6 +294,9 @@
       ;; refusal is a claim about what the KB *believes*.  A re-fire that placed something
       ;; the narrowed re-chain had not owes a second settle.
       (let [{:keys [derived]} (chain/rerecord-refusals! kb)]
+        ;; ...and the lifts and declarations still waiting on an absent type,
+        ;; which that re-fire does not reach
+        (special/rebuild-pending! kb)
         (when (pos? (long (or derived 0))) (settle/settle kb))))
     kb))
 

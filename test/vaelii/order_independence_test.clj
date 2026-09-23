@@ -68,9 +68,11 @@
 ;; regression net, not proven: a deterministic spread of orderings catches a
 ;; region-local relabelling that went order-sensitive without paying for the whole
 ;; cross-product.  Almost every scenario below runs an ordering in ~1 ms and so walks
-;; all of them (no cap); the cap exists for the one scenario whose every ordering
-;; recomputes the genlCx closure and costs ~2 s (the two derived-edge tests at the
-;; end).  Raise this — or drop the cap at the call site — for an exhaustive audit.
+;; all of them (no cap).  The cap is for the scenarios too dear to walk whole every
+;; time: the derived-edge tests at the end, whose every ordering recomputes the genlCx
+;; closure and costs ~2 s, and the permuting-mark tests, whose 720 orderings cost 2-4 s
+;; and which keep a ^:slow twin walking all of them.  Raise this — or drop the cap at
+;; the call site — for an exhaustive audit.
 (def ^:private ordering-sample 16)
 
 (defn- shuffle-seeded
@@ -1592,17 +1594,13 @@
 (defn- derived-edge-observe [kb]
   {:derived (boolean (seq (v/sentexes-matching kb '(w_seen_p WA) 'CxWLow)))})
 
-(deftest ^:slow a-derived-context-edge-seeds-like-an-asserted-one
+(deftest a-derived-context-edge-seeds-like-an-asserted-one
   ;; and a rule concluding the edge reaches the same belief an assert does, or the
   ;; fixpoint would depend on whether the spindle was written or inferred.
   ;;
-  ;; Four orderings, not all 24, for the reason `two-independent-exceptions` above
-  ;; takes a handful: an ordering here costs ~2s — deriving the edge recomputes the
-  ;; genlCx closure and re-places what it reaches, where every other test in this
-  ;; file runs an ordering in about a millisecond — so the exhaustive walk is about 48
-  ;; seconds.  The handful pins the positions that matter: the edge rule first and last,
-  ;; and the fact arriving before and after the wiring that has to reach it.  A broader
-  ;; deterministic sample is the `^:slow` test below, and `lein gate --all` runs it.
+  ;; Four orderings, chosen for the positions that matter: the edge rule first and last,
+  ;; and the fact arriving before and after the wiring that has to reach it.  The test
+  ;; below walks a broader deterministic sample.
   (doseq [order [[0 1 2 3] [3 2 1 0] [1 3 2 0] [0 2 3 1]]]
     (let [ops (mapv derived-edge-ops order)
           kb  (tu/fresh)]
@@ -1611,14 +1609,11 @@
           (str order ": a derived edge has to seed what an asserted one seeds"))))
   (tu/clear-kb! (tu/test-kb)))
 
-(deftest ^:slow orderings-of-a-derived-context-edge-agree
-  ;; The broad form of the 4-ordering test above: a deterministic sample of orderings
-  ;; (`ordering-sample`, 16), not all 24.  Every ordering here recomputes the genlCx
-  ;; closure and re-places what it reaches, so it costs ~2s — the exhaustive 24 is about
-  ;; 48 seconds — for a cross-product whose order-dependence would already surface in a
-  ;; spread of orderings.  The
-  ;; sample walks the identity, the reverse and a fixed-seed spread between them; raise
-  ;; `ordering-sample` or drop the cap for an exhaustive audit.
+(deftest orderings-of-a-derived-context-edge-agree
+  ;; The broad form of the 4-ordering test above: a deterministic sample of 16 of the 24
+  ;; orderings (`ordering-sample`).  The sample walks the identity, the reverse and a
+  ;; fixed-seed spread between them; raise `ordering-sample` or drop the cap for an
+  ;; exhaustive audit.
   (is (= {:derived true}
          (one-outcome-necessarily! "derived visibility firing" derived-edge-ops derived-edge-observe
                                    ordering-sample))
@@ -1795,6 +1790,93 @@
       (is (zero? (:conflicts result))))
     (tu/clear-kb! (tu/test-kb))))
 
+;; ---- a permuting mark, withdrawn ------------------------------------------
+;;
+;; A rule reaches a stored fact read the other way round through the fact's own permuting
+;; mark — the join through the matcher's mirror, the trigger through `trigger-bindings`, a
+;; rule arriving last through the full join — and each firing reached that way names the
+;; mark (`chain/read-marks`).  So retracting the mark leaves what a KB that never held it
+;; holds.  The mark is stated in a sibling, where the lift makes the CxUniverse copy the
+;; supporter a firing names.
+
+(defn- permuted-ops
+  "The ops of a permuted firing: a rule on the fact alone, a join rule whose other
+  antecedent binds the fact's second term, that antecedent's fact, the fact in its stored
+  order, and each of `marks` — `{k [[mark & args] context]}` — stated of `pmRel` in its
+  own sibling context, its handle into `h` under `k`."
+  [marks h]
+  ;; the siblings go in with the first rule, so a KB never told a mark still has them
+  (into [#(do (doseq [cx '[CxPA CxPB]] (v/assert % (list 'genlCx cx 'CxUniverse) 'CxUniverse))
+              (v/assert % '(implies (pmRel ?x ?y) (pmNoted ?x ?y)) 'CxUniverse {:direction :forward}))
+         #(v/assert % '(implies (and (pmRel ?x ?y) (pm_tagged ?x)) (pmJoined ?x ?y))
+                    'CxUniverse {:direction :forward})
+         #(v/assert % '(pm_tagged Bea) 'CxUniverse)
+         #(v/assert % '(pmRel Ada Bea) 'CxUniverse)]
+        (for [[k [mark cx]] marks]
+          #(swap! h assoc k (v/assert % (list* (first mark) 'pmRel (rest mark)) cx)))))
+
+(defn- permuted-reading
+  "The two mirrored conclusions and the stored one, at CxUniverse and at the sibling."
+  [kb]
+  (into {} (for [g '[(pmNoted Bea Ada) (pmJoined Bea Ada) (pmNoted Ada Bea)]
+                 cx '[CxUniverse CxPA]]
+             [[g cx] (v/ask? kb g cx)])))
+
+(defn- a-permuting-mark-goes-with-the-mark
+  "Each permuting mark licenses both mirrored firings, and retracting it leaves what a KB
+  that never held it holds — over `cap` orderings of each scenario, or all of them."
+  [cap]
+  (doseq [mark '[[symmetric] [commutative] [commutativeInArgs 1 2] [commutativeInArgAndRest 1]]]
+    (testing (str (first mark))
+      (let [h        (atom {})
+            never    (one-outcome! (str (first mark) ", never stated")
+                                   (permuted-ops nil h) permuted-reading cap)
+            held     (one-outcome! (str (first mark) ", held")
+                                   (permuted-ops {:m [mark 'CxPA]} h) permuted-reading cap)
+            retract  (one-outcome! (str (first mark) ", retracted")
+                                   (permuted-ops {:m [mark 'CxPA]} h)
+                                   (fn [kb] (v/retract! kb (:m @h)) (permuted-reading kb))
+                                   cap)]
+        (is (every? true? (vals held)) "the mark licenses both mirrored firings")
+        (is (= [false false true] (mapv #(get never [% 'CxUniverse])
+                                        '[(pmNoted Bea Ada) (pmJoined Bea Ada) (pmNoted Ada Bea)]))
+            "without it only the stored order fires")
+        (is (= never retract) "and retracting it leaves what a KB that never held it holds"))))
+  (tu/clear-kb! (tu/test-kb)))
+
+(deftest a-firing-a-permuting-mark-licensed-goes-with-the-mark
+  ;; a sample of each scenario's 24 or 120 orderings; the ^:slow twin walks every one
+  (a-permuting-mark-goes-with-the-mark ordering-sample))
+
+(deftest ^:slow every-ordering-of-a-firing-a-permuting-mark-licensed-goes-with-the-mark
+  (a-permuting-mark-goes-with-the-mark nil))
+
+(defn- two-permuting-marks-license
+  "`(symmetric P)` and `(commutative P)` each license a binary fact's mirror, so the
+  firing is one alternative per mark and the first retracted leaves it on the other —
+  over `cap` of the 720 orderings, or all of them."
+  [cap]
+  (doseq [order [[:s :c] [:c :s]]]
+    (testing (str "withdrawing " order)
+      (let [h      (atom {})
+            result (one-outcome! (str "two marks, withdrawing " order)
+                                 (permuted-ops {:s ['[symmetric] 'CxPA] :c ['[commutative] 'CxPB]} h)
+                                 (fn [kb]
+                                   (vec (for [k (cons nil order)]
+                                          (do (when k (v/retract! kb (get @h k)))
+                                              (mapv #(v/ask? kb % 'CxUniverse)
+                                                    '[(pmNoted Bea Ada) (pmJoined Bea Ada)])))))
+                                 cap)]
+        (is (= [[true true] [true true] [false false]] (vec result))))))
+  (tu/clear-kb! (tu/test-kb)))
+
+(deftest a-firing-two-permuting-marks-license-survives-either-one
+  ;; a sample of the 720 orderings; the ^:slow twin walks every one
+  (two-permuting-marks-license ordering-sample))
+
+(deftest ^:slow every-ordering-of-a-firing-two-permuting-marks-license-survives-either-one
+  (two-permuting-marks-license nil))
+
 ;; ---- a bounded backward search ------------------------------------------
 
 (deftest a-capped-proof-answers-the-same-whichever-rule-arrived-first
@@ -1835,6 +1917,22 @@
   (tu/clear-kb! (tu/test-kb)))
 
 ;; ---- a generator's stamped rules -----------------------------------------
+
+(deftest an-arity-declared-after-the-facts-names-the-same-facts-in-every-order
+  ;; The declaration arrives in the reading, after every fact, so each ordering meets
+  ;; the retroactive sweep rather than the entry-point refusal.  The entry names one
+  ;; convicted fact and a sample of three out of four: a choice among them.
+  (let [facts   '[(oiarity Aa Bb Cc) (oiarity Dd Ee Ff) (oiarity Gg Hh Ii) (oiarity Jj Kk Ll)]
+        ops     (mapv (fn [f] #(v/assert % f 'CxUniverse)) facts)
+        observe (fn [kb]
+                  (v/clear-violations! kb)
+                  (v/assert kb '(binary_predicate oiarity) 'CxUniverse)
+                  (into [] (comp (filter #(= :arity (:violation %)))
+                                 (map (juxt :sentence #(get-in % [:detail :sample]))))
+                        (v/violations kb)))]
+    (is (= [['(oiarity Aa Bb Cc) (vec (take 3 facts))]]
+           (one-outcome! "the arity report" ops observe))))
+  (tu/clear-kb! (tu/test-kb)))
 
 (deftest a-generator-and-its-stamped-rules-are-order-independent
   ;; The shape CxCore's arity vocabulary uses (docs/generators.md), stated over a
@@ -1897,4 +1995,107 @@
       (is (true? (:triple result)) "the other type's rule is untouched")
       (is (= 1 (:rows result)))
       (is (zero? (:conflicts result))))
+    (tu/clear-kb! (tu/test-kb))))
+
+;; ---- the entry point's refusal ------------------------------------------
+
+(defn- lattice-kb
+  "A KB under an explicit constraint policy, for the lattice below.  The policy has to be
+  the KB's own rather than the process default, because the two answers being compared
+  are what each policy does with the same three sentences.
+
+  Cleared on open, as `tu/fresh` is: the namespace has no fixture, so the scratch space
+  holds whatever the namespace before it left there, and a KB opened over records it
+  never settled refuses every write as `:unrecovered-kb`."
+  [policy]
+  (fn [] (doto (v/open-kb (assoc tu/scratch-space :constraints policy)) (tu/clear-kb!))))
+
+(defn- lattice-cell!
+  "Write the three sentences of CxB in `order` into a fresh lattice, catching the entry
+  point's refusal, and read back what the KB holds and believes.
+
+  The lattice is prompt 03's and prompt 08's:
+
+      CxUniverse   (genl chi thing) (genl dog thing) (genl cat thing)  (disjoint dog cat)
+       └─ CxA      (genl chi dog)                 :default
+            └─ CxB (not (genl chi dog))           :monotonic
+                   (chi Kit)  (cat Kit)
+
+  CxB disbelieves the edge, so from CxB `chi` is not a `dog` and the two memberships of
+  `Kit` clash with nothing.  Everything above CxA is known-true; the one defeasible
+  ingredient is the edge, which is what the denial withdraws."
+  [policy cat-strength order]
+  (tu/with-neutral-kb [kb (lattice-kb policy)]
+    (tu/with-terms [CxA CxB chi_t dog_t cat_t Kit]
+      (doseq [t [chi_t dog_t cat_t]]
+        (v/assert kb (list 'genl t 'thing) 'CxUniverse {:strength :monotonic}))
+      (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'genl chi_t dog_t) CxA)
+      (let [refused (atom 0)
+            write!  {:chi    #(v/assert kb (list chi_t Kit) CxB)
+                     :cat    #(v/assert kb (list cat_t Kit) CxB {:strength cat-strength})
+                     :denial #(v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB
+                                        {:strength :monotonic})}]
+        (doseq [k order]
+          (try ((write! k)) (catch clojure.lang.ExceptionInfo _ (swap! refused inc))))
+        {:refused @refused
+         :stored  (count (filter some?
+                                 [(v/handle-of kb (list chi_t Kit) CxB)
+                                  (v/handle-of kb (list cat_t Kit) CxB)
+                                  (v/handle-of kb (list 'not (list 'genl chi_t dog_t)) CxB)]))
+         :chi?    (v/ask? kb (list chi_t Kit) CxB)
+         :cat?    (v/ask? kb (list cat_t Kit) CxB)
+         :contra  (count (v/contradictions kb))}))))
+
+(def ^:private lattice-orders
+  (into [] (permutations [:chi :cat :denial])))
+
+(deftest a-definitional-refusal-does-not-follow-the-write-order
+  ;; Six write orders, both strengths of `(cat Kit)`, under `:arbitrate`.  At the moment
+  ;; `(chi Kit)` is offered in two of them, CxB still reads the separation and
+  ;; `(cat Kit)` may be known-true — so the entry point once threw the sentence away, and
+  ;; the other four orders stored and believed it.  A refusal that turns on which
+  ;; sentence arrived first is a refusal the writer cannot predict and the reader cannot
+  ;; explain.
+  ;;
+  ;; The separation is **derived**: it reaches `chi` over the `:default` `(genl chi dog)`
+  ;; edge in CxA, and the denial in CxB takes that edge out of CxB's view.  So the pair
+  ;; is one the KB can be told otherwise about, `checks/grounds-class` reads it as
+  ;; `:default`, and the sentence is admitted and weighed instead of refused.  One
+  ;; outcome, all six orders, both strengths.
+  (doseq [cat-strength [:monotonic :default]]
+    (testing (str "(cat Kit) " cat-strength)
+      (let [readings (mapv #(lattice-cell! :arbitrate cat-strength %) lattice-orders)]
+        (is (= 1 (count (distinct readings)))
+            (str "one reading over six orders — " (pr-str (frequencies readings))))
+        (let [r (first readings)]
+          (is (zero? (:refused r)) "nothing is turned away in any order")
+          (is (= 3 (:stored r))    "and all three sentences are held")
+          (is (true? (:chi? r)))
+          (is (true? (:cat? r))    "both memberships stand at CxB")
+          (is (zero? (:contra r))  "and no pair is reported to a reader that reads none")))))
+  (tu/clear-kb! (tu/test-kb)))
+
+(deftest under-refuse-the-writer-is-told-no-and-that-does-follow-the-order
+  ;; The case the invariant does **not** cover, stated rather than left to be discovered.
+  ;; `:refuse` is a policy about whether a *writer* is told no (`checks/arbitrating?`),
+  ;; and a writer is answered from the KB in front of it — so the two orders that offer a
+  ;; membership while CxB still reads the separation are refused, and the four that do
+  ;; not are stored.  The engine-wide invariant is over **beliefs** (docs/nmtms.md,
+  ;; "1. Order independence"), and every order that stores agrees about those.
+  (doseq [cat-strength [:monotonic :default]]
+    (testing (str "(cat Kit) " cat-strength)
+      (let [readings (mapv #(lattice-cell! :refuse cat-strength %) lattice-orders)
+            stored   (filterv #(zero? (:refused %)) readings)]
+        (is (= 4 (count stored)) "four of six orders store the three sentences")
+        (is (= 1 (count (distinct stored)))
+            (str "and they agree about everything — " (pr-str (frequencies stored))))
+        (is (every? #(and (true? (:chi? %)) (true? (:cat? %)) (zero? (:contra %))) stored)
+            "both memberships stand at CxB, and nothing is reported")
+        (testing "the two that refuse are the ones offering a membership before the denial"
+          (is (= [[:chi :cat :denial] [:cat :chi :denial]]
+                 (mapv first (filterv (fn [[_ r]] (pos? (:refused r)))
+                                      (mapv vector lattice-orders readings))))))))
     (tu/clear-kb! (tu/test-kb))))

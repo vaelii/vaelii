@@ -9,18 +9,17 @@
   is `dispute` / argue, not this."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
-            [vaelii.host.core-context :as core-context]
             [vaelii.koinii.belief :as bel]
             [vaelii.koinii.identity :as id]
             [vaelii.test-util :as tu])
   (:import (clojure.lang ExceptionInfo)))
 
 (defn- belief-kb
-  "A fresh CxCore KB — CxCore carries the `believes` modal_predicate grant, and
-  `core-context/load-into` wires `(genlCx CxUniverse CxCore)` so a modal goal asked from
-  CxUniverse is recognized."
+  "A fresh CxCore KB, restored by `tu/load-core!` — CxCore carries the `believes`
+  modal_predicate grant, and its load wires `(genlCx CxUniverse CxCore)` so a modal goal
+  asked from CxUniverse is recognized."
   []
-  (doto (tu/fresh) (core-context/load-into)))
+  (tu/load-core! (tu/fresh)))
 
 (use-fixtures :each (tu/neutral-fresh belief-kb))
 

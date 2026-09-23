@@ -17,7 +17,8 @@
 (defn- speech-acts-kb
   "A fresh CxCore KB with the koinii speech-act vocabulary loaded."
   []
-  (doto (tu/fresh) (core-context/load-into) (sa/load-speech-acts)))
+  (tu/load-dumped! (tu/fresh) :koinii/speech-acts
+                   #(doto % (core-context/load-into) (sa/load-speech-acts))))
 
 (use-fixtures :each (tu/neutral-fresh speech-acts-kb))
 

@@ -12,7 +12,7 @@ a **hypothesis**.
 
 ```clojure
 (v/assert kb '(abducible_predicate was_washed) 'CxLaundry)
-(v/assert kb '(implies (and (was_washed ?x)) (clean ?x)) 'CxLaundry)
+(v/assert kb '(set/forwardRule (implies (and (was_washed ?x)) (clean ?x))) 'CxLaundry)
 
 (v/abduce kb '(clean Shirt) 'CxLaundry)
 ;; {:solutions   [{} {}]

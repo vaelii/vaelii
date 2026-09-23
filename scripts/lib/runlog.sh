@@ -40,6 +40,17 @@
 #   summary    the run's own closing figures — check counts, test and assertion
 #              totals, configurations
 #   log        where the full output is, relative to the repo root
+#   format     RUNLOG_FORMAT, the version of this row's shape.  The ledger is
+#              read by vaelii-top, which lives in another repository
+#              (vaelii-tools), so the shape is a contract nothing here can see
+#              break.  A reader keys on column NAMES, so appending a column
+#              leaves the format where it is; renaming or removing one, or
+#              changing what a value means, raises it.  A row with no value
+#              reads as format 1.
+#
+# test/vaelii/runlog_format_test.clj pins the column list and the format, so a
+# change to either fails the suite until the test, and vaelii-top, are changed
+# with it.
 #
 # Sourced, never executed, and it reads only its arguments and the repository —
 # `revision.sh`'s rule, so any runner can take this without taking anything else.
@@ -56,7 +67,10 @@ if ! declare -f revision_hash >/dev/null 2>&1; then
 fi
 
 RUNLOG_FILE="${RUNLOG_FILE:-logs/runs.tsv}"
-RUNLOG_COLUMNS=$'started\tepoch\tseconds\tkind\tvariant\tstate\trevision\tdirty\tsubject\tsummary\tlog'
+RUNLOG_FORMAT=1
+RUNLOG_COLUMNS=$'started\tepoch\tseconds\tkind\tvariant\tstate\trevision\tdirty\tsubject\tsummary\tlog\tformat'
+# The eleven-column header of a ledger with no `format` column.
+RUNLOG_COLUMNS_UNVERSIONED=$'started\tepoch\tseconds\tkind\tvariant\tstate\trevision\tdirty\tsubject\tsummary\tlog'
 
 # Captured at the START of a run, because that is the tree the run is a verdict
 # about.  Reading them at the end would credit a 35-minute matrix to whatever
@@ -97,15 +111,34 @@ runlog_record() {
   # column names rather than on position, so adding a column later does not
   # need the old rows rewritten — it needs this line to have been there.
   [[ -s "$RUNLOG_FILE" ]] || printf '%s\n' "$RUNLOG_COLUMNS" >>"$RUNLOG_FILE" 2>/dev/null || return 0
+  runlog_upgrade_header
 
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "${RUNLOG_STARTED:-}" "${RUNLOG_EPOCH:-0}" "$secs" \
     "$kind" "${variant:--}" "$state" \
     "${RUNLOG_REV:-no-git}" "${RUNLOG_DIRTY:-0}" \
     "$(runlog_clean "${RUNLOG_SUBJECT:-}")" \
     "$(runlog_clean "$summary")" \
     "$(runlog_clean "$log")" \
+    "$RUNLOG_FORMAT" \
     >>"$RUNLOG_FILE" 2>/dev/null || return 0
+  return 0
+}
+
+# A ledger with no `format` column names eleven columns, and a row this writer
+# appends carries twelve: a reader keying on the header would drop the twelfth.
+# So the header, and only the header, is replaced once, the first time this
+# writer meets one.  The rows stay as written.  Matched exactly against the
+# known eleven-column header, so a header this file did not write is left alone.
+# Rewritten through a temporary file and a `mv`, runlog-backfill.sh's pattern;
+# a row another runner appends between the read and the rename is lost, and the
+# window is one `sed` over a file of a few hundred rows, once per ledger.
+runlog_upgrade_header() {
+  local first
+  first=$(head -1 "$RUNLOG_FILE" 2>/dev/null) || return 0
+  [[ "$first" == "$RUNLOG_COLUMNS_UNVERSIONED" ]] || return 0
+  { printf '%s\n' "$RUNLOG_COLUMNS"; tail -n +2 "$RUNLOG_FILE"; } >"$RUNLOG_FILE.$$" 2>/dev/null \
+    && mv "$RUNLOG_FILE.$$" "$RUNLOG_FILE" 2>/dev/null
   return 0
 }
 

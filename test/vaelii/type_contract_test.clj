@@ -385,7 +385,7 @@
     :bad-level :bad-pattern :bad-registrant :bad-reply
     :bad-snapshot :bad-table-entry :base-is-overlay :body-too-large :budget-exhausted
     :choice-head-not-positive
-    :compaction-failed :context-escape :cross-origin :daemon-error :damaged-dictionary
+    :compaction-failed :context-escape :cover :cross-origin :daemon-error :damaged-dictionary
     :disallowed-class
     :disjoint :disjunction-too-wide :disk-locked :duplicate-handle :duplicate-tokens :error
     :exception-not-closed :export-busy :frozen-base :functional :handle-ceiling
@@ -473,7 +473,7 @@
    :bad-handle              #{}
    :bad-level               #{}
    :bad-registrant          #{:key :label :value}
-   :bad-reply               #{}
+   :bad-reply               #{:status}
    :bad-snapshot            #{:expected :magic :part :path}
    :bad-table-entry         #{:mismatch}
    :base-is-overlay         #{}
@@ -487,6 +487,10 @@
    :disk-locked             #{:dir :holder}
    :duplicate-handle        #{:handle}
    :exception-not-closed    #{:unbound}
+   ;; the conditional refusal, raised by interArg's arm (inter-args-problem) and by the
+   ;; homogeneity arm (inter-args-homogeneity-problem) — the same payload at both
+   :inter-arg-type          #{:message :sentence :arg :expected :position
+                              :trigger :trigger-type :trigger-position}
    :labeling-run-blocked    #{:believed :into :orphaned}
    :llm-api-error           #{}
    :missing-adapter         #{:coordinate :records}
@@ -582,11 +586,6 @@
    :bad-level
    "`lookup` names the `:level` it was given and `escalate` the `:floor` — the key is each
     entry point's own word for the number, and neither entry point has anything to say about the other's."
-
-   :bad-reply
-   "the first holds the `:body` that did not read as EDN, the second the `:reply` that read
-    and was not a map; a value that failed to parse and a value that parsed wrong are not
-    the same thing to hold."
 
    :base-is-overlay
    "the fork's own half and its base are the two arguments the caller passed in, so there

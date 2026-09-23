@@ -342,6 +342,43 @@ elsewhere rather than forgotten:
 | a post-join literal had no answer | no | an aggregate is a *value* that moved, and a queued aggregate rule is re-joined whatever the blocked set did (`settle/rejoin-on-arrival-rules`) |
 | a visibility `except` hides an antecedent | no | an `except` arriving or leaving queues every rule that could fire on the hidden fact (`special/recheck-except`), and queues it with **`:all`** — so it takes the coarse re-join and the refusal is re-derived there. An entry would be one nothing reads |
 
+The record holds four more kinds of entry, none of them a refusal by an exception. Three
+are kept because the thing that refused them was an **absence** that later content can
+fill; the fourth is the opposite, a derivation withheld for something the KB has:
+
+| entry | kept under | refused because | re-asked when |
+|---|---|---|---|
+| `:constraint` | the rule | `place-fact-conclusion` dropped the conclusion on an `arg` / `genlArg` / `interArg` / `interArgs` / `interArgAndRest` / `quotedArg` conviction: the argument's types had no path to the declared one | a `genl` or `genlCx` generation moved since the entry was decided, or a settle relabelled a sentex naming the convicted term |
+| `:lift` | the source fact | a `decontextualized_predicate` copy from a context that does not see CxUniverse failed the same argument check there | the same two |
+| `:mint` | the declaration | the declared type did not yet reach `thing` (`checks/mintable-type?`), so the declaration minted nothing over its facts | a `genl` or `genlCx` generation moved |
+| `:subsumed` | each antecedent that entails it | the minted type is one a believed membership says more specifically (`checks/subsumed-mint`), so no record was written — or the one written was blocked and swept | the membership it gave way to stops being believed, or a `genl` generation moved |
+
+`settle` re-asks them each pass (`released-constraint-refusals`, `released-lifts`,
+`released-mints`, `released-subsumed`): a conclusion now admissible is placed from the entry, a copy lifted, a
+declaration's whole sweep run again (`special/entail-existing`), and what each creates goes
+on the agenda. A `:constraint` or `:lift` entry re-asked and still convicted is stamped with
+the current generations and with the term the conviction names **now**
+(`checks/conviction-watch`). An application can be convicted on more than one argument,
+and the conviction names the first; once that argument is typed it names the next, so an
+entry that kept its first term would never be re-asked when the last one is typed, and the
+order the arguments were typed in would decide whether the conclusion is placed. Placed, a
+`:constraint` or `:lift` entry withdraws the ledger entry its drop
+filed (`violations/withdraw!`), since the order that brought the type first filed none.
+A `:subsumed` entry is re-derived rather than re-inserted — `checks/constraint-entailments`
+over the antecedent's own sentence, narrowed to the sentence that was withheld — so the
+record comes back justified exactly as the arrival order that never withheld it justifies
+it (docs/argtypes.md). Its two gates are O(1) per entry, which is what lets a KB holding a
+thousand withheld mints re-ask them all on every settle.
+
+`recover` rebuilds the `:mint` and `:lift` entries (`special/rebuild-pending!`); the
+`:constraint` ones are not rebuilt, since that would mean re-firing every forward rule
+over the store, so a KB restarted with a standing constraint drop re-derives it only when
+its rule next fires. The `:subsumed` ones are not rebuilt either, and for the same kind of
+reason: rebuilding them would mean running every declaration's sweep over the store to
+find the mints it withholds. A KB restarted with a withheld mint keeps withholding it —
+which is what the store says — and draws it again when the fact, the declaration or an
+edge under them next moves.
+
 Both unrecorded reasons are covered by a **coarse re-join** rather than by nothing, and
 that is what makes the record an efficiency structure rather than a completeness one.
 The same holds past the cap below. A reader tempted to narrow `recheck-except`'s
@@ -832,7 +869,7 @@ may fire, have its exception arrive, and be swept. Only the fixpoint is guarante
 normally and the exception is stored **separately** as a meta-sentex
 `(exceptWhen <query> (sentexHandle H))` naming the rule `H` it qualifies. The wrapper
 never reaches the rule record — the pure `sentex` constructor drops a surface
-`exceptWhen` wrapper onto the bare rule, and `core/assert-exceptWhen-meta!` builds and
+`exceptWhen` wrapper onto the bare rule, and `assert-entry/assert-exceptWhen-meta!` builds and
 stores the meta.
 
 **The exception amends the rule in place.** Because it is a separate assertion, `bird ⇒

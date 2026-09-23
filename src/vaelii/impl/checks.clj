@@ -143,7 +143,9 @@
     args           (args ?type)
     argsGenl        (argsGenl ?type)
     argAndRest      (argAndRest ?start ?type)
-    argAndRestGenl  (argAndRestGenl ?start ?type)})
+    argAndRestGenl  (argAndRestGenl ?start ?type)
+    interArgs       (interArgs ?type)
+    interArgAndRest (interArgAndRest ?start ?type)})
 
 (def constraint-declaration-functors
   "The argument constraints this namespace reads at the entry point, as a set — `declaration-
@@ -280,7 +282,7 @@
   symbol, named there for the lift."
   'CxUniverse)
 
-(defn- mintable-type?
+(defn mintable-type?
   "Is `t` a type a membership can be minted in — a name the genl hierarchy actually
   holds?
 
@@ -663,6 +665,14 @@
                  :when (and (integer? s) (pos? s))]
              [s (get b '?type) rk m]))))
 
+(defn- suffix-positions
+  "The one-based positions from `start` to the last argument of the argument vector `as`
+  — the walk every tail constraint makes, the covering forms and the homogeneity forms
+  alike.  Bounded by the arguments the sentence has, which `arity-problem` has already
+  held to a length the relation admits."
+  [as start]
+  (range start (inc (count as))))
+
 (defn- covering-clause
   "How a covering refusal names the position it convicts: `args, position N` for an
   every-position form, `argAndRest from M, position N` for a tail form."
@@ -689,7 +699,7 @@
                (covering-declared? kb [:declares-args-isa :declares-arg-and-rest-isa]))
       (first
        (for [[start t kind decl] (covering-triples decls 'args 'argAndRest)
-             pos   (range start (inc (count as)))
+             pos   (suffix-positions as start)
              :let  [arg (arg-at as pos)
                     r   (convicting-result-type kb nat/result-types pred arg t context)]
              :when (and arg (or r (and (not (entailment-covers? kb tax arg t context decl))
@@ -722,7 +732,7 @@
                (covering-declared? kb [:declares-args-genl :declares-arg-and-rest-genl]))
       (first
        (for [[start t kind decl] (covering-triples decls 'argsGenl 'argAndRestGenl)
-             pos   (range start (inc (count as)))
+             pos   (suffix-positions as start)
              :let  [arg (arg-at as pos)
                     r   (convicting-result-type kb nat/genl-result-types pred arg t context)
                     why (if r
@@ -742,6 +752,96 @@
          {:type :arg-genl :sentence sentence :arg arg :expected t :position pos
           :message (str "arg constraint: " why " (" (covering-clause kind start pos)
                         " of " pred (via-clause (declared-of decl) pred) ")")})))))
+
+;; ---- the homogeneity constraints -----------------------------------------
+;; `interArg` demands a type at one position once another position holds a type.
+;; `interArgs` / `interArgAndRest` demand ONE type of a whole suffix — every position, or
+;; every position from a start onward — once any argument in that suffix holds it.  The
+;; type is the trigger and the target at once, and the reading of each side is
+;; `inter-args-problem`'s: the trigger must be positively established, the target is
+;; convicted by absence.  The walk is over the positions the sentence has, for the reason
+;; the covering constraints give above.
+
+(defn- homogeneity-declarations
+  "The `interArgs` / `interArgAndRest` declarations binding a sentence's tuples, as
+  `[start type via]` entries in content order — start 1 for `interArgs`, the declared
+  start for `interArgAndRest` — with `via` the predicate the declaration is written of.
+
+  **One entry per constraint, whichever spelling states it.**  CxCore's two forward rules
+  derive `(interArgAndRest R 1 T)` from `(interArgs R T)` and `(interArgs R T)` from
+  `(interArgAndRest R 1 T)`, so a KB that states either spelling holds both, and a KB
+  without those rules holds the one it was told.  The entries are deduplicated on
+  `[start type via]` and sorted on a key that spells each of them as `interArgAndRest`, so
+  a sentence draws the same refusal whichever spelling arrived, and a stated declaration
+  with its derived twin convicts once.  A start that is not a positive integer is dropped,
+  as `covering-triples` drops one: `(arg interArgAndRest 2 positive_integer)` refuses it at
+  the entry point, so a stored one is a torn record rather than a live constraint."
+  [decls]
+  (->> (concat (for [m (decls 'interArgs)]
+                 [1 (get (nth m 1) '?type) (declared-of m)])
+               (for [m     (decls 'interArgAndRest)
+                     :let  [b (nth m 1) s (get b '?start)]
+                     :when (and (integer? s) (pos? s))]
+                 [s (get b '?type) (declared-of m)]))
+       distinct
+       (nm/sort-by-content-key (fn [[s t via]] (nm/print-key (list 'interArgAndRest via s t)))
+                               compare)))
+
+(defn- homogeneity-clause
+  "How a homogeneity refusal names the declaration: `interArgs` for start 1, which is
+  what both spellings state there, and `interArgAndRest from N` for a later start."
+  [start]
+  (if (= 1 start) "interArgs" (str "interArgAndRest from " start)))
+
+(defn- inter-args-homogeneity-problem
+  "First `(interArgs R T)` / `(interArgAndRest R n T)` violation for a sentence, or nil.
+
+  Per declaration, one pass over the suffix: the first position whose argument is
+  positively established as a `T` is the trigger, and the first position whose argument
+  is in the hierarchy and does not reach `T` is the target.  A suffix with no trigger is
+  unconstrained, so an application whose arguments all lie outside `T` passes, and so
+  does one whose other arguments are unknown.  Positions below the start are never read.
+  Positions are sentence content, so the first trigger and the first target are chosen
+  by content and never by a handle.
+
+  Both sides read `inter-args-problem`'s way, and each for its reason.  A **symbol**
+  argument is typed by its memberships (`types`, the shared per-assert reader, so a
+  position read as a trigger and as a target costs one retrieval).  A value or a compound
+  is neither a trigger nor a target, which is the reading `inter-args-problem` gives
+  both of its positions.
+
+  Convict-only.  Nothing is minted, so the entailment toggle does not change this arm.
+  Behind the taxonomy `:props` gate `covering-declared?` is, so a KB that declares no
+  homogeneity constraint pays two map lookups per assert and no index read."
+  [kb sentence _context types decls]
+  (let [pred (nm/functor sentence)
+        as   (vec (nm/args sentence))]
+    (when (and (symbol? pred)
+               (covering-declared? kb [:declares-inter-args-isa
+                                       :declares-inter-arg-and-rest-isa]))
+      (let [holds? (fn [t p] (let [x (arg-at as p)]
+                               (and (checkable-term? x)
+                                    (kb/isa-among? (:closures (types x)) t))))
+            fails? (fn [t p] (let [x (arg-at as p)]
+                               (and (checkable-term? x)
+                                    (let [cs (:closures (types x))]
+                                      (and (kb/isa-among? cs 'thing)
+                                           (not (kb/isa-among? cs t)))))))]
+        (first
+         (for [[start t via] (homogeneity-declarations decls)
+               :when (symbol? t)
+               :let  [suffix (suffix-positions as start)
+                      n      (first (filter #(holds? t %) suffix))]
+               :when n
+               :let  [m (first (filter #(fails? t %) suffix))]
+               :when m
+               :let  [target (arg-at as m)]]
+           {:type :inter-arg-type :sentence sentence :arg target :expected t :position m
+            :trigger (arg-at as n) :trigger-type t :trigger-position n
+            :message (str "arg constraint: " target " must be a " t " ("
+                          (homogeneity-clause start) ", position " m " of " pred
+                          (via-clause via pred)
+                          ", because position " n " is a " t ")")}))))))
 
 (defn- args-quoted-problem
   "First `(quotedArg pred n type)` violation for a sentence, or nil.
@@ -1511,7 +1611,7 @@
 (def arbitrable-kinds
   "The definitional violations that name **other believed sentexes** rather than a
   malformed sentence, so `settle` can arbitrate them like any other contradiction."
-  #{:disjoint :functional :asymmetric :anti-transitive})
+  #{:disjoint :functional :asymmetric :anti-transitive :cover})
 
 (defn opposing-handles
   "The believed sentexes a violation is *against*, as a vector of handles — empty when
@@ -1606,6 +1706,57 @@
     :refuse    false
     *arbitrate-constraints?*))
 
+(defn- functional-mark-class
+  "How strongly the functionality a `:functional` violation convicts through holds, as
+  `context` reads it: the declaration on `via` at position `n`, and the `genl` edges a
+  declaration written of `via` descends to reach the sentence's own `pred`.  Both are
+  ingredients of one derivation — `tax/props-over` is what read the mark down that
+  hierarchy, and `edge-support` is what records the descent in a justification — so the
+  weaker of the two decides.
+
+  The declaration's own class is the **stronger** of its two spellings, the way
+  `functional-declaration-supporters` unions them: `(functional via)` speaks at argument
+  2 and `(functionalInArg via n)` at the position it names, and either one carries the
+  constraint on its own."
+  [kb context pred via n]
+  (let [tax (reasoning/taxonomy kb)
+        sc  #(jtms/defeat-class (reasoning/tms kb) %)
+        cls (fn [k] (or (tax/key-class tax k context sc) :default))]
+    (strength/min (strength/max (if (= 2 n) (cls [:prop :functional via]) :default)
+                                (cls [:functional-in-arg via n]))
+                  (or (tax/reach-strength tax :genl pred via context sc) :monotonic))))
+
+(defn- grounds-class
+  "How strongly the **derivation** that makes `v` a violation holds, as `context` reads
+  it.  Never the class of what the sentence opposes, which is `opposing-class`' question
+  and the other half of the same reading.
+
+  A definitional clash is a clash because of something the KB says beyond the two
+  sentexes: a separation between two types (`tax/disjointness-class`), or a functionality
+  declared of a predicate and read down the predicate hierarchy.  That something is
+  content like any other, and a `:default` link in it is a link a later denial takes out
+  — after which the pair is not a pair, and the newcomer is believed by every reader that
+  reads the link gone.  So the derivation's own class bounds what a refusal may claim,
+  the way `opposing-class` reads the *weakest* step of an `:anti-transitive` chain rather
+  than the endpoints of it.
+
+  **Read for the two policy-gated kinds and no others.**  `:asymmetric` and
+  `:anti-transitive` convict through a declaration the same way and are the same case,
+  but they read the class under *either* policy — so moving them would move what the
+  engine refuses out of the box, which is a change of its own.
+
+  `:monotonic` where no derivation can be read: the reading that leaves a refusal
+  standing, so an unestablished ground never admits content."
+  [kb context v]
+  (case (:type v)
+    :disjoint   (let [[t t'] (:types v)]
+                  (or (tax/disjointness-class (reasoning/taxonomy kb) t t' context
+                                              #(jtms/defeat-class (reasoning/tms kb) %))
+                      :monotonic))
+    :functional (functional-mark-class kb context (nm/functor (:sentence v))
+                                       (:pred v) (:position v))
+    :monotonic))
+
 (defn refuses-assert?
   "Does this violation refuse the sentence on the **assert** path?
 
@@ -1615,13 +1766,27 @@
   could break is arbitrated and one it could not is refused.  `:disjoint` and
   `:functional` refuse unconditionally until `kb`'s constraint policy (`arbitrating?`)
   opts into the same rule.  Everything else is a malformed sentence or an open-world
-  judgement and refuses outright."
-  [kb v]
+  judgement and refuses outright.
+
+  **Under that policy the two read their grounds as well as their opposition.**  A
+  known-true opposing sentex says the newcomer cannot be believed *beside* it; it does
+  not say the two are a pair, which is what the separation or the functionality says, and
+  that is content the KB can be told otherwise about.  A pair resting on a `:default`
+  `genl` edge is a pair a denial of the edge retires at every context that reads the
+  denial, and the sentence refused for it is one five other write orders store and
+  believe (docs/nmtms.md, \"1. Order independence\").  So both halves have to be
+  known-true for a refusal: `opposing-class` for the opposition, `grounds-class` for the
+  derivation.  A violation naming no opposing sentex is not arbitrable at all and refuses
+  before either is read."
+  [kb context v]
   (when v
     (case (:type v)
       (:asymmetric
        :anti-transitive)      (against-known-true? v)
-      (:disjoint :functional) (or (not (arbitrating? kb)) (against-known-true? v))
+      (:disjoint :functional) (or (not (arbitrating? kb))
+                                  (not (arbitrable? v))
+                                  (and (strength/known-true? (:opposing-class v))
+                                       (strength/known-true? (grounds-class kb context v))))
       true)))
 
 (defn- membership-handles-led
@@ -1733,6 +1898,87 @@
                  :opposing-handle h
                  :message (str "disjointness violated: " x " cannot be both "
                                t " and " t')}))))))))
+
+(defn- negation-handles
+  "The handles of the believed `(not (t x))` sentexes visible from `context` — the
+  negative twin of `membership-handles`, built the same way and for the same reason: the
+  handle named is the sentex a violation is *reported as*, so it is chosen by content
+  rather than by whichever the retrieval enumerated first."
+  [kb t x context]
+  (let [target (list 'not (list t x))]
+    (handle-namings (res/matches-visible kb target context) target)))
+
+(defn- cover-refutations
+  "A cover every one of whose parts is denied of a term the whole holds, as violation
+  maps.
+
+  `(covering W A B)` says that an instance of `W` is an `A` or a `B`. With `(W X)`
+  believed and `(not (A X))` and `(not (B X))` believed beside it, the declaration itself
+  is refuted — a contradiction among believed sentexes, which is a nogood rather than a
+  malformed sentence, so `settle` weighs the declaration, the membership and the
+  negations and defeats the weakest, exactly as it weighs the two memberships of a
+  disjointness clash.
+
+  Asked of the **negation**, which is the sentence that completes the refutation in the
+  order a KB reaches it: the parts are ruled out one at a time and the last one convicts.
+  The other two arrival orders are `settle`'s — a `(W X)` arriving last is an ordinary
+  membership candidate in the moved region, and a declaration arriving last is swept by
+  `declaration-reach`.
+
+  `:opposing-handles` names every other member of the nogood, the declaration included,
+  for the reason `:anti-transitive` names both steps of its chain: the contradiction is
+  not a pair, and arbitration that could see only one side of it would defeat the one
+  sentex it could name whatever the rest were worth.
+
+  Scoped to the asserting context throughout, as `disjoint-problems` is: the declaration,
+  the membership and each negation must be visible from `context`, since a context is
+  refused only on grounds it can see."
+  [kb sentence context]
+  (let [tax  (reasoning/taxonomy kb)
+        neg? (sx/negation? sentence)
+        lit  (if neg? (second sentence) sentence)]
+    (when (and (sequential? lit) (= 1 (nm/arity lit)) (symbol? (nm/functor lit)))
+      (let [;; `part` is the part this sentence rules out, or nil when the sentence is
+            ;; the whole's own membership.  The two shapes are the two arrival orders an
+            ;; entry point sees: the last negation completing a refutation, and the
+            ;; membership arriving under negations already stored.
+            part (when neg? (nm/functor lit))
+            x    (first (nm/args lit))]
+        (when (checkable-term? x)
+          (let [decls (if neg?
+                        (mapv (fn [[whole parts _]] [whole parts])
+                              (tax/covers-naming-visible tax part context))
+                        (tax/covers-over tax (nm/functor lit) context))]
+            (for [[whole parts] decls
+                  :when (or (nil? part)
+                            (provers/conjunction-derivable? kb [(list whole x)] {} context))
+                  ;; every part *but this one*: on the refusal path the sentence under
+                  ;; assertion is not stored yet and holds by assumption, and on the
+                  ;; settle path it is stored and would answer here anyway.
+                  :when (every? (fn [p]
+                                  (or (= p part)
+                                      (provers/conjunction-derivable?
+                                       kb [(list 'not (list p x))] {} context)))
+                                parts)]
+              {:type :cover :sentence sentence :types (vec (cons whole parts))
+               ;; The membership and the other negations, and **not** the declaration
+               ;; the conviction is read through — `disjoint`'s rule, for `disjoint`'s
+               ;; reason: a nogood holding the declaration would, on defeating it, read a
+               ;; taxonomy without the cover on the next pass, find no violation, revive
+               ;; the declaration and oscillate.  The evidence is what a refuted cover
+               ;; convicts; the cover is the standing claim it is convicted against.
+               :opposing-handles
+               (into (if part (vec (membership-handles kb whole x context)) [])
+                     (mapcat #(when-not (= % part) (negation-handles kb % x context))
+                             parts))
+               :message (str "coverage violated: " x " is a " whole
+                             ", which every part of the declared cover "
+                             (str/join ", " parts) " is now denied of")})))))))
+
+(defn- cover-refutation
+  "The first refuted cover, for the refusal paths."
+  [kb sentence context]
+  (first (cover-refutations kb sentence context)))
 
 (defn- disjoint-problem
   "The first disjointness clash, for the refusal paths."
@@ -2383,12 +2629,14 @@
         (matches-pattern-problem chk)
         (args-problem kb chk context types decls)
         (inter-args-problem kb chk context types decls)
+        (inter-args-homogeneity-problem kb chk context types decls)
         (genls-problem kb chk context decls)
         (covering-args-problem kb chk context types decls)
         (covering-genls-problem kb chk context decls)
         (args-quoted-problem kb chk context types decls)
         (declaration-problem kb chk context types)
         (disjoint-problem kb chk context types)
+        (cover-refutation kb chk context)
         (asymmetry-problem kb chk context)
         (functional-problem kb chk context)
         (irreflexivity-problem kb chk context)
@@ -2560,6 +2808,98 @@
                                    #(and (checkable-term? %) (not (nm/individual? %)))
                                    (fn [arg t] (list 'genl arg t)))
                   (inter-arg-entailments kb sentence context types decls))))))
+
+(def ^:dynamic *prune-subsumed-mints?*
+  "Does a minted type give way to a more specific one the KB believes?
+
+  **Off by default, for the cost rather than the answer.**  An argument declaration mints
+  `(animal Fred)` off `(parentOf Fred Mary)`, and a KB that also believes `(dog Fred)`
+  holds the same claim twice — once as a record nobody wrote and once as the membership an
+  author did.  With this on, the general one is withheld while the specific one is believed
+  and comes back when it goes, which takes about a tenth of the records out of a shipped
+  load and changes no answer (docs/argtypes.md).  What it costs is a question per
+  membership a settle moves — what does this displace — and that is +42% on a
+  settle-dense workload, so it is opted into rather than paid by every KB.
+
+  `binding` it is the ordinary way in, and `VAELII_PRUNE_SUBSUMED_MINTS=1` sets the root
+  value on — the parity run that says pruning removes records rather than answers."
+  (config/prune-subsumed-mints?))
+
+(defn- subsuming-membership
+  "The handle of a believed `(T2 x)` that makes a minted `(t x)` in `context`
+  redundant, or nil — `T2` a **strict** subtype of `t` through the edges `context`
+  sees, stated where `context` can read it.
+
+  The candidate predicates come from the slot roster (`as-stored-predicates-at-arg`,
+  one read), so a term claimed under three types costs three subsumption tests rather
+  than a walk of `t`'s whole spec subtree, which on a shipped taxonomy is thousands of
+  types with no fact between them.
+
+  Belief, not storage: a defeated `(dog Fred)` licenses nothing, so the mint it would
+  have made redundant stands.  The visibility test is `sees?` in the direction a read
+  takes — a membership stated below `context` is invisible there and subsumes nothing."
+  [kb t x context]
+  (let [tax (reasoning/taxonomy kb)
+        tms (reasoning/tms kb)]
+    (first
+     (for [p    (reads/as-stored-predicates-at-arg (:index kb) 1 x)
+           :when (and (symbol? p) (not= p t) (tax/genl? tax p t context))
+           h    (reads/as-stored-with-args (:index kb) p {1 x})
+           :let [sx (p/get-sentex (:records kb) h)]
+           :when (and sx (= (list p x) (:sentence sx))
+                      (tax/sees? tax context (:context sx))
+                      (jtms/in? tms h))]
+       h))))
+
+(defn- subsuming-edge
+  "The handle of a believed `(genl x S)` that makes a minted `(genl x t)` in `context`
+  redundant, or nil — `S` a strict subtype of `t` reaching it through the edges
+  `context` sees, so `x` reaches `t` over a route of two edges or more.
+
+  Reachability is what a redundant edge does not change: removing every edge of a
+  directed acyclic graph that has another route leaves the same closure, which is why
+  dropping them all at once is stable rather than a cascade that eats the route it was
+  reading.  The taxonomy refuses a `genl` cycle (`edge-stratification-violation`), so the
+  acyclicity the argument rests on is the store's invariant rather than an assumption."
+  [kb x t context]
+  (let [tax (reasoning/taxonomy kb)
+        tms (reasoning/tms kb)]
+    (first
+     (for [h    (reads/as-stored-with-args (:index kb) 'genl {1 x})
+           :let [sx (p/get-sentex (:records kb) h)
+                 s  (when sx (nth (:sentence sx) 2 nil))]
+           :when (and sx (= 3 (count (:sentence sx))) (symbol? s)
+                      (not= s t) (tax/genl? tax s t context)
+                      (tax/sees? tax context (:context sx))
+                      (jtms/in? tms h))]
+       h))))
+
+(defn subsumed-mint
+  "The handle of the believed record that already says, more specifically, what the
+  minted `sentence` says in `context` — or nil when nothing does.
+
+  The two shapes an argument declaration mints: a membership `(t x)`, subsumed by a
+  membership in a subtype of `t`; and a `genl` edge, subsumed by a route of two edges or
+  more.  Nil for anything else and nil with the toggle off, so a caller asks without
+  testing either first.
+
+  **A read of belief, which is what makes it order-independent.**  Withholding the mint
+  while the specific membership is believed and drawing it again when that membership
+  leaves is a function of the current state, so the arrival order of the fact, the
+  declaration and the specific type cannot decide which records the KB ends up holding —
+  the property `every-arrival-order-reaches-the-same-belief` pins.  What the KB *answers*
+  is untouched either way: subsumption reaches `t` from the specific type with or without
+  a record in between (docs/argtypes.md)."
+  [kb sentence context]
+  (when *prune-subsumed-mints?*
+    (cond
+      (and (= 1 (nm/arity sentence)) (symbol? (nm/functor sentence))
+           (symbol? (first (nm/args sentence))))
+      (subsuming-membership kb (nm/functor sentence) (first (nm/args sentence)) context)
+
+      (and (= 'genl (nm/functor sentence)) (= 3 (count sentence))
+           (symbol? (nth sentence 1)) (symbol? (nth sentence 2)))
+      (subsuming-edge kb (nth sentence 1) (nth sentence 2) context))))
 
 (defn- entailment-cascade
   "Every sentence the argument declarations would mint over `sentence` in `context`, and
@@ -2748,7 +3088,7 @@
         types (kb/membership-reader kb context)
         decls (declaration-reader kb (nm/functor chk) context)
         p     (constraint-problem kb chk context types decls)]
-    (if (refuses-assert? kb p)
+    (if (refuses-assert? kb context p)
       (throw (ex-info (:message p) (dissoc p :message)))
       (let [{:keys [entailments refusal]} (entailment-check kb chk context types decls)]
         (if refusal
@@ -2781,6 +3121,20 @@
     (if (and p (not (arbitrable? p)))
       {:violation {:violation (:type p) :detail (dissoc p :type :sentence)}}
       {:entailments (constraint-entailments kb chk context types decls)})))
+
+(defn conviction-watch
+  "The term whose memberships can lift the argument conviction `v` (a `{:violation
+  :detail}` map), as the `{:term}` field a waiting entry carries: the convicted argument,
+  which a membership arriving can place inside the declared type.
+
+  Read off the conviction the entry is decided under, every time it is decided.  A
+  re-ask that is still convicted can be convicted on a different argument — an
+  application with two targets outside the type names the first, and once that one is
+  lifted it names the second — and an entry left watching the first would never be
+  re-asked when the second is lifted, so the lifting order would decide whether the
+  firing is ever placed."
+  [v]
+  {:term (get-in v [:detail :arg])})
 
 (defn constraint-violation
   "The definitional checks as a value alone: nil when `sentence` is admissible in
@@ -2909,6 +3263,7 @@
    (let [chk   (checked-sentence sentence)
          types (kb/membership-reader kb context)]
      (->> (concat (disjoint-problems kb chk context types)
+                  (cover-refutations kb chk context)
                   (functional-problems kb chk context)
                   (asymmetry-problems kb chk context home)
                   (antitransitivity-problems kb chk context home))

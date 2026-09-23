@@ -803,7 +803,9 @@ The browser's term page carries it: `POST /propose` runs one turn and renders th
 it proposed, and `-main` calls `provider/warm` on a daemon thread at start so the first
 reader's question is not the one that pays for loading the weights. Every turn the panel
 sends carries a **token cap** — the runaway guard, since two of eight models measured go
-runaway and a wall-clock timeout does not stop a host that is still generating.
+runaway and a wall-clock timeout does not stop a host that is still generating. The cap
+is sized per backend: a writing budget for a local turn, and the API default for a turn
+that reasons against the same ceiling first.
 
 The panel is where the **explicit apply** actually happens. Each line comes back with the
 shapes `correct` would accept, numbered, the rewrite leading; the reader picks one (which

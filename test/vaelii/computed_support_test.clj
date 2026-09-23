@@ -26,8 +26,6 @@
       not withdraw anything."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
-            [vaelii.host.core-context :as core-context]
-            [vaelii.host.seed :as seed]
             [vaelii.impl.duration :as dur]
             [vaelii.impl.interval :as iv]
             [vaelii.impl.rules :as vr]
@@ -40,9 +38,7 @@
 ;; computation, and the quantity prover ships in the default registry either way.
 (use-fixtures :each (tu/neutral-fresh
                      #(doto (tu/fresh)
-                        (core-context/load-into)
-                        (seed/load-context 'CxMeasure "upper")
-                        (seed/load-context 'CxTime "upper")
+                        (tu/load-core-with! '[[CxMeasure "upper"] [CxTime "upper"]])
                         (v/add-prover (stp/stp-prover))
                         (v/add-prover (dur/duration-prover))
                         (v/add-prover (iv/allen-prover)))))
@@ -195,6 +191,28 @@
           "the comparison itself has stopped holding")
       (is (empty? (believed kb light))
           "and nothing concluded from it is still believed"))))
+
+(tu/deftest-kb a-unit-table-the-rule-cannot-see-compares-nothing
+  ;; The scoping half.  `quantity.md` has the forward join read the table at `'?ctx`; what
+  ;; a reader sees is what is derived, and a rule and a fact in a sibling of the table
+  ;; derive nothing anywhere until their context is wired under it.
+  (tu/with-terms [Gramme Kilo Heft massOf heavy Whale CxTable CxUse]
+    (doseq [c [CxTable CxUse]]
+      (v/assert kb (list 'genlCx c C) C {:strength :monotonic}))
+    (v/assert kb (list 'dimensionOf Gramme Heft) CxTable)
+    (v/assert kb (list 'dimensionOf Kilo Heft) CxTable)
+    (v/assert kb (list 'conversionFactor Gramme Kilo 0.001) CxTable)
+    (v/assert kb (list 'conversionFactor Kilo Kilo 1) CxTable)
+    (v/assert kb (fwd [(list massOf '?x '?q)
+                       (list 'quantityGreaterThan '?q (list 'QuantityFn 1 Kilo))]
+                      (list heavy '?x))
+              CxUse)
+    (v/assert kb (list massOf Whale (list 'QuantityFn 5000 Gramme)) CxUse)
+    (testing "the rule's context cannot see the table, so nothing compares"
+      (is (empty? (believed kb heavy))))
+    (testing "control: wired under the table, the same rule derives"
+      (v/assert kb (list 'genlCx CxUse CxTable) C {:strength :monotonic})
+      (is (= #{(list heavy Whale)} (believed kb heavy))))))
 
 (tu/deftest-kb the-unit-table-may-arrive-last
   ;; The order-independence half.  Nothing connects `conversionFactor` to

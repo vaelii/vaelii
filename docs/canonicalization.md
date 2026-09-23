@@ -1,8 +1,8 @@
 # Sentex canonicalization (`vaelii.impl.sentex`)
 
-- **Covers:** how a sentence's variable names, antecedent order, symmetric arguments, and
-  comparison direction fold to one stored handle, and how a conjunctive consequent or a
-  disjunctive antecedent unfolds into several.
+- **Covers:** how a sentence's variable names, antecedent order, symmetric and commuting
+  arguments, and comparison direction fold to one stored handle, and how a conjunctive
+  consequent or a disjunctive antecedent unfolds into several.
 - **Not here:** which spellings are legal for a predicate, individual, type or context →
   [naming.md](naming.md); how the canonical form becomes the trie key →
   [indexing.md](indexing.md).
@@ -94,7 +94,7 @@ both spellings of one pair were written, two records for one proposition, each r
 without the other. Match-time probing does not close that: it makes both records answer,
 which reports the fact twice rather than once.
 
-So the declaration migrates what is stored (`integrate/symmetrize-existing`), which is the
+So the declaration migrates what is stored (`integrate/commute-existing`), which is the
 one retroactive arm that writes records rather than deriving content. A row with no mirror
 stored is **re-spelled where it lies** — same handle, same TMS node, same premise mark,
 same justifications, since for a re-canonicalization nothing resting on the row is about
@@ -121,6 +121,93 @@ after by matching, retraction, the TMS and every handle entry point. Migrating l
 themselves canonical, so `recover` reads a store that needs no reconciling
 (`recover_independence_test`).
 
+## Commuting arguments sorted — the same sort at any arity
+
+`symmetric` commutes the two arguments of a binary predicate. Three marks state the same
+licence over any set of positions at any arity, and `(covering Engine Piston Rod Valve)`
+stores as one sentex however the parts are ordered:
+
+| Declaration | What permutes |
+|---|---|
+| `(commutative P)` | every argument, at each arity `P` is applied at |
+| `(commutativeInArgs P p1 p2 …)` | exactly the named positions; every other stays put |
+| `(commutativeInArgAndRest P f)` | position `f` through the application's own end |
+
+All three install a group directly, at their own arm in the special-predicate table, and
+`(commutative P)` installs the group `[:rest 1]` beside the `:commutative` prop it is
+queried by. So no spelling is derived from another: the canonicalizer reads one table
+whichever one was written.
+
+The equivalence between `(commutative P)` and `(commutativeInArgAndRest P 1)` stays in
+CxCore as two `set/inertRule`s — believed, indexed and queryable, run by neither engine —
+because the engine has no `iff` to state it with and neither mark has to derive the
+other any more.
+
+`(genl symmetric commutative)` classifies every symmetric predicate, and `(commutative P)`
+with `(arity P 2)` concludes `(symmetric P)` — commutativity at two arguments **is**
+symmetry, where commutativity at any other arity implies neither symmetry nor arity 2.
+That last one is a `set/forwardOnlyRule`, and the three directions around it are what
+this vocabulary costs a backward search if they are written any other way.
+
+### A bridge between two marks is a cycle backward
+
+`set/forwardRule` adds forward chaining **without taking the backward use away**
+(`rules/backward?` accepts `:forward`), so a rule written with it answers goals too. Three
+rules here conclude a mark that another of them needs:
+
+- `(commutative ?p)` → `(commutativeInArgAndRest ?p 1)` and back, the two directions of
+  one equivalence.
+- `(commutative ?p) ∧ (arity ?p 2)` → `(symmetric ?p)`, whose conclusion `(genl symmetric
+  commutative)` makes a **spec** of `commutative` — and `provers/candidate-rules` offers a
+  rule concluding a spec as a candidate for the supertype goal. So the rule answers the
+  goal its own antecedent poses.
+
+`provers/candidate-rules` carries no ancestor-goal guard, so nothing stops the descent.
+The depth bound (`inference/*max-depth*`) does stop it, which turns the cycle into an
+exponential frontier inside that depth rather than a refusal, and `(genl commutative
+relation)` puts `(commutative ?p)` under every open `(relation ?x)` query — so the cost
+reached every caller of the inference engine, not only a caller asking about
+commutativity. Forward chaining has no such trouble with any of the three: it derives each
+conclusion once and reaches a fixpoint, and an unfounded pair is labelled as one
+([nmtms.md](nmtms.md)).
+
+So the equivalence is inert (the marks install directly, and it derives nothing either
+way) and the arity bridge is forward-only (it derives, and a backward walk of it is the
+cycle). Writing any of the three as `set/forwardRule` returns the stall.
+
+The three written spellings reduce to one runtime descriptor, and
+`sentex/commuting-components` turns the descriptors a predicate carries into the position
+**components** one literal permutes. Three things that reduction decides:
+
+- **Overlapping groups merge.** `(commutativeInArgs P 1 2)` beside `(commutativeInArgs P 2
+  3)` says 1 and 2 interchange and 2 and 3 do, so 1 and 3 interchange through 2. Sorting
+  the two groups in sequence would make the stored form depend on which ran first, which
+  is an order dependence in the storage key.
+- **A `:rest` group is closed by the literal's own arity.** So `(covering W A B)` and
+  `(covering W A B C)` are two claims, and no permutation moves an argument between them.
+- **A component of one position is dropped.** A mark whose positions fall past the
+  literal's arity leaves it alone, and a unary predicate marked `commutative` is
+  identity-only without a special case.
+
+Sorting is the same rule as `symmetric`'s: ground literals only, within each component,
+other positions fixed. Repeats keep their multiplicity — commutativity changes order,
+never content or arity.
+
+Lookup fans the pattern over its arrangements where the symmetric path probes the mirror,
+and the fan is **pruned to what a stored fact can hold**: storage sorts the ground
+arguments inside a component, so an arrangement holding them out of order matches nothing
+and is not probed. With `v` variables among a component of `g` positions that is
+`g!/(g-v)!` probes rather than `g!` — a ground tail probes once however long it is, and
+one variable in it probes `g` times. Where the fan really is factorial the *answer set*
+is too: `g` distinct variables match one stored fact `g!` ways, each a different binding,
+which is `(siblingOf ?a ?b)` matching a stored pair twice, at a longer arity.
+
+The mark is read off the literal's **exact functor**, like `symmetric`'s: a sentex has one
+key, so whether a predicate sorts its arguments cannot vary by who is asking, and a `genl`
+edge below a commutative predicate does not make the sub-predicate commutative. A late
+declaration reaches the facts already stored through the same `integrate/commute-existing`
+migration described above.
+
 ## Comparison siblings folded
 
 `greaterThan` is stored as `lessThan` with reversed arguments
@@ -139,7 +226,7 @@ alone.
 direction is written, so like `not`/`implies` it canonicalizes **into the record**:
 `:direction` (`:forward`/`:backward`/`:both`/`:forward-only`/`:inert`, `:backward` for a
 bare `implies` — the tractable default, since forward chaining materializes a conclusion
-per match; `:forward-only` from `set/forwardOnlyRule` is a tests-only mode) and
+per match; `:forward-only` from `set/forwardOnlyRule` forward-chains and never backchains) and
 `:defeasible` (from `set/defaultRule`). Wrappers may nest — a
 defeasible forward rule — and never reach the stored sentence. The `:direction`
 opt on `assert` and `assert-rule` is just the programmatic spelling: it wraps, and
@@ -292,7 +379,7 @@ same answers, same depth-first pre-order.
 
 ## Result
 
-So rules identical up to **variable names, antecedent order, symmetric argument
+So rules identical up to **variable names, antecedent order, symmetric or commuting argument
 order, and comparison direction** all dedup to one handle — with one carve-out the
 hold-back above states: a *deferred* literal and the *recursive* literal keep the
 author's relative order, since their position is operational, so two spellings that

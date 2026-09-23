@@ -291,7 +291,7 @@
                       (assoc :at i :op op))
               (recur (inc i) (next ops) after-r after-d)))))))
 
-(deftest ^:slow streams-are-not-vacuous
+(deftest streams-are-not-vacuous
   ;; Agreement between two networks that both did nothing is worth nothing.  Before
   ;; trusting the comparison, pin that the generated streams actually reach every
   ;; state the comparison is supposed to cover — a generator tweak that stopped
@@ -332,7 +332,7 @@
         (is (nil? (run-stream ops))
             (str "seed " seed))))))
 
-(deftest ^:slow randomized-streams-agree
+(deftest randomized-streams-agree
   (testing "200 random operation streams, compared after every single step"
     (doseq [seed (range 200)]
       (let [rng (java.util.Random. seed)

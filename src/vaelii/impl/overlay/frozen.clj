@@ -49,7 +49,6 @@
   (kv-count     [_ k]   (p/kv-count base k))
   (kv-intersect [_ ks]  (p/kv-intersect base ks))
   (kv-entries   [_]     (p/kv-entries base))
-
   (kv-put             [_ _ _] (refuse "kv-put"))
   (kv-delete          [_ _]   (refuse "kv-delete"))
   (kv-increment       [_ _]   (refuse "kv-increment"))

@@ -305,11 +305,22 @@
   ;; tuning knob.  `VAELII_MAX_BODY_BYTES` is the operator's override and is read once,
   ;; at load, so what is answerable in-process is that the value agrees with the
   ;; environment this JVM was started in — either way round.
-  (if-let [env (System/getenv "VAELII_MAX_BODY_BYTES")]
+  (if-let [env (some-> (System/getenv "VAELII_MAX_BODY_BYTES") .trim not-empty)]
     (is (= (Long/parseLong env) guard/max-body-bytes)
         "VAELII_MAX_BODY_BYTES names the ceiling")
     (is (= (* 16 1024 1024) guard/max-body-bytes)
         "16 MiB is the ceiling when nothing names another")))
+
+(deftest a-blank-ceiling-is-unset-and-a-bad-one-names-the-switch
+  ;; `VAELII_MAX_BODY_BYTES=` exported empty is the shell saying nothing, as it is for every
+  ;; other switch; read as a value it refused guard's load, which is both servers' start.
+  (doseq [raw [nil "" "   "]]
+    (is (= (* 16 1024 1024) (#'guard/body-ceiling raw)) (str (pr-str raw) " is unset")))
+  (is (= 2000 (#'guard/body-ceiling " 2000 ")))
+  (doseq [raw ["16m" "0" "-1"]]
+    (let [d (try (#'guard/body-ceiling raw) nil (catch clojure.lang.ExceptionInfo e (ex-data e)))]
+      (is (= [:unknown-option "VAELII_MAX_BODY_BYTES"] ((juxt :type :switch) d))
+          (str (pr-str raw) " is refused, naming the switch")))))
 
 ;; ---- same-origin? --------------------------------------------------------
 

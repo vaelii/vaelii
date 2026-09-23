@@ -26,9 +26,7 @@
 ;; being that they coexist without seeing each other's facts
 (use-fixtures :each (tu/neutral-fresh
                      #(doto (tu/fresh)
-                        (core-context/load-into)
-                        (seed/load-context 'CxSpace "upper")
-                        (seed/load-context 'CxTime "upper")
+                        (tu/load-core-with! '[[CxSpace "upper"] [CxTime "upper"]])
                         (v/add-prover (space/spatial-prover))
                         (v/add-prover (iv/allen-prover)))))
 

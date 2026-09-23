@@ -51,7 +51,7 @@
        `lein bench-argindex both` runs micro + macro at their defaults.
        `lein bench-argindex columnar` / `disk-columnar` run the macro on the columnar index
        (memory / durable records) — the path whose argument reads go through `DenseRoots`,
-       which v4 gives a native `ArgColumns`; `macro-compare` runs `:memory` then columnar.
+       which v4 gives native argument columns; `macro-compare` runs `:memory` then columnar.
   Uses spaces 48 (micro), 49 (macro), 50 (join) and 51 (columnar macro), clear of the test
   block and other harnesses; disk-columnar runs in a throwaway temp dir."
   (:require [vaelii.core :as v]
@@ -470,10 +470,8 @@
 
 (defn run-macro-columnar
   "The macro on `:memory-columnar` — memory records, the native columnar trie, and the
-  argument-root reads through `DenseRoots` (its int-keyed roots backend).  This is the
-  path v4's native `ArgColumns` on `DenseRoots` moves: the arg-root aggregate reads no
-  longer reconstruct the `[:argument-root pred pos term]` vector but delegate to the
-  fallback's `::arg` trie."
+  argument-root reads through `DenseRoots` (its int-keyed roots backend), where a scoped
+  key packs into a long and the predicate-agnostic reads union over the slot roster."
   [opts]
   (run-macro-open "memory-columnar → DenseRoots" {:backend :memory-columnar :space 51} opts))
 
@@ -511,7 +509,7 @@
       "micro" (run-micro (parse-args micro-defaults rest))
       "macro" (run-macro (parse-args macro-defaults rest))
       "join"  (run-join (parse-args join-defaults rest))
-      ;; the columnar / disk-columnar macro — the path v4's native `ArgColumns` on
+      ;; the columnar / disk-columnar macro — the path v4's native argument columns on
       ;; `DenseRoots` moves.  `columnar` is memory records + the columnar index (DenseRoots
       ;; over an in-RAM fallback); `disk-columnar` durable records with the same index.
       "columnar"      (run-macro-columnar      (parse-args macro-defaults rest))

@@ -15,7 +15,7 @@
   implementation makes a promise about the structure of it, whatever the namespace is
   called.  This test is that promise written down.
 
-  The other six are one backend's internal shape — `PTrie` is how the columnar index
+  The other seven are one backend's internal shape — `PTrie` is how the columnar index
   spells its trie, `IPostings` how the dense one packs a set — and nothing outside this
   repo has a reason to implement them.  They are listed in `not-an-extension-point` with the reason
   apiece, and `every-protocol-in-the-tree-is-classified` is what keeps that list honest:
@@ -91,17 +91,18 @@
    "the int-token table behind the columnar trie — an encoding detail of that backend."
    'vaelii.impl.types.dense-roots/PMappedRoots
    "how the dense roots are memory-mapped; read by the dense index and nothing else."
+   'vaelii.impl.types.snapshot/SnapshotSections
+   "how the columnar trie and the dense roots hand their columns to the index image and
+    take them back; `vaelii.impl.disk.index-snapshot` is its only caller, and the two
+    structures in this tree are its only implementers.  `SnapshotSink`/`SnapshotSource`,
+    beside it in the same namespace, are the pinned pair an out-of-tree medium fills."
    'vaelii.impl.types.postings/IPostings
    "how the dense KvBackend packs a handle set. A new backend supplies a KvBackend
     (which IS pinned) and never this."
    'vaelii.impl.jtms-protocol/Tms
    "the sparse/dense JTMS swap (docs/density.md); the protocol has its own file so the
     rest of jtms.clj stays instrumentable (scripts/coverage.sh). Both implementations
-    ship here and `VAELII_TEST_TMS` picks between them; an internal axis, not an invitation."
-   'vaelii.impl.protocols/ArgColumns
-   "the argument-root family's read shape — the counted pos→term trie behind
-    `sentexes-with-arg`/`count-with-arg`. MemoryKvBackend implements it and DenseRoots
-    delegates to that one; both are in this repo and nothing outside supplies it."})
+    ship here and `VAELII_TEST_TMS` picks between them; an internal axis, not an invitation."})
 
 ;; ---- the pin ------------------------------------------------------------
 

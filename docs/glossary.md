@@ -203,8 +203,8 @@ between the pipeline and the store. See [reading.md](reading.md).
 
 **Canonical form** ![kb](../.github/badges/cat-kb.svg): The normalized shape a
 sentence is stored in so logically identical knowledge stores once — canonical
-variables, canonical literal order, symmetric-argument sorting, and comparison
-folding. See [canonicalization.md](canonicalization.md).
+variables, canonical literal order, symmetric- and commuting-argument sorting, and
+comparison folding. See [canonicalization.md](canonicalization.md).
 
 **`closed_extent_predicate`** ![kb](../.github/badges/cat-kb.svg): The grant that
 a predicate's **believed** extent is complete, so nothing answering `(P a)` at
@@ -217,6 +217,15 @@ ancestor set, so it is a policy of the theory that closes the extent; a closed
 `(comment <term> "…")` — that lets the CxCore vocabulary document itself in
 its own representation, read back by `core-context/comment-of`. See
 [inference.md](inference.md).
+
+**Commuting component** ![kb](../.github/badges/cat-kb.svg): The set of argument
+positions one literal may permute, reduced from the commutativity marks a relation
+carries — `commutative`, `commutativeInArgs` and `commutativeInArgAndRest`. A ground
+fact stores sorted within each component and a pattern is fanned over its arrangements
+at match time, which is symmetric-argument sorting at any arity. Overlapping marks merge
+into one component, and a tail is closed by the literal's own arity, so two arities of a
+variable-arity relation stay two claims. See
+[canonicalization.md](canonicalization.md).
 
 **Composition table** ![qr](../.github/badges/cat-qr.svg): `r1 ∘ r2` → the base
 relations still possible between *x* and *z* given `r1`(x,y) and `r2`(y,z). The
@@ -343,7 +352,8 @@ not assertible. See [equality.md](equality.md).
 **Direction** ![kb](../.github/badges/cat-kb.svg): Whether a rule chains
 `:forward`, `:backward`, `:both`, `:forward-only`, or `:inert`. `:forward` and `:both` are
 one class — forward + backward — so a `set/forwardRule` rule answers backward goals too;
-`:forward-only` (`set/forwardOnlyRule`) forward-chains but never backchains, a tests-only
+`:forward-only` (`set/forwardOnlyRule`) forward-chains but never backchains, the direction
+for a rule a backward walk would cycle on, a tests-only
 mode the ontology avoids. The `set/*Rule` wrappers canonicalize into the record's
 `:direction` field; a bare `implies` needs none and reads `:backward`, the tractable
 default, since forward chaining materializes a conclusion per match. The chainers read the
@@ -1225,14 +1235,12 @@ none. See [canonicalization.md](canonicalization.md).
 accumulating ledger of conclusions *dropped* on the derivation path — a failed
 arg / disjoint / functional check, a placement-less firing, or a derived
 cycle through negation — recorded rather than thrown. Four groups drop nothing
-and report: the **cross-context** clashes neither writer could see (`:disjoint`,
-`:functional` and `:asymmetric`, each carrying `:visible-from`, and the latter two
-under `:refuse` only); the seven that say bounded work did not cover everything —
+and report: the **cross-context** `:disjoint` clash no vantage convicted, carrying
+`:visible-from`; the six that say bounded work did not cover everything —
 `:exposure-truncated`, `:arbitration-truncated` and `:arity-truncated`, all three
-sweeps cut short; `:constraint-exposure-truncated` and `:arity-report-truncated`,
-each a pass finding more than it will file — the first naming whichever bound it met, a
-cut walk or the entry cap, the second the cap alone; `:partner-sweep-truncated`, a
-vantage the cap kept a pass from consulting at all; and
+sweeps cut short; `:arity-report-truncated`, a pass finding more predicates than it will
+file; `:partner-sweep-truncated`, a vantage the cap kept the arbitration from consulting
+at all; and
 `:context-edge-exposure-truncated`, the only one filed eagerly from an assert rather than
 a settle, over merges a `genlCx` edge's ancestor set did not reach; a retroactive
 `:arity` reach beside a `:non-confluent` pair of equations; and the provers' own —

@@ -371,6 +371,38 @@
   [{:keys [test terms]} sol]
   (test (merge sol (resolve-terms terms sol))))
 
+(defn- collapse-repeats
+  "`literals` with each repeated sentence kept once, and the index a repeat folded onto.
+
+  Conjunction is idempotent: `A ∧ B ∧ B` holds under exactly the substitutions `A ∧ B`
+  holds under.  The two spellings canonicalize to different `node-key`s, so a residual
+  carrying a repeat is a state the claimed-key set cannot recognize as one already
+  expanded.  A rule graph containing a cycle then adds a conjunct per turn of the cycle
+  rather than returning to a claimed key, and the node count grows with the depth bound.
+
+  A kept literal takes the **largest** depth of the copies folded onto it.  Depth bounds
+  the rewrites a literal may still take, the copies carry one sentence, and a deeper
+  copy admits every rewrite a shallower copy admits.  Keeping the smaller depth would
+  refuse rewrites the conjunction admitted before the collapse and lose the answers
+  under them.
+
+  Returns `[kept fold]`.  `fold` is the smallest index in `kept` that a later copy
+  folded onto, and nil when no sentence repeated."
+  [literals]
+  (if (< (count literals) 2)
+    [literals nil]
+    (let [acc (reduce (fn [{:keys [out idx fold] :as acc} l]
+                        (if-let [j (get idx (:sentence l))]
+                          (assoc acc
+                                 :out  (update-in out [j :depth] max (long (:depth l)))
+                                 :fold (if fold (min (long fold) (long j)) (long j)))
+                          (assoc acc
+                                 :out (conj out l)
+                                 :idx (assoc idx (:sentence l) (count out)))))
+                      {:out [] :idx {} :fold nil}
+                      literals)]
+      [(:out acc) (:fold acc)])))
+
 (defn- children
   "The nodes reachable from this one by rewriting one literal through one rule.
 
@@ -392,7 +424,10 @@
   claimed-key set can recognize — and what obliges every term the node is still
   accountable for to be **pushed** into the new numbering: the asker's answers, and each
   pending guard's view of its own rule's variables.  `shift-back` is what lets the new
-  rule's guard keep speaking about `?var0` when `?var0` here means something else."
+  rule's guard keep speaking about `?var0` when `?var0` here means something else.
+
+  The spliced conjunction then goes through `collapse-repeats`, which is what keeps a
+  cyclic rule graph from growing the residual a conjunct at a time."
   [kb node context defeated]
   (let [{:keys [literals guards supports tree-depth from nvars answer-terms derived]} node]
     (for [i     (range (long from) (count literals))
@@ -408,13 +443,22 @@
                  resid (mapv (fn [a] {:sentence (res/substitute a b)
                                       :depth    (dec (long depth))})
                              (rest shifted))
-                 mixed (-> (mapv carry (take i literals))
-                           (into resid)
-                           (into (map carry) (drop (inc i) literals)))
+                 spliced (-> (mapv carry (take i literals))
+                             (into resid)
+                             (into (map carry) (drop (inc i) literals)))
+                 [mixed fold] (collapse-repeats spliced)
+                 ;; The child resumes rewriting at `i`, the first residual literal, except
+                 ;; where a copy folded onto a literal left of that position.  The literal
+                 ;; a copy folded onto carries a larger depth than the parent gave it, and
+                 ;; a window opening to the right of that literal would never spend the
+                 ;; difference.  A fold left of `i` also shortens the prefix, which moves
+                 ;; the first residual literal one position left per fold; `fold` is at or
+                 ;; below both indices, so one `min` covers the two.
+                 window (if fold (min (long i) (long fold)) (long i))
                  [canon vm] (sx/canonical-conjunction (mapv :sentence mixed))
                  vm-inv (set/map-invert vm)]]
       {:literals     (mapv (fn [l s] (assoc l :sentence s)) mixed canon)
-       :from         i
+       :from         window
        :answer-terms (push-terms answer-terms b vm-inv)
        :nvars        (count vm)
        ;; The goal this rewrite is answering, carried into the child's namespace so the

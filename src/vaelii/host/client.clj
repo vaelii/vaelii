@@ -9,8 +9,9 @@
   `(query conn '(dog ?x) 'Ctx)` — the network mirror of `vaelii.core`'s explicit-`kb`
   API.  A `conn` from `client` holds a reusable `HttpClient`; no socket opens until a
   call.  A daemon reply of `{:ok false}` becomes an `ex-info` carrying the daemon's
-  `:error` and `:type`, so a remote naming/disjointness refusal surfaces like a local
-  one.
+  `:error`, `:type` and `:status`, so a remote naming/disjointness refusal surfaces like
+  a local one and the coarse client-fault/server-fault split the status carries is
+  readable without writing the request by hand.
 
   **The bearer token rides on the request the daemon requires it on**: the `conn`
   carries it (`VAELII_API_TOKEN` unless `:token` says otherwise) and every call sets one
@@ -97,26 +98,36 @@
   rb)
 
 (defn- read-reply
-  "Parse a daemon reply body, or refuse it typed.
+  "Parse a daemon reply body, or refuse it typed.  `status` is the HTTP status it came
+  back under, and it is carried on the refusal.
 
   The daemon answers EDN; anything else on the wire came from something that is not the
   daemon — a proxy's HTML error page, a truncated body — and reading it raised a bare
   `RuntimeException` with no `:type`, or handed back `nil`, which then read as
   `{:ok nil}` and threw \"vaelii daemon: \" with no message and no type.  `Throwable`,
-  because a deeply nested reply overflows the reader's stack."
-  [^String body]
+  because a deeply nested reply overflows the reader's stack.
+
+  **The status is on the refusal because it is what names the thing that answered.**  A
+  proxy's 502 and a daemon that answered 200 with a truncated body are one `:bad-reply`
+  to a caller reading the body alone.  They have different causes — a hop between the
+  caller and the daemon in the first, the daemon in the second — and the status is the
+  only field that separates them, since this is the one reply the `:type` vocabulary
+  does not reach: it came from something other than a daemon."
+  [^String body status]
   (let [form (try (edn/read-string body)
                   (catch Throwable t
-                    (throw (ex-info (str "the daemon's reply does not read as EDN: "
-                                         (.getMessage t))
-                                    {:type :bad-reply :body body}))))]
+                    (throw (ex-info (str "the daemon's reply does not read as EDN"
+                                         " (HTTP " status "): " (.getMessage t))
+                                    {:type :bad-reply :status status :body body}))))]
     (if (map? form)
       form
-      (throw (ex-info (str "the daemon's reply is not a map: " (pr-str form))
-                      {:type :bad-reply :reply form})))))
+      (throw (ex-info (str "the daemon's reply is not a map (HTTP " status "): "
+                           (pr-str form))
+                      {:type :bad-reply :status status :reply form})))))
 
 (defn- send-edn
-  "POST `body` (an EDN string) to `path` and return the parsed EDN reply map.
+  "POST `body` (an EDN string) to `path` and return `[status reply-map]` — the HTTP
+  status beside the parsed EDN, since `call` puts the status on the refusal it builds.
   `timeout-ms` overrides the `conn`'s, which is what a long `:poll` needs: the daemon
   holds the request open for its wait, and a read timeout shorter than that would fail
   every poll that had nothing to report."
@@ -129,7 +140,7 @@
      (with-token rb conn)
      (.POST rb (HttpRequest$BodyPublishers/ofString ^String body))
      (let [^HttpResponse resp (.send http (.build rb) (HttpResponse$BodyHandlers/ofString))]
-       (read-reply (.body resp))))))
+       [(.statusCode resp) (read-reply (.body resp) (.statusCode resp))]))))
 
 (defn call
   "POST `{:op op :args args}` and return the `:result`, or throw `ex-info` on an
@@ -137,11 +148,18 @@
   with no wrapper yet.
 
   `opts` is `{:timeout-ms n}` for this call alone, which only the long `:poll` needs —
-  everything else answers inside the `conn`'s own timeout."
+  everything else answers inside the `conn`'s own timeout.
+
+  **The refusal carries `:status`**, the HTTP status the daemon answered under.  A
+  caller discriminates on `:type` — that is the one vocabulary `docs/operations.md`
+  promises — and the status is the coarse split under it: the caller's mistake at 4xx,
+  the daemon's fault at 5xx.  Without it that split is a fact only a caller writing its
+  own HTTP could read, and a `:type` outside the daemon's request-refusal roster
+  reaches this client looking exactly like one inside it."
   ([conn op args] (call conn op args nil))
   ([conn op args {:keys [timeout-ms]}]
-   (let [reply (send-edn conn "/op" (pr-str {:op op :args (vec args)})
-                         (or timeout-ms (:timeout-ms conn)))]
+   (let [[status reply] (send-edn conn "/op" (pr-str {:op op :args (vec args)})
+                                  (or timeout-ms (:timeout-ms conn)))]
      (if (:ok reply)
        (:result reply)
        ;; the daemon's own `:type` when it sent one, so a caller discriminates on the one
@@ -153,7 +171,7 @@
                             (or (:error reply)
                                 (str "refused " (pr-str op) " and sent no :error — the"
                                      " reply held " (pr-str (dissoc reply :ok)))))
-                       (-> (assoc reply :op op :args (vec args))
+                       (-> (assoc reply :op op :args (vec args) :status status)
                            (update :type #(or % :daemon-error)))))))))
 
 (defn health
@@ -171,7 +189,7 @@
     (with-token rb conn)
     (.GET rb)
     (let [^HttpResponse resp (.send http (.build rb) (HttpResponse$BodyHandlers/ofString))]
-      (read-reply (.body resp)))))
+      (read-reply (.body resp) (.statusCode resp)))))
 
 ;; ---- the vaelii.core surface, conn-first --------------------------------
 ;; Each threads `conn` and forwards the same args the in-process fn takes.  A sentex

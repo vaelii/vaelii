@@ -91,7 +91,7 @@
 (instance_relation_predicate heightOf)
 (arg heightOf 1 physical_object)
 (arg heightOf 2 thing)
-(functional heightOf)
+(set/monotonic (functional heightOf))
 
 (comment Hour "Sixty minutes.")
 (dimensionOf Hour Duration)
@@ -241,4 +241,4 @@
 (instance_relation_predicate weightOf)
 (arg weightOf 1 physical_object)
 (arg weightOf 2 thing)
-(functional weightOf)
+(set/monotonic (functional weightOf))

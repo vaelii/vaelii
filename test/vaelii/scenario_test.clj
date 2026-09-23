@@ -13,8 +13,6 @@
   the answer cannot be reading a handle."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
-            [vaelii.host.core-context :as core-context]
-            [vaelii.host.seed :as seed]
             [vaelii.impl.interval :as iv]
             [vaelii.impl.qcn :as qcn]
             [vaelii.impl.qcn-kb :as qkb]
@@ -27,9 +25,7 @@
 ;; network directly, so it needs no query engine.
 (use-fixtures :each (tu/neutral-fresh
                      #(doto (tu/fresh)
-                        (core-context/load-into)
-                        (seed/load-context 'CxTime "upper")
-                        (seed/load-context 'CxSpace "upper"))))
+                        (tu/load-core-with! '[[CxTime "upper"] [CxSpace "upper"]]))))
 
 (def ^:private C 'CxUniverse)
 
@@ -156,6 +152,29 @@
           ;; whatever the reorder did to the search
           (is (seq first-four) "the network admits no arrangement at all")
           (is (= first-four (scen/scenarios iv/allen kb C {:limit 4}))))))))
+
+(tu/deftest-kb five-nodes-in-four-orders-give-one-enumeration
+  ;; Five nodes leave the search ties at more than one depth, where three nodes leave it
+  ;; one.  Each order is asserted at fresh handles, and the comparison is the public
+  ;; enumeration's eight-scenario prefix.
+  (tu/with-terms [A B D E F]
+    (doseq [[calc facts] {:allen [(list 'sharesTimeWith A B) (list 'sharesTimeWith B D)
+                                  (list 'precedes D E) (list 'sharesTimeWith E F)
+                                  (list 'precedes A F)]
+                          :rcc8  [(list 'regionOverlaps A B) (list 'regionOverlaps B D)
+                                  (list 'nonTangentialProperPart D E)
+                                  (list 'regionOverlaps E F) (list 'regionOverlaps A F)]}]
+      (let [orders [facts (reverse facts) (concat (drop 2 facts) (take 2 facts))
+                    (concat (take-last 1 facts) (butlast facts))]
+            prefix (fn [order]
+                     (doseq [f order] (v/assert kb f C))
+                     (let [ss (v/qualitative-scenarios kb calc C 8)]
+                       (doseq [f order] (v/retract! kb (v/handle-of kb f C)))
+                       ss))
+            [p & ps] (map prefix orders)]
+        (testing (name calc)
+          (is (< 1 (count p)) "the network leaves no choice to tie-break")
+          (is (every? #{p} ps)))))))
 
 ;; ---- calculus-generic ----------------------------------------------------
 

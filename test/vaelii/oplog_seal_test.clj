@@ -36,6 +36,7 @@
       (if (.isDirectory f)
         (.mkdirs t)
         (Files/copy (.toPath f) (.toPath t)
+                    ^"[Ljava.nio.file.CopyOption;"
                     (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING]))))))
 
 (defn- open

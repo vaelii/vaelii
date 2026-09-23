@@ -246,6 +246,22 @@
   (count-with-functor    [store pred]     "How many fact sentexes have functor `pred`.")
   (sentexes-with-arg     [store pos term] "Handles of fact sentexes with `term` at 1-based argument `pos`.")
   (count-with-arg        [store pos term] "How many fact sentexes have `term` at `pos`.")
+  ;; ...and the **unary** slice of that read, which is a separate op because the argument
+  ;; root cannot narrow to it: `(T x)` and `(P x y)` share the `[1 x]` node and the trie
+  ;; level below it, so telling them apart meant fetching the record behind every fact at
+  ;; the node and reading its arity.  `kb/types-of` — the retrieval every definitional
+  ;; check bottoms out on — wants exactly the unary ones, so a term at argument 1 of n
+  ;; binary facts cost n record fetches on every assert about it, to find the handful of
+  ;; types it holds.
+  ;;
+  ;; A **superset** is a legal answer, and `(sentexes-with-arg store 1 term)` is the
+  ;; simplest one: the caller filters by arity and by the argument on the records it was
+  ;; going to read anyway, so over-answering costs a posting read and under-answering
+  ;; would lose a membership.  It is an op here rather than an optional protocol beside
+  ;; this one because every index can answer it and no caller branches on whether it
+  ;; does — a capability nothing tests for is not a capability, it is this protocol with
+  ;; a second name.
+  (unary-sentexes-with-arg [store term] "Handles of arity-1 fact sentexes whose lone argument is `term` — a superset is legal; the caller filters it exact.")
   ;; multi-column narrowing: one intersection of the functor root and every named argument
   ;; root, so a query that knows several terms narrows on all of them at once instead
   ;; of one column with the rest deferred to a post-fetch filter.  `pred` may be nil
@@ -306,11 +322,16 @@
   (index-load    [store entries] "Install `[key value]` entries into an empty index, in this store's own representation.")
   (clear-index!        [store]       "Remove every index entry (wipe the store — `reindex` rebuilds)."))
 
-;; ---- the key-value backend an `IndexStore` bottoms out on --------------
-
 (defprotocol KvBackend
   "The key-value operations `KvIndexStore` bottoms out on.  Keys are structured
-  vectors; set members are bare values.  Each adapter maps those onto its store."
+  vectors; set members are bare values.  Each adapter maps those onto its store.
+
+  **No op here names an index family.**  A scalar, a counter, a set and an intersection
+  are the whole vocabulary, and which families a KB indexes, how their keys are spelled
+  and which reads descend them are `vaelii.impl.kv`'s — the index layer, above this one.
+  A backend is free to hold any family in a representation of its own (a counted trie,
+  packed longs) and answer these ops off it; that is a representation, and it stays
+  invisible here."
   ;; scalars / counters
   (kv-get  [b k]   "The value at `k`, or nil.")
   (kv-put  [b k v] "Set `k` to `v`.")
@@ -365,33 +386,3 @@
                        " :delete, :increment, :decrement, :add-to-set or"
                        " :remove-from-set")
                   {:type :unknown-frame :op op})))
-
-;; ---- the argument columns -------------------------------------------------
-;; The predicate-scoped argument-root family is the one family whose key is a four-element
-;; VECTOR — `[:argument-root pred pos term]` — so a probe through a flat key→set map pays
-;; `APersistentVector.doEquiv` per read and conses that vector at the call site.  The
-;; family is also *hierarchical*: `pos → term → pred → handles`, and the reads a settle
-;; leans on ask for a subtree of it — a scoped bucket at one leaf, the predicate-agnostic
-;; UNION at a `(pos, term)` node, or that node's cardinality (`could-clash?` /
-;; `pairable?`).  `ArgColumns` names those reads directly so a backend that stores the
-;; family as a counted trie answers them as node reads: no consed vector, no `doEquiv`, a
-;; count read off a node, and the agnostic union handed back by reference instead of
-;; rebuilt per call.
-;;
-;; Every `KvBackend` gets the `Object` default below, which reconstructs the vector keys
-;; and folds the generic set ops — so a backend that has not specialized the family
-;; answers exactly what a flat `key → set` map answers.  Only the in-memory backend
-;; (`vaelii.impl.memory`) overrides it with the trie; the columnar, disk and overlay
-;; backends ride the default.
-(defprotocol ArgColumns
-  "Descent reads over the predicate-scoped argument-root family (`pos → term → pred`)."
-  (arg-scoped-members [b pred pos term]
-    "Handles at `[:argument-root pred pos term]` — one scoped leaf.")
-  (arg-scoped-intersect [b pred pos-terms]
-    "Intersection of the scoped leaves over `pos-terms` (a seq/map of `[pos term]`) — the
-    multi-column narrowing; a single column is that leaf handed back directly.")
-  (arg-agnostic-members [b pos term]
-    "Union of the handles at `(pos, term)` across every predicate — the predicate-agnostic
-    read, over the slot roster in the default and off a maintained node union in the trie.")
-  (arg-agnostic-count [b pos term]
-    "Cardinality of that union — a node read where the family is a counted trie."))

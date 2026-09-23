@@ -594,19 +594,29 @@
 ;; Two of eight models measured degenerate into runaway generation — one wrote 8138
 ;; lines over 474 seconds.  A wall-clock timeout is no answer (the host keeps
 ;; generating), so the bound is on tokens and it rides on every turn the panel sends.
+;; Its size is per backend: a local turn spends its tokens writing, where an API turn
+;; reasons against the same ceiling first, so the cap that bounds the one truncates the
+;; other.  What holds for every kind is that a cap is sent at all.
 
 (tu/deftest-kb every-turn-carries-a-token-cap
   (let [{:keys [term ctx]} (a-page kb)
-        [proposer p] (scripted {:assertions [(list 'genl term 'animal)]})
-        _ (binding [web/*proposer* proposer]
-            (POST {"q" (pr-str term) "ctx" (pr-str ctx) "message" "anything"}))
-        requests (stub/requests p)]
-    (is (seq requests) "the panel actually ran a turn")
-    (doseq [req requests]
-      (is (number? (:max-tokens req)) "a turn with no cap is a turn that can run away")
-      (is (<= (:max-tokens req) 4096))
-      (testing "and the window it is sized against is bounded too"
-        (is (number? (:num-ctx req)))))))
+        turn (fn [kind]
+               (let [[proposer p] (scripted {:assertions [(list 'genl term 'animal)]})]
+                 (binding [web/*proposer* (assoc proposer :kind kind)]
+                   (POST {"q" (pr-str term) "ctx" (pr-str ctx) "message" "anything"}))
+                 (stub/requests p)))]
+    (doseq [kind [:ollama :anthropic :stub]]
+      (let [requests (turn kind)]
+        (is (seq requests) (str "the panel actually ran a turn on " kind))
+        (doseq [req requests]
+          (is (number? (:max-tokens req)) "a turn with no cap is a turn that can run away")
+          (is (<= (:max-tokens req) 16000))
+          (testing "and the window it is sized against is bounded too"
+            (is (number? (:num-ctx req)))))))
+    (testing "a local turn spends its tokens writing, so it carries the tight cap"
+      (is (every? #(<= (:max-tokens %) 2048) (turn :ollama))))
+    (testing "an API turn reasons against the same cap, so it is given room to"
+      (is (every? #(<= 4096 (:max-tokens %)) (turn :anthropic))))))
 
 ;; ---- the origin check ---------------------------------------------------
 ;; The turn writes nothing, but it spends a model (and on a local host, a GPU), so a

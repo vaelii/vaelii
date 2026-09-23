@@ -223,7 +223,7 @@ edge down to its January.
 ### What triggers it, and what it costs
 
 The sweep is the teardown's, so a removal is what makes a candidate. A context is
-referenced **two** ways, and `nat/constants-named-by` reads both off each removed sentex:
+referenced **two** ways, and `nat/orphans-named-by` reads both off each removed sentex:
 in its **sentence**, at any nesting, and as its own **context slot** — which is how the
 last fact leaving an empty context is the removal that orphans it. Whichever of the three
 sources goes last is the retraction that collects, and the end state is the same in every
@@ -284,12 +284,14 @@ which is the only spelling the map is keyed by.
   ground* context function, so the check does not depend on the naming policy), the
   `reified-context-symbol?` / `reified-object-symbol?` discriminants, and the orphan
   question's context arm — `orphan?`'s extent gate, `computed-genlCx-edge?` (the
-  authorship test), and `constants-named-by`'s reading of a removed sentex's context slot.
+  authorship test), and `orphans-named-by`'s reading of a removed sentex's context slot.
 - `vaelii.impl.naming` — `context?` (the `cx/` namespace).
-- `vaelii.core` — the context-arg reify in `assert` and the read entry points (`ist-goal`), the
-  context-slot shape gate (`context-shape-problem`), the producer maintenance hook, its
-  revival re-run on `retract!` / `edit!` (`context-nat/reconcile-revivals`), and
-  `remove-orphaned-nats!`, which collects both kinds of constant at one gate.
+- `vaelii.core` — the context-arg reify in `assert` and the read entry points (`ist-goal`),
+  and the context-slot shape gate (`context-shape-problem`).
+- `vaelii.impl.nat-maintenance` — the producer's call site on the assert path
+  (`reconcile-assert`), its revival re-run on `retract!` / `edit!`
+  (`reconcile-revivals!`), the merges a computed or revived edge licenses, and
+  `collect-orphans!`, which collects both kinds of constant at one gate.
 - `vaelii.impl.special` / `wff` — the `context_denoting_function` prop mark and the
   `contextArgSubrelation` well-formedness check.
 - `vaelii.impl.context-nat` — the producer, the comparator registry, and

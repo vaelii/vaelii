@@ -40,15 +40,14 @@
 
   A rule is named when a *derivation* was refused, which is what the chainer files.  Three
   families name none: an aggregate's numeric refusal and the post-join literal declined
-  for answering two ways, both of which are about a *literal* and not a firing; the five notices that a pass stopped
-  short of what it might have said — `:exposure-truncated`, `:arbitration-truncated` and
-  `:arity-truncated`, where a budget ran out before the work was done, and
-  `:constraint-exposure-truncated` and `:arity-report-truncated`, where the work *was* done
-  and a cap on entries kept the rest of it unnamed — all of which are about a bound rather
-  than about a firing; and what the settle reports about content that was already stored,
-  the cross-context `:disjoint` / `:functional` / `:asymmetric` / `:anti-transitive`
-  clashes and the `:arity`
-  reach over facts a later arity binding convicts.  Those last kinds also arrive *with* a
+  for answering two ways, both of which are about a *literal* and not a firing; the five
+  notices that a pass stopped short of what it might have said —
+  `:exposure-truncated`, `:arbitration-truncated`, `:arity-truncated` and
+  `:partner-sweep-truncated`, where a budget ran out before the work was done, and
+  `:arity-report-truncated`, where the work *was* done and a cap on entries kept the rest
+  of it unnamed — all of which are about a bound rather than about a firing; and what the
+  settle reports about content that was already stored, the cross-context `:disjoint`
+  clash and the `:arity` reach over facts a later arity binding convicts.  Those last kinds also arrive *with* a
   rule when the chainer drops a conclusion under one of them, so the discriminant is the
   key rather than the kind — which is why this reads `(:rule entry)` and not a roster."
   [kb entry]
@@ -106,3 +105,19 @@
   (when-not (some #(= (dissoc % :run) entry) (some-> (reasoning/violations kb) deref))
     (report kb [entry]))
   nil)
+
+(defn withdraw!
+  "Remove the entries rule `rule` filed for dropping `sentence` in `context`, once the
+  conclusion has been placed after all.
+
+  The one entry a later event retracts.  A firing dropped on an argument constraint is
+  remembered and re-asked (`chain/release-refusal!`), and when the type it lacked
+  arrives the conclusion is stored — the KB an arrival order that brought the type first
+  would have built, which files nothing.  Left standing, the entry would report which
+  order this KB was loaded in rather than anything wrong with it."
+  [kb sentence context rule]
+  (swap! (reasoning/violations kb)
+         (fn [v]
+           (into [] (remove #(and (= rule (:rule %)) (= sentence (:sentence %))
+                                  (= context (:context %))))
+                 v))))

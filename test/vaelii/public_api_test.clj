@@ -348,11 +348,16 @@
   catches all six as the symbols they are, and a string stays a string.
 
   `read-string` per top-level form with `*read-eval*` off; reader metadata and `#\"…\"`
-  patterns survive it, and a `::` keyword in a namespace this reader has not loaded would
-  not, so anything unreadable is reported rather than skipped."
+  patterns survive it, and a `::alias/k` keyword would not, so anything unreadable is
+  reported rather than skipped.  The read runs in a namespace of its own: a bare `::k`
+  resolves against `*ns*`, and read under whatever namespace the runner left current — a
+  coverage run leaves the last one it instrumented, `vaelii.impl.relative` — every `::k`
+  in the file would read as an impl keyword."
   [^java.io.File file]
   (let [src (str "[" (slurp file) "]")
-        forms (binding [*read-eval* false] (read-string src))
+        forms (binding [*read-eval* false
+                        *ns* (create-ns 'vaelii.public-api-test.reader)]
+                (read-string src))
         named (fn [x] (and (or (symbol? x) (keyword? x)) (namespace x)))]
     (->> (tree-seq coll? seq forms)
          (keep (fn [x]
@@ -363,6 +368,18 @@
          distinct
          sort
          vec)))
+
+(deftest impl-symbols-in-does-not-read-the-ambient-namespace
+  ;; A bare `::k` in an app file is the app's own keyword. Read with an impl namespace
+  ;; current, as a coverage run leaves it, the scan must still find nothing.
+  (let [f (java.io.File/createTempFile "impl-symbols" ".clj")
+        probe 'vaelii.impl.public-api-probe]
+    (try
+      (spit f "(ns some.app) (def k ::local)")
+      (is (= [] (binding [*ns* (create-ns probe)] (impl-symbols-in f))))
+      (finally
+        (remove-ns probe)
+        (.delete f)))))
 
 (deftest koinii-reaches-into-no-impl
   ;; The claim koinii's exclusion above rests on, checked rather than asserted. koinii is

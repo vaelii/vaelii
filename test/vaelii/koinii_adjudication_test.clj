@@ -15,7 +15,7 @@
             [vaelii.koinii.speech-acts :as sa]
             [vaelii.test-util :as tu]))
 
-(defn- adj-kb [] (doto (tu/fresh) (core-context/load-into)))
+(defn- adj-kb [] (tu/load-core! (tu/fresh)))
 
 (defn- refusal-type
   "The `:type` in the `ex-data` of the refusal `thunk` raises, or nil when it raises
@@ -132,6 +132,29 @@
       (testing "and the sweep is idempotent — a second pass re-flags nothing"
         (binding [v/*clock* (constantly (+ t0 3000))]
           (is (empty? (adj/sweep-stale kb 'CxDeploy))))))))
+
+(tu/deftest-kb a-derived-clash-ages-from-its-premises-and-not-from-nothing
+  ;; Neither side is asserted: two rules conclude P and ¬P from facts each agent states,
+  ;; so both sides are derived and carry no provenance of their own.  The clash arose when
+  ;; the last premise landed, and it is that stamp the timeout counts from.
+  (binding [v/*clock* (constantly t0)]
+    (v/assert kb '(set/forwardRule (implies (fast ?x) (reliable ProdCluster))) 'CxDeploy)
+    (v/assert kb '(set/forwardRule (implies (flaky ?x) (not (reliable ProdCluster)))) 'CxDeploy)
+    (doseq [a '[AgentAtlas AgentBoreas]]
+      (v/assert kb (list 'genlCx 'CxDeploy (id/context-for a)) 'CxUniverse {:strength :monotonic}))
+    (holds! kb 'AgentAtlas '(fast Disk1))
+    (holds! kb 'AgentBoreas '(flaky Net1)))
+  (let [did (:dispute-id (first (d/disputes-in kb 'CxDeploy)))]
+    (is (some? did) "the rules raised the clash")
+    (is (not-any? #(v/premise? kb %) did) "and both of its sides are derived")
+    (binding [adj/*timeout-ms* 1000]
+      (testing "inside the timeout, counted from the premises: nothing swept"
+        (binding [v/*clock* (constantly (+ t0 500))]
+          (is (empty? (adj/sweep-stale kb 'CxDeploy)))
+          (is (= :open (d/dispute-state kb did)))))
+      (testing "past it: swept"
+        (binding [v/*clock* (constantly (+ t0 2000))]
+          (is (= 1 (count (adj/sweep-stale kb 'CxDeploy)))))))))
 
 ;; ---- arbiter escalation: explained, and reversible -----------------------
 
@@ -315,6 +338,39 @@
           (is (= adj/majority-arbiter (:arbiter (adj/who-ruled kb (:ruling r)))))
           (v/retract! kb (:ruling r))
           (is (d/disputed? kb P 'CxDeploy) "retract the ruling and the dispute reopens"))))))
+
+(tu/deftest-kb two-interleavings-of-the-same-moves-adjudicate-alike
+  ;; each agent's moves keep their own order and the ballots follow the claim they name;
+  ;; everything else interleaves.  A dispute is compared as content, since its id is a
+  ;; handle pair and the handles differ between the runs.
+  ;; Each run gets a KB of its own, since clearing the fixture's would undo its baseline.
+  (let [run (fn [order]
+              (let [kb (doto (v/open-kb (update tu/plain-memory-space :space conj ::interleave
+                                                (hash order)))
+                         (tu/clear-kb!) (core-context/load-into))
+                    edge! (fn [a] (v/assert kb (list 'genlCx 'CxDeploy (id/context-for a))
+                                            'CxUniverse {:strength :monotonic}))
+                    ph (atom nil)
+                    move {:atlas #(reset! ph (holds! kb 'AgentAtlas P))
+                          :boreas #(holds! kb 'AgentBoreas not-P)
+                          :edges #(run! edge! '[AgentAtlas AgentBoreas AgentCiel])
+                          :ciel-edge #(edge! 'AgentCiel)
+                          :vote-a #(ballot! kb 'AgentAtlas @ph :for)
+                          :vote-b #(ballot! kb 'AgentBoreas @ph :against)
+                          :vote-c #(ballot! kb 'AgentCiel @ph :for)}]
+                (run! #((move %)) order)
+                (let [ds (d/disputes-in kb 'CxDeploy)
+                      r  (adj/resolve-by-majority kb (:dispute-id (first ds)) @ph 'CxDeploy)]
+                  {:disputes (set (for [x ds] (set (map #(:sentence (v/sentex kb %)) (:handles x)))))
+                   :tally    (adj/tally kb @ph)
+                   :outcome  (select-keys r [:for :against :outcome])
+                   :verdict  (:verdict (v/argue kb P 'CxDeploy))
+                   :open?    (d/disputed? kb P 'CxDeploy)})))
+        a (run [:atlas :boreas :edges :vote-a :vote-b :vote-c])
+        b (run [:boreas :ciel-edge :atlas :vote-c :vote-b :edges :vote-a])]
+    (is (= #{#{P not-P}} (:disputes a)))
+    (is (= {:for 2 :against 1 :outcome :for} (:outcome a)))
+    (is (= a b))))
 
 (tu/deftest-kb majority-resolution-requires-proof-tier-identity
   ;; A majority ruling is trust-weighting: it lands a :monotonic verdict that DEFEATS the

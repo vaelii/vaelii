@@ -93,13 +93,32 @@
 
 ;; ---- the stale sweep: bound the accumulation -----------------------------
 
+(defn- support-handles
+  "The transitive premise handles a stored conclusion `handle` rests on — a
+  visited-guarded walk of `why`'s `:because` graph, excluding the conclusion itself.  Cheap
+  for a shallow derivation and cycle-safe; a premise has no `:because`, so the walk stops
+  there."
+  [kb handle]
+  (loop [stack [handle] seen #{}]
+    (if-let [h (peek stack)]
+      (if (seen h)
+        (recur (pop stack) seen)
+        (let [prem (for [j (:support (v/why kb h)) b (:because j)] (:handle b))]
+          (recur (into (pop stack) prem) (conj seen h))))
+      (disj seen handle))))
+
 (defn- opened-at
-  "When dispute `id` arose: the latest `:created` stamp among its clashing sides (the clash
-  exists once the last of them is asserted — two for a rebuttal, three for an
-  `anti_transitive` chain).  0 if no side carries a stamp — an un-stamped dispute is
-  treated as old, so the sweep surfaces it rather than hiding it."
+  "When dispute `id` arose: the latest `:created` stamp among its clashing sides and
+  everything they rest on (the clash exists once the last of them is asserted — two sides
+  for a rebuttal, three for an `anti_transitive` chain).  A side that was **derived**
+  carries no provenance of its own, so its stamps are its premises': an emergent clash —
+  two rules concluding `S` and `¬S` from facts nobody stated as a stance — arose when the
+  last of those premises landed, and reading the sides alone would find no stamp and
+  sweep it at its first tick.  0 if nothing in the closure carries a stamp — an un-stamped
+  dispute is treated as old, so the sweep surfaces it rather than hiding it."
   [kb id]
-  (reduce max 0 (keep #(:created (v/provenance kb %)) id)))
+  (reduce max 0 (keep #(:created (v/provenance kb %))
+                      (into (set id) (mapcat #(support-handles kb %)) id))))
 
 (defn sweep-stale
   "Sweep every dispute `channel` observes that has stayed live past `*timeout-ms*` with no
@@ -327,7 +346,9 @@
   names and manufacture a defeating ruling from spoofable input, which is exactly what
   the identity layer forbids (\"trust-weighting a spoofable identity is worse than no
   trust\").  So this refuses (`:koinii/identity-unverified`) unless the policy is
-  `:proof-tier`, where every ballot was verified at ingest.  `tally` itself is ungated —
+  `:proof-tier`.  The gate reads that binding, in the process this runs in, and not the
+  ballots: a ballot cast through `channel/vote` never passes `identity/authenticate`, so
+  the names counted are the names claimed under either policy.  `tally` itself is ungated —
   a cooperative house may still *count* and display its ballots for transparency; it just
   cannot turn that count into a ruling."
   [kb id claim-handle channel]
@@ -351,20 +372,6 @@
                      (assoc counts :outcome :tie :ruling nil :withdrawn standing)))))
 
 ;; ---- does an open dispute block dependent reasoning? no — but make it visible
-
-(defn- support-handles
-  "The transitive premise handles a stored conclusion `handle` rests on — a
-  visited-guarded walk of `why`'s `:because` graph, excluding the conclusion itself.  Cheap
-  for a shallow derivation and cycle-safe; a premise has no `:because`, so the walk stops
-  there."
-  [kb handle]
-  (loop [stack [handle] seen #{}]
-    (if-let [h (peek stack)]
-      (if (seen h)
-        (recur (pop stack) seen)
-        (let [prem (for [j (:support (v/why kb h)) b (:because j)] (:handle b))]
-          (recur (into (pop stack) prem) (conj seen h))))
-      (disj seen handle))))
 
 (defn contested-premises
   "The disputed premises the conclusion `S` rests on in `ctx`: the handles in S's support

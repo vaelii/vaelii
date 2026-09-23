@@ -12,8 +12,6 @@
   no support and refuses an open end rather than enumerating the calendar."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
-            [vaelii.host.core-context :as core-context]
-            [vaelii.host.seed :as seed]
             [vaelii.impl.calendar :as cal]
             [vaelii.impl.datetime :as dt]
             [vaelii.impl.interval :as interval]
@@ -29,9 +27,7 @@
 ;; unregistered KB stores and retrieves calendar facts and pays nothing.
 (use-fixtures :each (tu/neutral-fresh
                      #(doto (tu/fresh)
-                        (core-context/load-into)
-                        (seed/load-context 'CxTime "upper")
-                        (seed/load-context 'CxChange "middle")
+                        (tu/load-core-with! '[[CxTime "upper"] [CxChange "middle"]])
                         (v/add-prover (cal/calendar-prover)))))
 
 (def ^:private C 'CxUniverse)

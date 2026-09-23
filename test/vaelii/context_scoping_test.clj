@@ -136,7 +136,7 @@
     (testing "every backward path agrees: B does not reason with A's rule"
       (is (empty? (v/ask kb (list ancestorOf6 Tom Bob) CxB)))
       (is (empty? (v/prove kb (list ancestorOf6 Tom Bob) CxB)))
-      (is (empty? (v/prove kb (list ancestorOf6 Tom Bob) CxB)))
+      (is (empty? (v/query kb (list ancestorOf6 Tom Bob) CxB {:max-depth 2})))
       (is (empty? (v/lookup kb 7 (list ancestorOf6 Tom Bob) CxB))))
     (testing "and the forward firing of that same rule agrees — no placement"
       (is (empty? (v/sentexes-matching kb (list ancestorOf6 Tom Bob)))))))
@@ -149,7 +149,6 @@
               'CxUniverse)
     (v/assert kb (list parentOf7 Tom Bob) CxB)
     (is (seq (v/query kb (list ancestorOf7 Tom Bob) CxB {:max-depth 2})))
-    (is (seq (v/prove kb (list ancestorOf7 Tom Bob) CxB)))
     (is (seq (v/prove kb (list ancestorOf7 Tom Bob) CxB)))))
 
 ;; ---- the change feed: a watch matches through the edges its context sees -
@@ -318,26 +317,32 @@
       (let [[lo hi] (sort [FbV1 FbV2])]
         (is (some? (v/handle-of kb (list 'equals lo hi) CxFbBelow)))))))
 
-(tu/deftest-kb an-unmergeable-genlcx-clash-is-still-only-exposed-not-thrown-or-silent
+(tu/deftest-kb an-unmergeable-genlcx-clash-is-still-only-weighed-not-thrown-or-silent
   ;; This arm's job stops at the mergeable case (docs/equality.md, `mergeable-values?`) —
   ;; two *numbers* under a `functional` slot are the hard clash no equality can resolve,
   ;; and issue #43 leaves what happens there a deliberate open design question, not a
   ;; bug.  What this pins is only that adding `equate-under-context-edge` did not change
   ;; that path: a genlCx edge completing an unmergeable clash still neither throws nor
-  ;; does nothing — `settle/expose-constraint-clashes!` still files it in `v/violations`,
-  ;; exactly as it does today off `main` for every other trigger of the same pass.
+  ;; does nothing — CxUbBelow is the vantage and weighs the pair, and two `:default`
+  ;; numbers tie, so both stand and `contradictions` names them.
+  ;;
+  ;; The KB is the namespace's and the violation ledger accumulates across tests
+  ;; (`v/violations`), so the check is on the entries this test adds.  An earlier test's
+  ;; `:no-placement` entry stays in the ledger after the fixture retracts its terms.
   (tu/with-terms [ubP UbTom CxUbA CxUbB CxUbBelow]
     (siblings! kb CxUbA CxUbB)
-    (v/assert kb (list 'functional ubP) 'CxUniverse)
-    (v/assert kb (list ubP UbTom 1980) CxUbA)
-    (v/assert kb (list ubP UbTom 1990) CxUbB)
-    (v/assert kb (list 'genlCx CxUbBelow CxUbA) 'CxUniverse)
-    (is (empty? (v/violations kb)) "one edge alone still sees only one of the two values")
-    (v/assert kb (list 'genlCx CxUbBelow CxUbB) 'CxUniverse)
-    (testing "the completed clash is reported, not refused and not silent"
-      (is (= [:functional] (mapv :violation (v/violations kb))))
-      (is (empty? (v/contradictions kb)))
-      (is (empty? (v/conflicts kb))))))
+    (let [filed-before (set (v/violations kb))]
+      (v/assert kb (list 'functional ubP) 'CxUniverse)
+      (v/assert kb (list ubP UbTom 1980) CxUbA)
+      (v/assert kb (list ubP UbTom 1990) CxUbB)
+      (v/assert kb (list 'genlCx CxUbBelow CxUbA) 'CxUniverse)
+      (is (empty? (v/contradictions kb))
+          "one edge alone still sees only one of the two values")
+      (v/assert kb (list 'genlCx CxUbBelow CxUbB) 'CxUniverse)
+      (testing "the completed clash is weighed, not refused and not silent"
+        (is (= [:functional] (mapv :kind (v/contradictions kb))))
+        (is (empty? (remove filed-before (v/violations kb))) "decided is not exposed")
+        (is (empty? (v/conflicts kb)))))))
 
 ;; ---- equality down a chain: the reader is not the fact's own context ----
 ;;

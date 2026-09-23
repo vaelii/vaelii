@@ -224,9 +224,15 @@
   ;; decontextualized marriage lifts (knows ?x ?y) through CxSocial's rule into a
   ;; context every data context sees, decontextualizing a predicate nothing declared.
   (testing "the roster is the algebraic marks, the inverse declaration, and genlCx"
+    ;; The three commutativity marks are here for `symmetric`'s reason and one of its
+    ;; own: they are predicate algebra, and `res/kb-sentex` reads them **globally** —
+    ;; a sentex has one key, so whether a predicate sorts its arguments cannot vary by
+    ;; reader.  A context-scoped declaration behind a global read would be a mark
+    ;; visible from one context and acted on from every one.
     (is (= '#{functional inverse reflexive symmetric asymmetric transitive
               irreflexive anti_symmetric anti_transitive equivalence_relation
-              injection surjection bijection}
+              injection surjection bijection
+              commutative commutativeInArgs commutativeInArgAndRest}
            (v/props kb :decontextualized)))
     (is (= '#{genlCx} (v/props kb :forced-decontextualized))))
   (testing "so a social fact stays in the theory that states it"

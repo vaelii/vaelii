@@ -57,13 +57,20 @@
       (is (empty? (v/check kb (list projection relation 'integer) 'CxCore))))))
 
 (tu/deftest-kb remaining-argument-metadata-accepts-relations
-  (tu/with-terms [ReviewFn reviewRelation]
+  ;; A temporary type rather than `integer`, because the declarations are the subject and
+  ;; the type is incidental.  Under `VAELII_PRUNE_SUBSUMED_MINTS=1` a `quotedArg` written
+  ;; of `integer` gives it a type more specific than `thing`, which withdraws CxCore's own
+  ;; minted `(thing integer)`; the re-mint after the teardown allocates a fresh handle, so
+  ;; the baseline would come back saying the same thing under a different one, and
+  ;; `assert-neutral!` refuses to call that restored (docs/argtypes.md).
+  (tu/with-terms [ReviewFn reviewRelation tmpScalar]
+    (v/assert kb (list 'genl tmpScalar 'thing) 'CxCore)
     (v/assert kb (list 'binary_function ReviewFn) 'CxCore)
     (v/assert kb (list 'binary_predicate reviewRelation) 'CxCore)
     (doseq [relation [ReviewFn reviewRelation]
             declaration [(list 'genlArg relation 1 'thing)
-                         (list 'quotedArg relation 1 'integer)
-                         (list 'interArg relation 1 'integer 2 'integer)]]
+                         (list 'quotedArg relation 1 tmpScalar)
+                         (list 'interArg relation 1 tmpScalar 2 tmpScalar)]]
       (is (empty? (v/check kb declaration 'CxCore)))
       (v/assert kb declaration 'CxCore)
       (is (true? (v/ask? kb declaration 'CxCore))))))
@@ -102,3 +109,13 @@
         (str "CxCore loaded " n " sentexes; docs/kbs.md's Core vocabulary row says 850+."
              "  A number outside this band means the load is wrong, not that the"
              "  vocabulary grew — check the classpath before touching the row."))))
+
+(tu/deftest-kb the-bootstrap-genlCx-edge-is-stored-where-every-edge-is
+  ;; `(forced_decontextualized_predicate genlCx)` stores every edge in CxUniverse, and the
+  ;; edge `load-into` asserts ahead of the file is one of them, so the declaration has to
+  ;; precede it: an edge left in CxCore is a second sentex the next assert of it stores
+  (is (some? (v/handle-of kb '(genlCx CxUniverse CxCore) 'CxUniverse)))
+  (is (nil? (v/handle-of kb '(genlCx CxUniverse CxCore) 'CxCore)))
+  (let [n (v/sentex-count kb)]
+    (v/assert kb '(genlCx CxUniverse CxCore) 'CxCore)
+    (is (= n (v/sentex-count kb)) "re-asserting the edge is the one it already holds")))

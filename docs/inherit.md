@@ -265,7 +265,7 @@ rather than exclude: defeating a reason dissolves the detection, and that is the
 resolution rather than a bug, because this claim has no sentex of its own for a defeat
 to reach instead.
 
-The same list `support-for` hands a justification, and for the same reason: those
+The same list `supports-for` hands a justification, and for the same reason: those
 sentexes are what the claim *is*, so a set that must not hold in full is that set and not
 a pair inside it. The report carries `:kind :inherited` and an `:inherited` map naming the
 claim nobody wrote, the handle it was read off and the handles it travelled — enough for
@@ -301,11 +301,12 @@ engine could not name now has a name.
 **The pair is judged from the stored claim's own context**, which is the vantage the
 inherited claim exists in at all: a claim reaches the contexts that can see it and no
 others. So a general claim stated in a context the stored one cannot see denies nothing,
-and two contexts neither of which sees the other pair nothing — the reading the `:refuse`
-constraint policy takes for a definitional clash split across a visibility edge
-([nmtms.md](nmtms.md), "Who asks the pair's question").
+and two contexts neither of which sees the other pair nothing. A definitional clash
+split across a visibility edge is weighed at the context that sees both halves instead
+([nmtms.md](nmtms.md), "Who asks the pair's question"); this reach has no such vantage
+to ask from, the second side never having been stored.
 
-**The diagonal is excluded**, as it is for `support-for`: `witness-terms` is reflexive, so
+**The diagonal is excluded**, as it is for `supports-for`: `witness-terms` is reflexive, so
 the claim stated at the very tuple the stored negation is about comes back through the
 reach too — and that pair is an ordinary `P` beside an ordinary `(not P)`, which
 `negation-nogoods` already forms. Reporting it here as well would report one pair twice.
@@ -394,12 +395,14 @@ things that do:
 - the **declaration** licensing the move — `(transitiveInArg largerThan 1 genl)`, one per
   position that actually moved;
 - the **relation edges** the reach travelled — `(genl chihuahua dog)`, `(genl maine_coon
-  cat)`, one shortest path per position;
+  cat)`, one path per position, the one that places the conclusion highest, or one per
+  sibling context where routes stated in contexts that do not see each other place it in
+  different readers;
 - and, for a fact-relation, the `(transitive R)` that `usable-relation?` reads at use,
   since withdrawing it withdraws the reach with no fact having moved.
 
-`inherit/support-for` answers a ground goal with that list and
-`inherit/solve-with-support` hands it to `chain/join-antecedent`, which contributes the
+`inherit/supports-for` answers a ground goal with that list, one per such route, and
+`inherit/solve-with-support` hands each to `chain/join-antecedent`, which contributes the
 handles as antecedents of the firing. So the conclusion is withdrawn when any of them
 goes, `why` names the actual reasons, and the conclusion is placed only where all of
 them can be seen — the contract an ordinarily matched antecedent has.
@@ -442,12 +445,32 @@ the one tuple it is *stated* at, and the tuples it licenses are reached by joini
 than by matching. So such a datum **re-joins in full** every forward rule carrying an
 antecedent on a preserved predicate whose licensed set it moved, and those rules leave
 the trigger set so the work is done once (`inherit/rejoin-rules`,
-`chain/rejoin-in-full`). A `(symmetric P)` declaration takes the same route for a
-different reader — it moves what the *matcher* answers rather than what a prover does,
-and the facts it now pairs have already arrived (`chain/symmetric-rejoin-rules`). The
+`chain/rejoin-in-full`). A permuting mark — `(symmetric P)` or one of the three
+commutativity marks — takes the same route for a different reader: it moves what the
+*matcher* answers rather than what a prover does, and the facts it now permutes have
+already arrived (`chain/permuting-rejoin-rules`). The
 sentences that move a preserved predicate are the declaration itself, a
 claim on the predicate, a fact on the relation — a `genl` or `genlCx` edge included
-— `(transitive R)`, and `(asymmetric P)`.
+— `(transitive R)`, `(asymmetric P)`, and a permuting mark: `(symmetric P)`,
+`(commutative P)`, `(commutativeInArgs P …)` or `(commutativeInArgAndRest P n)`, since
+the matcher reads a claim in every argument order its predicate's marks permit. A `genl`
+edge, or its denial, moves fewer: only the predicates with a claim, on the predicate or
+a sub-predicate and in either polarity, whose preserved argument lies below the edge's
+lower term or above its upper one (`inherit/crossing-claim?`). The claim is read at
+every position that shares a commuting component with a preserved one under the claim's
+own predicate's marks, and a `:rest` component reaches every position of any arity, so a
+predicate with such a component at a preserved position is moved by every edge. The
+reads start from the closure's terms and not from the declarations, so the index reads an
+edge makes do not grow with the declarations on `genl`. An edge whose closure holds more than
+`inherit/crossing-closure-cap` terms is not narrowed and moves every predicate preserved
+along `genl`. Every declaration in a KB may preserve along `genl`, so without the
+narrowing each edge re-joins all of their rules, and K denials of K chains' edges cost
+K² full re-joins. An edge is narrowed only where the answer can change what its reader
+does: the re-join narrows only when a predicate the edge would move carries a forward
+rule, and the settle only when one has a stored claim and is not already moved by
+another member of its region. A settle whose region is the whole store, recover's
+first, reads no moved predicates at all, since every extent they would add is already in
+the region.
 
 **A defeat inside arbitration moves the same joins with no sentence arriving at all.**
 Belief flips where the solver clears a dilemma, nothing is stored or removed, and so
@@ -466,7 +489,12 @@ reach rests on `(transitive R)` — so the justification names it, and retractin
 symmetry withdraws what only the mirror licensed. The matcher mirrors each fanned literal
 on *its own* declaration, so the one named is the stored sentence's functor's, which is
 the goal predicate's only where the two coincide; a symmetry declared on a sub-predicate
-therefore moves every preserved super it feeds.
+therefore moves every preserved super it feeds. The declaration named is the one no other
+covers from the reader, which is the CxUniverse copy the engine lifts every `(symmetric …)`
+into ([contexts.md](contexts.md#where-a-relation-property-is-read-from)), so a mark stated
+in either of two siblings places the firing at CxUniverse and the firing goes with the last
+statement of it. A firing the ordinary matcher makes over a mirror names the mark the same
+way ([inference.md](inference.md#forward-chaining)).
 
 **A more specific contrary claim withdraws a conclusion with nothing retracted.**
 `(typicallyLargerThan maine_coon chihuahua)` undercuts the inherited
@@ -483,28 +511,76 @@ block an ordinary firing over a pair the KB happens to hold in both polarities.
 **Placement follows the reasons.** The claim, the declarations and the edges are
 antecedents, so `maximal-common-descendant-contexts` sees their contexts alongside the
 rule's, and the conclusion descends to the context that can see the reach rather than
-sitting where the claim alone lives. A firing whose edges are stated in incomparable
-contexts has no common descendant and is recorded as `:no-placement`, like any other
-completed firing that lands nowhere ([contexts.md](contexts.md)).
+sitting where the claim alone lives. The descent is as small as the routes allow, since
+the witness search minimizes it, and it is a function of the edges rather than of the
+order they arrived in: a short route asserted first and a general route asserted second
+leave the same belief as the reverse order. The two orders differ in what is **stored**,
+since a firing placed before the general route arrived stays where it was placed and the
+general route adds a second firing above it. The lower firing is kept
+([defenses.md](defenses.md#a-firing-placed-over-a-lower-route-is-not-retired)): it is the
+firing a scoped defeat of the general route at its context would have the settle re-derive
+in the long-first order ([nmtms.md](nmtms.md#where-the-layer-stops)).
+`lein bench-witness` counts the lower firings that differ from a higher one only in their
+route: 0 in the starter and the test world, one per chain in its short-first corpora.
+Retracting either route leaves what a KB built without it holds, in either order.
+
+**Routes stated in sibling contexts each place a firing.** A context that sees neither
+of two siblings' routes cannot rank them, so neither placement is above the other:
+
+```
+CxUniverse   (transitiveInArg aRel 1 genl)
+             forward rule (aRel ?x ?y) ⇒ (noted ?x ?y)
+ ├─ CxA      (genl low mid) (genl mid high)  (aRel high val)
+ ├─ CxB      (genl low high)
+ └─ CxD      sees CxA and CxB
+```
+
+The CxA route places `(noted low val)` in CxA, where the claim is; the one-edge CxB route
+places it in CxD, the only context that sees the claim and the CxB edge. The witness
+search returns both routes, since neither covers the other, and the join makes a firing
+of each, so CxA reads the conclusion over its own route and CxD reads it over either. Naming
+one of them alone would leave the other reader's answer to arrival order: CxA would read
+the conclusion only when the CxB edge arrived after the rule had fired over the CxA route.
+The same holds for one edge stated in two siblings, for one declaration stated in two, for
+a `(transitive R)` a fact-relation reach rests on stated in two, for a claim stated in two, and for a subsumed match whose placement descends
+([contexts.md](contexts.md#the-consumers-and-what-each-of-them-may-reach)).
+`second_route_test` builds each of these shapes in every order.
+
+A firing whose edges are stated in incomparable contexts with no common descendant is
+recorded as `:no-placement`, like any other completed firing that lands nowhere
+([contexts.md](contexts.md)).
 
 Two things are deliberately left, and both are shared with the qualitative side. Support
-names **a** witness rather than every witness — the path is a shortest one, and the
-declaration named is one of however many license the same move — so a claim reachable two
-ways carries one justification and the second route is re-derived after a retraction
-rather than recorded in advance. And a firing's **strength** is capped by its weakest
-antecedent as always, which now includes the declaration: a `:monotonic` claim declared
+names **a** witness per reader the others do not reach rather than every witness — one
+path, and one of however many declarations license the same move, wherever one of them
+is seen from every reader that sees another — so a claim reachable two ways through
+comparable contexts carries one justification and the second route is re-derived after a
+retraction rather than recorded in advance. Which path it is decides where the conclusion
+lives, so the route kept is one that no other route **covers**: a route covers another
+when each of its asserting contexts is seen from one of the other's
+(`taxonomy/general-reach-supports` for the two virtual relations, `inherit/fact-paths`
+for a fact-relation), with the specificity of the most specific context and then length
+breaking a tie between two routes with one label. A route through general contexts
+therefore covers a shorter route through a specific one, places the conclusion above it,
+and every reader of either route holds it. And a firing's **strength** is
+capped by its weakest antecedent as always, which now includes the declaration: a `:monotonic` claim declared
 preserved by a `:default` declaration draws a `:default` conclusion, where the backward
 prover answers `ask` without weighing either.
 
 **What it costs, and who pays.** Nothing here runs until a KB declares a preservation
-*and* a forward rule carries an antecedent on the declared predicate. The first gate is
-the O(1) cardinality read on the declaration functors' roots that the query path already
-uses, so a KB that declares none pays two set-count reads per datum and stops — the
-difference is not measurable against a 4,000-fact load. A KB that declares one but writes
-no rule over it reads the declarations themselves per datum and then probes the
-antecedent index for nothing: the starter, which declares `largerThan` and `partType` and
-carries no rule over either, loads **a couple of percent** slower for it (~760 ms against
-~740 ms with the trigger stubbed out).
+*and* a forward rule carries an antecedent on the declared predicate. The re-join reads
+the `:preserving` roster, which the store keeps beside the index, so a KB that declares
+none pays one `empty?` per datum and no index read. A KB that declares one but writes no
+rule over it matches each datum against the roster's `[P R]` pairs in memory and then
+probes the antecedent index for nothing. A `genl` datum whose moved predicates carry a
+rule pays the narrowing on top (`inherit/crossing-claim?`): one slot-roster read per term
+of its closure per preserved
+position, four functor-root reads for the permuting marks, and, when a declaration or a
+mark has changed since the last edge, one record fetch per declaration on `genl` and per
+mark. A closure past `inherit/crossing-closure-cap` terms skips those reads and moves
+every predicate preserved along `genl`. The forward join's own gate,
+`chain/preserving-antecedent?`, is the O(1) cardinality read on the declaration
+functors' roots that the query path already uses, read once per chaining run.
 
 Where both gates pass, the cost is the one the feature is: a conclusion per licensed
 tuple, so the product of the reaches at the preserved positions, per claim — and each

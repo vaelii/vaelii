@@ -178,6 +178,17 @@
       "a scale that would compute fewer than min-limit is read as min-limit")
   (is (= 16 (:limit (row kb :literal-matches)))))
 
+(tu/deftest-kb a-scale-past-the-range-of-a-long-saturates-rather-than-throwing
+  ;; `(long ##Inf)` throws, and every counted cache reads its bound on its store path, so
+  ;; a scale the refusal admits left every query in the process throwing until reset
+  (tu/with-terms [parentOf Tom Bob CxFarm]
+    (v/assert kb (list parentOf Tom Bob) CxFarm)
+    (doseq [scale [##Inf 1e300]]
+      (v/set-cache-scale scale)
+      (is (= Long/MAX_VALUE (:limit (row kb :literal-matches))) (str "at " scale))
+      (is (nil? (:error (row kb :literal-matches))) (str "the row reads at " scale))
+      (is (seq (v/query kb (list parentOf Tom '?x) CxFarm)) (str "a query answers at " scale)))))
+
 (tu/deftest-kb the-symbol-pool-is-structural-and-the-scale-leaves-it-alone
   ;; The interning pool's check runs per symbol interned — the hottest path on a load — and
   ;; scaling it risks the sharing it exists for, so it keeps its own dynamic bound and is
@@ -515,7 +526,7 @@
   #{:literal-matches :resident :stored-handles :closure-neighbours :closure-answers
     :pinned-values :justification-dedup :symbol-pool :compiled-algebras :relation-decode
     :path-consistency :network-support :taxonomy-closures :taxonomy-scoped-closures
-    :taxonomy-visibility :hot-records :rete-alpha :source-parses})
+    :taxonomy-visibility :hot-records :rete-alpha :source-parses :preservation-crossing})
 
 (def ^:private optional-roster
   "Caches registered by a namespace core does **not** load, so whether they are present
@@ -596,7 +607,8 @@
    "*symbol-pool-limit*"   :symbol-pool
    "generation-limit"      :symbol-pool
    "*scoped-memo-budget*"  :taxonomy-scoped-closures
-   "parse-memo-limit"      :source-parses})
+   "parse-memo-limit"      :source-parses
+   "crossing-reads-limit"  :preservation-crossing})
 
 (defn- limit-constants
   "Every limit-shaped constant defined under `src/`."

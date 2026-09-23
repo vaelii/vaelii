@@ -33,7 +33,6 @@ SCRIPTS=(
   scripts/lint-versions.sh
   scripts/lint-shellcheck.sh
   scripts/lint-conflict-markers.sh
-  scripts/lint-tools.sh
   scripts/check-reflection.sh
   scripts/asp-namespaces.sh
   scripts/ci-shard.sh

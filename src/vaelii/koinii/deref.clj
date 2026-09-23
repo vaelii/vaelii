@@ -53,10 +53,13 @@
     records the seat **believes**, not everything it stores: a defeated default is retained
     on purpose and is no part of what the seat holds, so two seats that agree on every
     belief compute one id however differently their stores were built.  Order- and
-    handle-independent by construction, so two seats that reached the same beliefs
-    by different routes compute the same commit id (belief and storage are
-    order-independent — `docs/nmtms.md`), and a KB exported, pulled and recovered on
-    another seat carries the id across.  The Merkle shape buys pure auditability:
+    handle-independent for every sentence that names no handle, so two seats that reached
+    the same beliefs by different routes compute the same commit id (belief and storage
+    are order-independent — `docs/nmtms.md`), and a KB exported, pulled and recovered on
+    another seat carries the id across.  A sentence that names a sentex by
+    `(sentexHandle n)` — every koinii response act — digests the number `n`: its locator
+    survives a pull, which keeps handles, and differs between two seats that built the
+    same conversation in different orders.  The Merkle shape buys pure auditability:
     `inclusion-proof` yields an audit path and `verify-inclusion` recomputes the root from
     just a `(locator, proof)` pair — no KB — which a flat digest cannot.  `commit-id` fingerprints **knowledge** (what two seats compare to agree they
     hold the same thing); `state-root` is a second root whose leaves fold each record's
@@ -398,8 +401,9 @@
 (defn commit-id
   "A content-addressed fingerprint of the seat's **believed knowledge** — the RFC-6962
   Merkle root over its sorted per-sentex content locators, prefixed `\"sha256:\"`.
-  Order-independent and handle-independent by construction, so two seats believing the same
-  records compute the same commit id whatever order they were built in, and a KB
+  Order-independent and handle-independent for every sentence that names no handle, so two
+  seats believing the same records compute the same commit id whatever order they were built
+  in (a `(sentexHandle n)` inside a sentence digests `n` — the module docstring), and a KB
   exported, pulled and recovered on another seat carries it across — the flow the
   distributed topology uses: 'pull the same commit' is a git operation, 'agree on the
   commit id' is this.

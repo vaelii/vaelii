@@ -82,7 +82,8 @@
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.types.reasoning :as reasoning]
-            [vaelii.impl.types.dense-roots :as dense-roots-types])
+            [vaelii.impl.types.dense-roots :as dense-roots-types]
+            [vaelii.impl.types.snapshot :as snapshot-types])
   (:import [java.nio Buffer ByteBuffer DoubleBuffer FloatBuffer IntBuffer LongBuffer ShortBuffer]))
 
 ;; ---- measurement ---------------------------------------------------------
@@ -269,7 +270,7 @@
     (if-not (col/columnar? idx)
       {:whole (split [idx])}
       (let [dict     (retained [(:dict idx)])
-            csr      (col/csr idx)
+            csr      (snapshot-types/snapshot-read (:trie idx) nil)
             skeleton (when csr [(:counts csr) (:offsets csr) (:edge-tok csr) (:edge-tgt csr)])
             leaves   (when csr [(:leaf-off csr) (:handles csr)])
             rsec     (dense-roots-types/sections (:roots idx))

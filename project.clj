@@ -1,4 +1,4 @@
-(defproject com.vaelii/vaelii "0.20.0"
+(defproject com.vaelii/vaelii "0.21.0"
   :description "Vaelii — a contextualized common-sense knowledge base with a
                 count-aware trie index, forward/backward inference,
                 and JTMS truth maintenance, over an in-memory or on-disk store."
@@ -95,6 +95,11 @@
   ;; the flag reads backwards and KEEPS the stack trace on a repeated implicit
   ;; throw, which a test failure needs to name its site.
   ;;
+  ;; This vector cannot reach leiningen's own JVM, which keeps the cap, and a
+  ;; plugin task runs there. cljfmt is the one such task, and at C1 alone `lein
+  ;; cljfmt check` takes 69-95 s against 31-36 s, so `lint-cljfmt`, `fix` and
+  ;; scripts/lint.sh start a second lein with LEIN_JVM_OPTS naming no cap.
+  ;;
   ;; No heap size and no collector flag: sizing and `-XX:+UseZGC` stay in the
   ;; profiles that ask for them (`:bench`, `:zgc`), and a profile's `:jvm-opts`
   ;; concatenates onto this vector rather than replacing it.
@@ -109,8 +114,22 @@
              ;; pom`/`lein deploy` either — the `:dev` copy below covers `lein
              ;; run`/`test`/`serve`/`browser`, and is dropped when the standalone jar is
              ;; assembled, so this needs its own copy at the same version.
+             ;;
+             ;; The merge rule keeps every dependency's licence and notice text. Lein
+             ;; copies the first jar's entry at a path and drops the rest without a
+             ;; word, and `META-INF/LICENSE`/`NOTICE` sit at the same path in many jars:
+             ;; commons-codec, the two Jackson dataformats, JNA and both SLF4J jars lost
+             ;; theirs, and Apache-2.0 §4(d) and MIT both require the text to travel
+             ;; with a redistribution (the Docker image ships this jar). Distinct texts
+             ;; are concatenated and a text already present is not repeated.
              :uberjar {:aot :all
-                       :dependencies [[org.slf4j/slf4j-nop "2.0.19"]]}
+                       :dependencies [[org.slf4j/slf4j-nop "2.0.19"]]
+                       :uberjar-merge-with
+                       {#"^(META-INF/)?(LICENSE|NOTICE)(\.txt|\.md)?$"
+                        [slurp
+                         (fn [new prev]
+                           (if (.contains ^String prev new) prev (str prev "\n\n" new)))
+                         spit]}}
              ;; point JNA at libclingo (docs/asp.md). `VAELII_CLINGO_LIB` names the
              ;; directory holding it; the default is Homebrew's on Apple silicon, which
              ;; is where a macOS `brew install clingo` puts it and nowhere a Linux
@@ -170,17 +189,19 @@
                     ;;
                     ;; `VAELII_TEST_NS_COUNTS` prints one assertion count per namespace
                     ;; (`vaelii.ns-counts`), for the run whose total moved.  Off unless
-                    ;; set, and inert when on: it reads counters clojure.test already
-                    ;; maintains.  Installed here rather than from a test namespace so it
+                    ;; set true (`config/prop-bool`, as the harness switches read, so
+                    ;; `=0` is off), and inert when on: it reads counters clojure.test
+                    ;; already maintains.  Installed here rather than from a test namespace so it
                     ;; is in place before the first one loads, and so the counting cannot
                     ;; depend on which namespace happened to require it.
                     :injections
-                    [(require 'vaelii.impl.logging)
+                    [(require 'vaelii.impl.logging 'vaelii.impl.config)
                      ((resolve 'vaelii.impl.logging/set-level)
                       (keyword (or (System/getenv "VAELII_TEST_LOG_LEVEL") "error")))
-                     (when (System/getenv "VAELII_TEST_NS_COUNTS")
-                       (require 'vaelii.ns-counts)
-                       ((resolve 'vaelii.ns-counts/install!)))]}
+                     (let [prop-bool (resolve 'vaelii.impl.config/prop-bool)]
+                       (when (prop-bool "VAELII_TEST_NS_COUNTS" false)
+                         (require 'vaelii.ns-counts)
+                         ((resolve 'vaelii.ns-counts/install!))))]}
              ;; sampling profiler for a repl: `(prof/profile (…))`, flamegraphs under
              ;; /tmp/clj-async-profiler/results/, `(prof/serve-ui 8080)`. The -XX pair
              ;; keeps inlined frames off their caller's line; the attach flag is how it
@@ -258,8 +279,10 @@
              ;; outdated-dependency report, isolated from every other classpath
              :antq {:dependencies [[com.github.liquidz/antq "2.11.1276"]]}}
   ;; indent rules come from an optional cljfmt-indents.edn at the repo root, so a
-  ;; custom macro can be taught to cljfmt without editing this file
-  :cljfmt {:indentation?                    true
+  ;; custom macro can be taught to cljfmt without editing this file.
+  ;; `:parallel?` checks and fixes the files through `pmap`: 11 s against 25 s.
+  :cljfmt {:parallel?                       true
+           :indentation?                    true
            :indent-line-comments?           true
            :remove-surrounding-whitespace?  true
            :remove-trailing-whitespace?     true
@@ -284,7 +307,7 @@
             "lint-links"      ["shell" "python3" "scripts/check-doc-links.py" "--public-view"]
             "lint-drift"      ["shell" "python3" "scripts/check-doc-drift.py"]
             "lint-kondo"      ["shell" "clj-kondo" "--lint" "src" "test" "bench"]
-            "lint-cljfmt"     ["cljfmt" "check"]
+            "lint-cljfmt"     ["shell" "env" "LEIN_JVM_OPTS=-XX:+TieredCompilation" "lein" "cljfmt" "check"]
             ;; the script owns the roster, so this alias and scripts/lint.sh check
             ;; the same list — restating it here is how one of them goes short
             "lint-shellcheck" ["shell" "bash" "scripts/lint-shellcheck.sh"]
@@ -296,7 +319,6 @@
             ;; the prose budget: metaphor and aphorism against scripts/prose-baseline.txt.
             ;; `lein lint-prose -- --update` lowers a stale budget; it never raises one
             "lint-prose"      ["shell" "python3" "scripts/check-prose.py"]
-            "lint-tools"      ["shell" "bash" "scripts/lint-tools.sh"]
             ;; the `authorship` CI gate's rules, against synthetic commits — the gate
             ;; runs only on a pull request, so this is where they are exercised first
             ;; lint, the suite and the perf claims in one run, not fail-fast
@@ -374,7 +396,7 @@
             ;; entries break?  Reads each entry's `*Breaks:*` tokens and greps
             ;; the sibling checkouts for them (scripts/check-breaking-siblings.sh)
             "check-siblings"  ["shell" "bash" "scripts/check-breaking-siblings.sh"]
-            "fix"             ["cljfmt" "fix"]
+            "fix"             ["shell" "env" "LEIN_JVM_OPTS=-XX:+TieredCompilation" "lein" "cljfmt" "fix"]
             "bench-memory"    ["with-profile" "+bench" "run" "-m" "vaelii.bench.memory"]
             "bench-memconjoin" ["with-profile" "+bench" "run" "-m" "vaelii.bench.memconjoin"]
             "bench-scale"     ["with-profile" "+bench" "run" "-m" "vaelii.bench.scale"]
@@ -384,6 +406,7 @@
             "bench-densetrie" ["with-profile" "+bench" "run" "-m" "vaelii.bench.densetrie"]
             "bench-records"   ["with-profile" "+bench" "run" "-m" "vaelii.bench.records"]
             "bench-walk"      ["with-profile" "+bench" "run" "-m" "vaelii.bench.walk"]
+            "bench-witness"   ["with-profile" "+bench" "run" "-m" "vaelii.bench.witness"]
             "bench-jtms"      ["with-profile" "+bench" "run" "-m" "vaelii.bench.jtms"]
             "bench-backward"  ["with-profile" "+bench" "run" "-m" "vaelii.bench.backward"]
             "bench-forward"   ["with-profile" "+bench" "run" "-m" "vaelii.bench.forward"]

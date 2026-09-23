@@ -35,6 +35,7 @@
 
   Run: `lein bench-loadphase [n] [repeats] [full|guard]`  (default 200000, 1, full)."
   (:require [vaelii.core :as v]
+            [vaelii.impl.assert-entry :as entry]
             [vaelii.impl.integrate :as integrate]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.kv :as kv]
@@ -137,7 +138,7 @@
     #'special/subsumption-seeds              nothing
     #'special/visibility-seeds               nothing
     #'violations/report                      nothing}
-   {#'v/mark-premise nothing}
+   {#'entry/mark-premise nothing}
    {#'kb/note-opposed! nothing}
    {#'observe/notify-add   nothing
     #'observe/note-change  nothing

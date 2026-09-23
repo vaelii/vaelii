@@ -204,10 +204,11 @@ DEF_RE = (r"\((?:[a-z][\w.-]*/)?"
           r"def(?:n|n-|macro|multi|method|protocol|record|type|once|test-kb|test|routes)?"
           r"\s+(?:\^\S+\s+|\^\{[^}]*\}\s+)*")
 
-# Namespaced KB SYMBOLS (performatives, work-state markers, aggregate operators) —
-# not Clojure vars. Checked for existence against the source + resources corpus
-# (W6), never against the def index. `set/*Rule`, `do/label`, `agg/count`, ...
-KB_SYMBOL_PREFIXES = {"set", "do", "agg"}
+# Namespaced KB SYMBOLS (performatives, work-state markers, aggregate operators,
+# answer-set cardinality forms) — not Clojure vars. Checked for existence against
+# the source + resources corpus (W6), never against the def index. `set/*Rule`,
+# `do/label`, `agg/count`, `asp/atMost`, ...
+KB_SYMBOL_PREFIXES = {"set", "do", "agg", "asp"}
 
 # MIME types in API docs (`application/json`, `application/nippy`).
 MIME_PREFIXES = {"application", "text", "multipart", "image", "audio", "video"}
@@ -1220,7 +1221,7 @@ for path in clj_files():
 # `vaelii.impl.taxonomy` itself is not on the roster and needs no entry: it calls its
 # own readers unqualified, and this rule is about reaching one through the alias.
 E17_GLOBAL = ("genls-global", "specs-global", "genl?-global", "context-up-global",
-              "genlCx?-global")
+              "genlCx?-global", "genls-global-within", "specs-global-within")
 E17_ROSTER = {
     # The public API offers both readings, and its shorter arity IS the global one —
     # `vaelii.core/genls` documents the pair (docs/taxonomy.md).
@@ -1239,6 +1240,10 @@ E17_ROSTER = {
     # `genlCx` cycle, which is a property of the whole edge set, so it reads
     # `genlCx?-global` for the same reason `genl-problems` reads `genl?-global`.
     ("src/vaelii/impl/wff.clj", "genlCx-problems"),
+    # `covering-problems` refuses a part already above the whole because the edge the
+    # cover installs would close a `genl` cycle, the refusal `genl-problems` makes, so
+    # its cycle arm reads globally too; its disjointness arm stays scoped.
+    ("src/vaelii/impl/wff.clj", "covering-problems"),
     ("src/vaelii/impl/wff.clj", "rule-edges"),
     ("src/vaelii/impl/checks.clj", "genls-problem"),
     ("src/vaelii/impl/checks.clj", "covering-genls-problem"),
@@ -1248,11 +1253,12 @@ E17_ROSTER = {
     # on the global closure and the placement narrows afterwards (docs/contexts.md).
     ("src/vaelii/impl/rules.clj", "trigger-keys"),
     ("src/vaelii/impl/chain.clj", "subsumption-links"),
-    ("src/vaelii/impl/chain.clj", "symmetric-rejoin-rules"),
+    ("src/vaelii/impl/chain.clj", "permuting-rejoin-rules"),
     ("src/vaelii/impl/chain.clj", "transitive-rejoin-rules"),
     ("src/vaelii/impl/chain.clj", "transitive-source-preds"),
     ("src/vaelii/impl/chain.clj", "walks-its-own-conclusion?"),
-    ("src/vaelii/impl/inherit.clj", "moved-predicates"),
+    ("src/vaelii/impl/inherit.clj", "moved-in"),
+    ("src/vaelii/impl/inherit.clj", "crossings"),
     ("src/vaelii/impl/vantage.clj", "subsumption-support"),
     # Re-check triggers. A trigger must over-approximate in the direction the answer
     # is: a declaration this edge cannot see still qualifies a rule in some context

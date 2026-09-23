@@ -316,6 +316,25 @@
               (str "matcher diverged on " (pr-str pat)))))
       (finally (tu/clear-kb! rete-kb) (rete/disengage!)))))
 
+(deftest the-alpha-mirrors-the-store-across-a-retraction
+  ;; The alpha memories hold exactly the stored facts (`vaelii.impl.observe`).  A stale
+  ;; entry changes no answer — `candidates` is a superset that unification and belief
+  ;; filter again — so the oracles above cannot see one, and a removal the store stops
+  ;; reporting is RAM the alpha keeps.  So the count is compared with the count a fresh
+  ;; back-fill from the store gives.
+  (let [kb (doto (tu/isolated-fresh) build-ontology!)]
+    (try
+      (rete/track! kb)
+      (with-rete kb
+        (let [h (v/assert kb '(parentOf I0 I1) 'CxBase {:strength :monotonic})]
+          (v/assert kb '(parentOf I1 I2) 'CxBase {:strength :monotonic})
+          (v/retract! kb h)))
+      (let [held (rete/forget-kb! kb)]
+        (rete/track! kb)
+        (is (= (rete/forget-kb! kb) held)
+            "the alpha holds a fact the store no longer does"))
+      (finally (tu/clear-kb! kb) (rete/disengage!)))))
+
 ;; ---- oracle 2: end-to-end derived-content equivalence -------------------
 
 (deftest ^:slow end-to-end-agrees-with-the-reference-chain

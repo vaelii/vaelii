@@ -118,8 +118,11 @@
   an absolute limit and replaces `default`: the operator's `:scale` leaves it alone, but the
   guard's `:pressure` still multiplies it, so a filling heap shrinks a pinned cache like every
   other.  A `default` with no override is multiplied by both `:scale` and `:pressure`.  Either
-  result is floored at `min-limit`.  A nil `default` with no override — a cache bounded by
-  something other than a count — stays nil, since no multiplier acts on it.
+  result is floored at `min-limit` and saturates at `Long/MAX_VALUE`: `set-cache-scale`
+  takes any number 0 or more, `##Inf` included, and a product past the range of a long
+  is a bound no cache reaches rather than a throw on every store.  A nil `default` with no
+  override — a cache bounded by something other than a count — stays nil, since no
+  multiplier acts on it.
 
   Read on a cache's store path and by its `rows` entry, so the bound enforced and the bound
   reported are one number.  At scale 1.0 and pressure 1.0 with no override the shipped
@@ -128,11 +131,11 @@
   (let [{:keys [scale pressure overrides]} @the-profile
         p (double (or pressure 1.0))]
     (if-let [ov (get overrides id)]
-      (if (== 1.0 p) (long ov) (max min-limit (long (Math/ceil (* p (double ov))))))
+      (if (== 1.0 p) (long ov) (max min-limit (Math/round (Math/ceil (* p (double ov))))))
       (when default
         (let [s (* (double scale) p)]
           (if (== 1.0 s) default
-              (max min-limit (long (Math/ceil (* s (double default)))))))))))
+              (max min-limit (Math/round (Math/ceil (* s (double default)))))))))))
 
 (defn limit-thunk
   "`#(limit-of id default)`, for a descriptor's `:limit`, so its `rows` entry reports the

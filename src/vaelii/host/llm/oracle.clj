@@ -280,13 +280,14 @@
             (filter map? (when (sequential? items) items)))))
 
 (defn- request
-  [claims {:keys [model num-ctx max-tokens]}]
+  [claims {:keys [model num-ctx max-tokens effort]}]
   (cond-> {:system [{:text system-prompt :cache? true}]
            :messages [{:role "user" :content (user-turn claims)}]
            :format output-schema
            :num-ctx (or num-ctx default-num-ctx)}
     model      (assoc :model model)
-    max-tokens (assoc :max-tokens max-tokens)))
+    max-tokens (assoc :max-tokens max-tokens)
+    effort     (assoc :effort effort)))
 
 (defn judge-batch
   "One turn over one batch of claims -> the claims with `:verdict` and `:note` on them.
@@ -310,7 +311,7 @@
        :batches n :usage {…} :model \"…\"}
 
   `opts`: `:provider` (default: the offline stub), `:model`, `:num-ctx`, `:max-tokens`,
-  `:batch-size`.
+  `:effort`, `:batch-size`.
 
   Renumbering per batch is deliberate: each turn's item numbers start at zero, so a
   model that answers `item: 3` in the fourth batch has answered the fourth claim of that

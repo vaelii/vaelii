@@ -37,7 +37,7 @@
 (instance_relation_predicate birthYearOf)
 (arg birthYearOf 1 animal)
 (arg birthYearOf 2 thing)
-(functional birthYearOf)
+(set/monotonic (functional birthYearOf))
 
 (comment breathes_air
          "(breathes_air ?animal) means that ?animal takes its oxygen from the air. True by default of an animal and blocked for a fish. The exception names a whole CLASS rather than one awkward species, so it reaches every kind of fish ever added and needs no upkeep — matching fans the antecedent out over the subtype closure, so the exception does too.")
@@ -76,7 +76,7 @@
 (instance_relation_predicate fatherOf)
 (arg fatherOf 1 animal)
 (arg fatherOf 2 animal)
-(functional fatherOf)
+(set/monotonic (functional fatherOf))
 
 (comment flying
          "Getting through the air under one's own power. A kind of travelling, so a kind that flies travels without that being written down twice.")
@@ -139,7 +139,7 @@
 (instance_relation_predicate motherOf)
 (arg motherOf 1 animal)
 (arg motherOf 2 animal)
-(functional motherOf)
+(set/monotonic (functional motherOf))
 
 (comment olderThan
          "(olderThan ?animal1 ?animal2) means that ?animal1 was born before ?animal2. Derivable rather than only asserted — a rule compares the two birthYearOf values with the evaluable lessThan — so it holds whenever both birth years are known and ordered. Declared transitive, the same instance-level strict order heavierThan and tallerThan are: born-before composes, so two stated comparisons carry the third and a chain is answered off the closure with no birth year written down.")

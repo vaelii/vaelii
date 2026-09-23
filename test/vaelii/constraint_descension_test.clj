@@ -1139,18 +1139,18 @@
 ;;
 ;; `functional` and `asymmetric` convict at the entry point through every mark **above** a
 ;; fact's own functor, which is what the two sections higher up pin: whichever spelling
-;; arrives second is refused.  Each also has a **retroactive** half — the deciding one
-;; under `:arbitrate` (`settle/declaration-implicates`) and the reporting one under
-;; `:refuse` (`settle/constraint-exposure-candidates`) — and each of those has to descend
-;; too, or the mark descends at the entry point and nowhere else and the same knowledge lands on
-;; a dilemma or on two coexisting claims according to which sentence was written first.
+;; arrives second is refused.  Each also has a **retroactive** half — the deciding sweep
+;; `settle/declaration-implicates` runs under either constraint policy — and that half
+;; has to descend too, or the mark descends at the entry point and nowhere else and the
+;; same knowledge lands on a dilemma or on two coexisting claims according to which
+;; sentence was written first.
 ;; Reading the extent of the predicate the declaration named is what does not descend: a
 ;; general spelling usually holds no facts of its own, so that reading is silent in
 ;; exactly the two orders the descension creates — the declaration landing on the super,
 ;; and the `genl` edge landing last.
 ;;
-;; The `:refuse` half is `exposure-test`'s, since it is cross-context by construction —
-;; the entry point sees a same-context pair whole and refuses it.  This is the deciding half.
+;; The cross-context half is `exposure-test`'s, the entry point seeing a same-context
+;; pair whole and refusing it.  This is the same sweep asked of a co-located pair.
 
 (defn- kinds
   "The kinds of the represented contradictions, in report order."

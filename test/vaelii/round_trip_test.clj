@@ -299,7 +299,8 @@
                      h       (v/assert target (list (:bird t) (:Rex t)) (:ctx t))]
                  (is (< ceiling h))
                  (doseq [h sx-ids]
-                   (is (some? (v/sentex target h))
+                   (is (= (select-keys (v/sentex source h) [:sentence :context])
+                          (select-keys (v/sentex target h) [:sentence :context]))
                        (str "handle " h " was overwritten by the assert")))))))))
       (finally (backend/close-dir! (.getPath store)) (rm-rf! store)))))
 

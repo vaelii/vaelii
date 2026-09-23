@@ -102,7 +102,9 @@
              quotedArg :declares-quoted-arg, interArg :declares-inter-arg-isa,
              args :declares-args-isa, argsGenl :declares-args-genl,
              argAndRest :declares-arg-and-rest-isa,
-             argAndRestGenl :declares-arg-and-rest-genl}
+             argAndRestGenl :declares-arg-and-rest-genl,
+             interArgs :declares-inter-args-isa,
+             interArgAndRest :declares-inter-arg-and-rest-isa}
            tax/arg-declaration-props))
     (is (= tax/arg-declaration-props
            (select-keys (pr/by-storage :prop) (pr/family :argument-constraint)))))
@@ -145,7 +147,7 @@
     (testing "every functor settle sweeps for is declared :reach"
       (is (set/subset? clash (pr/by-facet :reach))))
     (testing "and the terms that reach some *other* way are named, because :reach is one
-              facet over three mechanisms"
+              facet over four mechanisms"
       ;; `arity` and the three predicate-type memberships — the second way to write an
       ;; arity — reach through `settle/report-arity-reach!`, which *names* the facts a
       ;; late declaration convicts and moves no belief, deliberately: the arity table
@@ -156,12 +158,20 @@
       ;; same mechanism at one remove, the bridge rule's `arg` conclusion being what
       ;; entail-existing reads: a late `(arg1 owns person)` mints `(person Ann)` over an
       ;; `(owns Ann Rex)` stored before it, exactly as the ternary spelling does.
-      (is (= (into '#{arity arg genlArg interArg arg1 arg2 arg3}
+      ;;
+      ;; The commutativity marks reach through the fourth mechanism,
+      ;; `integrate/commute-existing`: a declaration that moves a *spelling* re-spells
+      ;; the records already stored, which neither convicts nor mints — it is a write,
+      ;; and the one retroactive arm that writes records rather than deriving content.
+      ;; `commutative` reaches at one remove the way `arg1` does, the CxCore rule's
+      ;; `(commutativeInArgAndRest P 1)` conclusion being what the sweep fires on.
+      (is (= (into '#{arity arg genlArg interArg arg1 arg2 arg3
+                      commutative commutativeInArgs commutativeInArgAndRest}
                    (keys checks/exact-arity-classes))
              (set/difference (pr/by-facet :reach) clash))))))
 
-(deftest the-declaration-writes-settles-three-questions
-  ;; The three rosters `settle` no longer writes.  Each states its **value** as a literal
+(deftest the-declaration-writes-settles-two-questions
+  ;; The two rosters `settle` no longer writes.  Each states its **value** as a literal
   ;; rather than reconstructing it: the vars are derived now, so rebuilding one from the
   ;; declaration would prove the wiring and nothing about what it holds, and a roster that
   ;; comes out one functor short is a pair that stops being reported in one arrival order
@@ -174,24 +184,25 @@
         "as a set: the vector's order is entries' order and is read by nobody"))
   (testing "what each declaration's arrival puts back in question"
     (is (= '{:both             #{genl}
-             :type-separating  #{genlCx disjoint disjoint_metatype sibling_disjoint}
+             :type-separating  #{genlCx disjoint disjoint_metatype sibling_disjoint
+                                 covering separating partition}
              :predicate-marked #{functional asymmetric anti_transitive functionalInArg}}
            @#'settle/clash-declaration-kinds)))
-  (testing "and what arity each trigger is written at"
-    (is (= '{genl :edge, genlCx :edge, functional :mark, asymmetric :mark,
-             anti_transitive :mark, functionalInArg :mark-in-arg}
-           @#'settle/trigger-functor-kind)))
   (testing "the five derived beside them, which stay derived one step further back"
     (is (= '#{functional asymmetric anti_transitive} @#'settle/definitional-mark-symbols))
     (is (= '#{:functional :asymmetric :anti-transitive} @#'settle/definitional-mark-keywords))
     (is (= '#{genl genlCx disjoint disjoint_metatype sibling_disjoint
+              covering separating partition
               functional asymmetric anti_transitive functionalInArg}
            @#'settle/clash-declaration-functors))
-    (is (= '#{genl genlCx disjoint disjoint_metatype sibling_disjoint}
+    (is (= '#{genl genlCx disjoint disjoint_metatype sibling_disjoint
+              covering separating partition}
            @#'settle/type-reach-functors)
         "the reach over terms, which is :type-separating and :both and not the marks")
     (is (= '{genl :both, genlCx :type-separating, disjoint :type-separating,
              disjoint_metatype :type-separating, sibling_disjoint :type-separating,
+             covering :type-separating, separating :type-separating,
+             partition :type-separating,
              functional :predicate-marked, asymmetric :predicate-marked,
              anti_transitive :predicate-marked, functionalInArg :predicate-marked}
            @#'settle/clash-declaration-kind))))
@@ -251,7 +262,8 @@
         (is (= :bad-table-entry (:type data)))
         (is (= :family-roster (:mismatch data)))
         (is (= 'provers/meta-constraint-functors (:roster data)))
-        (is (= '#{quotedArg arg genlArg interArg args argsGenl argAndRest argAndRestGenl}
+        (is (= '#{quotedArg arg genlArg interArg args argsGenl argAndRest argAndRestGenl
+                  interArgs interArgAndRest}
                (:declared data))
             "and the throw names both sets, so the reader sees which half is missing")))
     (testing "and the other direction — a roster naming a spelling nothing declares"

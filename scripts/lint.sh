@@ -6,6 +6,11 @@
 # check, a short summary on success, the full captured detail only under a FAILED
 # check, and a dim [Ns] on the slow ones.  Exit non-zero iff any check failed.
 #
+# The checks run in three concurrent LANES; see the LANES block below for the
+# split and why it is lanes rather than one job per check.  Rows still print in
+# roster order, so the report reads the same as a serial run.  LINT_SERIAL=1
+# runs the lanes one after another, for a machine with no headroom for two JVMs.
+#
 #   - glossary    structural lint for docs/glossary.md (badges + order + links)
 #   - versions    the coordinates this tree states twice agree (sibling pin,
 #                 lein-cloverage)
@@ -22,8 +27,6 @@
 #                 scripts/unused-publics-baseline.txt
 #   - prose       metaphor and aphorism where a mechanism has a name, against the
 #                 per-file budget in scripts/prose-baseline.txt (CONTRIBUTING §3.9)
-#   - tools       ruff over the Python under tools/, which no Clojure check and
-#                 no shell check reads.  Skips with a note where ruff is absent
 #
 #   lein lint               # the clean report
 #   VERBOSE=1 lein lint     # also dump each check's full output, pass or fail
@@ -39,7 +42,7 @@
 #
 # The granular `lein lint-glossary` / `lint-versions` / `lint-links` /
 # `lint-drift` / `lint-kondo` / `lint-cljfmt` / `lint-shellcheck` /
-# `lint-reflect` / `lint-unused` / `lint-prose` / `lint-tools` aliases run a
+# `lint-reflect` / `lint-unused` / `lint-prose` aliases run a
 # single check for a quick one-off.
 set -uo pipefail   # NOT -e: every check must run even after one fails.
 
@@ -78,11 +81,11 @@ pass=0; fail=0; failed_labels=()
 # BSD mktemp (macOS) takes a PREFIX and appends its own randomness, while GNU
 # coreutils takes a TEMPLATE and rejects one with fewer than three X's.  So a
 # bare `-t vaelii-lint` works here and dies on every Linux runner with "too few
-# X's in template" — leaving `$out` empty, every check writing to nothing, and
-# all six reported as FAILED.  A template with X's satisfies both.  Same
+# X's in template" — leaving `$DIR` empty, every check writing to nothing, and
+# all eleven reported as FAILED.  A template with X's satisfies both.  Same
 # spelling as vaelii-foreign's scripts/lint.sh.
-out="$(mktemp -t vaelii-lint.XXXXXX)"
-trap 'rm -f "$out"' EXIT
+DIR="$(mktemp -d -t vaelii-lint.XXXXXX)"
+trap 'rm -f "$DIR"/* 2>/dev/null; rmdir "$DIR" 2>/dev/null' EXIT
 
 # summary <label> <outfile> — a short one-line success summary, drawn from the
 # tool's own output where a figure carries info, else fixed text.
@@ -93,14 +96,13 @@ summary() {
     versions)   s="$(sed -n 's/^lint-versions: OK (\(.*\))$/\1/p' "$o" | head -1)" ;;
     links)      s="all resolve" ;;
     drift)      s="$(grep -oE '[0-9]+ errors, [0-9]+ warnings across [0-9]+ docs' "$o" | head -1)"
-                s="${s/across /(}"; s="${s/ docs./ docs)}" ;;
+                s="${s/across /(}"; s="${s/ docs/ docs)}" ;;
     kondo)      s="$(grep -oE 'errors: [0-9]+, warnings: [0-9]+' "$o" | tail -1)" ;;
     cljfmt)     s="all files formatted" ;;
     shellcheck) s="scripts clean" ;;
     reflect)    s="$(grep -oE 'no reflection warnings.*' "$o" | head -1)" ;;
-    unused)     s="$(grep -oE '[0-9]+ known[^.]*' "$o" | head -1)" ;;
+    unused)     s="$(grep -oE '[0-9]+ known.*' "$o" | head -1)" ;;
     prose)      s="$(grep -oE '[0-9]+ of [0-9]+ allowed, [0-9]+ files remaining' "$o" | head -1)" ;;
-    tools)      s="$(sed -n 's/^lint-tools: //p' "$o" | head -1)" ;;
   esac
   echo "${s:-ok}"
 }
@@ -142,25 +144,48 @@ tool_hint() {
   esac
 }
 
-# check <label> -- <cmd...> — run a check, streaming its row.  <cmd...> starts
-# with the binary it needs, so a missing one is detected here once.
+# check <label> -- <cmd...> — run a check into "$DIR/<label>.{out,rc,t}".  <cmd...>
+# starts with the binary it needs, so a missing one is detected here once.  This
+# runs inside a lane, off the report's thread; `report_row` renders the result.
 check() {
   local label="$1"; shift
   [[ "${1:-}" == "--" ]] && shift
-  local bin="$1" hint
-  printf '  %-11s ' "$label"
-  SECONDS=0
+  local bin="$1" hint start=$SECONDS rc
   if ! command -v "$bin" >/dev/null 2>&1; then
     hint="$(tool_hint "$bin")"
     { printf '%s not found on PATH.\n' "$bin"
       [[ -n "$hint" ]] && printf 'Install: %s\n' "$hint"
-    } >"$out"
-    print_status "$label" 127 "$out" 0
+    } >"$DIR/$label.out"
+    printf '0\n' >"$DIR/$label.t"; printf '127\n' >"$DIR/$label.rc"
     return
   fi
-  "$@" >"$out" 2>&1
-  local rc=$? t=$SECONDS
-  print_status "$label" "$rc" "$out" "$t"
+  "$@" >"$DIR/$label.out" 2>&1
+  rc=$?
+  # The clock lands BEFORE the exit code: `report_row` waits on `.rc` and then
+  # reads `.t`, so writing them the other way round races an empty duration.
+  printf '%s\n' "$((SECONDS - start))" >"$DIR/$label.t"
+  printf '%s\n' "$rc" >"$DIR/$label.rc"
+}
+
+# report_row <label> — print one roster row, waiting for its lane to get there.
+# The label prints first, so an outstanding check is the one named at the end of
+# the report while it runs — the same feedback a serial run gave.
+report_row() {
+  local label="$1" pid alive
+  printf '  %-11s ' "$label"
+  while [[ ! -s "$DIR/$label.rc" ]]; do
+    alive=0
+    for pid in "${LANE_PIDS[@]}"; do kill -0 "$pid" 2>/dev/null && alive=1; done
+    if [[ $alive -eq 0 && ! -s "$DIR/$label.rc" ]]; then
+      # Every lane is gone and this check never reported: one died (OOM-killed,
+      # or a signal).  Say that rather than wait on a file nothing will write.
+      printf 'lint: the lane running %s exited before it reported.\n' "$label" \
+        >"$DIR/$label.out"
+      printf '0\n' >"$DIR/$label.t"; printf '127\n' >"$DIR/$label.rc"
+    fi
+    sleep 0.2
+  done
+  print_status "$label" "$(cat "$DIR/$label.rc")" "$DIR/$label.out" "$(cat "$DIR/$label.t")"
 }
 
 # kondo_version_note — say so when the local clj-kondo is not the one CI pins.
@@ -196,25 +221,72 @@ kondo_version_note() {
 # one `tee` below.  `${PIPESTATUS[0]}` is what keeps the exit status this
 # script's own: a pipeline reports the LAST command's status, which would make
 # every lint run as green as `tee` is.
-lint_run() {
-  printf '%slint%s\n' "$BOLD" "$RST"
+# LANES.  The roster is split across three lanes that run at once, each lane
+# sequential.  Not one job per check, for two reasons:
+#
+#   - `kondo` and `unused` both shell out to clj-kondo, which reads and writes
+#     one shared `.clj-kondo/.cache`.  Two at once race it.  A lane keeps that
+#     pair in order without a lock.
+#   - the two JVMs (cljfmt, and the compile pass behind reflect) share a lane, so
+#     lint holds one JVM at a time beside whatever suite the machine is running.
+#
+# The split is by cost, so the lanes finish together:
+#
+#   A  cljfmt, reflect                              ~30s
+#   B  kondo, unused                                ~25s
+#   C  the seven cheap ones                         ~30s
+#
+# Wall clock is the longest lane's, where a serial run's was the sum.  A lane that
+# outgrows the other two is the signal to rebalance.
+lane_a() {
+  # LEIN_JVM_OPTS without the launcher's C1 cap: cljfmt runs in leiningen's own
+  # JVM, which project.clj's :jvm-opts does not reach (the note there).
+  check cljfmt     -- env LEIN_JVM_OPTS=-XX:+TieredCompilation lein cljfmt check
+  check reflect    -- bash scripts/check-reflection.sh
+}
 
+lane_b() {
+  check kondo      -- clj-kondo --lint src test bench
+  check unused     -- python3 scripts/check-unused-publics.py
+}
+
+lane_c() {
   check glossary   -- bash scripts/lint-glossary.sh
   check versions   -- bash scripts/lint-versions.sh
   check links      -- python3 scripts/check-doc-links.py --public-view
   check drift      -- python3 scripts/check-doc-drift.py
   check conflicts  -- bash scripts/lint-conflict-markers.sh
-  check kondo      -- clj-kondo --lint src test bench
-  kondo_version_note
-  check cljfmt     -- lein cljfmt check
   # The roster is that script's, not this one's, and `lein lint-shellcheck` runs the
   # same file — one list, so it cannot be complete for one caller and short for the
   # other. It also checks itself against the tree, both directions.
   check shellcheck -- bash scripts/lint-shellcheck.sh
-  check reflect    -- bash scripts/check-reflection.sh
-  check unused     -- python3 scripts/check-unused-publics.py
   check prose      -- python3 scripts/check-prose.py
-  check tools      -- bash scripts/lint-tools.sh
+}
+
+# The order the report reads in, which is NOT a lane's order: rows print here,
+# each waiting for its own lane to reach it.
+readonly -a ROSTER=(glossary versions links drift conflicts
+                    kondo cljfmt shellcheck reflect unused prose)
+
+lint_run() {
+  printf '%slint%s\n' "$BOLD" "$RST"
+
+  LANE_PIDS=()
+  if [[ "${LINT_SERIAL:-0}" == "1" ]]; then
+    # One lane, cheapest first, so rows still appear early.
+    { lane_c; lane_b; lane_a; } & LANE_PIDS=($!)
+  else
+    lane_a & LANE_PIDS+=($!)
+    lane_b & LANE_PIDS+=($!)
+    lane_c & LANE_PIDS+=($!)
+  fi
+
+  local label
+  for label in "${ROSTER[@]}"; do
+    report_row "$label"
+    [[ "$label" == kondo ]] && kondo_version_note
+  done
+  wait "${LANE_PIDS[@]}" 2>/dev/null
 
   total=$((pass + fail))
   if [[ $fail -eq 0 ]]; then

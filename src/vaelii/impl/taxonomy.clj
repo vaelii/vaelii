@@ -276,7 +276,8 @@
           :equality (empty-equality)
           :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
           :sibling-disjoint #{} :sib-exception-index {}
-          :props {} :inverse {} :arity {} :functional-in-arg {}
+          :covers {} :cover-parts {} :partitions #{}
+          :props {} :inverse {} :arity {} :functional-in-arg {} :commuting {}
           :cache-support {} :cache-handle-keys {} :cache-dirty #{} :cache-ctxs {}
           ;; A KB installs two read-only callbacks after construction: whether any
           ;; supporter needs exception-aware scoping, and whether one supporter is
@@ -881,6 +882,23 @@
                       (assoc-in t [k a] left)))))]
     (-> t (one x y) (one y x))))
 
+(def cover-kinds
+  "The three claims a whole-and-parts declaration can make about its roster, as the
+  keyword each is cached under.  Closed, and the two questions below are the whole of
+  what a reader asks of one: `covering` says the parts leave nothing of the whole
+  uncovered, `separating` says no two of them share an instance, and `partition` says
+  both.  Two independent claims, so the third kind is their conjunction rather than a
+  mechanism of its own."
+  #{:covering :separating :partition})
+
+(defn covering-kind?
+  "Does a declaration of this kind claim that its parts exhaust the whole?"
+  [kind] (not= kind :separating))
+
+(defn separating-kind?
+  "Does a declaration of this kind claim that no two of its parts share an instance?"
+  [kind] (not= kind :covering))
+
 (defn- cache-install
   "Install the derived cache entry for support key `k` into taxonomy state `t`.  The
   single definition of what an *active* entry is, shared by the assert-time
@@ -906,6 +924,26 @@
     ;; would otherwise separate; stored as adjacency exactly as `:disjoint-index` is, so
     ;; the read is one map lookup behind the `genl-related?` guard it sits beside.
     :sib-exception (index-symmetric t :sib-exception-index a true)  ; a = #{x y}
+    ;; `:cover` is one whole-and-parts declaration: `a` is `[whole parts]` with the parts
+    ;; sorted and `b` is the `cover-kinds` keyword saying which of the two claims it
+    ;; makes.  Three tables, because three readers ask three different questions of one
+    ;; roster: `:covers` answers what covers a whole (the contradiction check),
+    ;; `:cover-parts` answers what covers name a part (`CoveringProver`), and
+    ;; `:partitions` is the separating subset `separation-frame` walks the way it walks
+    ;; `:disjoint-metatypes`.  A declaration enters the first two only if it *covers* and
+    ;; the third only if it *separates*, so `separating` reaches the disjointness test and
+    ;; no coverage inference, and `covering` the reverse.  The part roster is the member
+    ;; set of a `disjoint_metatype` under another name, so it is recorded here and never
+    ;; written out as a `(disjoint …)` sentex per pair.
+    :cover (let [[whole parts] a]
+             (as-> t t'
+               (cond-> t' (covering-kind? b)
+                       (update-in [:covers whole] (fnil conj #{}) [parts b]))
+               (cond-> t' (covering-kind? b)
+                       (as-> t'' (reduce (fn [t p] (update-in t [:cover-parts p]
+                                                              (fnil conj #{}) [whole parts b]))
+                                         t'' parts)))
+               (cond-> t' (separating-kind? b) (update :partitions conj [whole parts b]))))
     :prop     (update-in t [:props a] (fnil conj #{}) b)             ; a = prop-kind, b = pred
     :inverse  (index-symmetric t :inverse a true)                  ; a = #{p q}
     :arity    (update-in t [:arity a] (fnil conj #{}) b)                          ; a = pred, b = n
@@ -914,7 +952,16 @@
     ;; nowhere to put one.  A predicate may hold several positions at once, so this
     ;; accumulates rather than replacing — `(functionalInArg P 2)` and
     ;; `(functionalInArg P 3)` are two constraints, both live.
-    :functional-in-arg (update-in t [:functional-in-arg a] (fnil conj #{}) b)))    ; a = pred, b = n
+    :functional-in-arg (update-in t [:functional-in-arg a] (fnil conj #{}) b)      ; a = pred, b = n
+    ;; `:commuting` is `:functional-in-arg`'s shape over a richer value: `b` is a group
+    ;; descriptor — `[:rest f]` for `(commutativeInArgAndRest P f)`, `[:args [p1 p2 …]]`
+    ;; for `(commutativeInArgs P p1 p2 …)`.  One predicate may carry several groups at
+    ;; once, so this accumulates: `(commutativeInArgs P 1 2)` and `(commutativeInArgs P
+    ;; 3 4)` are two independent permutation licences, both live.  `commutative` reaches
+    ;; this table too: it is a `:props` mark *and* a group, and its arm installs `[:rest 1]`
+    ;; here beside the prop rather than deriving `(commutativeInArgAndRest P 1)` through a
+    ;; rule (`special/arms` says why the derivation went).
+    :commuting (update-in t [:commuting a] (fnil conj #{}) b)))                    ; a = pred, b = group
 
 (defn- cache-uninstall
   "Remove the derived cache entry for support key `k` — the exact inverse of
@@ -931,6 +978,21 @@
     :member   (update-in t [:metatype-members a] (fnil disj #{}) b)
     :sib-disjoint (update t :sibling-disjoint disj a)
     :sib-exception (index-symmetric t :sib-exception-index a false)
+    ;; The exact inverse of the install, with the emptied-key discipline `:arity` and
+    ;; `:commuting` follow: a part whose last cover left must not linger as a key mapping
+    ;; to `#{}`, since `covers-naming` gates on the entry being present.
+    :cover (let [[whole parts] a
+                 drop-in (fn [t path v]
+                           (let [left (disj (get-in t path #{}) v)]
+                             (if (seq left)
+                               (assoc-in t path left)
+                               (update-in t (pop path) dissoc (peek path)))))]
+             (as-> t t'
+               (cond-> t' (covering-kind? b) (drop-in [:covers whole] [parts b]))
+               (cond-> t' (covering-kind? b)
+                       (as-> t'' (reduce (fn [t p] (drop-in t [:cover-parts p] [whole parts b]))
+                                         t'' parts)))
+               (cond-> t' (separating-kind? b) (update :partitions disj [whole parts b]))))
     :prop     (update-in t [:props a] (fnil disj #{}) b)
     :inverse  (index-symmetric t :inverse a false)
     :arity    (let [ns' (disj (get-in t [:arity a] #{}) b)]
@@ -942,7 +1004,16 @@
     (let [ns' (disj (get-in t [:functional-in-arg a] #{}) b)]
       (if (seq ns')
         (assoc-in t [:functional-in-arg a] ns')
-        (update t :functional-in-arg dissoc a)))))
+        (update t :functional-in-arg dissoc a)))
+    ;; The same emptied-key discipline, for the same reason: `commuting-groups` gates on
+    ;; the predicate's entry being present, so a predicate whose last group left must not
+    ;; linger as a key mapping to `#{}` — a literal would then take the group-aware
+    ;; canonicalization path and pay for a licence it no longer has.
+    :commuting
+    (let [gs' (disj (get-in t [:commuting a] #{}) b)]
+      (if (seq gs')
+        (assoc-in t [:commuting a] gs')
+        (update t :commuting dissoc a)))))
 
 ;; ---- incremental adjacency maintenance ----------------------------------
 ;; Only the O(V+E) direct adjacency is stored; the closure is answered on demand
@@ -2320,7 +2391,8 @@
          :equality (empty-equality)
          :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
          :sibling-disjoint #{} :sib-exception-index {}
-         :props {} :inverse {} :arity {} :functional-in-arg {}
+         :covers {} :cover-parts {} :partitions #{}
+         :props {} :inverse {} :arity {} :functional-in-arg {} :commuting {}
          :cache-support {} :cache-handle-keys {} :cache-dirty #{} :cache-ctxs {}
          :rewrite-support {} :rewrite-active {})
   ;; The read memo is stamped with each relation's `:gen`, which the fresh
@@ -2347,6 +2419,30 @@
   not active."
   [tax rel-key e]
   (get-in @tax [rel-key :edge-ctxs e] #{}))
+
+(defn derives-from?
+  "Does `handle` assert something the taxonomy derives an answer from — an edge of a
+  cached relation (`genl`, `genlCx`), or a flat-cache entry (a separation, a metatype
+  mark and its memberships, a sibling-disjointness mark or exception, a cover roster, a
+  predicate property, an inverse, an arity)?
+
+  **Three O(1) lookups, off the reverse indexes the reconcile already reads forward.**
+  `:handle-edge` per relation is 1:1 and `:cache-handle-keys` is the multimap twin of
+  `:cache-support`, so this asks what those two already know and walks nothing.  The
+  equality partition is left out: it holds no definitional grounds a clash convicts
+  through, and a caller asking about one is asking about `genl` and the flat caches.
+
+  What it is for: a settle deciding a batch of defeats has to take a defeat of the
+  *grounds* before the verdicts resting on them, since a defeat that withdraws a
+  separation retires the pair it separated rather than losing to it
+  (`settle/resolve-contradictions`, docs/nmtms.md).  Over-answering costs one extra
+  resolution round and never an answer, which is why the reading is this coarse: it
+  names a handle the taxonomy reads *at all* rather than the grounds of one nogood."
+  [tax handle]
+  (let [t @tax]
+    (boolean (or (contains? (:cache-handle-keys t) handle)
+                 (contains? (get-in t [:genl :handle-edge]) handle)
+                 (contains? (get-in t [:genlCx :handle-edge]) handle)))))
 
 (defn cache-contexts
   "The supporting contexts of flat-cache entry `k` (`[:disjoint #{a b}]`,
@@ -2438,6 +2534,49 @@
   [tax t]
   (closure-of tax :genl :rev t))
 
+(defn- closure-within
+  "`closure-of`'s answer for `node` when it holds at most `limit` terms, else nil.  A
+  closure the generation's memo already holds is counted there; otherwise the walk stops
+  at the first term past `limit` and stores nothing, so asking about a node with a
+  million descendants costs `limit` steps rather than a million."
+  [tax rel-key dir-key node limit]
+  (let [t    @tax
+        rel  (get t rel-key)
+        m    @(:closure-memo t)
+        memo (when (= (:gen rel) (get-in m [rel-key :gen])) (get-in m [rel-key dir-key node]))
+        lim  (long limit)]
+    (cond
+      memo        (when (<= (count memo) lim) memo)
+      (< lim 1)   nil                                 ; the reflexive answer alone is over it
+      :else
+      (let [adj (get rel dir-key)]
+        ;; one neighbour at a time, so a node with a million children stops at `limit`
+        ;; rather than after adding all of them
+        (loop [seen (transient #{node}), stack [node]]
+          (if-let [n (peek stack)]
+            (let [[seen stack] (reduce (fn [[seen stack :as acc] x]
+                                         (cond
+                                           (get seen x)          acc
+                                           (>= (count seen) lim) (reduced nil)
+                                           :else                 [(conj! seen x) (conj stack x)]))
+                                       [seen (pop stack)]
+                                       (get adj n))]
+              (when seen (recur seen stack)))
+            (persistent! seen)))))))
+
+(defn genls-global-within
+  "`genls-global` of `t` when it holds at most `limit` terms, else nil — for a caller that
+  wants the closure only when it is small, and must not pay for building a large one to
+  find out."
+  [tax t limit]
+  (closure-within tax :genl :fwd t limit))
+
+(defn specs-global-within
+  "`specs-global` of `t` when it holds at most `limit` terms, else nil.
+  `genls-global-within`'s reasoning, the other direction."
+  [tax t limit]
+  (closure-within tax :genl :rev t limit))
+
 (defn specs
   "Subtypes of t, incl t, through the edges visible from `context`.  `specs-global` is
   the unscoped read."
@@ -2445,6 +2584,32 @@
   (if-some [scope (relation-scope tax :genl context)]
     (closure-of-vis tax :genl :rev t scope)
     (closure-of tax :genl :rev t)))
+
+(defn- direct-neighbours
+  "`t`'s `dir-key` neighbours across **one** `genl` edge, scoped like `genls` / `specs`.
+  Not reflexive: the closures include `t` because transitivity is reflexive, and a step
+  is not."
+  [tax dir-key t context]
+  (if-some [scope (relation-scope tax :genl context)]
+    (into #{} (visible-neighbours :genl (:genl @tax) dir-key scope t))
+    (get-in @tax [:genl dir-key t] #{})))
+
+(defn direct-genls
+  "The types `t` is a subtype of by **one** declared `genl` edge — its direct parents,
+  where `genls` is everything those parents in turn reach.
+
+  O(degree), off the `:fwd` adjacency the closure walk is built on, against a closure
+  read that is O(1) only because it is memoized.  The two answer different questions: the
+  closure is what a subsumption check needs, and the parents are what the term was
+  *told*, which is what a reader is shown and what an editor edits."
+  [tax t context]
+  (direct-neighbours tax :fwd t context))
+
+(defn direct-specs
+  "The types that are a subtype of `t` by **one** declared `genl` edge — its direct
+  children.  `direct-genls`' reasoning, the other direction."
+  [tax t context]
+  (direct-neighbours tax :rev t context))
 
 (defn specs-of-all
   "The union of `specs` over every node in `nodes`, walked **once**.
@@ -2593,8 +2758,9 @@
   is monotonic.  `supporter-class` is `handle → class` — a live JTMS `defeat-class` read —
   and a supporter it cannot classify (OUT, or mid-settle) counts as `:default`, the
   weakest, so a walk never over-claims `:monotonic` for an edge it cannot confirm holds
-  that strongly.  Both readers below take that reading: the one that reports the class and
-  the one that picks a witness holding it."
+  that strongly.  The three readers below take that reading: the one that reports an
+  edge's class, the one that reports a flat-cache key's, and the one that picks a witness
+  holding an edge's."
   [cands supporter-class]
   (reduce (fn [c [h _]] (strength/max c (or (supporter-class h) :default))) :default cands))
 
@@ -2603,6 +2769,31 @@
   visible at all."
   [rel e vis supporter-class]
   (let [cands (visible-edge-supporters rel e vis)]
+    (when (seq cands) (top-supporter-class cands supporter-class))))
+
+(defn key-class
+  "The strongest defeat class among the supporters of flat-cache key `k` that a reader
+  in `context` can use, or nil when it can use none.
+
+  **Strongest**, because a declaration stated twice holds as strongly as its best
+  statement: retracting the defeasible one leaves it standing on the other.  That is
+  the reading within one ingredient; across the ingredients of a derivation the caller
+  takes the *weakest*, since every one of them has to hold for the derivation to.
+
+  Scoped like `cache-entry-visible?`, and through the same supporter filter when one is
+  active, so a reader is never told a declaration holds on a supporter it cannot see."
+  [tax k context supporter-class]
+  (let [t       @tax
+        scoped? (scoped-context? context)
+        up      (when scoped? (closure-of tax :genlCx :fwd context))
+        scope   (when (and scoped? (supporter-filter-active? t))
+                  {:contexts up :context context
+                   :supporter-visible? (:supporter-visible? t)})
+        admit?  (cond
+                  scope         (fn [[h c]] (scope-admits-supporter? scope h c))
+                  (not scoped?) (fn [_] true)
+                  :else         (fn [[_ c]] (or (nil? c) (contains? up c))))
+        cands   (into [] (filter admit?) (get-in t [:cache-support k] {}))]
     (when (seq cands) (top-supporter-class cands supporter-class))))
 
 (defn- strongest-edge-supporter
@@ -2693,6 +2884,243 @@
                   #(strongest-edge-supporter tax rel % scope supporter-class)))
                [:monotonic :default]))))))
 
+(defn context-specificity
+  "How specific context `c` is, as the size of its `genlCx` ancestor set; 0 for a supporter
+  with no recorded context, which is seen from everywhere.  A context strictly below
+  another has the larger ancestor set, so the number orders every comparable pair the way
+  `sees?` does, and gives the incomparable ones one total order to be tie-broken in.
+  A function of the topology alone, so no arrival order reaches it."
+  [tax c]
+  (if (nil? c) 0 (count (closure-of tax :genlCx :fwd c))))
+
+;; ---- every route a reader can hold a dependant through --------------------
+;;
+;; A witness names one route, and the route decides where a dependant is placed.  Two
+;; routes stated in contexts neither of which sees the other place it in two different
+;; readers, and neither placement is above the other: the route through CxA places a
+;; conclusion CxA reads and CxB does not, the route through CxB the reverse.  A search
+;; that named one of them would leave the other reader without the conclusion except in
+;; the orders where a firing over its own route was placed before the named route
+;; arrived, since such a firing stays stored.
+;;
+;; The searches below return **every route no other route covers**.  Route R1 covers
+;; R2 when each reader that sees every asserting context of R2 also sees every one of
+;; R1's, and the test reads that as each of R1's contexts being seen from one of R2's
+;; (`floor-covers?`).  A caller places a dependant once per returned route, so each
+;; reader that reaches over its own edges reads the placement its own route decides.
+;; Where every edge is stated in contexts one reader sees, one route covers the rest
+;; and the search returns one route.
+
+(defn- seen-from?
+  "Is context `a` seen from context `b` — `b` itself or one of its `genlCx` ancestors?
+  A nil `a` was recorded by a writer with no context and is seen from everywhere."
+  [tax a b]
+  (or (nil? a)
+      (= a b)
+      (and (some? b) (contains? (closure-of tax :genlCx :fwd b) a))))
+
+(defn context-floor
+  "The most specific members of `ctxs`, as a set: a nil member and every member another
+  member sees are dropped, since a reader seeing the rest sees those too.  Two members
+  that see each other count once, and the member kept is the first in printed order."
+  [tax ctxs]
+  (let [cs (into [] (comp (remove nil?) (distinct)) ctxs)]
+    (if (nil? (next cs))
+      (set cs)
+      (reduce (fn [acc c]
+                (if (some #(seen-from? tax c %) acc)
+                  acc
+                  (conj (into #{} (remove #(seen-from? tax % c)) acc) c)))
+              #{}
+              (nm/sort-by-content-key nm/print-key compare cs)))))
+
+(defn floor-covers?
+  "Does a reader that sees every context of floor `f2` see every context of floor `f1`?
+  Answered by each member of `f1` being seen from some member of `f2`, which is what the
+  `genlCx` ancestor sets decide without enumerating readers."
+  [tax f1 f2]
+  (or (= f1 f2)
+      (every? (fn [a] (some #(seen-from? tax a %) f2)) f1)))
+
+(defn- covers?
+  "Does label `[rank1 floor1]` cover `[rank2 floor2]`: at least as strong, and seen from
+  every reader that sees the other?  A nil rank takes no part in the comparison."
+  [tax [r1 f1] [r2 f2]]
+  (and (or (nil? r1) (nil? r2) (>= r1 r2))
+       (floor-covers? tax f1 f2)))
+
+(defn uncovered
+  "The members of `alts` whose label no other member's label covers, in their given
+  order.  `label` maps a member to `[rank floor]` (rank nil where strength takes no
+  part).  Of two members that cover each other, the earlier is kept, so a caller that
+  hands `alts` over in content order gets a result that is a function of the content."
+  [tax label alts]
+  (if (nil? (next alts))
+    (vec alts)
+    (let [ls (mapv label alts)
+          n  (count ls)]
+      (into []
+            (keep-indexed
+             (fn [i a]
+               (let [li (nth ls i)]
+                 (when-not (some (fn [j]
+                                   (let [lj (nth ls j)]
+                                     (and (not= i j)
+                                          (covers? tax lj li)
+                                          (or (< j i) (not (covers? tax li lj))))))
+                                 (range n))
+                   a))))
+            alts))))
+
+(defn- floor-specificity
+  "The specificity of the most specific member of floor `f`, 0 for an empty floor."
+  [tax f]
+  (reduce (fn [m c] (max m (context-specificity tax c))) 0 f))
+
+(defn uncovered-routes
+  "Every route `start →* goal` whose label no other route's covers (`covers?`), as a
+  vector of routes, each the `[handle ctx]` supporters along it with the `goal` end
+  first.  `[[]]` when `start` is `goal`, which rests on nothing; `[]` when no route
+  exists.
+
+  `step` maps a node to its outgoing steps `[next [handle ctx] rank]` in content order,
+  one per supporter a route may name for that edge.  `rank` is the supporter's strength
+  rank, or nil where strength takes no part.  A route's label is its weakest rank and
+  the floor of its supporters' contexts (`context-floor`).  Extending a route never
+  makes its label cover more, so the walk drops a partial route whose label a route
+  already held at the same node covers, or one a route already found at `goal` covers.
+  A node therefore holds one partial route per uncovered label, and where every edge is
+  stated in contexts one reader sees, that is one route per node.
+
+  The queue orders by rank, then by the specificity of the floor's most specific member,
+  then by length, then by the printed terms of the step and the printed floor.  Of two
+  routes with equal labels the walk keeps the one it pops first, so the kept route is a
+  function of the content, and the routes come back in that order."
+  [tax start goal step]
+  (if (= start goal)
+    [[]]
+    (let [pq       (java.util.PriorityQueue. 16 ^java.util.Comparator
+                                             (fn [a b] (compare (nth a 0) (nth b 0))))
+          ;; a walk meets few distinct labels — one, where every edge is stated in
+          ;; contexts one reader sees — so a label carries its own queue key, is built
+          ;; once, and is passed along unchanged by every step that does not move the
+          ;; floor.  `one?` holds while every label built is that first one, and a route
+          ;; found then covers every entry still queued.
+          labels   (java.util.HashMap.)
+          one?     (volatile! true)
+          label    (fn [rank floor]
+                     (let [k [rank floor]]
+                       (or (.get labels k)
+                           (let [l [rank floor (- (or rank 0)) (floor-specificity tax floor)
+                                    (vec (sort (map nm/print-key floor)))]]
+                             (when (pos? (.size labels)) (vreset! one? false))
+                             (.put labels k l)
+                             l))))
+          push!    (fn [l node from path len]
+                     (.add pq [[(nth l 2) (nth l 3) len (nm/print-key node)
+                                (nm/print-key from) (nth l 4)]
+                               node l path len]))
+          lcovers? (fn [a b] (covers? tax a b))
+          covered? (fn [ls l] (some #(lcovers? % l) ls))
+          keep-in  (fn [ls l] (conj (filterv #(not (lcovers? l %)) ls) l))
+          routes   (fn [found] (mapv (fn [[_ path]] (vec (rseq path))) found))]
+      (push! (label nil #{}) start "" [] 0)
+      (loop [held {}, found [], flabels []]
+        ;; one label in the whole walk and a route found under it: every entry still
+        ;; queued carries that label, which the route covers, so the walk is over
+        (if (and (seq found) @one?)
+          (routes found)
+          (if-let [[_ node l path len] (.poll pq)]
+            (let [rank (nth l 0), floor (nth l 1)]
+              (cond
+                (or (covered? flabels l) (covered? (get held node) l))
+                (recur held found flabels)
+
+                (= node goal)
+                (let [kept (filterv #(not (lcovers? l (first %))) found)]
+                  (recur held (conj kept [l path]) (conj (mapv first kept) l)))
+
+                :else
+                (let [held (update held node (fnil keep-in []) l)
+                      len2 (inc len)]
+                  (doseq [[n2 w r] (step node)
+                          :let  [c  (nth w 1)
+                                 l2 (if (and (or (nil? r) (and rank (<= rank r)))
+                                             (or (nil? c) (contains? floor c)))
+                                      l
+                                      (label (cond (nil? r) rank (nil? rank) r :else (min rank r))
+                                             (if (or (nil? c) (contains? floor c))
+                                               floor
+                                               (context-floor tax (conj floor c)))))]
+                          :when (not (or (covered? (get held n2) l2)
+                                         (covered? flabels l2)))]
+                    (push! l2 n2 node (conj path w) len2))
+                  (recur held found flabels))))
+            (routes found)))))))
+
+(defn- edge-steps
+  "`step` for `uncovered-routes` over relation `rel-key` as `context` sees it: from a
+  node, each visible neighbour once per visible supporter of the edge that no other
+  visible supporter covers.  With `supporter-class` each supporter carries its strength
+  rank, so a stronger supporter in a more specific context is a step of its own.
+
+  Built eagerly into a vector, and an edge with one visible supporter — nearly every
+  edge — takes neither the ordering nor the covering comparison: the walk reads one step
+  per edge on the hot path, and a lazy seq per neighbour is what it costs to produce
+  them one at a time."
+  [tax rel-key context supporter-class]
+  (let [rel   (get @tax rel-key)
+        scope (relation-scope tax rel-key context)
+        adj   (if (nil? scope) #(get (:fwd rel) %) #(visible-neighbours rel-key rel :fwd scope %))
+        rank  (when supporter-class
+                #(strength/rank-of (or (supporter-class %) :default)))
+        label (fn [[h c]] [(when rank (rank h)) (if (nil? c) #{} #{c})])
+        step  (fn [acc n2 w] (conj! acc [n2 w (when rank (rank (nth w 0)))]))]
+    (fn [node]
+      (persistent!
+       (reduce (fn [acc n2]
+                 (let [cands (visible-edge-supporters rel [node n2] scope)]
+                   (cond
+                     (empty? cands)      acc
+                     (nil? (next cands)) (step acc n2 (nth cands 0))
+                     :else               (reduce #(step %1 n2 %2)
+                                                 acc
+                                                 (uncovered tax label
+                                                            (nm/sort-by-content-key
+                                                             (fn [[_ c]] (nm/print-key c))
+                                                             compare cands))))))
+               (transient [])
+               (nm/sort-by-content-key nm/print-key compare (adj node)))))))
+
+(defn general-reach-supports
+  "Every witness for `sub →* super` in `rel-key` that `context` sees and no other witness
+  covers (`uncovered-routes`), each the `[handle ctx]` of one supporter per edge along a
+  single path.  `[[]]` for `sub` = `super`, which rests on nothing; `[]` when `context`
+  sees no path.
+
+  `reach-support` names a *shortest* path, and a shorter route through a specific context
+  drags a conclusion resting on it down there while a longer route through general
+  contexts would have left it above.  Here a route is judged by the contexts it was
+  stated in, so the route through general contexts covers the short one and is the one
+  returned.  Routes stated in contexts neither of which sees the other are each returned,
+  since each places a dependant in a reader the other does not reach.
+
+  Ties are settled on content: the specificity of the route's most specific context,
+  then its length, then the printed terms.  Nothing keys on a handle, so two KBs holding
+  the same edges name the same witnesses whatever order they were built in
+  (docs/nmtms.md)."
+  [tax rel-key sub super context]
+  (uncovered-routes tax sub super (edge-steps tax rel-key context nil)))
+
+(defn reach-supports
+  "Every witness for `sub →* super` in `rel-key` that `context` sees and no other witness
+  covers, weighing the defeat class of each supporter (`supporter-class`) beside its
+  context: a route covers another only if its floor class is at least as strong and it
+  is seen wherever the other is.  The routes a placement that has to descend below the
+  firing's other ingredients chooses among (`chain/placement-ingredients`)."
+  [tax rel-key sub super context supporter-class]
+  (uncovered-routes tax sub super (edge-steps tax rel-key context supporter-class)))
+
 (defn reach-strength
   "The defeat class of the **strongest** route `sub →* super` in `rel-key` that `context`
   sees — `:monotonic` / `:default`, or nil when unreachable.  `:monotonic` for `sub` =
@@ -2752,8 +3180,17 @@
   past *that* cap the order-dependence is in whether a merge is derived at all, not only
   in when.  It is bounded the same way and reported the same way (a
   `:context-edge-exposure-truncated` violation per cut), and below the cap it is exact;
-  what it is not is covered by the sentence above."
-  4096)
+  what it is not is covered by the sentence above.
+
+  **Why 8192 and not 4096.**  The cap bounds a sweep against a *large* extent, and 4096
+  was not doing that: the shipped ontology plus a 200-fact generated corpus
+  (`generate_test/a-generated-kb-derives-cleanly`) exhausted it with under 3% to spare —
+  measured, the threshold sat between 4096 and 4224 — so three terms added to `CxCore`
+  cut five triggers short, and the next three would have done the same.  A cap a
+  mid-size KB reaches by existing truncates a normal sweep rather than refusing an
+  unbounded one.  8192 restores the headroom; which sweeps the cap refuses is unchanged,
+  and so is every KB that never came near it."
+  8192)
 
 ;; ---- genlCx (contexts) ---------------------------------------------------
 
@@ -3200,6 +3637,87 @@
   tax)
 (defn sibling-disjoints [tax] (:sibling-disjoint @tax))
 
+;; ---- covering: the parts that exhaust a whole ----------------------------
+;;
+;; `(covering W P1 P2 …)` says that every instance of `W` is an instance of some named
+;; part; `(partition W P1 P2 …)` says that and separates the parts.  The roster is
+;; recorded here rather than expanded: a partition's separation is read by
+;; `separation-frame` the way a metatype's member set is, and the coverage inference
+;; belongs to `provers/CoveringProver`, so neither writes a sentex per pair.  The `genl`
+;; edge each part owes the whole *is* installed, by the integrate arm and against the
+;; covering sentex's own handle — a subtype relation the closure cannot see is one every
+;; other reader disagrees about.
+
+(defn cover-key
+  "The support key one whole-and-parts declaration is held under: `[:cover [whole parts]
+  kind]`, with `parts` deduplicated and sorted by printed name.  Sorted here rather than
+  trusted from the sentence, so a KB whose commutativity marks are absent records the key
+  a canonicalized one records."
+  [whole parts kind]
+  [:cover [whole (vec (sort-by nm/print-key (distinct parts)))] kind])
+
+(defn add-cover
+  ([tax whole parts kind handle] (add-cover tax whole parts kind handle nil))
+  ([tax whole parts kind handle ctx]
+   (let [k (cover-key whole parts kind)]
+     (swap! tax supported-add k handle ctx #(cache-install % k)))
+   tax))
+
+(defn del-cover! [tax whole parts kind handle]
+  (let [k (cover-key whole parts kind)]
+    (swap! tax supported-del k handle #(cache-uninstall % k)))
+  tax)
+
+(defn separating-covers
+  "Every declaration whose parts separate each other, as `[whole parts kind]` — the
+  `partition` and `separating` spellings, and not `covering`, which claims no separation
+  (`separating-kind?`).  The roster `separation-frame` reads its parts arm off, and the
+  fourth way this KB spells disjointness: a caller asking whether the KB separates any two
+  types at all has to read it beside `disjoint-pairs`, `disjoint-metatypes` and
+  `sibling-disjoints`."
+  [tax] (:partitions @tax))
+
+(defn covers-naming
+  "Every **covering** declaration naming `part` among its parts, as `[whole parts kind]`.
+  Empty for every type no cover mentions, which is the lookup `CoveringProver` declines
+  on — and empty for a `separating` roster, which claims no coverage to infer from."
+  [tax part]
+  (get-in @tax [:cover-parts part] #{}))
+
+(defn covers-naming-visible
+  "`covers-naming` filtered to the declarations `context` can see — the scoped read a
+  query takes, as `disjoint?` takes `separation-frame`'s.  An unscoped context sees every
+  declaration, exactly as it sees every disjointness."
+  [tax part context]
+  (let [ds (covers-naming tax part)]
+    (if (scoped-context? context)
+      (filterv (fn [[whole parts kind]]
+                 (cache-entry-visible? tax [:cover [whole parts] kind] context))
+               ds)
+      (vec ds))))
+
+(defn covers-of
+  "Every covering declaration over `whole`, as `[parts kind]`."
+  [tax whole]
+  (get-in @tax [:covers whole] #{}))
+
+(defn covers-over
+  "Every declaration covering `t` or any of its supertypes, as `[whole parts]` — what a
+  membership `(t x)` puts `x` under.  Scoped: the declarations `context` cannot see are
+  dropped, as they are in `covers-naming-visible`."
+  [tax t context]
+  (let [scoped? (scoped-context? context)
+        as      (if scoped? (genls tax t context) (genls-global tax t))]
+    (into []
+          (mapcat (fn [whole]
+                    (keep (fn [[parts kind]]
+                            (when (or (not scoped?)
+                                      (cache-entry-visible?
+                                       tax [:cover [whole parts] kind] context))
+                              [whole parts]))
+                          (covers-of tax whole))))
+          as)))
+
 (def ^:dynamic *separation-frame-cache*
   "An optional atom `{[a context] frame}` for a **read-only** pass (see
   `*closure-pass-cache*`).  A cold rebuild's clash pass asks `disjointness-test` — and
@@ -3248,6 +3766,10 @@
         sib-vis?    (if scoped?
                       (fn [c] (cache-entry-visible? tax [:sib-disjoint c] context))
                       (fn [_] true))
+        part-vis?   (if scoped?
+                      (fn [whole ps kind]
+                        (cache-entry-visible? tax [:cover [whole ps] kind] context))
+                      (fn [_ _ _] true))
         ;; `a`'s separable supertypes, each with what it is declared disjoint from
         seps  (let [didx (:disjoint-index t)]
                 (into [] (keep (fn [x] (when-let [ys (get didx x)] [x ys]))) as))
@@ -3272,8 +3794,18 @@
                               (let [specsC  (if scoped? (specs tax c context) (specs-global tax c))
                                     below-a (filterv #(and (not= % c) (contains? specsC %)) as)]
                                 (when (seq below-a) [c specsC below-a])))))
-                    (:sibling-disjoint t))]
-    {:scoped? scoped? :seps seps :metas metas :sibs sibs
+                    (:sibling-disjoint t))
+        ;; the partitions holding some supertype of `a`, each as `[parts above-a]`.  A
+        ;; partition's part roster is a metatype's member set under another name, so this
+        ;; is the metatype arm's roster read off `:partitions` — and it is empty unless a
+        ;; partition names a supertype of `a`, giving the same short-circuit.
+        parts (into []
+                    (keep (fn [[whole ps kind]]
+                            (when (part-vis? whole ps kind)
+                              (let [in-a (filterv #(contains? as %) ps)]
+                                (when (seq in-a) [ps in-a])))))
+                    (:partitions t))]
+    {:scoped? scoped? :seps seps :metas metas :sibs sibs :parts parts
      :pair-vis? pair-vis? :member-vis? member-vis?}))
 
 (defn- separation-frame
@@ -3300,8 +3832,9 @@
   all; one that *is* separable pays a set lookup per declaration rather than a walk
   over the closure product."
   [tax a context]
-  (let [{:keys [scoped? seps metas sibs pair-vis? member-vis?]} (separation-frame tax a context)]
-    (if (and (empty? seps) (empty? metas) (empty? sibs))
+  (let [{:keys [scoped? seps metas sibs parts pair-vis? member-vis?]}
+        (separation-frame tax a context)]
+    (if (and (empty? seps) (empty? metas) (empty? sibs) (empty? parts))
       (constantly false)
       ;; genl-relatedness is read **globally**, never through the reader's ancestor set: the
       ;; exception is the same one `wff/disjoint-problems` applies to an explicit pair,
@@ -3350,14 +3883,27 @@
                                                       (not (exempt? x y))))
                                          below-b))
                                  below-a)))
-                       sibs)))))))))
+                       sibs)
+                 ;; a partition separates on its part roster exactly as a metatype
+                 ;; separates on its members: a part above `a` and a *different*,
+                 ;; non-genl-related, non-exempted part above `b`.  `covering` alone
+                 ;; records no partition, so its parts reach nothing here and may overlap.
+                 (some (fn [[ps in-a]]
+                         (let [in-b (filterv #(contains? bs %) ps)]
+                           (some (fn [x]
+                                   (some #(and (not= x %) (not (genl-related? x %))
+                                               (not (exempt? x %)))
+                                         in-b))
+                                 in-a)))
+                       parts)))))))))
 
 (defn separating-partners
   "The types a **visible declaration** separates `a` from: every `y` such that some
   supertype of `a` is declared `(disjoint x y)` with `x` ≠ `y`, shares a disjoint
-  metatype with `y`, or stands beside `y` as a proper specialization of one
-  `(sibling_disjoint C)` parent — the same three arms `disjointness-test` tests, with the
-  same global genl-relatedness and exemption guards on the latter two.
+  metatype with `y`, stands beside `y` as a proper specialization of one
+  `(sibling_disjoint C)` parent, or stands beside `y` in one `partition` roster —
+  the same four arms `disjointness-test` tests, with the same global genl-relatedness and
+  exemption guards on the latter three.
 
   This is the enumeration `disjointness-test` is the membership test of, and the two
   read one frame so they cannot disagree.  Every type disjoint from `a` is a **subtype
@@ -3372,7 +3918,7 @@
   `disjoint?`.  The index is *not* itself context-scoped, which is why the filter is
   applied here rather than trusted to the lookup."
   [tax a context]
-  (let [{:keys [seps metas sibs pair-vis? member-vis?]} (separation-frame tax a context)
+  (let [{:keys [seps metas sibs parts pair-vis? member-vis?]} (separation-frame tax a context)
         ;; global genl-relatedness and exemptions, for the reason `disjointness-test` states
         genl-related? (fn [x y] (or (genl?-global tax x y) (genl?-global tax y x)))
         sib-exc (:sib-exception-index @tax)
@@ -3405,7 +3951,19 @@
                              (conj! acc y)
                              acc))
                          acc specsC))
-               acc sibs)))))
+               acc sibs)
+       ;; a partition separates `a` from every other part of a roster holding a
+       ;; non-genl-related, non-exempted supertype of `a` — the enumeration side of the
+       ;; partition arm, written as the metatype arm above is.
+       (reduce (fn [acc [ps in-a]]
+                 (reduce (fn [acc y]
+                           (if (some #(and (not= % y) (not (genl-related? % y))
+                                           (not (exempt? % y)))
+                                     in-a)
+                             (conj! acc y)
+                             acc))
+                         acc ps))
+               acc parts)))))
 
 (defn separating-pairs
   "Every **ordered** pair `[x y]`, `x` ≠ `y`, that a visible declaration separates —
@@ -3450,13 +4008,25 @@
                       (not (genl?-global tax x y))       ; global, per disjointness-test
                       (not (genl?-global tax y x))
                       (not (exempt? x y)))]
+       [x y])
+     ;; each partition contributes its parts against each other, under the same two
+     ;; guards — the metatype arm's roster, read off a `partition` declaration
+     (for [[whole ps kind] (:partitions t)
+           :when (vis? [:cover [whole ps] kind])
+           x  ps
+           y  ps
+           :when (and (not= x y)
+                      (not (genl?-global tax x y))       ; global, per disjointness-test
+                      (not (genl?-global tax y x))
+                      (not (exempt? x y)))]
        [x y]))))
 
 (defn disjoint?
   "Are types a and b provably disjoint?  True when some supertype of a and some
   *different* supertype of b are separated — by a declared `(disjoint x y)`, by both
-  being members of one disjoint metatype, or by both being non-genl-related proper
-  specializations of one `(sibling_disjoint C)` parent.  Every way, disjointness is
+  being members of one disjoint metatype, by both being non-genl-related proper
+  specializations of one `(sibling_disjoint C)` parent, or by both being parts of one
+  `partition` roster.  Every way, disjointness is
   inherited downward through genl (subtypes of disjoint types are disjoint), which
   is what the walk over both up-closures buys.
 
@@ -3528,8 +4098,11 @@
   "Lazy seq of **witness context sets** for the provable disjointness of `a` and
   `b`: each is the supporting contexts of one complete derivation — a genl path
   from `a` up to one separated type, a path from `b` up to the other, and the
-  separating declaration (a `(disjoint x y)` pair, or a metatype mark plus both
-  memberships).  A reader sees the clash iff it sees every context in *some*
+  separating declaration (a `(disjoint x y)` pair, a metatype mark plus both
+  memberships, a `sibling_disjoint` mark plus the steps down to it, or a `partition` /
+  `separating` roster naming both).  All four spellings are here because a caller reads
+  emptiness as *not disjoint*, and one left out would make that reading disagree with
+  `disjoint?` about one KB.  A reader sees the clash iff it sees every context in *some*
   witness; a supporter with no recorded context imposes nothing and never appears.
 
   Lazy on every level — paths, separated pairs, and per-ingredient supporter
@@ -3586,7 +4159,105 @@
            py (path-requirements rel y c #{})
            w  (requirement-choices
                (cond-> (into (into (into pa pb) px) py) mreq (conj mreq)))]
+       w)
+     ;; the cover arm: `(partition W P1 P2 …)` and `(separating W P1 P2 …)` separate their
+     ;; parts, so the roster reads the way a metatype's member set does and the derivation
+     ;; rests on the paths up to two distinct parts and the declaration naming them.  The
+     ;; parts vector is the one `cover-key` normalized, so it keys the support entry as
+     ;; stored.
+     (for [[whole ps kind] (:partitions t)
+           :let  [creq (req [:cover [whole ps] kind])
+                  psx  (set ps)]
+           x as, y bs
+           :when (and (not= x y) (contains? psx x) (contains? psx y)
+                      (not (genl?-global tax x y)) (not (genl?-global tax y x))
+                      (not (exempt? x y)))
+           pa (path-requirements rel a x #{})
+           pb (path-requirements rel b y #{})
+           w  (requirement-choices (cond-> (into pa pb) creq (conj creq)))]
        w))))
+
+;; ---- how strongly a separation holds -------------------------------------
+
+(defn disjointness-class
+  "The strongest defeat class the disjointness of `a` and `b` is derivable at, as
+  `context` reads it, or nil when `context` reads no separation between them.
+
+  A derivation is only as strong as its weakest ingredient — a `genl` step up from each
+  side, and the declaration separating the two types those steps reach — and the pair is
+  separated as strongly as its **best** derivation.  So this is a max of mins over the
+  same four arms `disjointness-test` tests, with the same global genl-relatedness and
+  exemption guards on the latter three.
+
+  What it is for: a clash is unbreakable only when its derivation is.  The entry point
+  refuses a definitional clash when the newcomer could never be believed beside what it
+  opposes (`checks/against-known-true?`), and the opposing sentex's own class answers
+  only half of that — a separation resting on a `:default` `genl` edge is one a denial
+  of that edge retires at the contexts that read the denial, and the pair stops being a
+  pair there (docs/nmtms.md).
+
+  It reads `separation-frame`, the rosters `disjointness-test` is built on, so the two
+  cannot disagree about which derivations exist.  This says how strongly they hold and
+  never whether they hold: a caller asks `disjoint?` first and this second.
+
+  A route the walk cannot find answers `:monotonic` rather than `:default` — the
+  unbreakable reading, which is the one that leaves a refusal standing.  An ingredient
+  is over-claimed toward refusing rather than toward admitting content on a derivation
+  nothing confirmed."
+  [tax a b context supporter-class]
+  (let [{:keys [scoped? seps metas sibs parts pair-vis? member-vis?]}
+        (separation-frame tax a context)]
+    (when-not (and (empty? seps) (empty? metas) (empty? sibs) (empty? parts))
+      (let [t   @tax
+            as  (if scoped? (genls tax a context) (genls-global tax a))
+            bs  (if scoped? (genls tax b context) (genls-global tax b))
+            genl-related? (fn [x y] (or (genl?-global tax x y) (genl?-global tax y x)))
+            sib-exc (:sib-exception-index t)
+            exempt? (fn [x y] (contains? (get sib-exc x) y))
+            kcls  (fn [k] (or (key-class tax k context supporter-class) :default))
+            pth   (fn [sub tgt] (or (reach-strength tax :genl sub tgt context supporter-class)
+                                    :monotonic))
+            deriv (fn [x y ks]
+                    (reduce strength/min (strength/min (pth a x) (pth b y)) (map kcls ks)))
+            cs (concat
+                ;; driven from `bs` and not from `ys`, the way the metatype arm is driven
+                ;; from the members: `disjointness-test` may scan a separation roster
+                ;; because it stops at the first hit, and this one cannot — every
+                ;; derivation is in the max — so it reads the roster as the adjacency
+                ;; index it is, one lookup per supertype of `b`
+                (for [[x ys] seps
+                      y      bs
+                      :when  (and (not= x y) (contains? ys y) (pair-vis? x y))]
+                  (deriv x y [[:disjoint #{x y}]]))
+                (for [[m ms in-a] metas
+                      :let  [in-b (filterv #(and (contains? bs %) (member-vis? m %)) ms)]
+                      x     in-a
+                      y     in-b
+                      :when (and (not= x y) (not (genl-related? x y)) (not (exempt? x y)))]
+                  (deriv x y [[:metatype m] [:member m x] [:member m y]]))
+                (for [[c specsC below-a] sibs
+                      :let  [below-b (filterv #(and (not= % c) (contains? specsC %)) bs)]
+                      x     below-a
+                      y     below-b
+                      :when (and (not= x y) (not (genl-related? x y)) (not (exempt? x y)))]
+                  ;; the two steps down to the marked parent are ingredients of their own:
+                  ;; the mark says `c`'s specializations are separated, so what makes `x`
+                  ;; and `y` specializations of it is part of the derivation
+                  (strength/min (deriv x y [[:sib-disjoint c]])
+                                (strength/min (pth x c) (pth y c))))
+                ;; the partition arm reads `:partitions` directly rather than
+                ;; `separation-frame`'s roster, which drops the whole and the kind the
+                ;; declaration's cache key is built from
+                (for [[whole ps kind] (:partitions t)
+                      :when (or (not scoped?)
+                                (cache-entry-visible? tax [:cover [whole ps] kind] context))
+                      :let  [in-a (filterv #(contains? as %) ps)
+                             in-b (filterv #(contains? bs %) ps)]
+                      x     in-a
+                      y     in-b
+                      :when (and (not= x y) (not (genl-related? x y)) (not (exempt? x y)))]
+                  (deriv x y [[:cover [whole ps] kind]])))]
+        (when (seq cs) (reduce strength/max :default cs))))))
 
 ;; ---- predicate properties -----------------------------------------------
 
@@ -3899,6 +4570,71 @@
   `metatype-members` moves when a member leaves a still-marked metatype.  One map read,
   no walk."
   [tax] (get @tax :functional-in-arg {}))
+
+(defn add-commuting
+  "Install a commutativity group on `pred`.  `group` is `[:rest f]` or `[:args [p1 p2 …]]`
+  — the two written spellings reduced to the one descriptor `commuting-components` reads."
+  ([tax pred group handle] (add-commuting tax pred group handle nil))
+  ([tax pred group handle ctx]
+   (let [k [:commuting pred group]]
+     (swap! tax supported-add k handle ctx #(cache-install % k)))
+   tax))
+
+(defn del-commuting! [tax pred group handle]
+  (let [k [:commuting pred group]]
+    (swap! tax supported-del k handle #(cache-uninstall % k)))
+  tax)
+
+(defn commuting-supporters
+  "The handles of the sentexes installing commuting `group` on `pred`, as a set, defeated
+  members included — `prop-supporters` for the `:commuting` table."
+  [tax pred group] (cache-supporters tax [:commuting pred group]))
+
+(defn commuting-groups
+  "The commutativity group descriptors declared of `pred` itself, as a set.  Empty when
+  none are, which is the answer for all but a handful of predicates.
+
+  **The exact functor, and global**, unlike `functional-in-arg-over`, which walks up.
+  Two separate reasons, and they point the same way:
+
+  - A commutativity mark *canonicalizes* where the argument constraints *convict*.  A
+    sentex has one key, so whether a predicate permutes its arguments cannot vary by who
+    is asking, and a reader-scoped read here would store one literal under two keys —
+    `kb-sentex`'s key discipline, stated at that function.
+  - A `genl` edge below a commutative predicate does not make the sub-predicate
+    commutative, exactly as it does not make it symmetric (`integrate/commute-existing`,
+    `constraint_descension_test`).  A row re-spelled at a sub-predicate would be one the
+    assert entry point stores the other way round on the very next write.
+
+  One map read, no closure walk, so an unmarked predicate pays a single miss — which is
+  what lets this sit on the canonicalization path every assert runs."
+  [tax pred] (get-in @tax [:commuting pred] #{}))
+
+(defn commuting-predicates-among
+  "The members of `specs` carrying any commutativity group, as a set, or **nil** when none
+  do — `commuting-groups` mirrored for a caller holding a whole spec closure rather than
+  one probe predicate.
+
+  **Driven from the table, and in one pass.**  The marked predicates are a handful where a
+  broad functor's spec closure is the whole type hierarchy, so the membership test runs
+  the small side against the large one — `props`' own trade, and `matches-hierarchical`
+  makes it for `symmetric` a few lines above the caller.  Iterating the entries rather
+  than the key set is what keeps a retrieval off an allocation: the key set would be built
+  and thrown away once per matched literal, and on a KB carrying the CxCore bridge every
+  symmetric predicate is in this table.
+
+  Nil rather than an empty set, so the caller's gate is a `nil?` and the common answer
+  allocates nothing at all."
+  [tax specs]
+  (let [table (get @tax :commuting {})]
+    (when (seq table)
+      (not-empty (into #{} (comp (map key) (filter #(contains? specs %))) table)))))
+
+(defn commuting-declared?
+  "Does any predicate carry a commutativity group?  The table-wide gate a caller opens on
+  before it builds the spec closure `commuting-predicates-among` would be asked over."
+  [tax]
+  (boolean (seq (get @tax :commuting))))
 
 (defn functional-family-declared?
   "Does the taxonomy carry a functional-family mark of **either** spelling — the global,

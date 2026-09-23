@@ -31,6 +31,7 @@
             [vaelii.impl.memory :as mem]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.types.snapshot :as snapshot-types]
             [vaelii.impl.types.trie :as trie-types])
   (:import [it.unimi.dsi.fastutil.ints Int2IntOpenHashMap]))
 
@@ -103,7 +104,10 @@
       (both #(p/count-with-functor % pr) mem col))
     (doseq [[pos t] args]
       (both #(p/sentexes-with-arg % pos t) mem col)
-      (both #(p/count-with-arg % pos t) mem col))
+      (both #(p/count-with-arg % pos t) mem col)
+      ;; the unary slice of the same node, which is a *superset* by design — so what the
+      ;; two stores owe each other is the same superset, not merely a correct one
+      (both #(p/unary-sentexes-with-arg % t) mem col))
     ;; multi-column narrowing + the inverted term index
     (doseq [s sentexes :let [b (sx/body s)]
             :when (and (sequential? b) (symbol? (first b)) (>= (count b) 3))]
@@ -400,7 +404,7 @@
 (defn- sections
   "A frozen store's CSR as comparable values (the arrays as vectors)."
   [store]
-  (let [c (columnar/csr store)]
+  (let [c (snapshot-types/snapshot-read (:trie store) nil)]
     (reduce (fn [m k] (update m k #(into [] %))) c
             [:counts :offsets :edge-tok :edge-tgt :leaf-off :handles])))
 

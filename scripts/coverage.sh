@@ -35,12 +35,11 @@
 #   COVERAGE_EXCLUDE  Space-separated -e regexes for namespaces cloverage can't
 #                     instrument (default: the two known un-instrumentable
 #                     namespaces). Set empty to disable exclusions.
-#   COVERAGE_TEST_SKIP  One test namespace to leave unrun (default
-#                     order-independence-test, whose n! permutation replays are
-#                     pathological under instrumentation). Skipping a test keeps
-#                     every source namespace in the measurement — unlike
-#                     COVERAGE_EXCLUDE, which changes what the percentage is over.
-#                     Set empty to run the whole suite.
+#   COVERAGE_TEST_SKIP  Space-separated test namespaces to leave unrun (default
+#                     reload-test, which reloads the engine from disk
+#                     uninstrumented). Skipping a test keeps every source namespace
+#                     in the measurement — unlike COVERAGE_EXCLUDE, which changes
+#                     what the percentage is over. Set empty to run the whole suite.
 #
 # Output:
 #   target/coverage/index.html    HTML report (gitignored under /target/)
@@ -81,38 +80,26 @@ LOG="$OUT_DIR/run.log"
 CLOVERAGE_ARGS=(--no-colorize --selector "$SELECTOR")
 [[ -n "$FAIL_UNDER" ]] && CLOVERAGE_ARGS+=(--fail-threshold "$FAIL_UNDER")
 
-# Namespaces cloverage cannot handle, in two failure classes:
+# Namespaces cloverage cannot instrument: a top-level form whose eval (cloverage
+# re-evals every form of a namespace one at a time to instrument it) compiles a single
+# method past the JVM's 64 KB per-method bytecode limit, and the run dies on "Method code
+# too large!".  Two do, both protocol declarations split into files of their own so the
+# code that implements them stays instrumented: jtms-protocol (the 35-method `Tms`
+# protocol, split out of vaelii.impl.jtms) and protocols (the 31-method `IndexStore`).
+# Neither holds code to cover, so excluding them loses nothing, and cloverage's
+# `--exclude-call clojure.core/defprotocol` does not rescue either — the form still
+# compiles whole.
 #
-#   1. "Method code too large!" — a top-level form (a big defprotocol /
-#      native-interop block / huge hiccup-rendering defn) whose eval (cloverage
-#      re-evals every form of a namespace one at a time to instrument it)
-#      compiles a single method past the JVM's 64 KB per-method bytecode limit:
-#      kv, asp.clingo, jtms-protocol (the 40-method `Tms` protocol, split out of
-#      vaelii.impl.jtms into its own file precisely so the rest of the JTMS —
-#      the whole algorithm — stays instrumented; the protocol carries no code to
-#      cover, so excluding only it loses nothing), and protocols (the 31-method
-#      `IndexStore`, split the same way: it declares and holds no code, while the
-#      capability fallbacks that go with the optional protocols are in the adjacent namespace in
-#      vaelii.impl.capabilities and stay measured).  Cloverage's
-#      `--exclude-call clojure.core/defprotocol` rescues neither — the form still
-#      compiles whole — so the split is the fix, not the flag.
-#   2. Broken protocol dispatch — a defrecord/deftype that inline-implements a
-#      protocol defined in the SAME file loses its method table under cloverage's
-#      per-form eval, so calls throw "No implementation of method ... found for
-#      class ..." at test time:  index-trie, cache, writer-lease (every core ns
-#      with both a defprotocol and a defrecord/deftype in one file).
+# vaelii.impl.kv and vaelii.impl.asp.clingo instrument cleanly on lein-cloverage 1.2.4
+# and run the suite with no failure of their own, so they are measured: kv at ~98% of
+# forms, clingo at ~13%, since only the JNA path it holds is uncovered wherever
+# libclingo is absent.
 #
-# All load fine uninstrumented, so we load-but-don't-cover them rather than lose
-# the run. Add more anchored regexes here if a new namespace trips either limit.
-# Override the whole set with COVERAGE_EXCLUDE (space-separated regexes); set it
-# empty to disable exclusions.
-# ONLY namespaces that exist. Four of these regexes named namespaces this project
-# has never had (vaelii.browser.browser, vaelii.impl.index-trie, vaelii.impl.cache,
-# vaelii.impl.writer-lease) — carried over from an earlier tree, matching nothing,
-# while whatever actually trips the limits today went uninstrumented-and-uncovered
-# or failed the run outright. Keep this list discovered, not remembered: when a run
-# dies on "Method code too large!", add the namespace it names and say so here.
-DEFAULT_EXCLUDE='^vaelii\.impl\.kv$ ^vaelii\.impl\.asp\.clingo$ ^vaelii\.impl\.jtms-protocol$ ^vaelii\.impl\.protocols$'
+# Keep this list discovered, not remembered: when a run dies on "Method code too
+# large!", add the namespace it names and say so here; when a namespace here instruments,
+# take it out.  Override the whole set with COVERAGE_EXCLUDE (space-separated regexes);
+# set it empty to disable exclusions.
+DEFAULT_EXCLUDE='^vaelii\.impl\.jtms-protocol$ ^vaelii\.impl\.protocols$'
 for ns in ${COVERAGE_EXCLUDE-$DEFAULT_EXCLUDE}; do
   CLOVERAGE_ARGS+=(-e "$ns")
 done
@@ -123,15 +110,19 @@ done
 # which leaves every source namespace measured and only removes whatever coverage
 # that one test contributed. Prefer this: the number stays comparable.
 #
-# `order-independence-test` replays each scenario under every permutation of its
-# operation list — n! runs of the placement path per deftest, twelve of them. It is
-# inexpensive enough uninstrumented to carry no `^:slow` mark, and it is the single most
-# instrumentation-amplified namespace in the suite: measured at 18+ minutes without
-# finishing, against ~3 minutes for the 105 namespaces before it.
+# One is skipped by default. `reload-test` reloads, from disk, every namespace an edit to `vaelii.impl.sentex`
+# reaches — nearly the whole engine — plus `dense-jtms`, and leaves them reloaded for the
+# rest of the JVM. Cloverage runs the test namespaces in name order in one JVM, so run,
+# it leaves every test namespace after it (settle, special, taxonomy, the web tests)
+# exercising uninstrumented code that counts for nothing — eight points of the forms
+# total. Skipping it costs the coverage of `vaelii.browser.reload`'s reload path.
+#
+# `order-independence-test`, which replays each scenario under every permutation of its
+# operation list, runs: about 75 s instrumented, against a few seconds without.
 #
 # Cloverage has `-t/--test-ns-regex` (which tests to run) but no test-exclude, so
-# this is spelled as a negative lookahead. Set COVERAGE_TEST_SKIP empty to run
-# everything.
+# this is spelled as a negative lookahead over the alternation. Set
+# COVERAGE_TEST_SKIP empty to run everything.
 #
 # The trailing `.*` is required: the regex is matched against the WHOLE
 # namespace name, so a lookahead with nothing after it matches only the literal
@@ -139,9 +130,11 @@ done
 # silent and looks like success — the run finishes fast and reports a number (8.70%
 # forms, from namespace loading alone). Whenever this regex changes, check the run
 # logs a plausible count of `Testing ` lines before trusting the percentage.
-COVERAGE_TEST_SKIP="${COVERAGE_TEST_SKIP-order-independence-test}"
+COVERAGE_TEST_SKIP="${COVERAGE_TEST_SKIP-reload-test}"
 if [[ -n "$COVERAGE_TEST_SKIP" ]]; then
-  CLOVERAGE_ARGS+=(-t "^vaelii\\.(?!${COVERAGE_TEST_SKIP}\$).*")
+  read -r -a skips <<< "$COVERAGE_TEST_SKIP"
+  alternation=$(IFS='|'; echo "${skips[*]}")
+  CLOVERAGE_ARGS+=(-t "^vaelii\\.(?!(?:${alternation})\$).*")
 fi
 
 # bash 3.2 (macOS) errors on "${arr[@]}" when arr is empty under `set -u`,

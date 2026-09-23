@@ -20,6 +20,7 @@
             [clojure.java.io :as io]
             [clojure.set :as set]
             [clojure.test :refer [deftest is testing use-fixtures]]
+            [ring.adapter.jetty :as jetty]
             [taoensso.trove :as trove]
             [vaelii.browser.catalog :as catalog]
             [vaelii.core :as v]
@@ -715,6 +716,51 @@
               (is (empty? (client/sentexes-matching conn (list bird Tweety) CxWire))))))
         (finally
           (.stop server))))))
+
+(tu/deftest-kb a-remote-refusal-carries-the-status-it-came-back-under
+  ;; `docs/operations.md` makes the status the coarse client-fault/server-fault split
+  ;; under the one `:type` vocabulary.  The client read the body and dropped the status
+  ;; line, so that split was a fact only a caller writing its own HTTP could see — and
+  ;; the one reply the `:type` vocabulary cannot cover, a body that is not the daemon's
+  ;; at all, arrived as `:bad-reply` with no way to tell a proxy's 502 from a truncated
+  ;; 200.
+  (tu/with-terms [bird Tweety CxWire]
+    (let [server (serve/start kb {:port 0 :token nil})]
+      (try
+        (let [conn (client/client "localhost" (serve/port server) {:token nil})]
+          (testing "an unknown op is 400, and the refusal says so"
+            (let [e (is (thrown? clojure.lang.ExceptionInfo (client/call conn :no-such-op [])))]
+              (is (= :unknown-op (:type (ex-data e))))
+              (is (= 400 (:status (ex-data e))))))
+          (testing "so is an engine refusal the daemon answers 400 for"
+            (let [e (is (thrown? clojure.lang.ExceptionInfo
+                                 (client/assert conn (list bird '?open) CxWire)))]
+              (is (= :not-ground (:type (ex-data e))))
+              (is (= 400 (:status (ex-data e))))))
+          (testing "and a success answers without one, since there is no refusal to carry it"
+            (is (nat-int? (client/assert conn (list bird Tweety) CxWire)))))
+        (finally
+          (.stop server))))))
+
+(tu/deftest-kb a-reply-that-is-not-the-daemons-names-the-status-it-came-under
+  ;; The case `read-reply` was written for — a proxy's error page in place of the
+  ;; daemon — reaching a caller that can act on it.  A 502 here and a truncated 200 are
+  ;; two different faults and were one `:bad-reply`.
+  (let [^Server server (jetty/run-jetty
+                        (fn [_] {:status 502
+                                 :headers {"content-type" "text/html"}
+                                 :body "<html><body>502 Bad Gateway</body></html>"})
+                        {:port 0 :host "127.0.0.1" :join? false})]
+    (try
+      (let [port (.getLocalPort ^ServerConnector (first (.getConnectors server)))
+            conn (client/client "127.0.0.1" port {:token nil})]
+        (doseq [[label f] [["an op" #(client/types conn)]
+                           ["health" #(client/health conn)]]]
+          (let [e (is (thrown? clojure.lang.ExceptionInfo (f)) label)]
+            (is (= :bad-reply (:type (ex-data e))) label)
+            (is (= 502 (:status (ex-data e)))
+                (str label ": the status is what names the thing that answered")))))
+      (finally (.stop server)))))
 
 (tu/deftest-kb the-client-carries-the-token-over-the-socket
   ;; The header half, end to end: `app`'s refusal is exercised without a socket above,

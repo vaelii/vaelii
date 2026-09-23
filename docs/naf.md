@@ -90,7 +90,7 @@ over it that a quantified conjunction needs and nothing else does.
 not conclude for a binding under which `S` is derivable.
 
 ```clojure
-(implies (and (bird ?x) (unknown (flies ?x))) (walks ?x))
+(set/forwardRule (implies (and (bird ?x) (unknown (flies ?x))) (walks ?x)))
 ;; birds walk, unless they are known to fly
 ```
 

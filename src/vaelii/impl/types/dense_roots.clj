@@ -10,7 +10,8 @@
   (:require [clojure.set :as set]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.tokens :as tok]
-            [vaelii.impl.types.postings :as postings])
+            [vaelii.impl.types.postings :as postings]
+            [vaelii.impl.types.snapshot :as snapshot-types])
   (:import [it.unimi.dsi.fastutil.longs Long2ObjectOpenHashMap]
            [java.nio IntBuffer LongBuffer]))
 
@@ -176,9 +177,6 @@
 ;; the same posting.  So the snapshot is a read-phase structure, exactly as the trie's is.
 
 (defprotocol PMappedRoots
-  (mapped? [b]
-    "Are the routed families reading out of an mmap'd snapshot?  True exactly while nothing
-    has been written since one was installed, since a write thaws.")
   (^:private -find-key [b pk] "Index of packed key `pk` in the mapped column, or -1.")
   (^:private -slice    [b i]  "The i'th mapped posting as `[lo hi)` into the handle run.")
   (^:private mapped-members [b i] "The i'th mapped posting as a Clojure set of Longs.")
@@ -187,17 +185,10 @@
     boxing-free read beside `mapped-members`, for the intersection, which discards most of
     what it reads and would otherwise box every handle on the way past.")
   (^:private -thaw-roots! [b] "Materialize every mapped posting into `m` and drop the map.")
-  (snapshot-columns [b remap]
-    "The routed families as `{:keys :offsets :handles}` heap arrays, keys sorted and their
-    term ids taken through `remap` (an `int[]` from this dictionary's ids to the durable
-    ones).  The roster key holds no term, so it is passed through unmapped.")
-  (install-mapped! [b keys offsets handles n]
-    "Install mapped columns (a `LongBuffer` and two `IntBuffer`s over a snapshot), replacing
-    whatever the routed families held.")
   (sections [b]
     "What this backend **holds**, by section — `{:routed :keys :offsets :handles :argfam
     :fallback}` — for a residency measurement (`vaelii.bench.budget`).  The objects
-    themselves, never a copy: `snapshot-columns` builds fresh heap arrays to write, and
+    themselves, never a copy: `snapshot-read` builds fresh heap arrays to write, and
     sizing those would size a temporary rather than what a running KB holds.
 
     Which section carries the mass is the whole reading, so each says what it scales
@@ -220,15 +211,38 @@
     The heap/mapped split is the caller's to make from the objects — a buffer says
     whether it is direct — so this reports the shape and judges nothing."))
 
+(defn- packed-members
+  "The set at a packed key, mapped or heap."
+  [this ^Long2ObjectOpenHashMap m pk]
+  (if (snapshot-types/snapshot-mapped? this)
+    (let [i (-find-key this (long pk))]
+      (if (neg? i) #{} (mapped-members this i)))
+    (let [p (.get m (long pk))] (if p (postings/pmembers p) #{}))))
+
+(defn- packed-posting
+  "The posting at a packed key in the representation it is stored in, or nil — the
+  boxing-free twin of `packed-members`, for the narrowing."
+  [this ^Long2ObjectOpenHashMap m pk]
+  (if (snapshot-types/snapshot-mapped? this)
+    (let [i (-find-key this (long pk))]
+      (when-not (neg? i) (mapped-ints this i)))
+    (.get m (long pk))))
+
+(defn- packed-count
+  "The cardinality at a packed key — a slice width while mapped, a posting's own count
+  on the heap."
+  [this ^Long2ObjectOpenHashMap m pk]
+  (if (snapshot-types/snapshot-mapped? this)
+    (let [i (-find-key this (long pk))]
+      (if (neg? i) 0 (let [[lo hi] (-slice this i)] (- (long hi) (long lo)))))
+    (let [p (.get m (long pk))] (if p (postings/pcard p) 0))))
+
 (defn- members
   "The set at `k`, from whichever place the routed families live in."
   [this dict argfam ^Long2ObjectOpenHashMap m fallback k]
   (let [r (route dict argfam k false)]
     (cond
-      (instance? Long r) (if (mapped? this)
-                           (let [i (-find-key this (long r))]
-                             (if (neg? i) #{} (mapped-members this i)))
-                           (let [p (.get m (long r))] (if p (postings/pmembers p) #{})))
+      (instance? Long r) (packed-members this m r)
       (= :fallback r)    (p/kv-members fallback k)
       :else              #{})))                                  ; :absent
 
@@ -240,10 +254,7 @@
   [this dict argfam ^Long2ObjectOpenHashMap m fallback k]
   (let [r (route dict argfam k false)]
     (cond
-      (instance? Long r) (if (mapped? this)
-                           (let [i (-find-key this (long r))]
-                             (when-not (neg? i) (mapped-ints this i)))
-                           (.get m (long r)))
+      (instance? Long r) (packed-posting this m r)
       (= :fallback r)    (p/kv-members fallback k)
       :else              nil)))                                  ; :absent
 
@@ -253,8 +264,6 @@
                      ^:unsynchronized-mutable mhandles   ; IntBuffer  | nil
                      ^:unsynchronized-mutable ^int mn]   ; mapped key count
   PMappedRoots
-  (mapped? [_] (some? mkeys))
-
   (-find-key [_ pk]
     (let [pk (long pk)
           ^LongBuffer ks mkeys]
@@ -297,8 +306,19 @@
       (set! mkeys nil) (set! moff nil) (set! mhandles nil) (set! mn (int 0)))
     nil)
 
-  (snapshot-columns [this remap]
-    (-thaw-roots! this)                                   ; write the live representation
+  (sections [_]
+    {:routed m :keys mkeys :offsets moff :handles mhandles
+     :argfam argfam :fallback fallback})
+
+  snapshot-types/SnapshotSections
+  (snapshot-mapped? [_] (some? mkeys))
+
+  ;; The routed families as heap arrays, keys sorted and their term ids taken through
+  ;; `:remap` (an `int[]` from this dictionary's ids to the durable ones).  The roster key
+  ;; holds no term, so it is passed through unmapped.  The columns are read off the live
+  ;; representation, so a mapped backend thaws first.
+  (snapshot-read [this {remap :remap}]
+    (-thaw-roots! this)
     (let [^ints rm remap
           re  (fn ^long [^long pk]
                 (if (= (long F-ROSTER) (bit-shift-right pk 56))
@@ -325,14 +345,13 @@
                 (System/arraycopy ph 0 hs base (alength ph))))
             {:keys order :offsets offs :handles hs})))))
 
-  (install-mapped! [_ keys offsets handles n]
+  ;; A `LongBuffer` and two `IntBuffer`s over the image, plus the key count they are
+  ;; sized by.  The routed map is emptied: the columns answer every routed read until a
+  ;; write thaws them back into it.
+  (snapshot-install! [_ {ks :keys, offsets :offsets, handles :handles, n :n}]
     (.clear m)
-    (set! mkeys keys) (set! moff offsets) (set! mhandles handles) (set! mn (int n))
+    (set! mkeys ks) (set! moff offsets) (set! mhandles handles) (set! mn (int n))
     nil)
-
-  (sections [_]
-    {:routed m :keys mkeys :offsets moff :handles mhandles
-     :argfam argfam :fallback fallback})
 
   p/KvBackend
   ;; `kv-get` reads the fallback alone, and that is the contract rather than an omission:
@@ -386,7 +405,7 @@
   (kv-member? [this k mem]
     (let [r (route dict argfam k false)]
       (cond
-        (instance? Long r) (if (mapped? this)
+        (instance? Long r) (if (snapshot-types/snapshot-mapped? this)
                              (let [i (-find-key this (long r))]
                                (if (neg? i)
                                  false
@@ -410,10 +429,7 @@
   (kv-count [this k]
     (let [r (route dict argfam k false)]
       (cond
-        (instance? Long r) (if (mapped? this)
-                             (let [i (-find-key this (long r))]
-                               (if (neg? i) 0 (let [[lo hi] (-slice this i)] (- (long hi) (long lo)))))
-                             (let [p (.get m (long r))] (if p (postings/pcard p) 0)))
+        (instance? Long r) (packed-count this m r)
         (= :fallback r)    (p/kv-count fallback k)
         :else              0)))
   ;; The narrowing runs in the postings' own representation (`postings/intersect-postings`),
@@ -448,7 +464,7 @@
   ;; value.  The two sides are enumerated together because a key routed to the fallback
   ;; is as much an index entry as a packed one.
   (kv-entries [this]
-    (concat (if (mapped? this)
+    (concat (if (snapshot-types/snapshot-mapped? this)
               (map (fn [i]
                      (let [pk (.get ^LongBuffer mkeys (int i))]
                        [(unpack dict argfam pk) (mapped-members this i)]))

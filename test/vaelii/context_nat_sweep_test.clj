@@ -270,8 +270,10 @@
   ;; Through koinii's own API, which reaches nothing under `vaelii.impl`.  An agent context
   ;; and a channel are `Cx…` names computed from an id — never minted, never mapped — so
   ;; they are outside the sweep's namespace whatever their extent.  The registry sentences
-  ;; and the placement edges name them besides.
+  ;; and the placement edges name them besides.  The KB's own space is cleared on open, so
+  ;; a second run in one JVM does not open over the first run's records unrecovered.
   (let [kb2 (doto (v/open-kb {:backend :memory :space [::koinii 1] :recover? false})
+              (tu/clear-kb!)
               (core-context/load-into)
               (sa/load-speech-acts))]
     (let [atlas (ch/join (ch/local kb2) 'CxDeploy 'AgentAtlas)
@@ -302,14 +304,17 @@
   ;; a fork tombstones the inherited record rather than deleting it, and the sweep runs
   ;; through the ordinary `retract!` that does so.  So a context the fork empties is
   ;; collected in the fork's view and stands in the base, which is how an object NAT's
-  ;; sweep already behaves there.  Own spaces, and a `:memory` base so the fork is
-  ;; admissible on every run (a `:columnar` index has no `KvBackend` to decorate).
-  (let [base (v/open-kb {:backend :memory :space [::sweep-base 1] :recover? false})]
+  ;; sweep already behaves there.  A `:memory` base on its own space, cleared on open so a
+  ;; second run in one JVM starts empty, so the fork is admissible on every run (a
+  ;; `:columnar` index has no `KvBackend` to decorate); the fork takes the default, an
+  ;; ephemeral space nothing else uses.
+  (let [base (doto (v/open-kb {:backend :memory :space [::sweep-base 1] :recover? false})
+               (tu/clear-kb!))]
     (core-context/load-into base)
     (let [cxfn  (declare-dimension! base)
           expr  (list cxfn 'CxMonad (list 'DatetimeFn "2009"))
           [h k] (context-in base '(likes Tom Ann) expr)
-          f     (v/fork base {:backend :memory :space [::sweep-fork 1]})]
+          f     (v/fork base)]
       (is (reified? f k) "the fork inherits the mapping")
       (v/retract! f h)
       (is (not (reified? f k)) "and sweeps the context it emptied")

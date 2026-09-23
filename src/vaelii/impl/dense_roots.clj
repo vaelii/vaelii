@@ -52,36 +52,29 @@
   (:import [it.unimi.dsi.fastutil.longs Long2ObjectOpenHashMap]
            [vaelii.impl.types.dense_roots DenseRoots]))
 
-;; ---- the argument columns, and why this backend takes the default ------
+;; ---- the argument roots, and what this backend's packing costs them ----------
 ;;
-;; `ArgColumns` (`vaelii.impl.kv`) names the three shapes a settle asks the
-;; argument-root family for: a scoped leaf, the predicate-agnostic union at a
-;; `(pos, term)` node, and that node's cardinality.  The in-memory backend overrides it
-;; with a counted `::arg` trie and answers all three as node reads; every other backend
-;; takes the `Object` default, which spells the keys and folds the generic set ops.
+;; The argument family is the index layer's (`vaelii.impl.kv`): it spells the three keys
+;; and it does the reading.  What reaches here is the ordinary generic ops over those
+;; keys, and `route` packs `[:argument-root pred pos term]` like any other family — the
+;; `(pred, pos)` scope interned to a dense id that rides the `pos` field.  So the
+;; predicate-SCOPED reads, which is what `sentexes-with-args` makes for a named functor
+;; and so the overwhelmingly common query shape, are packed-long lookups: `kv-members` is
+;; one, and `kv-intersect` narrows in the postings' own representation, a mapped run
+;; included.
 ;;
-;; This backend takes the default, and the two halves of that are worth separating.
-;;
-;; **The scoped reads are packed reads.**  `arg-scoped-members` is one packed-long lookup
-;; and `arg-scoped-intersect` one `kv-intersect` over packed keys — no consed vector, no
-;; `doEquiv`, and the narrowing runs in the postings' own representation, a mapped run
-;; included.  These are the reads `sentexes-with-args` makes for a named functor, which is
-;; the overwhelmingly common query shape.
-;;
-;; **The agnostic reads cost one extra lookup.**  The default reaches them over the
-;; slot roster — `[:argument-slot pos term]` → the predicates present there — and then
-;; unions the scoped postings.  That roster is *one predicate* in the common case (a
-;; term occupies a given position under one predicate; `kv.clj`, `sentexes-with-arg`),
-;; so the union is a single set handed straight back and the cost over a maintained node
-;; union is the roster read itself.  A handful of predicates is a handful of packed
-;; lookups.
+;; The predicate-AGNOSTIC reads cost one lookup more.  The index layer takes them over the
+;; slot roster — `[:argument-slot pos term]` → the predicates present there, a fallback
+;; key because its members are names rather than handles — and unions the scoped postings.
+;; That roster is *one predicate* in the common case (a term occupies a given position
+;; under one predicate), so the union is a single set handed straight back and the cost
+;; over a maintained node union is the roster read itself.  A handful of predicates is a
+;; handful of packed lookups.
 ;;
 ;; Maintaining an agnostic union here instead would mean a second posting per
 ;; `(pos, term)` holding what the scoped postings already hold — the family's whole
 ;; fact-scaled mass, stored twice — to save one lookup on a read that is usually a union
-;; of one.  The roster is already maintained and already vocabulary-scaled.  So the
-;; default is the right reading of this representation rather than a gap in it, and the
-;; trie's advantage stays where it is paid for: in RAM, on the memory backend.
+;; of one.  The roster is already maintained and already vocabulary-scaled.
 
 (defn dense-roots
   "A key-interning `KvBackend` sharing `dict` (the columnar trie's token dictionary) so a
@@ -92,8 +85,8 @@
                                   nil nil nil 0))
 
 (defn fallback-entries
-  "The entries the routed families do **not** claim: the term roster and the slot roster,
-  whose members are *names* rather than handles.  Both are **vocabulary-scaled**, which
+  "The entries the routed families do **not** claim: the term roster and the two slot
+  rosters, whose members are *names* rather than handles.  All are **vocabulary-scaled**, which
   is what lets a snapshot write them as one nippy blob and load them resident without
   the blob tracking the fact count (`disk/index_snapshot.clj`, \"The residency split\")."
   [^DenseRoots b] (p/kv-entries (.-fallback b)))

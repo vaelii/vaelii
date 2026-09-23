@@ -132,19 +132,29 @@
               (is (= 1 (:count r))  "the report names the size of the sweep's finding")
               (is (nil? (:actual r))))))))))
 
-;; ---- disjointness: every trigger, one exposure --------------------------
+(defn- standing-pairs
+  "The pairs the last settle left standing — represented dilemmas and irreducible clashes
+  alike.  One entry shape between them, and which reading a pair lands in is a question
+  about the two sides' defeat classes rather than about the constraint that separated
+  them."
+  [kb]
+  (concat (v/contradictions kb) (v/conflicts kb)))
+
+;; ---- disjointness: every trigger, one nogood ----------------------------
 ;;
-;; Four rows of the table share one retroactive reader (`settle/expose-clashes!`) and one
+;; Four rows of the table share one retroactive reader (`settle/clash-nogoods`) and one
 ;; entry point (`checks/disjoint-problems`), and each row is a different sentence arriving last:
 ;; the separation itself, a metatype declaring its members pairwise separate, a term
 ;; joining such a metatype, a `genl` edge closing a separation over content already
 ;; stored, and a `genlCx` edge putting two contexts' memberships in one reader's sight.
 ;; A trigger added to one side and not the other is what this row cannot survive.  The
-;; report half places the two memberships in sibling contexts that only a context below
-;; both sees together: a pair a member's own context sees is decided under either policy,
-;; so only a pair no member sees whole is left to the exposure pass to name.
+;; deciding half places the two memberships in sibling contexts that only a context below
+;; both sees together, which is the vantage that weighs them — under either policy, since
+;; neither writer could see the far half.  What the `:disjoint` *exposure* entry says
+;; about a pair no vantage convicted is `exposure_test`'s roster, the two halves there
+;; being one clash and not two readers of it.
 
-(deftest every-disjointness-trigger-refuses-and-exposes-the-same-clash
+(deftest every-disjointness-trigger-refuses-and-weighs-the-same-clash
   (tu/with-terms [dog_t cat_t pup_t meta_t alpha_t beta_t Rex CxLeft CxRight CxBelow]
     (let [ground (fn [& ts] (map #(list 'genl % 'thing) ts))
           rows
@@ -187,34 +197,29 @@
                 sight [(list 'genlCx CxLeft 'CxUniverse) (list 'genlCx CxRight 'CxUniverse)]
                 below (or report-below
                           [(list 'genlCx CxBelow CxLeft) (list 'genlCx CxBelow CxRight)])
-                r (first (reported (fn [kb]
-                                     (doseq [s (concat ground sight below)]
-                                       (v/assert kb s 'CxUniverse))
-                                     (v/assert kb held CxLeft)
-                                     (v/assert kb arriving CxRight)
-                                     (v/assert kb (or report-closing closing) 'CxUniverse))
-                                   :disjoint))]
+                c (tu/with-cleared-kb [kb tu/fresh]
+                    (doseq [s (concat ground sight below)]
+                      (v/assert kb s 'CxUniverse))
+                    (v/assert kb held CxLeft)
+                    (v/assert kb arriving CxRight)
+                    (v/assert kb (or report-closing closing) 'CxUniverse)
+                    (first (standing-pairs kb)))]
             (is (= :disjoint (:type d)) "the entry point refuses the second membership")
-            (is (some? r)               "and the other order exposes the pair")
-            (testing "both name the term the two memberships are about"
-              (is (= Rex (:term r)))
-              (is (str/includes? (:message d) (str Rex))))
-            (testing "both name the two types, and neither adds one"
-              (is (= (set [(first held) (first arriving)])
-                     (set (:types d))
-                     (set (map first (:held r))))))
-            ;; the entry point names the membership it refused *against* by handle; the exposure
-            ;; names both by `[type context]`, which with `:term` reconstructs each
-            ;; sentence.  Neither half can borrow the other's spelling — a pair exposed by
-            ;; a declaration has no newcomer, so there is nothing for it to call opposing.
-            (testing "both identify the memberships, so a reader reaches the sentexes"
+            (is (some? c)               "and the other order weighs the pair at CxBelow")
+            (testing "both name the two memberships, and neither adds one"
+              (is (= #{held arriving} (set (map :sentence (:sides c)))))
+              (is (= (set [(first held) (first arriving)]) (set (:types d))))
               (is (= held (:against d)))
-              (is (= #{held arriving}
-                     (set (map (fn [[t _]] (list t (:term r))) (:held r))))))
-            (testing "and the exposure adds what only a sweep can know"
-              (is (seq (:visible-from r))
-                  "which contexts see the whole clash — a question no single writer asks")
-              (is (nil? (:visible-from d))))))))))
+              (is (str/includes? (:message d) (str Rex))))
+            ;; A refusal has a newcomer and a message about it.  A nogood has two believed
+            ;; sentexes and no newcomer — deciding it by which arrived last is the
+            ;; arrival-order dependence the JTMS exists to refuse — so it carries the pair
+            ;; and a kind, and the sides are what a caller ranks.
+            (testing "where the two legitimately differ, and why"
+              (is (= :disjoint (:kind c)))
+              (is (string? (:message d)))
+              (is (nil? (:message c)))
+              (is (= 2 (count (:sides c)))))))))))
 
 ;; ---- functional and asymmetric: a pair, not a message -------------------
 ;;
@@ -231,14 +236,6 @@
 ;; fact's functor.  A descended mark has the same three ingredients an inherited length
 ;; does — the two facts, the declaration and the `genl` edge — so any of the three can be
 ;; last, and the roster asks all of them.
-
-(defn- standing-pairs
-  "The pairs the last settle left standing — represented dilemmas and irreducible clashes
-  alike.  One entry shape between them, and which reading a pair lands in is a question
-  about the two sides' defeat classes rather than about the constraint that separated
-  them."
-  [kb]
-  (concat (v/contradictions kb) (v/conflicts kb)))
 
 (deftest a-descended-mark-weighs-the-pair-the-entry-point-refuses-in-every-arrival-order
   (doseq [{:keys [kind mark edge held arriving strength via]}
@@ -290,13 +287,13 @@
                 (is (nil? (:message c)))
                 (is (= 2 (count (:sides c))))))))))))
 
-(deftest a-cross-context-clash-is-exposed-in-the-entry-points-vocabulary
-  ;; The **other** retroactive reader for these two kinds, and the one that runs under
-  ;; `:refuse`: two facts each admissible where written, put in one reader's sight by two
-  ;; `genlCx` edges from a context below both — neither fact's own context sees the other,
-  ;; so nothing decides the pair and the exposure pass names it.  It re-derives through `checks/arbitrable-violations` — the entry point's own
-  ;; check — and then writes a message of its own, which is where a wording can drift even
-  ;; where the finding cannot.
+(deftest a-cross-context-clash-is-weighed-in-the-entry-points-vocabulary
+  ;; The **other** arrival shape for these two kinds, and the one the default `:refuse`
+  ;; policy used to leave undecided: two facts each admissible where written, put in one
+  ;; reader's sight by two `genlCx` edges from a context below both.  Neither fact's own
+  ;; context sees the other, so neither writer is refused; CxBelow sees the pair whole
+  ;; and weighs it, re-deriving through `checks/arbitrable-violations` — the entry
+  ;; point's own check, which is what keeps the two from drifting about what a clash is.
   (doseq [{:keys [kind mark held arriving strength via]}
           (tu/with-terms [parentOf Kid A B]
             [{:kind :functional :mark (list 'functional parentOf) :via parentOf
@@ -311,7 +308,7 @@
                                (v/assert kb mark 'CxUniverse)
                                (v/assert kb held 'CxUniverse {:strength strength}))
                              arriving 'CxUniverse)
-              r (tu/with-cleared-kb [kb tu/fresh]
+              c (tu/with-cleared-kb [kb tu/fresh]
                   (doseq [s [(list 'genlCx CxLeft 'CxUniverse)
                              (list 'genlCx CxRight 'CxUniverse)
                              mark]]
@@ -320,16 +317,20 @@
                   (v/assert kb arriving CxRight {:strength strength})
                   (v/assert kb (list 'genlCx CxBelow CxLeft) 'CxUniverse)
                   (v/assert kb (list 'genlCx CxBelow CxRight) 'CxUniverse)
-                  (:detail (first (filter #(= kind (:violation %)) (v/violations kb)))))]
+                  (first (standing-pairs kb)))]
           (is (= kind (:type d)) "the entry point refuses the second fact")
-          (is (some? r)          "and the split-context order exposes the pair")
-          (testing "both name the predicate the declaration is on"
-            (is (= via (:pred d) (:pred r))))
+          (is (some? c)          "and the split-context order weighs the pair at CxBelow")
+          (testing "both convict on the same constraint"
+            (is (= kind (:kind c)))
+            (is (= via (:pred d))))
           (testing "both name the two facts"
             (is (= held (:against d)))
-            (is (= #{held arriving} (set (map first (:clash r))))))
-          (testing "and the exposure adds the visibility only a sweep can answer"
-            (is (seq (:visible-from r)))))))))
+            (is (= #{held arriving} (set (map :sentence (:sides c))))))
+          ;; A refusal has a newcomer and a message about it; a nogood has two believed
+          ;; sentexes and neither is the newcomer, so it carries the pair and a kind.
+          (testing "where the two legitimately differ, and why"
+            (is (string? (:message d)))
+            (is (nil? (:message c)))))))))
 
 ;; ---- the cells that read "nothing" --------------------------------------
 ;;
@@ -346,9 +347,10 @@
   ;; (docs/argtypes.md).  The entailment's own three arrival orders are held by
   ;; argtype_entail_test, which is where that reading answers the same question.
   (tu/without-entailing
-   (tu/with-terms [person_t rock_t parentOf fatherOf eats Rock Mary Pebble]
+   (tu/with-terms [person_t rock_t parentOf fatherOf eats grouped Rock Mary Pebble Bert Stone]
      (let [ground [(list 'genl person_t 'thing) (list 'genl rock_t 'thing)
-                   (list rock_t Rock) (list person_t Mary) (list rock_t Pebble)]
+                   (list rock_t Rock) (list person_t Mary) (list rock_t Pebble)
+                   (list 'variable_arity_predicate grouped)]
            rows
            [{:row     "arg, the declaration arriving last"
              :fact    (list parentOf Rock Mary)
@@ -393,7 +395,44 @@
              :extra   [(list 'arg parentOf 1 person_t)]
              :closing (list 'genl fatherOf parentOf)
              :next    (list fatherOf Pebble Mary)
-             :type    :arg-type}]]
+             :type    :arg-type}
+            ;; the covering forms type every position a sentence has, or every one from a
+            ;; start, with `arg`'s per-argument conviction, so they take its non-reach
+            {:row     "args, the declaration arriving last"
+             :fact    (list parentOf Rock Mary)
+             :closing (list 'args parentOf person_t)
+             :next    (list parentOf Pebble Mary)
+             :type    :arg-type}
+            {:row     "argAndRest, the declaration arriving last"
+             :fact    (list parentOf Mary Rock)
+             :closing (list 'argAndRest parentOf 2 person_t)
+             :next    (list parentOf Mary Pebble)
+             :type    :arg-type}
+            ;; the homogeneity forms are `interArg` with one type in both roles, so each of
+            ;; their three ingredients arriving after the fact is a cell: the declaration,
+            ;; the trigger's type (Bert untyped until it arrives), and the target's (Stone)
+            {:row     "interArgs, the declaration arriving last"
+             :fact    (list grouped Mary Rock)
+             :closing (list 'interArgs grouped person_t)
+             :next    (list grouped Mary Pebble)
+             :type    :inter-arg-type}
+            {:row     "interArgs, the trigger's type arriving last"
+             :fact    (list grouped Bert Rock)
+             :extra   [(list 'interArgs grouped person_t)]
+             :closing (list person_t Bert)
+             :next    (list grouped Bert Pebble)
+             :type    :inter-arg-type}
+            {:row     "interArgs, the target's type arriving last"
+             :fact    (list grouped Mary Stone)
+             :extra   [(list 'interArgs grouped person_t)]
+             :closing (list rock_t Stone)
+             :next    (list grouped Mary Pebble)
+             :type    :inter-arg-type}
+            {:row     "interArgAndRest, the declaration arriving last"
+             :fact    (list grouped Rock Mary Pebble)
+             :closing (list 'interArgAndRest grouped 2 person_t)
+             :next    (list grouped Rock Mary Rock)
+             :type    :inter-arg-type}]]
        (doseq [{:keys [row fact extra closing next type]} rows]
          (testing row
            (tu/with-cleared-kb [kb tu/fresh]

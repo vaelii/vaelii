@@ -464,7 +464,7 @@ prevents has no second chance: nothing re-triggers on a `genlCx` edge that alrea
 finished landing, so the pairs past the cut stay unmerged for good, this edge.
 
 **All three of these fire for an edge nobody asserted.** A `genlCx` edge reaches the
-store by three entry points — asserted (`core/assert-one`), concluded by a rule
+store by three entry points — asserted (`assert-entry/assert-one`), concluded by a rule
 (`chain/place-fact-conclusion`), or **computed** by the structural producer off a
 `contextArgSubrelation` declaration ([context-nat.md](context-nat.md)) — and the first
 two spelled `migrate-under-context-edge`, `equate-under-context-edge` and

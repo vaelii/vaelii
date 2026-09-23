@@ -127,7 +127,7 @@ Write the batch **last**, after any prose. Put nothing else in the `edn` block."
          (str/join "\n"
                    (for [p shown]
                      (let [doc  (first (core-context/comment-of kb p))
-                           args (sort-by first (get argisa p))]
+                           args (nm/sort-by-content-key identity (get argisa p))]
                        (bullet "`" p "`"
                                (when (seq args)
                                  (str " — args: "

@@ -387,8 +387,7 @@
   ;; line 5800; the switch is named at or below it". An exact `file:5800` was checked
   ;; exactly, and every one of them broke the moment anything above it was edited: a
   ;; comment added six screens up failed this test with a diff that had nothing to do
-  ;; with configuration, and the fix was always to retype a number nobody is indistinguishable from a
-  ;; number.
+  ;; with configuration, and the fix was always to retype a line number no reader used.
   ;;
   ;; The floor is checked against the file's **first** mention of the switch, not
   ;; against any mention at or below it. Searching downward for any hit was the obvious

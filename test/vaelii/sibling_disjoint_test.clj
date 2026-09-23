@@ -112,7 +112,12 @@
 (tu/deftest-kb a-general-context-may-hold-what-a-specific-siblingdisjoint-forbids
   ;; the mark lives in a specific context; a sibling above it that cannot see the mark is
   ;; not constrained, and the clash a general write creates for the specific context is
-  ;; reported by the exposure ledger rather than refused at the general entry point
+  ;; weighed at CxA — the only context that sees the mark and both memberships — rather
+  ;; than refused at the general entry point
+  ;;
+  ;;   CxUniverse
+  ;;     └─ CxC        (t2 Pip) default, written second
+  ;;          └─ CxA   (sibling_disjoint col), (t1 Pip) default   — the deciding vantage
   (tu/with-terms [CxA CxC col t1 t2 Pip]
     (v/assert kb (list 'genl t1 col) 'CxUniverse)
     (v/assert kb (list 'genl t2 col) 'CxUniverse)
@@ -136,16 +141,16 @@
       (is (= #{t1 t2} (set (v/types-of kb Pip CxA))))
       (is (= :disjoint (assert-outcome kb (list t2 Pip) CxA))))
 
-    (testing "the ledger exposes the cross-context clash, naming who can see it whole"
-      (let [vs (v/violations kb)]
-        (is (= [:disjoint] (mapv :violation vs)))
-        (let [d (:detail (first vs))]
-          (is (= Pip (:term d)))
-          (is (= #{CxA} (:visible-from d))))))
+    (testing "the vantage decides the cross-context clash, so nothing reaches the ledger"
+      (is (empty? (v/violations kb)))
+      (let [cs (v/contradictions kb)]
+        (is (= [:disjoint] (mapv :kind cs)))
+        (is (= #{(list t1 Pip) (list t2 Pip)}
+               (into #{} (map :sentence) (:sides (first cs)))))))
 
-    (testing "exposure reports, it does not arbitrate: belief is untouched"
+    (testing "two defaults are a dilemma, so belief is untouched"
       (is (empty? (v/conflicts kb)))
-      (is (empty? (v/contradictions kb))))))
+      (is (= #{t1 t2} (set (v/types-of kb Pip CxA)))))))
 
 ;;; ── siblingDisjointException: an escape hatch exempting one pair ──
 

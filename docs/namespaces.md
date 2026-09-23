@@ -65,7 +65,7 @@ src/vaelii/koinii/
 src/vaelii/impl/
   protocols.clj     RecordStore, IndexStore (trie + roots + rule index + exception re-check index + term index, the term roster beside it) —
                     and KvBackend, the key-value operations an index store bottoms out on,
-                    with ArgColumns and the `unknown-op!` refusal every adapter shares —
+                    with the `unknown-op!` refusal every adapter shares —
                     declarations only, so cloverage can skip the file whole (see its docstring);
                     a held namespace ([web.md](web.md))
   types/prover.clj  held: the Prover and SupportingProver protocols and the prover records
@@ -90,7 +90,7 @@ src/vaelii/impl/
   rules.clj         rule-as-sentex helpers (implies form, predicates, range check, exception closure, the two polycanonicalization expands — conjunctive consequent and disjunctive antecedent, with the width cap and the per-alternative range check ([canonicalization.md](canonicalization.md)) — the generator's hole split and its nesting — [generators.md](generators.md))
   taxonomy.clj      cached genl / genlCx closures, each read twice over — `genls` / `specs` / `genl?` / `context-up` / `sees?` walk the edges a context sees, and `genls-global` / `specs-global` / `genl?-global` / `context-up-global` / `genlCx?-global` walk every active edge, spelled out because on an unrestricted KB the two return the same object (E17 rosters the global callers); the equality partition (representative / equiv-class / deprecated?); maximal-common-descendant-contexts
   strength.clj      assumption strengths + defeat-class lattice (monotonic>default)
-  kv.clj            KvBackend protocol + the one KvIndexStore over it: trie + context/functor/arg roots + rule predicate index + exception re-check index + term index; `index-layout-version`, the number that says which key shapes a build reads
+  kv.clj            KvBackend protocol + the one KvIndexStore over it: trie + context/functor/arg roots + rule predicate index + exception re-check index + term index; `index-layout-version`, the number that says which key shapes a build reads; owns the argument family outright — its three key shapes, the rosters that keep the predicate-agnostic reads answerable, and the canonicalization at both boundaries
   memory.clj        default backend: in-memory RecordStore + MemoryKvBackend, shared per space number
   dense_kv.clj      the :memory-dense index: IntPostings handle sets (sorted int[], promoted to RoaringBitmap past 128)
   dense_jtms.clj    the :tms :dense network: the same graph in bitmaps + primitive-keyed maps, behind jtms-protocol/Tms
@@ -223,7 +223,7 @@ resources/
 
 ## Not glossed above
 
-The map covers 135 of the 174 namespaces under `src/`. The other 39 are listed here by
+The map covers 135 of the 176 namespaces under `src/`. The other 41 are listed here by
 name rather than left out, and the two lists together are every one of them — `lein
 lint`'s **E18** fails on a file in neither and on a count that disagrees with them, so
 the number above stays a measurement. Named here: the engine's write path (`integrate`,
@@ -234,7 +234,9 @@ the term layer (`nat`, `rewrite`, `inherit`, `gloss`, `spec`, plus `quasiquote`,
 metalinguistic constructor a firing builds a mentioned sentence with,
 [argtypes.md](argtypes.md)), the two structural `genlCx` producers that read a context
 NAT's own arguments — `context-nat` and, for the calendar dimension, `datetime`
-([context-nat.md](context-nat.md)) — `modal`, which asks what an agent believes from
+([context-nat.md](context-nat.md)) — `nat-maintenance`, which sequences the reified-NAT
+reconciliation the assert path owes and the orphan sweep the teardown owes
+([nat.md](nat.md)), `modal`, which asks what an agent believes from
 inside that agent's own context over the lattice already there
 ([belief.md](belief.md)), `roster`, the live-handle set `sentex-ids` and its two
 siblings hand back at a scale where the structure of that set is itself the cost,
@@ -247,9 +249,11 @@ level dial, which installs no backend unless asked) — the LLM stack
 [commonsense.md](commonsense.md)):
 
 ```
-impl/chain.clj  impl/checks.clj  impl/config.clj  impl/context_nat.clj
+impl/assert_entry.clj  impl/chain.clj  impl/checks.clj  impl/config.clj
+impl/context_nat.clj
 impl/datetime.clj  host/gloss.clj  impl/inherit.clj  impl/integrate.clj  impl/kb.clj
-impl/logging.clj  impl/modal.clj  impl/nat.clj  impl/quasiquote.clj  impl/recovery.clj
+impl/logging.clj  impl/modal.clj  impl/nat.clj  impl/nat_maintenance.clj
+impl/quasiquote.clj  impl/recovery.clj
 impl/reindex.clj
 impl/rewrite.clj  impl/roster.clj  impl/settle.clj  impl/spec.clj  impl/special.clj
 impl/vocabulary.clj

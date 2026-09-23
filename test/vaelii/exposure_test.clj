@@ -1,17 +1,23 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.exposure-test
-  "The cross-context exposure pass: two memberships each admissible where stated,
-  whose types some context can jointly see as disjoint, are a real contradiction —
-  reported as a `:disjoint` entry in the violations ledger by `settle`, never by
-  refusing a writer on grounds it cannot see.
+  "Two memberships each admissible where stated, whose types some context can jointly
+  see as disjoint, are a real contradiction.  A **vantage** — the maximal common
+  descendant of the two memberships' contexts — decides the pair under either constraint
+  policy, and the exposure pass reports what no vantage convicted, as a `:disjoint` entry
+  in the violations ledger.  Neither route refuses a writer on grounds it cannot see.
 
-  Three routes expose one clash — the membership arriving last, the separating
-  declaration arriving last, the `genlCx` edge arriving last — and the pass
-  runs at settle exactly so the answer is route-agnostic.  Each route gets a test;
-  the shared lattice is two siblings under CxUniverse, with the joint viewer
-  (when one exists) below both.  The membership-last route's acceptance test is
-  `disjoint_test/a-general-context-may-be-given-what-a-specific-one-forbids`."
+  Three routes bring one clash into joint sight — the membership arriving last, the
+  separating declaration arriving last, the `genlCx` edge arriving last — and the passes
+  run at settle exactly so the answer is route-agnostic.  Each route gets a test; the
+  shared lattice is two siblings under CxUniverse, with the joint viewer (when one
+  exists) below both.  The membership-last route's acceptance test is
+  `disjoint_test/a-general-context-may-be-given-what-a-specific-one-forbids`.
+
+  **What the exposure pass is left to report** is the pair the vantage could not convict:
+  the separation is derivable only *below* the maximal common descendant, so the vantage
+  reads no separation and a context under it reads the whole clash (`deep-separation!`).
+  The budgeted sweeps' own tests use that lattice for the same reason."
   (:require [clojure.set :as set]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
@@ -36,6 +42,29 @@
   (v/assert kb (list t1 x) a)
   (v/assert kb (list t2 x) b))
 
+(defn- deep-separation!
+  "`siblings!`'s two memberships, a joint viewer `w` below both, and the separation
+  written in `decl` — a context `w` cannot see.
+
+  `w` is the maximal common descendant of the two memberships' contexts, so it is the
+  vantage `settle/clash-askers` asks the pair's question from; `w` derives no separation,
+  so the settle decides nothing.  A context below both `w` and `decl` sees the whole
+  clash, and that is what the exposure pass names."
+  [kb {:keys [a b w decl t1 t2] :as spec}]
+  (v/assert kb (list 'genlCx decl 'CxUniverse) 'CxUniverse)
+  (v/assert kb (list 'disjoint t1 t2) decl)
+  (siblings! kb spec)
+  (v/assert kb (list 'genlCx w a) 'CxUniverse)
+  (v/assert kb (list 'genlCx w b) 'CxUniverse))
+
+(defn- deep-viewer!
+  "A context below `w` and `decl`: the one that reads the separation and both
+  memberships, and so the one an exposure entry names.  The `decl` edge arrives last, so
+  the settle that files the entry is that edge's."
+  [kb v w decl]
+  (v/assert kb (list 'genlCx v w) 'CxUniverse)
+  (v/assert kb (list 'genlCx v decl) 'CxUniverse))
+
 (tu/deftest-kb siblings-with-no-joint-viewer-expose-nothing
   ;; the pin for the ∃-descendant reading: the memberships coexist, the declaration
   ;; is visible to both writers, and still no single context sees the whole clash —
@@ -47,19 +76,24 @@
     (is (seq (v/sentexes-matching kb (list left_t Pip) CxA)))
     (is (seq (v/sentexes-matching kb (list right_t Pip) CxB)))))
 
-(tu/deftest-kb a-genlCx-edge-arriving-last-exposes-the-clash
+(tu/deftest-kb a-genlCx-edge-arriving-last-decides-the-clash
   ;; the visibility route: everything else stands, and wiring a joint viewer below
-  ;; both siblings is what makes the clash visible — the edge's own settle files it.
+  ;; both siblings is what makes the clash visible — the edge's own settle weighs it.
+  ;; CxW is the vantage, and it sees the separation in CxUniverse, so the pair is
+  ;; decided rather than reported.  Both memberships are `:default`, so CxW cannot rank
+  ;; them and the answer is a dilemma.
   (tu/with-terms [CxA CxB CxW left_t right_t Pip]
     (v/assert kb (list 'disjoint left_t right_t) 'CxUniverse)
     (siblings! kb {:a CxA :b CxB :t1 left_t :t2 right_t :x Pip})
     (v/assert kb (list 'genlCx CxW CxA) 'CxUniverse)
-    (is (empty? (v/violations kb)) "seeing one side is not seeing the clash")
+    (is (empty? (v/contradictions kb)) "seeing one side is not seeing the clash")
     (v/assert kb (list 'genlCx CxW CxB) 'CxUniverse)
-    (let [vs (v/violations kb)]
-      (is (= [:disjoint] (mapv :violation vs)))
-      (is (= #{CxW} (get-in (first vs) [:detail :visible-from])))
-      (is (= Pip (get-in (first vs) [:detail :term]))))))
+    (let [cs (v/contradictions kb)]
+      (is (= [:disjoint] (mapv :kind cs)))
+      (is (= #{(list left_t Pip) (list right_t Pip)}
+             (into #{} (map :sentence) (:sides (first cs))))))
+    (is (empty? (v/violations kb))
+        "decided is not exposed: the ledger does not also claim the pair")))
 
 (tu/deftest-kb a-rebuild-exposes-nothing-because-nothing-newly-moved
   ;; The pass reports what a *change* newly made jointly visible.  A `recover` changes
@@ -67,13 +101,19 @@
   ;; on turns a bounded incremental check into a full-KB audit nobody asked for: 27% of
   ;; an OpenCyc import.  The clash is still there and still findable; what the skip
   ;; costs nobody is re-filing it on every restart.
-  (tu/with-terms [CxA CxB CxW left_t right_t Pip]
-    (v/assert kb (list 'disjoint left_t right_t) 'CxUniverse)
-    (siblings! kb {:a CxA :b CxB :t1 left_t :t2 right_t :x Pip})
-    (v/assert kb (list 'genlCx CxW CxA) 'CxUniverse)
-    (v/assert kb (list 'genlCx CxW CxB) 'CxUniverse)
+  ;;
+  ;;   CxUniverse
+  ;;     ├─ CxA CxB          one membership each
+  ;;     └─ CxDecl           (disjoint left_t right_t)
+  ;;   CxW sees CxA and CxB  — the vantage, which reads no separation
+  ;;     └─ CxV sees CxW and CxDecl   — where the clash is visible whole
+  (tu/with-terms [CxA CxB CxW CxDecl CxV left_t right_t Pip]
+    (deep-separation! kb {:a CxA :b CxB :w CxW :decl CxDecl
+                          :t1 left_t :t2 right_t :x Pip})
+    (deep-viewer! kb CxV CxW CxDecl)
     (is (= [:disjoint] (mapv :violation (v/violations kb)))
         "the change that exposed it reported it")
+    (is (empty? (v/contradictions kb)) "and no vantage convicted it")
     (v/clear-violations! kb)
     (v/recover kb)
     (is (empty? (v/violations kb)) "and the rebuild does not report it again")
@@ -82,29 +122,30 @@
       (is (seq (v/sentexes-matching kb (list right_t Pip) CxB)))
       ;; a real change to the same lattice exposes again, so the gate is about
       ;; rebuilding and not about the clash having been seen once
-      (tu/with-terms [CxV]
-        (v/assert kb (list 'genlCx CxV CxA) 'CxUniverse)
-        (v/assert kb (list 'genlCx CxV CxB) 'CxUniverse)
+      (tu/with-terms [CxV2]
+        (deep-viewer! kb CxV2 CxW CxDecl)
         (let [vs (v/violations kb)]
           (is (every? #(= :disjoint (:violation %)) vs))
           ;; the new viewer is named among those the clash is visible from — the pass
-          ;; is off for a rebuild, not off.  (W's sighting is re-filed alongside it:
+          ;; is off for a rebuild, not off.  (V's sighting is re-filed alongside it:
           ;; an exposure is an event, and the ancestor set moved again.)
-          (is (some #(contains? (get-in % [:detail :visible-from]) CxV) vs)))))))
+          (is (some #(contains? (get-in % [:detail :visible-from]) CxV2) vs)))))))
 
 (tu/deftest-kb the-standing-question-is-answerable-on-demand
   ;; `settle` reports what a change newly exposed; this reports what the KB holds now.
   ;; It is the same clash and the same entry shape, asked of the whole KB by a caller
   ;; who chose to — and it is what an imported KB has instead of a settle that ran
   ;; while the content was arriving.
-  (tu/with-terms [CxA CxB CxW left_t right_t Pip]
-    (v/assert kb (list 'disjoint left_t right_t) 'CxUniverse)
+  (tu/with-terms [CxA CxB CxW CxDecl CxV left_t right_t Pip]
+    (v/assert kb (list 'genlCx CxDecl 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'disjoint left_t right_t) CxDecl)
     (siblings! kb {:a CxA :b CxB :t1 left_t :t2 right_t :x Pip})
-    (testing "before a joint viewer exists there is nothing to see, from either angle"
-      (is (empty? (v/violations kb)))
-      (is (empty? (v/exposed-clashes kb))))
     (v/assert kb (list 'genlCx CxW CxA) 'CxUniverse)
     (v/assert kb (list 'genlCx CxW CxB) 'CxUniverse)
+    (testing "before a joint viewer of the separation exists there is nothing to see"
+      (is (empty? (v/violations kb)))
+      (is (empty? (v/exposed-clashes kb))))
+    (deep-viewer! kb CxV CxW CxDecl)
     (let [filed (v/violations kb)
           asked (v/exposed-clashes kb)]
       (is (= [:disjoint] (mapv :violation asked)))
@@ -122,14 +163,14 @@
       (is (= [:disjoint] (mapv :violation (v/exposed-clashes kb)))
           "and the clash is still there to be asked about"))
     (testing "and it goes when the clash does"
-      (v/retract! kb (v/handle-of kb (list 'disjoint left_t right_t) 'CxUniverse))
+      (v/retract! kb (v/handle-of kb (list 'disjoint left_t right_t) CxDecl))
       (is (empty? (v/exposed-clashes kb))))))
 
-(tu/deftest-kb a-declaration-arriving-last-exposes-a-clash-only-a-descendant-sees
+(tu/deftest-kb a-declaration-arriving-last-decides-a-clash-only-a-descendant-sees
   ;; the separation route: two memberships in sibling contexts, jointly visible only from
   ;; a context below both, and the disjointness arriving is what makes them a clash.
-  ;; Neither member's own context sees the pair, so under `:refuse` nothing decides it —
-  ;; live or after a restart — and the exposure pass names where it is visible from.
+  ;; Neither member's own context sees the pair; CxD does, so CxD is the vantage and
+  ;; weighs it, under `:refuse` as under `:arbitrate`.  Two defaults are a dilemma.
   (tu/with-terms [CxA CxB CxD t1 t2 Pip]
     (v/assert kb (list 'genl t1 'thing) 'CxUniverse)
     (v/assert kb (list 'genl t2 'thing) 'CxUniverse)
@@ -139,18 +180,19 @@
     (v/assert kb (list 'genlCx CxD CxB) 'CxUniverse)
     (v/assert kb (list t1 Pip) CxA)
     (v/assert kb (list t2 Pip) CxB)
-    (is (empty? (v/violations kb)) "compatible until somebody separates them")
+    (is (empty? (v/contradictions kb)) "compatible until somebody separates them")
     (v/assert kb (list 'disjoint t1 t2) 'CxUniverse)
-    (let [vs (v/violations kb)]
-      (is (= [:disjoint] (mapv :violation vs)))
-      (is (= #{CxD} (get-in (first vs) [:detail :visible-from]))))
-    (is (empty? (v/contradictions kb)) "reported, not decided")))
+    (let [cs (v/contradictions kb)]
+      (is (= [:disjoint] (mapv :kind cs)))
+      (is (= #{(list t1 Pip) (list t2 Pip)}
+             (into #{} (map :sentence) (:sides (first cs))))))
+    (is (empty? (v/violations kb)) "decided at CxD, not reported")))
 
-(tu/deftest-kb a-genl-edge-arriving-last-exposes-a-clash-only-a-descendant-sees
+(tu/deftest-kb a-genl-edge-arriving-last-decides-a-clash-only-a-descendant-sees
   ;; the closure route: the held types are not themselves separated — a subtype edge
   ;; arriving puts one of them under a separated type, and the instances below its sub
-  ;; side are re-examined.  The two memberships sit in sibling contexts, so only the
-  ;; context below both sees the pair, and under `:refuse` it is reported, not decided.
+  ;; side are re-examined.  The two memberships sit in sibling contexts, so CxD is the
+  ;; only context that sees the pair and the only one that weighs it.
   (tu/with-terms [CxA CxB CxD dog_t canine_t cat_t Rex]
     (v/assert kb (list 'genl canine_t 'thing) 'CxUniverse)
     (v/assert kb (list 'genl cat_t 'thing) 'CxUniverse)
@@ -162,29 +204,35 @@
     (v/assert kb (list 'genlCx CxD CxB) 'CxUniverse)
     (v/assert kb (list dog_t Rex) CxA)
     (v/assert kb (list cat_t Rex) CxB)
-    (is (empty? (v/violations kb)) "a dog-cat is odd but nothing separates them yet")
+    (is (empty? (v/contradictions kb)) "a dog-cat is odd but nothing separates them yet")
     (v/assert kb (list 'genl dog_t canine_t) 'CxUniverse)
-    (let [vs (v/violations kb)]
-      (is (= [:disjoint] (mapv :violation vs)))
-      (is (= #{CxD} (get-in (first vs) [:detail :visible-from])))
-      (is (= Rex (get-in (first vs) [:detail :term]))))
-    (is (empty? (v/contradictions kb)) "reported, not decided")))
+    (let [cs (v/contradictions kb)]
+      (is (= [:disjoint] (mapv :kind cs)))
+      (is (= #{(list dog_t Rex) (list cat_t Rex)}
+             (into #{} (map :sentence) (:sides (first cs))))))
+    (is (empty? (v/violations kb)) "decided at CxD, not reported")))
 
 (tu/deftest-kb exposure-is-an-event-append-only-and-refiled-on-revival
   ;; the ledger contract: retracting the ingredient that exposed a clash does not
-  ;; withdraw the entry, and the ingredient returning files a new one.
-  (tu/with-terms [CxA CxC t1 t2 Pip]
+  ;; withdraw the entry, and the ingredient returning files a new one.  The separation
+  ;; sits below the vantage (`deep-separation!`), so the pair is the exposure pass's to
+  ;; report rather than a vantage's to decide.
+  (tu/with-terms [CxA CxB CxW CxDecl CxV t1 t2 Pip]
+    (v/assert kb (list 'genlCx CxDecl 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'disjoint t1 t2) CxDecl)
     (v/assert kb (list 'genl t1 'thing) 'CxUniverse)
     (v/assert kb (list 'genl t2 'thing) 'CxUniverse)
-    (v/assert kb (list 'genlCx CxC 'CxUniverse) 'CxUniverse)
-    (v/assert kb (list 'genlCx CxA CxC) 'CxUniverse)
-    (v/assert kb (list 'disjoint t1 t2) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxB 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxW CxA) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxW CxB) 'CxUniverse)
+    (deep-viewer! kb CxV CxW CxDecl)
     (v/assert kb (list t1 Pip) CxA)
-    (let [h (v/assert kb (list t2 Pip) CxC)]
+    (let [h (v/assert kb (list t2 Pip) CxB)]
       (is (= 1 (count (v/violations kb))))
       (v/retract! kb h)
       (is (= 1 (count (v/violations kb))) "the entry outlives its ingredient")
-      (v/assert kb (list t2 Pip) CxC)
+      (v/assert kb (list t2 Pip) CxB)
       (is (= 2 (count (v/violations kb))) "each exposure is its own event")
       (testing "and the runs differ, so \"current\" stays decidable"
         (is (apply distinct? (map :run (v/violations kb))))))))
@@ -192,17 +240,12 @@
 (tu/deftest-kb an-unrelated-settle-does-not-refile-a-standing-clash
   ;; locality: the pass reads the settle's moved region, so a clash whose
   ;; ingredients did not move is not re-examined, let alone re-filed.
-  (tu/with-terms [CxA CxC t1 t2 other Pip Quo]
-    (v/assert kb (list 'genl t1 'thing) 'CxUniverse)
-    (v/assert kb (list 'genl t2 'thing) 'CxUniverse)
-    (v/assert kb (list 'genlCx CxC 'CxUniverse) 'CxUniverse)
-    (v/assert kb (list 'genlCx CxA CxC) 'CxUniverse)
-    (v/assert kb (list 'disjoint t1 t2) 'CxUniverse)
-    (v/assert kb (list t1 Pip) CxA)
-    (v/assert kb (list t2 Pip) CxC)
+  (tu/with-terms [CxA CxB CxW CxDecl CxV t1 t2 other Pip Quo]
+    (deep-separation! kb {:a CxA :b CxB :w CxW :decl CxDecl :t1 t1 :t2 t2 :x Pip})
+    (deep-viewer! kb CxV CxW CxDecl)
     (is (= 1 (count (v/violations kb))))
-    (v/assert kb (list other Quo) CxC)
-    (v/assert kb (list other Pip) CxC)
+    (v/assert kb (list other Quo) CxB)
+    (v/assert kb (list other Pip) CxB)
     (is (= 1 (count (v/violations kb)))
         "an unrelated membership — even of the clash's own term — files nothing new:
          the pair it forms with the standing types is not disjoint")))
@@ -294,10 +337,11 @@
       (v/clear-violations! kb)
       (v/assert kb (list 'disjoint t1 t2) 'CxUniverse)
       (let [vs (v/violations kb)]
-        (is (= [Pip] (mapv #(get-in % [:detail :term])
-                           (filter #(= :disjoint (:violation %)) vs)))
+        (is (= #{(list t1 Pip) (list t2 Pip)}
+               (into #{} (mapcat #(map :sentence (:sides %))) (v/contradictions kb)))
             "the one term holding both is found, though t1's extent is ten times the budget")
-        (is (empty? (filter #(= :exposure-truncated (:violation %)) vs))
+        (is (empty? (filter #{:exposure-truncated :arbitration-truncated}
+                            (map :violation vs)))
             "and nothing was cut short — the cheaper side is one term, not forty")))))
 
 (tu/deftest-kb a-sweep-that-convicts-nobody-still-stops-at-the-bound
@@ -334,12 +378,13 @@
         (is (re-find #"unreported" (get-in (first cut) [:detail :message]))
             "the reader is told what it costs: clashes nobody will hear about")))))
 
-(tu/deftest-kb a-metatype-declaration-arriving-last-exposes-the-clash
+(tu/deftest-kb a-metatype-declaration-arriving-last-decides-the-clash
   ;; `(disjoint_metatype M)` is a *unary* sentence whose argument is a symbol — the
   ;; same shape as a type membership — so the membership arm claims it unless the
-  ;; declarations are matched first, and the metatype gets filed as a term holding a
-  ;; type while the clash its arrival creates goes unswept.  The memberships sit in
-  ;; sibling contexts, so the clash is one only the context below both sees.
+  ;; declarations are matched first, and the metatype gets swept as a term holding a
+  ;; type while the clash its arrival creates goes unreached.  The memberships sit in
+  ;; sibling contexts, so CxD is the only context that sees the pair and the vantage
+  ;; that weighs it.
   (tu/with-terms [CxA CxB CxD animal_species dog_t cat_t Rex]
     (v/assert kb (list 'genl dog_t 'thing) 'CxUniverse)
     (v/assert kb (list 'genl cat_t 'thing) 'CxUniverse)
@@ -351,12 +396,14 @@
     (v/assert kb (list animal_species cat_t) 'CxUniverse)
     (v/assert kb (list dog_t Rex) CxA)
     (v/assert kb (list cat_t Rex) CxB)
-    (is (empty? (v/violations kb)) "the metatype separates nothing yet")
+    (is (empty? (v/contradictions kb)) "the metatype separates nothing yet")
     (v/assert kb (list 'disjoint_metatype animal_species) 'CxUniverse)
-    (let [vs (filter #(= :disjoint (:violation %)) (v/violations kb))]
-      (is (= [Rex] (mapv #(get-in % [:detail :term]) vs))
-          "the members become pairwise disjoint, and the term holding two of them is a clash")
-      (is (= #{CxD} (get-in (first vs) [:detail :visible-from]))))))
+    (let [cs (v/contradictions kb)]
+      (is (= [:disjoint] (mapv :kind cs))
+          "the members become pairwise disjoint, and the term holding two of them clashes")
+      (is (= #{(list dog_t Rex) (list cat_t Rex)}
+             (into #{} (map :sentence) (:sides (first cs))))))
+    (is (empty? (v/violations kb)) "decided at CxD, not reported")))
 
 (tu/deftest-kb the-narrowed-sweep-finds-what-the-complete-question-finds
   ;; The candidate rule is a *narrowing*, so the claim that matters is that it narrows
@@ -387,13 +434,18 @@
     (v/assert kb (list 'disjoint a1_t b1_t) 'CxUniverse)
     (v/assert kb (list 'disjoint a2_t b2_t) 'CxUniverse)
     (v/assert kb (list 'disjoint a1_t b2_t) 'CxUniverse)
-    (let [filed (into #{} (comp (filter #(= :disjoint (:violation %))) (map :detail))
-                      (v/violations kb))
-          truth (into #{} (map :detail) (v/exposed-clashes kb))]
-      (is (= #{Pip Quo} (into #{} (map :term) truth))
+    (let [decided (into #{} (map (fn [c] (into #{} (map (juxt :sentence :context))
+                                               (:sides c))))
+                        (v/contradictions kb))
+          truth   (into #{} (map (fn [d] (into #{} (map (fn [[ty cx]] [(list ty (:term d)) cx]))
+                                               (:held d))))
+                        (map :detail (v/exposed-clashes kb)))]
+      (is (= #{Pip Quo} (into #{} (map (comp :term :detail)) (v/exposed-clashes kb)))
           "two terms hold a separated pair; the 24 fillers hold one side only")
-      (is (= truth filed)
-          "and the sweep that narrowed to them reports exactly what the complete question does"))))
+      (is (= truth decided)
+          "and the sweep that narrowed to them decides exactly what the complete question finds")
+      (is (empty? (v/violations kb))
+          "every pair the oracle names has a vantage, so none is left to report"))))
 
 (tu/deftest-kb a-separation-naming-a-non-symbol-implicates-nobody
   ;; A reified NAT argument — OpenCyc declares thousands of separations against terms like
@@ -456,10 +508,11 @@
       (v/clear-violations! kb)
       (v/assert kb (list animal_species dog_t) 'CxUniverse)
       (let [vs (v/violations kb)]
-        (is (= [Rex] (mapv #(get-in % [:detail :term])
-                           (filter #(= :disjoint (:violation %)) vs)))
+        (is (= #{(list dog_t Rex) (list cat_t Rex)}
+               (into #{} (mapcat #(map :sentence (:sides %))) (v/contradictions kb)))
             "only the term that also holds a second member is a candidate")
-        (is (empty? (filter #(= :exposure-truncated (:violation %)) vs))
+        (is (empty? (filter #{:exposure-truncated :arbitration-truncated}
+                            (map :violation vs)))
             "and the cheaper side is walked — cat_t's one instance, not dog_t's 21")))))
 
 (tu/deftest-kb a-budgeted-sweep-decides-the-same-pair-in-either-arrival-order
@@ -778,11 +831,22 @@
 
 ;; ---- the other two kinds, across the same edge ---------------------------
 ;;
-;; `disjoint` was the only kind the ledger could say, so under `:refuse` a `functional`
-;; slot filled either side of a `genlCx` edge and an `asymmetric` claim written
-;; across one were neither refused nor reported.  Same lattice as the disjointness
-;; cases above: two siblings neither of which sees the other, and a joint viewer below
-;; both that sees the whole pair.
+;; A `functional` slot filled either side of a `genlCx` edge, and an `asymmetric` claim
+;; written across one, are weighed at the vantage exactly as a disjointness clash is —
+;; under `:refuse` as under `:arbitrate`, since neither writer could see the far half
+;; and so neither is being told no.  Same lattice as the disjointness cases above: two
+;; siblings neither of which sees the other, and a joint viewer below both that sees the
+;; whole pair and decides it.
+;;
+;; Every pair below is two `:default` claims, so the vantage cannot rank them and the
+;; answer is a dilemma: both claims stand and `contradictions` names the pair.
+
+(defn- decided-pairs
+  "The settle's dilemmas as `#{[sentence context] …}` sets — a reading that survives the
+  arrival order the handles record."
+  [kb]
+  (into #{} (map (fn [c] (into #{} (map (juxt :sentence :context)) (:sides c))))
+        (v/contradictions kb)))
 
 (defn- split-lattice!
   "The declaration and the two siblings with a joint viewer below both — everything but
@@ -802,47 +866,42 @@
   (v/assert kb one a)
   (v/assert kb two b))
 
-(tu/deftest-kb a-functional-slot-filled-across-an-edge-is-reported
+(tu/deftest-kb a-functional-slot-filled-across-an-edge-is-decided-at-the-viewer
   ;; The hole this closes.  Neither writer can see the other's filler, so neither is
-  ;; refused; the joint viewer sees both, and that is what the entry names.
+  ;; refused; the joint viewer CxW sees both, and CxW is the vantage that weighs them.
   (tu/with-terms [CxA CxB CxW birthYear Tom]
     (let [one (list birthYear Tom 1970)
           two (list birthYear Tom 1980)]
       (split-pair! kb {:a CxA :b CxB :w CxW :decl 'functional
                        :pred birthYear :one one :two two})
-      (let [vs (filter #(= :functional (:violation %)) (v/violations kb))]
-        (is (= 1 (count vs)) "one entry for the pair, not one per side")
-        (is (= #{CxW} (get-in (first vs) [:detail :visible-from])))
-        (is (= birthYear (get-in (first vs) [:detail :pred])))
-        (is (= #{[one CxA] [two CxB]}
-               (set (get-in (first vs) [:detail :clash])))))
-      (testing "and belief is untouched — this reports, it does not decide"
+      (let [cs (v/contradictions kb)]
+        (is (= [:functional] (mapv :kind cs)) "one dilemma for the pair, not one per side")
+        (is (= #{#{[one CxA] [two CxB]}} (decided-pairs kb))))
+      (testing "two defaults cannot be ranked, so both claims stand"
         (is (seq (v/sentexes-matching kb one CxA)))
         (is (seq (v/sentexes-matching kb two CxB)))
-        (is (empty? (v/contradictions kb)))))))
+        (is (empty? (filter (comp #{:functional} :violation) (v/violations kb)))
+            "decided is not exposed")))))
 
-(tu/deftest-kb an-asymmetric-claim-written-across-an-edge-is-reported
+(tu/deftest-kb an-asymmetric-claim-written-across-an-edge-is-decided-at-the-viewer
   (tu/with-terms [CxA CxB CxW largerThan Rex Pip]
     (let [one (list largerThan Rex Pip)
           two (list largerThan Pip Rex)]
       (split-pair! kb {:a CxA :b CxB :w CxW :decl 'asymmetric
                        :pred largerThan :one one :two two})
-      (let [vs (filter #(= :asymmetric (:violation %)) (v/violations kb))]
-        (is (= 1 (count vs)))
-        (is (= #{CxW} (get-in (first vs) [:detail :visible-from])))
-        (is (= #{[one CxA] [two CxB]}
-               (set (get-in (first vs) [:detail :clash])))))
-      (testing "belief untouched"
+      (is (= [:asymmetric] (mapv :kind (v/contradictions kb))))
+      (is (= #{#{[one CxA] [two CxB]}} (decided-pairs kb)))
+      (testing "two defaults cannot be ranked, so both claims stand"
         (is (seq (v/sentexes-matching kb one CxA)))
         (is (seq (v/sentexes-matching kb two CxB)))
-        (is (empty? (v/contradictions kb)))))))
+        (is (empty? (filter (comp #{:asymmetric} :violation) (v/violations kb))))))))
 
-(deftest the-report-is-the-same-in-either-arrival-order
+(deftest the-decision-is-the-same-in-either-arrival-order
   ;; Both halves can sit in one settle's region and each convicts the other, so a pair
-  ;; keyed on the walked side would be filed twice — or read differently — depending on
+  ;; keyed on the walked side would be weighed twice — or read differently — depending on
   ;; which arrived last.  **The two arms share one term set and run over two cleared
-  ;; KBs**, so the entries are comparable as values: an arm-local `with-terms` would make
-  ;; them differ for a reason that has nothing to do with order.
+  ;; KBs**, so the dilemmas are comparable as values: an arm-local `with-terms` would
+  ;; make them differ for a reason that has nothing to do with order.
   (tu/with-terms [CxA CxB CxW birthYear Tom]
     (let [one (list birthYear Tom 1970)
           two (list birthYear Tom 1980)
@@ -852,17 +911,18 @@
                    (split-lattice! k spec)
                    (v/assert k first-half (if (= first-half one) CxA CxB))
                    (v/assert k second-half (if (= second-half one) CxA CxB))
-                   (mapv #(dissoc % :run)
-                         (filter (comp #{:functional} :violation) (v/violations k)))))
+                   [(mapv :kind (v/contradictions k)) (decided-pairs k)]))
           a (run one two)
           b (run two one)]
-      (is (= 1 (count a)) "one entry for the pair, whichever half arrived last")
-      (is (= a b) "and the identical entry, contexts and visible-from included"))))
+      (is (= [[:functional] #{#{[one CxA] [two CxB]}}] a)
+          "one dilemma for the pair, whichever half arrived last")
+      (is (= a b) "and the identical reading, contexts included"))))
 
-(tu/deftest-kb every-context-that-sees-the-pair-is-named-not-just-the-convicting-one
-  ;; `:visible-from` is a property of the pair, so a second joint viewer belongs in it.
-  ;; Reading it off whichever vantage happened to convict would make the entry a function
-  ;; of which half the region held.
+(tu/deftest-kb every-context-that-sees-the-pair-decides-it-not-just-the-convicting-one
+  ;; A pair's vantages are a property of the pair, so a second joint viewer is one too.
+  ;; Keeping only the vantage that happened to convict would make belief a function of
+  ;; which half the region held — the defeat would reach one viewer and not the other.
+  ;; The monotonic half is what makes the verdict observable: two defaults tie.
   (tu/with-terms [CxA CxB CxW CxV birthYear Tom]
     (let [one (list birthYear Tom 1970)
           two (list birthYear Tom 1980)]
@@ -871,73 +931,39 @@
       ;; a second, incomparable viewer of both siblings, in place before the facts
       (v/assert kb (list 'genlCx CxV CxA) 'CxUniverse)
       (v/assert kb (list 'genlCx CxV CxB) 'CxUniverse)
-      (v/assert kb one CxA)
+      (v/assert kb one CxA {:strength :monotonic})
       (v/assert kb two CxB)
-      (let [vs (filter (comp #{:functional} :violation) (v/violations kb))]
-        (is (= 1 (count vs)))
-        (is (= #{CxW CxV} (get-in (first vs) [:detail :visible-from]))
-            "both joint viewers, not the one that was enumerated first")))))
+      (testing "the loser is defeated at both joint viewers"
+        (is (not (v/ask? kb two CxW)))
+        (is (not (v/ask? kb two CxV)))
+        (is (v/ask? kb one CxW))
+        (is (v/ask? kb one CxV)))
+      (testing "and stands in its own context, which sees no pair"
+        (is (v/ask? kb two CxB))))))
 
-(tu/deftest-kb a-wide-slot-cannot-file-its-way-through-the-ledger
-  ;; The entries are bounded by neither the region nor the sweep: one slot filled from N
-  ;; contexts a single vantage sees is N-1 pairs off one arriving fact.  The ledger keeps
-  ;; the newest 1000 and logs each at `:warn`, so the cap has to be *below* that — and
-  ;; `tax/*exposure-instance-budget*` is no bound at all here, being 4096 and a count
-  ;; of enumerated instances rather than of entries.
-  (tu/with-terms [CxW birthYear Tom]
-    (v/assert kb (list 'functional birthYear) 'CxUniverse)
-    (let [ctxs (vec (repeatedly 12 #(tu/tmp-ctx "Src")))]
-      (doseq [c ctxs]
-        (v/assert kb (list 'genlCx c 'CxUniverse) 'CxUniverse)
-        (v/assert kb (list 'genlCx CxW c) 'CxUniverse))
-      (doseq [[i c] (map-indexed vector (butlast ctxs))]
-        (v/assert kb (list birthYear Tom (+ 1900 i)) c))
-      (v/clear-violations! kb)
-      (v/assert kb (list birthYear Tom 1999) (last ctxs))
-      (let [vs   (v/violations kb)
-            cut  (filter (comp #{:constraint-exposure-truncated} :violation) vs)
-            pair (filter (comp #{:functional} :violation) vs)]
-        (is (= 8 (count pair)) "capped at the entry cap, with the budget untouched")
-        (is (>= 10 (count vs)) "so one settle cannot evict a ledger of a thousand")
-        (is (= 1 (count cut)) "and the overflow is one entry, not one apiece")
-        (testing "which says how many pairs there were and how many it filed"
-          (is (= 11 (get-in (first cut) [:detail :pairs])))
-          (is (= 8 (get-in (first cut) [:detail :filed])))
-          (is (= 8 (get-in (first cut) [:detail :cap]))))
-        (is (zero? (get-in (first cut) [:detail :unswept]))
-            "the cap is not a cut — every pair was found and examined")))))
+;; `a-wide-slot-cannot-file-its-way-through-the-ledger` and
+;; `the-pairs-under-the-cap-are-filed-whole` stood here and are gone with the pass they
+;; pinned.  One slot filled from N contexts a single vantage sees is N−1 pairs, and the
+;; cross-context report capped them at eight so one settle could not evict a ledger of a
+;; thousand.  Those pairs are nogoods now, which are state rather than ledger entries: a
+;; reader takes them off `contradictions`, which is recomputed from belief each settle
+;; and has no eviction to be starved by.
 
-(tu/deftest-kb the-pairs-under-the-cap-are-filed-whole
-  ;; The gate on the notice is the cap, not the finding, so an ordinary cross-context
-  ;; report must not start carrying one.
-  (tu/with-terms [CxW birthYear Tom]
-    (v/assert kb (list 'functional birthYear) 'CxUniverse)
-    (let [ctxs (vec (repeatedly 4 #(tu/tmp-ctx "Src")))]
-      (doseq [c ctxs]
-        (v/assert kb (list 'genlCx c 'CxUniverse) 'CxUniverse)
-        (v/assert kb (list 'genlCx CxW c) 'CxUniverse))
-      (doseq [[i c] (map-indexed vector (butlast ctxs))]
-        (v/assert kb (list birthYear Tom (+ 1900 i)) c))
-      (v/clear-violations! kb)
-      (v/assert kb (list birthYear Tom 1999) (last ctxs))
-      (is (= 3 (count (filter (comp #{:functional} :violation) (v/violations kb))))
-          "one entry per pair, while there is room for them")
-      (is (empty? (filter (comp #{:constraint-exposure-truncated} :violation)
-                          (v/violations kb)))
-          "and nothing claims the report was bounded"))))
-
-(tu/deftest-kb under-arbitrate-the-pair-is-weighed-and-nothing-is-filed
-  ;; The test that catches the gate applied in the wrong place.  Under `:arbitrate` the
-  ;; vantages are already asked, so the pair is decided rather than reported — and this
-  ;; pass must add nothing there, or the ledger and `contradictions` both claim it.
-  (tu/with-neutral-kb [k #(v/open-kb (assoc tu/scratch-space :constraints :arbitrate))]
-    (tu/with-terms [CxA CxB CxW birthYear Tom]
-      (split-pair! k {:a CxA :b CxB :w CxW :decl 'functional
-                      :pred birthYear
-                      :one (list birthYear Tom 1970) :two (list birthYear Tom 1980)})
-      (is (seq (v/contradictions k)) "the vantage decides it")
-      (is (empty? (filter (comp #{:functional :asymmetric} :violation) (v/violations k)))
-          "and the ledger does not also claim it"))))
+(deftest either-policy-weighs-the-pair-and-neither-files-it
+  ;; The test that catches a policy gate applied in the wrong place.  The vantages are
+  ;; asked under both policies, so the pair is decided rather than reported either way —
+  ;; and no pass may add a ledger entry there, or the ledger and `contradictions` both
+  ;; claim one clash.
+  (doseq [policy [:refuse :arbitrate]]
+    (testing (str policy)
+      (tu/with-neutral-kb [k #(v/open-kb (assoc tu/scratch-space :constraints policy))]
+        (tu/with-terms [CxA CxB CxW birthYear Tom]
+          (split-pair! k {:a CxA :b CxB :w CxW :decl 'functional
+                          :pred birthYear
+                          :one (list birthYear Tom 1970) :two (list birthYear Tom 1980)})
+          (is (= [:functional] (mapv :kind (v/contradictions k))) "the vantage decides it")
+          (is (empty? (filter (comp #{:functional :asymmetric} :violation) (v/violations k)))
+              "and the ledger does not also claim it"))))))
 
 (tu/deftest-kb a-pair-both-writers-could-see-is-refused-not-reported
   ;; The gap is cross-context only.  Written in one context the assert entry point sees the
@@ -949,36 +975,29 @@
                  (v/assert kb (list birthYear Tom 1980) 'CxUniverse)))
     (is (empty? (filter (comp #{:functional} :violation) (v/violations kb))))))
 
-(tu/deftest-kb a-self-tuple-in-two-contexts-orders-on-the-context
-  ;; The converse of `(P a a)` is itself, so both halves print the same sentence and a
-  ;; key stopping at the sentence leaves them in whatever order the walk supplied — which
-  ;; is the side the region held.  `content-order` keys on sentence *then* context and so
-  ;; does the half ordering; this is the case that tells the two keys apart.
+(deftest a-self-tuple-in-two-contexts-is-one-pair-in-either-arrival-order
+  ;; The converse of `(P a a)` is itself, so both halves are the same sentence in two
+  ;; contexts — the case a keying that stops at the sentence gets wrong, by collapsing
+  ;; the two sides or by ordering them as the walk supplied.  Two cleared KBs over one
+  ;; term set, so the dilemmas compare as values.
   (tu/with-terms [CxA CxB CxW beats Rex]
-    (let [claim (list beats Rex Rex)]
-      (split-lattice! kb {:a CxA :b CxB :w CxW
-                          :decl 'asymmetric :pred beats})
-      (v/assert kb claim CxA)
-      (v/assert kb claim CxB)
-      (let [vs (filter (comp #{:asymmetric} :violation) (v/violations kb))]
-        (is (= 1 (count vs)))
-        (let [[[_ c1] [_ c2]] (get-in (first vs) [:detail :clash])]
-          (is (= [c1 c2] (sort-by str [CxA CxB]))
-              "the two halves are ordered by context, the sentences being equal")
-          (is (= c1 (:context (first vs)))
-              "and the entry's own context is the first of that ordered pair"))))))
+    (let [claim (list beats Rex Rex)
+          run   (fn [c1 c2]
+                  (tu/with-cleared-kb [k tu/fresh]
+                    (split-lattice! k {:a CxA :b CxB :w CxW
+                                       :decl 'asymmetric :pred beats})
+                    (v/assert k claim c1)
+                    (v/assert k claim c2)
+                    [(mapv :kind (v/contradictions k)) (decided-pairs k)]))]
+      (is (= [[:asymmetric] #{#{[claim CxA] [claim CxB]}}] (run CxA CxB))
+          "one dilemma naming both contexts, not one side twice")
+      (is (= (run CxA CxB) (run CxB CxA))
+          "and the identical reading whichever context was written first"))))
 
-(tu/deftest-kb a-rebuild-reports-nothing-because-nothing-newly-moved
-  ;; Same rule as the disjointness pass beside it: a `recover`'s region is the whole KB,
-  ;; so *newly* visible has no meaning there and every standing pair would be refiled.
-  (tu/with-terms [CxA CxB CxW birthYear Tom]
-    (split-lattice! kb {:a CxA :b CxB :w CxW
-                        :decl 'functional :pred birthYear})
-    (v/assert kb (list birthYear Tom 1970) CxA)
-    (v/clear-violations! kb)
-    (binding [settle/*rebuilding?* true]
-      (v/assert kb (list birthYear Tom 1980) CxB))
-    (is (empty? (filter (comp #{:functional} :violation) (v/violations kb))))))
+;; `a-rebuild-reports-nothing-because-nothing-newly-moved` stood here and is gone.  It
+;; pinned the rebuild gate on the cross-context *report*; the deciding pass beside it is
+;; deliberately not gated that way, since a nogood is state and a rebuild that skipped it
+;; would come up believing the loser (`settle/constraint-nogoods`).
 
 (tu/deftest-kb a-predicate-carrying-both-properties-reads-both-postings
   ;; The vantage search reads the argument-1 posting a partner could be in and no other:
@@ -992,16 +1011,15 @@
     (testing "the functional partner, which shares argument 1"
       (v/assert kb (list ranks Tom 1) CxA)
       (v/assert kb (list ranks Tom 2) CxB)
-      (is (seq (filter (comp #{:functional} :violation) (v/violations kb)))))
+      (is (= [:functional] (mapv :kind (v/contradictions kb)))))
     (testing "and the asymmetric partner, whose argument 1 is the other side's argument 2"
       ;; fresh subjects: a converse pair on Tom would also be a second filler of Tom's
       ;; functional slot, and the entry point would refuse it before any of this ran
-      (v/clear-violations! kb)
       (v/assert kb (list ranks Pip Vic) CxA)
       (v/assert kb (list ranks Vic Pip) CxB)
-      (is (seq (filter (comp #{:asymmetric} :violation) (v/violations kb)))))))
+      (is (contains? (set (map :kind (v/contradictions kb))) :asymmetric)))))
 
-(tu/deftest-kb an-edge-arriving-after-both-facts-still-exposes-the-pair
+(tu/deftest-kb an-edge-arriving-after-both-facts-still-decides-the-pair
   ;; The arrival order the region alone cannot see: visibility itself moves, so a pair
   ;; whose halves are already stored and already believed becomes jointly visible without
   ;; either half being relabelled. Neither is in the moved region, so the `genlCx`
@@ -1015,22 +1033,20 @@
       (v/assert kb (list 'genlCx CxB 'CxUniverse) 'CxUniverse)
       (v/assert kb one CxA)
       (v/assert kb two CxB)
-      (is (empty? (filter (comp #{:functional} :violation) (v/violations kb)))
-          "nothing sees the pair yet")
+      (is (empty? (v/contradictions kb)) "nothing sees the pair yet")
       (v/assert kb (list 'genlCx CxW CxA) 'CxUniverse)
-      (is (empty? (filter (comp #{:functional} :violation) (v/violations kb)))
-          "seeing one side is not seeing the clash")
+      (is (empty? (v/contradictions kb)) "seeing one side is not seeing the clash")
       (v/assert kb (list 'genlCx CxW CxB) 'CxUniverse)
-      (let [vs (filter (comp #{:functional} :violation) (v/violations kb))]
-        (is (= 1 (count vs)) "the edge that completes the view reports the pair")
-        (is (= #{CxW} (get-in (first vs) [:detail :visible-from])))
-        (is (= #{[one CxA] [two CxB]}
-               (set (get-in (first vs) [:detail :clash]))))))))
+      (is (= [:functional] (mapv :kind (v/contradictions kb)))
+          "the edge that completes the view weighs the pair")
+      (is (= #{#{[one CxA] [two CxB]}} (decided-pairs kb)))
+      (is (empty? (filter (comp #{:functional} :violation) (v/violations kb)))
+          "decided is not exposed"))))
 
-(deftest the-edges-may-arrive-in-either-position-and-the-report-is-the-same
+(deftest the-edges-may-arrive-in-either-position-and-the-decision-is-the-same
   ;; The whole point of the trigger: facts-then-edges and edges-then-facts are the same
-  ;; knowledge, so they are one entry either way. Two cleared KBs over one term set, so
-  ;; the entries compare as values.
+  ;; knowledge, so they are one dilemma either way. Two cleared KBs over one term set, so
+  ;; the readings compare as values.
   (tu/with-terms [CxA CxB CxW birthYear Tom]
     (let [one   (list birthYear Tom 1970)
           two   (list birthYear Tom 1980)
@@ -1045,13 +1061,12 @@
           run   (fn [first! second!]
                   (tu/with-cleared-kb [k tu/fresh]
                     (decl! k) (first! k) (second! k)
-                    (mapv #(dissoc % :run)
-                          (filter (comp #{:functional} :violation) (v/violations k)))))
+                    [(mapv :kind (v/contradictions k)) (decided-pairs k)]))
           edges-last  (run facts! edges!)
           edges-first (run edges! facts!)]
-      (is (= 1 (count edges-first)))
+      (is (= [[:functional] #{#{[one CxA] [two CxB]}}] edges-first))
       (is (= edges-first edges-last)
-          "the identical entry whichever half of the setup arrived last"))))
+          "the identical reading whichever half of the setup arrived last"))))
 
 ;; ---- the edge reveals the MARK, not a second fact -----------------------
 ;;
@@ -1182,14 +1197,12 @@
 (tu/deftest-kb an-edge-whose-ancestor-set-is-cut-short-says-so
   ;; The trigger reaches out of the region, so it is budgeted like every other sweep —
   ;; and a bounded sweep that reads as full coverage is the failure all of them guard
-  ;; against.
-  ;; Distinct subjects, so the ancestor set is full of candidates and *none* of them pairs — the
-  ;; entry filed can then only be the sweep's, not the "more pairs than I will file" one
-  ;; the same kind also carries.
-  ;;
-  ;; **The zero-findings cut**, this pass's entry in `truncation-kind-tests`: both of the
-  ;; entry's readings are empty of pairs, so nothing but the cut itself can say four of
-  ;; the six facts in the ancestor set were never looked at.
+  ;; against.  The edge reveals a mark to the facts in the ancestor set it opens, and the
+  ;; deciding sweep is what walks them, so the notice is `:arbitration-truncated`:
+  ;; content the edge implicates went **undecided**.
+  ;; Distinct subjects, so the ancestor set is full of candidates and *none* of them
+  ;; pairs — nothing but the cut itself can say four of the six facts were never looked
+  ;; at.
   (tu/with-terms [CxSrc CxW birthYear]
     (v/assert kb (list 'functional birthYear) 'CxUniverse)
     (v/assert kb (list 'genlCx CxSrc 'CxUniverse) 'CxUniverse)
@@ -1199,19 +1212,17 @@
     (binding [tax/*exposure-instance-budget* 2]
       (v/assert kb (list 'genlCx CxW CxSrc) 'CxUniverse))
     (let [vs  (v/violations kb)
-          cut (filter (comp #{:constraint-exposure-truncated} :violation) vs)]
-      (is (empty? (filter (comp #{:functional} :violation) vs))
-          "no pair is reported — the subjects are distinct")
+          cut (filter (comp #{:arbitration-truncated} :violation) vs)]
+      (is (empty? (v/contradictions kb))
+          "no pair is decided — the subjects are distinct")
       (is (= 1 (count cut)) "and the cut is still never silent")
-      (is (= 1 (get-in (first cut) [:detail :unswept]))
-          "it names how many edges went unswept")
+      (is (= 1 (get-in (first cut) [:detail :triggers]))
+          "it names how many declarations went unswept")
       (is (= [(list 'genlCx CxW CxSrc)] (get-in (first cut) [:detail :sample]))
           "and which edge that was")
-      (is (zero? (get-in (first cut) [:detail :pairs]))
-          "the other reading is empty: the entry is filed off the cut, not off a pair")
       (is (= 2 (get-in (first cut) [:detail :budget])))
-      (is (re-find #"went unswept" (get-in (first cut) [:detail :message]))
-          "the message carries the reading that fired, not the one that did not"))))
+      (is (re-find #"undecided" (get-in (first cut) [:detail :message]))
+          "the reader is told what it costs: content nobody weighed"))))
 
 (tu/deftest-kb siblings-with-no-joint-viewer-report-nothing
   ;; The ∃-vantage reading, for these two kinds: the claims coexist and no single
@@ -1247,20 +1258,16 @@
       (v/assert kb (list 'genlCx CxW CxB) 'CxUniverse)
       (v/assert kb one CxA)
       (v/assert kb two CxB)
-      (is (empty? (filter (comp #{:functional} :violation) (v/violations kb)))
+      (is (empty? (v/contradictions kb))
           "nothing marked sits above birthYear yet, so the two are unrelated fillers")
       (v/assert kb (list 'genl birthYear measureOf) 'CxUniverse)
-      (let [vs (filter (comp #{:functional} :violation) (v/violations kb))]
-        (is (= 1 (count vs)) "the edge that carries the mark down reports the pair")
-        (is (= measureOf (get-in (first vs) [:detail :pred]))
-            "against the predicate the mark is on, which no half's own functor names")
-        (is (= #{CxW} (get-in (first vs) [:detail :visible-from])))
-        (is (= #{[one CxA] [two CxB]}
-               (set (get-in (first vs) [:detail :clash])))))
-      (testing "and belief is untouched — this reports, it does not decide"
+      (is (= [:functional] (mapv :kind (v/contradictions kb)))
+          "the edge that carries the mark down brings the pair to its vantage")
+      (is (= #{#{[one CxA] [two CxB]}} (decided-pairs kb)))
+      (testing "two defaults cannot be ranked, so both claims stand"
         (is (seq (v/sentexes-matching kb one CxA)))
         (is (seq (v/sentexes-matching kb two CxB)))
-        (is (empty? (v/contradictions kb)))))))
+        (is (empty? (filter (comp #{:functional} :violation) (v/violations kb))))))))
 
 (tu/deftest-kb an-asymmetric-mark-descends-to-a-claim-written-across-an-edge
   (tu/with-terms [CxA CxB CxW muchLargerThan largerThan Rex Pip]
@@ -1273,16 +1280,13 @@
       (v/assert kb (list 'genlCx CxW CxB) 'CxUniverse)
       (v/assert kb one CxA)
       (v/assert kb two CxB)
-      (is (empty? (filter (comp #{:asymmetric} :violation) (v/violations kb))))
+      (is (empty? (v/contradictions kb)))
       (v/assert kb (list 'genl muchLargerThan largerThan) 'CxUniverse)
-      (let [vs (filter (comp #{:asymmetric} :violation) (v/violations kb))]
-        (is (= 1 (count vs)))
-        (is (= largerThan (get-in (first vs) [:detail :pred])))
-        (is (= #{CxW} (get-in (first vs) [:detail :visible-from])))
-        (is (= #{[one CxA] [two CxB]}
-               (set (get-in (first vs) [:detail :clash]))))))))
+      (is (= [:asymmetric] (mapv :kind (v/contradictions kb))))
+      (is (= #{#{[one CxA] [two CxB]}} (decided-pairs kb)))
+      (is (empty? (filter (comp #{:asymmetric} :violation) (v/violations kb)))))))
 
-(deftest the-mark-may-descend-before-or-after-the-facts-and-the-report-is-the-same
+(deftest the-mark-may-descend-before-or-after-the-facts-and-the-decision-is-the-same
   ;; The control beside the case that was silent, and the reason it is worth pinning: with
   ;; the edge already in place the region walk found the pair by itself, since `declared?`
   ;; reads the mark up the hierarchy — so that arm passed throughout and the asymmetry
@@ -1302,13 +1306,12 @@
           run    (fn [first! second!]
                    (tu/with-cleared-kb [k tu/fresh]
                      (decl! k) (first! k) (second! k)
-                     (mapv #(dissoc % :run)
-                           (filter (comp #{:functional} :violation) (v/violations k)))))
+                     [(mapv :kind (v/contradictions k)) (decided-pairs k)]))
           edge-last  (run facts! edge!)
           edge-first (run edge! facts!)]
-      (is (= 1 (count edge-first)))
+      (is (= [[:functional] #{#{[one CxA] [two CxB]}}] edge-first))
       (is (= edge-first edge-last)
-          "the identical entry whichever of the mark's descent and the facts came last"))))
+          "the identical reading whichever of the mark's descent and the facts came last"))))
 
 (tu/deftest-kb a-genl-edge-under-no-marked-predicate-is-not-a-trigger
   ;; `genl` is the commonest edge in an ontology, so an edge with no mark above it must
@@ -1341,13 +1344,12 @@
     (v/clear-violations! kb)
     (binding [tax/*exposure-instance-budget* 2]
       (v/assert kb (list 'genl birthYear measureOf) 'CxUniverse))
-    (let [vs  (v/violations kb)
-          cut (filter (comp #{:constraint-exposure-truncated} :violation) vs)]
-      (is (empty? (filter (comp #{:functional} :violation) vs))
-          "no pair is reported — the subjects are distinct")
+    (let [cut (filter (comp #{:arbitration-truncated} :violation) (v/violations kb))]
+      (is (empty? (v/contradictions kb))
+          "no pair is decided — the subjects are distinct")
       (is (seq cut) "and the cut is still never silent")
-      (is (pos? (get-in (first cut) [:detail :unswept]))
-          "it names how many edges went unswept"))))
+      (is (pos? (get-in (first cut) [:detail :triggers]))
+          "it names how many declarations went unswept"))))
 
 (defn- orderings
   "Every arrival order of `xs`.  The case below runs over all of them rather than over a
@@ -1359,19 +1361,19 @@
     (for [x xs, tail (orderings (remove #{x} xs))]
       (into [x] tail))))
 
-(deftest every-arrival-order-of-a-cross-context-clash-reports-it-once
-  ;; **All three ingredients are triggers, so all six orders report.**  A pair split
+(deftest every-arrival-order-of-a-cross-context-clash-decides-it-once
+  ;; **All three ingredients are triggers, so all six orders decide.**  A pair split
   ;; across a visibility edge needs the mark, the `genl` edge that carries it down to the
   ;; predicate the facts are written under, and the two claims themselves — and whichever
-  ;; of the three lands last is what the pass has to reach back from.  The mark's own
+  ;; of the three lands last is what the sweep has to reach back from.  The mark's own
   ;; sentence is a trigger for exactly that reason: the two facts it convicts move nothing
-  ;; when it arrives, so a pass reading only the region would report this in five orders
+  ;; when it arrives, so a pass reading only the region would weigh this in five orders
   ;; out of six and let the mark decide the sixth.
   ;;
   ;; **Once**, not once per member and not once per route.  Both facts and the edge can
-  ;; be reached in one settle, and the entry is keyed on the handle set to collapse them
-  ;; (`settle/constraint-exposure-entries`), so a count above one is a report that depends
-  ;; on how the clash was found rather than on what it is.
+  ;; be reached in one settle, and the nogood is keyed on the handle set to collapse them
+  ;; (`settle/clash-nogoods`), so a count above one is a reading that depends on how the
+  ;; clash was found rather than on what it is.
   (tu/with-terms [CxA CxB CxW birthYear measureOf Tom]
     (doseq [order (orderings [:declaration :edge :facts])]
       (tu/with-cleared-kb [k tu/fresh]
@@ -1384,8 +1386,10 @@
                     :facts       #(do (v/assert k (list birthYear Tom 1970) CxA)
                                       (v/assert k (list birthYear Tom 1980) CxB))}]
           (doseq [s order] ((step s)))
-          (is (= 1 (count (filter (comp #{:functional} :violation) (v/violations k))))
-              (str "reported once under " (pr-str order))))))))
+          (is (= [:functional] (mapv :kind (v/contradictions k)))
+              (str "decided once under " (pr-str order)))
+          (is (empty? (filter (comp #{:functional} :violation) (v/violations k)))
+              (str "and not also reported under " (pr-str order))))))))
 
 ;;; ── every bounded pass owes a test of what fires its notice ───────────
 ;;
@@ -1406,9 +1410,6 @@
   what was found, examined and left unnamed, so it cannot fire with nothing found at
   all; its test is the one holding it apart from a cut, since confusing the two tells a
   reader content went unlooked-at when it was looked at and summarized.
-  `:constraint-exposure-truncated` carries both readings in one entry and is rostered
-  against the cut, which is the half that can go silent.
-
   The kinds are read out of the source rather than listed here: a roster with both
   halves hand-written checks only that somebody typed the same thing twice.  A
   whole-file keyword scan rather than the call sites, because which function files a
@@ -1416,8 +1417,6 @@
   call shape would go quiet on the change most likely to drop a notice."
   '{:exposure-truncated
     vaelii.exposure-test/a-sweep-that-convicts-nobody-still-stops-at-the-bound
-    :constraint-exposure-truncated
-    vaelii.exposure-test/an-edge-whose-ancestor-set-is-cut-short-says-so
     :arbitration-truncated
     vaelii.exposure-test/an-arbitration-sweep-that-decides-nothing-still-says-it-was-cut
     :arity-truncated
@@ -1478,17 +1477,17 @@
 ;;; ── the partner sweep's own bound ─────────────────────────────────────
 ;;
 ;; `partner-contexts` is the one bounded read in `settle` with no settle-wide budget to
-;; debit: it runs at the assert entry point as well as inside a pass, so there is no `left`
-;; volatile to thread through it.  Its unnarrowed arm — a `functionalInArg` mark whose
-;; declared position is the whole tuple, leaving no single argument root to narrow by —
-;; is a real extent sweep, and it shipped capped but silent.  A cut there costs a
-;; *vantage*, so the pairs it loses are invisible to `:constraint-exposure-truncated`'s
-;; own counts rather than visible and unreported, which is why it is its own kind.
+;; debit: it runs at the assert entry point as well as inside a settle, so there is no
+;; `left` volatile to thread through it.  Its unnarrowed arm — a `functionalInArg` mark
+;; whose declared position is the whole tuple, leaving no single argument root to narrow
+;; by — is a real extent sweep, and it shipped capped but silent.  A cut there costs a
+;; *vantage*, so the pairs it loses appear in `:arbitration-truncated`'s trigger count
+;; not at all rather than as content swept short, which is why it is its own kind.
 
 (tu/deftest-kb an-unnarrowed-partner-sweep-that-finds-nobody-still-says-it-was-cut
   ;; **The zero-findings cut**, this read's entry in `truncation-kind-tests`.  Every
   ;; fact sits in its own leaf context and no context is below two of them, so no
-  ;; vantage sees a pair and the pass files no clash at all — an entry riding on a
+  ;; vantage sees a pair and the settle decides no clash at all — an entry riding on a
   ;; finding would have nowhere to go, and the six instances past the bound would read
   ;; as six that were cleared.
   (binding [tax/*exposure-instance-budget* 2]

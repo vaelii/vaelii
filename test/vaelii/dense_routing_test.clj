@@ -37,7 +37,8 @@
       :trie            [:trie (nth k 1)]
       :rule-index      [:rule-index (nth k 1)]
       :exception-index (if (= :rules (nth k 1)) [:exception-index :rules] [:exception-index :predicate])
-      (:context-root :functor-root :argument-root :argument-slot :term-index :term-roster)
+      (:context-root :functor-root :argument-root :argument-slot :unary-slot
+                     :term-index :term-roster)
       [(nth k 0)]
       [:unclassified k])))
 
@@ -53,9 +54,10 @@
   "Families whose value is deliberately *not* a handle set, so packing them would be
   wrong rather than merely unrealized: a subtree count (an integer), the trie's child
   labels (path tokens — numbers among them, which is the case a value-type dispatch
-  would misclassify), the roster (term *names*), and the argument-slot roster
-  (*predicates* present at a slot — names, like the term roster's members)."
-  #{[:trie :count] [:trie :children] [:term-roster] [:argument-slot]})
+  would misclassify), the roster (term *names*), and the two slot rosters (*predicates*
+  present at a slot, and those a term is the lone argument of — names, like the term
+  roster's members)."
+  #{[:trie :count] [:trie :children] [:term-roster] [:argument-slot] [:unary-slot]})
 
 (def ^:private unpackable-handle-families
   "Handle families the dense layout cannot int-route, and why.

@@ -816,7 +816,13 @@
   ;; past it rotates the pool's generations — and because interning changes identity and
   ;; never equality, a canonicalization either side of a rotation still answers `=`,
   ;; hashes the same, and keys a map the same.
+  ;;
+  ;; The pool is process-wide, so the test first drives two rotations under the bound:
+  ;; they drop both generations whatever earlier tests left in them.  Without that, a
+  ;; JVM whose current generation already holds the three names below starts the loop
+  ;; with thousands of entries and no rotation pending.
   (binding [sx/*symbol-pool-limit* 8]
+    (dotimes [i 8] (sx/intern-sym (symbol (str "poolPrime" i))))
     (let [before (sx/canon '(parentOf Tom Bob))]
       (dotimes [i 200]
         (sx/canon (list (symbol (str "minted" i)) (symbol (str "Witness" i))))

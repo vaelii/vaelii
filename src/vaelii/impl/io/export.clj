@@ -52,6 +52,7 @@
   Export from a KB nobody is writing: the walk fetches record by record, and the
   single-writer contract offers no snapshot to walk instead."
   (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [taoensso.trove :as trove]
             [vaelii.impl.io.fingerprint :as fp]
             [vaelii.impl.io.frames :as frames]
@@ -194,12 +195,14 @@
 
 (defn- writer-id
   "How the writing build names itself in `meta.edn`: the `vaelii.build` system
-  property or `VAELII_BUILD` when a build stamps one, else the git HEAD, else `dev`.
+  property or `VAELII_BUILD` when a build stamps one (a blank one stamps nothing), else
+  the git HEAD, else `dev`.
   Diagnostic only — a dump that will not read is first a question about which build
   wrote it."
   []
   (str "vaelii "
-       (or (System/getProperty "vaelii.build") (System/getenv "VAELII_BUILD")
+       (or (some-> (System/getProperty "vaelii.build") str/trim not-empty)
+           (some-> (System/getenv "VAELII_BUILD") str/trim not-empty)
            (git-head) "dev")))
 
 (defn- write-meta!

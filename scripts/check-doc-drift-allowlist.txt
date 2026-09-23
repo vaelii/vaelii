@@ -15,3 +15,9 @@ src/main/clojure
 # A lexeme's namespace is the KB's, not a Clojure alias — `lex/fool's_gold` names a
 # surface form in a sentence (docs/naming.md), so there is no var to resolve it to.
 lex/fool's_gold
+
+# The weighted cardinality bounds docs/solving.md names as the extension the
+# surface does NOT carry ("Every head weighs one, today").  A spelling the tree
+# states as an absence resolves to nothing by design.
+asp/atMostSum
+asp/atLeastSum

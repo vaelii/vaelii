@@ -286,6 +286,24 @@
         (if prop (System/setProperty "vaelii.kb.path" prop) (System/clearProperty "vaelii.kb.path"))
         (doseq [f (reverse (file-seq root))] (.delete ^java.io.File f))))))
 
+(deftest a-loaded-dump-is-a-card-the-page-draws
+  ;; an import's summary accounts for its refused frames as a map, where the card's
+  ;; count line once read a number, so every dump load left `/kbs` answering 500
+  (let [dump (io/file (System/getProperty "java.io.tmpdir")
+                      (str "vaelii-web-dump-" (System/nanoTime)))]
+    (try
+      (v/export! tu/*kb* (.getPath dump))
+      (catalog/load-dir (.getPath dump) {})
+      (settled)
+      (is (map? (:refused (:summary (catalog/entry (catalog/active)))))
+          "the shape the card has to read")
+      (doseq [uri ["/kbs" "/kbs/rows"]]
+        (let [r (GET uri)]
+          (is (= 200 (:status r)) uri)
+          (is (re-find #"vaelii-web-dump-\d+" (:body r)) uri)))
+      (finally
+        (doseq [f (reverse (file-seq dump))] (.delete ^java.io.File f))))))
+
 (deftest the-export-controls-are-post-only-and-origin-checked
   (doseq [uri ["/kbs/export" "/kbs/export/cancel"]]
     (testing (str uri " refuses a cross-origin caller")

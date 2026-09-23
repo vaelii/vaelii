@@ -15,7 +15,7 @@
   one it does.  Both happen.  Counting per namespace inside **one ordinary run** avoids
   the question entirely: same discovery, same order, same fixtures.
 
-  Off unless `VAELII_TEST_NS_COUNTS` is set, and it changes nothing when on — the counts
+  Off unless `VAELII_TEST_NS_COUNTS` is true, and it changes nothing when on — the counts
   are read from `clojure.test`'s own counters, which are already being maintained.
 
       VAELII_TEST_NS_COUNTS=1 lein test :default 2>&1 | grep NSCOUNT > a.txt

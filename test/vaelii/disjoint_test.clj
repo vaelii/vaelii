@@ -291,14 +291,18 @@
                         [c (assert-outcome kb (list t2 Quo) c)])))))))
 
 (tu/deftest-kb a-general-context-may-be-given-what-a-specific-one-forbids
-  ;; The corollary, and the sharp edge: the check runs once, where the sentence is
-  ;; written, against what *that* context can see.  Writing the conflicting
-  ;; membership into the more general context is admitted — C cannot see A — and the
-  ;; clash that creates *for A* is a real contradiction A can see whole.  Seeing a
-  ;; clash and being blamed for one are different questions: the writer is refused
-  ;; only on grounds it can see, and the joint question is answered by `settle`'s
-  ;; exposure pass, as a `:disjoint` ledger entry naming where the clash is visible
-  ;; from.  This test is the acceptance criterion for that split.
+  ;; The corollary, and the sharp edge: the writer's check runs once, where the sentence
+  ;; is written, against what *that* context can see.  Writing the conflicting membership
+  ;; into the more general context is admitted — C cannot see A — and the clash that
+  ;; creates *for A* is weighed at A, which is the only context holding both halves.
+  ;; Seeing a clash and being blamed for one are different questions: the writer is
+  ;; refused only on grounds it can see, and the pair is decided at the vantage under
+  ;; either constraint policy.  Both halves are `:default` here, so the vantage cannot
+  ;; rank them and reports a dilemma rather than defeating one.
+  ;;
+  ;;   CxUniverse
+  ;;     └─ CxC        (t2 Pip) default, written second
+  ;;          └─ CxA   (t1 Pip) default, written first      — the deciding vantage
   (tu/with-terms [CxA CxC t1 t2 Pip]
     (v/assert kb (list 'genl t1 'thing) 'CxUniverse)
     (v/assert kb (list 'genl t2 'thing) 'CxUniverse)
@@ -315,17 +319,17 @@
       (is (= :disjoint (assert-outcome kb (list t2 Pip) CxA))
           "stating it in A directly is still refused — only the route through C is open"))
 
-    (testing "the ledger reports the clash, naming the context that sees it"
-      (let [vs (v/violations kb)]
-        (is (= [:disjoint] (mapv :violation vs)))
-        (let [d (:detail (first vs))]
-          (is (= Pip (:term d)))
-          (is (= #{CxA} (:visible-from d)))
-          (is (= #{t1 t2} (into #{} (map first) (:held d)))))))
+    (testing "the vantage decides the pair, so it is a contradiction and not a report"
+      (is (empty? (v/violations kb)))
+      (let [cs (v/contradictions kb)]
+        (is (= [:disjoint] (mapv :kind cs)))
+        (is (= #{(list t1 Pip) (list t2 Pip)}
+               (into #{} (map :sentence) (:sides (first cs)))))
+        (is (= #{CxA CxC} (into #{} (map :context) (:sides (first cs)))))))
 
-    (testing "exposure is a report, not an arbitration: belief is untouched"
+    (testing "two defaults are a dilemma, so belief is untouched"
       (is (empty? (v/conflicts kb)))
-      (is (empty? (v/contradictions kb))))))
+      (is (= #{t1 t2} (set (v/types-of kb Pip CxA)))))))
 
 (tu/deftest-kb a-disjoint-metatype-does-not-separate-genl-related-members
   ;; Two members of a disjoint metatype separate only when neither generalizes the

@@ -519,7 +519,7 @@
     :format       a JSON schema to constrain decoding with — an **optimization** for a
                   model it demonstrably helps, not the contract, which is the editor's
                   line format.  `selection/output-schema` is the one to pass.
-    :model :max-tokens :on-event   forwarded to the provider
+    :model :max-tokens :effort :on-event   forwarded to the provider
 
   Returns:
 
@@ -552,7 +552,7 @@
   status — a partial line set is not a proposal, and the one shown to a reviewer would be
   a deletion nobody asked for."
   [kb {:keys [handles message provider num-ctx max-repairs max-turns prompt-opts
-              model max-tokens on-event]
+              model max-tokens effort on-event]
        fmt :format
        :or {max-repairs 2 max-turns 6 num-ctx 8192}}]
   (let [started  (System/currentTimeMillis)
@@ -574,11 +574,12 @@
       (assoc base :status :too-large :elapsed-ms (elapsed) :text problem)
 
       :else
-      (let [request (cond-> {:system [{:text system}]
+      (let [request (cond-> {:system [{:text system :cache? true}]
                              :num-ctx num-ctx}
                       fmt        (assoc :format fmt)
                       model      (assoc :model model)
-                      max-tokens (assoc :max-tokens max-tokens))
+                      max-tokens (assoc :max-tokens max-tokens)
+                      effort     (assoc :effort effort))
             convo-budget (fn [messages]
                            (selection/budget system
                                              (str/join "\n" (map message-text messages))
@@ -916,7 +917,7 @@
     :format       the JSON schema decoding is constrained to.  Defaults to
                   `vaelii.host.llm.page/output-schema`, which is **the contract on this
                   path**; pass `:format nil` to send none
-    :model :max-tokens :on-event   forwarded to the provider
+    :model :max-tokens :effort :on-event   forwarded to the provider
 
   Returns the same shape `propose-edit` does, so one panel handles both:
 
@@ -957,7 +958,7 @@
   costs assertions the model never wrote rather than proposing a retraction — the batch
   that did arrive stands, and the flag says it is a prefix (`truncated?`)."
   [kb {:keys [term context message provider num-ctx max-repairs max-turns max-assertions
-              prompt-opts model max-tokens on-event]
+              prompt-opts model max-tokens effort on-event]
        :or {max-repairs 1 max-turns 4 num-ctx 8192 max-assertions 24}
        :as opts}]
   (let [started  (System/currentTimeMillis)
@@ -979,10 +980,11 @@
                      :page (mapv #(select-keys % [:handle :line]) rows)
                      :page-found (:found (meta rows))
                      :page-truncated? (boolean (:truncated? (meta rows)))}
-            request (cond-> {:system [{:text system}] :num-ctx num-ctx}
+            request (cond-> {:system [{:text system :cache? true}] :num-ctx num-ctx}
                       fmt        (assoc :format fmt)
                       model      (assoc :model model)
-                      max-tokens (assoc :max-tokens max-tokens))
+                      max-tokens (assoc :max-tokens max-tokens)
+                      effort     (assoc :effort effort))
             first-ms (atom nil)
             index    (atom 0)
             convo    (fn [messages]
@@ -1183,7 +1185,7 @@
                   `:max-types`, `:max-tokens`)
     :format       the JSON schema decoding is constrained to.  Defaults to
                   `vaelii.host.llm.text/output-schema`, **the contract here**; `nil` sends none
-    :model :max-tokens :on-event   forwarded to the provider
+    :model :max-tokens :effort :on-event   forwarded to the provider
 
   Returns `propose-edit`'s shape, so the same panel handles it, plus the fields only a
   document has:
@@ -1213,7 +1215,7 @@
   (`vaelii.host.llm.score`), since a reading judged only on what survived would be judged
   against the KB it was read into."
   [kb {:keys [text context source instruction provider num-ctx max-repairs max-turns
-              max-candidates prompt-opts model max-tokens on-event]
+              max-candidates prompt-opts model max-tokens effort on-event]
        :or {max-repairs 1 max-turns 4 num-ctx 8192 max-candidates 40}
        :as opts}]
   (let [started  (System/currentTimeMillis)
@@ -1234,10 +1236,11 @@
             problem  (selection/budget-problem bdg max-candidates)
             base     {:context context :segments (mapv #(dissoc % :index) segs)
                       :resolved resolved :budget bdg}
-            request  (cond-> {:system [{:text system}] :num-ctx num-ctx}
+            request  (cond-> {:system [{:text system :cache? true}] :num-ctx num-ctx}
                        fmt        (assoc :format fmt)
                        model      (assoc :model model)
-                       max-tokens (assoc :max-tokens max-tokens))
+                       max-tokens (assoc :max-tokens max-tokens)
+                       effort     (assoc :effort effort))
             convo    (fn [messages]
                        (selection/budget system
                                          (str/join "\n" (map message-text messages))

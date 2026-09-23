@@ -158,7 +158,7 @@
              (:type (try (tac/with-tactician base :nonesuch)
                          (catch clojure.lang.ExceptionInfo e (ex-data e)))))))))
 
-(tu/deftest-kb ^:slow every-complete-tactician-returns-the-same-answers
+(tu/deftest-kb every-complete-tactician-returns-the-same-answers
   ;; The gate.  Every tactician reorders the frontier and none of them drops a node, so
   ;; the answer set is the same seven times over; only the order of arrival differs.
   (tu/with-terms [edgeOf anc reach mid1 mid2 CxSweep]

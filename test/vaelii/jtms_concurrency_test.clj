@@ -23,7 +23,8 @@
   harness's own bug, not the network's.  The dense arm is the claim the default rests on."
   (:require [clojure.test :refer [deftest is]]
             [vaelii.impl.dense-jtms :as dense]
-            [vaelii.impl.jtms :as jtms]))
+            [vaelii.impl.jtms :as jtms])
+  (:import [java.util.concurrent CountDownLatch TimeUnit]))
 
 (defn- ->just
   "A ground justification: `id`, a `:rule` informant, one antecedent, one consequence."
@@ -40,7 +41,11 @@
         stop  (atom false)
         errs  (atom [])
         viol  (atom 0)
-        reads (atom 0)]
+        reads (atom 0)
+        ;; the writer waits for every reader's first snapshot: on a loaded box the
+        ;; writer's eight passes can otherwise end before a reader is scheduled, and the
+        ;; run measures nothing
+        started (CountDownLatch. (long readers))]
     ;; seed the premises and a chain node per the first `chain` of them
     (doseq [d (range premises)] (jtms/add-premise tms d :default))
     (doseq [i (range chain)]
@@ -55,6 +60,7 @@
                              believed (remove (:superseded s {}) (:in s))
                              c        (swap! reads inc)
                              probe    (mod c premises)]
+                         (.countDown started)
                          (when-not (every? #(contains? nodes %) believed)
                            (swap! viol inc))
                          ;; exercise the optimistic point reads too — these fault on a
@@ -63,9 +69,11 @@
                          (jtms/known-datum? tms probe)
                          (jtms/supports tms probe)
                          (jtms/defeat-class tms probe)))
-                     (catch Throwable t (swap! errs conj t))))
+                     (catch Throwable t (swap! errs conj t))
+                     (finally (.countDown started))))
           writer (future
                    (try
+                     (.await started 10 TimeUnit/SECONDS)
                      (dotimes [_ writer-iters]
                        (doseq [d (range premises)]
                          (jtms/retract! tms d)
@@ -96,7 +104,7 @@
 (deftest ^:slow dense-reads-stay-consistent-under-a-concurrent-writer
   (check! "dense" (reader-during-writer-stress dense/create-dense-tms params)))
 
-(deftest ^:slow reference-reads-stay-consistent-under-a-concurrent-writer
+(deftest reference-reads-stay-consistent-under-a-concurrent-writer
   ;; the control: the reference has always given a consistent snapshot, so this proves
   ;; the harness measures the guarantee rather than tripping on its own races
   (check! "reference" (reader-during-writer-stress jtms/create-tms params)))

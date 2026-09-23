@@ -14,8 +14,8 @@ name: deep
 # contributor should not wait an hour for a verdict. That leaves five real gaps,
 # and this workflow is all five of them:
 #
-#   - **The `^:slow` half of the suite.** Forty-three tests carry 109k of the
-#     suite's 263k assertions — the exhaustive cross-products and the randomized
+#   - **The `^:slow` half of the suite.** Thirty-two tests carry 78k of the
+#     suite's 280k assertions — the exhaustive cross-products and the randomized
 #     oracles. `lein gate` skips them, test.yml skips them, and a mark that
 #     defers a test is only honest if something eventually runs it. This is that
 #     something.

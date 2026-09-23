@@ -90,6 +90,18 @@
       (is (empty? (v/sentexes-matching kb (list ancestorOf tom bob) 'CxFam)))
       (is (v/provable? kb (list ancestorOf tom bob) 'CxFam)))))
 
+(tu/deftest-kb assert-rule-takes-every-direction-its-docstring-names
+  ;; `:both` is `:forward`'s class (docs/inference.md), so it stores the rule `:forward`
+  ;; stores; `assert-rule` wraps the sentence and must not also hand `assert` the opt.
+  (doseq [d [:forward :backward :inert :both]]
+    (let [p (tu/tmp-pred) q (tu/tmp-pred) a (tu/tmp-ind)
+          h (v/assert-rule kb [(list p '?x)] (list q '?x) 'CxFam {:direction d})]
+      (v/assert kb (list p a) 'CxFam)
+      (testing (str d)
+        (is (= (if (= :both d) :forward d) (:direction (v/sentex kb h))))
+        (is (= (contains? #{:forward :both} d)
+               (some? (v/handle-of kb (list q a) 'CxFam))))))))
+
 (tu/deftest-kb bare-rule-is-backward-by-default
   (let [parentOf (tu/tmp-pred) ancestorOf (tu/tmp-pred)
         tom (tu/tmp-ind) bob (tu/tmp-ind)

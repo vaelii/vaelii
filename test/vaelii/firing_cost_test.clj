@@ -178,24 +178,24 @@
   [{:name :single-antecedent
     :build single-antecedent
     :reads {:argument-root 200 :argument-slot 200 :exception-index 200
-            :functor-root 901 :rule-index 200 :trie-counts 100}}
+            :functor-root 301 :rule-index 200 :trie-counts 100}}
 
    {:name :unfanned-join
     :build unfanned-join
     :reads {:argument-root 100 :argument-slot 100 :exception-index 200
-            :functor-root 903 :rule-index 200 :trie-counts 100 :trie-lookup 100}}
+            :functor-root 303 :rule-index 200 :trie-counts 100 :trie-lookup 100}}
 
    {:name :fanned-join
     :build fanned-join
     :reads {:argument-root 300 :argument-slot 300 :exception-index 200
-            :functor-root 903 :rule-index 200 :trie-counts 100}}
+            :functor-root 303 :rule-index 200 :trie-counts 100}}
 
    ;; two `:trie-lookup` per firing, not one: the mirror is a second orientation to look
    ;; the conclusion's own handle up under, and both orientations reach `join-matches`
    {:name :symmetric-trigger
     :build symmetric-trigger
     :reads {:argument-root 100 :argument-slot 100 :exception-index 200
-            :functor-root 903 :rule-index 200 :trie-counts 100 :trie-lookup 200}}])
+            :functor-root 303 :rule-index 200 :trie-counts 100 :trie-lookup 200}}])
 
 ;; ---- measuring -----------------------------------------------------------
 

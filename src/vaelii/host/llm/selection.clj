@@ -144,9 +144,9 @@
   "The `arg` constraints on a predicate, as `[[position type] …]`.  The query pins
   the predicate, so this is a narrow read whatever the KB's size."
   [kb pred]
-  (sort-by first
-           (for [{:keys [sentence]} (v/sentexes-matching kb (list 'arg pred '?n '?t) '?ctx)]
-             [(nth sentence 2) (nth sentence 3)])))
+  (nm/sort-by-content-key identity
+                          (for [{:keys [sentence]} (v/sentexes-matching kb (list 'arg pred '?n '?t) '?ctx)]
+                            [(nth sentence 2) (nth sentence 3)])))
 
 (defn- disjoint-with
   "The types declared disjoint from `t`, both spellings of the pair."

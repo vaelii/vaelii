@@ -226,7 +226,7 @@ The firing is blocked where the guard has stopped holding and comes back when it
 again, so a merge, an indeterminacy declaration and their retractions all reach it:
 
 ```clojure
-(v/assert kb '(implies (and (pRel ?x ?y) (different ?x ?y)) (qRel ?x ?y)) 'CxUniverse)
+(v/assert kb '(set/forwardRule (implies (and (pRel ?x ?y) (different ?x ?y)) (qRel ?x ?y))) 'CxUniverse)
 (v/assert kb '(pRel Aa Bb) 'CxUniverse)
 (v/ask? kb '(qRel Aa Bb) 'CxUniverse)          ; => true
 (v/assert kb '(indeterminate_term Aa) 'CxUniverse)

@@ -133,8 +133,8 @@ result would defeat every contested assumption and label every choice head false
 
 ### Refuse rather than degrade, whenever a backend is present
 
-`edge-solver` falls back to `local-solver` in exactly one case: **no backend at all**.
-There the two degrade together and stay consistent for free, because `classify-program`
+`edge-solver` falls back to `local-solver` in two cases: **no backend at all**, and a
+backend's definite `:unsat` (below). With no backend the two degrade together and stay consistent for free, because `classify-program`
 without a backend reports every contested assumption `:supportable` and claims nothing.
 
 With a backend present the fallback would be a different solver's answer, and the two

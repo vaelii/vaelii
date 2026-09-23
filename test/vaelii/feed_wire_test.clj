@@ -473,6 +473,31 @@
               (is (= :unknown-subscription (:type (ex-data e)))))))
         (finally (.stop server))))))
 
+(tu/deftest-kb the-listing-in-feed-md-is-the-listing-the-daemon-answers
+  ;; docs/feed.md prints a five-line transcript of the wire feed, and the last line is
+  ;; what `watchers` answers *after* the `unwatch` above it.  It listed the token that
+  ;; line had just dropped, with a `:pending` the reap could not produce and neither of
+  ;; the two fields a standing query's row carries.
+  (tu/with-terms [dog animal Muffet Rex Fido CxWell]
+    (let [^Server server (serve/start kb {:port 0 :token nil})]
+      (try
+        (let [conn (vc/client "localhost" (serve/port server) {:token nil})]
+          (v/assert kb (list 'genlCx CxWell 'CxUniverse) 'CxUniverse)
+          (vc/assert conn (list 'genl dog animal) CxWell)
+          (let [{plain :token}    (vc/watch conn)
+                {standing :token} (vc/watch conn (list animal '?x) CxWell)]
+            (doseq [t [Muffet Rex Fido]] (vc/assert conn (list dog t) CxWell))
+            (let [{:keys [events cursor lagged]} (vc/poll conn plain 0 {:wait-ms 20000})]
+              (is (= 3 (count events)))
+              (is (= 3 cursor))
+              (is (zero? lagged)))
+            (is (true? (vc/unwatch conn plain)))
+            (is (= [{:token standing :delivered 3 :pending 3
+                     :goal (list animal '?x) :context CxWell}]
+                   (vc/watchers conn))
+                "the dropped token is gone, and :pending is what the ring holds")))
+        (finally (.stop server))))))
+
 ;; ---- what a parked poll costs the daemon --------------------------------
 ;;
 ;; Moving the wait outside `serve`'s monitor keeps a parked poll from blocking the

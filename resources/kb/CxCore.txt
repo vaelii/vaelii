@@ -273,7 +273,7 @@
 (genl sentence formula)
 (genl atomic_sentence atomic_formula)
 (genl atomic_sentence sentence)
-(disjoint atomic_formula non_atomic_term)
+(set/monotonic (disjoint atomic_formula non_atomic_term))
 
 (comment interArg
          "(interArg ?relation ?position1 ?type1 ?position2 ?type2) means that whenever argument ?position1 of ?relation is a ?type1, argument ?position2 must be a ?type2. The conditional argument constraint, and it says what arg cannot: (interArg eats 1 carnivore 2 meat) types the second argument only for the eaters that are carnivores, where (arg eats 2 meat) would demand meat of every eater. Open-world in both directions, and they point opposite ways — silence about the trigger argument's type leaves the constraint dormant rather than firing it, while silence about the target argument's is what convicts. Checked through genl transitivity from the writing context, like arg, and it entails the same way under assertive argument types. Relation-wide vocabulary; the current function-input enforcement boundary is documented in docs/argtypes.md.")
@@ -284,6 +284,29 @@
 (arg interArg 3 unary_predicate)
 (arg interArg 4 positive_integer)
 (arg interArg 5 unary_predicate)
+
+;; The homogeneity constraints are interArg over a whole suffix: a type one argument of the
+;; suffix is known to hold is demanded of every other argument there.  interArgs covers
+;; every position and interArgAndRest the positions from a start onward.  The type is the
+;; trigger and the target at once, so MetaConstraintProver answers both only up the
+;; predicate hierarchy, never along genl at the type: of (interArgs R animal) and
+;; (interArgs R mammal), neither entails the other.  interArgs is interArgAndRest at
+;; start 1, and the two rules below derive each spelling from the other the way arg1 and
+;; (arg ?reln 1 ?type) do.
+(comment interArgAndRest
+         "(interArgAndRest ?relation ?position ?type) means that whenever an argument of ?relation at ?position or later is a ?type, every argument at ?position or later must be a ?type. Suffix homogeneity: the arguments before ?position are unconstrained. The general form of interArgs, which states what (interArgAndRest ?relation 1 ?type) states. It convicts as interArg does and does not entail: the triggering argument must be known to be a ?type, and another argument in the suffix is convicted only when the KB places it in the hierarchy outside ?type, so an argument whose type is unknown neither triggers nor violates, and no type is minted for it. Checked over the positions a sentence actually has; the boundary is documented in docs/argtypes.md.")
+(ternary_predicate interArgAndRest)
+(arg interArgAndRest 1 relation)
+(arg interArgAndRest 2 positive_integer)
+(arg interArgAndRest 3 unary_predicate)
+
+(comment interArgs
+         "(interArgs ?relation ?type) means that whenever any argument of ?relation is a ?type, every argument must be a ?type. Full argument homogeneity: (interArgs sameKindAs animal) lets two plants or two animals be compared and refuses an animal beside a plant. The every-position form of interArgAndRest, and it states what (interArgAndRest ?relation 1 ?type) states; each spelling derives the other. It convicts as interArg does and does not entail.")
+(binary_predicate interArgs)
+(arg interArgs 1 relation)
+(arg interArgs 2 unary_predicate)
+(set/forwardRule (implies (and (interArgs ?reln ?type)) (interArgAndRest ?reln 1 ?type)))
+(set/forwardRule (implies (and (interArgAndRest ?reln 1 ?type)) (interArgs ?reln ?type)))
 
 ;; `fixed_arity` and `variable_arity` each declare their one argument position, and
 ;; nothing below them declares one.  Two things make that the right split.  The parent's
@@ -348,7 +371,7 @@
 (genl variable_arity_function variable_arity)
 (genl variable_arity_function function)
 
-(disjoint fixed_arity variable_arity)
+(set/monotonic (disjoint fixed_arity variable_arity))
 
 (comment unary "A relation of exactly one argument.")
 (unary_predicate unary)
@@ -378,7 +401,7 @@
          "(relationTypeByArity ?type ?arity) maps a relation-wide exact-arity type to its arity. Its three declarations drive the shared arity/type rules.")
 (binary_predicate relationTypeByArity)
 (instance_relation_predicate relationTypeByArity)
-(functional relationTypeByArity)
+(set/monotonic (functional relationTypeByArity))
 (arg relationTypeByArity 1 unary_predicate)
 (arg relationTypeByArity 2 non_negative_integer)
 
@@ -420,7 +443,7 @@
          "(arity ?relation ?n) means that ?relation takes exactly ?n arguments and is fixed_arity. One maps to unary, two to binary and three to ternary, and the arity and that relation-wide class derive each other, so asserting either keeps both believed and retracting the one that was asserted collapses the pair. Predicate and function specializations inherit those classes; the cycle stops at the relation-wide class because an arity says how many arguments, not whether the relation holds or denotes.")
 (binary_predicate arity)
 (instance_relation_predicate arity)
-(functional arity)
+(set/monotonic (functional arity))
 (arg arity 1 relation)
 (arg arity 2 non_negative_integer)
 
@@ -507,9 +530,9 @@
 ;; the three predicate pairs here would only duplicate it.  Nothing marks predicate as
 ;; (sibling_disjoint predicate) — its specializations include many compatible
 ;; classifications, and only the exact-arity classes exclude one another.
-(disjoint unary binary)
-(disjoint unary ternary)
-(disjoint binary ternary)
+(set/monotonic (disjoint unary binary))
+(set/monotonic (disjoint unary ternary))
+(set/monotonic (disjoint binary ternary))
 
 (comment believes
          "(believes ?agent ?sentence) means that ?agent holds ?sentence true in its own context — answered by proving ?sentence in ?agent's context (CxAgent<agent>) rather than in the asker's, so two agents may believe contradictory things without the KB being inconsistent. A modal_predicate: the projection is what BeliefProjectionProver does, and the marker is what turns it on (docs/belief.md). An ordinary relation for the rest — assertible and storable like any fact, so an asserted (believes a p) is answerable as a stored fact too; the projector augments, it does not shadow.")
@@ -549,6 +572,52 @@
 (comment disjoint_metatype
          "(disjoint_metatype ?metatype) means that every pair of ?metatype's member types is disjoint. The clique is consulted rather than stored, so it adds no work quadratic and retraction reaches all of it: dropping ?metatype releases every pair at once, and dropping one member releases exactly that member's pairs.")
 (unary_predicate disjoint_metatype)
+
+;; ---- a whole and the parts named against it -------------------------------
+;; Two independent claims about one roster, and the three spellings they make: covering
+;; says the parts leave nothing of the whole uncovered, separating says no two of them
+;; share an instance, and partition says both.  disjoint and its two clique marks make
+;; the separating claim about pairs and about cliques rather than about a named roster.
+;; All three are variable-arity with the whole in position 1, so the part roster commutes
+;; and a roster written in another order is one sentex.  docs/taxonomy.md states the
+;; inference and what it deliberately does not do.
+(comment covering
+         "(covering ?whole ?part1 ?part2 ...) means that every instance of ?whole is an instance of at least one named part. Each part is a subtype of ?whole, which the declaration states rather than requires of the ontology beforehand: asserting the cover installs the genl edge per part, supported by the covering sentex and carrying its context, so a cover asserted before its parts carry any other fact settles where one asserted after them does. The parts may overlap; partition is the spelling that separates them as well, and separating is the separation without the coverage. Coverage is actionable only on explicit negation: (not (?part ?x)) for every part but one proves the remaining membership, and a whole instance with nothing else known stays unknown rather than being assigned a part. Negating every part contradicts the cover. At least two distinct parts, since one part covering a whole says only that the two have the same instances.")
+(variable_arity_predicate covering)
+(genlArg covering 1 thing)
+(argAndRestGenl covering 2 thing)
+(arityMin covering 3)
+(commutativeInArgAndRest covering 2)
+
+(comment separating
+         "(separating ?whole ?part1 ?part2 ...) means that no two of the named parts share an instance. The separation half of partition without the coverage half: it says nothing about whether the parts exhaust ?whole, so an instance of ?whole belonging to none of them violates nothing. Each part is a subtype of ?whole, stated by the declaration as covering states it. The roster is recorded the way a disjoint_metatype's member set is, which is what this spelling is for — a named few types separated from each other, where disjoint_metatype needs a metatype term to hang them on and sibling_disjoint separates every specialization of the parent rather than the ones named.")
+(variable_arity_predicate separating)
+(genlArg separating 1 thing)
+(argAndRestGenl separating 2 thing)
+(arityMin separating 3)
+(commutativeInArgAndRest separating 2)
+
+(comment partition
+         "(partition ?whole ?part1 ?part2 ...) means that the named parts cover ?whole and that no two of them share an instance. The coverage half is covering's exactly, and both declarations are recorded under one roster, so the coverage inference reads a partition as the cover it is. The separation half is recorded the way a disjoint_metatype's member set is — consulted by the disjointness test, never written out as a (disjoint …) sentex per pair — so siblingDisjointException exempts a pair of parts the way it exempts a pair of metatype members, and dropping the declaration releases every pair at once. disjoint_metatype keeps its own meaning and claims no coverage.")
+(variable_arity_predicate partition)
+(genlArg partition 1 thing)
+(argAndRestGenl partition 2 thing)
+(arityMin partition 3)
+(commutativeInArgAndRest partition 2)
+;; No (genl partition covering) edge, though every partition is a cover: a genl
+;; edge between two variable-arity predicates puts two unrooted nodes in the type graph,
+;; which is what kb-quality reports as an island.  The engine needs no edge — both
+;; declarations are recorded under one taxonomy roster, so the coverage inference reads a
+;; partition and a bare cover the same way — and what the edge would add is a query for
+;; one spelling answering the other.
+
+;; `partition` is the exhaustive counterpart of the two clique marks, and `separating` is
+;; their roster-shaped twin: the same separation over a named few rather than over a
+;; metatype's members or a parent's every specialization.
+(termsRelated disjoint_metatype partition)
+(termsRelated sibling_disjoint partition)
+(termsRelated disjoint_metatype separating)
+(termsRelated sibling_disjoint separating)
 
 ;; ---- definitional collection relations -----------------------------------
 ;; Three relations tie a collection's membership to a defining condition on the member
@@ -980,7 +1049,7 @@
 ;; position and a type-level one at once is refused at the entry point rather than stored and
 ;; convicted one conclusion at a time. (implies (result ?f ?t) (genl ?f ?t)) is the
 ;; shape it catches.
-(disjoint function predicate)
+(set/monotonic (disjoint function predicate))
 
 (comment reflexive
          "(reflexive ?predicate) means that ?predicate is reflexive, so (?predicate a a) holds for every a in its domain. Answered by a generic prover rather than materialized, the reflexive pairs of a large domain being a great many facts nobody wrote. Also a type: (reflexive P) classifies P as a binary_predicate.")
@@ -998,7 +1067,7 @@
          "(relation_kind ?predicate) means that ?predicate is one of the two relation kinds. The disjoint_metatype grouping instance_relation_predicate and type_relation_predicate, so a binary predicate is at most one of the two: it either relates individuals or relates kinds, and letting the readings mix is how a claim about kinds quietly becomes a claim about their members. At most, not exactly — a few predicates are honestly neither, and are left unmarked rather than forced: implies is a connective and relates no things at all, rewriteOf takes either role so long as its two sides agree with each other, result and genlResult relate a function to a type and so are mixed, and functionCorrespondingPredicate relates a function to a predicate. Marking one of those would make the metatype say something false, which costs more than the gap.")
 (unary_predicate relation_kind)
 (genlArg relation_kind 1 predicate)
-(disjoint_metatype relation_kind)
+(set/monotonic (disjoint_metatype relation_kind))
 (metatype relation_kind)
 (relation_kind instance_relation_predicate)
 (relation_kind type_relation_predicate)
@@ -1019,7 +1088,7 @@
          "(set/inertRule ?rule) means that ?rule is asserted inert. Stored and documented but never used for inference in either direction, which is how a rule stating something the engine implements in code gets written down where a reader will find it. A virtual wrapper interpreted on assert.")
 
 (comment sibling_disjoint
-         "(sibling_disjoint ?collection) means that any two specializations of ?collection — the types below it under genl — share no instance, unless one is itself a genl of the other. The clique is consulted rather than stored, exactly as disjoint_metatype's is: no (disjoint …) sentex per pair, dropping the mark releases every pair at once, and a specialization arriving as a later genl edge is separated the moment it is believed. The genl-relatedness exception is what keeps a specialization disjoint from its siblings without being separated from its own supertypes, which are specializations of ?collection too; it is read over the whole KB, the way (disjoint a b) refuses a genl-related pair. Whether those specializations cover ?collection is a separate claim this one does not make.")
+         "(sibling_disjoint ?collection) means that any two specializations of ?collection — the types below it under genl — share no instance, unless one is itself a genl of the other. The clique is consulted rather than stored, exactly as disjoint_metatype's is: no (disjoint …) sentex per pair, dropping the mark releases every pair at once, and a specialization arriving as a later genl edge is separated the moment it is believed. The genl-relatedness exception is what keeps a specialization disjoint from its siblings without being separated from its own supertypes, which are specializations of ?collection too; it is read over the whole KB, the way (disjoint a b) refuses a genl-related pair. Whether those specializations cover ?collection is a separate claim this one does not make, and covering states it over a named roster.")
 (unary_predicate sibling_disjoint)
 (genlArg sibling_disjoint 1 thing)
 
@@ -1036,6 +1105,72 @@
 (unary_predicate symmetric)
 (decontextualized_predicate symmetric)
 (genl symmetric binary_predicate)
+
+(comment commutative
+         "(commutative ?relation) means that every argument of ?relation may be permuted without changing the proposition, at each arity the relation is applied at. The generalization of symmetric off its two fixed argument positions: symmetric commutes the two arguments of a binary predicate, this commutes all of them at any arity. Declarative sugar and a queryable classification rather than a second mechanism — a rule below derives (commutativeInArgAndRest ?relation 1), the tail-from-a-position spelling the engine canonicalizes with, so all-argument commutativity and the tail beginning at argument 1 are one licence written two ways. A one-argument relation marked commutative permutes nothing: one position is no permutation, and the mark stays queryable. Declared of a relation such as intersection, for instance. See docs/canonicalization.md.")
+(unary_predicate commutative)
+(decontextualized_predicate commutative)
+(genl commutative relation)
+
+(comment commutativeInArgs
+         "(commutativeInArgs ?relation ?position1 ?position2 ...) means that the arguments of ?relation at the named positions may be permuted without changing the proposition, and that every position not named stays where it was written. At least two distinct positive positions, or the declaration licences nothing and is refused at the entry point. Two declarations sharing a position are one licence and not two applied in turn: positions 1 and 2 interchanging while 2 and 3 do means 1 and 3 interchange through 2, so the engine merges them into one component before it sorts. A named position past the relation's arity in some application simply forms no component there. See docs/canonicalization.md.")
+(variable_arity_predicate commutativeInArgs)
+(decontextualized_predicate commutativeInArgs)
+(arityMin commutativeInArgs 3)
+(arg commutativeInArgs 1 relation)
+(argAndRest commutativeInArgs 2 positive_integer)
+
+(comment commutativeInArgAndRest
+         "(commutativeInArgAndRest ?relation ?position) means that the arguments of ?relation from ?position through the end of an application may be permuted without changing the proposition, while every earlier argument stays where it was written. The canonical runtime spelling of commutativity: the other two marks reduce to it, and the assert entry point sorts the arguments inside the component it names, so every permitted permutation of a ground fact is one sentex and one handle. Variable arity is respected rather than flattened — the component is closed by the application's own arity, so a relation applied at three arguments and at four states two claims and no permutation moves an argument between them. Repeated argument values keep their multiplicity: commutativity changes order, never content. Declared of a whole-and-parts relation at position 2, so the whole stays in position 1 and only the parts commute, for instance. See docs/canonicalization.md.")
+(binary_predicate commutativeInArgAndRest)
+(decontextualized_predicate commutativeInArgAndRest)
+(instance_relation_predicate commutativeInArgAndRest)
+(arg commutativeInArgAndRest 1 relation)
+(arg commutativeInArgAndRest 2 positive_integer)
+
+;; The two bridges between the three spellings, and the one to symmetric.
+;;
+;; commutative and (commutativeInArgAndRest P 1) are the same licence, and the engine has
+;; no iff. Each mark installs the commuting group [:rest 1] at its own arm in
+;; special/arms, so the canonicalizer reads one table whichever spelling was written and
+;; neither spelling has to be derived from the other. The two directions stay here as
+;; set/inertRule: believed, indexed and queryable, run by neither engine.
+;;
+;; They are inert rather than forward rules because a derivation between them is a cycle —
+;; each conclusion justifies the other — and set/forwardRule adds forward chaining without
+;; taking the backward use away. Forward chaining survives a cycle: the pair is unfounded
+;; and the JTMS labels it so (docs/nmtms.md). Backward search does not.
+;; provers/candidate-rules carries no ancestor-goal guard, so (commutative ?p) expands to
+;; (commutativeInArgAndRest ?p 1) and back with no binding arriving to close it off. The
+;; depth bound stops the descent, which makes the cycle an exponential frontier inside
+;; that depth rather than a refusal, and (genl commutative relation) puts the goal under
+;; every open (relation ?x) query — which is what made vaelii.arity-vocabulary-test never
+;; finish under VAELII_QUERY_ENGINE=inference.
+(set/inertRule (implies (and (commutative ?p)) (commutativeInArgAndRest ?p 1)))
+(set/inertRule (implies (and (commutativeInArgAndRest ?p 1)) (commutative ?p)))
+
+;; Every symmetric relation is commutative over its two arguments, stated as a genl edge.
+;; The membership it gives is inherited rather than stored. The two rules above are inert,
+;; so a symmetric P carries no second group: symmetric sorts its own two arguments, and
+;; the canonical form is the one it already produced.
+(genl symmetric commutative)
+
+;; The converse needs the arity, and is a rule because it concludes a mark the engine
+;; enforces: commutativity at two arguments IS symmetry, where commutativity at any other
+;; arity implies neither symmetry nor arity 2.
+;;
+;; forwardOnlyRule, not forwardRule: set/forwardRule adds forward chaining without taking
+;; the backward use away, and backward this rule is a cycle. The genl edge above makes
+;; symmetric a spec of commutative, so provers/candidate-rules offers a rule concluding
+;; (symmetric ?p) as a candidate for the goal (commutative ?p) — which is the very goal
+;; this rule's own antecedent poses. Nothing stops the descent: candidate-rules carries
+;; no ancestor-goal guard, and the depth bound turns the cycle into an exponential
+;; frontier rather than a refusal. (genl commutative relation) puts that goal under every
+;; open (relation ?x) query, so the cycle reached every caller of the inference engine.
+;; Forward chaining has no such trouble — it derives (symmetric P) once and reaches a
+;; fixpoint — so the rule keeps the direction that does its work and drops the one that
+;; does not.
+(set/forwardOnlyRule (implies (and (commutative ?p) (arity ?p 2)) (symmetric ?p)))
 
 (comment asymmetric
          "(asymmetric ?predicate) means that ?predicate cannot hold both ways. (?predicate a b) and (?predicate b a) are contradictory, and a strict order such as largerThan is the usual case. Read as a nogood: the mirror of a claim denies it, so a strict claim conflicts with its converse instead of silently coexisting with it. The conviction needs a believed opposing claim, so a self tuple (?predicate a a) is admitted rather than refused. Also a type: (asymmetric P) classifies P as a binary_predicate.")
@@ -1128,9 +1263,9 @@
 ;; reflexive and irreflexive, or both transitive and antitransitive.  (disjoint symmetric
 ;; anti_symmetric) is deliberately NOT asserted — equals itself is both symmetric and
 ;; antisymmetric, so they are not disjoint (docs/equality.md).
-(disjoint symmetric asymmetric)
-(disjoint reflexive irreflexive)
-(disjoint transitive anti_transitive)
+(set/monotonic (disjoint symmetric asymmetric))
+(set/monotonic (disjoint reflexive irreflexive))
+(set/monotonic (disjoint transitive anti_transitive))
 
 (comment type_relation_predicate
          "(type_relation_predicate ?predicate) means that ?predicate relates types rather than individuals. So (?predicate T1 T2) is a claim between two categories, and such a ground fact is replaced by one of the relation-pattern meta-predicates to pin down which quantifier reading is meant. A binary_predicate, for instance_relation_predicate's reason. The other half of the relation_kind metatype.")
@@ -1258,7 +1393,11 @@
 (comment partitionedByType "(partitionedByType ?whole ?classifier . ?cells) declares that the ?cells exhaustively and disjointly partition ?whole, and that each cell is an instance of ?classifier. Inert — the disjointness and the memberships are stated directly beside it.")
 (unary_predicate type)
 (at_least_metatype disjoint_metatype)
-(disjoint_metatype type_type_by_order)
+;; Stated rather than left to (arg typeGenl 1 at_least_metatype) to mint, so the typeGenl
+;; facts below satisfy their declaration under the constraint-only reading as well.
+(at_least_metatype metatype)
+(at_least_metatype meta_metatype)
+(set/monotonic (disjoint_metatype type_type_by_order))
 (genl at_least_metatype variable_order_type)
 (genl disjoint_metatype at_least_metatype)
 (genl meta_metatype at_least_metatype)
@@ -1285,9 +1424,9 @@
 (variable_order_type fixed_order_type)
 (variable_order_type variable_order_type)
 
-(disjoint intangible spatial)
+(set/monotonic (disjoint intangible spatial))
 ;; A thing is either located in space or aspatial, and either in time or atemporal: each
 ;; pair is a complement.  The quality checker's schematic clash reading prunes the phantom
 ;; pairs these create by antecedent arg-type disjointness (vaelii#95, fix(quality)).
-(disjoint spatial aspatial)
-(disjoint temporal atemporal)
+(set/monotonic (disjoint spatial aspatial))
+(set/monotonic (disjoint temporal atemporal))

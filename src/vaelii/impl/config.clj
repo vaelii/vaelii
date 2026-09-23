@@ -308,6 +308,17 @@
   []
   (prop-bool "VAELII_ASSERTIVE_ARG_TYPES" true))
 
+(defn prune-subsumed-mints?
+  "Does a minted argument type give way to a more specific membership the KB believes
+  (`VAELII_PRUNE_SUBSUMED_MINTS`, default **off**)?  `=1` opts in: the KB stores about a
+  tenth fewer sentexes and answers exactly what it answered before (docs/argtypes.md).
+  Off by default for what it costs rather than for what it does — a settle that moves a
+  membership asks what that membership displaces, which is measured at +42% on a
+  settle-dense workload.  Read only where the entailment runs at all, so it does nothing
+  with `VAELII_ASSERTIVE_ARG_TYPES=0`."
+  []
+  (prop-bool "VAELII_PRUNE_SUBSUMED_MINTS" false))
+
 (defn cache-scale
   "The multiplier applied to every in-memory derived cache's shipped entry limit
   (`VAELII_CACHE_SCALE`, default 1.0).  Below 1 shrinks the caches for a small-heap
@@ -366,7 +377,7 @@
   "The seconds **one ASP solve** may run before the backend is interrupted
   (`VAELII_ASP_TIME_LIMIT`, default 60; 0 lifts the limit).  Both backends honour it —
   clasp through `--time-limit`, in-process clingo by cancelling the solve handle — and
-  an interrupted solve reports `:interrupted`, which no consumer is indistinguishable from an answer
+  an interrupted solve reports `:interrupted`, which no consumer treats as an answer
   (`asp.edge`): the edge solver decides nothing and an imperative refuses.
 
   A solve runs on the single writer, so an unbounded one holds every write behind it —
@@ -495,6 +506,7 @@
    {:names ["VAELII_ARBITRATE_CONSTRAINTS"]         :reader #'arbitrate-constraints?       :read-at :load}
    {:names ["VAELII_ASSERTIVE_ARG_TYPES"]           :reader #'assertive-arg-types?         :read-at :load}
    {:names ["VAELII_CACHE_SCALE"]                   :reader #'cache-scale                  :read-at :load}
+   {:names ["VAELII_PRUNE_SUBSUMED_MINTS"]          :reader #'prune-subsumed-mints?        :read-at :load}
    {:names ["VAELII_DEV"]                           :reader #'web-dev?                     :read-at :load}
    {:names ["VAELII_PROFILER"]                      :reader #'profiler?                    :read-at :open}
    {:names ["VAELII_PROFILER_PORT"]                 :reader #'profiler-port                :read-at :open}

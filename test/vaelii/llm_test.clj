@@ -665,7 +665,7 @@
   (testing "the shared deadline is seconds, not minutes"
     (is (<= 1000 llm-http/connect-timeout-ms 10000)))
   (testing "and a client built for a five-minute turn still connects on that deadline"
-    (let [c (#'ollama/new-client)]
+    (let [^java.net.http.HttpClient c (#'ollama/new-client)]
       (is (= (java.time.Duration/ofMillis llm-http/connect-timeout-ms)
              (.orElse (.connectTimeout c) nil))
           "the connect deadline is the constant, whatever a turn was allowed")))

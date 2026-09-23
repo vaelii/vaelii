@@ -58,6 +58,15 @@
         (is (re-find #"One scenario" (:body r)))
         (is (re-find #"ntpp" (:body r)))))))
 
+(tu/deftest-kb a-query-context-on-the-network-page-is-a-400-and-not-a-500
+  ;; `qualitative-network` resolves no query context, so the engine refused with
+  ;; `:unsupported-context` and Jetty answered 500 — the levels page's case, unguarded here
+  (doseq [ctx ["CxEverything" "CxInference" "CxNothing"]]
+    (let [r (GET kb "/network" (str "ctx=" ctx "&calc=rcc8"))]
+      (is (= 400 (:status r)) ctx)
+      (is (re-find (re-pattern ctx) (:body r)) (str "the refusal names " ctx))))
+  (is (= 200 (:status (GET kb "/network" "ctx=CxWell&calc=rcc8"))) "a place still renders"))
+
 (tu/deftest-kb a-calculus-name-no-algebra-answers-to-is-refused
   ;; The fallback picks the first calculus with a populated network, so `?calc=rcc9` drew a
   ;; matrix — a *different* algebra's, with nothing on the page to say so.  A reader

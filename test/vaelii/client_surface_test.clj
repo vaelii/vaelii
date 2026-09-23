@@ -204,16 +204,22 @@
   ;; handed the string a response would have carried.
   (let [read-reply #'client/read-reply]
     (testing "a body that does not read as EDN at all"
-      (let [e (is (thrown? clojure.lang.ExceptionInfo (read-reply "{:ok true")))]
+      (let [e (is (thrown? clojure.lang.ExceptionInfo (read-reply "{:ok true" 200)))]
         (is (= :bad-reply (:type (ex-data e))))
         (is (= "{:ok true" (:body (ex-data e)))
             "and it hands the body back, which is the whole of what says who sent it")))
     (testing "and one that reads as EDN and is not a reply"
-      (let [e (is (thrown? clojure.lang.ExceptionInfo (read-reply "[:ok true]")))]
+      (let [e (is (thrown? clojure.lang.ExceptionInfo (read-reply "[:ok true]" 200)))]
         (is (= :bad-reply (:type (ex-data e))))
         (is (= [:ok true] (:reply (ex-data e))))))
+    (testing "the status is on the refusal, which is what tells a dead proxy from a
+              daemon that answered a truncated body"
+      (is (= 502 (:status (ex-data (try (read-reply "<html>502</html>" 502)
+                                        (catch clojure.lang.ExceptionInfo e e))))))
+      (is (= 200 (:status (ex-data (try (read-reply "<html>502</html>" 200)
+                                        (catch clojure.lang.ExceptionInfo e e)))))))
     (testing "a reply the daemon actually sends parses to the map a caller reads"
-      (is (= {:ok true :result 3} (read-reply (pr-str {:ok true :result 3})))))))
+      (is (= {:ok true :result 3} (read-reply (pr-str {:ok true :result 3}) 200))))))
 
 (deftest a-daemon-refusal-with-no-type-still-leaves-the-caller-one-to-catch
   ;; The client's floor under the promise that every failure carries a `:type`
@@ -222,7 +228,7 @@
   ;; caller cannot discriminate on at all.  `send-edn` is pinned, so no socket opens.
   (let [conn     (client/client "localhost" 4200 {:token nil})
         data-of  (fn [reply]
-                   (with-redefs [client/send-edn (fn [& _] reply)]
+                   (with-redefs [client/send-edn (fn [& _] [400 reply])]
                      (try (client/call conn :contexts []) nil
                           (catch clojure.lang.ExceptionInfo e (ex-data e)))))]
     (testing "a refusal carrying no :type at all"
@@ -237,6 +243,9 @@
               say which op was refused"
       (is (= :contexts (:op (data-of {:ok false :error "x"}))))
       (is (= [] (:args (data-of {:ok false :error "x"})))))
+    (testing "and so is the status, which is the coarse client-fault/server-fault split
+              under the one :type vocabulary"
+      (is (= 400 (:status (data-of {:ok false :error "x" :type :naming})))))
     (testing "an :ok reply is a result rather than a refusal, so the fallback bears on
               failures alone"
       (is (nil? (data-of {:ok true :result ['CxUniverse]}))

@@ -27,18 +27,17 @@
   (:require [clojure.string :as str]
             [taoensso.trove :as trove]
             [vaelii.impl.abduce :as abduce]
+            [vaelii.impl.assert-entry :as entry]
             [vaelii.impl.budget :as budget]
             [vaelii.impl.caches :as caches-impl]
             [vaelii.impl.capabilities :as cap]
             [vaelii.impl.chain :as chain]
             [vaelii.impl.checks :as checks]
             [vaelii.impl.config :as config]
-            [vaelii.impl.context-nat :as context-nat]
             [vaelii.impl.disk.backend :as disk]
             [vaelii.impl.feed :as feed]
             [vaelii.impl.fluent :as fluent]
             [vaelii.impl.foreign :as foreign]
-            [vaelii.impl.imperative :as imperative]
             [vaelii.impl.inference :as inference]
             [vaelii.impl.integrate :as integrate]
             [vaelii.impl.io.export :as export]
@@ -51,6 +50,7 @@
             [vaelii.impl.modal :as modal]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.nat :as nat]
+            [vaelii.impl.nat-maintenance :as nat-maint]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.oplog :as oplog]
             [vaelii.impl.opts :as opts]
@@ -78,7 +78,6 @@
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.vantage :as vantage]
-            [vaelii.impl.violations :as violations]
             [vaelii.impl.vocabulary :as vocab]
             [vaelii.impl.wiring :refer [*defer-settle?*]])
   (:gen-class))
@@ -1106,9 +1105,10 @@
     exposure pass off.  A store can accumulate content its own constraints forbid,
     indefinitely, with every instrument green.
   - **Two writes land under the wrong key.**  `res/kb-sentex` sorts a symmetric
-    predicate's arguments only when the taxonomy says the predicate is symmetric, so
-    `(siblingOf Bob Ann)` is stored where a recovered KB writes `(siblingOf Ann Bob)`;
-    and a `:forced-decontextualized` predicate lands in the caller's context instead of
+    predicate's arguments only when the taxonomy says the predicate is symmetric, and a
+    commutative one's only when it says which positions commute, so `(siblingOf Bob Ann)`
+    is stored where a recovered KB writes `(siblingOf Ann Bob)`; and a
+    `:forced-decontextualized` predicate lands in the caller's context instead of
     `CxUniverse`.
   - **On a derived index, dedup misses everything.**  `assert` dedups through
     `kb/find-sentex-handle`, so every assert mints a fresh handle for a sentence already
@@ -1225,556 +1225,6 @@
 ;; and re-marking it default can't leave a stale non-defeasible justification.  To change a rule's
 ;; direction or defeasibility, retract it first.
 
-;; ---- premise marking, and the one hook `preview` needs -------------------
-
-(def ^:dynamic ^:private *premise-audit*
-  "When bound to an atom, every premise mark on the assert path first records the
-  datum's **prior** premise state here — `{handle {:premise? bool :strength kw}}`,
-  first writer wins.  That is the whole of what `preview` needs to put a KB back the
-  way it found it: a handle it marked and that did not exist before is retracted, one
-  that existed as a non-premise is un-marked, and one that was already a premise gets
-  its original strength back.  `edit!` binds it too, for the same undo on a batch that
-  refused.  Nil, and free, on every ordinary assert."
-  nil)
-
-(defn- put-premise-mark
-  "Write the premise mark on sentex `h` at exactly `strength` — the network's node and
-  the record store's slot, which the assert path always moves together.  One function so
-  neither half can be marked without the other: the network is what labelling reads and
-  the record is what `recover` rebuilds the network from, so a KB whose two halves
-  disagreed would answer one thing until it restarted and another afterwards.
-
-  Callers say `mark-premise` instead.  This is the raw write, and the only caller that
-  wants it is the one *restoring* a mark it recorded — `rollback-batch!`, putting back a
-  class the KB already held rather than stating one."
-  [kb h strength]
-  (jtms/add-premise (reasoning/tms kb) h strength)
-  (p/mark-premise (:records kb) h strength))
-
-(defn- mark-premise
-  "Mark sentex `h` a premise, at the **stronger** of the class it already stands at and
-  the `strength` offered.  One function so the audit above has one hook rather than
-  three, and so neither half can be marked without the other (`put-premise-mark`).
-
-  **Resolved from content, never from arrival order** — the rule
-  `reconcile-rule-slots!` states for a re-asserted rule's slots, at the fact entry point, where
-  it decides belief rather than what a caller reads back.  A re-assert carrying no
-  `:strength` states nothing about the class: the `:default` it falls back to is the
-  entry point's fallback and not the caller's claim, so reading that silence as a *downgrade*
-  made the same knowledge in two orders reach two sets of beliefs.  Asserting
-  `(flies Tweety)` known-true, re-asserting it bare, then asserting the known-true
-  negation left the original **defeated**; the same three sentences without the bare
-  re-assert in the middle left it believed and the pair an irreducible clash.
-  `strength/max` is commutative and idempotent, so the orders agree and a third
-  assertion changes nothing.
-
-  Narrowing a class is `retract!` and re-assert, exactly as it is for a rule's
-  `:direction`, `:defeasible` and `:strength` (docs/canonicalization.md).  A handle that
-  is not a premise stands at nothing — `jtms/premise-strength` reads nil, which ranks 0
-  — so it takes the offered class whole, and a retraction therefore leaves no class
-  behind for the next assertion to inherit."
-  [kb h strength]
-  (when-let [audit *premise-audit*]
-    (let [tms (reasoning/tms kb)]
-      (swap! audit (fn [m]
-                     (if (contains? m h)
-                       m
-                       (assoc m h {:premise? (jtms/premise? tms h)
-                                   :strength (jtms/premise-strength tms h)}))))))
-  (put-premise-mark kb h (strength/max (jtms/premise-strength (reasoning/tms kb) h) strength)))
-
-(defn- check-rule-sentence
-  "Every pre-storage check a rule must pass, as a step that writes nothing —
-  `checks/check-rule!`, the list both storage entry points read (the other being a generator
-  firing, `chain/place-conclusion`).  A generator's own three are in that list rather
-  than beside it, because a *minted* rule can be a generator too (docs/generators.md)
-  and a check only this entry point ran would be one the fixpoint could store around."
-  [kb sentence context]
-  (checks/check-rule! kb sentence context))
-
-(defn- join-direction
-  "The direction a rule stated two ways holds in: the **least restrictive** of the two.
-
-  `:inert` is the bottom (it runs in neither engine).  `:backward` (backward only) and
-  `:forward-only` (forward only) are partial and incomparable; `:forward` / `:both` are
-  the top — both mean forward + backward.  Joining two spellings that each lack what the
-  other has therefore adds that capability and comes to `:both`, the canonical forward +
-  backward value.  A join rather than a pick, because the two spellings are two claims
-  about the same rule and a rule that may run forwards *and* may run backwards may do
-  both."
-  [a b]
-  (cond
-    (= a b)      a
-    (= :inert a) b
-    (= :inert b) a
-    :else        :both))
-
-(defn- reconcile-rule-slots!
-  "Bring a re-asserted rule's `:direction` / `:defeasible` to the value the two
-  assertions jointly state, and re-chain it if that newly lets it run forwards.
-
-  These two slots are not in the sentex identity key — a rule is one rule however its
-  direction is spelled — so `find-or-create-sentex` hands back the stored record and the
-  second spelling would otherwise be dropped.  Dropping it is **arrival-order
-  dependent**: a bare `implies` after a `set/inertRule` would stay inert and never fire,
-  and after a `set/defaultRule` stay defeasible and lose to a monotonic rival it should
-  tie with — the same two assertions reaching two sets of beliefs, which
-  `docs/nmtms.md` does not permit.
-
-  So the slots are resolved from **content** instead: the least restrictive direction
-  (`join-direction`), and strict over defeasible — a rule asserted once without
-  `set/defaultRule` is a rule somebody stated as holding outright.  Both are commutative
-  and idempotent, so the two orders agree and a third assertion changes nothing.
-
-  The record moves, and so does the one derived copy of the defeasibility slot: the
-  justifications already fired through this rule carry its contribution as their
-  `:strength`, read off the record at fire time (`chain/rule-view-of`), so a
-  defeasible→strict resolution must reach them or belief keeps the arrival order this
-  fn exists to remove — facts asserted *between* the two spellings would hold
-  conclusions at `:default` that the same assertions in the other order hold at
-  `:monotonic`.  `jtms/restrength-informant` updates that slot and relabels the
-  affected region.  The direction join needs no such reach-back: it only ever *adds*
-  capability (`join-direction` is a join, never a meet), backward capability is read
-  off the record at query time, and new forward capability is the `chain-all` below.
-
-  The trie key does not carry these slots, and `index-rule-sentex` indexes predicates
-  rather than direction, so nothing is re-indexed."
-  [kb h stored sentence context opts]
-  (let [incoming (res/kb-sentex kb sentence context)
-        dir      (join-direction (:direction stored) (:direction incoming))
-        def?     (when (and (:defeasible stored) (:defeasible incoming)) true)]
-    (when (or (not= dir (:direction stored))
-              (not= (boolean def?) (boolean (:defeasible stored))))
-      (let [s' (assoc stored :direction dir :defeasible def?)]
-        (p/put-sentex (:records kb) s')
-        (when (not= (boolean def?) (boolean (:defeasible stored)))
-          ;; Both copies of the conferred strength, together — the record store's
-          ;; justification records (what `supporting-justifications` shows and what
-          ;; `recover` rebuilds the network from) and the network's graph copy (what
-          ;; labelling reads), the same both-halves rule `mark-premise` states.
-          (let [strength (if def? :default :monotonic)
-                tms      (reasoning/tms kb)]
-            (doseq [jid (jtms/dependents tms h)
-                    :let [j (p/get-justification (:records kb) jid)]
-                    :when (and j (= h (:informant j)) (not= strength (:strength j)))]
-              (p/put-justification (:records kb) (assoc j :strength strength)))
-            (jtms/restrength-informant tms h strength)))
-        ;; newly forward-capable: it has never been joined over the facts already stored
-        (when (and (:chain? opts true)
-                   (rules/forward-sentex? s')
-                   (not (rules/forward-sentex? stored)))
-          (chain/chain-all kb [h] opts))
-        (when-not *defer-settle?* (settle/settle kb))))))
-
-(defn- assert-rule-sentence
-  "Assert a rule **as written** — any `set/*Rule` wrapper included, since the sentex
-  constructor canonicalizes it into the record's `:direction` / `:defeasible`.  The
-  well-formedness checks run on the bare rule inside the wrappers.
-
-  Idempotent: a re-asserted rule resolves to the existing sentex.  Where the two
-  spellings disagree about direction or defeasibility, the slots are resolved from
-  content rather than from which arrived first — see `reconcile-rule-slots!`.
-
-  **`opts :strength` reaches the record here exactly as it does at the fact entry point**, and
-  it is the rule's *own* defeat class — whether a contradicting default can defeat the
-  rule itself.  What a firing confers on its conclusion is a different question with a
-  different authority: `chain/rule-view-of` reads it off `:defeasible`, so a rule stored
-  at `:monotonic` still concludes at its weakest antecedent unless it is bare.  Nothing
-  in the engine defeats a rule, so the slot is one that reads back rather than one that
-  moves belief — `docs/nmtms.md` states the absence.
-
-  **Re-marking on the existing branch is the mark itself, not only its class.**  A rule
-  can be stored and not be a premise — a generator's stamped rule is a *conclusion*,
-  resting on the generator's justification — and asserting it is a second and
-  independent ground for it, exactly as asserting an already-derived fact is at the
-  other entry point.  Left unmarked, `assert` answered with a handle for a rule that the next
-  retraction of the generator took away with it.
-
-  All three slots resolve alike, and from **content**: `:direction` and `:defeasible`
-  in `reconcile-rule-slots!`, `:strength` below by taking the stronger.  A re-assert
-  carrying no `:strength` states nothing about the class — the `:default` it falls back
-  to is the entry point's fallback, not the caller's claim — so reading that silence as a
-  downgrade would leave `defeat-class` answering differently for the same two assertions
-  in the two orders.  No belief moves either way, nothing defeating a rule; this is what
-  a caller reads back.  Narrowing any of the three is `retract!` and re-assert."
-  [kb sentence context opts]
-  (check-rule-sentence kb sentence context)
-  (let [strength   (get opts :strength :default)
-        [h s new?] (kb/find-or-create-sentex kb sentence context strength)]
-    (if new?
-      (do
-        (mark-premise kb h strength)
-        (special/index-rule-sentex kb h s)
-        ;; A rule naming a predicate or type the closure has **already** merged is
-        ;; restated on arrival, exactly as one stored before the merge is restated by it
-        ;; (`assert-one`'s own arm, at the fact entry point): `birthplaceOf ⇒ bornIn` changes a
-        ;; functor the rule reasons over, so the original is superseded and the twin
-        ;; carries the inference.  Without it the same rule, fact and merge fire under the
-        ;; representative in the orders that state the rule first and under a retired
-        ;; spelling in the rest (docs/equality.md, "Merging predicates and types").  An
-        ;; individual-only merge holds a rule back, which `kb/rewritable-sentex?` decides.
-        (let [mig (when (kb/rewritable-sentex? kb s) (special/migrate-sentex kb s))]
-          (when (seq (:superseded mig))
-            (special/refresh-supersessions kb (:superseded mig)))
-          ;; defeasible or not, a forward-capable rule seeds the one agenda: `chain`
-          ;; joins it over existing facts (process-datum -> fire-rule) at its own strength
-          ;; — and the twin joins beside it, since the spelling this rule was written in
-          ;; stops firing the moment the supersession above lands
-          (when (and (:chain? opts true) (rules/forward-sentex? s))
-            ;; ...and if an antecedent reads a declared-transitive predicate, the partner
-            ;; facts go back as triggers too: a rule joined over the store from the
-            ;; transitive side sees the stored links only, since its closure is answered
-            ;; rather than stored and an open goal on it has no record to lead from
-            (chain/chain-all kb (-> (into [h] (:new mig))
-                                    (into (special/transitive-rule-seeds kb s)))
-                             opts))
-          (violations/report kb (:violations mig)))
-        (when-not *defer-settle?* (settle/settle kb)))
-      (do
-        (reconcile-rule-slots! kb h s sentence context opts)
-        ;; `find-or-create-sentex` hands back the stored record and drops the strength
-        ;; the second assertion carried, the same way it drops the direction the
-        ;; reconcile above puts back — and the mark is worth making for a second reason
-        ;; than the class: a stored rule need not be a premise at all (a generator's
-        ;; stamped rule is a *conclusion*, resting on the generator's justification), and
-        ;; asserting one is an independent ground for it, exactly as asserting an
-        ;; already-derived fact is at the fact entry point.
-        ;;
-        ;; **Resolved from content, like the two slots above it.**  `strength/max` takes
-        ;; the stronger, so the two orders agree and a third assertion changes nothing —
-        ;; the rule `reconcile-rule-slots!` holds for `:direction` and `:defeasible`, and
-        ;; it holds here for the same reason: a re-assert carrying no `:strength` states
-        ;; nothing about the class, so reading that silence as a downgrade made
-        ;; `defeat-class` answer differently for the same two assertions in either order.
-        ;; Narrowing one is `retract!` and re-assert, as it is for the other two.  A
-        ;; record with no class yet — nil, so not a premise — ranks 0 and takes the
-        ;; incoming class.
-        (let [resolved (strength/max (:strength s) strength)]
-          (when (not= resolved (:strength s))
-            (mark-premise kb h resolved)
-            ;; the mark relabels, and an entry point that moves a label settles before it
-            ;; returns.  A class move alone moves none, nothing in the engine defeating
-            ;; a rule — but the *first* mark of a rule that was only ever concluded puts
-            ;; it IN, and that revives whatever it licenses.
-            (when-not *defer-settle?* (settle/settle kb))))))
-    h))
-
-;; A `set/defaultRule` wrapper sets `:defeasible` on the record, so the one rule path
-;; below handles every flavour — do not add a second entry point per flavour.
-
-(defn- assert-exceptWhen-meta!
-  "Store one exceptWhen exception against the rule at `rule-handle` as a
-  belief-following `(exceptWhen <aligned-query> (sentexHandle rule-handle))`
-  meta-sentex, and return its handle.
-
-  `exc` is the exception's conjunct literals in the *author's* variable names (as
-  written beside the rule), and `author-vm` is the canonical→author varmap of the rule
-  **as written in this assert** — not the rule's stored varmap, which carries whatever
-  names the rule was *first* asserted with, so a re-reference under new variable names
-  would misalign.  The query is mapped to the rule's canonical variables through it, so
-  a firing's bindings substitute straight in; an exception variable no antecedent binds
-  is refused (`:exception-not-closed`), as is one that would close a cycle through
-  negation (`check-exceptWhen-stratified`).  Storing it posts the re-check index
-  (`index-exceptWhen-meta`) and settles, so any conclusion the new exception now blocks
-  is swept before this returns."
-  [kb rule-handle exc author-vm context opts]
-  (let [rsx (p/get-sentex (:records kb) rule-handle)]
-    (when-not (and rsx (rules/rule? rsx))
-      (throw (ex-info (str "exceptWhen names handle " rule-handle ", which is not a rule")
-                      {:type :not-well-formed :handle rule-handle :exception (vec exc)})))
-    (let [author  (into #{} (vals author-vm))                       ; the rule's author variables
-          inv     (into {} (map (fn [[cv av]] [av cv])) author-vm)  ; {?x ?var0}
-          exc-vars (distinct (mapcat #(filter sx/variable? (tree-seq sequential? seq %)) exc))
-          loose   (remove author exc-vars)]
-      (when (seq loose)
-        (throw (ex-info (str "exception is not closed: " (pr-str (vec loose))
-                             " unbound by the rule's antecedents")
-                        {:type :exception-not-closed :unbound (vec loose)
-                         :exception (vec exc) :rule rule-handle})))
-      (let [aligned (sx/sort-conjuncts (map #(sx/canon (res/substitute % inv)) exc))
-            meta-s  (sx/exceptWhen-meta aligned rule-handle)]
-        ;; Each conjunct is held to the naming invariants, like every other literal a
-        ;; rule carries.  `check-rule-sentence` runs `nm/check!` on `rules/inner-rule`,
-        ;; which has already peeled the query off, and nothing else reached it — so
-        ;; `nm/literals`' `:exception` role and the "exceptWhen exception" wording in
-        ;; `literal-roles` existed with nothing on the assert path calling them, and
-        ;; `(exceptWhen (lives_in ?x cold_place) …)` stored the snake_case-arity-2
-        ;; literal `docs/naming.md` says is refused.  The store holding what the front
-        ;; entry point refuses is the structure of corruption these checks exist to stop.
-        (run! #(nm/check! (:naming kb) % context) aligned)
-        (checks/check-no-imperative meta-s)
-        (checks/check-exceptWhen-stratified kb rule-handle (keep nm/functor aligned) context)
-        (let [strength   (get opts :strength :default)
-              [h s new?] (kb/find-or-create-sentex kb meta-s context strength)]
-          (when new?
-            (mark-premise kb h strength)
-            (integrate/sentex-added kb s h)          ; index-exceptWhen-meta + queue the re-check
-            ;; If the rule already migrated before this exception existed, migration never
-            ;; saw the exception — re-point it onto the live twin(s) now, or the twin fires
-            ;; unguarded (docs/equality.md, the meta-after-merge case).
-            (special/migrate-meta-onto-twins kb s)
-            (when-not *defer-settle?* (settle/settle kb)))  ; sweep what the new exception now blocks
-          h)))))
-
-(defn- ist-parts
-  "The `[context sentence]` an `(ist Ctx S)` names, or nil when the form is not one — a
-  bare `(ist Ctx)` included.
-
-  `assert` and `check` both read the form here, so a malformed `ist` is one refusal on
-  both paths.  Reaching into it positionally is how the two would disagree: `check`
-  taking a default and reporting `:shape` while `assert` takes none and throws a bare
-  `IndexOutOfBoundsException`, which carries no `:type` for a caller to discriminate on
-  and names nothing a writer can act on."
-  [sentence]
-  (when (and (sequential? sentence)
-             (= sx/ist-functor (first sentence))
-             (= 3 (count sentence)))
-    [(second sentence) (nth sentence 2)]))
-
-(defn- ist-shape-problem
-  "The `:shape` problem a malformed `ist` is refused with — a value for `check`, and the
-  `ex-info` `assert` throws."
-  [sentence]
-  {:type :shape :sentence sentence
-   :message (str "an (ist Ctx S) names a context and a sentence, got " (pr-str sentence))})
-
-;; `(ist Ctx S)` handed to `assert` recurses into `assert` with the inner sentence
-;; (`assert-one` below), and `assert` is defined after it — a genuine forward
-;; reference, and the only one here: query and settle live below this namespace, in
-;; impl.kb and impl.settle.
-(declare assert)
-
-(defn- assert-one
-  "Assert a single sentence (any conjunctive-consequent rule is split into one rule
-  per conjunct by `assert` before reaching here).  Returns the sentex handle."
-  [kb sentence context opts]
-  (cond
-    ;; A `do/` imperative is an instruction, not a fact: nothing is stored, and what
-    ;; comes back is the action's result (docs/labeling.md).  First, so no naming or
-    ;; well-formedness check ever sees a form that is not a sentence.
-    (sx/do-form? sentence)
-    (imperative/run kb sentence context)
-
-    ;; (ist Ctx S) is not stored — it finds or creates S in Ctx (ist semantics)
-    (and (sequential? sentence) (= sx/ist-functor (first sentence)))
-    (if-let [[ctx s] (ist-parts sentence)]
-      (assert kb s ctx opts)
-      (let [p (ist-shape-problem sentence)]
-        (throw (ex-info (:message p) (dissoc p :message)))))
-
-    ;; Every rule flavour takes one path: a bare `(implies ..)` (a :both rule) and
-    ;; any `set/*Rule` wrapping of one.  The wrapper is not stripped here — it is
-    ;; canonicalized into the record's :direction / :defeasible by the sentex
-    ;; constructor.  Routing through the checked rule path also gets
-    ;; range-restriction and rule indexing, rather than storing a plain premise.
-    (rules/rule-sentence? (rules/inner-rule sentence))
-    (assert-rule-sentence kb sentence context opts)
-
-    :else
-    ;; A virtual wrapper (`set/*Rule`, `set/defaultRule`, `exceptWhen`) is meaningful
-    ;; only around an implication, but the sentex constructor peels it off whatever it
-    ;; wraps — so `(set/defaultRule (dog Felix))` *stores* the bare `(dog Felix)`.
-    ;; Peel it here too, so the checks below run on the sentence that will actually be
-    ;; stored.  Checking the wrapper instead let a fact walk past every definitional
-    ;; check: the functor is `set/defaultRule` and the sole argument is a list, so
-    ;; naming, arg, disjointness and functionality all matched nothing and passed
-    ;; vacuously, and the stripped fact landed in the store unchecked.
-    ;;
-    ;; A *forced* universal predicate (e.g. genlCx) has its extent placed in
-    ;; CxUniverse by force — no justification, the fact simply lives there.
-    (let [sentence (rules/inner-rule sentence)
-          pred    (nm/functor sentence)
-          ;; the global property read on purpose: this decides where the sentex is
-          ;; *stored*, and storage cannot vary by the writer's visibility — scoping
-          ;; the lift by what could see the declaration would be circular
-          context (if (and pred (tax/has-prop? (reasoning/taxonomy kb) :forced-decontextualized pred))
-                    special/universal-context context)]
-      ;; Bulk load skips every check below: each only *validates* (none writes), and
-      ;; the caller has guaranteed the corpus is well-formed — including the arg
-      ;; store query in `constraint-checks`, the dominant per-fact cost (*bulk-load?*).
-      ;; The checks yield one *value* forward: what the argument constraints entail
-      ;; about this sentence's arguments.  It is computed here — where the declarations
-      ;; are already being read — and materialized below, because at this point the
-      ;; sentex does not exist yet and there is no handle to justify a derived type
-      ;; against.  Empty unless assertive argument types are on.
-      (let [ents (when-not *bulk-load?*
-                   (nm/check! (:naming kb) sentence context)
-                   (checks/check-ground kb sentence context)
-                   (when-let [ps (seq (special/wff-problems (reasoning/taxonomy kb) sentence context))]
-                     (throw (ex-info (str "not well-formed: " (str/join "; " ps))
-                                     {:type :not-well-formed :sentence sentence})))
-                   ;; the rule-set half of well-formedness, for the *other* thing that can
-                   ;; close a cycle through negation: a genl / genlCx edge arriving
-                   ;; underneath rules already stored (docs/exceptions.md).  Before anything
-                   ;; is written and before the taxonomy is touched, so a refusal leaves
-                   ;; nothing behind.
-                   (checks/check-edge-stratified kb sentence context)
-                   ;; ...and the third thing that can: a `closed_extent_predicate` grant
-                   ;; arriving underneath rules that read the predicate negatively, which
-                   ;; is what turns those reads into negation as failure (docs/naf.md)
-                   (checks/check-closed-extent-stratified kb sentence context)
-                   (checks/constraint-checks kb sentence context))
-            strength (get opts :strength :default)
-            ;; Bulk load skips the dedup trie-walk: a distinct corpus never hits an
-            ;; existing sentex, so `create-sentex` directly is the same result the
-            ;; `find-or-create` miss branch would take.
-            ;; the record is born carrying its strength, so `mark-premise` below has
-            ;; nothing to re-store — see `kb/create-sentex`.
-            ;;
-            ;; **A symmetric predicate keeps the probe.**  `create-sentex` canonicalizes
-            ;; the arguments (`res/kb-sentex` sorts a `(symmetric P)` literal), so the bulk
-            ;; row is *stored* in canonical order — but skipping the probe stored it beside
-            ;; a mirror already there, two records for one proposition, which the caller
-            ;; cannot pre-dedup: telling `(siblingOf Bob Ann)` from a stored
-            ;; `(siblingOf Ann Bob)` needs exactly the `(symmetric P)` read the fast path
-            ;; is avoiding.  So for a symmetric functor the row takes `find-or-create` (one
-            ;; taxonomy read per row for a rare mark), which is what makes the bulk result
-            ;; identical to loading one-by-one (`integrate/symmetrize-existing`, vaelii#61).
-            ;; The `has-prop?` read is inside the `*bulk-load?*` `and`, so `and` short-
-            ;; circuits it away on the non-bulk path, which never reaches it.
-            [h s _]  (if (and *bulk-load?*
-                              (not (and pred (tax/has-prop? (reasoning/taxonomy kb) :symmetric pred))))
-                       (let [[h s] (kb/create-sentex kb sentence context strength)] [h s true])
-                       (kb/find-or-create-sentex kb sentence context strength))]
-        (mark-premise kb h strength)
-        ;; The add-side choke point: the sentex is reflected into every cache
-        ;; through the special-predicate table and the exception re-check is queued
-        ;; — one call, so no assert path can forget either half.  An equality
-        ;; sentex reaches the closure there and migrates what it displaces;
-        ;; everything else returns nil.  The three slots it returns are the caller's
-        ;; to apply: the twins are chaining seeds, the supersessions are belief, and
-        ;; and the violations are reported after `chain-all` so they carry its run id.
-        (let [eq (integrate/sentex-added kb s h)
-              ;; a fact naming a term the closure has *already* displaced is restated
-              ;; on arrival, exactly as a fact asserted before the merge is restated
-              ;; by it — otherwise migration would depend on which came first
-              own  (when (kb/rewritable-sentex? kb s) (special/migrate-sentex kb s))
-              ;; ...and, symmetrically, a handle-naming meta (`except`, a target-following
-              ;; reply) whose *target* already migrated: the merge ran before this meta
-              ;; existed, so migration never saw it — re-point it onto the live twin(s) now,
-              ;; or the twin stays visible / unendorsed (docs/equality.md, the
-              ;; meta-after-merge case).  A no-op for a non-meta or an un-migrated target.
-              _    (special/migrate-meta-onto-twins kb s)
-              ;; ...and the equality a `functional` declaration now infers instead of
-              ;; throwing, which merges in its turn
-              fnl  (special/derive-functional-equalities kb sentence context h)
-              ;; ...and the same inference from the declaration's side, so a
-              ;; `(functional P)` arriving after P's facts merges what they already
-              ;; licensed rather than only what follows it
-              fex  (special/equate-existing kb sentence)
-              ;; ...and from the third side: a `genl` edge between predicates brings
-              ;; stored sub-predicate facts under a `functional` mark above them
-              fdn  (special/equate-under-edge kb sentence)
-              ;; ...and the antisymmetric merge, in the same three arrival orders: a fact
-              ;; meeting its converse under an `(anti_symmetric P)` mark, the declaration
-              ;; meeting the facts, and the `genl` edge bringing them under a mark above
-              asym (special/derive-antisymmetric-equalities kb sentence context h)
-              axe  (special/antisym-equate-existing kb sentence)
-              axd  (special/antisym-equate-under-edge kb sentence)
-              ;; ...and the same three ingredients once more, through the *other*
-              ;; closure, which takes all three of them in one call.  A `genlCx` edge
-              ;; widens which merges a context can see, so it restates the sentexes the
-              ;; widened ancestor set newly exposes to one — or the record keeps a spelling every
-              ;; read from below has retired (docs/equality.md, "An equality applies where
-              ;; it is visible") — and it is the fourth arrival order of the
-              ;; functional/antisymmetric merge besides, alongside the declaration meeting
-              ;; the facts and the `genl` edge bringing them under a mark above them: two
-              ;; already-marked facts can be made jointly visible for the first time by an
-              ;; edge, and without this the merge those two arrival orders derive would
-              ;; depend on whether the contexts were ever wired together before the facts
-              ;; arrived.  One call and not three because a *computed* edge — one the
-              ;; structural producer materializes with nobody asserting it — has to make
-              ;; the same one, and a list each entry point remembers separately is a list one of
-              ;; them forgets (vaelii#56)
-              cxe  (special/reconcile-context-edge kb sentence)
-              ;; ...and the one mark whose retroactive half is a *storage* migration
-              ;; rather than a derivation: `(symmetric P)` sorts a literal's arguments at
-              ;; the entry point, so the rows stored before it are spelled the way no row stored
-              ;; after it will be — and a mirrored pair is two records for one
-              ;; proposition, each retractable without the other (vaelii#61)
-              sym  (integrate/symmetrize-existing kb sentence h)
-              mig  (merge-with into {:new [] :superseded [] :violations []}
-                               eq own fnl fex fdn asym axe axd cxe sym)]
-          ;; Only when this assert actually merged something.  The reconcile re-examines
-          ;; every entry the closure currently displaces, and an assert that merged
-          ;; nothing cannot change one: an entry stops being displaced when its terms
-          ;; stop rewriting (the closure shrank) or when its restatement stops being
-          ;; stored (a deletion), and an assert does neither.  Ungated it is O(merged)
-          ;; per assertion — on OpenCyc, 1,489 merges re-examined 780,000 times.
-          (when (seq (:superseded mig))
-            (special/refresh-supersessions kb (:superseded mig)))
-          ;; the CxUniverse copy, if the predicate is decontextualized — a
-          ;; deduction off this sentex and the declaration, so it is a chaining seed
-          ;; of its own, and it reports rather than throws when it cannot be admitted
-          (let [lift  (special/deduce-lifts kb sentence h context)
-                ;; ...and the types the argument constraints entail about this
-                ;; sentence's arguments, each a deduction off this sentex and the
-                ;; declaration that licensed it.  Both directions, because a
-                ;; declaration must reach the facts already stored exactly as it
-                ;; reaches the facts that follow: `deduce-arg-types` is this sentence
-                ;; meeting the declarations, `entail-existing` is this sentence *being*
-                ;; a declaration and meeting the facts.  `ents` are pre-checked: they
-                ;; came from `constraint-checks`, so `entailment-check` already ran the
-                ;; definitional constraint check over them before the store, and the
-                ;; materializer need not run it a second time (special/inadmissible).
-                args  (special/deduce-arg-types kb ents h context (not *bulk-load?*))
-                back  (special/entail-existing kb sentence h)
-                ;; ...and the third order of the same three ingredients: a `genl` edge
-                ;; between predicates brings stored sub-predicate facts under the
-                ;; declarations already written above them
-                down  (special/entail-under-edge kb sentence)
-                ;; ...and, when this sentence is a `defn*` collection definition, the
-                ;; forward rule(s) it expands into — derived rule sentexes justified by
-                ;; this fact, so retracting or defeating it withdraws the rule and
-                ;; everything it concluded (docs/defns.md).  A non-`defn*` sentence pays
-                ;; one functor read and returns the empty result.
-                dfn   (special/materialize-defn-rules kb sentence h context)
-                mig   (update mig :violations into
-                              (concat (:violations lift) (:violations args)
-                                      (:violations back) (:violations down)
-                                      (:violations dfn)))
-                seeds (-> [h]
-                          (into (:new mig))
-                          (into (:new lift))
-                          (into (:new down))
-                          ;; the companion rule goes on the agenda so it fires over the
-                          ;; facts already stored, the way a minted generator rule does
-                          (into (:new dfn))
-                          ;; a minted type makes this fact matchable at a type it did
-                          ;; not have, so it goes on the agenda for the same reason the
-                          ;; genl seeds below do — a rule on `(animal ?x)` must fire off
-                          ;; a type the entailment minted, within this same assert
-                          (into (:new args))
-                          (into (:new back))
-                          ;; a new genl edge makes stored facts matchable at a
-                          ;; supertype they did not have — they go back on the agenda,
-                          ;; or the same knowledge would derive different things in
-                          ;; different arrival orders
-                          (into (special/subsumption-seeds kb sentence))
-                          ;; ...and a new genlCx edge makes stored facts visible to
-                          ;; a rule that could not see them, which is the same failure
-                          ;; through the other closure
-                          (into (special/visibility-seeds kb sentence))
-                          ;; ...and a new link of a declared-transitive predicate extends
-                          ;; a closure that is answered rather than stored, so no pair of
-                          ;; it is ever a datum: the partner triggers of the rules joined
-                          ;; to it go back, or the same failure again through a third
-                          (into (special/transitive-seeds kb sentence)))]
-            (when (:chain? opts true) (chain/chain-all kb seeds opts))
-            ;; **After** the chain, so the entry carries the run that just ran: a
-            ;; violation a merge created — the twin that would have made one individual
-            ;; both a dog and a cat — is this assert's to report, and
-            ;; `violations/report` stamps each entry with `(:runs @chain-stats)`
-            ;; (docs/equality.md, "Interactions — Disjointness").  The ledger itself
-            ;; accumulates and is emptied only by `clear-violations!`.
-            (violations/report kb (:violations mig))))
-        ;; `*defer-settle?*` is bound only while a rule firing mints a skolem NAT
-        ;; mid-fixpoint (`skolemize-conclusion`): the nested `(termOfUnit K E)` assert
-        ;; is monotonic bookkeeping and the enclosing firing settles once when it
-        ;; completes, so settling here per mint is redundant churn (docs/skolem.md).
-        (when-not *defer-settle?* (settle/settle kb))
-        h))))
-
 ;; ---- provenance ---------------------------------------------------------
 ;; A per-handle bookkeeping map (creator + creation date, plus whatever an
 ;; application adds) kept beside the record, never as fields on it (see
@@ -1815,13 +1265,17 @@
 ;; ---- non-atomic terms: the write-path reify + mint -----------------------
 ;; The write-mode reify (mint + result-type materialization + collision merge) lives in
 ;; `vaelii.impl.nat`, storing through the assert path via `vaelii.impl.wiring` — so all NAT
-;; reification is in one namespace.  What stays here is dropping an orphaned reified NAT on
-;; retract; skolemizing an existential head is `vaelii.impl.skolem`.
+;; reification is in one namespace.  The maintenance the write paths run around it — the
+;; post-assert reconciliation and the orphan sweep — is `vaelii.impl.nat-maintenance`, which
+;; this namespace reaches through one call per site; skolemizing an existential head is
+;; `vaelii.impl.skolem`.
 ;;
 ;; `retract!` and `edit` are both forward-referenced and both defined far below, because
-;; the write path and the query family are interleaved in this file:
-;; `remove-orphaned-nats!` calls `retract!`, and `abduce` is handed `edit` to discard a
-;; scratch context with.
+;; the write path and the query family are interleaved in this file: `finish-teardown!` and
+;; `rollback-batch!` hand `retract!` to the orphan sweep as the teardown entry point to
+;; remove bookkeeping with, `rehome-forced-extent!` retracts the premise it has just
+;; re-asserted in CxUniverse, and `abduce` is handed `edit` to discard a scratch context
+;; with.
 
 (declare retract! edit!)
 
@@ -2100,32 +1554,35 @@
                       {:type :unknown-option :mismatch :bad-value :strength (:strength opts)
                        :options (vec (sort strength/assertable))})))))
 
-(defn- apply-computed-edge-merges
-  "The follow-through a **computed** `genlCx` edge's merges owe, in the order
-  `assert-one` runs the same three for an asserted one: the retired spellings
-  reconciled, the twins put on the agenda as seeds, the violations reported after the
-  chain that could add to them, and one settle.
+(defn- rehome-forced-extent!
+  "When `sentence` is a `(forced_decontextualized_predicate P)` declaration, move every
+  `(P …)` premise stored outside CxUniverse into it: the same sentence asserted there
+  at the premise's own strength, and the original retracted.
 
-  `mig` is what `context-nat/reconcile-genlCx` — or, on the teardown path,
-  `reconcile-revivals` — carried up from `special/reconcile-context-edge`.  It is nil
-  whenever the producer merged nothing, which is every KB that states no equality and
-  every re-run over edges it already had, so the common case costs one test.
+  The declaration forces the storage context of each `(P …)` asserted after it
+  (`assert-entry/assert-one`), and without this a `(P …)` asserted before it stayed
+  where it was written and drew the entailments a fact in that context draws — so the
+  KB a load ends with depended on whether the declaration or the fact arrived first.
+  `text/load-entries!` moves the context topology ahead of everything else, which put
+  every `genlCx` edge a text load reads ahead of CxCore's own declaration.
 
-  **Separate from `assert-one`'s own block, and it has to be.**  A structural edge is
-  entailed *by the fact that was just stored* — the mint of one context beside another
-  is what creates the sibling pair to order — so the producer cannot run until that
-  fact is in, and by then `assert-one` has chained and settled.  The merges a computed
-  edge licenses are therefore genuinely later knowledge, and they need their own pass
-  rather than a second settle nested inside the first."
-  [kb mig opts]
-  (when mig
-    (when (seq (:superseded mig))
-      (special/refresh-supersessions kb (:superseded mig)))
-    (when (and (:chain? opts true) (seq (:new mig)))
-      (chain/chain-all kb (vec (:new mig)) opts))
-    (violations/report kb (:violations mig))
-    (when-not *defer-settle?* (settle/settle kb)))
-  nil)
+  Premises only: a derived `(P …)` placed outside CxUniverse is placed by the rule that
+  concluded it, and is re-placed when that derivation is re-run.  The extent is
+  snapshotted before the first move, since each move writes to the posting being read.
+  `assert-fn` is `assert`, handed in because this runs inside it."
+  [kb sentence assert-fn]
+  (let [s    (rules/inner-rule sentence)
+        pred (when (and (seq? s) (= 'forced_decontextualized_predicate (first s))) (second s))]
+    (when (and (symbol? pred)
+               (tax/has-prop? (reasoning/taxonomy kb) :forced-decontextualized pred))
+      (doseq [sx (vec (kb/find-sentexes kb pred))
+              :let [h (:id sx)]
+              :when (and (= pred (nm/functor (:sentence sx)))
+                         (not= special/universal-context (:context sx))
+                         (jtms/premise? (reasoning/tms kb) h))]
+        (assert-fn kb (:sentence sx) special/universal-context
+                   {:strength (p/premise-strength (:records kb) h)})
+        (retract! kb h)))))
 
 (defn assert
   "Assert `sentence` in `context` (default 'CxUniverse) as a JTMS premise: enforce
@@ -2224,8 +1681,8 @@
          ;; exception aligns against the stored rule's own varmap (the only author names
          ;; there are).  Its checks live in `assert-exceptWhen-meta!`.
          (let [h  (sx/handle-id inner)
-               mh (assert-exceptWhen-meta! kb h exc (:varmap (p/get-sentex (:records kb) h))
-                                           context exc-opts)]
+               mh (entry/assert-exceptWhen-meta! kb h exc (:varmap (p/get-sentex (:records kb) h))
+                                                 context exc-opts)]
            (stamp-provenance! kb mh opts)
            mh)
          ;; An inline-rule exceptWhen.  Run the whole-rule checks (naming,
@@ -2241,7 +1698,7 @@
          ;; tie group can be numbered differently by each (the consequent breaks the
          ;; tie), so one shared varmap would misalign the exception on a conjunct
          ;; whose numbering differs.
-         (let [_       (check-rule-sentence kb sentence context)
+         (let [_       (entry/check-rule-sentence kb sentence context)
                _       (sx/check-exception-closed (rules/antecedents (rules/inner-rule inner)) exc)
                ;; as written rather than aligned — naming reads functors and argument
                ;; spellings, which alpha-renaming does not touch
@@ -2253,7 +1710,7 @@
                ;; conjunct within each
                forms   (rules/expand-rule inner)
                meta-hs (mapv (fn [h form]
-                               (assert-exceptWhen-meta!
+                               (entry/assert-exceptWhen-meta!
                                 kb h exc
                                 (:varmap (res/kb-sentex kb (rules/inner-rule form) context))
                                 context exc-opts))
@@ -2273,35 +1730,17 @@
                      ;; asserted or none of it is.
                      ;; Without this a refusal on a later conjunct left the earlier ones
                      ;; stored and firing.
-                     (do (run! #(check-rule-sentence kb % context) forms)
-                         (mapv #(assert-one kb % context opts) forms))
-                     (assert-one kb (first forms) context opts))]
+                     (do (run! #(entry/check-rule-sentence kb % context) forms)
+                         (mapv #(entry/assert-one kb % context opts {:assert-fn assert :bulk? *bulk-load?*}) forms))
+                     (entry/assert-one kb (first forms) context opts {:assert-fn assert :bulk? *bulk-load?*}))]
          (stamp-provenance! kb h opts)
-         (when (and (nat/any-reifiable-functions? kb) (sequential? sentence))
-           ;; A rename is an equality assert; its migration can collapse two NATs onto
-           ;; one expression.  Restore the 1:1 constant↔expression invariant by merging
-           ;; the collisions (only after an equality).
-           (when (kb/equality-sentence? sentence)
-             (nat/merge-colliding-nats! kb sentence))
-           ;; A `functionCorrespondingPredicate` makes an application and a predicate
-           ;; fact two spellings of one claim, so a value asserted after its
-           ;; application was minted — or a declaration asserted after both — leaves
-           ;; two terms standing for one object.  Equate them, or the KB's answer
-           ;; depends on which arrived first (docs/nat.md).
-           (nat/reconcile-correspondence! kb sentence)
-           ;; Structural genlCx: a fact stored into a `Cx*Fn` context, or a
-           ;; `contextArgSubrelation` declaration, may entail new genlCx edges between
-           ;; sibling NAT contexts — materialize them, justified so they belief-follow
-           ;; (docs/context-nat.md).  Inside the reifiable gate (a free in-memory read):
-           ;; a `context_denoting_function` is a reify-kind, so any KB with a context NAT to
-           ;; order already passes it, and one without any reifiable function has no cx/
-           ;; context and nothing to reconcile — so the `any-context-subrelations?` index
-           ;; read the producer gates on is never paid by a KB that reifies nothing.
-           ;; ...and what those edges merged.  A computed edge widens which merges a
-           ;; context can see exactly as a stated one does, so it owes the same
-           ;; follow-through — nil, and one test, whenever it merged nothing (vaelii#56)
-           (apply-computed-edge-merges
-            kb (context-nat/reconcile-genlCx kb sentence context) opts))
+         (rehome-forced-extent! kb sentence assert)
+         ;; The collision merge a rename may have caused, the correspondence a value or
+         ;; a declaration arriving last leaves to settle, the structural genlCx edges the
+         ;; stored fact entails, and the merges those edges license — sequenced below
+         ;; core, behind one gate a KB that reifies nothing never passes
+         ;; (docs/nat.md, docs/context-nat.md).
+         (nat-maint/reconcile-assert kb sentence context opts)
          h)))))
 
 (defn assert-rule
@@ -2321,10 +1760,13 @@
    (rules/check-range-restricted antecedents consequent)
    ;; `:direction` is just the programmatic spelling of a set/*Rule wrapper — wrap
    ;; and hand it to the one rule path, where the sentex constructor turns it into
-   ;; the record's :direction.  assert also splits a conjunctive consequent.
+   ;; the record's :direction.  assert also splits a conjunctive consequent.  The
+   ;; wrapper then carries the direction, so `:direction` leaves the opts: `assert`
+   ;; reads a second statement of it as a conflict when the two spell one class
+   ;; differently (`:both` against the `:forward` wrapper).
    (let [sentence (rules/wrap-direction (rules/rule-sentence antecedents consequent)
                                         (:direction opts :backward))]
-     (assert kb sentence context opts))))
+     (assert kb sentence context (dissoc opts :direction)))))
 
 ;; ---- check: would this assert succeed, and why not? ----------------------
 ;;
@@ -2418,7 +1860,7 @@
   [kb sentence context]
   (first-problems
    (for [form (rules/expand-rule sentence)]
-     #(some-> (problem (fn [] (check-rule-sentence kb form context))) vector))))
+     #(some-> (problem (fn [] (entry/check-rule-sentence kb form context))) vector))))
 
 (defn- exceptWhen-naming-problems
   "The naming problems an exceptWhen query's own literals carry, as values.
@@ -2473,8 +1915,8 @@
     :exception-not-closed  an exceptWhen variable no antecedent of the rule binds
     :arg-type              an arg constraint on an argument
     :arg-genl              a genlArg constraint — the argument is not a subtype of the floor
-    :inter-arg-type        an interArg constraint whose trigger argument holds and whose
-                           target argument does not
+    :inter-arg-type        an interArg, interArgs or interArgAndRest constraint whose
+                           trigger argument holds and whose target argument does not
     :arg-position          a declaration constraining a position the predicate's
                            declared length does not have
     :arg-constraint-kind   a declaration of the wrong family for the predicate's
@@ -2556,9 +1998,9 @@
            ;; `(ist Ctx S)` is not stored — it finds or creates S in Ctx, so that is
            ;; what there is to check
            (= sx/ist-functor (first sentence))
-           (if-let [[ctx s] (ist-parts sentence)]
+           (if-let [[ctx s] (entry/ist-parts sentence)]
              (check kb s ctx opts)
-             [(ist-shape-problem sentence)])
+             [(entry/ist-shape-problem sentence)])
 
            :else
            (let [[exc inner] (rules/split-exceptWhen sentence)]
@@ -2894,68 +2336,6 @@
      (when on-progress (event {:phase :done :total (count hs)} (count hs)))
      hs)))
 
-;; ---- non-atomic terms: orphan removal on retract -------------------------
-;; The rename collision-merge (`nat/merge-colliding-nats!`) lives with the rest of the
-;; reify in `vaelii.impl.nat`; what stays here is orphan removal, because it rides the
-;; `retract!` sweep and reads its `*in-orphan-removal?*` re-entry guard.
-
-(def ^:dynamic ^:private *in-orphan-removal?*
-  "Bound true while `remove-orphaned-nats!` retracts orphaned reified NAT bookkeeping, so the
-  nested `retract!`s do not re-enter the sweep."
-  false)
-
-(defn- remove-orphaned-nats!
-  "Remove every reified constant no live use references any more — its `termOfUnit`
-  map and materialized result types would otherwise dangle a raw `nat/` symbol.
-
-  **Both kinds of constant, at one gate and by one rule** (docs/nat.md,
-  docs/context-nat.md).  An object `nat/` constant is referenced by the sentences that
-  name it; a `cx/` context is referenced by those *and* by whatever is stored in it, so
-  the last fact leaving an empty reified context is as much an orphaning removal as the
-  last sentence dropping its name — `nat/constants-named-by` reads a removed sentex's
-  context slot beside its sentence for exactly that, and `nat/orphan?` asks the extent
-  before the term index.  What the producer *computed* off the map — the structural
-  `genlCx` edges of docs/context-nat.md — is not a reference: it is derived from the very
-  bookkeeping in question, so a pair of ordered contexts would otherwise hold each other
-  up forever.
-
-  `sink` is the teardown's removal record (`integrate/*removed-sink*`), or nil to ask
-  the whole KB.  With one, each round's candidates are the constants the sentexes
-  removed since the last round named, and the cost is the region's rather than the KB's
-  whole `termOfUnit` population's.
-
-  **A removal is what makes a candidate, and belief is what settles one** — the two are
-  not the same question and this arm does not treat them as one.  A use that merely stops
-  being *believed* is not a use that went: a defeated premise is still in the store, still
-  names its constant, and a relabel can restore it.  Collecting on that reading would
-  delete the map while a stored sentence names the constant, and the restoring relabel
-  would dangle the very `nat/` symbol the sweep exists to prevent — so a constant no
-  removal named is not a candidate however its uses are labelled.  `orphan?` still reads
-  belief, because that is the right question about a candidate: whether what is *left*
-  referencing it is only its own bookkeeping.
-
-  Loops to a fixpoint either way, since removing one orphan can orphan a nested one —
-  the constant standing in the removed expression.  **The region grows with the loop**:
-  the retractions below append to the same sink, so what one round's removals stopped
-  referencing is exactly the next round's candidate set, and a cascade is found by the
-  same rule that found the first orphan.  The guard bounds a pathological chain; the
-  empty round is what normally ends it."
-  [kb sink]
-  (binding [*in-orphan-removal?* true]
-    (loop [mark 0 guard 0]
-      (let [removed (when sink @sink)
-            orphans (if sink
-                      (nat/orphaned-among kb (nat/constants-named-by (subvec removed mark)))
-                      (nat/orphaned-constants kb))
-            ;; realized before the first retraction below, not while it runs: what
-            ;; counts as an orphan's bookkeeping is read off the bookkeeping itself,
-            ;; so a set computed lazily is a set computed partly against a KB this
-            ;; loop has already torn pieces out of
-            handles (vec (distinct (mapcat #(nat/bookkeeping-handles kb %) orphans)))]
-        (when (and (seq handles) (< guard 64))
-          (doseq [h handles] (retract! kb h))
-          (recur (count removed) (inc guard)))))))
-
 (def ^:private forward-chain-opt-keys
   "Every key `forward-chain` hands the chaining fixpoint (`chain/chain-all`'s
   destructure) — the roster `check-forward-chain-opts!` holds an opts map to."
@@ -3197,9 +2577,9 @@
           [goal (reic context)])
 
       (and (sequential? goal) (seq goal) (= sx/ist-functor (first goal)))
-      (if-let [[ctx s] (ist-parts goal)]
+      (if-let [[ctx s] (entry/ist-parts goal)]
         [s (reic ctx)]
-        (check-shape! (ist-shape-problem goal)))
+        (check-shape! (entry/ist-shape-problem goal)))
 
       :else [goal (reic context)])))
 
@@ -3481,9 +2861,9 @@
     ;; `(ist Ctx S)` is not stored, at this entry point as at `assert`: it names the context
     ;; S holds in, and the record is S in Ctx.  Stored as written it was a record with
     ;; the `ist` functor that `handle-of`, `contexts-of` and every read resolved past.
-    (if-let [[ctx s] (ist-parts sentence)]
+    (if-let [[ctx s] (entry/ist-parts sentence)]
       (assert-inert kb s ctx)
-      (check-shape! (ist-shape-problem sentence)))
+      (check-shape! (entry/ist-shape-problem sentence)))
     (do
       (nm/check! (:naming kb) sentence context)
       ;; a stored sentence is closed (`checks/check-ground`, the same refusal `assert`
@@ -5336,7 +4716,7 @@
   | entry | means | detail |
   |---|---|---|
   | `:arg-type` / `:arg-genl` | an argument fails a declared constraint — `arg`'s type, or `genlArg`'s subtype floor | `:arg` `:expected` `:position` `:message` |
-  | `:inter-arg-type` | an `interArg` conditional constraint whose trigger argument holds and whose target argument does not | `:arg` `:expected` `:position` `:trigger` `:trigger-type` `:trigger-position` `:message` |
+  | `:inter-arg-type` | an `interArg` conditional constraint, or an `interArgs` / `interArgAndRest` homogeneity constraint, whose trigger argument holds and whose target argument does not | `:arg` `:expected` `:position` `:trigger` `:trigger-type` `:trigger-position` `:message` |
   | `:arg-position` | a *declaration* constrains an argument the predicate's declared length does not have | `:predicate` `:position` `:arity` `:via` `:message` |
   | `:arg-constraint-kind` | a declaration disagrees with the predicate's `relation_kind` — `genlArg` on an instance relation, `arg` on a type relation | `:predicate` `:message` |
   | `:arity` | a conclusion whose length disagrees with the arity the predicate declares or inherits | the check's problem map |
@@ -5363,8 +4743,7 @@
 
   | entry | means | detail |
   |---|---|---|
-  | `:disjoint` | two memberships each admissible where stated, jointly visible as disjoint | `:term` `:held` `:visible-from` `:message` |
-  | `:functional` / `:asymmetric` | two claims each admissible where stated, jointly visible as a clash — `:refuse` only | `:pred` `:clash` `:visible-from` `:message` |
+  | `:disjoint` | two memberships each admissible where stated, jointly visible as disjoint from a context the settle did not weigh the pair at | `:term` `:held` `:visible-from` `:message` |
   | `:arity` | an arity **binding** arrived after facts it convicts — a declaration, the `genl` edge that inherits one from a super-predicate, or the `genlCx` edge that brings either into a stored fact's sight; the facts stand | `:predicate` `:expected` `:count` `:sample` `:declared-after` `:truncated` `:budget` `:via` `:message` |
   | `:non-confluent` | two schematic equations disagree about a shared term; the normal form stays deterministic, so nothing is dropped | `:with` `:message` |
   | `:aggregate` | an aggregate prover cannot reduce an extent — values that are not numbers of one dimension, or bounds only partially ordered.  Filed once per distinct error, since a count is recomputed rather than cached | `:message` `:values` |
@@ -5373,15 +4752,16 @@
   | `:metric-temporal-inconsistency` | the metric temporal constraints visible from a context cannot all be satisfied | `:message` `:unit` `:nodes` `:pairs` `:cycle` |
   | `:sign-inconsistency` | the sign facts visible from a context leave some quantity with no possible sign at all, so no sign goal is answered there | `:message` `:quantities` |
 
-  The first two rows are the **cross-context reports**: a pair neither writer could see,
-  named rather than decided, with belief untouched. Under `:arbitrate` they do not appear
-  — there the pair is weighed and answered by `contradictions` instead. `:clash` is the
-  two `[sentence context]` halves in printed order, so the same knowledge in either
-  arrival order files one identical entry.
+  The first row is the **cross-context report**: a pair neither writer could see, named
+  rather than decided, with belief untouched. A pair a *vantage* sees whole is decided
+  under either constraint policy and answered by `contradictions`, so what is left to
+  name here is the pair no vantage convicted — the separation is derivable only below
+  the maximal common descendant the arbitration asks from, or the arbitration sweep was
+  cut short (`:arbitration-truncated`).
 
   ### Bounded — the pass did not cover everything
 
-  So a cap never reads as full coverage. Seven kinds, separate because a reader acts on
+  So a cap never reads as full coverage. Six kinds, separate because a reader acts on
   them differently, and each one entry per settle (or, for `:context-edge-exposure-
   truncated`, per `genlCx` edge) rather than one per trigger.
 
@@ -5391,19 +4771,16 @@
   | `:arbitration-truncated` | the arbitration sweep was cut short, so content those declarations implicate went **undecided** — a pair that would have been defeated stands believed until a later settle surfaces it | `:triggers` `:sample` `:budget` `:message` |
   | `:arity-truncated` | the retroactive arity reach was cut short — it sweeps the whole spec subtree a binding descends to and the ancestor set a `genlCx` edge opens, and past the budget the predicates it never reached, and the ones it never got as far as looking *for*, hold facts neither refused nor named | `:predicates` `:sample` `:edges` `:edge-sample` `:budget` `:message` |
   | `:arity-report-truncated` | the arity reach files at most **8** entries for a pass, the content-first 8 of the predicates it convicted, so one binding over a wide subtree cannot evict every other violation from the ledger | `:predicates` `:filed` `:facts` `:sample` `:message` |
-  | `:constraint-exposure-truncated` | one cross-context constraint pass found **more clashing pairs than it will file** — a functional slot filled from N contexts one vantage sees is N−1 pairs off a single arriving fact, against a ledger keeping the newest 1000 — or left a `genlCx` edge unswept | `:pairs` `:filed` `:cap` `:unswept` `:sample` `:budget` `:message` |
-  | `:context-edge-exposure-truncated` | a `genlCx` edge's own **merge**-deriving sweep — the mergeable twin of `:constraint-exposure-truncated`, over `functional` / `functionalInArg` / `anti_symmetric` — was cut short, so pairs beyond the budget go **unmerged for this edge** | `:context` `:mark` `:budget` `:message` |
-  | `:partner-sweep-truncated` | the **partner discovery** behind a cross-context constraint report was cut short — a `functionalInArg` mark whose declared position is the whole tuple leaves no single argument root to narrow by, so finding a pair's far half is an extent sweep — and past the budget a vantage that sees a clashing pair is never asked | `:sweeps` `:budget` `:message` |
+  | `:context-edge-exposure-truncated` | a `genlCx` edge's own **merge**-deriving sweep, over `functional` / `functionalInArg` / `anti_symmetric`, was cut short, so pairs beyond the budget go **unmerged for this edge** | `:context` `:mark` `:budget` `:message` |
+  | `:partner-sweep-truncated` | the **partner discovery** behind the arbitration's vantages was cut short — a `functionalInArg` mark whose declared position is the whole tuple leaves no single argument root to narrow by, so finding a pair's far half is an extent sweep — and past the budget a vantage that sees a clashing pair is never asked, so the pair goes **undecided** | `:sweeps` `:budget` `:message` |
 
   The first three are sweeps cut short.  `:arity-report-truncated` is not one: everything
   it counts was swept, examined and convicted, and only the entry naming it was withheld
-  — *found, examined and not named*, which is a different thing to act on.
-  `:constraint-exposure-truncated` says which of the two it met, a cut walk or the entry
-  cap, and can say both.  Nothing past a cap went undecided; it is visible, counted and
-  unreported.  The three sweeps do not cover the same triggers either — a `functional` or
-  `asymmetric` **declaration** reaches back over stored content on the deciding path and
-  on no other — and `:arity-truncated` counts `:predicates` rather than `:triggers`
-  because its budget is spent walking a subtree.
+  — *found, examined and not named*, which is a different thing to act on.  The three
+  sweeps do not cover the same triggers either — a `functional` or `asymmetric`
+  **declaration** reaches back over stored content on the deciding path and on no other
+  — and `:arity-truncated` counts `:predicates` rather than `:triggers` because its
+  budget is spent walking a subtree.
 
   `:context-edge-exposure-truncated` is the one entry here that is *not* filed from a
   settle's exposure pass — it is filed eagerly, from the `genlCx`-edge assert that
@@ -5414,14 +4791,14 @@
   nothing re-triggers on a `genlCx` edge that has already landed.
 
   `:partner-sweep-truncated` is the one row about a question that was never *asked*
-  rather than an answer that was not filed.  Every other kind here counts content the
-  pass looked at, or looked at and summarized; this one names a vantage the cap kept the
-  pass from consulting, so the pairs it costs do not appear in any `:pairs` or `:unswept`
-  count — there is nothing to count them from.  It is also the only bound whose read runs
-  at the assert entry point as well as inside a pass, and it files from the pass alone: the entry point
-  has no ledger open and is answering about its own sentence.  Its prefix is stable, so a
-  later settle re-reads it rather than reaching past it; widening
-  `*exposure-instance-budget*` is what reaches past it.
+  rather than an answer that was not filed.  Every other kind here counts content a pass
+  looked at, or looked at and summarized; this one names a vantage the cap kept the
+  arbitration from consulting, so the pairs it costs appear in no `:triggers` or
+  `:unswept` count — there is nothing to count them from.  It is also the only bound
+  whose read runs at the assert entry point as well as inside a settle, and it files from
+  the settle alone: the entry point has no ledger open and is answering about its own
+  sentence.  Its prefix is stable, so a later settle re-reads it rather than reaching
+  past it; widening `*exposure-instance-budget*` is what reaches past it.
 
   Why a retroactive `:arity` reach reports rather than decides, why a truncation is one
   entry per settle rather than per trigger, and what the instance budget bounds:
@@ -5452,7 +4829,12 @@
   writing.  This is the standing question, and it is the one to ask of a KB that
   arrived all at once: an import rebuilds belief rather than changing it, so nothing
   is newly anything and the settle pass sits it out (see `settle/*rebuilding?*`).
-  Reads only; nothing is stored and belief does not move."
+
+  **This answers about every pair, decided or not.**  A pair some vantage weighed is
+  reported by `contradictions` or `conflicts` and is left out of the ledger; here it
+  still counts as jointly visible, since the question asked is what the KB makes
+  visible and not what is left over.  Reads only; nothing is stored and belief does not
+  move."
   [kb]
   (settle/exposed-clashes kb))
 
@@ -5754,38 +5136,6 @@
       (binding [chain/*report-no-placement?* false] (settle/rechain-seeds kb seeds)))
     (settle/settle kb)))
 
-(defn- collect-orphaned-nats!
-  "Sweep a reified NAT orphaned by a teardown — its termOfUnit map and materialized types
-  would dangle a raw `nat/` symbol (docs/nat.md), and an emptied `cx/` context would be
-  a place nothing can reach and nothing is in (docs/context-nat.md).  Gated on the KB
-  declaring a reifiable function at all — `context_denoting_function` is one — and
-  suppressed while already removing orphans.
-
-  Two arms, and which one a caller takes turns on whether it can name the region the
-  teardown touched:
-
-  * **`retract!` and `edit!` pass their removal record** — every sentex that left the
-    store while they ran, collected at the removal choke point
-    (`integrate/*removed-sink*`), the settle's own sweep included.  A constant no removal
-    named is not a candidate, at the cost of the region instead of the cost of the KB's
-    whole NAT population; `remove-orphaned-nats!` says why a merely *defeated* use is not
-    a use that went, and why collecting on one would be the dangling symbol rather than
-    the fix for it.
-  * **`rollback-batch!` passes nothing and asks the whole KB.**  It is putting a KB
-    back rather than taking something out of one, so the claim it owes — the KB is as it
-    was found — is about all of it rather than about one teardown's region; and a
-    preview's batch reached this sweep at no point, having run with the settle sweep off
-    (`settle/*sweep?*`).  A rollback runs once per batch, and only for a preview or a
-    batch that refused, so the whole-KB cost is one it can carry.
-
-  **The two arms therefore ask different questions, not one question at two costs.**  The
-  region arm asks what a teardown's removals orphaned; the whole-KB arm asks which
-  constants are orphaned *now*, which is the stronger reading and the one a restore owes."
-  ([kb] (collect-orphaned-nats! kb nil))
-  ([kb sink]
-   (when (and (not *in-orphan-removal?*) (nat/any-reifiable-functions? kb))
-     (remove-orphaned-nats! kb sink))))
-
 (defn- target-following-meta?
   "Is `sx` a **target-following meta-sentex** — a sentex whose predicate is declared
   `target_following_predicate`?  Such a sentex names another sentex by handle and must not
@@ -5811,7 +5161,7 @@
   store, looping to a fixpoint — a retracted meta is itself a sentex another meta may
   name (an endorsement of an endorsement).  Reads the removal sink to learn what left:
   the dependency sweep's removals, the settle's, and this cascade's own — the same record
-  `collect-orphaned-nats!` reads — so it is complete without every removal path reporting
+  `nat-maint/collect-orphans!` reads — so it is complete without every removal path reporting
   to it.
 
   A no-op unless the KB declares a `target_following_predicate`: the sink is bound only
@@ -5864,11 +5214,8 @@
   states depending on how it was taken out."
   [kb sink]
   (retract-following-metas! kb sink)
-  (collect-orphaned-nats! kb sink)
-  ;; and the merges a revived edge licenses, on the same terms the assert path gives a
-  ;; computed one: an edge the producer could not build while its declaration was OUT
-  ;; widens an ancestor set the moment it is built, whichever entry point built it
-  (apply-computed-edge-merges kb (context-nat/reconcile-revivals kb) nil))
+  (nat-maint/collect-orphans! kb sink retract!)
+  (nat-maint/reconcile-revivals! kb))
 
 ;; ---- rolling a batch back: the code `edit!` and `preview` share -----------
 ;;
@@ -5876,7 +5223,7 @@
 ;; what a dependency sweep deletes can only come back as new content, so a KB restored
 ;; that way is not the KB the caller started with.  One arrangement makes the
 ;; same-handle undo possible, and both entry points rest on it: an `:add` is really asserted,
-;; and rolled back through the premise marks it made (`*premise-audit*`).  Everything
+;; and rolled back through the premise marks it made (`entry/*premise-audit*`).  Everything
 ;; the add derived hangs off one of those premises, so retracting them collects the lot
 ;; by the ordinary dependency-directed sweep.
 ;;
@@ -5905,7 +5252,7 @@
   merely re-asserted — then settle (with the sweep back on) and restore the three
   ledgers `batch-baseline` snapshotted.
 
-  Takes that baseline plus `:audit` (the `*premise-audit*` atom the batch ran under) and
+  Takes that baseline plus `:audit` (the `entry/*premise-audit*` atom the batch ran under) and
   `:suspended` (`[[handle strength] …]`, empty for an entry point that suspends nothing).
 
   A handle in both sets is a batch that removed a premise and re-asserted the same
@@ -5928,7 +5275,7 @@
         records (:records kb)
         held    (set (map first suspended))]
     (binding [feed/*enabled?* false
-              *premise-audit* nil
+              entry/*premise-audit* nil
               *defer-settle?* true]
       (doseq [[h strength] suspended]
         (jtms/add-premise tms h strength)
@@ -5944,7 +5291,7 @@
           ;; class.  `mark-premise` resolves by content and would keep the raised one,
           ;; which is right for an assertion and wrong for an undo — a rollback leaves
           ;; the KB as it found it, and a class it raised is a change like any other.
-          premise?                 (put-premise-mark kb h strength)
+          premise?                 (entry/put-premise-mark kb h strength)
           (p/get-sentex records h) (retract-storage! kb h))))
     ;; No re-chain seeds: the rollback is putting the KB back, so re-deriving what a
     ;; withdrawn subsumption or sighting still licenses would be re-deriving content the
@@ -5954,7 +5301,7 @@
       ;; the whole-KB arm, not a region: the claim a rollback owes is about the whole KB
       ;; rather than about one teardown's region, and a preview's batch reached the
       ;; orphan sweep at no point (its settle ran with the sweep off)
-      (collect-orphaned-nats! kb))
+      (nat-maint/collect-orphans! kb retract!))
     (reset! (reasoning/violations kb) violations)
     (reset! (reasoning/program kb) program)
     ;; ...and the refusal record, which the batch writes to as well as reads.  A firing
@@ -6118,7 +5465,7 @@
                 ;; handles it wrote (`rollback-batch!`) and rethrown saying so.
                 added
                 (try
-                  (binding [*premise-audit* audit
+                  (binding [entry/*premise-audit* audit
                             *defer-settle?* true]
                     (let [added (into [] (map-indexed
                                           (fn [i entry]
@@ -6493,42 +5840,40 @@
   [kb marker term context]
   (boolean (seq (visible-matches kb (list marker term) context))))
 
+(defn- disjoint-partners
+  "The **maximally-general** types `term` is separated from: every type a visible
+  declaration puts it apart from, before the separation is pushed down `genl`.
+
+  `tax/separating-partners` is the enumeration, which is the same frame `disjoint?` is
+  the membership test of, so the two cannot disagree — and it covers all three ways a
+  separation is declared, `(disjoint a b)`, a shared `disjoint_metatype`, and standing
+  beside a sibling under a `(sibling_disjoint C)` parent.  Belief and context scoping are
+  the frame's.
+
+  **Read off the index rather than by probing the store.**  Asking for the stored
+  `(disjoint ?y x)` and `(disjoint x ?y)` sentexes of each of the term's supertypes is
+  two pattern reads per supertype — 4.3 ms for `dog`, whose up-closure is eight, against
+  0.014 ms here, and it is the term page's single largest cost.  It also missed the
+  sibling arm, which stores no pair to find.
+
+  Filtered to the nodes of the genl hierarchy, which is what keeps this a subset of the
+  closure `disjoint-line` builds out of it: `specs` is reflexive, so a partner appears in
+  its own closure exactly when the same filter admits it there."
+  [kb context term]
+  (let [known (types kb)]
+    ;; `by-print-key`, never bare `sort`: a type node need not be a symbol.  A NAT —
+    ;; a function term standing for a collection an imported ontology has no atomic
+    ;; name for — is a list, and `compare` throws on one rather than ordering it.
+    (nm/by-print-key
+     (into #{} (filter known)
+           (tax/separating-partners (reasoning/taxonomy kb) term context)))))
+
 (defn- disjoint-line
-  "The types disjoint from a term whose reflexive genl up-closure is `up`, read from the
-  declarations in one pass rather than by asking `disjoint?` once per type in the KB.
-
-  `disjoint?` holds when some supertype of x and some *different* supertype of y are
-  separated, by a declared `(disjoint a b)` or by co-membership of a disjoint metatype.
-  Read from the side that inverts cleanly: whatever separates one of the term's own
-  supertypes names a **partner**, and the types disjoint from the term are exactly the
-  partners' spec closures — one closure read per partner, of which there are usually one
-  or two, instead of one `disjoint?` per type in the KB.
-
-  The partners are asked for per supertype, both argument orders (`disjoint` carries no
-  `symmetric` declaration, so the two orders are two stored shapes), each probe pinning a
-  ground argument so it is an argument-root read.  The metatypes are the exception and
-  are read whole: a metatype names its members rather than its pairs, so there is nothing
-  to pin, and an ontology declares them by the dozen."
-  [kb context up limit]
+  "The types disjoint from a term, as the spec closures of the `partners`
+  `disjoint-partners` read — every type the separation reaches, not only the types it was
+  declared between."
+  [kb context partners limit]
   (let [known    (types kb)
-        probe    (fn [x slot pattern]
-                   (for [s     (visible-matches kb pattern context)
-                         :let  [y (nth (:sentence s) slot nil)]
-                         :when (and (some? y) (not= x y))]
-                     y))
-        declared (mapcat (fn [x] (concat (probe x 1 (list 'disjoint '?y x))
-                                         (probe x 2 (list 'disjoint x '?y))))
-                         up)
-        induced  (for [m     (disjoint-metatypes kb)
-                       :let  [ms (metatype-members kb m)]
-                       :when (some up ms)
-                       y     ms
-                       :when (not (contains? up y))]
-                   y)
-        ;; `by-print-key`, never bare `sort`: a type node need not be a symbol.  A NAT —
-        ;; a function term standing for a collection an imported ontology has no atomic
-        ;; name for — is a list, and `compare` throws on one rather than ordering it.
-        partners (nm/by-print-key (into #{} (concat declared induced)))
         ;; the sum of the partners' closure sizes over-counts their union (an overlap
         ;; twice), which is exactly what makes it a sound bound on it, and it decides
         ;; whether building the union is affordable at all
@@ -6674,13 +6019,30 @@
    (let [limit (or (:limit opts) default-describe-limit)
          role  (described-role kb term)
          up    (genls kb term context)
+         ptns  (disjoint-partners kb context term)
+         tx    (reasoning/taxonomy kb)
          base  {:term     term
                 :role     role
                 :context  context
                 :comment  (comments-on kb term context)
                 :genls    (bounded-terms (disj up term) limit)
                 :specs    (bounded-terms (disj (specs kb term context) term) limit)
-                :disjoint (disjoint-line kb context up limit)}]
+                ;; the **declared** edges beside the closures they generate, one `genl`
+                ;; step and not reflexive.  A reader arriving at a term wants what it was
+                ;; told — `dog` is a `mammal` — where the closure is what a subsumption
+                ;; check needs and, at `thing`, is 110,128 names.  O(degree) off the same
+                ;; adjacency the closure walk is built on.
+                :genls-direct (bounded-terms (tax/direct-genls tx term context) limit)
+                :specs-direct (bounded-terms (tax/direct-specs tx term context) limit)
+                :disjoint (disjoint-line kb context ptns limit)
+                ;; both readings, because they answer different questions and the
+                ;; partners are already in hand.  `:disjoint` is every type the
+                ;; separation reaches, which is what a membership check is against;
+                ;; `:disjoint-maximal` is the handful of types it was declared between,
+                ;; which is what a reader asking "what is this NOT" can hold in their
+                ;; head — one collection in the OpenCyc import is disjoint from 79,638
+                ;; types and separated from 43 of them.
+                :disjoint-maximal (bounded-terms (set ptns) limit)}]
      (case role
        :predicate
        (assoc base
@@ -7282,7 +6644,7 @@
 ;; nothing it cannot take back at the same handles.  Two arrangements make that true:
 ;;
 ;;   - an `:add` is really asserted, and rolled back through the premise marks it made
-;;     (`*premise-audit*`) — `rollback-batch!` above, the boundary this shares with `edit!`;
+;;     (`entry/*premise-audit*`) — `rollback-batch!` above, the boundary this shares with `edit!`;
 ;;   - a `:remove` is **not** retracted.  It is `jtms/suspend-premise` — a retraction's
 ;;     effect on belief with the deletion left out — because belief is the whole of
 ;;     what a preview is asked about, and a suspended premise goes straight back.
@@ -7449,7 +6811,7 @@
        (binding [feed/*enabled?* false
                  settle/*sweep?* false
                  settle/*touched-sink* touched]
-         (binding [*premise-audit* audit
+         (binding [entry/*premise-audit* audit
                    *defer-settle?* true]
            (doseq [[i entry] (map-indexed vector (:add batch))
                    :when (not (bad-add i))
@@ -7681,10 +7043,11 @@
   Every one of these is a goal whose truth is a function of something the region does
   not hold, so matching it against the region's entries would be quietly wrong rather
   than merely incomplete — and being quietly wrong is the one thing a feed must not be.
-  A conjunction joins against facts the batch never touched; an aggregate and a NAF
-  literal are properties of a whole answer set, which a fact *leaving* belief can flip
-  with nothing about the flip in the region; a `thereExists` is the same; an evaluable
-  is computed and never stored.  `ist` is refused because a watch already has a context
+  A conjunction joins against facts the batch never touched — **in either spelling**, the
+  vector one and the `(and …)` one, which mean the same goal and are refused in the same
+  words; an aggregate and a NAF literal are properties of a whole answer set, which a
+  fact *leaving* belief can flip with nothing about the flip in the region; a
+  `thereExists` is the same; an evaluable is computed and never stored.  `ist` is refused because a watch already has a context
   argument and would otherwise match nothing at all — no stored sentence has that
   functor, and neither has an `or`: a disjunction is a union of queries, and a watch
   matches one entry against one goal, so a registered one would fire never."
@@ -7695,6 +7058,15 @@
 
     (not (and (sequential? goal) (seq goal)))
     "a goal must be a sentence"
+
+    ;; the same conjunction written with the connective rather than as a vector.  It is
+    ;; the arm above and the `or` arm below at once: it joins against facts outside the
+    ;; region, *and* no stored sentence has `and` for a functor, so a watch registered on
+    ;; one fires never — which is the silent-nothing every arm here exists to refuse.
+    (sx/some-form sx/conjunction? goal)
+    (str "an `and` is a join against facts outside the region a settle moved, and no"
+         " stored sentence unifies with a conjunction, so a watch on one would fire"
+         " never — register one watch per conjunct")
 
     (sx/some-form sx/disjunction? goal)
     (str "an `or` is a union of queries rather than one query, and no stored sentence"
@@ -8161,12 +7533,13 @@
   (io-import/read-edn-manifest f))
 
 (defn store-backend
-  "The `:backend` to pass `open-kb` for the store in `dir`, read off the files beside its
-  records, or nil when `dir` holds no store: `:disk-snapshot` for a mapped index image,
-  `:disk-log` for a write-ahead-logged index, and `:disk-columnar` for records with no
-  index file.  An open under the wrong backend throws nothing and returns an empty KB, so a
-  caller opening a directory it did not write reads the backend here rather than naming
-  one."
+  "The `:backend` to pass `open-kb` for the store in `dir`, read off its files, or nil when
+  `dir` holds no store: `:disk-snapshot` for a mapped index image, `:disk-log` for a
+  write-ahead-logged index, `:disk-columnar` for records with no index file, `:sqlite` for
+  the SQLite adapter's file, and `:pg-disk-log` for a local index whose records are on a
+  server (the open then needs `:pg`).  An open under the wrong backend throws nothing and
+  returns an empty KB, so a caller opening a directory it did not write reads the backend
+  here rather than naming one."
   [dir]
   (disk/store-backend dir))
 
@@ -8232,7 +7605,7 @@
       {:contexts n :sentences n :skipped n :files [\"CxCore.txt\" …]
        :bytes n :elapsed-ms n :dir \"…\"}
 
-  `opts` narrows what is written: `{:context C}` for that one context's file, `{:ancestor set C}`
+  `opts` narrows what is written: `{:context C}` for that one context's file, `{:ancestor-set C}`
   for `C` and every context it **sees** — the slice a reload needs for `C`'s own content
   to mean what it meant.  Neither, and every context holding a premise is written.  A key
   this fn does not read is refused (`:unknown-option`), since a misspelt narrowing writes

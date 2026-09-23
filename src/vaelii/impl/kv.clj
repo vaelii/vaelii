@@ -72,8 +72,7 @@
             [taoensso.trove :as trove]
             [vaelii.impl.profile :as prof]
             [vaelii.impl.protocols :as p
-             :refer [ArgColumns arg-agnostic-count arg-agnostic-members
-                     arg-scoped-intersect kv-batch kv-clear! kv-count kv-entries kv-get
+             :refer [kv-batch kv-clear! kv-count kv-entries kv-get
                      kv-intersect kv-load kv-member? kv-members unknown-op!]]
             [vaelii.impl.sentex :as sx]))
 
@@ -81,20 +80,21 @@
   "Which key shapes this build's index is written in.
 
   The key families below — `[:trie :count|:children|:handles prefix]`, the roots, the
-  rule / exception indexes, the term index and the roster — *are* the index's portable
-  form, so a dump of them is only readable by a build that agrees on them.  An index
-  written in a layout this build does not use reads as **empty** rather than as wrong
-  (a lookup finds no key and answers nothing), which is fail-safe and undiagnosable —
-  so the layout is stated as a number and checked, rather than discovered by a KB that
-  quietly stopped answering.
+  argument family's three, the rule / exception indexes, the term index and the roster — *are*
+  the index's portable form, so a dump of them is only readable by a build that agrees on
+  them.  An index written in a layout this build does not use reads as **empty** rather
+  than as wrong (a lookup finds no key and answers nothing), which is fail-safe and
+  undiagnosable — so the layout is stated as a number and checked, rather than discovered
+  by a KB that quietly stopped answering.
 
   **Bump it whenever a key shape changes**: a new family, a renamed tag, a different
   arity, or a different value type at an existing key.
 
   2 scopes the argument roots by predicate (`[:argument-root pred pos term]`) and adds
   the `[:argument-slot pos term]` roster that keeps the predicate-agnostic reads
-  answerable."
-  2)
+  answerable.  3 adds the `[:unary-slot term]` roster beside it, which is what lets a
+  membership question read a term's types without fetching every fact that names it."
+  3)
 
 (defn apply-op
   "Apply one `kv-batch` write op to map `m`, returning `[m' reply]`.  Only
@@ -155,43 +155,59 @@
 ;; single-level roots fill that in; cardinality is the set's own size.
 (defn- ctx-key  [c]     [:context-root c])
 (defn- pred-key [p]     [:functor-root p])
-;; canonicalize the term so a compound query term (a reader-literal list) hits the
-;; same key as the stored subterm (built by canon); see sentex/canon.
-(defn- arg-key  [pred pos t] [:argument-root pred pos (sx/canon t)])
-;; The argument roots are scoped by predicate, so a probe of `(P ?x B)` reads exactly
-;; P's facts with B at that position instead of every functor's, which the caller then
-;; had to filter by instantiating each candidate.  The slot roster below is what keeps
-;; the predicate-AGNOSTIC public reads (`sentexes-with-arg` / `count-with-arg`) answerable
-;; without a second copy of the postings: it holds the predicates present at a slot, so
-;; the coarse read is a union over a handful of keys rather than one wide bucket.
-(defn- slot-key [pos t]      [:argument-slot pos (sx/canon t)])
-;; public: the columnar index (vaelii.impl.columnar) emits the same term/root keys into
-;; a shared backend for the non-trie families, so both stores key identically.
+;; ---- the argument family's three keys ------------------------------------
+;; The scoped leaf, the slot roster that keeps the predicate-AGNOSTIC reads answerable
+;; without a second copy of the postings, and the unary slice of that roster a membership
+;; question reads.  `arg-slots` and `root-keys` below canonicalize the term on the way in
+;; and `KvIndexStore`'s argument reads canonicalize on the way out, so a term reaching a
+;; key here is already `sx/canon`'d: a lazy seq and the `PersistentList` it is `=` to
+;; agree in any Clojure map but freeze to different nippy bytes, so a key built from an
+;; uncanonicalized term misses a durable backend's stored key and reports the fact absent
+;; (`index_edge_test/the-argument-root-canonicalizes-a-compound-term` is the pin).
+
+(defn- arg-key
+  "The scoped leaf key: `pred`'s facts with `term` at 1-based `pos`.
+
+  Scoping the argument roots by predicate is what lets a probe of `(P ?x B)` read exactly
+  P's facts with B at that position instead of every functor's, which the caller then had
+  to filter by instantiating each candidate."
+  [pred pos term]
+  [:argument-root pred pos term])
+
+(defn- slot-key
+  "The slot roster key: the predicates present at `(pos, term)`.
+
+  This keeps the predicate-AGNOSTIC reads answerable without a second copy of the
+  postings — the coarse read is a union over a handful of scoped leaves rather than one
+  wide bucket.  Its members are predicates, so it is vocabulary-scaled."
+  [pos term]
+  [:argument-slot pos term])
+
+(defn- unary-slot-key
+  "The unary slice of the slot roster: the predicates `term` is the LONE argument of.
+
+  `kb/types-of` — the retrieval every definitional check bottoms out on — asks what types
+  a term holds, and `slot-key` cannot answer it: `(T x)` and `(P x y)` both put `x` at
+  position 1, share the roster entry and share the trie node below it, so the only way to
+  tell them apart was to fetch every record at that node and read its arity.  A term at
+  argument 1 of n binary facts therefore cost n record fetches per membership question,
+  and every assert asks one.
+
+  A deliberate **superset**: the entry is written by every unary fact rather than
+  reference-counted on the first, so a predicate used at two arities with one term is
+  listed here whichever arity arrived first.  Over-answering costs one posting read that
+  the caller's arity filter drops; under-answering would lose a membership."
+  [term]
+  [:unary-slot term])
+
+;; the key both index stores' non-trie writes carry, through `flat-family-adds` /
+;; `flat-family-retires` below, so the two stores key the term index identically.
 (defn term-key [term]  [:term-index (sx/canon term)])
 ;; the term roster — ONE set holding every name the term index is keyed by, so the
 ;; vocabulary is listable and countable without walking the records.  Its own key
 ;; family, because its members are terms rather than handles: a backend that packs the
 ;; handle families into int postings routes `[:term-roster]` to its ordinary set storage.
 (def ^:private roster-key [:term-roster])
-
-(extend-protocol ArgColumns
-  Object
-  ;; the flat-map reading of the family: a scoped read is one vector-keyed set fetch, a
-  ;; multi-column read one intersection, and an agnostic read a union/sum over the slot
-  ;; roster's predicates.  `arg-key` canonicalizes the term exactly as the stored key is.
-  (arg-scoped-members [b pred pos term] (kv-members b (arg-key pred pos term)))
-  (arg-scoped-intersect [b pred pos-terms]
-    (let [ks (mapv (fn [[pos term]] (arg-key pred pos term)) pos-terms)]
-      (if (= 1 (count ks)) (kv-members b (nth ks 0)) (kv-intersect b ks))))
-  (arg-agnostic-members [b pos term]
-    (let [preds (kv-members b (slot-key pos term))]
-      (case (count preds)
-        0 #{}
-        1 (kv-members b (arg-key (first preds) pos term))
-        (reduce (fn [acc pd] (into acc (kv-members b (arg-key pd pos term)))) #{} preds))))
-  (arg-agnostic-count [b pos term]
-    (reduce (fn [n pd] (+ (long n) (long (kv-count b (arg-key pd pos term)))))
-            0 (kv-members b (slot-key pos term)))))
 
 (defn root-keys
   "The secondary-root keys a sentex belongs to: its context always, plus — for a
@@ -206,7 +222,8 @@
       (into (let [pred (first b)]
               (cons (pred-key pred)
                     (keep-indexed (fn [i a]
-                                    (when (sx/indexable-term? a) (arg-key pred (inc i) a)))
+                                    (when (sx/indexable-term? a)
+                                      (arg-key pred (inc i) (sx/canon a))))
                                   (rest b))))))))
 
 (defn sentex-terms
@@ -258,36 +275,150 @@
 ;; one is unindexed.
 
 (defn arg-slots
-  "`[[pred pos term] ...]` - the predicate-scoped argument roots a fact contributes.
-  Empty for a rule and for a non-fact, matching `root-keys`."
+  "`[[pred pos term] ...]` - the predicate-scoped argument roots a fact contributes, each
+  term canonical.  Empty for a rule and for a non-fact, matching `root-keys`.
+
+  The canonicalization is here rather than in the key constructors so a term reaching a
+  key or a backend read is canonical whichever of the three rosters it is going into."
   [sentex]
   (let [b (sx/body sentex)]
     (if (and (sequential? b) (seq b) (symbol? (first b)))
       (let [pred (first b)]
-        (into [] (keep-indexed (fn [i a] (when (sx/indexable-term? a) [pred (inc i) a])))
+        (into [] (keep-indexed (fn [i a]
+                                 (when (sx/indexable-term? a) [pred (inc i) (sx/canon a)])))
               (rest b)))
       [])))
 
+(defn- unary-slot
+  "`[pred term]` when `sentex` is a unary fact about an indexable term, else nil - the
+  one entry it owes the unary roster, derived from the same positive body `arg-slots`
+  reads so a negation is listed under the type it denies exactly as its argument root
+  is."
+  [sentex]
+  (let [b (sx/body sentex)]
+    (when (and (sequential? b) (= 2 (count b)) (symbol? (first b))
+               (sx/indexable-term? (nth b 1)))
+      [(first b) (sx/canon (nth b 1))])))
+
 (defn slot-adds
   "Write ops entering a sentex's predicates in their slots - read BEFORE the postings
-  are written, so a predicate is entered exactly by its first fact at that slot."
+  are written, so a predicate is entered exactly by its first fact at that slot.
+
+  The unary roster is the exception and takes no read at all: its entry is written by
+  every unary fact rather than by the first, because the count that guards the others
+  is the count at `[pred 1 term]`, which a *binary* fact of the same predicate about the
+  same term also raises - so a reference count read off it would skip the unary entry
+  whenever the binary fact arrived first, and a missing entry there loses a membership.
+  An `:add-to-set` of a member already present is a no-op inside the same batch."
   [backend sentex]
-  (into [] (comp (remove (fn [[pred pos t]]
-                           (pos? (long (kv-count backend (arg-key pred pos t))))))
-                 (map (fn [[pred pos t]] [:add-to-set (slot-key pos t) pred])))
-        (arg-slots sentex)))
+  (cond-> (into [] (comp (remove (fn [[pred pos t]]
+                                   (pos? (long (kv-count backend (arg-key pred pos t))))))
+                         (map (fn [[pred pos t]] [:add-to-set (slot-key pos t) pred])))
+                (arg-slots sentex))
+    (unary-slot sentex)
+    (conj (let [[pred t] (unary-slot sentex)] [:add-to-set (unary-slot-key t) pred]))))
 
 (defn slot-retires
   "Write ops retiring the predicates `handle` is the last fact of at their slots - read
   BEFORE the postings are removed, so a predicate dies exactly when its posting is
-  `#{handle}`."
+  `#{handle}`.
+
+  A **unary** fact retires the unary entry with its position-1 slot, and a fact of any
+  other arity leaves it alone: the extra op is owed by the sentexes that wrote one and by
+  no others, so a KB of binary facts pays nothing for a roster it never enters.  The
+  entry therefore outlives the last unary fact wherever a *binary* one of the same
+  predicate is what empties the node — the ragged-arity case the naming invariant already
+  refuses — and that is the superset `unary-slot-key` describes: a stale entry costs one
+  posting read and the caller's arity filter drops it."
   [backend sentex handle]
-  (into [] (comp (filter (fn [[pred pos t]]
-                           (let [k (arg-key pred pos t)]
-                             (and (= 1 (long (kv-count backend k)))
-                                  (contains? (kv-members backend k) handle)))))
-                 (map (fn [[pred pos t]] [:remove-from-set (slot-key pos t) pred])))
-        (arg-slots sentex)))
+  (let [unary (unary-slot sentex)]
+    (into [] (comp (filter (fn [[pred pos t]]
+                             (let [k (arg-key pred pos t)]
+                               (and (= 1 (long (kv-count backend k)))
+                                    (contains? (kv-members backend k) handle)))))
+                   (mapcat (fn [[pred pos t]]
+                             (cond-> [[:remove-from-set (slot-key pos t) pred]]
+                               (and unary (= 1 pos))
+                               (conj [:remove-from-set (unary-slot-key t) pred])))))
+          (arg-slots sentex))))
+
+;; ---- the non-trie write path ---------------------------------------------
+;; `KvIndexStore` and `ColumnarIndexStore` store the trie differently and store
+;; everything under it identically: the inverted term index, the secondary roots, the
+;; term roster and the argument-slot roster are flat `key -> set` families over one
+;; backend.  The two builders below produce that half of a write — the ops and the
+;; per-family counts together — and each store concatenates its own trie ops around the
+;; ops and hands the counts to the profile tally with its own `:levels` (and `:dead` on
+;; the retire).  One definition fixes three things across the two stores: which families
+;; a sentex enters, the order its ops land in, and the numbers the tally reports.  The
+;; order belongs to the definition because `assert_cost_test` pins the per-family
+;; read/write counts one assert costs, on either store.
+
+(defn flat-family-adds
+  "`{:ops [...] :counts {:terms n :roots n :roster n :slots n}}` — the non-trie write ops
+  entering `sentex` under `handle`, and the number of ops each family takes.
+
+  Both roster reads run here, before the caller batches the ops, so a name enters the
+  term roster and a predicate enters its argument slot exactly on the first sentex to
+  carry it."
+  [backend sentex handle]
+  (let [terms  (sentex-terms sentex)
+        roots  (root-keys sentex)                       ; derived from the sentex alone
+        roster (roster-adds backend terms)              ; reads the pre-write postings
+        slots  (slot-adds backend sentex)]              ; likewise
+    {:ops    (concat (map (fn [t] [:add-to-set (term-key t) handle]) terms)
+                     (map (fn [k] [:add-to-set k handle]) roots)
+                     roster slots)
+     :counts {:terms  (count terms)
+              :roots  (count roots)
+              :roster (count roster)
+              :slots  (count slots)}}))
+
+(defn flat-family-retires
+  "`{:ops [...] :counts {:terms n :roots n :roster n :slots n}}` — the mirror of
+  `flat-family-adds`: the ops taking `handle` out of those same four families, and the
+  number of ops each family takes.
+
+  Both roster reads run here, before the caller batches the ops, so a name leaves the
+  term roster and a predicate leaves its argument slot exactly on the last sentex to
+  carry it."
+  [backend sentex handle]
+  (let [terms  (sentex-terms sentex)
+        roots  (root-keys sentex)                       ; derived from the sentex alone
+        roster (roster-retires backend terms handle)    ; reads the pre-write postings
+        slots  (slot-retires backend sentex handle)]    ; likewise
+    {:ops    (concat (map (fn [t] [:remove-from-set (term-key t) handle]) terms)
+                     (map (fn [k] [:remove-from-set k handle]) roots)
+                     roster slots)
+     :counts {:terms  (count terms)
+              :roots  (count roots)
+              :roster (count roster)
+              :slots  (count slots)}}))
+
+;; ---- reading the family --------------------------------------------------
+;; All three predicate-agnostic reads have one shape: take the predicates a roster lists
+;; at a slot, then union their scoped leaves.  Only the roster differs — `slot-key` for
+;; the two position reads, `unary-slot-key` for the membership one.
+
+(defn- roster-union
+  "The union of `preds`' scoped leaves at `(pos, term)`.
+
+  A roster holds ONE predicate in the common case — a term occupies a given position
+  under one predicate — and that set is handed straight back rather than copied into a
+  union of one.  On the two set-backed backends that is allocation-free outright: the
+  stored set comes back by reference."
+  [backend preds pos term]
+  (case (count preds)
+    0 #{}
+    1 (kv-members backend (arg-key (first preds) pos term))
+    (reduce (fn [acc pd] (into acc (kv-members backend (arg-key pd pos term)))) #{} preds)))
+
+(defn- roster-tally
+  "The cardinality of that union, as a sum of the leaves' own counts — a disjoint sum,
+  since a handle is one sentex with one functor and so sits under exactly one predicate
+  at a fixed `(pos, term)`."
+  [backend preds pos term]
+  (reduce (fn [n pd] (+ (long n) (long (kv-count backend (arg-key pd pos term))))) 0 preds))
 
 (defn- ->count
   "A trie counter as a long.  The `Long/parseLong` arm is for a backend that replies
@@ -315,22 +446,6 @@
   written before the counter existed — the gate falls back to the root count there."
   [::sealed])
 
-(def ^:dynamic *arg-point-cache*
-  "An OPTIONAL point-query memo for the predicate-agnostic argument reads
-  (`sentexes-with-arg` / `count-with-arg`): an atom holding `{[:m pos term] members}` and
-  `{[:c pos term] count}`, or **nil (the default) for no memo**.
-
-  It exists to answer one question the belief-settle sweep raised: does memoizing the
-  `could-clash?` / `pairable?` point reads pay?  It does not, for the sweep.  The sweep is
-  a one-shot pass over its region that reads each `(pos, term)` about once, so the memo
-  pays a hash and a growing map for hits that rarely land — and, decisively, it is
-  **unsound across a write**: the sweep settles belief as it reads, so a memo held over it
-  can hand back a stale posting.  The sweep therefore MUST leave this nil (its default);
-  bind it to a fresh atom only around a read-only burst that re-probes the same `(pos,
-  term)` many times with no intervening index write.  Off, the check is one `nil?` branch
-  on the read path — the reason it is a dynamic var and not a field."
-  nil)
-
 (defn- unindex-present!
   "Take `handle`, stored at the trie leaf of `pth` (`sx/path sentex`), out of every
   index family — the caller has established it is there (`unindex-sentex!`).  Two
@@ -340,10 +455,7 @@
   roots."
   [backend sentex pth handle]
   (let [n        (count pth)
-        terms    (sentex-terms sentex)
-        roots    (root-keys sentex)                                ; derived from the sentex alone
-        roster   (roster-retires backend terms handle)             ; reads the pre-write postings
-        slots    (slot-retires backend sentex handle)              ; likewise
+        flat     (flat-family-retires backend sentex handle)       ; reads the pre-write postings
         prefixes (mapv #(subvec pth 0 %) (range n -1 -1))          ; leaf .. root
         replies  (kv-batch backend
                            (cons [:remove-from-set (leaf-key pth) handle]
@@ -364,9 +476,7 @@
                            (conj [:remove-from-set (set-key (subvec pth 0 (dec (count prefix))))
                                   (nth pth (dec (count prefix)))])))
                        dead)
-               (map (fn [t] [:remove-from-set (term-key t) handle]) terms)
-               (map (fn [k] [:remove-from-set k handle]) roots)
-               roster slots
+               (:ops flat)
                ;; the batch seal, last on purpose — `sealed-prefix` says why
                [[:decrement (count-key sealed-prefix)]]))
     ;; the mirror of the assert tally in `index-sentex`, and the reason it is a separate
@@ -374,12 +484,9 @@
     ;; number is a property of what is being retracted; how many trie nodes empty
     ;; is a property of what is left behind it (`vaelii.impl.profile`).
     (when (prof/profiling?)
-      (prof/record-index-retract sentex {:levels (inc n)
-                                         :terms  (count terms)
-                                         :roots  (count roots)
-                                         :roster (count roster)
-                                         :slots  (count slots)
-                                         :dead   (count dead)}))
+      (prof/record-index-retract sentex (assoc (:counts flat)
+                                               :levels (inc n)
+                                               :dead   (count dead))))
     handle))
 
 (defrecord KvIndexStore [backend]
@@ -387,18 +494,16 @@
   ;; One batch, not three round trips: the trie levels, the inverted term index, and
   ;; the secondary roots land together.  On the in-memory backends the batch applies
   ;; in one swap, so a reader never sees a sentex half-indexed.  Durability is
-  ;; another matter: the disk WAL logs one frame per op (`disk/kv.clj`, `apply-ops!`),
-  ;; so a crash mid-batch persists a *prefix* — e.g. an argument-root posting whose
-  ;; predicate never entered the slot roster, which under-answers the
-  ;; predicate-agnostic reads while the trie and the scoped reads see the fact.  The
+  ;; another matter: the disk WAL logs one frame per op, all in one write
+  ;; (`disk/kv.clj`, `apply-ops!`), so a crash that tears that write persists a
+  ;; *prefix* — e.g. an argument-root posting whose predicate never entered the slot
+  ;; roster, which under-answers the predicate-agnostic reads while the trie and the
+  ;; scoped reads see the fact.  The
   ;; record/index boundary remains; `vaelii.impl.reindex` is the repair for both.
   (index-sentex [_ sentex handle]
-    (let [pth    (sx/path sentex)
-          n      (count pth)
-          terms  (sentex-terms sentex)
-          roots  (root-keys sentex)                   ; derived from the sentex alone
-          roster (roster-adds backend terms)          ; reads the pre-write postings
-          slots  (slot-adds backend sentex)]          ; likewise, before any posting lands
+    (let [pth  (sx/path sentex)
+          n    (count pth)
+          flat (flat-family-adds backend sentex handle)] ; reads the pre-write postings
       (kv-batch backend
                 (concat
                  (mapcat (fn [i]
@@ -408,20 +513,15 @@
                                 [:add-to-set (set-key prefix)  (nth pth i)]   ; child edge
                                 [:add-to-set (leaf-key prefix) handle])]))    ; leaf handle
                          (range (inc n)))
-                 (map (fn [t] [:add-to-set (term-key t) handle]) terms)
-                 (map (fn [k] [:add-to-set k handle]) roots)
-                 roster slots
+                 (:ops flat)
                  ;; the batch seal, last on purpose — `sealed-prefix` says why
                  [[:increment (count-key sealed-prefix)]]))
       ;; what this assert cost the index, per family, when somebody is asking
-      ;; (`vaelii.impl.profile`).  Guarded rather than passed unconditionally so the
-      ;; counts map is built only while the instrument is on; off, this is a deref.
+      ;; (`vaelii.impl.profile`).  The trie depth is this store's own number; the four
+      ;; family counts come back with the ops that produced them, so the tally cannot
+      ;; disagree with `ColumnarIndexStore`'s.
       (when (prof/profiling?)
-        (prof/record-index-write sentex {:levels (inc n)
-                                         :terms  (count terms)
-                                         :roots  (count roots)
-                                         :roster (count roster)
-                                         :slots  (count slots)}))
+        (prof/record-index-write sentex (assoc (:counts flat) :levels (inc n))))
       handle))
 
   ;; **Gated on the handle being at the leaf.**  The counters are decremented without
@@ -541,22 +641,21 @@
   ;; union, and on the two set-backed backends it is allocation-free outright — the
   ;; stored set is handed straight back. The dense one still builds a set out of its
   ;; int posting, and a fork still merges; what the branch saves them is the union.
+  ;; `sx/canon` is the read boundary's half of what `arg-slots` does on the write side:
+  ;; the term a backend's argument read receives is canonical, so a compound arriving as a
+  ;; lazy seq keys identically to the `PersistentList` that was stored.  Once here rather
+  ;; than inside each key constructor, since a single agnostic read builds one key per
+  ;; predicate in the slot roster.
   (sentexes-with-arg [_ pos term]
     (prof/record-read :argument-slot)
     (prof/record-read :argument-root)
-    (if-let [c *arg-point-cache*]
-      (let [k [:m pos term]]
-        (if-some [v (get @c k)] v (let [v (arg-agnostic-members backend pos term)]
-                                    (swap! c assoc k v) v)))
-      (arg-agnostic-members backend pos term)))
+    (let [term (sx/canon term)]
+      (roster-union backend (kv-members backend (slot-key pos term)) pos term)))
   (count-with-arg    [_ pos term]
     (prof/record-read :argument-slot)
     (prof/record-read :argument-root)
-    (if-let [c *arg-point-cache*]
-      (let [k [:c pos term]]
-        (if-some [v (get @c k)] v (let [v (arg-agnostic-count backend pos term)]
-                                    (swap! c assoc k v) v)))
-      (arg-agnostic-count backend pos term)))
+    (let [term (sx/canon term)]
+      (roster-tally backend (kv-members backend (slot-key pos term)) pos term)))
 
   ;; Multi-column narrowing. With the argument roots scoped by predicate, a named
   ;; functor needs NO functor-root intersection: `(rel ?x B C)` reads
@@ -578,7 +677,11 @@
       (empty? pos-terms) (do (prof/record-read :functor-root) (kv-members backend (pred-key pred)))
       :else
       (do (prof/record-read :argument-root)
-          (arg-scoped-intersect backend pred pos-terms))))
+          (let [ks (mapv (fn [[pos term]] (arg-key pred pos (sx/canon term))) pos-terms)]
+            ;; one column is that leaf handed back; there is nothing to intersect it with
+            (if (nil? (next ks))
+              (kv-members backend (nth ks 0))
+              (kv-intersect backend ks))))))
 
   ;; Both predicate sets are complete — every rule is registered under all of its
   ;; antecedent predicates and its consequent predicate, whatever its direction — so
@@ -648,4 +751,35 @@
                                      (kv-entries backend)))
   (index-load    [_ entries] (kv-load    backend entries))
 
-  (clear-index! [_] (kv-clear! backend) nil))
+  (clear-index! [_] (kv-clear! backend) nil)
+
+  ;; The unary slice, read off its own roster and otherwise the same shape as the two
+  ;; predicate-agnostic reads above — one roster read, then the predicate-scoped
+  ;; postings, tallied as the same two families because it is the same two key shapes.
+  ;; The roster is a superset (`unary-slot-key` says why), so this is too, and
+  ;; `kb/types-of` filters it exact on the records it was going to read anyway.
+  (unary-sentexes-with-arg [_ term]
+    (prof/record-read :argument-slot)
+    (prof/record-read :argument-root)
+    (let [term (sx/canon term)]
+      (roster-union backend (kv-members backend (unary-slot-key term)) 1 term))))
+
+;; ---- the slot roster, read on its own --------------------------------------
+
+(defn slot-predicates
+  "The predicates the slot roster lists at `(pos, term)` — every predicate holding a fact,
+  in either polarity, with `term` at 1-based argument `pos` — or nil for an index store
+  this finds no roster in.
+
+  The roster read the two predicate-agnostic reads above open with, without the postings
+  they then union: a caller asking *which predicates* hold a term pays one set read and no
+  handle.  Not an `IndexStore` op.  Every index store the engine builds keeps the roster
+  in a `KvIndexStore` — itself, or the one a `ColumnarIndexStore` delegates its roots to
+  as `:embedded` — and this reads it there.  An empty slot answers `#{}`, so nil means
+  only that the store holds neither (a test's `reify`), and the caller falls back to the
+  reads the protocol has."
+  [index pos term]
+  (when-let [kis (cond (instance? KvIndexStore index)             index
+                       (instance? KvIndexStore (:embedded index)) (:embedded index))]
+    (prof/record-read :argument-slot)
+    (or (kv-members (:backend kis) (slot-key pos (sx/canon term))) #{})))

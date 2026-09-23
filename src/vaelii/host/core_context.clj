@@ -25,15 +25,17 @@
   "Assert the CxCore vocabulary into `kb` from its KB file
   (resources/kb/CxCore.txt). Returns kb.
 
-  The one sentence asserted **before** the file is the topology edge
-  `(genlCx CxUniverse CxCore)`, and it is here rather than in the file
-  because of *when* it has to hold.  A `decontextualized_predicate` declaration lifts
-  the facts already present into CxUniverse, and a rule stated in CxCore
-  fires on the copy — so the two contexts must already be comparable, or that firing
-  has no placement and the conclusion is lost.  The file is read term-centrically in
-  natural sort order, which would put `genlCx` after `functional`, making which
-  meta-ontology conclusions survive a function of predicate spelling.  Asserted first,
-  it cannot be."
+  The topology edge `(genlCx CxUniverse CxCore)` is asserted **before** the file, and
+  it is here rather than in the file because of *when* it has to hold.  A
+  `decontextualized_predicate` declaration lifts the facts already present into
+  CxUniverse, and a rule stated in CxCore fires on the copy — so the two contexts must
+  already be comparable for that firing to be placed on arrival.  The file is read
+  term-centrically in natural sort order, which puts `genlCx` after `functional`; a firing
+  that finds no placement is re-joined when the edge arrives, so the KB is the same
+  either way, and asserting the edge first is what spares the load that second pass.
+
+  The `(forced_decontextualized_predicate genlCx)` declaration goes in ahead of the edge,
+  so the edge is stored in CxUniverse, where the file's own edges are."
   [kb]
   ;; One settle at the end, not one per sentence: the whole vocabulary is a batch, and
   ;; `settle` computes belief from current state, so N per-assert reconciliations reach
@@ -41,6 +43,9 @@
   ;; `genlCx` edge is still asserted first — edges live on store, ahead of the deferred
   ;; settle — so its ordering role (below) is unchanged.
   (v/with-deferred-settle kb
+    ;; the declaration that stores every `genlCx` edge in CxUniverse goes first, so the
+    ;; bootstrap edge lands where the file's own edges and a later re-assert of it do
+    (v/assert kb '(forced_decontextualized_predicate genlCx) 'CxCore)
     (v/assert kb '(genlCx CxUniverse CxCore) 'CxCore)
     (seed/load-context kb 'CxCore)))
 

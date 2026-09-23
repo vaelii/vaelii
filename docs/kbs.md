@@ -169,7 +169,7 @@ lein cli load /tmp/mykb --dir /tmp/store            # and back in, through asser
 ```
 
 In process it is `(v/export-text! kb dir)` and `(v/load-text! kb dir)`; `{:context C}` or
-`{:ancestor set C}` narrows the export to one file or to one context and everything it sees
+`{:ancestor-set C}` narrows the export to one file or to one context and everything it sees
 ([api.md](api.md)).
 
 **Two wrappers say how a sentence was asserted rather than what it says.**

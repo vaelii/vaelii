@@ -22,7 +22,8 @@ should. The file map is [namespaces.md](namespaces.md). Entry points are `lein r
                                               ; :backend names a <records>-<index> pair —
                                               ; :memory :memory-dense :memory-columnar
                                               ; :disk-memory :disk-dense :disk-columnar
-                                              ; :disk-log :sqlite :pg-memory :pg-disk-log — or
+                                              ; :disk-snapshot :disk-log :sqlite :pg-memory
+                                              ; :pg-disk-log — or
                                               ; :records / :index override a half of one
                                               ; (docs/storage.md)
                                               ; :sqlite and :pg records come from Apache-2.0
@@ -35,11 +36,14 @@ should. The file map is [namespaces.md](namespaces.md). Entry points are `lein r
                                               ; this host describing records on a server
                                               ; :naming and :constraints are this KB's two
                                               ; entry-point policies (docs/naming.md, nmtms.md)
-                                              ; :recover? is :auto (or true) / :warn / false —
-                                              ; :auto is the default and anything else is
-                                              ; refused (:unknown-option), since a value read
-                                              ; as :warn hands back an empty TMS over a store
-                                              ; that is not empty (docs/storage.md)
+                                              ; :recover? is :auto (or true) / :background /
+                                              ; :warn / false — :background installs a stored
+                                              ; image and rebuilds belief behind it
+                                              ; (docs/storage.md); :auto is the default and
+                                              ; anything else is refused (:unknown-option),
+                                              ; since a value read as :warn hands back an
+                                              ; empty TMS over a store that is not empty
+                                              ; (docs/storage.md)
 (fork kb opts?)                                ; a private writable KB over this one's stores,
                                                ; frozen: reads fall through, writes stay in the
                                                ; fork, the base is never written (docs/overlay.md)
@@ -286,7 +290,7 @@ default-chain-opts                              ; the bounds a chain run takes w
 (export-text! kb dir opts?)                    ; write its PREMISES out as a text KB — one
                                                ; <Context>.txt per context, the format the shipped
                                                ; ontology is authored in; opts {:context C} or
-                                               ; {:ancestor set C} to narrow.  Content-ordered and free of
+                                               ; {:ancestor-set C} to narrow.  Content-ordered and free of
                                                ; anything about the run, so the same knowledge
                                                ; always writes the same bytes
 (load-text! kb path)                           ; read one back — a directory of Cx*.txt, or one
@@ -326,7 +330,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; under a byte bound: :manifest-too-large past it,
                                                ; :malformed-manifest for content EDN cannot parse
 (store-backend dir)                            ; the :backend the store in dir was written by —
-                                               ; :disk-snapshot, :disk-log or :disk-columnar —
+                                               ; :disk-snapshot, :disk-log, :disk-columnar,
+                                               ; :sqlite, or :pg-disk-log (which needs :pg) —
                                                ; or nil when dir holds no store; an open under
                                                ; the wrong one returns an empty KB
 (load-foreign! kb kind path opts)              ; load a directory through the foreign reader
@@ -382,8 +387,15 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; :type, or nil — decided most-specific first
 (describe kb term [context] [opts])            ; EVERYTHING the KB holds about one term, in one map,
                                                ; keyed by the term's role — "what can I ask about X?"
-                                               ; every shape: :term :role :context :comment and the
-                                               ; three closure lines :genls :specs :disjoint
+                                               ; every shape: :term :role :context :comment, the
+                                               ; three closure lines :genls :specs :disjoint, and
+                                               ; the three DECLARED readings beside them —
+                                               ; :genls-direct / :specs-direct (one genl edge, not
+                                               ; reflexive) and :disjoint-maximal (the types the
+                                               ; separation was declared between).  One collection
+                                               ; in the OpenCyc import is disjoint from 79,638 types
+                                               ; and separated from 43; `thing` reaches 110,128
+                                               ; subtypes and was told a handful
                                                ; :predicate adds :arity :arg-declarations :props
                                                ;   :inverse :extent-count and the four grants
                                                ;   :closed-extent? :abducible? :modal?
@@ -500,9 +512,10 @@ assertable-strengths                            ; #{:monotonic :default}, the se
                                                 ; the cap bounds the tree returned, not the depth a
                                                 ; read can reach without overflowing
 (why-not kb handle)                             ; stored but OUT: :defeated (+ what contradicts it)
+                                                ; / :withdrawn (+ the scoped defeat that withdrew it)
                                                 ; / :superseded (+ the restatement that displaced it)
                                                 ; / :unsupported (+ the missing antecedents) / :not-stored
-(why-not kb sentence context)                   ; the same four, plus the two only this arity
+(why-not kb sentence context)                   ; the same five, plus the two only this arity
                                                 ; can reach: :excepted (+ the exceptWhen that blocks
                                                 ; it) and :closed-extent (a closed_extent_predicate
                                                 ; grant says the extent is complete and this is not
@@ -727,7 +740,7 @@ sentexes at the same strengths and the same beliefs. An `exceptWhen` is **two** 
 at two strengths, and the wrapper's position says which: outside, it is the assertion's
 own option and reaches both halves; on the query, `(exceptWhen (set/monotonic Q) R)`, it
 is the exception's alone ([exceptions.md](exceptions.md)). `{:context C}` narrows to one file
-and `{:ancestor set C}` to `C` plus every context it sees.
+and `{:ancestor-set C}` to `C` plus every context it sees.
 
 **Premises only, and no handles.** A derived sentex is what the engine concluded, so
 writing it would store as a premise what the KB believes as a conclusion; chaining puts it
@@ -1003,7 +1016,7 @@ complete answer to a smaller question, and `(provable? kb g ctx {:max-depth 2})`
 
 `:max-ms` **suspends**: the search stops where it is, and what it has is a *prefix* of the
 answer set. So these entry points refuse rather than return it — `:type :budget-exhausted`,
-carrying `:entry point`, the `:bound` it was given, the `:status` (`:timeout`) and `:elapsed-ms`.
+carrying `:entry-point`, the `:bound` it was given, the `:status` (`:timeout`) and `:elapsed-ms`.
 A prefix handed back as an answer set is indistinguishable from the whole of a KB that
 knows less, and on `ask?` / `provable?` it would be a `false` that means *we stopped
 looking* rather than *the KB does not say so*. A caller who wants the prefix asks through

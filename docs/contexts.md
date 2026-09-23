@@ -597,6 +597,15 @@ stored adds a justification, not a handle, so the agenda drains — and each cop
 `1 + max` antecedent depth, so the `:max-depth` guard bounds a chain of lifts exactly as
 it bounds a chain of rules.
 
+**A copy merges what it licenses, as any new content does.** A `functional` or
+`anti_symmetric` mark derives its equalities where the mark is visible, and the copy is
+what makes it visible from CxUniverse, so the copy runs the same four merges the assert
+entry point and `chain/place-fact-conclusion` run for what they store
+(`special/copy-merges`). Without them the merge followed arrival order: a mark stated in a
+theory before the facts merged them at CxUniverse, and the same mark stated after them
+merged below that theory alone. `relation_properties_test`'s
+`a-merge-mark-in-a-sibling-merges-from-every-context-in-either-order` pins both orders.
+
 Two boundaries, both deliberate:
 
 - **A negative fact is not lifted.** `(not (P a))` has functor `not`, so a declaration
@@ -610,9 +619,10 @@ Two boundaries, both deliberate:
 ### What the shipped ontology declares it of
 
 Every shipped declaration is a claim about a **predicate** rather than about a world.
-`functional`, `functionalInArg`, `inverse`, `reflexive`, `irreflexive`, `symmetric`,
-`anti_symmetric`, `asymmetric`, `transitive`, `anti_transitive`, `equivalence_relation`,
-`injection`, `surjection` and `bijection` carry the mark — so a `(symmetric P)` stated in one theory is the KB's
+`functional`, `inverse`, `reflexive`, `irreflexive`, `symmetric`, `commutative`,
+`commutativeInArgs`, `commutativeInArgAndRest`, `anti_symmetric`, `asymmetric`,
+`transitive`, `anti_transitive`, `equivalence_relation`, `injection`, `surjection` and
+`bijection` carry the mark — so a `(symmetric P)` stated in one theory is the KB's
 claim about `P` and not that theory's — and `genlCx` carries the forced variant below.
 **No domain relation carries either**, and two things hold that line:
 
@@ -629,6 +639,63 @@ claim about `P` and not that theory's — and `genlCx` carries the forced varian
 converse reason: willingness to assume a `(P …)` is a policy of the context that grants
 it rather than a property of `P` ([abduction.md](abduction.md)).
 
+### Where a relation property is read from
+
+A relation property is read where a sentex declaring it is visible, which is the rule
+every definitional read follows (`has-prop?` with a context, the provers, the checks, the
+supporter a firing names). The shipped ontology makes every one of them visible from
+every context by declaring it a `decontextualized_predicate`, and that is the reading the
+engine holds to: a relation's algebra is a claim about the relation and not about a
+subject matter. Two theories that disagree about whether `partOf` composes are not
+something a mark can represent, since canonicalization, the property tables and the
+definitional checks all key on the predicate; such a KB states the closure as a rule in
+the theory that holds it, or uses two predicates. Whichever path reads a property, it
+answers from the same sentexes, and neither answer depends on whether the declaration
+arrived before the facts it governs or after them.
+
+**The four permuting marks are lifted by the engine itself.** `symmetric`, `commutative`,
+`commutativeInArgs` and `commutativeInArgAndRest` decide the order a `(P …)` sentex's
+arguments are stored in, and a sentex has one key for every context (`res/kb-sentex`), so
+the store reads a permuting mark globally from the moment one is stated anywhere. Every
+other reader reads it where its sentex is visible, so a KB with no lift answered the
+mirror of a fact from a sibling through the store and denied it through `has-prop?`, the
+symmetric prover and the supporter a mirrored firing names. `special/deduce-lifts`
+therefore deduces a permuting mark into CxUniverse whether or not the KB declares the lift,
+resting the copy on the statement alone. On a KB carrying CxCore, which declares it, the
+copy is the same copy.
+
+**A KB without CxCore holds the other eleven where they are stated.** Nothing lifts
+them, so every reader reads `(transitive R)` stated in `CxA` from `CxA` and below, alike.
+`inherit_test`'s `the-transitivity-licence-is-read-from-the-asking-context` pins that half,
+and `a-permuting-mark-is-read-from-every-context-on-this-kb-too` beside it pins the four
+permuting marks.
+
+Measured on a lattice of two siblings `CxA` and `CxB` under CxUniverse and `CxD` below
+both, with the mark stated in `CxA` and the facts it governs in CxUniverse, each in both
+arrival orders:
+
+| mark | read from, with CxCore | read from, without | what reads it |
+|---|---|---|---|
+| `symmetric` | every context | every context | the stored key, and `:props :symmetric` |
+| `commutative` | every context | every context | the `:commuting` table, and `:props :commutative` |
+| `commutativeInArgs` | every context | every context | the `:commuting` table |
+| `commutativeInArgAndRest` | every context | every context | the `:commuting` table |
+| `transitive` | every context | `CxA`, `CxD` | `:props :transitive` — the closure prover, `usable-relation?` |
+| `reflexive` | every context | `CxA`, `CxD` | `:props :reflexive` — the reflexive prover |
+| `irreflexive` | every context | `CxA`, `CxD` | `:props :irreflexive` — the entry-point refusal |
+| `asymmetric` | every context | `CxA`, `CxD` | `:props :asymmetric` — the refusal and the settle's nogood |
+| `anti_symmetric` | every context | `CxA`, `CxD` | `:props :anti-symmetric` — the merge, placed where the mark is visible |
+| `anti_transitive` | every context | `CxA`, `CxD` | `:props :anti-transitive` — the refusal and the settle's nogood |
+| `inverse` | every context | `CxA`, `CxD` | the `:inverse` table — the inverse prover |
+| `functional` | every context | `CxA`, `CxD` | `:props :functional` — the merge, placed where the mark is visible |
+| `injection` `surjection` `bijection` | every context | nowhere | CxCore rules deriving `functional` and `functionalInArg`; inert without them |
+| `functionalInArg` | `CxA`, `CxD` | `CxA`, `CxD` | the `:functional-in-arg` table; CxCore declares no lift of it |
+
+Each table entry records its supporting sentexes with their contexts
+([taxonomy.md](taxonomy.md#reads-are-scoped-by-the-asking-context)): the statement in `CxA`
+and, where the mark is lifted, the copy in CxUniverse, which is what every reader outside
+`CxA`'s descendants answers from.
+
 ## forced_decontextualized_predicate: a canonical home in CxUniverse
 
 `(forced_decontextualized_predicate P)` is the stronger variant. Instead of leaving the
@@ -638,6 +705,13 @@ extent simply lives there. `genlCx` is declared this way (the vocabulary head as
 `(forced_decontextualized_predicate genlCx)` before any `genlCx` edge), so the whole context
 topology has one canonical home rather than being scattered across the contexts each
 edge was asserted in.
+
+**A declaration arriving after its facts moves them.** Each `(P …)` premise stored outside
+CxUniverse is asserted there at its own strength and the original retracted
+(`core/rehome-forced-extent!`), so the KB is the one the other order builds. A text load
+puts the context topology first (`text/load-entries!`), which puts every `genlCx` edge
+ahead of the declaration; the move is what keeps those edges out of the contexts they were
+written in, and out of the `(context …)` entailments a fact there draws.
 
 Both are wff-checked at assert time, like the other special predicates:
 `decontextualized_predicate` routes through the same `prop-problems` check as
@@ -661,18 +735,22 @@ visibility would be circular, `forced_decontextualized_predicate` already forces
 every `genlCx` edge universal, and the scoped reads' interning is keyed on
 that closure being context-independent.  A clash no single writer could see —
 admissible where each half was stated, jointly visible from some descendant — is
-reported by `settle`'s exposure pass in `(violations kb)`, never by refusing a
-writer on grounds it cannot see.
+**weighed** at that descendant, never by refusing a writer on grounds it cannot see.
 
-Under a KB's `:arbitrate` constraint policy it is also **weighed**, and by the same
-scoped check: `settle` runs each candidate's definitional question from its own context
-*and* from the maximal common descendant of that context and each context holding a
-sentex it could pair with. That chooses the asker rather than widening what an asker
-sees — a vantage already sees both halves — and it is what stops the same three
-sentences from landing on a defeat or on two coexisting claims according to which half
-was written last ([nmtms.md](nmtms.md)). Under `:refuse` no vantage is asked, so a clash
-only a common descendant sees is reported and belief is untouched, live and after a
-restart alike; a clash a member's own context sees is weighed under either policy.
+`settle` runs each candidate's definitional question from its own context *and* from the
+maximal common descendant of that context and each context holding a sentex it could
+pair with. That chooses the asker rather than widening what an asker sees — a vantage
+already sees both halves — and it is what stops the same three sentences from landing on
+a defeat or on two coexisting claims according to which half was written last
+([nmtms.md](nmtms.md)). Both constraint policies ask the vantages: the policy decides
+whether a *writer* is refused, and a writer who could not see the far half is refused by
+neither. The defeat a vantage lands is scoped to that vantage and below, so a context
+reading one half alone keeps what it holds.
+
+A pair the vantage itself reads no grounds for is what is left to *report*. The vantage
+is the maximal common descendant, so a separation derivable only from a context below it
+convicts nobody, and `settle`'s exposure pass files the clash in `(violations kb)`
+naming the contexts that do see it whole.
 
 **The pass asks its question of the scoped read, not of an enumeration.** For a
 candidate pair of held memberships it must answer "does any context see both of these
@@ -723,10 +801,30 @@ just as well when the feature is broken outright.
   context seeing the rule and the facts can also see a path, the edges add no constraint
   and the placement is unchanged — asked per candidate, since two incomparable
   candidates may see different supporters of one edge and a single global witness would
-  drop whichever cannot see it. Only where *no* candidate can is the taxonomy binding,
-  and the conclusion **descends** to the maximal contexts that see the edges too. A rule
-  and a fact in one context, over a hierarchy stated in a sibling, therefore
-  conclude in the contexts below both instead of concluding nowhere. A drop is a
+  drop whichever cannot see it. Only where a candidate sees no path is the taxonomy
+  binding, and the conclusion **descends** to the maximal contexts that see the edges
+  too. A rule and a fact in one context, over a hierarchy stated in a sibling, therefore
+  conclude in the contexts below both instead of concluding nowhere.
+
+  The descent places the conclusion once per route that no other route **covers**
+  (`chain/descent-placements`, `taxonomy/reach-supports`). A route covers another when
+  its weakest supporter is at least as strong and each of its asserting contexts is seen
+  from one of the other's. Of two routes stated in sibling contexts neither covers
+  the other, so each places the conclusion below its own context, and a candidate that sees
+  a path of its own keeps its placement beside the descent's:
+
+  ```
+  CxUniverse   (dog Fido)   forward rule (animal ?x) ⇒ (alive ?x)
+   ├─ CxA      (genl dog mammal) (genl mammal animal)
+   ├─ CxB      (genl dog animal)
+   └─ CxD      sees CxA and CxB
+  ```
+
+  CxUniverse sees no path, so the conclusion descends; the CxA route places
+  `(alive Fido)` in CxA and the CxB route places it in CxB, and CxD reads both. A descent
+  over one route would place it in CxB alone, the shorter path, and CxA would read it
+  only in the orders where the rule fired over the CxA route before the CxB edge
+  arrived. `second_route_test` builds this shape in every order. A drop is a
   `:no-placement` entry naming the
   subsumption and the contexts that would have taken it but for the edges, since "your
   context cannot see that edge" is a different thing to fix from "your facts are in
@@ -764,8 +862,11 @@ just as well when the feature is broken outright.
   that would be one justification per path through a hierarchy where paths multiply. It
   costs a **re-derivation** instead: the same bargain the qualitative support makes
   (docs/qcn.md), and the same one `exceptWhen` revival makes. Across *paths* the witness
-  is the shortest one; a longer route through more general contexts might place the
-  conclusion higher, and is deliberately not searched for.
+  is the shortest one, and the placement is asked per candidate, so a route no candidate
+  sees is the only case where the edges bind at all, and there the descent names every
+  route no other covers, as above. The witness a `transitiveInArg` claim names is chosen
+  the other way, by the contexts it was stated in rather than by length, because that
+  path decides the placement on its own ([inherit.md](inherit.md)).
 
   The same edge has to work in both time directions. Arriving **after** the facts, it
   makes them matchable at a supertype they did not have, and the semi-naive agenda

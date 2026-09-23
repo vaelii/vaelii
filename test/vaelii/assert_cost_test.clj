@@ -14,13 +14,13 @@
   declaration-carrying predicate.  It was found by hand, against a worktree at the
   parent commit.
 
-  This gate closes that gap from the other side.  It runs fourteen fixed workloads with
+  This gate closes that gap from the other side.  It runs seventeen fixed workloads with
   `vaelii.impl.profile` collecting and pins the **exact** index-operation counts each one
   costs: every `IndexStore` read by family, every `index-sentex` batch op by family, and
-  every `unindex-sentex!` batch op by family.  Nine of the fourteen assert and five retract,
+  every `unindex-sentex!` batch op by family.  Twelve of the seventeen assert and five retract,
   so a constant added to either write path lands here.
 
-  **Seven of the nine write a fact and two write the vocabulary**, which is the split to
+  **Eight of the twelve write a fact and four write the vocabulary**, which is the split to
   read the assert half by.  A definitional check that grows costs a fact nothing and a
   `genl` edge or an `(arity P n)` everything: the arity descension runs its walk when a
   binding arrives, and the retroactive report is triggered by a binding and never by a
@@ -70,10 +70,13 @@
     figure another corpus reproduces.  So a moved `:dead` is read against the workload
     that produced it: change `n` or the structure of the facts and it moves for that reason
     alone, where every other family scales with `n`.
-  - **A store that is not `KvIndexStore`.**  The columnar index walks its own trie and
-    reports nothing, which is why the KB below is pinned to `:backend :memory` instead of
-    inheriting whatever `scripts/test-backends.sh` selected.  The gate therefore says the
-    same thing on all eight backend runs rather than eight different things.
+  - **A durable index.**  Every workload runs twice, on `:memory` and on
+    `:memory-columnar` — the KV index and the columnar trie — and one budget holds both:
+    the columnar store tallies its trie families under `KvIndexStore`'s labels and
+    delegates the other families to an embedded `KvIndexStore`.  `:fan`, the node-probe
+    count only `KvIndexStore`'s walk keeps, is in no budget.  The durable backends are not
+    run: the KB is pinned rather than inherited from `scripts/test-backends.sh`, so the
+    gate says the same thing on all eight backend runs rather than eight different things.
   - **A configuration other than the shipped one.**  `with-shipped-retrieval` pins every
     switch that decides which family answers a read (`tu/shipped-defaults`), so the
     budgets are a claim about the defaults and about nothing else.  The reference retrieval path
@@ -95,29 +98,33 @@
 (use-fixtures :each (fn [t] (try (t) (finally (prof/stop)))))
 
 (def ^:private n
-  "Operations per workload — asserts in the nine assert workloads, retractions in the five
+  "Operations per workload — asserts in the twelve assert workloads, retractions in the five
   teardowns.  Large enough that a per-operation constant lands as a three-digit difference
-  rather than a rounding one, small enough that fourteen workloads are a few seconds."
+  rather than a rounding one, small enough that seventeen workloads are a few seconds."
   100)
 
-(def ^:private cost-space
+(def ^:private ^:dynamic *index*
+  "The in-RAM index representation a workload runs on — `:memory` or `:memory-columnar`."
+  :memory)
+
+(defn- cost-space
   "The KB every workload runs on: in-RAM, its own space, the reference TMS.
 
   Pinned rather than inherited, and each half has its own reason.  The **backend**,
-  because the counted calls live in `KvIndexStore` and the columnar store has none — inheriting
-  `VAELII_TEST_BACKEND` would make this gate read near-zero on the two columnar runs and
-  pass by measuring nothing.  The **TMS**, because a budget is a claim about one
-  configuration and `VAELII_TEST_TMS=dense` is a different one.  Derived from
-  `tu/plain-memory-space` so it follows `VAELII_TEST_SPACE` when a parallel run moves the
-  block, with one more segment so it shares a store with nothing."
+  because a budget is exact and the two in-RAM index representations are the ones it is
+  held on (`*index*`).  The **TMS**, because a budget is a claim about one configuration and
+  `VAELII_TEST_TMS=dense` is a different one.  Derived from `tu/plain-memory-space` so it
+  follows `VAELII_TEST_SPACE` when a parallel run moves the block, with one more segment
+  per index so it shares a store with nothing."
+  []
   (-> tu/plain-memory-space
-      (update :space conj ::cost)
-      (assoc :tms :reference)))
+      (update :space conj ::cost *index*)
+      (assoc :backend *index* :tms :reference)))
 
 (defn- fresh []
   ;; through `tu/clear-kb!` rather than the two protocol calls it wraps, so a wipe here
   ;; is the wipe every other suite takes and cannot drift from it
-  (doto (v/open-kb cost-space) (tu/clear-kb!)))
+  (doto (v/open-kb (cost-space)) (tu/clear-kb!)))
 
 (defn- ind [prefix i] (symbol (str prefix i)))
 
@@ -423,6 +430,34 @@
                    (range n))]
       (fn [] (doseq [h hs] (v/retract! kb h))))))
 
+(defn- preserved-edges
+  "A `genl` edge between two fresh types, on a KB holding `k` predicates preserved along
+  `genl`, each with a claim on its own type and a forward rule over it.  No claim reaches
+  either end of the edge, so the edge moves no predicate and re-joins no rule: what it
+  costs above `:taxonomy-edge`'s shape is the narrowing's own reads.
+
+  **The pair of these is the claim**, as `:membership` and `:deep-membership` are:
+  `inherit/crossing-claim?` reads the slot roster once per closure term and looks the
+  declarations up by relation, so the index reads an edge costs do not depend on `k`.  A
+  narrowing that read per declaration makes `:preserved-edges-32` read eight times what
+  `:preserved-edges-4` does in the families it reads."
+  [k]
+  (let [kb (fresh)]
+    (dotimes [j k]
+      (let [pr (symbol (str "acPres" j))
+            w  (symbol (str "acpw_t" j))]
+        (v/assert kb (list 'genl w 'thing) 'CxPerf {:strength :monotonic})
+        (v/assert kb (list 'transitiveInArg pr 1 'genl) 'CxPerf {:strength :monotonic})
+        (v/assert kb (list pr w 'thing) 'CxPerf {})
+        (v/assert kb (list 'set/forwardRule (list 'implies (list pr '?x '?y) (list 'acPresNoted '?x '?y)))
+                  'CxPerf {})))
+    (fn [] (dotimes [i n]
+             (v/assert kb (list 'genl (symbol (str "acpe_t" i)) (symbol (str "acpf_t" i)))
+                       'CxPerf {})))))
+
+(defn- preserved-edges-4 [] (preserved-edges 4))
+(defn- preserved-edges-32 [] (preserved-edges 32))
+
 ;; ---- the budgets ---------------------------------------------------------
 ;;
 ;; Measured, not designed.  Each is what the engine does today at `n` = 100; the point of
@@ -454,7 +489,7 @@
     :build   plain
     :sentexes 100
     :reads   {:argument-root 100 :argument-slot 100 :exception-index 100
-              :functor-root 1200 :rule-index 100 :trie-counts 100 :trie-lookup 100}
+              :functor-root 800 :rule-index 100 :trie-counts 100 :trie-lookup 100}
     :writes  {:levels 500 :terms 400 :roots 400 :roster 202 :slots 200}}
 
    ;; **One membership read per assert above `plain`, and it is the arity descension's.**
@@ -467,12 +502,21 @@
    ;; free on one that declares either spelling: `own-arity` answers first and the walk
    ;; never runs. Every type in the shipped starter carries `(unary_predicate t)`, which is
    ;; why this is the workload that shows it and the `declared` one is unmoved.
+   ;; **Two slot writes per assert, not one, and the second is what makes the read above
+   ;; flat.**  A unary fact enters the `[:unary-slot term]` roster beside the
+   ;; `[:argument-slot 1 term]` one, unconditionally rather than reference-counted
+   ;; (`kv/slot-adds` says why), so a membership costs one extra `:add-to-set` and no
+   ;; extra read.  In exchange `kb/types-of` — the retrieval every definitional
+   ;; check bottoms out on — reads the term's *memberships* instead of every fact holding
+   ;; it at argument 1: the `:reads` above are unchanged because the read is the same two
+   ;; key shapes, and the records behind them are the types rather than the whole posting.
+   ;; A KB of binary facts pays neither: `:plain`'s slots are unmoved.
    {:name    :membership
     :build   membership
     :sentexes 100
     :reads   {:argument-root 300 :argument-slot 300 :exception-index 100
-              :functor-root 1200 :rule-index 200 :trie-counts 100 :trie-lookup 100}
-    :writes  {:levels 400 :terms 300 :roots 300 :roster 100 :slots 100}}
+              :functor-root 800 :rule-index 200 :trie-counts 100 :trie-lookup 100}
+    :writes  {:levels 400 :terms 300 :roots 300 :roster 100 :slots 200}}
 
    ;; **The same reading at depth 8, and the pair is the point.**  Whatever this costs
    ;; above `:membership` is what seven more super-predicates cost, so the two budgets
@@ -487,8 +531,8 @@
     :build   deep-membership
     :sentexes 100
     :reads   {:argument-root 1100 :argument-slot 1100 :exception-index 100
-              :functor-root 1200 :rule-index 1000 :trie-counts 100 :trie-lookup 100}
-    :writes  {:levels 400 :terms 300 :roots 300 :roster 100 :slots 100}}
+              :functor-root 800 :rule-index 1000 :trie-counts 100 :trie-lookup 100}
+    :writes  {:levels 400 :terms 300 :roots 300 :roster 100 :slots 200}}
 
    ;; **The workload the entailment moves most.**  Every predicate is declared, so the
    ;; shipped default reads each declaration and tests the argument against the type it
@@ -520,7 +564,7 @@
     :build   declared
     :sentexes 100
     :reads   {:argument-root 600 :argument-slot 500 :exception-index 100
-              :functor-root 1500 :rule-index 100 :trie-counts 100 :trie-lookup 300}
+              :functor-root 1100 :rule-index 100 :trie-counts 100 :trie-lookup 300}
     :writes  {:levels 500 :terms 300 :roots 400 :roster 0 :slots 200}}
 
    ;; **No `:rule-index` family at all, and only a negative workload reads that way.**  An
@@ -534,7 +578,7 @@
     :build   negative
     :sentexes 100
     :reads   {:argument-root 100 :argument-slot 100 :exception-index 200
-              :functor-root 1100 :trie-counts 200 :trie-lookup 100}
+              :functor-root 700 :trie-counts 200 :trie-lookup 100}
     :writes  {:levels 400 :terms 400 :roots 400 :roster 103 :slots 101}}
 
    ;; **Seven `:argument-root` and seven `:argument-slot` reads per assert above `plain`**
@@ -550,14 +594,14 @@
     :build   functional-in-arg-arity-2
     :sentexes 100
     :reads   {:argument-root 800 :argument-slot 800 :exception-index 100
-              :functor-root 1200 :rule-index 100 :trie-counts 100 :trie-lookup 100}
+              :functor-root 800 :rule-index 100 :trie-counts 100 :trie-lookup 100}
     :writes  {:levels 500 :terms 400 :roots 400 :roster 200 :slots 200}}
 
    {:name    :compound
     :build   compound
     :sentexes 100
     :reads   {:argument-root 100 :argument-slot 100 :exception-index 100
-              :functor-root 1200 :rule-index 100 :trie-counts 100 :trie-lookup 100}
+              :functor-root 800 :rule-index 100 :trie-counts 100 :trie-lookup 100}
     :writes  {:levels 800 :terms 600 :roots 400 :roster 104 :slots 200}}
 
    ;; 200 indexed sentexes for 100 asserts — the rule concludes one apiece
@@ -577,7 +621,7 @@
     :build   rule-fired
     :sentexes 200
     :reads   {:argument-root 200 :argument-slot 200 :exception-index 300
-              :functor-root 1900 :rule-index 200 :trie-counts 200 :trie-lookup 200}
+              :functor-root 1100 :rule-index 200 :trie-counts 200 :trie-lookup 200}
     :writes  {:levels 1000 :terms 800 :roots 800 :roster 200 :slots 400}}
 
    ;; **The vocabulary write, and the first budget here that is not about a fact.**  What it
@@ -598,7 +642,7 @@
     :build   taxonomy-edge
     :sentexes 100
     :reads   {:argument-root 300 :argument-slot 300 :exception-index 300
-              :functor-root 1600 :rule-index 100 :trie-counts 100 :trie-lookup 100}
+              :functor-root 1200 :rule-index 100 :trie-counts 100 :trie-lookup 100}
     :writes  {:levels 500 :terms 400 :roots 400 :roster 101 :slots 101}}
 
    ;; **One retrieval per relative the arity table does not name**, which is what the entry point
@@ -617,8 +661,35 @@
     :build   arity-declaration
     :sentexes 100
     :reads   {:argument-root 600 :argument-slot 600 :exception-index 100
-              :functor-root 1000 :rule-index 100 :trie-counts 100 :trie-lookup 100}
-    :writes  {:levels 500 :terms 300 :roots 300 :roster 1 :slots 100}}])
+              :functor-root 600 :rule-index 100 :trie-counts 100 :trie-lookup 100}
+    :writes  {:levels 500 :terms 300 :roots 300 :roster 1 :slots 100}}
+
+   ;; **Two workloads, one budget, and the equality is the claim.**  A `genl` edge on a KB
+   ;; preserving 4 predicates along `genl` and one preserving 32 read exactly the same, so
+   ;; nothing the narrowing reads is per declaration.  Read against `:taxonomy-edge`, the
+   ;; narrowing is the +600 `:argument-slot` — the edge's two closure terms at the one
+   ;; preserved position, asked by the chainer, the re-check trigger and the settle — and
+   ;; the +1,200 `:functor-root`, the four permuting-mark postings those three calls stamp
+   ;; the mark cache with.  The +2 `:argument-root` is the declarations on `genl` read once,
+   ;; on the first edge, and cached on the `:preserving` roster after it.  A narrowing that
+   ;; read one argument root per declaration per closure term read 4,500 and 29,700
+   ;; `:argument-root` here.  The narrowing is asked only when it can change the caller's
+   ;; answer, and asking costs one read that stops at the first predicate it clears: the
+   ;; +200 `:rule-index` is the chainer's and the re-check trigger's rule read on one
+   ;; preserved predicate, and the +100 `:functor-root` the settle's extent read on one.
+   {:name    :preserved-edges-4
+    :build   preserved-edges-4
+    :sentexes 100
+    :reads   {:argument-root 302 :argument-slot 900 :exception-index 300
+              :functor-root 2500 :rule-index 300 :trie-counts 100 :trie-lookup 100}
+    :writes  {:levels 500 :terms 400 :roots 400 :roster 200 :slots 200}}
+
+   {:name    :preserved-edges-32
+    :build   preserved-edges-32
+    :sentexes 100
+    :reads   {:argument-root 302 :argument-slot 900 :exception-index 300
+              :functor-root 2500 :rule-index 300 :trie-counts 100 :trie-lookup 100}
+    :writes  {:levels 500 :terms 400 :roots 400 :roster 200 :slots 200}}])
 
 ;; The retraction half.  `:unindexed` is the retraction budgets' `:sentexes` — how many
 ;; sentexes left the index — and it is checked first for the same reason: a budget
@@ -635,7 +706,7 @@
     :build   plain-teardown
     :sentexes 0
     :unindexed 100
-    :reads   {:exception-index 100 :functor-root 700 :trie-counts 100}
+    :reads   {:exception-index 100 :functor-root 500 :trie-counts 100}
     :writes  {}
     :retracts {:levels 500 :terms 400 :roots 400 :roster 202 :slots 200 :dead 302}}
 
@@ -644,7 +715,7 @@
     :build   rule-derived-teardown
     :sentexes 0
     :unindexed 200
-    :reads   {:exception-index 200 :functor-root 900 :trie-counts 200}
+    :reads   {:exception-index 200 :functor-root 500 :trie-counts 200}
     :writes  {}
     :retracts {:levels 1000 :terms 800 :roots 800 :roster 200 :slots 400 :dead 602}}
 
@@ -654,7 +725,7 @@
    ;; retractions — 108 and 100 per retraction, one pair per standing reified NAT, on a
    ;; teardown naming none of them and collecting none of them, because the sweep read what
    ;; the KB held rather than what the retraction reached.  Narrowed to the removed region
-   ;; it is 7 functor-root and 0 term-index per retraction, which is `plain-teardown`'s own
+   ;; it is 5 functor-root and 0 term-index per retraction, which is `plain-teardown`'s own
    ;; cost: a bystander NAT population now costs a teardown nothing at all.  `:trie-lookup`
    ;; goes to 0 for the same reason.  The other five families are the same removal either
    ;; way and did not move.
@@ -666,7 +737,7 @@
     :build   nat-bystander-teardown
     :sentexes 0
     :unindexed 100
-    :reads   {:exception-index 100 :functor-root 700 :trie-counts 100}
+    :reads   {:exception-index 100 :functor-root 500 :trie-counts 100}
     :writes  {}
     :retracts {:levels 500 :terms 400 :roots 400 :roster 102 :slots 101 :dead 301}}
 
@@ -677,7 +748,7 @@
    ;; did.  The reads fell with the scope, exactly as the bystander's did — the first
    ;; pinning read 11,800 functor-root and 10,100 term-index, off a *declining* population
    ;; the sweep walked twice per retraction (`:term-index` was 2·(100+99+…+1)).  What is
-   ;; left is the region: 14 functor-root and 3 term-index per retraction, for a constant
+   ;; left is the region: 10 functor-root and 3 term-index per retraction, for a constant
    ;; the population no longer enters.
    ;;
    ;; The orphan question itself settles on the `termOfUnit` clause here — a collected
@@ -690,7 +761,7 @@
     :build   nat-orphan-teardown
     :sentexes 0
     :unindexed 200
-    :reads   {:exception-index 200 :functor-root 1400 :term-index 300
+    :reads   {:exception-index 200 :functor-root 1000 :term-index 300
               :trie-counts 200}
     :writes  {}
     :retracts {:levels 1200 :terms 1000 :roots 800 :roster 303 :slots 400 :dead 802}}
@@ -702,7 +773,7 @@
    ;; here — 100 merges × 100 retractions, on a teardown that names none of them and
    ;; un-merges nothing — and one scoped to the moved region reads **none**.
    ;;
-   ;; Everything else is `plain-teardown` exactly: 700 `:functor-root`, 100
+   ;; Everything else is `plain-teardown` exactly: 500 `:functor-root`, 100
    ;; `:exception-index`, 100 `:trie-counts`.  The three retract families that differ from
    ;; it (`:roster`, `:slots`, `:dead`) differ because the *victims* are a different shape
    ;; of fact, not because the merges are there.
@@ -714,7 +785,7 @@
     :build   merge-bystander-teardown
     :sentexes 0
     :unindexed 100
-    :reads   {:exception-index 100 :functor-root 700 :trie-counts 100}
+    :reads   {:exception-index 100 :functor-root 500 :trie-counts 100}
     :writes  {}
     :retracts {:levels 500 :terms 400 :roots 400 :roster 102 :slots 101 :dead 301}}])
 
@@ -814,11 +885,15 @@
       (check-tally "write"   wl (get wl :writes {})   (:writes got))
       (check-tally "retract" wl (get wl :retracts {}) (:retracts got)))))
 
+(def ^:private indexes [:memory :memory-columnar])
+
 (deftest assert-cost-is-what-it-was
-  (doseq [wl budgets] (check-workload wl)))
+  (doseq [ix indexes wl budgets]
+    (binding [*index* ix] (testing (name ix) (check-workload wl)))))
 
 (deftest retraction-cost-is-what-it-was
-  (doseq [wl retraction-budgets] (check-workload wl)))
+  (doseq [ix indexes wl retraction-budgets]
+    (binding [*index* ix] (testing (name ix) (check-workload wl)))))
 
 ;; ---- the frontier gate: armed for a bulk run, silent for an incremental one ----
 ;;

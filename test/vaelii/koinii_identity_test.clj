@@ -15,7 +15,8 @@
 (defn- registry-kb
   "A fresh CxCore KB with the koinii registry vocabulary loaded."
   []
-  (doto (tu/fresh) (core-context/load-into) (id/load-registry)))
+  (tu/load-dumped! (tu/fresh) :koinii/registry
+                   #(doto % (core-context/load-into) (id/load-registry))))
 
 (use-fixtures :each (tu/neutral-fresh registry-kb))
 

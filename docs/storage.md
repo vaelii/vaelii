@@ -2,7 +2,7 @@
 
 - **Covers:** the `RecordStore` / `IndexStore` protocols and the optional `Prefetching`,
   `Tallying`, `BulkLoading` and `BulkAnnotating` capabilities, what the three enumerations promise and what a
-  roster costs per handle, the sink an `import!` writes its records through, the seven legal record×index backend pairings and the optional `:sqlite` and
+  roster costs per handle, the sink an `import!` writes its records through, the eight legal record×index backend pairings and the optional `:sqlite` and
   `:pg` records adapters, nippy serialization, what one fact of a bulk load costs phase by
   phase, and the single-writer contract.
 - **Not here:** the six index families' key layout and retrieval →
@@ -35,6 +35,12 @@ Two protocols keep the reasoning code independent of any backend:
   whole-db wipe `reindex` rebuilds from) and `index-entries` / `index-load`, the
   `[structured-key value]` projection all four index backends share — what a dump
   writes, and why an index written by one loads into another.
+  `unary-sentexes-with-arg` is the one op here a new implementation can answer in a line:
+  a **superset** is legal, and `(sentexes-with-arg store 1 term)` is one, so an index that
+  cannot narrow to arity-1 facts returns the whole argument-1 posting and the caller
+  filters it exact. An index that *can* narrow should, because this is the read a
+  membership question makes on every assert — see [indexing.md](indexing.md), "the unary
+  roster".
 
 **The three record fetches are counted.** `get-sentex`, `get-justification` and
 `get-provenance` each tally against their kind through `vaelii.impl.profile`'s
@@ -44,8 +50,8 @@ which asks the trie where one sentence is stored. Asked with `p/lookup`, a varia
 path is a **wildcard**: the walk fans over every stored sentex of the same shape and the
 caller reads the record behind each to find the one that is actually this sentence — one
 index read by `:reads`, unimpeachable, and a few milliseconds per call at 800 candidates.
-`p/leaf-at` is the exact read that answers the same question in one, at ~10 µs and no
-record read at all, and the `:reads` count is identical either way. On the durable store
+`p/leaf-at` is the exact read that answers the same question in one, at ~10 µs and one
+record read per sentex at that one leaf (none for a ground sentence), and the `:reads` count is identical either way. On the durable store
 each of those
 fetches is a positional slot read, a positional frame read and a nippy thaw past the LRU —
 orders above what any index read costs. `test/vaelii/record_fetch_cost_test.clj` is the
@@ -56,12 +62,12 @@ The tally sits on the protocol method rather than inside a backend's own fetch, 
 counts what a caller asked for and not what a backend does to answer: the durable store
 re-reads a record inside `mark-premise` where the RAM one reaches into its state map, and
 a number covering both would be a reading of which backend is running. An overlay fetch
-that consults the base and then the fork counts twice, which is what a fork costs.
+that consults the fork and then the base counts twice, which is what a fork costs.
 
-A `KB` record bundles the two stores with the thirty-odd other slots the engine hangs off
-one value — the prover registry, the solver, the contradiction and violation bookkeeping,
-the settle and chain statistics, the resident qualitative networks, the match and naming
-caches, the feed. **The engine programs against these protocols and never against a
+A `KB` record bundles the two stores with eleven other slots the engine hangs off one
+value — the prover registry, the solver, the naming policy, the feed, and a `Reasoning`
+value whose own slots hold the contradiction and violation bookkeeping, the settle and
+chain statistics, the resident qualitative networks and the match caches. **The engine programs against these protocols and never against a
 concrete backend**, so a KB built on any store runs the whole engine unchanged. Records
 are in-memory (default) or on-disk; the index has four representations, and the pairings
 are below.
@@ -83,7 +89,7 @@ That also sets what each backend owes. A record backend must persist; an index b
 need not. Every index representation is resident in RAM, and the log under `:disk-log`
 buys a **fast restart** rather than a smaller one: it replays into the same key→value map
 `:memory` holds, so nothing is reindexed on open and nothing leaves the heap. The one
-exception is the `:disk-columnar` image ("The image", below), which is off by default and
+exception is the `:disk-snapshot` image ("The image", below), which is off by default and
 `mmap`s the leaf handles and the routed roots' postings rather than reading them onto the
 heap.
 
@@ -169,8 +175,8 @@ and `enumeration_shape_test` is where core proves it: one session run
 against a store answering rosters and one answering Clojure sets, compared at the KB level
 — beliefs, answers, `reindex`, `recover`, `export!` — rather than at the protocol call.
 
-**The engine's own stores answer Clojure sets**, because that is what the memory store's
-own state already is — its key set and its premise set. What each *holds* is a separate
+**The memory store answers Clojure sets**, because that is what its own state already
+is — its key set and its premise set. What a store *holds* is a separate
 question from what it answers, and the disk store's live-handle sets and premise set are
 where the two come apart.
 
@@ -207,10 +213,10 @@ and every write — `store!`, `kill!`, `mark-premise`, compaction, `close` — t
 exclusively (the *write* lock, the same mutual exclusion the monitor gave). A single-record
 `fetch` (`get-sentex`/`get-justification`/`get-provenance`) takes the *read* lock instead:
 two positional reads are safe against each other, so the lock only has to serialize a read
-against a concurrent append + slot rewrite, never one read against another. A bulk sweep —
-`export!`, `reindex`, the `recover` read side — that fans its per-record fetch across a
-worker pool then runs those fetches in parallel rather than funnelling each through one
-monitor (measured ~4× on a large export). `fetch` never takes the write lock, so a
+against a concurrent append + slot rewrite, never one read against another. Fetches from
+two reader threads therefore run in parallel rather than funnelling through one monitor;
+the engine's own bulk sweeps — `export!`, `reindex`, the `recover` read side — each fetch
+on one thread. `fetch` never takes the write lock, so a
 read cannot upgrade and deadlock against itself.
 
 The premise set is a `LiveRoster` too, and still resident. A premise is a sentex handle,
@@ -316,7 +322,7 @@ section is about, not this one.
 **6.4× over a server and 2.2× over SQLite, and the store stopped being what costs.** The
 two adapters converge on ~17k/s because what remains is the engine's own per-frame work —
 decoding the frame, re-canonicalizing the sentence, the naming tally, the fingerprint and
-the inline index build — and a `copy-sentexes!` handed records directly runs at 122.6k/s
+the inline index build — and the store's sink, handed records directly, runs at 122.6k/s
 against that. A server-backed load is now **faster than the local disk backend**, which is
 the sentence that was not true before.
 
@@ -395,8 +401,8 @@ map is in RAM and whose log buys the restart.
   costs one `reindex` per open (below); in exchange, every density experiment can be run
   against a durable KB instead of only in RAM.
 
-The two built-in axes admit eight pairings and **seven are legal**, each with a name:
-RAM records under the durable index is refused — [why that pairing is
+The two built-in axes admit ten pairings and **eight are legal**, each with a name:
+RAM records under the durable index or under the image is refused — [why that pairing is
 refused](defenses.md#ram-records-under-a-durable-index-is-refused). The rule the refusal
 states is that **the `:disk-log` index needs durable records**, which is why `:pg`
 may take it (`:pg-disk-log`) and `:sqlite` may not: `:sqlite` records already live in a
@@ -404,14 +410,14 @@ directory, so a durable index beside them is `:disk-log`'s pairing without its s
 lifecycle, and `:disk-log` is the name for that. So `:records` /
 `:index` are for overriding *half* of a name, not for reaching a pair the table left out,
 and `VAELII_TEST_BACKEND` takes a name. `./scripts/test-backends.sh` (`lein
-test-backends`) runs the whole suite on all seven, one log and one ✔/✘ per run, plus an
-eighth over the `overlay` decorator; `./scripts/test-matrix.sh` runs those eight and the
+test-backends`) runs the whole suite on all eight, one log and one ✔/✘ per run, plus a
+ninth over the `overlay` decorator; `./scripts/test-matrix.sh` runs those nine and the
 six sweeps concurrently, which is the same coverage in a fraction of the wall
 clock, since a durable run's store is `<vaelii.disk.dir>/space-<n>` and each gets its
 own directory. A bare matrix run is the **routine** roster, which stands two of the
 three durable-records-with-a-derived-index pairs down — one claim written three times,
 and `mixed_backend_test` holds the protocol in an ordinary `lein test` — and `full` is all
-fourteen. `./scripts/test-matrix.sh --owed` runs what the changed files owe and prints
+fifteen. `./scripts/test-matrix.sh --owed` runs what the changed files owe and prints
 why, from the map in `scripts/lib/suite-configs.sh`. `backend_parity_test` also runs one scripted KB
 session across every pair in an ordinary `lein test`, so a divergence fails without
 anyone remembering to.
@@ -432,7 +438,7 @@ repair is `reindex` — rebuild the index from the records, *then* recover — a
 
 That log line is the point of interest: the rebuild is O(records) on **every** open, so
 whether it is worth buying back — by persisting a snapshot of the derived index, which
-is what `:disk-columnar`'s image below does — is decided by that number at the corpus
+is what `:disk-snapshot`'s image below does — is decided by that number at the corpus
 size in question. `lein bench-reindex [facts] [rules] [index] [tms]` produces it. Measured on a generated corpus of **105,392 records**, single-threaded:
 
 | index | reindex | records/s | recover | open | extrapolated to 100M |
@@ -651,7 +657,8 @@ performs that open and a close for a store, so the recover a changed engine owes
 once, ahead of the next open ([operations.md](operations.md)). Its `--verify` recovers
 anyway and compares the new image's believed sets with the old one's.
 
-Nothing installs an image whose source digest differs from the running engine's. A caller
+Nothing installs an image whose source digest differs from the running engine's, except
+`:recover? :background` (below), which rebuilds belief behind the image it installs. A caller
 that believes a particular source change moves no belief has no way to say so, by design:
 the digest is the only check standing between an engine edit and belief computed under
 the code before it, and the identity has been wrong in that direction before.
@@ -690,7 +697,7 @@ other. A KB with no install pending is passed through unchanged after one atom r
 when `close!` closes the directory or `recover` is called; `recover` then runs the rebuild
 on the calling thread. An image declined for its records, its layout or its policies is not
 installed, and the open recovers as `:auto` does. The browser opens a store with belief this
-way (docs/web.md).
+way under `VAELII_DEV`, and with `:auto` otherwise (docs/web.md).
 
 Measured on a large `:disk-snapshot` store by `lein bench-recoverphase beliefimage <dir>`:
 the open that installed the image took under a tenth of the time of the open that ran a
@@ -705,7 +712,7 @@ folds `fingerprint/record-hash` over the sentex frames and `fingerprint/justific
 over the justification frames it writes, and the import folds the same two over the
 records it lands. The import tries the image only when it kept every handle the dump
 gave, since the network names its nodes by handle; the summary's `:reasoning-image` reports
-`{:belief :installed}` or `{:belief :recovered :reason r}`.
+`{:reasoning :installed}` or `{:reasoning :recovered :reason r}`.
 
 An installed image is the state of the KB that wrote it: its labels, which equal a recover's
 because belief is order independent, and its derivation depths and settle readings, which a
@@ -721,20 +728,23 @@ protocol — scalars, counters, sets, an N-key `kv-intersect`, a `kv-member?` pr
 `kv-batch` that lands one sentex's entire path (levels, term index, roots) as one unit. A
 backend supplies only that adapter:
 
-- `MemoryKvBackend` (`vaelii.impl.memory`) — one map keyed by the logical vectors, with
-  the predicate-scoped argument roots held instead as a counted `pos → term →
-  {:union, :preds}` trie under a reserved key; `kv-intersect` is
-  `clojure.set/intersection`, `kv-members` returns the stored set by reference.
+- `MemoryKvBackend` (`vaelii.impl.memory`) — one map keyed by the logical vectors, every
+  family alike; `kv-intersect` is `clojure.set/intersection`, `kv-members` returns the
+  stored set by reference.
 - `DiskKvBackend` (`vaelii.impl.disk.kv`) — the same in-RAM map, durable behind a
   write-ahead log (below).
 
-There is a **second, optional protocol beside it**: `vaelii.impl.protocols/ArgColumns`, four descent reads
-over that argument-root family (`arg-scoped-members` / `arg-scoped-intersect` /
-`arg-agnostic-members` / `arg-agnostic-count`). It carries an `Object` default that
-rebuilds the four-part vector keys and folds the generic set ops, so a backend that
-implements nothing answers exactly what a flat `key → set` map answers and a new adapter
-owes it nothing. `MemoryKvBackend` overrides it with the trie; `dense-roots` takes the
-default over its packed keys ([indexing.md](indexing.md), §2).
+**No `KvBackend` op names an index family.** A scalar, a counter, a set and an
+intersection are the whole vocabulary; which families a KB indexes, how their keys are
+spelled and which reads descend them are `vaelii.impl.kv`'s, one layer up. The argument
+roots are the family that tests this — they are hierarchical, and the reads a settle
+leans on ask for subtrees of them — and `KvIndexStore` answers all of it over the generic
+ops ([indexing.md](indexing.md), §2). A backend is free to hold any family in a
+representation of its own and answer those ops off it — `dense-roots` packs its keys into
+longs. That stays invisible above the backend, which is what makes it a representation.
+The term reaching a
+key is canonical — `vaelii.impl.kv` canonicalizes at both boundaries, because a lazy seq
+and the `PersistentList` it is `=` to freeze to different nippy bytes.
 
 `kv-member?` is there for a *cost* rather than an answer. `exception-rule?` — the gate
 the firing path takes once per candidate rule per new datum — asks whether one handle is
@@ -957,8 +967,9 @@ frames plus fixed-width 24-byte `.idx` slots keyed by integer id.
   truth, and a re-mark or a compaction repairs a slot the same way.
 - **The frame codec** (`disk.codec`) — a frame holds its record's fields
   **positionally** — [why positional, not
-  tagged](defenses.md#frames-are-positional-not-tagged).  A sentex frame is
-  `[tag sentence context id strength …]` (tags 0–3, which also carry a polarity field
+  tagged](defenses.md#frames-are-positional-not-tagged).  A literal frame is
+  `[tag sentence context id strength]` and a rule frame `[tag context id antecedent
+  consequent strength …]`, with no sentence (tags 0–3, which also carry a polarity field
   after the id, still decode), a justification frame a bare vector (one
   shape needs no tag), and provenance — an open application map — passes through as it
   comes.  Each decoder dispatches on the thawed frame's shape, so **frames written before
@@ -1124,8 +1135,8 @@ one another thread can catch mid-pair.
   lock because a whole-file blob rewrite held inside one would put a record append behind
   it on every tick that minted a handle.
 
-The premise set needs neither on the write path: each mutation is one `swap!` on one
-atom, and the pairing that would matter — a handle in `premise-ids` whose record is gone
+The premise set is a `LiveRoster` under the sentexes kind lock for every mutation, and
+the pairing that would matter — a handle in `premise-ids` whose record is gone
 — is a delete the writer makes, on the thread that reads it back. Its one mutation from
 another thread is the compactor dropping a handle whose frame the log cannot give back,
 which takes the kind lock beside the live-set drop it belongs with.
@@ -1172,8 +1183,9 @@ fact wearing the same shape:
   are still ours, and re-acquiring it is refused with `:type :unreleased`. Only the process
   exiting drops what is still held.
 
-The switch is read **at acquire time and nowhere else**: it decides whether an entry is
-made, and `held?` and `release!` follow the entry.  Toggling `vaelii.disk.lock` under a
+The switch is read **at acquire time and by `held?`**: it decides whether an entry is
+made, `release!` follows the entry alone, and `held?` answers true for an entry or for the
+switch being off.  Toggling `vaelii.disk.lock` under a
 directory this JVM already locked therefore cannot strand the OS lock, which is what a
 `release!` re-reading the property would do.
 `vaelii.core/close!` releases it without the JVM exiting, and **the order it does that
@@ -1242,7 +1254,8 @@ is its one representation — the form the chainers, the indexers and the checks
 - `:varmap` — `{?var0 ?x, …}` mapping each **canonical variable** back to the name the
   author wrote, so `sentex/originalize` can restore the original form for display.
 - `:direction` — the inference direction, set by the rule's `set/*Rule` wrapper:
-  `:forward` / `:backward` / `:inert`, or `:both` for a bare `implies`. The wrapper
+  `:forward` / `:backward` / `:inert`, and `:backward` for a bare `implies` (`:forward` for a
+  bare generator). The wrapper
   canonicalizes into the record exactly like the connectives do, so a rule carries its
   own direction rather than it living in a side index.
 - `:defeasible` — `true` for a `set/defaultRule` rule (its conclusions fire at
@@ -1494,8 +1507,8 @@ Two numbers to keep apart before acting on this. The Phase 0 "taxonomy ≈ 0" fi
 **residency** — 0.0 MB, 0 bytes/fact — and says nothing about rebuild *time*:
 `rebuild-taxonomy` does a `sentexes-with-functor` per declaring functor plus a record
 fetch per hit, and on a corpus where `genl` is a top predicate that is a great many
-fetches. And `recover`'s ~8 s at 313k records is not decomposed, so how it splits
-between the two is unmeasured.
+fetches. And `recover`'s ~8 s at 313k records is one number; `lein bench-recoverphase decomp`
+splits a recover into its steps, the taxonomy rebuild among them.
 
 **Atomicity.** All validation (naming, wff, arg/disjoint/functional/negation
 checks) runs *before* any write, so a rejected assert leaves no trace (tested).

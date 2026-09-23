@@ -15,7 +15,7 @@
             [clojure.test :refer [deftest is testing]]
             [vaelii.impl.source-identity :as si]))
 
-(def ^:private base
+(def ^:private ^String base
   "(ns demo.x
      \"The namespace docstring.\"
      (:require [clojure.string :as str]))

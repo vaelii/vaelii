@@ -5,4 +5,4 @@
 ;; member (which cannot see the other).
 
 ;; --- cross-member disjointness (upper spindle) ---
-(disjoint organization animal)
+(set/monotonic (disjoint organization animal))

@@ -34,7 +34,8 @@
            [org.eclipse.jetty.server Server]))
 
 (defn- household-kb []
-  (doto (tu/fresh) (core-context/load-into) (sa/load-speech-acts)))
+  (tu/load-dumped! (tu/fresh) :koinii/speech-acts
+                   #(doto % (core-context/load-into) (sa/load-speech-acts))))
 
 (use-fixtures :each (tu/neutral-fresh household-kb))
 
@@ -52,7 +53,7 @@
         wire #(ch/join (ch/wire (conn)) 'CxDeploy %)]
     (try (f conn wire) (finally (.stop server)))))
 
-(tu/deftest-kb ^:slow catch-up-resumes-from-a-stored-cursor
+(tu/deftest-kb catch-up-resumes-from-a-stored-cursor
   (with-daemon kb
     (fn [_conn wire]
       (let [author (wire 'AgentAva)
@@ -73,7 +74,7 @@
             (is (= #{(q 'Q1) (q 'Q2) (q 'Q3)} (cu/view-of c2))
                 "resumed from cursor N — Q3 tailed on, nothing missed or doubled")))))))
 
-(tu/deftest-kb ^:slow catch-up-catches-overflow-with-a-snapshot
+(tu/deftest-kb catch-up-catches-overflow-with-a-snapshot
   (with-daemon kb
     (fn [_conn wire]
       (with-redefs [sub/max-events 4]                       ; a tiny ring, so a short absence overflows

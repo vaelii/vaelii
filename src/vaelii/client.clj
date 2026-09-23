@@ -9,8 +9,9 @@
   `(query conn '(dog ?x) 'Ctx)` — the network mirror of `vaelii.core`'s explicit-`kb`
   API.  A `conn` from `client` holds a reusable `HttpClient`; no socket opens until a
   call.  A daemon reply of `{:ok false}` becomes an `ex-info` carrying the daemon's
-  `:error` and `:type`, so a remote naming or disjointness refusal surfaces like a
-  local one.
+  `:error`, `:type` and `:status`, so a remote naming or disjointness refusal surfaces
+  like a local one and the HTTP status under it is readable without writing the request
+  by hand.
 
   A daemon with `VAELII_API_TOKEN` set answers 401 (`:unauthorized`) to a call that
   presents no bearer token; the `conn` reads the same variable, so a client in the

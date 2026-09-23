@@ -2094,6 +2094,67 @@
           [{}]
           [])))))
 
+;; ---- covering: the part a cover leaves when every other is ruled out -----
+;;
+;; `(covering W A B C)` says that an instance of `W` is an instance of at least one named
+;; part.  With `(W x)` believed and every part but one believed **not** to hold of `x`,
+;; the remaining part holds.  That is the whole of the inference, and it fires on explicit
+;; negation alone: a part that merely cannot be proved rules out nothing, which is the
+;; line between a coverage axiom and negation as failure (`docs/naf.md`).
+;;
+;; The shape is `DefnSufficientProver`'s — a ground unary membership goal, decided by
+;; bounded level-6 subqueries, declining in one map lookup on a KB whose covers name
+;; nothing about the goal's collection.  A `partition` declaration is recorded as a
+;; cover too, so it licenses the same inference; what it adds is the separation, which is
+;; `disjointness-test`'s and not this one's.
+
+(defn- believed-literal?
+  "Does the ground literal `lit` hold in `context`, through a bounded level-6 subquery?
+  `conjunction-derivable?` over one conjunct — the same read `condition-holds?` makes of a
+  defn condition, so a stored fact, a closure and an evaluable all count and a backward
+  rule does not."
+  [kb lit context]
+  (conjunction-derivable? kb [lit] {} context))
+
+(defn- cover-leaves-only
+  "Does the declaration `[whole parts]` leave `part` as the only membership `member` can
+  hold — `(whole member)` believed, and `(not (p member))` believed for every other part?
+
+  The negations are asked of the *other* parts alone.  Asking it of `part` as well would
+  turn a cover whose every part is ruled out into a proof of each of them; that state is a
+  contradiction, and `settle` reports it as one rather than deriving from it here."
+  [kb whole parts part member context]
+  (and (believed-literal? kb (list whole member) context)
+       (every? (fn [p] (believed-literal? kb (list 'not (list p member)) context))
+               (remove #(= % part) parts))))
+
+(defrecord CoveringProver []
+  Prover
+  ;; A ground unary membership goal `(Part a)` for a `Part` some visible cover names.
+  ;; Ground for `DefnSufficientProver`'s reason: an open `(Part ?x)` would ask the cover to
+  ;; enumerate the terms every *other* part is explicitly denied of, which is a search over
+  ;; the complement of an extent rather than a test.
+  (applicable? [_ kb goal context]
+    (and (sequential? goal)
+         (symbol? (first goal))
+         (= 1 (count (rest goal)))
+         (ground? goal)
+         (seq (tax/covers-naming-visible (reasoning/taxonomy kb) (first goal) context))))
+  (est-bindings [_ _ _ _] 1)                    ; a ground membership test: it holds or not
+  (cost         [_ _ _ _] :compute)             ; one bounded level-6 subquery per part
+  ;; Augments `FactProver` and the closures rather than replacing them: a stored or
+  ;; inherited membership is answered by both and deduped, so the union carries the stored
+  ;; path and adds the computed one.
+  (completeness [_ _ _ _] 50)
+  (solve [_ kb goal context]
+    (let [part   (first goal)
+          member (second goal)]
+      (if (some (fn [[whole parts _]]
+                  (cover-leaves-only kb whole parts part member context))
+                (tax/covers-naming-visible (reasoning/taxonomy kb) part context))
+        [{}]
+        []))))
+
 ;; ---- aggregation: a reduction over a query's solutions ------------------
 ;; `(agg/count ?n ?v <body>)` and its four siblings are the third member of the
 ;; `unknown` / `thereExists` family, and they are built out of the same three
@@ -2488,7 +2549,9 @@
   (covariant — a stored subtype answers its supertypes) and those that reach DOWN
   (contravariant — a stored supertype answers its subtypes).  Only `interArg`'s
   trigger is contravariant; its target and the unconditional `arg`/`genlArg` type are
-  covariant.
+  covariant.  The homogeneity constraints `interArgs` / `interArgAndRest` hold their type
+  in `:fixed`, since one type that is both trigger and target has both variances and so
+  reaches neither way.
 
   **The whole `:argument-constraint` family, `quotedArg` included.**  Which predicates'
   declarations speak for a tuple is `res/constraining-predicates`, and
@@ -2521,7 +2584,15 @@
     args           {:pred 1 :types-up [2]}
     argsGenl        {:pred 1 :types-up [2]}
     argAndRest      {:pred 1 :fixed [2] :types-up [3]}
-    argAndRestGenl  {:pred 1 :fixed [2] :types-up [3]}})
+    argAndRestGenl  {:pred 1 :fixed [2] :types-up [3]}
+    ;; the homogeneity constraints: the one type is trigger and target at once, so it is
+    ;; covariant as a target and contravariant as a trigger and reaches neither way —
+    ;; `(interArgs R animal)` convicts a reptile beside a plant that `(interArgs R
+    ;; mammal)` admits, and the narrower one convicts a mammal beside a reptile the wider
+    ;; one admits.  The type and the start match a stored declaration exactly, and only
+    ;; the predicate position descends.
+    interArgs       {:pred 1 :fixed [2]}
+    interArgAndRest {:pred 1 :fixed [2 3]}})
 
 (def meta-constraint-functors
   "The argument constraints this prover answers along the `genl` closure, as a set —
@@ -2631,7 +2702,7 @@
    (->EvaluableProver) (->DifferentProver) (->EvaluateProver) (->QuantityProver)
    (->AdmitsArgnumProver)
    (->UnknownProver) (->ThereExistsProver) (->ForallProver) (->ClosedExtentProver)
-   (->DefnSufficientProver) (->DefnNecessaryNegationProver)
+   (->DefnSufficientProver) (->DefnNecessaryNegationProver) (->CoveringProver)
    (->AggregateProver) (->BeliefProjectionProver)
    ;; FactProver before ArgTypeProver: both are :lookup / completeness 50, so vector
    ;; order breaks the stable-sort tie in the union path (`solve-goal-with`).  A stored

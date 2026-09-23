@@ -844,6 +844,40 @@ neither engine, so it promises nothing the index must answer for — and, conclu
 its own variable consequent stays on the dead `?var0` key rather than the live catch-all,
 so it never surfaces as a phantom concluder for every goal.
 
+### A definitional refusal reads its grounds, not only what it opposes
+
+A variable functor rule is refused because it is inert against **every** KB. A definitional
+clash is not that case: the same sentence is admissible against five of the six orders the
+same three facts can arrive in, so a refusal here is a claim about this KB at this instant,
+and the question is which part of it the claim may rest on.
+
+It may rest on what can never be given up. `assert` refuses a `disjoint` or `functional`
+clash under `:arbitrate` only when the sentex the newcomer opposes is known-true **and** the
+derivation that makes the two a pair is — the separating declaration or the functionality
+mark, together with every `genl` step the constraint is read over (`checks/grounds-class`).
+Reading only the opposition was the narrower answer and the wrong one: a pair reached over a
+`:default` `genl` edge is retired by a denial of that edge at every context that reads the
+denial, and the sentence a refusal would have thrown away is one the KB then believes. The
+generalization is `opposing-class`' own, already made for `anti_transitive`, which convicts a
+chain and weighs its *weakest* step rather than its endpoints.
+
+The alternative was to record the refusal and re-offer it when the grounds went, the way
+`chain.clj` re-offers a firing an exception blocked. It does not carry over. That ledger is
+re-askable because a firing is a rule and bindings — re-evaluate the condition and the
+conclusion is placed again — where an asserted sentence has no rule to re-fire, so the record
+would have to hold the sentence itself, outside the records a `recover` replays. A KB that
+re-offered live and not after a recover would disagree with itself over one store. Admitting
+the sentence puts it where `recover` already finds it, and the settle's own weighing is what
+then decides it.
+
+`:refuse` is untouched by this. The policy is about whether a **writer** is told no
+(`checks/arbitrating?`), so it answers from the KB in front of the writer and its store
+follows the write order by construction — which
+`order_independence_test/under-refuse-the-writer-is-told-no-and-that-does-follow-the-order`
+states rather than leaves to be found. `asymmetric` and `anti_transitive` read the opposing
+class under either policy and so are not narrowed here; the same argument reaches them, and
+moving them moves the default policy, which is its own change.
+
 
 ## Taxonomy and disjointness
 
@@ -911,6 +945,101 @@ one context that happens to know nothing about `X` answers for all of them, whic
 negation-as-failure question into a search for somebody who has not heard the news. Such a
 goal is read whole-KB. A *mixed* goal needs no exception and gets none: its matched
 literals decide which readers can answer, and the computed ones are evaluated at those.
+
+### A firing placed over a lower route is not retired
+
+Defends [inherit.md](inherit.md), "Placement follows the reasons".
+
+A forward firing over a preserved claim that fires while only a specific route reaches is
+placed in that route's context. When a general route arrives, the re-join places the same
+sentence higher, and the lower firing stays stored. So the two arrival orders store
+different sets: `sentexes-in-context` of the specific context and the handle count differ,
+and `lein bench-witness` counts the lower firings that differ from a higher one only in
+their route — 0 in the starter and the test world, one per chain in its short-first
+corpora, one in `lattice-short-first`.
+
+Retiring the lower firing at the settle that places the higher one would make the two
+orders store one set, and only for as long as no scoped defeat or `except` touches the
+general route. A clash in the specific context that denies an edge of the general route
+withdraws the higher firing there, and the settle re-derives the conclusion over the
+specific route for that context ([nmtms.md](nmtms.md#where-the-layer-stops)) — which stores
+the lower firing in the long-first order too, and keeps it after the clash is gone. The
+store is a function of history on that path whatever this one does, so retiring here buys a
+sweep, a hazard (the lower firing may carry a justification the higher one does not) and
+no invariant.
+
+Retraction needs no retirement either. Retracting the general route withdraws the higher
+firing and the re-join places the conclusion over the specific route; retracting the
+specific route withdraws the lower firing. Either order then stores and answers what a KB
+built with only the remaining route does
+(`inherit_forward_test/retracting-either-route-leaves-what-a-kb-built-without-it-holds`).
+
+Routes stated in sibling contexts are a different shape: neither firing is below the
+other, and every order stores both
+([below](#routes-in-sibling-contexts-each-carry-a-firing)).
+
+A justification that records the reachability as a question answered per reader would
+make both stores a function of current state; the next entry is why it does not.
+
+### A justification names a path, and a withdrawn path is re-derived
+
+Defends [nmtms.md](nmtms.md), "Where the layer stops".
+
+A forward firing names one path per reachability it rests on — one firing per route that
+no other route covers ([below](#routes-in-sibling-contexts-each-carry-a-firing)) — and a
+scoped defeat or an `except` of an edge on it withdraws the firing from readers that still reach over a second
+route. The alternative a reader reaches for is to make the antecedent the **question** —
+`[rel sub super]`, answered per reader against its scoped closure — so no path is named
+and no reader can lose one. Do not. What it costs, measured on the starter and the test
+world (4,799 justifications, 2,615 of them naming a witness):
+
+| | a handle antecedent | a question antecedent |
+|---|---|---|
+| validity test | 44 ns, a set lookup | 1,058 ns, a scoped reach (24×) |
+| defeat class | a map read | 25 µs, a widest-bottleneck walk |
+| antecedents | 14,505 handles | 12% fewer, plus a question table and an edge → question index kept on every edge write |
+| scoped withdrawal (`grounded-in-region`) | one fixpoint | a question's validity depends on which edges the same fixpoint forces OUT, so it becomes an interleaved one |
+| durable frame | unchanged | a new antecedent kind: a format change, a fuzz run, a belief-image re-key |
+
+Every reader of a justification's antecedents changes with it — `valid?`, `conferred-class`,
+the region walks, the dedup keys and fingerprint, the codec, recovery, the equality
+rewrite, `why`, koinii's adjudication and the browser — and every KB that fires over the
+taxonomy pays the per-test cost, to fix a case that exists only where a scoped defeat or an
+`except` does. The settle's re-derivation (`settle/lost-firing-seeds`) keeps a justification
+a set of handles, is skipped on two derefs in a KB that holds neither, and costs one check per
+withdrawn firing where one stands. It gives up a store that is a function of current
+state, which the entry above records.
+
+### Routes in sibling contexts each carry a firing
+
+Defends [inherit.md](inherit.md), "Placement follows the reasons", and
+[contexts.md](contexts.md#the-consumers-and-what-each-of-them-may-reach).
+
+The witness searches return every route no other route covers, and the join makes one
+firing per route. A route covers another when each of its asserting contexts is seen from
+one of the other's (`taxonomy/floor-covers?`), so a route through general contexts
+covers a route through contexts below them and is the only one returned, and two routes
+through sibling contexts are both returned.
+
+A single witness chosen by content cannot serve two siblings. Each sibling reads the
+conclusion only where its own route places it, and neither placement is above the other,
+so any choice leaves one sibling without it. Arrival order then decides what that sibling
+reads: a firing placed while only its route existed stays stored, and a firing made after
+both routes exist names the chosen one. With the claim stated in CxA, a two-edge route in
+CxA and a one-edge route in CxB, a single witness takes the shorter CxB route and places
+the conclusion in CxD, and CxA reads it in 6 of the 24 arrival orders.
+
+The covering test is sufficient rather than exact. A lattice can make every reader of one
+route's contexts a reader of another's without either set of contexts being seen from the
+other — CxD the only context below CxA and CxB, with CxE above CxD — and the test then keeps
+both routes. The extra firing is placed below the other one and every reader of it also
+reads the other, so it changes what is stored and not what is believed; an exact test
+would enumerate the common descendants of each route's contexts, which is the reader
+enumeration the search exists to avoid. The number of routes returned is bounded by the
+number of distinct floors — the most specific asserting contexts of a route — that no
+other floor covers, and where every edge is stated in contexts one reader sees it is one:
+`lein perf`'s `witness-route-search` holds the single-context case linear in the number
+of routes.
 
 ### Post-hoc placement is the default because it is bounded
 
@@ -1433,8 +1562,10 @@ model's generated tool surface does not have, since that surface dispatches thro
 same op table ([llm.md](llm.md)) — so the clamp lives in the table, where both entry points
 reach it.
 
-An op with no option map is deliberately not on the table. `:prove` and `:ask` take no
-bound, so a caller has nothing to raise; what bounds them is the KB's own rule set.
+An op with no option map is deliberately not on the table. `:prove`, `:provable?`,
+`:ask` and `:ask?` take an option map and are on it; a call to one of them that sends no
+map gets the clock ceiling filled in (`serve/clock-fill`), since absent there means no
+clock.
 
 ### What a server binds decides what it requires
 

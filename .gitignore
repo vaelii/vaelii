@@ -6,9 +6,6 @@
 # Probe and bench transcripts written by a run against a local rig.
 /logs/
 profiles.clj
-# tools/vaelii-top is a Python package in this tree; its virtualenv and the
-# editable-install metadata `pip install -e` leaves are per machine.
-/tools/*/.venv/
 *.egg-info/
 __pycache__/
 pom.xml

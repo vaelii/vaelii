@@ -26,7 +26,7 @@ prefer `lein browser` while you are editing.
 ### 1.1 Static analysis (`lein lint`) setup
 
 Building, running and testing Vaelii needs only a JDK and Leiningen. `lein lint` is a
-separate gate that shells out to four more binaries, none of which Leiningen
+separate gate that shells out to three more binaries, none of which Leiningen
 installs:
 
 - [`clj-kondo`](https://github.com/clj-kondo/clj-kondo) — `brew install
@@ -34,17 +34,14 @@ installs:
   script](https://github.com/clj-kondo/clj-kondo/blob/master/doc/install.md)
 - [`shellcheck`](https://www.shellcheck.net/) — `brew install shellcheck` (macOS), or
   your distro's package
-- [`ruff`](https://docs.astral.sh/ruff/) — `brew install ruff` (macOS), or `pipx
-  install ruff`. The only optional one: the `tools` check skips with a note when ruff
-  is absent, because no CI image this repo uses carries it
 - `python3` — usually already present
 
 ```bash
 lein lint    # glossary, versions, doc links, doc drift, conflict markers, clj-kondo,
              # cljfmt, shellcheck, reflect (a compile pass), unused (a public var nothing
-             # calls), prose, tools (ruff over the Python under tools/)
+             # calls), prose — eleven checks, run in three concurrent lanes
 lein fix     # reformats in place; cljfmt is the only auto-repairable check
-lein gate    # lint, then the suite — the check before you push
+lein gate    # lint alongside the suite — the check before you push
 lein release-gate  # ...and the perf claims, before a tag or a perf-sensitive land
 ```
 
@@ -486,8 +483,8 @@ pronoun points at. Eight rules:
 
 **`lein lint`'s `prose` check** (`scripts/check-prose.py`) enforces the mechanical part:
 P1 banned metaphors, P2 banned rhetoric, P3 pseudo-cleft, P4 a copula with `are` straight
-after it. It reads `src/`, `test/`, `bench/`, `docs/`, `scripts/`, `resources/kb/`,
-`tools/` and the root markdown against `scripts/prose-baseline.txt`, a per-file budget
+after it. It reads `src/`, `test/`, `bench/`, `docs/`, `scripts/`, `resources/kb/`
+and the root markdown against `scripts/prose-baseline.txt`, a per-file budget
 that only
 shrinks — a file absent from the baseline is pinned at zero, so new and rewritten files
 are clean by default. The sentence-form rules are held by review. This section states the
@@ -538,7 +535,7 @@ has its own contribution terms. [`docs/foreign.md`](docs/foreign.md)
 ### 4.4 Changing the public surface
 
 Adding to `vaelii.core` is fine and expected. **Renaming or removing** anything on it
-is a breaking change, and `public_api_test.clj` will say so. Say it in the pull request
+is a breaking change, and `api_surface_test.clj` will say so. Say it in the pull request
 too, with the migration.
 
 ## 5. Testing
@@ -601,16 +598,18 @@ mocks — the in-memory stores by default, with no external dependency.
   scripts cost wall time and nothing else, so they are the gate and CI is the
   confirmation.
 - **`^:slow` marks a test costing about a second or more on its own**, and `lein test`
-  skips those by default. Forty-three of them carry about half the suite's assertions,
+  skips those by default. Thirty-eight of them carry 80k of the suite's 283k assertions,
   so `:all` is a habit rather than a hook: run it when a change touches inference,
   indexing or the TMS, and occasionally regardless. Mark a *new* test only when it is
   measurably over the line — a mark guessed at is a fast test nobody runs. Not one of
-  them is a unit assertion: they are the exhaustive cross-products and the randomized
-  oracles — every query pattern against every context, 1200-op index streams compared
-  entry-for-entry, 720 orderings of one clash, a 20k-fact generated load. (Measured on
-  the memory backend, 2026-08-02: `:default` is 2445 tests / 120,281 assertions, `:all`
-  2462 / 238,325. Wall-clock depends on the machine, so read the difference as a ratio
-  rather than a target.)
+  them is a unit assertion. Most are exhaustive cross-products or randomized oracles —
+  every query pattern against every context, 1200-op index streams compared
+  entry-for-entry, 720 orderings of one clash, a 20k-fact generated load — and the rest
+  are whole-KB scenarios: the starter round-tripped through text, a daemon driven over a
+  socket, a KB read beside a concurrent writer. (Measured on the memory backend,
+  2026-09-22: `:default` is 5,063 tests / 202,812 assertions, `:all` 5,097 / 282,911.
+  Wall-clock depends on the machine, so read the difference as a ratio rather than a
+  target.)
 - **`^:llm` marks a test that can reach a language-model provider**, and it is one of
   the three marks `:all` does not select. `lein test` makes no model call, and two
   independent things hold that: the mark picks which tests run, and `VAELII_LLM_LIVE=1`

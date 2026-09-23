@@ -281,11 +281,19 @@ reach it:
 (def conn (c/client "localhost" 4200))
 
 (c/watch conn)                          ; => {:token 0 :cursor 0 :max-events 256}
-(c/watch conn '(animal ?x) 'CxWell)      ; a standing query, same refusals
+(c/watch conn '(animal ?x) 'CxWell)     ; a standing query, same refusals
 (c/poll conn 0 0 {:wait-ms 20000})      ; => {:events [{…}] :cursor 3 :lagged 0}
 (c/unwatch conn 0)                      ; => true
-(c/watchers conn)                       ; => [{:token 0 :delivered 3 :pending 0}]
+(c/watchers conn)
+;; => [{:token 1 :delivered 3 :pending 3 :goal (animal ?x) :context CxWell}]
 ```
+
+Token 0 is gone from that last listing because the line above dropped it, and the
+standing query's row carries the goal and the context it was registered with.
+`:pending` is **what its ring still holds**, not what the caller has left to read: a
+poll copies events forward and removes none, so three delivered and three pending is a
+subscription nobody has fallen behind on. The reader's position is the cursor, which
+lives on the client and is a thing the daemon has no way to know.
 
 The daemon registers an ordinary listener of its own per subscription; that listener
 files each event into a bounded ring, and a caller reads the ring forward. **The events
@@ -388,7 +396,7 @@ progress, and progress is not belief moving. Nothing in the browser subscribes.
 
 ## Tests
 
-`test/vaelii/feed_test.clj` — 39 tests over four themes:
+`test/vaelii/feed_test.clj` — 41 tests over four themes:
 
 - **Altitude**: a defeat and its revival arrive as two events in opposite directions; a
   derived conclusion arrives with the rule that derived it; a re-asserted sentex is not
@@ -420,7 +428,7 @@ the standing query is the one that would re-run something. And the `delay` over 
 entries is pinned by counting calls at the renderer: a standing query whose goal matches
 nothing must render **zero** entries, where a plain listener renders the diff.
 
-`test/vaelii/feed_wire_test.clj` — 20 tests over the transport, and none of them re-tests
+`test/vaelii/feed_wire_test.clj` — 22 tests over the transport, and none of them re-tests
 what an event means:
 
 - **One answer, two targets**: a batch driven through `POST /op` produces, on the wire,

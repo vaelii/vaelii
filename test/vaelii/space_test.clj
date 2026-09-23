@@ -11,8 +11,6 @@
   possible relation lies inside its denotation."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
-            [vaelii.host.core-context :as core-context]
-            [vaelii.host.seed :as seed]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.qcn-kb :as qkb]
             [vaelii.impl.space :as space]
@@ -24,8 +22,7 @@
 ;; is opt-in, so registering it is what turns stored spatial facts into a network.
 (use-fixtures :each (tu/neutral-fresh
                      #(doto (tu/fresh)
-                        (core-context/load-into)
-                        (seed/load-context 'CxSpace "upper")
+                        (tu/load-core-with! '[[CxSpace "upper"]])
                         (v/add-prover (space/spatial-prover)))))
 
 (def ^:private C 'CxUniverse)

@@ -114,7 +114,10 @@
 ;; ---- parameter shapes ---------------------------------------------------
 
 (def ^:private integer-params
-  '#{handle jid id pos level floor n})
+  ;; `limit` is `qualitative-scenarios`' required bound, and `vaelii.core`'s
+  ;; `check-limit!` refuses a non-integer — so a string type here publishes a shape the
+  ;; read itself rejects.
+  '#{handle jid id pos level floor n limit})
 
 (def ^:private array-params
   '#{terms})
@@ -142,6 +145,23 @@
     level    "A retrieval level, 0 (raw index) to 7 (full backchaining)."
     floor    "The lowest level to start climbing from (default 2)."
     q        "A search string matched against term names."
+    limit    "How many to return, at most. Required — the enumeration is exponential in the node count."
+    calculus (str "Which qualitative calculus to read: \":rcc8\" (regions), \":cardinal\" "
+                  "(compass directions), \":relative\" (left-of / right-of), "
+                  "\":distance\", \":allen\" (intervals), \":point\" (instants). Only "
+                  "those six; any other name is refused.")
+    budget   (str "An anytime budget, as an EDN map: \"{:max-ms 2000}\", "
+                  "\"{:max-results 20}\", \"{:max-cost :compute}\". `:max-ms` and "
+                  "`:max-results` bound how much of the lazy answer stream is realized; "
+                  "`:max-cost` drops every prover above a tier (:lookup < :compute < …) "
+                  "before the stream is built. The answer carries `:status` "
+                  "(:complete / :timeout / :capped) and, when it is not complete, a "
+                  "`:resume` to continue the same search under a fresh budget.")
+    a        "One term of the pair being compared: \"dog\", \"Muffet\"."
+    b        "The other term of the pair: \"animal\", \"Ann\"."
+    m        "A disjoint metatype name — the type whose members are pairwise disjoint."
+    batch    "An edit batch, as an EDN map: \"{:add [[(dog Muffet) CxWell]] :remove [4211]}\"."
+    sx       "A stored sentex, as the EDN map a read answered with."
     opts     (str "Options map, as an EDN string. For kb_query and kb_query_p this is "
                   "where the rule-expansion depth goes: \"{:max-depth 3}\". With no "
                   "depth the read expands no rule at all and answers only from stored "

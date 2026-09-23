@@ -68,9 +68,11 @@ is the one shape that defaults to forward even bare: it stamps a rule by firing 
 no backward goal asks for a rule.
 
 `set/forwardOnlyRule` is the fourth direction: it forward-chains but is **never** used in
-backward proof (`:forward-only`, `rules/backward?` false). It exists for tests that
-exercise forward chaining in isolation; **the shipped ontology never uses it** — an
-ontology rule that materializes is `set/forwardRule`, which stays backward-usable too.
+backward proof (`:forward-only`, `rules/backward?` false). Tests use it to exercise
+forward chaining in isolation, and **the shipped ontology uses it once**: CxCore's
+`(commutative ?p) ∧ (arity ?p 2) ⇒ (symmetric ?p)` bridge, whose backward use would pose
+its own antecedent as a goal. Every other ontology rule that materializes is
+`set/forwardRule`, which stays backward-usable too.
 
 Direction is not an indexing choice: **every** rule is registered under all of its
 antecedent predicates *and* its consequent predicate, whatever its direction
@@ -81,7 +83,8 @@ which chainer will *use* what the index already holds.
 believed like any other rule and posted under all of its predicates, so it is findable
 by its terms and readable in the browser; what it never does is fire. That is how a
 rule the engine does *not* execute is still written down where a reader looks for it —
-the transitivity of `genl` beside the closure that actually computes it
+CxCore's two rules equating `commutative` with `(commutativeInArgAndRest ?p 1)`, a
+relationship the taxonomy's commuting table implements in code
 ([taxonomy.md](taxonomy.md)). Two consequences follow: an inert rule is the one
 rule shape whose *antecedent* predicate may be a **variable**, exempt from the
 `:not-indexable` refusal because a rule that runs in neither engine claims nothing the
@@ -153,6 +156,27 @@ need not unify with the antecedent it enabled — so both re-join their rules in
 drop them from the trigger set. The deferred (evaluable) path does neither and correctly
 does not try: `(lessThan 1 2)` is a function of the bindings, where an entailed or
 inherited claim is a function of what is stored.
+
+**A fact read in another argument order names the mark that licenses the order.** The
+matcher reads a stored fact in every arrangement its own functor's permuting marks allow
+(`symmetric`, `commutative`, `commutativeInArgs`, `commutativeInArgAndRest`), so
+`(noted ?x ?y) ⇐ (pr ?x ?y)` fires `(noted Bb Aa)` over the stored `(pr Aa Bb)` while
+`(symmetric pr)` holds. That firing holds only while a mark does, so the join, the
+trigger and a rete run each compare the instantiated antecedent's arguments with the
+stored fact's (`chain/read-marks`), and where they differ the justification names the
+mark statements that license the rearrangement (`inherit/permuted-read-supports`). Each
+minimal set of statements that licenses it is its own justification: a binary fact under
+both `symmetric` and `commutative` is read backwards by either, and the firing survives
+retracting one of them. The statement named is the supporter no other covers, which is
+the CxUniverse copy the engine lifts every permuting mark into
+([contexts.md](contexts.md#where-a-relation-property-is-read-from)), narrowed to the
+statements the fact's own context sees where there are any: a firing naming one of those
+is placed wherever the fact and the rule allow, and one naming another would only place
+below it. The mark costs a firing no index read, since the statements come off the
+taxonomy's supporter sets (`firing_cost_test`'s symmetric-trigger workload). The comparison runs
+only for an antecedent whose sub-predicate closure carries a permuting mark
+(`chain/permuting-antecedent?`), and at a trigger only for a fact whose own predicate
+carries one, so a KB with no such mark pays two empty-table reads per antecedent.
 
 **Recursion guard:** a derived datum carries a depth (`1 + max` antecedent
 depth); a derivation past `:max-depth` (default 64) is skipped and the run flagged
@@ -608,8 +632,8 @@ chaining and `assert` left behind, not what a query just computed.
 **Which to reach for.** `prove` terminates on the *data*: a chain of length n finishes
 after n steps whatever bound it was given, so it answers a derivation deeper than any
 number you would have guessed — the one ceiling it carries is on how far a subgoal's
-*terms* may grow past the query's, which no stored fact can answer past anyway. It is
-also the bounded-and-resumable one, and the only
+*terms* may grow past the query's, which no stored fact can answer past anyway. Both
+engines run bounded and resumable under `prove-within`; `prove` is the only
 one that reports dead ends, which is what abduction listens on (`abduce`). The node
 engine trades a hard depth ceiling for set-at-a-time evaluation: its residual stays
 symbolic, so its node count is a function of the rule graph rather than of the data, and
@@ -747,10 +771,21 @@ Three things it does differently, each because a node has no rule frame to hide 
 decremented only for the one actually rewritten, so the conjunct expanded first cannot
 spend the whole allowance the way a single per-frame depth lets it.
 
+**A repeated conjunct collapses to one.** The splice can put a literal into a
+conjunction that already holds it, and conjunction is idempotent, so the two spellings
+are one question under two keys. The kept copy takes the **largest** depth of the copies
+folded onto it, because a deeper copy admits every rewrite a shallower copy admits. The
+rewrite window then reopens at the position a copy folded onto, which is what makes that
+depth reachable. Without the collapse a rule graph containing a cycle adds a conjunct
+per turn. `inference_test`'s three-rule cycle (`(alpha ?x) ∧ (beta ?x) ⇒ (paired ?x)`,
+and `paired` concluding each half) runs dry at depth 6 in under 200 nodes with the
+collapse, and the test pins that bound.
+
 Dedup is global rather than per-path — a key is claimed with a compare-and-set before a
 node is enqueued, and a second arrival at an equivalent node is dropped. The key is the
 node's literals, their depths, the map back to the asker's variables, the **set of
-pending guard identities**, and the rewrite window. Identities, not a count: two distinct
+pending guard identities**, the goals answered on the way that belief may have defeated
+(`:derived`), and the rewrite window. Identities, not a count: two distinct
 rules each carrying its own `exceptWhen` can rewrite one goal to the same canonical
 residual — through the `genl` fan — and a count reads those two children as one key, so
 the second is dropped before it is enqueued and every answer only its exception admits is
@@ -937,8 +972,8 @@ least-rewritten node, which is the one furthest from an answer, and it costs **1
 ttfa. A single fixed priority function cannot serve both columns, which is the whole
 argument for the frontier order being a policy.
 
-`:ground-first` is the only tactician best-or-tied on every column measured, and is
-therefore the default.
+`:ground-first` is the best tactician on both first-answer columns and second only to
+`:breadth-first` on both fifty-answer columns, and is therefore the default.
 
 The **backchain estimate earns its overhead** where a query has many answers: it cuts
 nodes-to-50 by 3.4×, because without it a rule-only predicate costs zero and the frontier
@@ -981,13 +1016,14 @@ subgoal, and a needle is precisely the query where none of the other provers can
 
 `inference/*max-depth*` is not a tuning knob, and its root value is **nil**: the node
 engine refuses a query that names no depth rather than picking one. A residual grows a
-conjunct per rewrite, and the claimed-key set cannot stop that — each rewrite yields a
-longer conjunction and so a key nothing has claimed. The DFS terminates on the **data**
-(it substitutes as it goes, so a chain of length n ends after n steps whatever bound it
-was given, and a term a rule grows past what the path has already met is cut by the
-term-growth ceiling); the node engine terminates on the **bound**. So a derivation deeper than the
-bound is found by one and not the other, and the depth a query needs is a property of the
-data, which is why there is no default to pick.
+conjunct per rewrite, and the claimed-key set cannot stop that — a rewrite naming a
+literal the conjunction does not already hold yields a longer conjunction, and so a key
+nothing has claimed. The DFS terminates on the **data** (it substitutes as it goes, so a
+chain of length n ends after n steps whatever bound it was given, and a term a rule grows
+past what the path has already met is cut by the term-growth ceiling); the node engine
+terminates on the **bound**. So a derivation deeper than the bound is found by one and
+not the other, and the depth a query needs is a property of the data, which is why there
+is no default to pick.
 
 Within the bound the two return the same answer **set**, which is what
 `inference_parity_test` holds them to directly and what `VAELII_QUERY_ENGINE=inference`
@@ -1422,12 +1458,15 @@ path prefix:
 | token | estimate |
 |-------|----------|
 | known value | extend the prefix; `count-at` it — exact, not an estimate |
-| bound, value unknown | the average branch, `count-at(prefix) ÷ \|children(prefix)\|` |
+| bound, value unknown | the prefix count stands; stop |
 | free | the prefix count stands; stop |
 
-The middle row is what makes SIP pay: the trie's own fan-out is exactly the
-distinct-value count a textbook N/V selectivity formula wants, and it is already
-stored. Two corrections sit on top — the **argument roots** (`count-with-arg`) cover
+The middle row keeps the bound one-sided. A bound variable takes one value, and that
+value may be the one the whole prefix sits under, so charging it the average branch
+`count-at(prefix) ÷ |children(prefix)|` would read too low (`plan_test`,
+`a-bound-token-is-not-charged-an-average`). SIP prices that narrowing in the join formula
+instead, where the trie's own fan-out is exactly the distinct-value count a textbook N/V
+selectivity formula wants. Two corrections sit on top — the **argument roots** (`count-with-arg`) cover
 a ground argument sitting *after* a variable, which no prefix can reach, and a
 **unary type literal** is costed over its subtype closure, because matching fans out
 there and a type high in the hierarchy usually has no instances of its own (costing
@@ -1711,11 +1750,13 @@ registry rather than growing a second evaluator that could drift from it:
   every reader sees ([equality.md](equality.md), [quantity.md](quantity.md)).
 - **Its inputs must be bound when the join reaches it.** `sentex/canonicalize-rule`
   holds deferred literals to the end of the canonical antecedent order, which
-  guarantees it for any rule whose deferred variables some generator binds. A literal
-  that arrives unbound anyway — `?b` occurring *only* inside `(lessThan ?a ?b)`, say —
-  **throws** an `ex-info` naming the goal and the unbound variables. Reporting it as
-  an empty join instead would present a comparison that was never run as one that
-  failed, which is the exact failure mode the throw exists to remove. (`evaluate`'s
+  guarantees it for any rule whose deferred variables some generator binds. A rule where
+  no generator can — `?b` occurring *only* inside `(lessThan ?a ?b)`, say — is refused
+  at assert (`:naf-not-closed`, naming the unbound variables), and a literal that reaches
+  the join unbound anyway **throws** an `ex-info` naming the goal and the unbound
+  variables. Reporting either as an empty join instead would present a comparison that
+  was never run as one that failed, which is the exact failure mode the throw exists to
+  remove. (`evaluate`'s
   first argument is its *output*, so it is exempt; every other argument is an input.)
 
 A deferred literal at the *trigger* position is computed like any other and the
@@ -1735,12 +1776,13 @@ work, and is what `deferred_forward_test` does.
 
 A prover that answers out of *stored facts* poses the question a deferred literal does
 not: the answer moves when the KB moves, and no antecedent of the rule names the facts it
-moved with. Four ship in this state, and the last two are in the default registry:
+moved with. Five ship in this state, and the last two are in the default registry:
 
 | prover | answers | reads |
 |---|---|---|
 | `stp/TemporalDistanceProver` | `temporalDistance` | every `temporalDistance` in the network, and the unit table |
 | `duration/DurationProver` | `totalDuration`, `overlapDuration` | `length`, the Allen relations, `startOf`/`endOf`, the metric constraints, the unit table |
+| `sign/SignProver` | `signOf`, `trendOf` | `signOf`, `trendOf`, `qualitativeSum` / `Difference` / `Product`, `derivativeOf`, `greaterInMagnitudeThan` |
 | `prover-types/QuantityProver` | the five measure comparisons | `dimensionOf`, `conversionFactor` |
 | `prover-types/TransitivePredicateProver` | every `(transitive P)` predicate this KB declares | the believed `P` edges its walk crosses — sub-predicate spellings and `inverse` partners included |
 
@@ -1830,8 +1872,9 @@ taking the far conclusion and leaving the near one, and both arrival orders.
 `?args=(Tom Bob)`; `substitute` splices the tail back, so the same pattern with
 those bindings rebuilds `(parentOf Tom Bob)`. Ordinary sentences (no `.`) are
 unaffected — plain Clojure lists, no Java interop. This lets a rule quantify over an
-arbitrary predicate and its whole argument list; it is what the inert
-`decontextualized_predicate` documentation rule uses (see [contexts.md](contexts.md)).
+arbitrary predicate and its whole argument list. No rule in the shipped ontology uses
+one; `decontextualized_predicate`'s lift, which ranges over every argument list, is
+implemented in code rather than as a rule (see [contexts.md](contexts.md)).
 
 ## The pluggable prover engine (`vaelii.impl.provers`, `ask`)
 
@@ -1924,8 +1967,10 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   asking vantage like every read; `isa? siblingOf symmetric` and `isa? siblingOf
   binary_predicate` follow the genl closure from that same stored membership. The shipped
   marks are `decontextualized_predicate`s lifted into CxUniverse, so on a real KB every
-  context sees them; on a bare KB the mark stays in its declaring context and the read is
-  scoped there. `genl` / `genlCx` are the exception the taxonomy names `closure-relations`:
+  context sees them. On a bare KB the engine lifts `symmetric` into CxUniverse itself, as
+  it does every permuting mark ([contexts.md](contexts.md#where-a-relation-property-is-read-from)),
+  while `transitive`, `asymmetric`, `reflexive` and `functional` stay in their declaring
+  context and the read is scoped there. `genl` / `genlCx` are the exception the taxonomy names `closure-relations`:
   `(transitive genl)` is stored and queryable but held out of the `:transitive` property
   machinery, so it never routes them to the generic closure prover
   ([taxonomy.md](taxonomy.md)).
@@ -1996,6 +2041,10 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   and a `Coll` with no necessary in its ancestor set leaves it inapplicable. Ground only.
   `:compute`, partial (50) — it augments the stored `(not (Coll a))` and
   `ClosedExtentProver`. See [defns.md](defns.md).
+- **CoveringProver** — a ground unary membership goal `(Part a)` for a `Part` some visible
+  `(covering W …)` names: with `(W a)` believed and every other part believed **not** to
+  hold of `a`, the remaining part holds. Explicit negation only, never an unprovable part.
+  `:compute`, partial (50). See [taxonomy.md](taxonomy.md).
 - **ArgTypeProver** — infers an individual's type from *how it is used*: if a
   believed relation puts `x` in a position that `(arg P n T')` constrains, then
   `x` is a `T'` (and, by genl, every supertype). So `arg` reads two ways — a
@@ -2021,7 +2070,7 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   `admitsArgnum`. Ground relation and position only. `:lookup`, complete (100).
 - **FactProver** — index matches (`matches-visible`). Partial (50).
 
-Twenty-three in all, and `provers/registry` is the live list — an application's own
+Twenty-four in all, and `provers/registry` is the live list — an application's own
 provers sit beside them in the same atom.
 
 **No prover expands a rule.** Rule search is `core/query`'s, at a depth the caller
@@ -2162,9 +2211,9 @@ reasoning. Raw introspection still sees everything.
 
 ## Where the machinery stops
 
-- **The `out` slot on a justification is modelled and carried, and nothing populates it**
-  — `jtms/valid?` reads it on every relabel and finds it empty, so the check is vacuous.
-  Negation as failure reaches a rule antecedent by a different road — `chain/naf-blocks?`
+- **A justification has no OUT-list.** Its record is `[id informant antecedents
+  consequence bindings strength]`, and `jtms/valid?` asks only that every antecedent and
+  the rule be IN and the justification not be blocked. Negation as failure reaches a rule antecedent by a different road — `chain/naf-blocks?`
   evaluates an `unknown` antecedent at firing time in `derive-conclusion`, and the
   re-check index brings the rule back when a later fact would change the answer. So a
   blocked firing is a justification that was never made, not one carrying an OUT

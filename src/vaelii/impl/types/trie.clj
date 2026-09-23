@@ -9,7 +9,8 @@
   `vaelii.impl.columnar`."
   (:require [vaelii.impl.tokens :as tok]
             [vaelii.impl.types.postings :as postings]
-            [vaelii.impl.types.sentex :as sentex-types])
+            [vaelii.impl.types.sentex :as sentex-types]
+            [vaelii.impl.types.snapshot :as snapshot-types])
   (:import [it.unimi.dsi.fastutil.ints Int2IntOpenHashMap IntSet]
            [java.nio IntBuffer]
            [java.util Arrays ArrayDeque]))
@@ -56,9 +57,6 @@
   (t-lookup    [t pattern]     "Handles whose full path matches `pattern` (variables fan out; markers skip).")
   (t-clear!    [t]             "Reset to a single empty root (the dict is wiped by the store).")
   (t-compact!  [t]             "Freeze the mutable trie into flat CSR arrays (read-optimized, dense).")
-  (t-csr       [t]             "The frozen CSR sections as a map, or nil while mutable.")
-  (t-mapped?   [t]             "Are the leaf columns an mmap'd snapshot rather than heap arrays?")
-  (t-install-csr! [t sections] "Install CSR sections read from a snapshot (leaves may be mapped buffers).")
   ;; internal node helpers (field access lives only inside the deftype)
   (^:private -ensure!       [t id])
   (^:private -alloc!        [t])
@@ -89,7 +87,7 @@
 ;; A frozen trie holds its leaf columns in **one of two places**, and that is the whole
 ;; residency split, and the walk is the half that must never page.  `fleaf-off` /
 ;; `fhandles` are heap `int[]` after a `t-compact!`, and `mleaf-off` / `mhandles` —
-;; `IntBuffer` views of an mmap'd snapshot section — after `t-install-csr!` maps one.
+;; `IntBuffer` views of an mmap'd snapshot section — after `snapshot-install!` maps one.
 ;; The **skeleton** (`fcounts` `foffsets` `fedge-tok` `fedge-tgt`) is heap either way,
 ;; because the lookup walk reads it at every frontier node and a page fault there would
 ;; resurrect the leading-variable fan pathology at disk latency.  The leaves are read once,
@@ -535,36 +533,6 @@
             (set! cap (int 0)) (set! high (int 0)) (.clear free)))))
     nil)
 
-  ;; The frozen sections, whichever place they live in — the snapshot writer's read of
-  ;; the trie, and nil while mutable so a caller must compact first rather than write a
-  ;; half-frozen image.
-  (t-mapped? [_] (some? mhandles))
-
-  (t-csr [_]
-    (when frozen?
-      {:nodes    (dec (alength foffsets))
-       :counts   fcounts   :offsets  foffsets
-       :edge-tok fedge-tok :edge-tgt fedge-tgt
-       :leaf-off (or fleaf-off mleaf-off)
-       :handles  (or fhandles mhandles)}))
-
-  ;; Install sections read back from a snapshot.  The skeleton is always heap `int[]`;
-  ;; the leaf pair arrives either as heap arrays or as `IntBuffer`s over an mmap'd
-  ;; region, and which it is *is* the residency decision — nothing below here cares.
-  (t-install-csr! [_ {:keys [counts* offsets* edge-tok* edge-tgt* leaf-off* handles*]}]
-    (set! fcounts counts*) (set! foffsets offsets*)
-    (set! fedge-tok edge-tok*) (set! fedge-tgt edge-tgt*)
-    (if (instance? IntBuffer handles*)
-      (do (set! mleaf-off leaf-off*) (set! mhandles handles*)
-          (set! fleaf-off nil) (set! fhandles nil))
-      (do (set! fleaf-off leaf-off*) (set! fhandles handles*)
-          (set! mleaf-off nil) (set! mhandles nil)))
-    (set! frozen? true)
-    (set! counts (int-array 0)) (set! toks (object-array 0))    ; no mutable graph beside it
-    (set! tgts (object-array 0)) (set! leaves (object-array 0))
-    (set! cap (int 0)) (set! high (int 0)) (.clear free)
-    nil)
-
   ;; Rebuild the mutable graph from CSR (a write reverts to mutable).  The CSR node ids
   ;; become the mutable ids, edges stay sorted, so the mutable invariants hold immediately.
   ;; Each node's shape is re-derived from its actual width here rather than remembered, so
@@ -609,6 +577,41 @@
         (set! fcounts nil) (set! foffsets nil) (set! fedge-tok nil)
         (set! fedge-tgt nil) (set! fleaf-off nil) (set! fhandles nil)
         (set! mleaf-off nil) (set! mhandles nil)))
+    nil)
+
+  snapshot-types/SnapshotSections
+  (snapshot-mapped? [_] (some? mhandles))
+
+  ;; The frozen sections, whichever place they live in — the snapshot writer's read of
+  ;; the trie, and nil while mutable so a caller must compact first rather than write a
+  ;; half-frozen image.  The trie's sections are a function of the trie alone, so `opts`
+  ;; carries nothing for it.
+  (snapshot-read [_ _opts]
+    (when frozen?
+      {:nodes    (dec (alength foffsets))
+       :counts   fcounts   :offsets  foffsets
+       :edge-tok fedge-tok :edge-tgt fedge-tgt
+       :leaf-off (or fleaf-off mleaf-off)
+       :handles  (or fhandles mhandles)}))
+
+  ;; Install sections read back from a snapshot.  The skeleton is always heap `int[]`;
+  ;; the leaf pair arrives either as heap arrays or as `IntBuffer`s over an mmap'd
+  ;; region, and which it is *is* the residency decision — nothing below here cares.
+  ;; The section names carry a `*` because `counts`, `toks`, `tgts` and `leaves` are
+  ;; fields of this type, and a destructured binding of one would shadow the field the
+  ;; `set!` beside it assigns.
+  (snapshot-install! [_ {:keys [counts* offsets* edge-tok* edge-tgt* leaf-off* handles*]}]
+    (set! fcounts counts*) (set! foffsets offsets*)
+    (set! fedge-tok edge-tok*) (set! fedge-tgt edge-tgt*)
+    (if (instance? IntBuffer handles*)
+      (do (set! mleaf-off leaf-off*) (set! mhandles handles*)
+          (set! fleaf-off nil) (set! fhandles nil))
+      (do (set! fleaf-off leaf-off*) (set! fhandles handles*)
+          (set! mleaf-off nil) (set! mhandles nil)))
+    (set! frozen? true)
+    (set! counts (int-array 0)) (set! toks (object-array 0))    ; no mutable graph beside it
+    (set! tgts (object-array 0)) (set! leaves (object-array 0))
+    (set! cap (int 0)) (set! high (int 0)) (.clear free)
     nil))
 
 (defn make-trie [dict]

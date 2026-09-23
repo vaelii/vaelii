@@ -144,7 +144,7 @@ echo "running $n namespaces at $selector across $jobs shard(s) — $(revision_li
 # shard logs carry the revision stamp but not the selector or the shard count,
 # and a bare `lein test-parallel` writes no other file here — `gate.sh` captures
 # this stdout into `test.log`, and a run outside the gate captures nothing.  So
-# a watcher had nothing to read the plan off (tools/vaelii-top/src/vtop/live.py).
+# a watcher had nothing to read the plan off (vaelii-tools: vaelii-top/src/vtop/live.py).
 printf 'selector\t%s\nshards\t%d\nnamespaces\t%d\n' \
   "$selector" "$jobs" "$n" > "$OUT/test.plan" 2>/dev/null || true
 

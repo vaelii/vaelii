@@ -275,6 +275,25 @@
 
 ;; ---- the request-body ceiling -------------------------------------------
 
+(defn- body-ceiling
+  "`raw`, the value of `VAELII_MAX_BODY_BYTES`, as the byte cap it names: 16 MiB when it
+  is unset or blank, since an exported-but-empty variable is the shell's way of saying
+  nothing (docs/operations.md).  Anything else that is not a positive whole number is
+  refused, naming the switch."
+  [raw]
+  (if-let [raw (some-> raw str/trim not-empty)]
+    (let [refuse (fn [msg] (ex-info msg {:type :unknown-option :mismatch :bad-value
+                                         :switch "VAELII_MAX_BODY_BYTES" :value raw}))
+          n      (try (Long/parseLong raw)
+                      (catch NumberFormatException _
+                        (throw (refuse (str "VAELII_MAX_BODY_BYTES is not a number: "
+                                            (pr-str raw) " — want a byte count")))))]
+      (when-not (pos? n)
+        (throw (refuse (str "VAELII_MAX_BODY_BYTES must be positive, got " n
+                            " — a zero or negative ceiling refuses every request"))))
+      n)
+    (* 16 1024 1024)))
+
 (def max-body-bytes
   "The cap on a request body, `VAELII_MAX_BODY_BYTES` or 16 MiB.
 
@@ -289,18 +308,7 @@
   namespace is read by both servers, so a silent fallback would leave an operator who
   meant `16m` believing a cap they never set — and a raw `NumberFormatException` out of
   a `def` reports as a namespace that would not load rather than as the typo it is."
-  (if-let [raw (System/getenv "VAELII_MAX_BODY_BYTES")]
-    (let [n (try (Long/parseLong (str/trim raw))
-                 (catch NumberFormatException _
-                   (throw (ex-info (str "VAELII_MAX_BODY_BYTES is not a number: "
-                                        (pr-str raw) " — want a byte count")
-                                   {:type :unknown-option :mismatch :bad-value :value raw}))))]
-      (when-not (pos? n)
-        (throw (ex-info (str "VAELII_MAX_BODY_BYTES must be positive, got " n
-                             " — a zero or negative ceiling refuses every request")
-                        {:type :unknown-option :mismatch :bad-value :value raw})))
-      n)
-    (* 16 1024 1024)))
+  (body-ceiling (System/getenv "VAELII_MAX_BODY_BYTES")))
 
 (defn- too-large!
   "The one refusal both servers' 413s are built from, so the wire `:type` is the same

@@ -10,7 +10,8 @@
   entailment is drawn exactly there and nowhere else, and it is drawn as a **derived,
   justified** sentex: retract the fact or the declaration and the type goes with it.
 
-  Off by default (`checks/*assertive-arg-types?*`), so every test here binds it."
+  On by default (`checks/*assertive-arg-types?*`), and every test here binds it anyway, so
+  a run under `VAELII_ASSERTIVE_ARG_TYPES=0` still measures the entailment."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.checks :as checks]
@@ -22,6 +23,14 @@
   "Run the body with assertive argument types on."
   [& body]
   `(binding [checks/*assertive-arg-types?* true] ~@body))
+
+(defmacro with-pruning
+  "Run the body with the entailment on and subsumed mints pruned — the opt-in reading
+  (`VAELII_PRUNE_SUBSUMED_MINTS=1`), which is off by default for what it costs."
+  [& body]
+  `(binding [checks/*assertive-arg-types?* true
+             checks/*prune-subsumed-mints?* true]
+     ~@body))
 
 (defmacro without-entailing
   "Run the body with them off — bound rather than assumed, since the root value is
@@ -236,10 +245,10 @@
           "two justifications — each fact holds it up on its own"))))
 
 (tu/deftest-kb a-subsuming-membership-does-not-suppress-the-entailment
-  ;; The stance, stated as a test: `(dog Muffet)` under `(genl dog animal)` already
+  ;; The default stance, stated as a test: `(dog Muffet)` under `(genl dog animal)` already
   ;; *reaches* `animal` by subsumption, and the entailment is drawn anyway.  Withholding
-  ;; it would mean the same three sentences produce different records depending on
-  ;; whether the subtype membership arrived first.
+  ;; it is what `*prune-subsumed-mints?*` does, and it is opted into
+  ;; (`a-subsuming-membership-withholds-the-entailment-when-pruning`).
   (tu/with-terms [animal dog parentOf Muffet Mary CxWorld]
     (with-entailing
       (a-context kb CxWorld)
@@ -254,6 +263,126 @@
         (is (nil? (v/handle-of kb (list animal Muffet) CxWorld)))
         (is (v/isa? kb Muffet animal CxWorld)
             "while subsumption, which never needed the record, still answers")))))
+
+;; ---- the opt-in: a mint the KB says more specifically is not stored ------------
+
+(tu/deftest-kb a-subsuming-membership-withholds-the-entailment-when-pruning
+  ;; `(dog Muffet)` reaches `animal` by subsumption, so a minted `(animal Muffet)` beside
+  ;; it is the same claim one step vaguer — and with pruning on it is withheld.  What the
+  ;; KB answers is untouched, since subsumption never needed the record.
+  (tu/with-terms [animal dog parentOf Muffet Mary CxWorld]
+    (with-pruning
+      (a-context kb CxWorld)
+      (a-type kb animal CxWorld)
+      (v/assert kb (list 'genl dog animal) CxWorld)
+      (v/assert kb (list 'arg parentOf 1 animal) CxWorld)
+      (v/assert kb (list dog Muffet) CxWorld)
+      (v/assert kb (list parentOf Muffet Mary) CxWorld)
+      (is (nil? (v/handle-of kb (list animal Muffet) CxWorld))
+          "no record: the KB says it more specifically")
+      (is (v/isa? kb Muffet animal CxWorld) "and answers the membership regardless")
+      (testing "the specific membership leaving draws the mint after all"
+        (v/retract! kb (v/handle-of kb (list dog Muffet) CxWorld))
+        (is (believed? kb (list animal Muffet) CxWorld))
+        (is (v/isa? kb Muffet animal CxWorld)))
+      (testing "and it is derived, so retracting the fact takes it back"
+        (v/retract! kb (v/handle-of kb (list parentOf Muffet Mary) CxWorld))
+        (is (nil? (v/handle-of kb (list animal Muffet) CxWorld)))
+        (is (not (v/isa? kb Muffet animal CxWorld))
+            "with the specific membership gone too, nothing says it any more")))))
+
+(tu/deftest-kb a-membership-arriving-after-the-mint-withdraws-it
+  ;; The other arrival order of `a-subsuming-membership-withholds-the-entailment`: the
+  ;; record is already stored when the specific membership lands, so it has to leave —
+  ;; `settle` blocks the justifications that hold it up and the sweep collects it, the
+  ;; way it collects an excepted conclusion.
+  (tu/with-terms [animal dog parentOf Muffet Mary CxWorld]
+    (with-pruning
+      (a-context kb CxWorld)
+      (a-type kb animal CxWorld)
+      (v/assert kb (list 'genl dog animal) CxWorld)
+      (v/assert kb (list 'arg parentOf 1 animal) CxWorld)
+      (v/assert kb (list parentOf Muffet Mary) CxWorld)
+      (is (believed? kb (list animal Muffet) CxWorld) "minted while nothing says more")
+      (v/assert kb (list dog Muffet) CxWorld)
+      (is (nil? (v/handle-of kb (list animal Muffet) CxWorld)) "and withdrawn once one does")
+      (is (v/isa? kb Muffet animal CxWorld) "while the answer is unchanged")
+      (testing "retracting the specific membership draws it again"
+        (v/retract! kb (v/handle-of kb (list dog Muffet) CxWorld))
+        (is (believed? kb (list animal Muffet) CxWorld))))))
+
+(tu/deftest-kb a-withdrawn-mint-returns-with-every-support-it-had
+  ;; Two facts entail `(animal Fred)`, so the record leaves only when both justifications
+  ;; are blocked and comes back holding both — the count of supports is a property of what
+  ;; entails it, never of what moved last.
+  (tu/with-terms [animal dog parentOf childOf Fred Mary CxWorld]
+    (with-pruning
+      (a-context kb CxWorld)
+      (a-type kb animal CxWorld)
+      (v/assert kb (list 'genl dog animal) CxWorld)
+      (v/assert kb (list 'arg parentOf 1 animal) CxWorld)
+      (v/assert kb (list 'arg childOf 1 animal) CxWorld)
+      (v/assert kb (list parentOf Fred Mary) CxWorld)
+      (v/assert kb (list childOf Fred Mary) CxWorld)
+      (is (= 2 (count (:support (v/why kb (entailed kb (list animal Fred) CxWorld))))))
+      (v/assert kb (list dog Fred) CxWorld)
+      (is (nil? (v/handle-of kb (list animal Fred) CxWorld)) "both supports blocked, record swept")
+      (v/retract! kb (v/handle-of kb (list dog Fred) CxWorld))
+      (is (= 2 (count (:support (v/why kb (entailed kb (list animal Fred) CxWorld)))))
+          "and both are back — each fact holds it up on its own again"))))
+
+(tu/deftest-kb a-record-stored-by-another-route-takes-the-justification
+  ;; The mint is withheld, and then the sentence arrives as a premise.  A record is
+  ;; justified by everything that entails it, so the declaration's justification has to
+  ;; land on it — otherwise retracting the premise would keep the type in the order where
+  ;; the mint came first and lose it in the order where it came second.
+  (tu/with-terms [animal dog parentOf Fred Mary CxWorld]
+    (with-pruning
+      (a-context kb CxWorld)
+      (a-type kb animal CxWorld)
+      (v/assert kb (list 'genl dog animal) CxWorld)
+      (v/assert kb (list 'arg parentOf 1 animal) CxWorld)
+      (v/assert kb (list dog Fred) CxWorld)
+      (v/assert kb (list parentOf Fred Mary) CxWorld)
+      (is (nil? (v/handle-of kb (list animal Fred) CxWorld)) "withheld")
+      (v/assert kb (list animal Fred) CxWorld)
+      (v/retract! kb (v/handle-of kb (list animal Fred) CxWorld))
+      (is (believed? kb (list animal Fred) CxWorld)
+          "the premise is gone and the declaration still says it"))))
+
+(tu/deftest-kb a-defeated-membership-gives-the-mint-back
+  ;; Belief, not storage, is what withholds: a `(dog Fred)` the KB stops believing
+  ;; licenses nothing, so the type it displaced is minted while it is out.
+  (tu/with-terms [animal dog parentOf Fred Mary CxWorld]
+    (with-pruning
+      (a-context kb CxWorld)
+      (a-type kb animal CxWorld)
+      (v/assert kb (list 'genl dog animal) CxWorld)
+      (v/assert kb (list 'arg parentOf 1 animal) CxWorld)
+      (v/assert kb (list dog Fred) CxWorld)
+      (v/assert kb (list parentOf Fred Mary) CxWorld)
+      (is (nil? (v/handle-of kb (list animal Fred) CxWorld)))
+      (v/assert kb (list 'not (list dog Fred)) CxWorld {:strength :monotonic})
+      (is (not (v/ask? kb (list dog Fred) CxWorld)) "the specific membership is out")
+      (is (believed? kb (list animal Fred) CxWorld) "so the general one is minted"))))
+
+(tu/deftest-kb a-minted-edge-gives-way-to-a-longer-route
+  ;; `genlArg` mints a `genl` edge, and an edge a two-edge route already provides says
+  ;; nothing the closure does not: `wheel_kind → axle_kind → physical_thing` makes the
+  ;; minted `wheel_kind → physical_thing` redundant, and reachability is what a redundant
+  ;; edge does not change.
+  (tu/with-terms [physical_thing wheel_kind axle_kind partType CxWorld]
+    (with-pruning
+      (a-context kb CxWorld)
+      (a-type kb physical_thing CxWorld)
+      (v/assert kb (list 'genl axle_kind physical_thing) CxWorld)
+      (v/assert kb (list 'genlArg partType 1 physical_thing) CxWorld)
+      (v/assert kb (list partType wheel_kind axle_kind) CxWorld)
+      (is (believed? kb (list 'genl wheel_kind physical_thing) CxWorld) "minted")
+      (v/assert kb (list 'genl wheel_kind axle_kind) CxWorld)
+      (is (nil? (v/handle-of kb (list 'genl wheel_kind physical_thing) CxWorld))
+          "withdrawn: the route through axle_kind says it")
+      (is (v/genl? kb wheel_kind physical_thing CxWorld) "and the closure still answers"))))
 
 (tu/deftest-kb a-query-mints-nothing
   (tu/with-terms [animal parentOf Fred Mary CxWorld]
@@ -632,7 +761,9 @@
   ;; the declaration, the fact, and a competing type the argument already holds —
   ;; in all six orders.  `dog` is under `animal`, so the competing type is what makes
   ;; the entailment redundant, and *when* it arrives must not decide whether the KB
-  ;; ends up believing a minted `(animal Fred)` on top of it.
+  ;; ends up believing a minted `(animal Fred)` on top of it.  The pruning reading asks
+  ;; the same question the other way round and gets the same answer in all six —
+  ;; `every-arrival-order-prunes-the-same-way`.
   (let [results
         (for [order (permutations [:decl :fact :type])]
           (tu/with-neutral-kb [kb tu/fresh]
@@ -651,3 +782,55 @@
         (str "belief varied by arrival order: " (pr-str results)))
     (is (every? (comp :animal second) results)
         "and every order believes the entailed type")))
+
+(tu/deftest-kb a-minted-genl-edge-fires-the-rules-it-connects-in-every-order
+  ;; A `genlArg` mint is a `genl` edge, so it brings the facts under its sub-type into a
+  ;; rule keyed on the super-type exactly as a stated edge does.  All 120 orders of the
+  ;; five ingredients: the fact last mints on `assert`, the declaration last mints through
+  ;; `entail-existing`, and `(genl animal thing)` last mints when the settle releases the
+  ;; declaration that could not mint before its type reached `thing`.
+  (let [results
+        (for [order (permutations [:type :decl :fact :member :rule])]
+          (tu/with-neutral-kb [kb tu/fresh]
+            (tu/with-terms [animal noted kindUnder wolf Rex Zoo CxWorld]
+              (with-entailing
+                (a-context kb CxWorld)
+                (doseq [step order]
+                  (case step
+                    :type   (a-type kb animal CxWorld)
+                    :decl   (v/assert kb (list 'genlArg kindUnder 1 animal) CxWorld)
+                    :fact   (v/assert kb (list kindUnder wolf Zoo) CxWorld)
+                    :member (v/assert kb (list wolf Rex) CxWorld)
+                    :rule   (v/assert-rule kb [(list animal '?x)] (list noted '?x) CxWorld
+                                           {:direction :forward})))
+                [order {:edge  (v/genl? kb wolf animal)
+                        :noted (believed? kb (list noted Rex) CxWorld)}]))))]
+    (is (= #{{:edge true :noted true}} (set (map second results)))
+        (str "the minted edge or its firing varied by arrival order: "
+             (pr-str (remove #(= {:edge true :noted true} (second %)) results))))))
+
+(tu/deftest-kb every-arrival-order-prunes-the-same-way
+  ;; The same six orders with pruning on.  Whether the KB *keeps* the minted `(animal
+  ;; Fred)` is then a question about what it believes rather than about what arrived
+  ;; first: the mint is withheld where the specific membership came before it and
+  ;; withdrawn where it came after, and all six end at one KB.
+  (let [results
+        (for [order (permutations [:decl :fact :type])]
+          (tu/with-neutral-kb [kb tu/fresh]
+            (tu/with-terms [animal dog parentOf Fred Mary CxWorld]
+              (with-pruning
+                (a-context kb CxWorld)
+                (a-type kb animal CxWorld)
+                (v/assert kb (list 'genl dog animal) CxWorld)
+                (doseq [step order]
+                  (case step
+                    :decl (v/assert kb (list 'arg parentOf 1 animal) CxWorld)
+                    :fact (v/assert kb (list parentOf Fred Mary) CxWorld)
+                    :type (v/assert kb (list dog Fred) CxWorld)))
+                [order (believed-shape kb animal dog parentOf Fred Mary CxWorld)]))))]
+    (is (= 1 (count (set (map second results))))
+        (str "belief varied by arrival order: " (pr-str results)))
+    (is (not-any? (comp :animal second) results)
+        "and no order keeps the type the specific membership already says")
+    (is (every? (comp :dog second) results)
+        "which is the membership every order does keep")))

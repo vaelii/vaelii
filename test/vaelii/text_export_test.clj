@@ -66,10 +66,7 @@
 
   A `forced_decontextualized_predicate` sentence keys on no context at all.  The engine
   stores every one of them in `CxUniverse` by force, so the context is not part of what
-  such a sentence says; the one exception is the bootstrap `(genlCx CxUniverse CxCore)`,
-  which `core-context` asserts *before* the file that decontextualizes `genlCx` is read
-  and which therefore sits in `CxCore` in a KB built that way and in `CxUniverse` in any
-  KB that loads it afterwards."
+  such a sentence says."
   [kb sx]
   (let [s (resolve-handles kb (v/sentence-of sx))
         f (when (sequential? s) (first s))]

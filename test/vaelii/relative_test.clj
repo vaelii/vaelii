@@ -16,8 +16,6 @@
   (:require [clojure.set :as set]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
-            [vaelii.host.core-context :as core-context]
-            [vaelii.host.seed :as seed]
             [vaelii.impl.projection :as proj]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.qcn :as qcn]
@@ -32,8 +30,7 @@
 ;; algebra tests below need none of it.
 (use-fixtures :each (tu/neutral-fresh
                      #(doto (tu/fresh)
-                        (core-context/load-into)
-                        (seed/load-context 'CxSpace "upper")
+                        (tu/load-core-with! '[[CxSpace "upper"]])
                         (v/add-prover (rel/relative-prover)))))
 
 (def ^:private C 'CxUniverse)

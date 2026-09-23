@@ -457,8 +457,9 @@
   one a resolution policy COUNTS rather than merely records:
   `adjudication/resolve-by-majority` tallies these ballots and, under the `:proof-tier`
   identity policy, upholds the side with strictly more, leaving a tie honestly OPEN (a
-  split house decides nobody).  Anyone may vote and be counted; turning the count into a
-  ruling is what needs verified identity.  A ballot is
+  split house decides nobody).  Anyone may vote and be counted, under any name: this entry point
+  authenticates nobody, and the `:proof-tier` gate on the ruling reads the policy the
+  resolver runs under, not how the ballot arrived.  A ballot is
   a response act like the rest — `target_following_predicate` in `CxSpeechActs` — so
   retracting the disputed claim withdraws the votes cast on it.  Idempotent by sentence
   identity — one

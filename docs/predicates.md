@@ -98,7 +98,7 @@ which key the prose was written under.
 Entries are written through constructors — `prop`, `mark`, `pair`, `wff-only`, `operator`,
 `collection`, `structural` — for the same reason the vocabularies below are closed: an entry
 a couple of parameters *construct* has no way for its fields to disagree with each other,
-and the twenty-two predicate marks `prop` builds differ in exactly one keyword.
+and the twenty-nine predicate marks `prop` builds differ in exactly one keyword.
 `symmetric`'s entry is the whole of what the engine is told about it:
 
 ```clojure
@@ -140,7 +140,7 @@ governing it, so a keyword can never come to mean whatever its first user assume
 | `argument-kinds` | `:predicate` `:relation` `:relation-name` `:type` `:context` `:function` `:position` `:integer` `:term` `:sentence` | a kind here is one a well-formedness arm can be **generated** from; a position no kind fits is a position whose check stays hand-written |
 | `storage-kinds` | `:prop` `:mark` `:edge` `:keyed-pair` `:pred-position` `:none` | each names what the add / drop / rebuild triple looks like. `:prop` means the `tax/props` roster specifically, whose keys `spec/::prop-kind` pins — a one-term mark into a table of its own is `:mark`, not `:prop` |
 | `facets` | `:cached` `:derived` `:migrates` `:arbitrable` `:reach` `:query-only` `:answers` `:retriggers` `:convicts` `:inert` | the lanes that read the term. Six are reconstructible from a live data structure and are pinned that way; `:answers`, `:retriggers`, `:convicts` and `:inert` are *claims*, which is exactly why they are the ones that go wrong quietly |
-| `sweep-kinds` | `:type-separating` `:predicate-marked` `:both` | carrying one **is** being a clash declaration, so `settle`'s exposure pass has an arm for it. Absent is the answer for a term whose retroactive half is a different mechanism |
+| `sweep-kinds` | `:type-separating` `:predicate-marked` `:both` | carrying one **is** being a clash declaration, so `settle`'s retroactive sweep has an arm for it. Absent is the answer for a term whose retroactive half is a different mechanism |
 | `mark-families` | `:functional` `:argument-constraint` | a family lives in more than one lane. Naming it once is what makes a third spelling reach every lane at once |
 
 `facets` is the one that is not written out. `facet-contract` gives every facet a row — the
@@ -202,7 +202,7 @@ that caller do.
 | `predicates/check-families` | a mark family whose spellings disagree about what they sweep (`:mismatch :family`); a term that sweeps and declares no shape (`:mismatch :sweeps`) |
 | `special/check-entries` | an entry with *some* of the cache triple — the cache would fill on assert and leak on retract, or come back wrong after a recover (`:mismatch :partial-cache-triple`); and an entry with no arm at all, which is a typo (`:mismatch :no-arm`) |
 | `special/check-declarations` | a functor with arms and no declaration or the reverse (`:mismatch :enumeration`); a `:cached` declaration whose arms have no triple, or the reverse (`:mismatch :cached`); a `:checked` declaration with no `:wff` arm, or the reverse (`:mismatch :checked`) |
-| `settle/clash-declaration-kinds` | a sweep kind the exposure pass has no arm for, and a definitional mark that does not sweep what it convicts (`:mismatch :reach`) |
+| `settle/clash-declaration-kinds` | a sweep kind the retroactive sweep has no arm for, and a definitional mark that does not sweep what it convicts (`:mismatch :reach`) |
 | `predicates/check-facets`, run at `settle`'s load | a field value outside its closed vocabulary (`:vocabulary`); `:cached` disagreeing with the storage kind (`:storage`); a `:sweeps` with no `:reach` (`:sweep-reach`); an `:arbitrable` term with no `:opposing-read` claim (`:arbitrable`); an `:inert` term carrying a second facet or a storage (`:inert`); a roster that reads a mark family as a family and enumerates something other than that family (`:family-roster`); a facet the entry is committed to and neither carries nor records — by `facet-contract` (`:implication`), by a sibling spelling of its family (`:family-lane`), or by answering goals about a predicate and posting no exception re-check (`:recheck`); and a `:stops-short` record that is not owed or carries no reason (`:stops-short`) |
 
 `check-entries` and `check-declarations` are two validators at two layers rather than one
@@ -312,9 +312,9 @@ and not a wrong one.
 
 Eleven rosters take a new functor with **no edit at all**: `special/entries`' four walks,
 `taxonomy`'s three, `spec/::prop-kind`, `vocabulary/roster`, and five of `settle`'s. The one
-to notice is `settle/trigger-functor-kind`, which recognizes the term *at its own arity* off
-`predicates/mark-shape` and the declared argument list — so a spelling cannot be swept at an
-arity its own arguments contradict, and the two lanes a family lives in cannot be joined one
+to notice is `settle/clash-declaration-kinds`, which reads each term's own `:sweeps` entry
+off the declaration — so a spelling enrolled in a mark family reaches the retroactive
+sweep by saying what it sweeps, and the two lanes a family lives in cannot be joined one
 at a time.
 
 ## Where this stops

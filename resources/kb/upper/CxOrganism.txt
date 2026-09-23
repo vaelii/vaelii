@@ -17,14 +17,14 @@
 
 (comment animal "A living thing that moves and senses; disjoint from plant.")
 (genl animal living_thing)
-(disjoint animal plant)
+(set/monotonic (disjoint animal plant))
 
 (comment ant "An industrious insect that stores food for winter.")
 (genl ant insect)
 
 (comment arachnid "An eight-legged animal — a spider, a scorpion, a mite. Not an insect, which has six.")
 (genl arachnid animal)
-(disjoint arachnid insect)
+(set/monotonic (disjoint arachnid insect))
 
 (comment bee "An insect that gathers nectar and pollinates flowers.")
 (genl bee insect)
@@ -44,7 +44,7 @@
 
 (comment dog "A domesticated canine mammal; disjoint from cat.")
 (genl dog mammal)
-(disjoint dog cat)
+(set/monotonic (disjoint dog cat))
 
 (comment duck "A water bird with webbed feet.")
 (genl duck bird)
@@ -142,7 +142,7 @@
 (unary_predicate vertebrate_class)
 (genlArg vertebrate_class 1 animal)
 (metatype vertebrate_class)
-(disjoint_metatype vertebrate_class)
+(set/monotonic (disjoint_metatype vertebrate_class))
 
 (comment wolf "A wild canine predator — the danger the boy falsely cries about.")
 (genl wolf mammal)

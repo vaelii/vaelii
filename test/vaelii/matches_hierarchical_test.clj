@@ -71,10 +71,11 @@
   "Up to `n` distinct positive ground-fact bodies (no rules), sampled *evenly* across
   the world's stored facts rather than taking the first `n` — the leading facts
   cluster by predicate, so an even spread spans more functors for the same cost.
-  Deterministic: same KB, same sample.  This is an equivalence oracle, so the sample
-  is a regression net over the fact space, not an exhaustive sweep of it."
+  The handles are sorted first: `sentex-ids` is a set in the store's own order, so the
+  same world gives the same sample on every backend.  This is an equivalence oracle, so
+  the sample is a regression net over the fact space, not an exhaustive sweep of it."
   [kb n]
-  (let [all (->> (p/sentex-ids (:records kb))
+  (let [all (->> (sort (p/sentex-ids (:records kb)))
                  (keep #(p/get-sentex (:records kb) %))
                  (remove #(some? (:antecedent %)))
                  (keep sx/body)
@@ -118,6 +119,19 @@
           (is (= off on)
               (str "diverged on " (pr-str pat) " @ " ctx
                    "\n  off: " (pr-str off) "\n  on:  " (pr-str on))))))))
+
+(deftest a-sample-of-the-hierarchical-oracle-runs-at-default
+  ;; The sweep above is `^:slow`, so `lein gate` never runs this harness.  Two facts'
+  ;; patterns keep it running at `:default`, against the variable context, a leaf and
+  ;; the root; the sweep takes 64 facts to all six.  The first read under each of the
+  ;; other three builds its visibility closure, about 0.35 s apiece, which is what leaving
+  ;; them out saves.
+  (tu/with-kb [kb]
+    (let [pats (mapcat var-patterns (fact-sentences kb 2))]
+      (is (seq pats))
+      (doseq [pat pats, ctx '[?ctx CxMantle CxUniverse]]
+        (let [[off on] (both-ways #(res/matches-visible kb pat ctx))]
+          (is (= off on) (str "diverged on " (pr-str pat) " @ " ctx)))))))
 
 (deftest symmetric-both-orders
   (tu/with-kb [kb]

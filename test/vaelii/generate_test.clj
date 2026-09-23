@@ -208,6 +208,18 @@
         (is (empty? (v/violations kb)))
         (is (empty? (v/conflicts kb)))))))
 
+(deftest a-small-generated-kb-derives-cleanly
+  ;; The `^:slow` test above at under a third of its corpus, so `:default` chains a
+  ;; generated KB and checks it drops nothing.  Sixty facts over thirty individuals is
+  ;; dense enough that the forty forward rules derive; at a tenth of the slow test's
+  ;; corpus they derive nothing, and `(pos? (:derived r))` fails.
+  (tu/with-cleared-kb [kb tu/fresh]
+    (let [r (gen/load-into kb (assoc small :individuals 30 :facts 60 :rules 8
+                                     :forward 40 :chain? true))]
+      (is (pos? (:derived r)))
+      (is (empty? (v/violations kb)))
+      (is (empty? (v/conflicts kb))))))
+
 (deftest the-progress-callback-can-cancel-a-load
   (testing "a callback that throws stops the load where it stands — the extension point the catalog
             cancels on"

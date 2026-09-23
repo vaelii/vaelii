@@ -115,6 +115,18 @@
 
 ;;; ── the destination ───────────────────────────────────────────────────
 
+(deftest a-blank-build-stamp-is-unset
+  ;; `-Dvaelii.build=` stamps nothing: the writer falls through to the git HEAD or `dev`
+  ;; rather than naming itself "vaelii " in every dump's meta.edn.
+  (let [prior (System/getProperty "vaelii.build")]
+    (try
+      (System/setProperty "vaelii.build" "b22")
+      (is (= "vaelii b22" (#'export/writer-id)))
+      (System/setProperty "vaelii.build" "  ")
+      (is (re-find #"^vaelii \S" (#'export/writer-id)))
+      (finally (if prior (System/setProperty "vaelii.build" prior)
+                   (System/clearProperty "vaelii.build"))))))
+
 (deftest export-refuses-a-non-empty-directory
   (tu/with-neutral-kb [kb tu/fresh]
     (with-dirs* 1 "nonempty"
@@ -415,7 +427,7 @@
                                     id nil))
     (get-provenance [_ _] nil)))
 
-(deftest ^:slow the-writer-never-runs-more-than-a-chunk-ahead-of-what-it-has-written
+(deftest the-writer-never-runs-more-than-a-chunk-ahead-of-what-it-has-written
   ;; The constant-memory claim, made checkable: at every chunk boundary the writer has
   ;; fetched at most the frames it has written plus the chunk it is filling.  A `doall`
   ;; or a `vec` over the handle seq fetches all 200k before the first boundary.

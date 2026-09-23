@@ -16,13 +16,10 @@ so a backend just says how a key, a counter, and a set live in a store; the one
 natively and delegates the flat families to an embedded `KvIndexStore` on the same keys.
 
 Every key is a structured vector and every set member a bare value. On the in-memory
-backend (`vaelii.impl.memory`) the vectors are used directly as map keys — with **one
-exception**, the predicate-scoped argument roots, which live under a reserved key as a
-counted `pos → term → {:union, :preds}` trie and are read through the second protocol
-`vaelii.impl.protocols/ArgColumns` (§2); a dump re-emits them in the flat shape, so nothing outside that
-backend can tell. On the on-disk backend (`vaelii.impl.disk.kv`) the same map is
-held in RAM and durably logged, nippy-framed so ints and keywords keep their type. The
-whole layout:
+backend (`vaelii.impl.memory`) the vectors are used directly as map keys, every family
+alike, and the backend's resident shape is its portable one. On the on-disk backend
+(`vaelii.impl.disk.kv`) the same map is held in RAM and durably logged, nippy-framed so
+ints and keywords keep their type. The whole layout:
 
 | Key | Value | Answers |
 |-----|-------|---------|
@@ -33,6 +30,7 @@ whole layout:
 | `[:functor-root pred]` | set | facts by functor, any arity, either polarity |
 | `[:argument-root pred pos term]` | set | `pred`'s facts with `term` at argument position `pos` |
 | `[:argument-slot pos term]` | set | the predicates present at that slot (names, not handles) |
+| `[:unary-slot term]` | set | the predicates `term` is the lone argument of (names, not handles) |
 | `[:rule-index :antecedent pred]` | set | rules with an antecedent on `pred` |
 | `[:rule-index :consequent pred]` | set | rules concluding `pred` |
 | `[:exception-index pred]` | set | rules whose exception query mentions `pred` |
@@ -258,6 +256,9 @@ plus the slot roster the predicate-agnostic reads union over:
                                      reference-counted off the postings, so a
                                      predicate-agnostic read is a union over a
                                      handful of scoped keys
+[:unary-slot <term>]                 -> #{preds}    the predicates term is the LONE
+                                     argument of — the same roster narrowed to
+                                     arity 1, which is what a membership read asks for
 ```
 
 Cardinality is the set's own size, not a parallel counter, so a count can never
@@ -265,29 +266,58 @@ drift from its extent — the trie needs explicit counters only because a *prefi
 count aggregates the leaves beneath it. A rule contributes only its context; its
 predicates live in the rule index below.
 
-**The argument roots are the one family with a second boundary.** `[:argument-root pred pos
-term]` is the only four-element key, so a probe through a flat `key → set` map conses that
-vector at the call site and pays a vector `equals` per read; and the family is
-*hierarchical* — `pos → term → pred → handles` — while the reads a settle leans on ask for
-a subtree of it: one scoped leaf, the predicate-agnostic **union** at a `(pos, term)` node,
-or that node's cardinality. `vaelii.impl.protocols/ArgColumns` names those four reads
-(`arg-scoped-members` / `arg-scoped-intersect` / `arg-agnostic-members` /
-`arg-agnostic-count`) so a backend holding the family as a counted trie can answer them as
-node reads. It has an `Object` default that rebuilds the vector keys and folds the generic
-set ops, so a backend that implements nothing answers exactly what the flat map answers;
-only the in-memory backend overrides it. `dense-roots` takes the default, and the default
-is cheap there because its keys are packed longs rather than vectors: a scoped read is one
-lookup with nothing consed. The `[:argument-slot pos term]` roster is what keeps the
-predicate-agnostic reads answerable under the default without a second copy of every
-posting — one predicate in the common case, a handful otherwise.
+**The argument roots are the one *hierarchical* family** — `pos → term → pred → handles`
+— and the reads a settle leans on ask for a subtree of it: one scoped leaf, the
+predicate-agnostic **union** at a `(pos, term)` node, or that node's cardinality.
+
+All of that is `vaelii.impl.kv`'s, and none of it is a backend's. `KvIndexStore` spells
+the three keys, reads a scoped leaf with `kv-members`, narrows several with
+`kv-intersect`, and answers the two agnostic reads by unioning over the
+`[:argument-slot pos term]` roster — the roster is what keeps them answerable without a
+second copy of every posting, and it holds one predicate in the common case, a handful
+otherwise. `[:argument-root pred pos term]` is the only four-element key, so a probe
+builds a four-element vector and pays a vector `equals` on it, the same as every other
+family pays on its own key.
+
+A backend may hold the family however it likes underneath: `dense-roots` packs those keys
+into a long and answers with one lookup, and the rest keep them as flat entries. Each is a
+representation, invisible above the backend, and `kv-entries` re-emits the flat shape
+whichever one it is — the shape the key table above describes.
+
+### The unary roster, and why position 1 was not narrow enough
+
+`[:unary-slot term]` is the argument-slot roster restricted to arity 1, and it exists
+because a *membership* question is not a position-1 question. `core/types-of` asks what
+types a term holds — the retrieval `isa?` and `checks/disjoint-problems` are built on, so
+it runs on every unary assert — and the types are the arity-1 facts whose lone argument is
+that term. Position 1 does not separate them: `(dog Muffet)` and `(likes Muffet Tom)` both
+put `Muffet` at argument 1, share the `[:argument-slot 1 Muffet]` entry, and share the trie
+node below it, because the trie's next level is the *second argument* for one and the
+*context* for the other. So the read fetched the record behind every fact naming the term
+at argument 1 and kept the arity-1 ones: a densely described individual paid its whole
+description on every assert of a type for it, to find the handful of types it holds.
+
+The roster's members are predicates, so it is vocabulary-scaled beside the slot roster
+rather than a second copy of the postings, and `unary-sentexes-with-arg` reads it exactly
+as `sentexes-with-arg` reads the other — one roster read, then the predicate-scoped
+postings.
+
+**It is a deliberate superset.** The entry is written by every unary fact rather than
+reference-counted on the first, because the count that reference-counts the other rosters
+is the one at `[:argument-root pred 1 term]`, which a *binary* fact of the same predicate
+about the same term also raises — so a count read off it would skip the unary entry
+whenever the binary fact arrived first, and a missing entry there loses a membership.
+Retirement is the mirror: a unary fact retires the entry with its position-1 slot and a
+fact of any other arity leaves it alone, so a KB of binary facts pays nothing for a roster
+it never enters, and the entry outlives the last unary fact wherever a binary one empties
+the node. A stale entry costs one posting read and `types-of`'s arity filter drops it;
+the asymmetry is the point.
 
 They are read through `core`: `sentexes-in-context` / `count-in-context`,
 `sentexes-with-functor` / `count-with-functor`, `sentexes-with-arg` /
-`count-with-arg`. Two places rely on them for speed rather than convenience:
-`core/types-of` (the individual's asserted types — the retrieval `isa?` and
-`checks/disjoint-problems` are built on, so it runs on every unary assert) goes straight
-to the position-1 read (`sentexes-with-arg`, a slot-roster union) instead of scanning
-every sentex mentioning `x` anywhere; and
+`count-with-arg`, `unary-sentexes-with-arg`. Two places rely on them for speed rather than
+convenience: `core/types-of` goes straight to the unary roster instead of scanning every
+sentex mentioning `x` anywhere, or every one holding it at argument 1; and
 the provers' `est-bindings` cost
 model reads `[:functor-root pred]`, which — unlike the trie's `count-at [pred]` — also sees
 negative facts (they key under `:false` and would otherwise estimate 0).
@@ -675,7 +705,7 @@ section rather than on average:
 | roots' key and offset columns | the vocabulary, at the default `*min-indexed-depth*` |
 | argument-root scope table | distinct `(predicate, position)` pairs |
 | token dictionary | the vocabulary, on the same condition |
-| `roots-fallback.nippy` | the term and slot rosters — names, not handles |
+| `roots-fallback.nippy` | the term roster and the two slot rosters — names, not handles |
 
 The scope table is what lets the argument roots ride the mapped run with every other
 family. Their key carries two names where the rest carry one, so the `(predicate,

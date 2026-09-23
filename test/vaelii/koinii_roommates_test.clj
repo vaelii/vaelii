@@ -40,7 +40,8 @@
   (:import [org.eclipse.jetty.server Server]))
 
 (defn- household-kb []
-  (doto (tu/fresh) (core-context/load-into) (sa/load-speech-acts)))
+  (tu/load-dumped! (tu/fresh) :koinii/speech-acts
+                   #(doto % (core-context/load-into) (sa/load-speech-acts))))
 
 ;; Majority resolution requires the :proof-tier identity policy (R7#1); these tests run
 ;; under it — the channel never authenticates, so it touches nothing but that gate.

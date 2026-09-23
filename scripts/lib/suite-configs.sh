@@ -168,24 +168,46 @@ config_owed_for_path() {
     # the roots backend is shared by BOTH dense index families, so either alone would
     # leave half of what the file answers unrun
     src/vaelii/impl/dense_roots.clj)     printf 'memory-dense memory-columnar' ;;
+    # the types those halves are built of, held in `vaelii.impl.types.*` so a reload keeps
+    # them, and swapped with them: the trie IS the columnar store, and its frozen arm and
+    # the roots' mapped arm are what the image loads; the postings are the dense
+    # families' member sets; `Kind` is the durable record store's slot
+    src/vaelii/impl/types/trie.clj)      printf 'memory-columnar disk-columnar disk-snapshot' ;;
+    src/vaelii/impl/types/dense_roots.clj) printf 'memory-dense memory-columnar disk-snapshot' ;;
+    src/vaelii/impl/types/postings.clj)  printf 'memory-dense memory-columnar' ;;
+    src/vaelii/impl/types/snapshot.clj \
+    |src/vaelii/impl/reasoning_image.clj) printf 'disk-snapshot' ;;
+    src/vaelii/impl/types/store.clj)     printf 'disk-log disk-memory disk-snapshot' ;;
     src/vaelii/impl/jtms.clj \
     |src/vaelii/impl/dense_jtms.clj \
-    |src/vaelii/impl/jtms_protocol.clj)  printf 'tms-reference' ;;
-    src/vaelii/impl/rete.clj)            printf 'rete' ;;
+    |src/vaelii/impl/jtms_protocol.clj \
+    |src/vaelii/impl/types/tms.clj)      printf 'tms-reference' ;;
+    # the observers are rete's feed: the store's choke points call them and only rete
+    # installs them, so a removal they stop passing on reaches no other run
+    src/vaelii/impl/rete.clj \
+    |src/vaelii/impl/observe.clj)        printf 'rete' ;;
     src/vaelii/impl/inference.clj \
     |src/vaelii/impl/tactics.clj)        printf 'query-engine tactician' ;;
     # the ranking is read by BOTH executors — `tactics` sums `explain`'s estimates for
     # node selection — so a change here owes the node engine's two as well as its own
     src/vaelii/impl/plan.clj)            printf 'plan-off query-engine tactician' ;;
     # the chainer is the matcher's reference half, and the join it leads is read
-    # through the index — so it owes the alternative matcher and the backends both
-    src/vaelii/impl/chain.clj)           printf 'rete backends' ;;
+    # through the index — so it owes the alternative matcher and the backends both;
+    # its lead-literal join runs only under the set-algebra retrieval, so the
+    # reference-retrieval sweep reads the other arm
+    src/vaelii/impl/chain.clj)           printf 'rete hier-off backends' ;;
     # retrieval is the swept half AND what every backend is read through
     src/vaelii/impl/resolution.clj)      printf 'hier-off backends' ;;
     # --- swapped on both store axes at once: every backend ---
+    # `kb.clj` is also where `:tms` picks the network, the one read of that option
+    src/vaelii/impl/kb.clj)              printf 'backends tms-reference' ;;
+    # `recover` and `reindex` rebuild the belief and the index from whichever record
+    # store the run built, and the rebuilt index is whichever the pairing names
     src/vaelii/impl/memory.clj \
     |src/vaelii/impl/kv.clj \
-    |src/vaelii/impl/kb.clj \
+    |src/vaelii/impl/recovery.clj \
+    |src/vaelii/impl/reindex.clj \
+    |src/vaelii/impl/types/sentex.clj \
     |src/vaelii/impl/protocols.clj \
     |src/vaelii/impl/capabilities.clj \
     |src/vaelii/impl/reads.clj \

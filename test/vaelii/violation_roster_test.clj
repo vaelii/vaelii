@@ -227,11 +227,6 @@
                 "`:not-well-formed` — so its kinds are the rule checks' refusal "
                 "vocabulary, minted across `checks`, `rules`, `sentex` and `naming`")}
 
-   "settle/constraint-exposure-entries"
-   {:kinds #{:functional :asymmetric :anti-transitive}
-    :why   (str "one arm per declared property, and the entry names the property that "
-                "convicted rather than repeating it verbatim")}
-
    "settle/cut-notice"
    {:kinds #{:exposure-truncated :arbitration-truncated}
     :why   (str "the one entry a bounded sweep owes when it stopped short, built once "

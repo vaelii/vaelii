@@ -357,7 +357,7 @@
 
 (defn- selected-contexts
   "The contexts an export covers: every one with something to write, or the one
-  `:context` names, or the `genlCx` ancestor set `:ancestor set` names — `c` and every context it
+  `:context` names, or the `genlCx` ancestor set `:ancestor-set` names — `c` and every context it
   **sees**, which is the slice a reload needs for `c`'s own content to mean what it
   meant."
   [kb written {:keys [context ancestor-set]}]
@@ -385,7 +385,7 @@
       {:contexts n :sentences n :skipped n :files [\"CxCore.txt\" …]
        :bytes n :elapsed-ms n :dir \"…\"}
 
-  `opts` narrows what is written: `{:context C}` for that one context's file, `{:ancestor set C}`
+  `opts` narrows what is written: `{:context C}` for that one context's file, `{:ancestor-set C}`
   for `C` and every context it sees.  Neither, and every context with a premise in it is
   written.  A key this fn does not read is refused (`:unknown-option`) — a misspelt
   narrowing writes the whole KB under a summary that looks right.

@@ -7,12 +7,11 @@
   strength winner, `argue` -> `:contradiction` — never a resolved strength-defeat."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
-            [vaelii.host.core-context :as core-context]
             [vaelii.koinii.dispute :as d]
             [vaelii.koinii.identity :as id]
             [vaelii.test-util :as tu]))
 
-(defn- dispute-kb [] (doto (tu/fresh) (core-context/load-into)))
+(defn- dispute-kb [] (tu/load-core! (tu/fresh)))
 (use-fixtures :each (tu/neutral-fresh dispute-kb))
 
 (def P '(reliable ProdCluster))

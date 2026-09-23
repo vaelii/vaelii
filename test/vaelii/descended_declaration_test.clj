@@ -218,19 +218,13 @@
       (is (= zzOver (:pred p))
           "the predicate that cannot hold both ways is the marked one"))))
 
-(tu/deftest-kb a-cross-context-clash-report-names-the-marked-super
-  ;; The consumer side, one level up: `settle`'s exposure entry takes the declared
-  ;; predicate off the violation and falls back to the half's own functor when the
-  ;; violation carries none.  Every existing exposure test marks the sentence's own
-  ;; predicate, where the two readings agree — so the fallback covered for a dropped key,
-  ;; and a report convicted through the hierarchy would have gone on naming the spelling
-  ;; that was written rather than the declaration that was broken.
-  ;;
-  ;; **Both predicates carry the mark**, and that is not decoration: the pass's O(1) gate
-  ;; (`settle/could-clash?`) reads `has-prop?` off the sentence's *exact* functor rather
-  ;; than `props-over`, so a pair whose only mark sits on a super is dropped before the
-  ;; check runs.  With the sub marked as well the pair reaches the check, and the reading
-  ;; under test — which of the two marks the entry names — is what this pins.
+(tu/deftest-kb a-cross-context-clash-marked-at-two-levels-is-one-nogood
+  ;; The consumer side, one level up.  `aaYearOf` and `zzBirthYearOf` both carry the
+  ;; mark, so the pair convicts twice — once per mark — and the two convictions are one
+  ;; clash.  A nogood keyed on anything but the handle set would weigh it twice and let
+  ;; the count depend on how many levels of the hierarchy happened to be marked.
+  ;; Which of the two marks a *refusal* names is the `(v/check …)` row above, `:pred`
+  ;; being the check's own key.
   (tu/with-terms [CxA CxB CxW aaYearOf zzBirthYearOf Tom]
     (let [one (list zzBirthYearOf Tom 1970)
           two (list zzBirthYearOf Tom 1980)]
@@ -245,16 +239,15 @@
       ;; neither writer can see the other's filler, so both store
       (v/assert kb one CxA)
       (v/assert kb two CxB)
-      (let [vs (filter #(= :functional (:violation %)) (v/violations kb))]
-        (is (= 1 (count vs)) "one entry for the pair, not one per mark")
-        (is (= #{CxW} (get-in (first vs) [:detail :visible-from])))
-        (is (= aaYearOf (get-in (first vs) [:detail :pred]))
-            "the marked super, not the functor both halves happen to share")
-        (is (re-find (re-pattern (str "^functional clash exposed: " aaYearOf " "))
-                     (get-in (first vs) [:detail :message]))
-            "and the printed line says the same thing")))))
+      (let [cs (v/contradictions kb)]
+        (is (= [:functional] (mapv :kind cs)) "one nogood for the pair, not one per mark")
+        (is (= #{[one CxA] [two CxB]}
+               (into #{} (map (juxt :sentence :context)) (:sides (first cs)))))
+        (is (seq (v/contradictions kb CxW)) "and CxW is the vantage that reads it")
+        (is (empty? (v/contradictions kb CxA))
+            "where CxA, which sees one half, reads no dilemma")))))
 
-(tu/deftest-kb a-cross-context-clash-is-exposed-through-a-mark-on-the-super-alone
+(tu/deftest-kb a-cross-context-clash-is-decided-through-a-mark-on-the-super-alone
   ;; The gate the case above had to work around.  `could-clash?` and `partner-contexts`
   ;; decide, per sentex, whether a binary fact can be half of a pair at all — and they
   ;; asked `has-prop?` of the exact functor while every check they gate asks `props-over`.
@@ -271,11 +264,10 @@
     (v/assert kb (list 'genlCx CxW CxB) 'CxUniverse)
     (v/assert kb (list zzBirthYearOf Tom 1970) CxA)
     (v/assert kb (list zzBirthYearOf Tom 1980) CxB)
-    (let [vs (filter #(= :functional (:violation %)) (v/violations kb))]
-      (is (= 1 (count vs))
-          "the mark is above the functor, and the pair is still a pair")
-      (is (= #{CxW} (get-in (first vs) [:detail :visible-from])))
-      (is (= aaYearOf (get-in (first vs) [:detail :pred]))))))
+    (is (= [:functional] (mapv :kind (v/contradictions kb)))
+        "the mark is above the functor, and the pair is still a pair")
+    (is (seq (v/contradictions kb CxW)) "weighed at CxW, which sees both halves")
+    (is (empty? (v/contradictions kb CxA)))))
 
 (tu/deftest-kb a-cross-context-partner-need-not-share-the-sentences-functor
   ;; The other half of the same gate.  `partner-contexts` narrowed the postings it read
@@ -285,9 +277,9 @@
   ;; values of one slot, spelled differently.
   ;;
   ;; Numeric fillers on purpose: two **symbols** filling one functional slot are the
-  ;; co-reference case and the engine merges them into an `equals` rather than reporting
-  ;; anything, so a violation count would pin the wrong half.  No merge can make two
-  ;; numbers one thing, which is what leaves a clash for the exposure pass to expose.
+  ;; co-reference case and the engine merges them into an `equals` rather than convicting
+  ;; anything, so a clash count would pin the wrong half.  No merge can make two
+  ;; numbers one thing, which is what leaves a clash for the vantage to weigh.
   (tu/with-terms [CxA CxB CxW aaMeasureOf zzHeightOf zzStatureOf Tom]
     (v/with-deferred-settle kb
       (v/assert kb (list 'functional aaMeasureOf) 'CxUniverse)
@@ -299,8 +291,7 @@
     (v/assert kb (list 'genlCx CxW CxB) 'CxUniverse)
     (v/assert kb (list zzHeightOf Tom 170) CxA)
     (v/assert kb (list zzStatureOf Tom 180) CxB)
-    (let [vs (filter #(= :functional (:violation %)) (v/violations kb))]
-      (is (= 1 (count vs))
-          "two spellings of one aaMeasureOf slot, seen together from CxW")
-      (is (= #{CxW} (get-in (first vs) [:detail :visible-from])))
-      (is (= aaMeasureOf (get-in (first vs) [:detail :pred]))))))
+    (is (= [:functional] (mapv :kind (v/contradictions kb)))
+        "two spellings of one aaMeasureOf slot, seen together from CxW")
+    (is (seq (v/contradictions kb CxW)))
+    (is (empty? (v/contradictions kb CxA)))))

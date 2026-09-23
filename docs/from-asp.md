@@ -68,7 +68,7 @@ nothing on its own. ASP is what you reach for when a particular contested edge h
 decided, and it is opt-in per KB:
 
 ```clojure
-(v/set-solver kb :asp)          ; the default is a greedy stub that decides nothing
+(v/set-solver kb :asp)          ; the default is a greedy stub that defeats one member per nogood
 ```
 
 A plain rebuttal with neither side naming the other's case — a Nixon diamond — gets no

@@ -138,21 +138,18 @@
   [kb]
   (boolean (seq (v/contradictions kb))))
 
-(defn- violation-contexts
-  "The set of contexts named `:visible-from` by every recorded `:functional`
-  violation — the `violations`-ledger analogue of `clash-contexts`.
+(defn- reading-contexts
+  "Which of `ctxs` read a `:functional` dilemma — the reader arity of `contradictions`,
+  which keeps an entry only for a context that sees every side and believes every
+  member.
 
-  An unmergeable clash a `genlCx` edge completes is **reported, not decided**: nothing
-  was ever refused (both facts were already stored and believed before the edge made
-  them jointly visible, so there was no write left to turn away) and nothing is
-  arbitrated under the default `:refuse` constraint policy, so it never reaches
-  `contradictions` — `settle/expose-constraint-clashes!` is the entry point it takes instead,
-  and `docs/equality.md`'s own account of the arity-2 `functional` case takes the
-  identical entry point for the identical reason.  Checking `contradictions` here would be
-  the same mistake vaelii#43's own repro made checking it over `violations`."
-  [kb]
-  (into #{} (mapcat #(get-in % [:detail :visible-from]))
-        (filter #(= :functional (:violation %)) (v/violations kb))))
+  An unmergeable clash a `genlCx` edge completes is **decided, not refused**: both facts
+  were already stored and believed before the edge made them jointly visible, so there
+  was no write left to turn away, and the vantage that sees them both weighs the pair
+  under either constraint policy.  Two numbers cannot be ranked, so the answer is a
+  dilemma and both fillers stand."
+  [kb ctxs]
+  (into #{} (filter #(some (comp #{:functional} :kind) (v/contradictions kb %))) ctxs))
 
 (defn- any-functional-violation?
   "Is there any recorded `:functional` violation at all?"
@@ -160,9 +157,9 @@
   (boolean (some #(= :functional (:violation %)) (v/violations kb))))
 
 (defn- any-functional-clash?
-  "Is a `:functional` clash on record at all — filed as exposed, or decided into
-  `contradictions` or `conflicts`?  A late declaration whose pair a member's own context
-  sees is decided rather than filed, under either constraint policy."
+  "Is a `:functional` clash on record at all — decided into `contradictions` or
+  `conflicts`, or filed as exposed?  A clash some vantage sees whole is decided under
+  either constraint policy."
   [kb]
   (boolean (or (any-functional-violation? kb)
                (some #(= :functional (:kind %)) (concat (v/contradictions kb) (v/conflicts kb))))))
@@ -270,7 +267,7 @@
           (check (merged? kb lo hi)
                  (str label ": the determinant is shared, so the fillers are one")))))))
 
-(tu/deftest-kb a-position-1-clash-across-contexts-is-exposed-like-a-position-2-one
+(tu/deftest-kb a-position-1-clash-across-contexts-is-decided-like-a-position-2-one
   ;; Two unmergeable fillers, each fine where it stands, clashing only from below.  The
   ;; position-2 twin of this is `two-numbers-under-an-empty-determinant-contradict…`
   ;; above; this is the same question with the determinant on the other side.
@@ -280,10 +277,10 @@
       (v/assert kb (list 'functionalInArg pRel 1) U)
       (v/assert kb (list pRel 1 Tom) CxLeft)
       (v/assert kb (list pRel 2 Tom) CxRight)
-      (check (any-functional-violation? kb)
+      (check (any-functional-clash? kb)
              "argument 2 is the determinant and shared, and no merge makes 1 and 2 one")
-      (check (= #{CxBottom} (violation-contexts kb))
-             "reported from the vantage that sees both, as position 2 already was"))))
+      (check (= #{CxBottom} (reading-contexts kb [CxLeft CxRight CxBottom]))
+             "decided at the vantage that sees both, as position 2 already was"))))
 
 ;; ---- Pace's matrix, rows 1 and 2 ----------------------------------------
 
@@ -292,11 +289,10 @@
 ;; trigger) derives the merge from CxBottom, and `settle/could-clash?` /
 ;; `partner-contexts` / `constraint-facts-in-ancestors` — none of which had ever read the
 ;; `:functional-in-arg` table, only the arity-2 `:functional` one — now admit the
-;; empty-determinant shape too, so `expose-constraint-clashes!` finds the unmergeable
-;; pair.  That ledger, `v/violations`, is where an unmergeable cross-context clash
-;; lands under the default `:refuse` policy — not `contradictions`, which the arity-2
-;; `functional` case does not reach here either (docs/equality.md).  This row now
-;; reads `violations`, not the entry point the original spec checked.
+;; empty-determinant shape too, so `clash-nogoods` finds the unmergeable pair.  Two
+;; numbers cannot be ranked, so the vantage below reports a dilemma and both fillers
+;; stand: the row reads `contradictions` from that vantage, which is the question Pace's
+;; matrix asks.
 (tu/deftest-kb two-numbers-under-an-empty-determinant-contradict-in-the-context-below
   ;; Row 1.  `(p 1)` in CxLeft and `(p 2)` in CxRight are each fine where they stand;
   ;; CxBottom sees both and no merge can reconcile two numbers, so the clash is a
@@ -306,10 +302,10 @@
     (v/assert kb (list 'functionalInArg p 1) U)
     (v/assert kb (list p 1) CxLeft)
     (v/assert kb (list p 2) CxRight)
-    (testing "the clash is reported, and it belongs to the vantage that sees it"
-      (check (any-functional-violation? kb)
+    (testing "the clash is decided, and it belongs to the vantage that sees it"
+      (check (any-functional-clash? kb)
              "two numbers, one empty-determinant slot, nothing to merge")
-      (check (= #{CxBottom} (violation-contexts kb))
+      (check (= #{CxBottom} (reading-contexts kb [CxLeft CxRight CxBottom]))
              "CxBottom, not the leaves the fillers were asserted in"))
     (testing "and no equality is derived anywhere, numbers being unmergeable"
       (check (not (equality-in? kb 1 2 CxBottom)) "no (equals 1 2)"))))
@@ -462,11 +458,10 @@
         (v/assert kb (list 'functionalInArg p 1) U)
         (v/assert kb (list p 1) CxLeft)
         (v/assert kb (list p 2) CxRight)
-        ;; `violations`, not `contradictions` — see row 1's comment: an unmergeable
-        ;; cross-context clash is reported through the exposure ledger under the
-        ;; default `:refuse` policy, the same entry point the arity-2 `functional` case
-        ;; already takes.
-        (is (any-functional-violation? kb) "the unmergeable clash is reported")
+        ;; see row 1's comment: an unmergeable cross-context clash is weighed at the
+        ;; vantage under either policy, and two numbers tie, so it lands in
+        ;; `contradictions` with both fillers standing.
+        (is (any-functional-clash? kb) "the unmergeable clash is decided")
         (doseq [b [CxBottomOne CxBottomTwo]]
           (is (not (equality-in? kb 1 2 b))
               (str "and no equality is manufactured in " b)))))))

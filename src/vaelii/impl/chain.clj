@@ -30,6 +30,7 @@
             [vaelii.impl.settle-phases :as phases]
             [vaelii.impl.skolem :as skolem]
             [vaelii.impl.special :as special]
+            [vaelii.impl.strength :as strength]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.violations :as violations]))
@@ -342,15 +343,17 @@
 
   `preserving-antecedent?` is asked of every non-trigger antecedent of every firing
   attempt, and its first question is this one: two cardinality reads that answer false
-  for nearly every KB there is.  Bound once by `chain`, like `*evaluatable-preds*`, and
-  unlike it **invalidated** from inside the run: a run can *derive* a declaration, and
-  every join after that placement must see it — the datum that placed it re-joins the
-  rules it moved (`inherit/rejoin-rules`), and a datum arriving later triggers them
-  afresh, both through this gate.  `derive-conclusion` resets the cache when a placed
-  conclusion **roots** at a declaration functor (`placed-functor`, since the conclusion
-  the join hands over may still be wearing a `not`), so the next ask
-  pays the two reads once more and caches the true.  A declaration leaves only outside a
-  run (`retract!`), so a cached true never goes stale inside one."
+  for nearly every KB there is.  It is the only reader: `inherit/rejoin-rules` asks
+  the `:preserving` roster instead, which the store updates at the placement itself.
+  Bound once by `chain`, like `*evaluatable-preds*`, and unlike it **invalidated** from
+  inside the run: a run can *derive* a declaration, and every join after that placement
+  must see it — the re-join the placing datum queues (`inherit/rejoin-rules`) and a
+  datum arriving later both match antecedents through `preserving-antecedent?`.
+  `derive-conclusion` resets the cache when a placed conclusion **roots** at a
+  declaration functor (`placed-functor`, since the conclusion the join hands over may
+  still be wearing a `not`), so the next ask pays the two reads once more and caches
+  the true.  A declaration leaves only outside a run (`retract!`), so a cached true
+  never goes stale inside one."
   nil)
 
 (defn- declarations-exist?
@@ -768,6 +771,22 @@
 ;; and the diagonal — a claim stated at the very tuple it is asked about — is dropped
 ;; from this path rather than handed a second justification resting on nothing new.
 
+(def ^:dynamic *witness-view*
+  "The reader every witness search asks from, or nil for the ordinary firing, which asks
+  unscoped (a preserved claim, `'?ctx`) or from each candidate placement (a subsumption).
+
+  A firing names one path per reachability it rests on, found in the network's view.
+  A scoped defeat or an `except` withdraws an edge from the readers at and below it
+  while the network keeps it IN, so the search keeps naming the withdrawn path and a
+  reader that still reaches over a second route reads the firing as withdrawn.  The
+  settle re-derives such a firing with this bound to that reader
+  (`settle/lost-firing-seeds`): every search then walks the edges the reader sees and
+  believes — the `genl` path a match climbs, the `genlCx` path a placement is seen over
+  and the path a preserved claim moves along — and placement is decided from the
+  contexts of what it finds, as for any firing.  A search that finds the path already
+  named restates a justification the firing has, which `has-justification?` drops."
+  nil)
+
 (defn- solve-preserving
   "Solve an antecedent by **preservation**, against the claims stored anywhere.  Each
   solution carries the handles the inherited claim rests on, so the firing's
@@ -780,7 +799,8 @@
   (let [ak (rules/antecedent-key literal)]
     (for [{:keys [bindings handles matched]} states
           :let [g (res/substitute literal bindings)]
-          {b :bindings sup :handles claim :claim} (inherit/solve-with-support kb g '?ctx)]
+          {b :bindings sup :handles claim :claim} (inherit/solve-with-support
+                                                   kb g (or *witness-view* '?ctx))]
       ;; the claim satisfied the antecedent like any other match, and it may have done
       ;; so through a sub-predicate — so it is paired with the antecedent's key and
       ;; `subsumption-links` reads the taxonomy edges *that* pairing rests on.  The
@@ -959,6 +979,40 @@
                     specs (res/sub-predicates kb f nil)]
                 (boolean (some #(contains? specs %) (tax/props tx :symmetric))))))))
 
+(defn- permuting-antecedent?
+  "Could the matcher answer `ante` from a stored fact read in an order other than the one
+  it is stored in — a positive literal any of whose sub-predicates carries `symmetric` (at
+  two arguments) or a commutativity group?  The gate on `read-marks`, asked once per
+  antecedent per join, so a KB with no permuting mark pays two empty-table reads.
+
+  Wider than `mirrored-antecedent?`, which decides the arrival filter and asks only for
+  `symmetric`: the trigger fans a commuting antecedent's arrangements itself
+  (`trigger-bindings`), so a commuting position keeps its filter, while either one names
+  the mark it was read through."
+  [kb ante]
+  (and (sequential? ante) (next ante)
+       (let [f (nm/functor ante)]
+         (and (symbol? f) (not (sx/variable? f)) (not= sx/not-functor f)
+              (let [tx   (reasoning/taxonomy kb)
+                    syms (tax/props tx :symmetric)]
+                (and (or (seq syms) (tax/commuting-declared? tx))
+                     (let [specs (res/sub-predicates kb f nil)]
+                       (boolean (or (and (= 3 (count ante)) (some #(contains? specs %) syms))
+                                    (tax/commuting-predicates-among tx specs))))))))))
+
+(defn- read-marks
+  "The alternative sets of mark handles a match of `pattern` under `b` rests on, when the
+  stored fact at `h` was read in another argument order (`inherit/permuted-read-supports`),
+  else `[[]]` — one firing naming nothing more, as every unpermuted match is."
+  [kb pattern b h stored]
+  (let [sxr (if (:sentence stored) stored (p/get-sentex (:records kb) h))
+        sen (:sentence sxr)]
+    (or (when (sequential? sen)
+          (inherit/permuted-read-supports kb sen (:context sxr)
+                                          (vec (rest (res/substitute pattern b)))
+                                          (or *witness-view* '?ctx)))
+        [[]])))
+
 (defn- symmetric-mirror
   "The mirror of `fact` when the KB reads it as one — a binary literal whose own
   predicate is declared `symmetric`, and whose arguments differ — else nil.
@@ -978,24 +1032,51 @@
         (let [m (sx/mirror-literal fact)]
           (when-not (= m fact) m))))))
 
+(defn- commuting-components-of
+  "The commuting components `fact`'s own predicate licences at its own arity, or nil.
+
+  Asked of the **fact** for `symmetric-mirror`'s reason: it is the fact's declaration that
+  makes its permutations true, and a super-predicate carrying the mark says nothing about
+  the sub the fact is stated at.  Read once per datum, since every antecedent position
+  asks the same fact."
+  [kb fact]
+  (when (and (sequential? fact) (next fact))
+    (let [f (nm/functor fact)]
+      (when (and (symbol? f) (not (sx/variable? f)))
+        (sx/commuting-components (tax/commuting-groups (reasoning/taxonomy kb) f)
+                                 (dec (count fact)))))))
+
 (defn- trigger-bindings
   "The binding maps a datum makes at one antecedent position: what `fact` unifies to,
-  and what its symmetric `mirror` unifies to when there is one and it binds differently.
+  what its symmetric `mirror` unifies to, and what each **arrangement of the antecedent**
+  under `comps` unifies to — each kept when it binds differently.
 
-  Two rather than one is what keeps a symmetric antecedent at the *trigger* position
-  reading the same as it does at a join position, and with it the run's independence from
-  arrival order.  Distinct, because an antecedent that binds both orientations the same
-  way (a repeated variable, or a position the mirror does not reach) has made one firing,
-  not two — and a duplicate would be a second justification for a conclusion the first
-  already carries."
-  [kb ante fact mirror]
-  (let [b0 (res/match1 kb ante fact)
-        b1 (when mirror (res/match1 kb ante mirror))]
-    (cond
-      (and b0 b1 (not= b0 b1)) [b0 b1]
-      b0                       [b0]
-      b1                       [b1]
-      :else                    nil)))
+  More than one is what keeps a permuting antecedent at the *trigger* position reading the
+  same as it does at a join position, and with it the run's independence from arrival
+  order.  The join runs `*matcher*`, which fans the arrangements; the trigger runs
+  `res/match1`, a plain unify that does not — so `(covering ?w C A B)` joined finds the
+  stored `(covering W A B C)`, while that same fact arriving as a datum unifies against
+  the antecedent as written and reaches no firing at all.
+
+  **The antecedent is what is rearranged, not the fact.**  A stored fact is canonical
+  already (`sentex/sort-commuting-args`), so its own permutations are not what is missing;
+  what is missing is the antecedent spelled the way the fact holds it.  Rearranging the
+  pattern is also what keeps the fan pruned — `sentex/arrangements-over` drops an
+  arrangement whose ground arguments are out of order, which is exactly the set a
+  canonical fact cannot match.  The binary `mirror` stays as it was: at two positions the
+  fact's mirror and the antecedent's are the same swap, and that path is what the
+  symmetric rows pin.
+
+  Distinct, because an antecedent that binds two arrangements the same way (a repeated
+  variable, or a position the arrangement does not move) has made one firing, not two —
+  and a duplicate would be a second justification for a conclusion the first already
+  carries."
+  [kb ante fact mirror comps]
+  (let [b0   (res/match1 kb ante fact)
+        b1   (when mirror (res/match1 kb ante mirror))
+        alts (when comps
+               (keep #(res/match1 kb % fact) (rest (sx/arrangements-over ante comps))))]
+    (not-empty (into [] (comp (remove nil?) (distinct)) (concat [b0 b1] alts)))))
 
 (def ^:dynamic *evaluatable-preds*
   "Per-run cache of the KB's `add-evaluatable` predicate functors
@@ -1169,11 +1250,16 @@
     (let [ak    (rules/antecedent-key ante)
           calc  (qualitative-antecedent kb ante)
           keep? (when (and admit (nil? calc) (not (mirrored-antecedent? kb ante))) admit)
+          perm? (permuting-antecedent? kb ante)
           hit   (mapcat (fn [{:keys [bindings handles matched]}]
-                          (for [[h b2] (join-matches kb (res/substitute ante bindings))
-                                :when (or (nil? keep?) (keep? h))]
-                            {:bindings (merge bindings b2) :handles (conj handles h)
-                             :matched  (conj matched [ak h])}))
+                          (let [g (res/substitute ante bindings)]
+                            (for [[h b2 stored] (join-matches kb g)
+                                  :when (or (nil? keep?) (keep? h))
+                                  ;; a fact read in another argument order holds the
+                                  ;; firing only while a mark licensing that order does
+                                  ms (if perm? (read-marks kb g b2 h stored) [[]])]
+                              {:bindings (merge bindings b2) :handles (into (conj handles h) ms)
+                               :matched  (conj matched [ak h])})))
                         states)]
       (cond
         calc (distinct (concat hit (solve-qualitative kb calc ante states)))
@@ -1287,21 +1373,26 @@
   two justifications for one conclusion that disagree about what supports it is the
   ambiguity the fix is meant to remove.  So a non-deferred trigger is recorded as a
   handle and dropped from the join; a deferred trigger is joined (computed) and the
-  cost planner orders it among the rest."
-  [kb antecedents trigger-idx trigger-handle b0 consequent-pred]
+  cost planner orders it among the rest.
+
+  `marks` are the alternative sets of mark handles the trigger's own match rests on
+  (`read-marks`), `[[]]` for a fact unified as it is stored; each seeds its own join, so a
+  firing two marks license survives either one's retraction."
+  [kb antecedents trigger-idx trigger-handle b0 marks consequent-pred]
   (let [trigger-ante (nth antecedents trigger-idx)
         handle-only? (not (deferred-antecedent? kb trigger-ante))
         to-join      (if handle-only?
                        (vec (keep-indexed (fn [j a] (when (not= j trigger-idx) a)) antecedents))
                        (vec antecedents))
-        seed         [{:bindings b0
-                       :handles  (if handle-only? [trigger-handle] [])
-                       ;; the trigger is a match like any other, and it is the one most
-                       ;; likely to have subsumed: `fire-rules-for` reaches a rule
-                       ;; through the arriving fact's *supertypes*
-                       :matched  (if handle-only?
-                                   [[(rules/antecedent-key trigger-ante) trigger-handle]]
-                                   [])}]]
+        seed         (vec (for [ms (if handle-only? marks [[]])]
+                            {:bindings b0
+                             :handles  (if handle-only? (into [trigger-handle] ms) [])
+                             ;; the trigger is a match like any other, and it is the one
+                             ;; most likely to have subsumed: `fire-rules-for` reaches a
+                             ;; rule through the arriving fact's *supertypes*
+                             :matched  (if handle-only?
+                                         [[(rules/antecedent-key trigger-ante) trigger-handle]]
+                                         [])}))]
     ;; a *deferred* trigger draws no handle at all, so there is no arrival to order the
     ;; rest of the join against and nothing is suppressed
     (planned-join kb to-join b0 consequent-pred seed
@@ -1405,6 +1496,123 @@
                  (if new? [h] []))))
             minted))))
 
+;; `place-conseq` declines to place a firing whose block condition already holds.  That
+;; is the right call for the placement — the conclusion would be swept on the same
+;; settle pass — but such a firing leaves **no trace**: no justification, no node,
+;; nothing in `jtms/blocked`.  `settle` decides a pass is productive by asking whether
+;; the blocked set moved, and reads a release off the justifications that were blocked
+;; and are not any more, so both are blind to a firing that was never allowed to become
+;; one, and the conclusion stays suppressed after the exception releases.  Belief then
+;; depends on whether the block arrived before or after the facts, which is the
+;; invariant docs/nmtms.md opens with.
+;;
+;; So the refusal is recorded, one level earlier and in the same shape: where the
+;; blocked set holds justification ids, this holds `[rule-handle, bindings]` — enough to
+;; re-ask the same level-6 question, and enough to place the conclusion from if the
+;; answer moved.  Re-evaluating k recorded refusals costs k queries, in place of a join
+;; over the whole fact extent.
+;;
+;; **Two of the four refusal reasons are recorded**, and the two that are not are not
+;; oversights — and a fifth, which is not a refusal at all, rides the same record:
+;;
+;;   held exception    recorded — re-askable from the bindings alone
+;;   `naf-blocks?`     recorded — likewise, and the same evaluator
+;;   argument          recorded, as `:constraint` — a conclusion `place-fact-conclusion`
+;;   constraint        dropped because an `arg` / `genlArg` / `interArg` / `quotedArg`
+;;                     declaration convicts it.  That conviction reads the *absence* of a
+;;                     path from the argument's types to the declared one, so it is
+;;                     negation as failure over the taxonomy, and content arriving later
+;;                     — a `genl` edge, a membership of the convicted term — can lift it.
+;;                     Unrecorded, the firing was lost for good and belief depended on
+;;                     whether the type arrived before the rule fired or after.  Re-asked
+;;                     by `settle` when either can have moved (`constraint-refusals`).
+;;   post-join failure not recorded — an aggregate is a *value* that moved, which is
+;;                     `settle/aggregate-recheck-rules`' business: a queued aggregate
+;;                     rule is re-joined whatever the blocked set did, so its firings
+;;                     are found without a record
+;;   `except`-hidden   not recorded — a visibility `except` moves what a context can
+;;                     see rather than what the rule concludes, and no trigger queues
+;;                     the rule on one; recording under a trigger that never fires
+;;                     would be a set that grows and is never read
+;;
+;; The record is a **work list, never an answer**: it says which firings to re-ask, and
+;; every entry is re-decided from scratch when it is read (`refusal-state`), exactly as
+;; `exception-blocked-set` re-decides a candidate justification.  It is keyed on
+;; content, so two refusals of the same rule at the same bindings from different passes
+;; are one entry and arrival order cannot be read back out of it.  Nothing in it is a
+;; nogood and nothing in it reaches `contradictions`: nothing was believed and nothing
+;; conflicts, the rule simply did not fire.
+
+(def max-refusals-per-rule
+  "How many refused firings one rule's record keeps before it stops keeping them
+  individually.
+
+  One entry per refused firing is bounded by what a rule did **not** derive, and a rule
+  excepted on a common condition can refuse far more than it places — so unlike blocking
+  it is not bounded by the store.  Past this many entries the rule's record collapses to
+  `:overflow` and it takes the coarse fallback instead: a queued overflowed rule forces a
+  productive settle pass and is re-joined over its extent, which finds the same
+  releases at the cost the record exists to avoid.  Correct on both sides of the line,
+  and the line is stated in docs/exceptions.md."
+  4096)
+
+(defn- record-refusal!
+  "Remember that a firing of `rule` was refused: the conclusion it would have placed,
+  where, what it rests on, and the bindings the block condition was asked under.
+
+  `:handles` are the antecedent *facts* alone, so the re-derivation recomputes the
+  conclusion's depth exactly as a fresh firing would; `:antes` is the full justification
+  antecedent list, rule handle and taxonomy supporters — `genl` and `genlCx` — included.
+
+  `:max-depth` is the depth bound the **run that refused it** was configured with, kept
+  so a later `release-refusal!` honours that bound rather than the default — the release
+  runs in a settle with no run config in scope, so the bound has to travel with the
+  entry.  `extra` rides into the entry as well: a `:constraint` drop's term and the
+  taxonomy generations it was decided under (`record-constraint-drop!`).  It joins the entry's identity, so a firing refused under two different bounds is
+  two entries; both release idempotently, and in practice a KB's runs share one bound."
+  ([kb rule conseq pctx antes handles bindings max-depth]
+   (record-refusal! kb rule conseq pctx antes handles bindings max-depth nil))
+  ([kb rule conseq pctx antes handles bindings max-depth extra]
+   (let [rh    (:rule-handle rule)
+         entry (merge {:conseq conseq :pctx pctx :antes antes :handles handles
+                       :bindings bindings :max-depth max-depth}
+                      extra)]
+     (swap! (reasoning/refused kb)
+            (fn [m]
+              (let [cur (get m rh)]
+                (cond
+                  (= :overflow cur)                        m
+                  (nil? cur)                               (assoc m rh #{entry})
+                  (contains? cur entry)                    m
+                  (>= (count cur) max-refusals-per-rule)   (assoc m rh :overflow)
+                  :else                                    (assoc m rh (conj cur entry)))))))))
+
+(def ^:private constraint-drop-kinds
+  "The violations a firing is dropped for that content arriving later can lift: each
+  convicts one argument by the absence of a path from its types to a declared one, so
+  a `genl` edge or a membership of that argument is what can change the answer."
+  #{:arg-type :arg-genl :inter-arg-type :quoted-arg-type})
+
+(defn constraint-generations
+  "The two closure generations an argument conviction is read through — `genl` for the
+  argument's types, `genlCx` for which declarations and memberships its context sees."
+  [kb]
+  (let [tax (reasoning/taxonomy kb)]
+    [(tax/relation-gen tax :genl) (tax/relation-gen tax :genlCx)]))
+
+(defn- record-constraint-drop!
+  "Record a firing `place-fact-conclusion` dropped on the argument conviction `v`, as a
+  `:constraint` refusal: the convicted term (`checks/conviction-watch`) and the
+  generations it was read under travel with it, so `settle` re-asks it only when one of
+  them can have moved.  `:handles` is the whole antecedent list, which is what the
+  release recomputes the depth from; the rule handle and the taxonomy supporters in it
+  sit at depth 0."
+  [kb rule conseq pctx all-antes bindings v]
+  (let [antes (kb/antecedent-order kb all-antes)]
+    (record-refusal! kb rule conseq pctx antes antes bindings nil
+                     (merge {:constraint true :gens (constraint-generations kb)}
+                            (checks/conviction-watch v)))))
+
 (defn- place-fact-conclusion
   "Persist/justify a rule conclusion `conseq` in context `pctx` at justification
   `strength` (:monotonic / :default); return the handles newly created (for
@@ -1429,7 +1637,9 @@
   and must not abort halfway through it, and an exception escaping a rule firing would
   make the resulting belief set depend on which rule happened to fire first.  The
   conclusion is skipped (no sentex, no justification) and the violation lands in the
-  KB's `violations` atom, readable with `core/violations`.
+  KB's `violations` atom, readable with `core/violations`.  An argument-constraint drop
+  is remembered as well (`record-constraint-drop!`), for `settle` to place once a type
+  arriving later lifts the conviction.
 
   Dropping an argument-constraint violation rather than arbitrating it is deliberate, and
   docs/nmtms.md holds the reason: an argument constraint convicts by the **absence** of a
@@ -1464,6 +1674,8 @@
     (if v
       (do (violations/report kb
                              [(assoc v :sentence conseq :context pctx :rule (:rule-handle rule))])
+          (when (constraint-drop-kinds (:violation v))
+            (record-constraint-drop! kb rule conseq pctx all-antes bindings v))
           [])
       (let [[h s new?] (if existing
                          [existing (p/get-sentex (:records kb) existing) false]
@@ -1545,7 +1757,7 @@
               ;; exactly as an asserted one does — the mark sorts arguments at the entry point,
               ;; so without this whether one proposition is one record would depend on
               ;; whether the declaration was written or inferred
-              symx (when new? (integrate/symmetrize-existing kb conseq h))
+              symx (when new? (integrate/commute-existing kb conseq h))
               ;; nil when nothing merged, which is every conclusion on a KB that states
               ;; no equality and every re-derivation on one that does — and a fixpoint
               ;; re-derives the same conclusion on every round of every defaults pass, so
@@ -1591,9 +1803,9 @@
           (-> (if new? [h] [])
               (into (:new mig))
               (into (:new lift))
-              (into (:new args))
-              (into (:new back))
-              (into (:new down))
+              (into (special/minted-seeds kb (:new args)))
+              (into (special/minted-seeds kb (:new back)))
+              (into (special/minted-seeds kb (:new down)))
               ;; a *derived* genl edge makes stored facts matchable at a supertype
               ;; they did not have, exactly as an asserted one does — same seeds, or
               ;; the fixpoint would depend on which rule fired first
@@ -1707,7 +1919,8 @@
   ;; defeat-class of each edge supporter, read here where the tms is in hand.
   (let [supporter-class #(jtms/defeat-class (reasoning/tms kb) %)]
     (reduce (fn [acc [sub super]]
-              (if-let [hs (tax/reach-support (reasoning/taxonomy kb) :genl sub super vantage supporter-class)]
+              (if-let [hs (tax/reach-support (reasoning/taxonomy kb) :genl sub super
+                                             (or *witness-view* vantage) supporter-class)]
                 (into acc hs)
                 (reduced nil)))
             []
@@ -1742,10 +1955,53 @@
     (into []
           (comp (remove #(or (nil? %) (= pctx %)))
                 (distinct)
-                (mapcat #(tax/reach-support tax :genlCx pctx % nil))
+                ;; asked from the placement's own view, so a path it reads as hidden or
+                ;; withdrawn is never the one named when another reaches
+                (mapcat #(tax/reach-support tax :genlCx pctx % (or *witness-view* pctx)))
                 (map first)
                 (distinct))
           ctxs)))
+
+(defn- descent-placements
+  "`{placement [edge-handle …]}` for a subsumed firing whose conclusion descends below the
+  contexts that see the rule and the facts: one entry per maximal context that sees the
+  ingredients and every edge of one witness combination.
+
+  A combination is one route per subsumption, and every combination no other covers is
+  placed (`tax/reach-supports`, `tax/uncovered`): a route covers another when its floor
+  class is at least as strong and every reader that sees the other also sees it.  Two
+  routes stated in contexts neither of which sees the other each place the conclusion
+  below their own context, so each reader that reaches over its own edges reads it, and
+  no placement depends on which route arrived first.  A placement two combinations
+  decide names the first in content order.  nil when some subsumption has no route the
+  view sees."
+  [kb links ingredients]
+  (let [tax      (reasoning/taxonomy kb)
+        tms      (reasoning/tms kb)
+        rank     #(strength/rank-of (or (jtms/defeat-class tms %) :default))
+        per-link (mapv (fn [[sub super]]
+                         (tax/reach-supports tax :genl sub super *witness-view*
+                                             #(jtms/defeat-class tms %)))
+                       links)]
+    (when (every? seq per-link)
+      (let [combos (reduce (fn [acc routes] (vec (for [x acc, r routes] (into x r))))
+                           [[]] per-link)
+            combos (tax/uncovered tax
+                                  (fn [hs] [(reduce min Long/MAX_VALUE (map (comp rank first) hs))
+                                            (tax/context-floor tax (map second hs))])
+                                  combos)]
+        (reduce (fn [m hs]
+                  (let [ectxs (concat ingredients (keep second hs))
+                        ehs   (mapv first hs)]
+                    (reduce (fn [m p]
+                              (if (contains? m p)
+                                m
+                                (assoc m p (into ehs (visibility-support tax p ectxs)))))
+                            m
+                            (nm/sort-by-content-key
+                             nm/print-key compare
+                             (tax/maximal-common-descendant-contexts tax ectxs)))))
+                {} combos)))))
 
 (defn- exception-aware-placements
   "Placement candidates for `handles` while one of them is hidden somewhere.
@@ -1783,15 +2039,16 @@
   add no constraint at all and the placement is exactly what it would have been —
   per candidate, since two incomparable candidates may see different supporters of one
   edge, and picking one witness for both would drop whichever candidate cannot see it.
-  Only where *no* such candidate exists is the taxonomy a binding constraint, and then
-  the conclusion descends to the maximal contexts that see the edges too — where it used
-  to evaporate into a `:no-placement`.  A supporter with no recorded context is seen from
+  Only where a candidate sees no path is the taxonomy a binding constraint, and then the
+  conclusion descends to the maximal contexts that see the edges too rather than landing
+  in a `:no-placement`.  A supporter with no recorded context is seen from
   everywhere and constrains nothing, so it drops out of the list rather than emptying it.
 
-  Deliberately conservative in one direction: the descent uses one global witness, so a
-  firing whose candidates *some* of which see a path keeps only those, and does not also
-  descend below the others.  Placing under both would need the union re-maximalized, and
-  the case — incomparable candidates disagreeing about one edge — is exotic."
+  The descent places the conclusion once per witness combination no other covers
+  (`descent-placements`), so two routes stated in sibling contexts each place it below
+  their own context.  Where *some* candidates see a path and others do not, the ones that
+  see keep their placement, and the descent adds the placements that are not at or below
+  one of them."
   [kb rule links fact-handles fact-ctxs]
   (let [tax         (reasoning/taxonomy kb)
         ingredients (cons (:context rule) fact-ctxs)
@@ -1812,99 +2069,27 @@
                                                  tax b (concat ingredients (keep second hs)))))
                                m))
                            {} base)]
-        (if (seq seeing)
+        ;; under a witness view every candidate is handed the reader's path, which a
+        ;; candidate above the reader may not see, so the placement is decided from the
+        ;; path's own contexts instead (`*witness-view*`)
+        (if (and (nil? *witness-view*) (seq seeing) (= (count seeing) (count base)))
           ;; `seeing` is the placement filter as well as the support map, and a
           ;; subsumed firing always names at least one `genl` edge, so no entry of it
           ;; is empty and the two readings cannot disagree
           [(filterv seeing base) seeing]
-          (when-let [hs (subsumption-support kb links nil)]
-            (let [ectxs (concat ingredients (keep second hs))
-                  ps    (tax/maximal-common-descendant-contexts tax ectxs)
-                  ehs   (mapv first hs)]
-              [ps (reduce (fn [m p]
-                            (assoc m p (into ehs (visibility-support tax p ectxs))))
-                          {} ps)])))))))
+          (let [kept    (if *witness-view* {} seeing)
+                ;; a descent placement at or below a candidate that sees a path of its
+                ;; own reads that candidate's conclusion already
+                descent (into {}
+                              (remove (fn [[p _]] (some #(tax/sees? tax p %) (keys kept))))
+                              (descent-placements kb links ingredients))]
+            (when (or (seq kept) (seq descent))
+              [(into (filterv kept base)
+                     (nm/sort-by-content-key nm/print-key compare (keys descent)))
+               (merge descent kept)])))))))
 
 ;; ---- a refused firing is remembered as bindings --------------------------
 ;;
-;; `place-conseq` declines to place a firing whose block condition already holds.  That
-;; is the right call for the placement — the conclusion would be swept on the same
-;; settle pass — but such a firing leaves **no trace**: no justification, no node,
-;; nothing in `jtms/blocked`.  `settle` decides a pass is productive by asking whether
-;; the blocked set moved, and reads a release off the justifications that were blocked
-;; and are not any more, so both are blind to a firing that was never allowed to become
-;; one, and the conclusion stays suppressed after the exception releases.  Belief then
-;; depends on whether the block arrived before or after the facts, which is the
-;; invariant docs/nmtms.md opens with.
-;;
-;; So the refusal is recorded, one level earlier and in the same shape: where the
-;; blocked set holds justification ids, this holds `[rule-handle, bindings]` — enough to
-;; re-ask the same level-6 question, and enough to place the conclusion from if the
-;; answer moved.  Re-evaluating k recorded refusals costs k queries, in place of a join
-;; over the whole fact extent.
-;;
-;; **Two of the four refusal reasons are recorded**, and the two that are not are not
-;; oversights:
-;;
-;;   held exception    recorded — re-askable from the bindings alone
-;;   `naf-blocks?`     recorded — likewise, and the same evaluator
-;;   post-join failure not recorded — an aggregate is a *value* that moved, which is
-;;                     `settle/aggregate-recheck-rules`' business: a queued aggregate
-;;                     rule is re-joined whatever the blocked set did, so its firings
-;;                     are found without a record
-;;   `except`-hidden   not recorded — a visibility `except` moves what a context can
-;;                     see rather than what the rule concludes, and no trigger queues
-;;                     the rule on one; recording under a trigger that never fires
-;;                     would be a set that grows and is never read
-;;
-;; The record is a **work list, never an answer**: it says which firings to re-ask, and
-;; every entry is re-decided from scratch when it is read (`refusal-state`), exactly as
-;; `exception-blocked-set` re-decides a candidate justification.  It is keyed on
-;; content, so two refusals of the same rule at the same bindings from different passes
-;; are one entry and arrival order cannot be read back out of it.  Nothing in it is a
-;; nogood and nothing in it reaches `contradictions`: nothing was believed and nothing
-;; conflicts, the rule simply did not fire.
-
-(def max-refusals-per-rule
-  "How many refused firings one rule's record keeps before it stops keeping them
-  individually.
-
-  One entry per refused firing is bounded by what a rule did **not** derive, and a rule
-  excepted on a common condition can refuse far more than it places — so unlike blocking
-  it is not bounded by the store.  Past this many entries the rule's record collapses to
-  `:overflow` and it takes the coarse fallback instead: a queued overflowed rule forces a
-  productive settle pass and is re-joined over its extent, which finds the same
-  releases at the cost the record exists to avoid.  Correct on both sides of the line,
-  and the line is stated in docs/exceptions.md."
-  4096)
-
-(defn- record-refusal!
-  "Remember that a firing of `rule` was refused: the conclusion it would have placed,
-  where, what it rests on, and the bindings the block condition was asked under.
-
-  `:handles` are the antecedent *facts* alone, so the re-derivation recomputes the
-  conclusion's depth exactly as a fresh firing would; `:antes` is the full justification
-  antecedent list, rule handle and taxonomy supporters — `genl` and `genlCx` — included.
-
-  `:max-depth` is the depth bound the **run that refused it** was configured with, kept
-  so a later `release-refusal!` honours that bound rather than the default — the release
-  runs in a settle with no run config in scope, so the bound has to travel with the
-  entry.  It joins the entry's identity, so a firing refused under two different bounds is
-  two entries; both release idempotently, and in practice a KB's runs share one bound."
-  [kb rule conseq pctx antes handles bindings max-depth]
-  (let [rh    (:rule-handle rule)
-        entry {:conseq conseq :pctx pctx :antes antes :handles handles :bindings bindings
-               :max-depth max-depth}]
-    (swap! (reasoning/refused kb)
-           (fn [m]
-             (let [cur (get m rh)]
-               (cond
-                 (= :overflow cur)                        m
-                 (nil? cur)                               (assoc m rh #{entry})
-                 (contains? cur entry)                    m
-                 (>= (count cur) max-refusals-per-rule)   (assoc m rh :overflow)
-                 :else                                    (assoc m rh (conj cur entry))))))))
-
 (defn- refusal-reason
   "Why a completed firing may not be placed in `pctx`, or nil — `:post-join`,
   `:exception`, `:naf` or `:hidden`, in the order they are cheapest to decide.  A
@@ -2188,6 +2373,16 @@
                  (if (empty? cur') (dissoc m rh) (assoc m rh cur')))
                m)))))
 
+(defn- refusal-live?
+  "Is there still a firing for refusal `entry` of the rule stored as `rsx` to make —
+  the rule a believed forward rule, and every antecedent stored and believed?"
+  [kb rsx entry]
+  (let [rec (:records kb)
+        tms (reasoning/tms kb)]
+    (and rsx (rules/rule? rsx) (rules/forward-sentex? rsx)
+         (every? (fn [h] (and (p/get-sentex rec h) (jtms/in? tms h)))
+                 (:antes entry)))))
+
 (defn refusal-state
   "Re-decide one recorded refusal of rule `rh`, from scratch: `:dead` when there is no
   longer a firing to make, `:blocked` when the condition that refused it still holds,
@@ -2203,20 +2398,66 @@
   `settled-bindings` records: a snapshot asks about a spelling a merge has retired, and
   the honest empty that comes back reads as *not excepted*."
   [kb rh entry]
-  (let [rec (:records kb)
-        tms (reasoning/tms kb)
-        rsx (p/get-sentex rec rh)]
-    (if-not (and rsx (rules/rule? rsx) (rules/forward-sentex? rsx)
-                 (every? (fn [h] (and (p/get-sentex rec h) (jtms/in? tms h)))
-                         (:antes entry)))
+  (let [rsx (p/get-sentex (:records kb) rh)]
+    (if-not (refusal-live? kb rsx entry)
       :dead
       (let [pctx (:pctx entry)]
-        (if (or (antecedent-hidden? kb (:antes entry) pctx)
-                (rule-firing-blocked? kb rh rsx
-                                      (delay (settled-bindings kb (:bindings entry) pctx))
-                                      pctx))
+        (cond
+          ;; a dropped argument conviction is re-decided by the check that dropped it
+          (:constraint entry)
+          (if (:violation (checks/constraint-admission kb (:conseq entry) pctx)) :blocked :free)
+
+          (or (antecedent-hidden? kb (:antes entry) pctx)
+              (rule-firing-blocked? kb rh rsx
+                                    (delay (settled-bindings kb (:bindings entry) pctx))
+                                    pctx))
           :blocked
-          :free)))))
+
+          :else :free)))))
+
+(defn- restamp-refusal!
+  "Replace `:constraint` entry `entry` of rule `rh` with the same entry decided under
+  generations `gens` and watching `watch`: the conviction was re-asked and still holds,
+  so the next re-ask is owed only once the generations move again or a membership of
+  the term the conviction **now** names moves.  A no-op when the entry has already
+  left."
+  [kb rh entry gens watch]
+  (swap! (reasoning/refused kb)
+         (fn [m]
+           (let [cur (get m rh)]
+             (if (and (set? cur) (contains? cur entry))
+               (assoc m rh (conj (disj cur entry) (merge entry {:gens gens} watch)))
+               m)))))
+
+(defn redecide-constraint-refusal!
+  "Re-ask `:constraint` entry `entry` of rule `rh` under generations `gens`: `:free` when
+  the conviction no longer holds and the conclusion is owed a placement, nil otherwise.
+  An entry whose firing has left is retired.  One still convicted is restamped with
+  `gens` and with the term of the conviction read now (`checks/conviction-watch`), not
+  the term it was recorded with, so the entry is re-asked when the argument it is
+  convicted on is lifted, whichever argument that has become.  The term is read by
+  `checks/conviction-watch`, the reader `record-constraint-drop!` records with, so the
+  restamped entry watches the term a firing refused now would record — which is what a
+  `recover` that rebuilds the record by re-firing records."
+  [kb rh entry gens]
+  (let [rsx (p/get-sentex (:records kb) rh)]
+    (if-not (refusal-live? kb rsx entry)
+      (do (drop-refusal! kb rh entry) nil)
+      (if-let [v (:violation (checks/constraint-admission kb (:conseq entry) (:pctx entry)))]
+        (do (restamp-refusal! kb rh entry gens (checks/conviction-watch v)) nil)
+        :free))))
+
+(defn constraint-refusals
+  "Every `:constraint` entry in the refusal record, as `[rule-handle entry]` pairs, in
+  content order — empty on a KB where no firing was dropped on an argument constraint,
+  which is nearly every settle, so the caller's re-ask costs one walk of the record."
+  [kb]
+  (->> @(reasoning/refused kb)
+       (mapcat (fn [[rh recs]]
+                 (when (set? recs)
+                   (for [e recs :when (:constraint e)] [rh e]))))
+       (sort-by (fn [[rh e]] [rh (nm/print-key (:conseq e)) (nm/name-key (:pctx e))]))
+       vec))
 
 (defn rule-firing-report
   "Per forward rule in the KB, what it did with itself: how many firings it **placed**,
@@ -2260,11 +2501,13 @@
                                               (let [st (refusal-state kb rh e)]
                                                 {:state   st
                                                  :reason  (when (= :blocked st)
-                                                            (refusal-reason
-                                                             kb @rview (:antes e)
-                                                             (when (:bindings e)
-                                                               (settled-bindings kb (:bindings e) (:pctx e)))
-                                                             (:pctx e)))
+                                                            (if (:constraint e)
+                                                              :constraint
+                                                              (refusal-reason
+                                                               kb @rview (:antes e)
+                                                               (when (:bindings e)
+                                                                 (settled-bindings kb (:bindings e) (:pctx e)))
+                                                               (:pctx e))))
                                                  :conseq  (:conseq e)
                                                  :context (:pctx e)}))
                                             ref))
@@ -2309,14 +2552,23 @@
     :free    (let [rule  (rule-view kb rh)
                    depth (inc (reduce max 0 (map #(jtms/depth (reasoning/tms kb) %) (:handles entry))))
                    ;; the bound the refusing run was configured with, kept on the entry;
-                   ;; the default is the fallback for an entry a rebuild re-recorded
-                   ;; before this field existed, never the silent ceiling it was
-                   bound (:max-depth entry (:max-depth default-chain-opts))]
+                   ;; the default is the fallback for an entry that carries none — one a
+                   ;; rebuild re-recorded before this field existed, or a `:constraint`
+                   ;; drop, which `place-fact-conclusion` records without a run config
+                   bound (or (:max-depth entry) (:max-depth default-chain-opts))]
                (drop-refusal! kb rh entry)
                (if (> depth bound)
                  []
-                 (vec (place-conclusion kb rule (:conseq entry) (:pctx entry) (:antes entry)
-                                        depth (:bindings entry) (:strength rule)))))))
+                 (let [placed (vec (place-conclusion kb rule (:conseq entry) (:pctx entry)
+                                                     (:antes entry) depth (:bindings entry)
+                                                     (:strength rule)))]
+                   ;; the drop's ledger entry described a conclusion that is now stored,
+                   ;; and left standing it would report the arrival order: an order that
+                   ;; brought the type first files nothing
+                   (when (and (:constraint entry)
+                              (kb/find-sentex-handle kb (:conseq entry) (:pctx entry)))
+                     (violations/withdraw! kb (:conseq entry) (:pctx entry) rh))
+                   placed)))))
 
 (defn- fire-rule
   "Apply a newly added rule over existing facts, at the rule's own strength."
@@ -2387,22 +2639,28 @@
     (doseq [[c d] deltas] (qkb/note-joined kb calc c (:baseline d)))
     fired))
 
-(defn- symmetric-rejoin-rules
-  "The forward rules to re-join because `fact` is a `(symmetric P)` **declaration**.
+(defn- permuting-rejoin-rules
+  "The forward rules to re-join because `fact` is a **permuting mark** —
+  `(symmetric P)`, `(commutative P)`, `(commutativeInArgs P …)` or
+  `(commutativeInArgAndRest P n)` (`inherit/permuting-marks`).
 
-  The matcher mirrors a literal only once its predicate is declared, so the pairs a
-  `(sibOf ?a ?b)` antecedent reaches change the moment the declaration lands — and the
-  facts that would have triggered those firings have already arrived, so nothing else
-  will enumerate them.  Without this, the same four sentences derive a conclusion or not
-  depending on whether the declaration came last: 6 of the 24 orderings, and the whole
-  of the difference is that a stored fact means its mirror too.
+  The matcher reads a literal in another argument order only once its predicate carries
+  the mark, so the tuples a `(sibOf ?a ?b)` antecedent reaches change the moment the mark
+  lands — and the facts that would have triggered those firings have already arrived, so
+  nothing else will enumerate them.  Without this, the same four sentences derive a
+  conclusion or not depending on whether the mark came last: 6 of the 24 orderings for
+  `symmetric`, and the whole of the difference is that a stored fact means its
+  permutations too.  A commutativity mark re-spells a stored fact whose arguments are out
+  of order (`integrate/commute-existing`), and that re-spelled row reaches the rules as new
+  content; a fact already in canonical order is not re-spelled, and only this re-join
+  reaches the orders it now also means.
 
-  `genls(P)`, not `specs`: `mirrored-antecedent?` asks whether *any sub-predicate* of an
-  antecedent's functor is symmetric, so declaring `sibOf` moves an antecedent on
+  `genls(P)`, not `specs`: the matcher asks whether *any sub-predicate* of an
+  antecedent's functor carries a mark, so marking `sibOf` moves an antecedent on
   `relatedTo` above it as well as one on `sibOf` itself.  Answered by a symbol compare
-  for every datum that is not one of these declarations."
+  for every datum that is not one of these marks."
   [kb fact]
-  (when (and (sequential? fact) (= 2 (count fact)) (= 'symmetric (nm/functor fact)))
+  (when (and (sequential? fact) (next fact) (inherit/permuting-mark? (nm/functor fact)))
     (let [p (first (nm/args fact))]
       (when (and (symbol? p) (not (sx/variable? p)))
         (not-empty
@@ -2441,7 +2699,7 @@
   declared: a fact on that predicate, on a sub-predicate of it, or on a partner an
   `inverse` records its hops on.
 
-  The declaration half is the `(symmetric P)` case exactly (`symmetric-rejoin-rules`): it
+  The declaration half is the `(symmetric P)` case exactly (`permuting-rejoin-rules`): it
   changes which pairs a `P` antecedent reaches, and the facts it reaches them over have
   already arrived, so nothing about `P` would ever bring the rule round again.  The
   antecedent's **own** functor has to be the declared one for the join to walk
@@ -2539,6 +2797,9 @@
         ;; read once per datum, not per candidate position: what makes the mirror true is
         ;; the fact's own `symmetric` declaration, and every position asks the same fact
         mirror   (symmetric-mirror kb fact)
+        ;; and, at any arity, the components the fact's own predicate licences — read
+        ;; once per datum for the same reason the mirror is
+        comps    (commuting-components-of kb fact)
         ;; a positive fact's predicate and its supertypes; a negative fact's `[:not q]`
         ;; keys for the specs `q` of its body's predicate, which is the direction a genl
         ;; edge carries through a negation — read off the rule roster rather than off
@@ -2581,14 +2842,14 @@
         ;; edge, a fact on the relation, the declaration, `(transitive R)` — and a
         ;; claim that *is* on it reaches the antecedent only at the tuple it is stated
         ;; at.  `inherit/rejoin-rules` reads the declarations to say which rules those
-        ;; are, and answers nil after two cardinality reads for a KB that declares
-        ;; none.
+        ;; are, and answers nil off one `empty?` on the `:preserving` roster for a KB
+        ;; that declares none.
         prhs     (inherit/rejoin-rules kb fact)
         ;; And one layer over again, for the matcher rather than for a prover: a
-        ;; `(symmetric P)` datum changes which pairs a P antecedent reaches, and the facts
-        ;; it reaches them over have already arrived.  A symbol compare for every datum
-        ;; that is not such a declaration.
-        srhs     (symmetric-rejoin-rules kb fact)
+        ;; `(symmetric P)` or commutativity datum changes which tuples a P antecedent
+        ;; reaches, and the facts it reaches them over have already arrived.  A symbol
+        ;; compare for every datum that is not such a mark.
+        srhs     (permuting-rejoin-rules kb fact)
         ;; And once more for a prover rather than for the matcher: a datum on a predicate
         ;; a `SupportingProver` reads moves what a computed antecedent answers, and no
         ;; walk from `conversionFactor` reaches `quantityGreaterThan`.
@@ -2630,9 +2891,15 @@
                            (reduce (fn [nh4 state]
                                      (into nh4 (:new (derive-conclusion kb @rule state max-depth truncated))))
                                    nh3
-                                   (complete-antecedents kb antecedents i datum b0 cpred)))
+                                   (complete-antecedents
+                                    kb antecedents i datum b0
+                                    ;; only the fact's own mark rearranges it at a trigger
+                                    (if (or mirror comps)
+                                      (read-marks kb (nth antecedents i) b0 datum nil)
+                                      [[]])
+                                    cpred)))
                          nh2
-                         (trigger-bindings kb (nth antecedents i) fact mirror)))
+                         (trigger-bindings kb (nth antecedents i) fact mirror comps)))
                       nh
                       (range (count antecedents)))))))
       []

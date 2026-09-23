@@ -96,6 +96,7 @@
             [vaelii.impl.checks :as checks]
             [vaelii.impl.columnar :as columnar]
             [vaelii.impl.dense-kv :as dense]
+            [vaelii.impl.inherit :as inherit]
             [vaelii.impl.kv :as kv]
             [vaelii.impl.literal-cache :as lc]
             [vaelii.impl.memory :as mem]
@@ -198,16 +199,16 @@
   `:refuse`.
 
   **The one shape the rest of this file cannot see.** Every other check builds its KB
-  with `fresh-kb`, which declares no predicate property, so `settle`'s cross-context
-  constraint report shuts at its vocabulary gate and never runs — the suite is
-  structurally blind to the pass. This declares the property, so the gate opens and each
-  assert reaches `clash-vantages`, which reads the argument-1 posting of *both*
-  arguments to decide which contexts could see a pair.
+  with `fresh-kb`, which declares no predicate property, so `settle`'s clash detection
+  shuts at its vocabulary gate and never runs — the suite is structurally blind to the
+  vantage read. This declares the property, so the gate opens and each assert reaches
+  `clash-vantages`, which reads the argument-1 posting of *both* arguments to decide
+  which contexts could see a pair.
 
   The shared argument is what makes it a claim rather than a formality: `PA`'s posting
   grows by one per assert, so a pass that walks it per assert is O(n) each and O(n²) over
   the load, and the reading tracks the KB rather than the region. One context throughout,
-  so no pair is ever visible from anywhere and nothing is reported — this measures the
+  so no pair is ever visible from anywhere and nothing is decided — this measures the
   cost of *deciding that*, which is the cost every assert on such a KB pays.
 
   **The posting is predicate-agnostic**, which is what makes the shape general rather
@@ -226,11 +227,45 @@
        (nanos (v/assert kb (list 'plarger 'PA (symbol (str "PL" i)))
                         'CxPerf {}))))))
 
+(defn- membership-read-under-busy-term
+  "A type membership checked about a term that is already argument 1 of n facts of an
+  unrelated binary predicate, on a KB that declares one separation.
+
+  **The retrieval every definitional check bottoms out on.**  `kb/types-of` answers what
+  types a term holds, and the disjointness arm asks it of the arriving sentence's
+  argument on every membership.  The argument root cannot narrow to the memberships —
+  `(T x)` and `(P x y)` share the `[1 x]` node and the trie level below it — so the read
+  used to fetch the record behind every fact naming the term at argument 1 and keep the
+  arity-1 ones.  A densely described individual therefore paid its whole description on
+  every assert of a type for it, to find the handful of types it holds.
+  `protocols/UnaryArgIndex` is the narrowing, and this is its gate.
+
+  **The separation is what opens the arm**, and without it the check would measure
+  nothing: `disjoint-problems` reads the argument's memberships only once the KB has a
+  separation to test them against, so a `fresh-kb` with no declaration at all short-
+  circuits before the retrieval.  One declaration, about two types the term does not
+  hold, is enough — it decides nothing here and this measures the cost of deciding that.
+
+  `check` rather than `assert`, for `refusal-grounds-reading`'s reason: the decision is
+  what is being measured, and `check` leaves the KB identical at every reading, so the
+  term's description is the only thing n moves."
+  [n]
+  (let [kb (fresh-kb)]
+    (v/assert kb '(binary_predicate pbtLikes) 'CxPerf {:strength :monotonic})
+    (v/assert kb '(disjoint pbt_alpha pbt_beta) 'CxPerf {:strength :monotonic})
+    (v/with-deferred-settle kb
+      (doseq [i (range n)]
+        (v/assert kb (list 'pbtLikes 'PBTBusy (symbol (str "PBT" i)))
+                  'CxPerf {:strength :monotonic})))
+    (v/assert kb '(pbt_known PBTBusy) 'CxPerf {:strength :monotonic})
+    (doall (for [_ (range 60)]
+             (nanos (count (v/check kb '(pbt_person PBTBusy) 'CxPerf)))))))
+
 (defn- constraint-exposure-context-edge
   "A `genlCx` edge asserted into a KB holding n facts of a declared `functional`
   predicate in the context it newly sees, under `:refuse`.
 
-  The edge is the one trigger the cross-context constraint report reaches *out* of the
+  The edge is the one trigger the tuple-mark sweep reaches *out* of the
   moved region for: visibility moved, so a pair already stored becomes jointly visible
   without either half being relabelled. Reaching out means walking the ancestor set, and an ancestor set
   is unbounded — a context cycle makes it the whole graph — so the walk is lazy and
@@ -245,7 +280,7 @@
   the check answering a different question rather than a regression.
 
   Distinct subjects, so nothing in the ancestor set pairs: this measures the reach, not the
-  reporting."
+  deciding."
   [n]
   (binding [tax/*exposure-instance-budget* 100]
     (let [kb (fresh-kb)]
@@ -541,6 +576,60 @@
            :let [x (symbol (str "PDMT" i))]]
        (do (v/assert kb (list 'pdmt_benign x) 'CxPerf {:strength :monotonic})
            (nanos (v/assert kb (list 'pdmt_m0 x) 'CxPerf {:strength :monotonic})))))))
+
+(defn- refusal-grounds-reading
+  "A membership arriving where the type it opposes is separated from it n derivations
+  over.  The hierarchy is a diamond ladder of `genl` edges — two nodes per level, every
+  node a specialization of both nodes on the level above — so the ancestor *count* is
+  linear in the depth while the number of ancestor *paths* doubles per level.  n is the
+  derivation count: two ladders of depth d put 2^d paths under each separated type and so
+  4^d complete derivations under the one separation at their tops.
+
+  **The one read on the assert path that walks a graph**, and nothing measured it until
+  this check.  Under `:arbitrate` a refusal asks two questions, the second only when the
+  first says yes: is the opposing sentex known-true (`checks/opposing-class`), and is the
+  derivation that makes the two a pair known-true as well (`checks/grounds-class`, which
+  for a separation is `tax/disjointness-class`).  Every arbitrating check beside this one
+  holds its memberships `:default`, so all of them stop at the first question — the
+  short-circuit is deliberate, since the common load must not pay for the second
+  question, and it is also what left the second question unmeasured.  Here the opposing
+  membership is `:monotonic`, which is what opens it.
+
+  **The claim is flatness in the derivations, and the ancestry is what the read is
+  allowed to cost.**  `disjointness-class` takes a max of mins over the separated pairs
+  the two closures share and prices each pair with two `reach-strength` calls, each a
+  widest-bottleneck walk over the visible `genl` adjacency that settles a node once.  So
+  the cost is the ancestry, and 4096x the derivations through it is that same ancestry
+  three times over.  The shape this separates from is a read that enumerates the
+  derivations rather than walking the adjacency: `tax/disjointness-witnesses` yields one
+  witness per ancestor path per separated pair per supporter choice, and its own
+  docstring says a node can have exponentially many ancestor paths.
+
+  `check` and not `assert`, because the decision is what is being measured: `check` runs
+  it over a KB it leaves identical at every reading — no sentex, no settle, and no
+  exception built for the refusal, whose construction dominated an `assert`-driven first
+  attempt badly enough to read 0.79 ms/op and 0.16 ms/op for the same work on two runs."
+  [n]
+  (binding [checks/*arbitrate-constraints?* true]
+    (let [depth (max 1 (long (Math/round (/ (Math/log (double n)) (Math/log 4.0)))))
+          kb    (fresh-kb)
+          nd    (fn [side i j] (symbol (str "prg_" side i "_" j)))]
+      (v/with-deferred-settle kb
+        (doseq [side ["l" "r"]
+                :let [bot (symbol (str "prg_" side "bot"))
+                      top (symbol (str "prg_" side "top"))]]
+          (doseq [j [0 1]]
+            (v/assert kb (list 'genl bot (nd side 0 j)) 'CxPerf {:strength :monotonic})
+            (v/assert kb (list 'genl (nd side (dec depth) j) top)
+                      'CxPerf {:strength :monotonic}))
+          (doseq [i (range (dec depth)), j [0 1], k [0 1]]
+            (v/assert kb (list 'genl (nd side i j) (nd side (inc i) k))
+                      'CxPerf {:strength :monotonic}))))
+      (v/assert kb '(disjoint prg_ltop prg_rtop) 'CxPerf {:strength :monotonic})
+      ;; known-true, so `refuses-assert?` gets past `opposing-class` and reads the grounds
+      (v/assert kb '(prg_rbot PRGX) 'CxPerf {:strength :monotonic})
+      (doall (for [_ (range 60)]
+               (nanos (count (v/check kb '(prg_lbot PRGX) 'CxPerf))))))))
 
 (defn- closure-membership
   "`(pBefore Head Tail)` over an n-long chain under `(transitive pBefore)`, asked after the
@@ -1617,6 +1706,159 @@
       (doall (for [_ (range 60)]
                (nanos (v/ask? kb goal 'CxPerf)))))))
 
+(defn- witness-route-search
+  "One preservation support for a goal whose claim is reached by n **alternative routes**
+  between the same two terms.
+
+  The support names the routes no other route covers, and which ones decide where a
+  firing over the claim is placed, so the search keeps the routes stated in the most
+  general contexts (`taxonomy/general-reach-supports`).  A search that answered that by enumerating
+  the routes and comparing them would be quadratic in n; the walk that ships settles each
+  node once and reads each edge once, so 8x the routes is near 8x the search and nowhere
+  near 64x.
+
+  Every route is two hops through its own middle term and every edge is asserted in one
+  context, so the routes tie on generality and the search is doing the work the bound is
+  about rather than short-circuiting on the first general route it sees."
+  [n]
+  (let [kb (fresh-kb)]
+    (v/with-deferred-settle kb
+      (v/assert kb '(transitiveInArg pwNeeds 1 genl) 'CxPerf {:strength :monotonic})
+      (v/assert kb '(pwNeeds pw_dog PwVal) 'CxPerf {})
+      (doseq [i (range n)
+              :let [m (symbol (str "pw_mid" i))]]
+        (v/assert kb (list 'genl 'pw_chi m) 'CxPerf {})
+        (v/assert kb (list 'genl m 'pw_dog) 'CxPerf {})))
+    (let [goal '(pwNeeds pw_chi PwVal)]
+      (doall (for [_ (range 60)]
+               (nanos (inherit/solve-with-support kb goal 'CxPerf)))))))
+
+(defn- lost-firing-scan
+  "The settle's scan for firings a reader below a scoped defeat reads as withdrawn while it
+  still reaches over a second route (`settle/lost-firing-seeds`), on a KB holding n
+  standing scoped defeats every one of which that scan has already re-derived.
+
+  Each chain is two routes between `pl_c<i>` and `pl_a<i>` — a long one in CxPerf, a short
+  one in CxPerfShort below it — a preserved claim fired over the long one, and a monotonic
+  denial of a long-route edge in CxPerfShort.  The scan runs on every settle pass while a
+  scoped defeat stands, and here it finds each withdrawn firing already believed through
+  the one it re-derived, so what it costs is the reading: one withdrawal per reader below
+  a vantage and one check per withdrawn firing, linear in n.  The withdrawal cache is
+  emptied before each reading, as a settle pass empties it."
+  [n]
+  (let [kb (fresh-kb)
+        lost-firing-seeds (var-get #'settle/lost-firing-seeds)]
+    (v/assert kb '(genlCx CxPerfShort CxPerf) 'CxUniverse {:strength :monotonic})
+    (v/with-deferred-settle kb
+      (doseq [i (range n)
+              :let [t  #(symbol (str "pl_" % i))
+                    pr (symbol (str "plRel" i))]]
+        (doseq [x [(t "a") (t "b") (t "c")]] (v/assert kb (list 'genl x 'thing) 'CxPerf {}))
+        (v/assert kb (list 'genl (t "b") (t "a")) 'CxPerf {})
+        (v/assert kb (list 'genl (t "c") (t "b")) 'CxPerf {})
+        (v/assert kb (list 'genl (t "c") (t "a")) 'CxPerfShort {})
+        (v/assert kb (list 'transitiveInArg pr 1 'genl) 'CxPerf {:strength :monotonic})
+        (v/assert kb (list pr (t "a") 'PlVal) 'CxPerf {})
+        (v/assert kb (list 'set/forwardRule (list 'implies (list pr '?x '?y) (list 'plNoted '?x '?y)))
+                  'CxPerf {})))
+    (v/with-deferred-settle kb
+      (doseq [i (range n)]
+        (v/assert kb (list 'not (list 'genl (symbol (str "pl_c" i)) (symbol (str "pl_b" i))))
+                  'CxPerfShort {:strength :monotonic})))
+    (doall (for [_ (range 60)]
+             (do (res/clear-withdrawn! kb)
+                 (nanos (lost-firing-seeds kb #{})))))))
+
+(defn- genl-defeat-rejoin
+  "One arriving `(not (genl …))`'s own chaining, on a KB holding n predicates each preserved
+  along `genl` with a claim and a forward rule over it, and one chain of types per
+  predicate that no other predicate's claim reaches.
+
+  Every declaration here preserves along the same relation, so a `genl` edge that
+  re-joined each of their rules made the arrival linear in n and n arrivals quadratic.
+  `inherit/crossing-claim?` keeps the predicate whose claim sits on the edge's chain.
+  Timed inside a deferred block, so each sample is the arrival's chaining and none of it
+  is a settle; the narrowing reads the slot roster once per term of the edge's four-term
+  closure."
+  [n]
+  (let [kb (fresh-kb)]
+    (v/with-deferred-settle kb
+      (doseq [i (range n)
+              :let [t  #(symbol (str "gd_" % i))
+                    pr (symbol (str "gdRel" i))]]
+        (doseq [x [(t "a") (t "b") (t "c")]] (v/assert kb (list 'genl x 'thing) 'CxPerf {}))
+        (v/assert kb (list 'genl (t "b") (t "a")) 'CxPerf {})
+        (v/assert kb (list 'genl (t "c") (t "b")) 'CxPerf {})
+        (v/assert kb (list 'transitiveInArg pr 1 'genl) 'CxPerf {:strength :monotonic})
+        (v/assert kb (list pr (t "a") 'thing) 'CxPerf {})
+        (v/assert kb (list 'set/forwardRule (list 'implies (list pr '?x '?y) (list 'gdNoted '?x '?y)))
+                  'CxPerf {})))
+    (let [samples (volatile! [])]
+      (v/with-deferred-settle kb
+        (doseq [i (range n)]
+          (vswap! samples conj
+                  (nanos (v/assert kb (list 'not (list 'genl (symbol (str "gd_c" i)) (symbol (str "gd_b" i))))
+                                   'CxPerf {:strength :monotonic})))))
+      @samples)))
+
+(defn- genl-crossing-many
+  "The narrowing one `genl` denial pays, on the `genl-defeat-rejoin` corpus with n
+  predicates preserved along `genl`: a batch of `inherit/moved-predicates` calls, the
+  same batch at both sizes, each on a denial of a different chain's edge.
+
+  `genl-defeat-rejoin` times whole arrivals, where the re-join dominates at its sizes;
+  this times the selection alone at sizes where it would dominate.  An arrival asks it
+  once from the chainer and once from the re-check triggers, and the settle asks it again
+  per region member.  The narrowing reads the slot roster once per closure term and looks
+  the declarations up by relation, so nothing here grows with n."
+  [n]
+  (let [kb (fresh-kb)]
+    (v/with-deferred-settle kb
+      (doseq [i (range n)
+              :let [t  #(symbol (str "gm_" % i))
+                    pr (symbol (str "gmRel" i))]]
+        (doseq [x [(t "a") (t "b") (t "c")]] (v/assert kb (list 'genl x 'thing) 'CxPerf {}))
+        (v/assert kb (list 'genl (t "b") (t "a")) 'CxPerf {})
+        (v/assert kb (list 'genl (t "c") (t "b")) 'CxPerf {})
+        (v/assert kb (list 'transitiveInArg pr 1 'genl) 'CxPerf {:strength :monotonic})
+        (v/assert kb (list pr (t "a") 'thing) 'CxPerf {})
+        (v/assert kb (list 'set/forwardRule (list 'implies (list pr '?x '?y) (list 'gmNoted '?x '?y)))
+                  'CxPerf {})))
+    (let [denials (mapv #(list 'not (list 'genl (symbol (str "gm_c" %)) (symbol (str "gm_b" %))))
+                        (range n))]
+      (doall (for [i (range 100)]
+               (nanos (dotimes [j 20]
+                        (inherit/moved-predicates kb (nth denials (mod (+ i j) n))))))))))
+
+(defn- genl-crossing-wide
+  "The narrowing one `(genl gw_root gw_top)` pays, on a KB holding n subtypes of `gw_root`
+  and fifty predicates preserved along `genl`, each with a claim on one of the subtypes
+  and a forward rule over it: a batch of `inherit/moved-predicates` calls, the same batch
+  at both sizes.
+
+  Every claim sits below the edge, so each predicate is moved whatever the narrowing
+  reads; the question is what the reading costs.  The closure below `gw_root` holds n
+  terms, and past `inherit/crossing-closure-cap` the edge is not narrowed: the walk stops
+  one term past the cap and every predicate preserved along `genl` is moved off the
+  declarations' relation index, with no read per term.  The selection is timed alone
+  because the arrival around it re-joins fifty rules, which is the same work at both
+  sizes and would dilute the growth."
+  [n]
+  (let [kb (fresh-kb)]
+    (v/with-deferred-settle kb
+      (doseq [i (range n)]
+        (v/assert kb (list 'genl (symbol (str "gw_leaf" i)) 'gw_root) 'CxPerf {}))
+      (v/assert kb '(genl gw_root thing) 'CxPerf {})
+      (v/assert kb '(genl gw_top thing) 'CxPerf {})
+      (doseq [j (range 50) :let [pr (symbol (str "gwRel" j))]]
+        (v/assert kb (list 'transitiveInArg pr 1 'genl) 'CxPerf {:strength :monotonic})
+        (v/assert kb (list pr (symbol (str "gw_leaf" j)) 'thing) 'CxPerf {})
+        (v/assert kb (list 'set/forwardRule (list 'implies (list pr '?x '?y) (list 'gwNoted '?x '?y)))
+                  'CxPerf {})))
+    (doall (for [_ (range 60)]
+             (nanos (dotimes [_ 10]
+                      (inherit/moved-predicates kb '(genl gw_root gw_top))))))))
+
 (defn- qcn-network-residency
   "A `possible-relations` call on a fixed six-region containment chain, asked repeatedly,
   on a KB holding n *more* facts of the same spatial predicate in a context the asker
@@ -1780,6 +2022,22 @@
     :max-ratio 2.0
     :run       constraint-exposure-shared-arg}
 
+   ;; **Both ends measured, on full runs.**  Above: 0.74x and 1.01x, flat — the read is
+   ;; the term's memberships, and n moves only the facts that state none.  Below: the
+   ;; same workload with `kb/types-of` reading `sentexes-with-arg` at position 1, which
+   ;; is what it read before `unary-sentexes-with-arg` existed, reads **4.77x** (0.094
+   ;; against 0.450 ms/op) — a record fetch per fact naming the term, to find the two
+   ;; types it holds.  The bound is the file's standing 2.0 for a flat claim: twice the
+   ;; worse healthy reading, and under half the defective one at this size step.  The gap
+   ;; is a claim about the 8x step and grows with it — the defective shape is linear in n
+   ;; and this is not — so a wider pair would separate further and none is needed to
+   ;; fail it.
+   {:name      :membership-read-under-busy-term
+    :claim     "a membership question is flat in the facts that name the term but state no type"
+    :sizes     [250 2000]
+    :max-ratio 2.0
+    :run       membership-read-under-busy-term}
+
    {:name      :constraint-exposure-context-edge
     :claim     "past the instance cap, 8x the facts behind a genlCx edge costs the same"
     :sizes     [250 2000]
@@ -1863,6 +2121,43 @@
     :sizes     [500 4000]
     :max-ratio 12.0
     :run       disjoint-metatype-membership}
+
+   ;; **The second question a refusal asks, and the first check to reach it.**  Under
+   ;; `:arbitrate` the entry point refuses only when both the opposing sentex and the
+   ;; derivation that makes the two a pair are known-true, and the second read
+   ;; (`checks/grounds-class`) is entered only when the first says yes.  Every other
+   ;; arbitrating check here holds its memberships `:default`, so all of them stop at the
+   ;; first read; this one holds the opposing membership `:monotonic`, which is what opens
+   ;; the second.  n is the number of complete derivations of the one separation, and the
+   ;; two sizes are 4096x apart in it over an ancestry that is three times as large.
+   ;;
+   ;; **An earlier attempt gated the wrong axis and was thrown away rather than landed.**
+   ;; It grew the *separation roster* — the arriving type's supertype declared disjoint
+   ;; from n types — and measured 2.17x for the grounds read against **4.21x for the same
+   ;; workload with the grounds never read at all**.  A baseline growing faster than the
+   ;; shape it is a baseline for is a check that would gate somebody else's cost: on that
+   ;; axis the n-dependence is `arity-problem`'s inherited-arity read walking a supertype's
+   ;; argument-1 posting (7.65x for 8x the postings, and flat when the same term sits at
+   ;; argument 2), which a `disjoint` declaration feeds incidentally by putting a type at
+   ;; argument 1.  The ancestry is the axis `reach-support` is actually bounded by.
+   ;;
+   ;; **Both ends measured, on full runs.**  Above: 1.71x, 1.71x and 1.11x — the first two
+   ;; on a quiet box and agreeing to the third digit, the third under a neighbour's load,
+   ;; which lifts the small reading and lowers the ratio.  Below: `disjointness-class`
+   ;; replaced by a reading per derivation off `disjointness-witnesses` — the substitution a
+   ;; caller would make, since the two answer the same question — reads **4155.02x**, and
+   ;; 482 ms for one entry-point decision.  The bound is 1.75x above the worst healthy
+   ;; reading and 1385x below the defective one.
+   ;;
+   ;; Flat would be the wrong claim and 2.0 the wrong bound: the ancestry grows threefold
+   ;; between the sizes and the walk is allowed to cost it, which is what 1.71x is.  What
+   ;; 3.0 separates is a read bounded by the ancestry from one bounded by the paths through
+   ;; it, and the two are three orders of magnitude apart on this workload.
+   {:name      :refusal-grounds-reading
+    :claim     "the grounds a refusal reads cost the ancestry they convict over, not the derivations in it"
+    :sizes     [16 65536]
+    :max-ratio 3.0
+    :run       refusal-grounds-reading}
 
    {:name      :compound-probe
     :claim     "100 find-sentexes on a compound are flat in the extent of the hot atom it names"
@@ -2384,6 +2679,29 @@
     :max-ratio 12.0
     :run       inherit-reach-memo}
 
+   ;; The route search beside the reach walk above.  `undercut?`'s cross-product is not in
+   ;; this one — the goal carries a single claim — so what n grows is the number of routes
+   ;; the witness search chooses between, and a search that compared whole routes rather
+   ;; than settling each node once reads 8x the routes at 64x the cost.  12x sits between
+   ;; the two, for the reason the check above picks the same number.
+   {:name      :witness-route-search
+    :claim     "8x the routes between two terms costs under 12x per preservation support — each node settled once, not each route compared"
+    :sizes     [8 64]
+    :max-ratio 12.0
+    :run       witness-route-search}
+
+   ;; The re-derivation a scoped defeat owes a reader that still reaches is read on every
+   ;; settle pass while the defeat stands, so its cost is paid per write rather than per
+   ;; defeat.  Linear in the standing defeats is the claim: 8x of them at 8x the scan is
+   ;; one check per withdrawn firing, and 64x is a scan that compares them pairwise or
+   ;; re-derives what it already re-derived.  20x sits between the two, as the bounds
+   ;; above sit between their linear and quadratic readings.
+   {:name      :lost-firing-scan
+    :claim     "8x the standing scoped defeats costs under 20x per settle's lost-firing scan — one check per withdrawn firing, nothing re-derived twice"
+    :sizes     [8 64]
+    :max-ratio 20.0
+    :run       lost-firing-scan}
+
    ;; The metric twin of the qualitative residency check above, and the bound is calibrated
    ;; the way `membership-under-depth` and `inherit-reach-memo` are: from both ends, on full
    ;; runs.  A closure bounds every pair of instants, so an arriving constraint is quadratic
@@ -2393,6 +2711,35 @@
    ;; driving `stp/close-state` instead, which is the form the bound exists to catch.
    ;; 35x sits between, and the absolute readings say it louder: 1.9 ms an arrival
    ;; against 101 ms.
+   ;; Without `inherit/crossing-claim?` every `genl` edge re-joins the rule of every
+   ;; predicate preserved along `genl`: 6.7x here, 2.3 ms against 15.3 ms an arrival.
+   ;; With it an arrival re-joins its own chain's rule and reads the slot roster once per
+   ;; closure term, and reads 0.99x.  4x sits between.
+   {:name      :genl-defeat-rejoin
+    :claim     "8x the predicates preserved along genl costs under 4x per arriving genl defeat — it re-joins the rules whose claims cross the edge, not every one"
+    :sizes     [8 64]
+    :max-ratio 4.0
+    :run       genl-defeat-rejoin}
+
+   ;; Calibrated from both ends, as `genl-defeat-rejoin` is.  With the narrowing reading
+   ;; one argument root per declaration per closure term it grows 8.1x here, 2.9 ms against
+   ;; 23.4 ms a batch of twenty; read from the closure's terms, with the declarations
+   ;; looked up by relation, it reads 0.57x.  3x sits between.
+   {:name      :genl-crossing-many
+    :claim     "8x the predicates preserved along genl costs under 3x per genl denial's narrowing — the reads start from the edge's closure, not from the declarations"
+    :sizes     [64 512]
+    :max-ratio 3.0
+    :run       genl-crossing-many}
+
+   ;; The same narrowing with no cap on the closure grows 11.2x, 65 ms against 727 ms a
+   ;; batch of ten; past `inherit/crossing-closure-cap` it reads 0.72x, 1.1 ms against
+   ;; 0.8 ms.  3x sits between.
+   {:name      :genl-crossing-wide
+    :claim     "8x the subtypes below a genl edge costs under 3x per edge's narrowing — a closure past the cap moves every predicate off the declarations, with no read per term"
+    :sizes     [600 4800]
+    :max-ratio 3.0
+    :run       genl-crossing-wide}
+
    {:name      :metric-closure-warm-start
     :claim     "8x the instants costs under 35x per arriving constraint — the closure is relaxed into, not run again"
     :sizes     [50 400]

@@ -18,7 +18,8 @@ an index derived from the records and rebuildable by `reindex` — while the def
 structures are persistent Clojure collections holding boxed values, which measure
 ~1,973 B/fact of index (591.9 MB over 300k real facts, measured below). Each backend
 here is a dense replacement for one of them.
-**Every one is off by default**, selected per KB, and each is gated by a differential
+**Every dense index backend is off by default**, selected per KB, while the dense
+truth-maintenance network (Phase 3) is the default `:tms`; each is gated by a differential
 oracle proving it answers the protocol identically to the structure it replaces.
 
 Nothing here changes what the engine computes. If a dense backend ever returns a
@@ -28,7 +29,8 @@ oracles compare *sets*, not summaries.
 ## Selecting one
 
 The records and the index are chosen on **separate axes** — `open-kb`'s `:records`
-(`:memory` / `:disk`) and `:index` (`:memory` / `:dense` / `:columnar` / `:disk-log`), with
+(`:memory` / `:disk`) and `:index` (`:memory` / `:dense` / `:columnar` / `:snapshot` /
+`:disk-log`), with
 `:backend` as sugar naming a pair (see [storage.md](storage.md)). That split is what
 lets the density work run durably: a dense index is *derived* state, so pairing one with
 durable records costs only a rebuild on open.
@@ -41,13 +43,14 @@ durable records costs only a rebuild on open.
 | `:disk-memory` | paged from disk | `KvIndexStore` over a map, rebuilt on open | durable records, nothing written for the index |
 | `:disk-dense` | paged from disk | int-postings values, rebuilt on open | Phase 1's index, measured at durable scale |
 | `:disk-columnar` | paged from disk | native int-token trie, rebuilt on open | Phase 2's index, measured at durable scale |
+| `:disk-snapshot` | paged from disk | native int-token trie, mapped from an image | Phase 2's index read back rather than rebuilt — [storage.md](storage.md) |
 | `:disk-log` | paged from disk | `KvIndexStore` over a WAL-backed map | durability; the record side of the density work |
 | `:overlay` | a decorator | a decorator | a fork over a frozen base — [overlay.md](overlay.md) |
 
 The whole test suite runs on any of them: `VAELII_TEST_BACKEND=memory-columnar lein
-test`. `backend_parity_test` runs a scripted KB session across all eight configurations
-the engine carries alone — the seven record×index pairs above plus the overlay decorator
-— in an ordinary `lein test`, so a divergence fails without anyone remembering to. The
+test`. `backend_parity_test` runs a scripted KB session across eight configurations the
+engine carries alone — seven of the eight record×index pairs above plus the overlay
+decorator, with `:disk-snapshot` covered by `index_snapshot_test` instead — in an ordinary `lein test`, so a divergence fails without anyone remembering to. The
 `:sqlite` and `:pg` record axes are legal too and are not here: they live in sibling
 adapters that core does not depend on, so their parity is each adapter's own suite
 ([storage.md](storage.md)).

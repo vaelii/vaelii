@@ -23,6 +23,13 @@
   decline.  A throw from `restore!` once the open succeeded, a throw carrying no `:type`,
   a hang, and a restored KB that differs from its reference are failures.
 
+  **The source identity is held for the sweep.**  A seal stamps its images with the
+  identity of the source it was taken under, and a restore refuses an image whose identity
+  has moved — so an edit under `src/` while the sweep runs would decline every cut, on a
+  reason that says nothing about a crash, and the sweep would measure nothing.  Pinned
+  around the build and the probes, the cut is what varies.  What an *uncut* copy does is
+  taken first and reported as the sweep's premise: it restores, or no cut could.
+
   The `^:fuzz` test walks every offset; the unmarked one walks a seeded sample, so the
   harness runs on every commit (`vaelii.truncation-fuzz-test` states the rule)."
   (:require [clojure.java.io :as io]
@@ -31,7 +38,8 @@
             [vaelii.core :as v]
             [vaelii.impl.disk.backend :as backend]
             [vaelii.impl.protocols :as p]
-            [vaelii.impl.seal :as seal])
+            [vaelii.impl.seal :as seal]
+            [vaelii.impl.source-identity :as si])
   (:import [java.io File RandomAccessFile]
            [java.nio.file CopyOption Files StandardCopyOption]
            [java.nio.file.attribute FileAttribute]
@@ -207,13 +215,16 @@
         r (deref f open-ms ::timeout)]
     (if (= ::timeout r) {:hang true} r)))
 
-(defn- probe [^String crash rel k reference]
-  (let [work (tmpdir)]
-    (try
-      (copy-dir! crash work)
-      (truncate! work rel k)
-      (restore-outcome work reference)
-      (finally (backend/close-dir! work) (rm-rf! work)))))
+(defn- probe
+  "Restore a copy of `crash`, cut at offset `k` of `rel` — or uncut, when no file is named."
+  ([^String crash reference] (probe crash nil nil reference))
+  ([^String crash rel k reference]
+   (let [work (tmpdir)]
+     (try
+       (copy-dir! crash work)
+       (when rel (truncate! work rel k))
+       (restore-outcome work reference)
+       (finally (backend/close-dir! work) (rm-rf! work))))))
 
 ;; ---- the sweep ---------------------------------------------------------------
 
@@ -230,26 +241,45 @@
             n   (count all)]
         (mapv #(nth all %) (repeatedly (min (long sample) n) #(.nextInt rnd (int n))))))))
 
-(defn- sweep
-  "`{:offsets n :restored n :declined n :bad [[rel k outcome] …]}` over `sample` cuts, or
-  every cut when `sample` is nil."
-  [sample]
-  (let [dir (tmpdir) crash (tmpdir)
-        reference (memoize reference)]
-    (try
-      (let [shape (build! dir crash)]
-        (reduce (fn [acc [rel k]]
-                  (let [r (probe crash rel k reference)]
-                    (cond-> (update acc :offsets inc)
-                      (:restored r) (update :restored inc)
-                      (or (contains? r :declined) (:refused r)) (update :declined inc)
-                      (some r [:wrong :restore-threw :untyped :threw :hang])
-                      (update :bad conj [rel k r]))))
-                {:offsets 0 :restored 0 :declined 0 :bad []}
-                (cuts shape sample)))
-      (finally (backend/close-dir! dir) (rm-rf! dir) (rm-rf! crash)))))
+(defn- call-with-source-identity-held
+  "Run `thunk` with `si/source-identity` pinned to the value it answers now — the
+  namespace docstring, \"The source identity is held for the sweep\"."
+  [thunk]
+  (let [held (si/source-identity)]
+    (with-redefs [si/source-identity (fn ([] held) ([_] held))] (thunk))))
 
-(defn- check! [{:keys [offsets restored declined bad]}]
+(defn- decline-reason [r]
+  (if (contains? r :declined) (:declined r) [:refused (:refused r)]))
+
+(defn- sweep
+  "`{:offsets n :restored n :declined n :reasons {reason n} :premise outcome
+  :bad [[rel k outcome] …]}` over `sample` cuts, or every cut when `sample` is nil.
+  `:premise` is what an uncut copy of the directory did."
+  [sample]
+  (call-with-source-identity-held
+   (fn []
+     (let [dir (tmpdir) crash (tmpdir)
+           reference (memoize reference)]
+       (try
+         (let [shape   (build! dir crash)
+               premise (probe crash reference)]
+           (reduce (fn [acc [rel k]]
+                     (let [r (probe crash rel k reference)]
+                       (cond-> (update acc :offsets inc)
+                         (:restored r) (update :restored inc)
+                         (or (contains? r :declined) (:refused r))
+                         (-> (update :declined inc)
+                             (update-in [:reasons (decline-reason r)] (fnil inc 0)))
+                         (some r [:wrong :restore-threw :untyped :threw :hang])
+                         (update :bad conj [rel k r]))))
+                   {:offsets 0 :restored 0 :declined 0 :reasons {} :premise premise :bad []}
+                   (cuts shape sample)))
+         (finally (backend/close-dir! dir) (rm-rf! dir) (rm-rf! crash)))))))
+
+(defn- check! [{:keys [offsets restored declined bad premise]}]
+  (is (:restored premise)
+      (str "an uncut copy of the crash directory did not restore, so no cut could: "
+           (pr-str premise)))
   (is (empty? bad) (str "cuts that restored wrong, threw untyped or hung: "
                         (pr-str (take 5 bad))))
   (is (pos? offsets) "the sweep walked no offset")
@@ -266,4 +296,6 @@
 (deftest ^:fuzz every-crash-cut-of-a-logged-directory-restores-or-declines
   (let [r (sweep nil)]
     (check! r)
-    (is (pos? (:restored r)) "a cut of a record file restores by replaying its writes")))
+    (is (pos? (:restored r))
+        (str "a cut of a record file restores by replaying its writes; every cut declined: "
+             (pr-str (:reasons r))))))

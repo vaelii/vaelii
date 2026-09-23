@@ -381,7 +381,7 @@
 
 (tu/deftest-kb the-forward-preservation-solutions-are-realized-inside-their-own-memo
   ;; `solve-with-support`'s open arm is the other escape: `licensed-product` walks a reach
-  ;; per claim and `support-for` opens a memo of its own per tuple, so a seq handed out
+  ;; per claim and `supports-for` opens a memo of its own per tuple, so a seq handed out
   ;; shares nothing between the tuples of one literal.  Same measurement, same claim.
   (tu/with-terms [partOf needsWork]
     (let [base   (tu/tmp-ind "Part")

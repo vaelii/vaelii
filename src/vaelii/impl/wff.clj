@@ -96,6 +96,52 @@
     (and (not= a b) (or (tax/genl? tax a b context) (tax/genl? tax b a context)))
     (conj (str a " and " b " are genl-related, so they overlap and can't be disjoint"))))
 
+(defn covering-problems
+  "`covering` and `partition` — a whole followed by two or more distinct parts.
+
+  What is checked is what the declaration *cannot* mean.  A missing `(genl part whole)`
+  edge is not among it: the declaration states that edge rather than requiring one, so
+  demanding it here would refuse every cover written before its parts and make the answer
+  a function of assertion order.  What is refused is a shape no edge could be installed
+  for — a part that is the whole, and a part the closure already places above the whole,
+  where the edge would close a cycle `genl-problems` refuses in as many words.  A part
+  already disjoint from the whole is refused for the same reason: the edge would make a
+  type a subtype of one it shares no instance with.
+
+  The cycle read is global, as `genl-problems`' is (E17_ROSTER): the edge the cover
+  installs closes a cycle in the whole edge set whichever context holds the edge above
+  it, so a part a sibling context places above the whole is refused here as the bare
+  `genl` would be.  The disjointness read is scoped to the asserting context, as
+  `disjoint-problems`' is: an overlap is well-formed where it is written."
+  [tax [f whole & parts :as s] context]
+  (cond-> []
+    ;; four elements: the functor, the whole, and two parts.  One part covering a whole
+    ;; says only that the two have the same instances, which `genl` in both directions
+    ;; already says.
+    (< (count s) 4)
+    (conj (str f " takes a whole and at least two parts"))
+
+    (nm/individual? whole)
+    (conj (str whole " is an individual; " f " relates types"))
+
+    (some nm/individual? parts)
+    (conj (str (first (filter nm/individual? parts)) " is an individual; " f
+               " relates types"))
+
+    (not= (count parts) (count (distinct parts)))
+    (conj (str f " names a part twice; each part covers a different piece of " whole))
+
+    (some #(= % whole) parts)
+    (conj (str whole " is named as a part of itself"))
+
+    (some #(and (not= % whole) (tax/genl?-global tax whole %)) parts)
+    (conj (str (first (filter #(and (not= % whole) (tax/genl?-global tax whole %)) parts))
+               " is already a supertype of " whole ", so it cannot be a part of it"))
+
+    (some #(tax/disjoint? tax whole % context) parts)
+    (conj (str (first (filter #(tax/disjoint? tax whole % context) parts))
+               " is disjoint from " whole ", so it cannot be a part of it"))))
+
 (defn disjoint-metatype-problems [_ [_ m :as s] _context]
   (cond-> []
     (not= 2 (count s)) (conj "disjoint_metatype takes one argument")
@@ -176,9 +222,12 @@
   type.  The same latitude on the constrained relation `arg-constraint-problems` argues
   for, and the same position and type checks, differing only in whether a start position
   is present.  `args` is `argAndRest` at start 1, so one check reads both arities and
-  takes the type from whichever position holds it."
+  takes the type from whichever position holds it.
+
+  The homogeneity constraints `interArgs` / `interArgAndRest` have the same two shapes —
+  a relation and a type, or a relation, a start and a type — and are read here too."
   [_ [f pred a b :as s] _context]
-  (let [tail? (contains? '#{argAndRest argAndRestGenl} f)
+  (let [tail? (contains? '#{argAndRest argAndRestGenl interArgAndRest} f)
         type  (if tail? b a)
         start a]
     (cond-> []
@@ -264,6 +313,51 @@
     (nm/individual? pred) (conj (str pred " is an individual; " f " marks a predicate"))
     (not (and (integer? n) (pos? n)))
     (conj (str f " position must be a positive integer"))))
+
+(defn commutative-in-arg-and-rest-problems
+  "`commutativeInArgAndRest` — a predicate and a positive-integer position, and nothing
+  else.  `functional-in-arg-problems` above is the shape, and the position is held to the
+  same positive integer for the same reason: argument positions are one-based throughout,
+  so position 0 names no slot.
+
+  **A position past the predicate's declared arity is not refused**, exactly as
+  `functionalInArg`'s is not.  The declaration may legitimately arrive before the arity
+  does, so refusing it against a visible arity would make the KB depend on which of the
+  two was written first — and a tail starting past the end simply forms no component, so
+  a literal at that arity is left alone (`sentex/commuting-components`).  The issue this
+  closes asks for the refusal; the order dependence is why it is not here."
+  [_ [f pred n :as s] _context]
+  (cond-> []
+    (not= 3 (count s))    (conj (str f " takes two arguments"))
+    (nm/individual? pred) (conj (str pred " is an individual; " f " marks a relation"))
+    (not (and (integer? n) (pos? n)))
+    (conj (str f " position must be a positive integer"))))
+
+(defn commutative-in-args-problems
+  "`commutativeInArgs` — a predicate and at least two distinct positive-integer
+  positions.
+
+  **Two positions, not one.**  A component of one position licences no permutation, so a
+  one-position declaration would be stored, believed and inert — the shape
+  `settle/definitional-mark` refuses elsewhere, and the reason the arity is checked here
+  where `commutativeInArgAndRest`'s is not: a tail is open-ended and may reach two
+  positions at a higher arity, where a named set is everything it will ever name.
+
+  **Distinct positions**, for the same reason read the other way: `(commutativeInArgs P 1
+  1)` names one slot twice and so names one position, which is the case above wearing a
+  longer spelling.
+
+  A position past the declared arity is not refused — `commutative-in-arg-and-rest-problems`
+  gives the argument."
+  [_ [f pred & positions :as s] _context]
+  (let [ps (vec positions)]
+    (cond-> []
+      (< (count s) 4)       (conj (str f " takes a relation and at least two positions"))
+      (nm/individual? pred) (conj (str pred " is an individual; " f " marks a relation"))
+      (not-every? #(and (integer? %) (pos? %)) ps)
+      (conj (str f " positions must be positive integers"))
+      (and (every? integer? ps) (not= (count ps) (count (distinct ps))))
+      (conj (str f " names a position twice; the positions must be distinct")))))
 
 (defn prop-problems [_ [f pred :as s] _context]
   (cond-> []

@@ -30,13 +30,19 @@
 
   **A flag belongs to the commands that read it** (`command-flags`), and one carried by
   a command that does not is refused rather than dropped — those three are the driver's
-  and go anywhere, the rest do not.
+  and go anywhere, the rest do not.  A *value* it cannot honour is refused on the same
+  argument: `--format texr` and `--depth twice` name nothing.
+
+  **stdout is the answer.**  `err!` keeps a refusal off it, and `on-stderr` keeps the
+  engine's own log lines off it too — Trove's console backend prints to `*out*`, which
+  here is what a script redirects.
 
   **One writer.**  A `--dir` KB takes the single-writer file lock (docs/storage.md), so
   the CLI and a daemon cannot own the same directory at once — by design."
   (:require [clojure.edn :as edn]
             [clojure.pprint :as pp]
             [clojure.string :as str]
+            [taoensso.trove :as trove]
             [vaelii.core :as v]
             [vaelii.host.starter :as starter]
             [vaelii.impl.naming :as nm]
@@ -99,9 +105,28 @@
 
   That last case is what a filesystem path is.  `/var/lib/vaelii` is not a symbol (two
   slashes), so a command taking a path (`export`, `load`) would otherwise fail in the
-  reader, before the command it belongs to had been looked at."
-  [s]
-  (try (edn/read-string s) (catch Exception _ s)))
+  reader, before the command it belongs to had been looked at.
+
+  **One argument is one form.**  `edn/read-string` answers the first and drops the rest,
+  so `assert '(dog Muffet) (cat Felix)' CxWell` stored the dog, printed its handle and
+  exited 0 with nothing said about the cat — a write that did less than the line asked
+  for and reported success.  A second form is refused instead (`:bad-args`, as a wrong
+  operand count is); a string that reads as no form at all — or as none because it is
+  empty — is still the string it already was, which is what a path is.
+
+  `cmd` names the command in the refusal, and is the `:op` every `:bad-args` throw
+  carries."
+  [cmd s]
+  (let [r     (PushbackReader. (StringReader. (str s)))
+        form  (try (edn/read {:eof ::eof} r) (catch Exception _ ::unreadable))]
+    (if (or (= ::unreadable form) (= ::eof form))
+      s
+      (let [more (try (edn/read {:eof ::eof} r) (catch Exception _ ::unreadable))]
+        (if (= ::eof more)
+          form
+          (throw (ex-info (str cmd ": one argument is one form, and " (pr-str (str s))
+                               " holds more than one — quote each argument separately")
+                          {:type :bad-args :op cmd :arg (str s)})))))))
 
 (defn read-forms
   "Every EDN form in `s`, in order — how a REPL line's args (`(dog ?x) CxMy`) are
@@ -212,6 +237,20 @@
 
 (defn- flag-names [ks] (str/join ", " (map #(str "--" (name %)) (sort ks))))
 
+(defn count-option
+  "The whole number `flag` carries, refused **by name** when its value is not one.
+
+  `Long/parseLong` on the raw string reports `For input string: \"twice\"` — one line and
+  exit 1, so no stack trace, but the line names neither the flag nor the command and is
+  java.lang's rather than the engine's.  That is the sentence `check-arity!` exists to
+  stop being printed for an operand count, reached one argument in."
+  [flag s]
+  (try (Long/parseLong (str s))
+       (catch NumberFormatException _
+         (throw (ex-info (str flag " takes a whole number, given " (pr-str (str s)))
+                         {:type :unknown-option :mismatch :bad-value
+                          :flag flag :value (str s)})))))
+
 (defn check-flags!
   "Refuse a flag `cmd` does not read, naming what it does read.
 
@@ -300,11 +339,11 @@
         ;; `--depth n` is how a command line says how far to expand rules.  Absent, the
         ;; read is whatever needs no rule — `query`'s contract, and there is deliberately
         ;; no default to supply here either.
-        depth    (when-let [d (:depth opts)] {:max-depth (Long/parseLong (str d))})
+        depth    (when-let [d (:depth opts)] {:max-depth (count-option "--depth" d)})
         ;; `--context C` names the vantage a read takes; absent, `?ctx` reads every
         ;; context, which is the whole-KB view and what a shell line usually means
         ctx      (if-let [c (:context opts)] (symbol (str c)) '?ctx)
-        nearest  (when-let [n (:nearest opts)] {:nearest (Long/parseLong (str n))})]
+        nearest  (when-let [n (:nearest opts)] {:nearest (count-option "--nearest" n)})]
     (case cmd
       "assert"      (v/assert kb (nth args 0) (nth args 1) strength)
       "assert-rule" (v/assert-rule kb (nth args 0) (nth args 1) (nth args 2) strength)
@@ -370,18 +409,30 @@
       ;; a compression flag reads from the outside exactly like one that was applied.
       ;; Both arrive as strings and are the writer's own keywords, so they are read as
       ;; such rather than re-spelled here.
-      "export"      (if (= "text" (:format opts))
-                      (do (when-let [ignored (seq (sort (filter opts [:variant :compression])))]
-                            (throw (ex-info (str "--format text writes a text KB, which has no "
-                                                 (str/join " and no " (map name ignored))
-                                                 " — those describe an export dump")
-                                            {:type :unknown-option :mismatch :conflict :unknown (vec ignored)
-                                             :options [:format]})))
-                          (v/export-text! kb (str (nth args 0))))
-                      (v/export! kb (str (nth args 0))
-                                 (cond-> {}
-                                   (:variant opts)     (assoc :variant (keyword (:variant opts)))
-                                   (:compression opts) (assoc :compression (keyword (:compression opts))))))
+      ;; `--format` names the one alternative to a dump, so a value that is not `text`
+      ;; names nothing.  Dropped, it wrote the dump the flag was there to replace and
+      ;; exited 0: `--format texr` reads from the outside exactly like `--format text`,
+      ;; which is `check-flags!`'s rule one value in.  `--variant` and `--compression`
+      ;; are refused by the writer, and this is the flag the writer never sees.
+      "export"      (do (when-let [f (:format opts)]
+                          (when (not= "text" f)
+                            (throw (ex-info (str "unknown --format " f
+                                                 " — export writes a dump, or a text KB"
+                                                 " with --format text")
+                                            {:type :unknown-option :mismatch :bad-value
+                                             :flag "--format" :value f :takes ["text"]}))))
+                        (if (= "text" (:format opts))
+                          (do (when-let [ignored (seq (sort (filter opts [:variant :compression])))]
+                                (throw (ex-info (str "--format text writes a text KB, which has no "
+                                                     (str/join " and no " (map name ignored))
+                                                     " — those describe an export dump")
+                                                {:type :unknown-option :mismatch :conflict :unknown (vec ignored)
+                                                 :options [:format]})))
+                              (v/export-text! kb (str (nth args 0))))
+                          (v/export! kb (str (nth args 0))
+                                     (cond-> {}
+                                       (:variant opts)     (assoc :variant (keyword (:variant opts)))
+                                       (:compression opts) (assoc :compression (keyword (:compression opts)))))))
       ;; the one command that reads **two** KBs and neither of them is the one the run
       ;; opened: both arguments are text KBs on disk, each read into an in-RAM KB of its
       ;; own.  Keyed on content, so two exports of one KB taken at different handles diff
@@ -498,6 +549,21 @@
 
 (defn- show [x] (if (coll? x) (pp/pprint x) (println x)))
 
+(defn on-stderr
+  "A log fn that writes where `f` does, with `*out*` bound to `*err*`.
+
+  The refusal is not the only thing that must stay out of the data: the engine's own
+  `log!` calls go through Trove's console backend, which prints to `*out*`
+  (docs/operations.md, \"Logging\") — and `*out*` here is a script's `lein cli match … >
+  answers.edn`.  Unset, the dial installs nothing and Trove's own backend prints at
+  `:info`, so an ordinary `export` (`::exported`) or a starter load (two
+  `::dropped-conclusion` warnings) lands three lines inside the answer with no variable
+  set at all.  A wrapper rather than a level: silencing the engine to keep stdout
+  parseable would trade one loss for another, and the daemon and the browser want the
+  lines where they are."
+  [f]
+  (fn [& args] (binding [*out* *err*] (apply f args))))
+
 (defn- err!
   "One diagnostic line on **stderr** — a refusal must not land inside the data a
   script is reading off stdout."
@@ -539,6 +605,11 @@
   "Parse argv, open the KB, run the command, and print the result.  With `repl` (or no
   command) it drops into the interactive loop."
   [& argv]
+  ;; `alter-var-root` rather than a `binding`: the durable store's compaction and fsync
+  ;; lines come off the durability scheduler's own thread, which no thread-local binding
+  ;; here reaches.  Installed before anything opens a KB, and over whatever
+  ;; `VAELII_LOG_LEVEL` already installed at load.
+  (alter-var-root #'trove/*log-fn* on-stderr)
   ;; a refused flag or an opts contradiction is the operator's mistake in the shell's
   ;; own vocabulary — one line and exit 1, the same courtesy the command arm extends
   (let [[positionals opts] (try (parse-opts argv)
@@ -600,7 +671,7 @@
       ;; A missing file for `load` is the same shape — and so, past `Exception`, is a
       ;; deeply nested EDN argument or `load` file, whose read raises
       ;; `StackOverflowError` (the browser's untrusted-EDN reads make the same catch).
-      (try (show (dispatch kb cmd (mapv read-arg args) opts))
+      (try (show (dispatch kb cmd (mapv #(read-arg cmd %) args) opts))
            (catch clojure.lang.ExceptionInfo e
              (err! "error:" (.getMessage e))
              (System/exit 1))

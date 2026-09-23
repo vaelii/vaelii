@@ -327,6 +327,27 @@ ROSTER_TOTAL=$(( ${#ALL_BACKENDS[@]} + ${#ALL_SWEEPS[@]} ))
 # the matrix rather than as a subset (see the ledger row at the end).
 ROUTINE_TOTAL=$(( ROSTER_TOTAL - ${#ROUTINE_SKIP[@]} ))
 
+# WHAT THIS ROSTER COVERS: `full` where nothing sits out, `routine` where the only
+# ones sitting out are the two the routine roster leaves out, empty otherwise.  A
+# subset that covers the routine roster answers the matrix column's question as
+# well as its own — `--owed` on a change that owes everything runs a wider roster
+# than a bare `lein test-matrix` does — so the ledger row below names it and the
+# tool reading the row files it under both columns.
+COVERS=""
+covered=1
+# `${SAT_OUT[@]+...}` because bash 3.2 — which is what macOS ships — treats an empty
+# array expanded as `"${a[@]}"` under `set -u` as an unbound variable.  SAT_OUT is empty
+# exactly when the roster leaves nothing out, so a `--owed` set covering all
+# $ROSTER_TOTAL configurations is the case that reaches it.
+for c in ${SAT_OUT[@]+"${SAT_OUT[@]}"}; do
+  optional=0
+  for s in "${ROUTINE_SKIP[@]}"; do [[ "$c" == "$s" ]] && { optional=1; break; }; done
+  (( optional )) || { covered=0; break; }
+done
+if (( covered )); then
+  if [[ ${#SAT_OUT[@]} -eq 0 ]]; then COVERS="full"; else COVERS="routine"; fi
+fi
+
 # THE LAUNCH ORDER, of which there are two: a SHUFFLE, which is the default, and
 # LONGEST FIRST under `--ordered`.
 #
@@ -469,6 +490,16 @@ n=${#CONFIGS[@]}
   printf 'roster\t%s\n' "$ROSTER_LABEL"
   printf 'configs\t%d\n' "$n"
   printf 'of\t%d\n' "$ROSTER_TOTAL"
+  # the routine roster's size, which is the floor the ledger row below files a
+  # run as a subset under.  Written here so a watcher decides the variant the
+  # way this script decides it, rather than on the roster word alone — the two
+  # rules disagreed on a hand-named short list, and a run changed column as it
+  # finished.
+  printf 'routine\t%d\n' "$ROUTINE_TOTAL"
+  # what this roster covers, where it covers one.  The INTENTION, like the rest of
+  # the plan: a run interrupted with configurations still to go covers whatever it
+  # reached, and the ledger row at the end is what says so.
+  [[ -n "$COVERS" ]] && printf 'covers\t%s\n' "$COVERS"
   # the order and the seed that chose it, so a run reproduced from this file runs the
   # configurations in the order this one did
   printf 'order\t%s\n' "$ORDER_LABEL"
@@ -481,7 +512,7 @@ n=${#CONFIGS[@]}
 # running: a configuration is chosen by the environment variables `launch` passes
 # its subshell, and an environment never reaches a command line — so a process
 # table alone tells thirteen matrix JVMs apart by pid and by nothing else, and
-# tools/vaelii-top's JVM tile had to repeat this run's progress on every one of
+# vaelii-top's JVM tile (the vaelii-tools repository) had to repeat this run's progress on every one of
 # them.  `set -m` puts each configuration's subshell in a group of its own, and
 # the launcher JVM and the project JVM it trampolines into both carry it, so the
 # group names both.
@@ -1218,12 +1249,28 @@ matrix_summary=$(printf '%d of %d configurations, roster %s, %d failed, %d skipp
 # Filed under one variant, the cheap run would keep hiding when the whole roster
 # last ran, which is the question the row exists to answer.
 #
-# Decided on WHAT RAN, not on what was asked for: a count at or above the routine
-# roster is the matrix, anything short of it is a subset, so an `--owed` run that
-# happens to owe everything is filed as the matrix it was.  A hand-named list
+# Decided on what was ASKED FOR and on WHAT RAN, either one: `--owed` files under
+# the owed variant however many configurations the diff owed, and a count short of
+# the routine roster files under it whatever asked.  A hand-named list therefore
 # lands here too, and belongs here — its claim is partial for the same reason.
+#
+# The `--owed` half is not redundant.  An `--owed` run that owes every
+# configuration is a full roster and was still an owed run, and filing it as the
+# matrix moved it out of the owed column at the moment it finished — the column
+# it had been in for the twenty minutes it ran.  The row's own summary carries
+# the count and the roster word, so a reader who wants to know how wide the run
+# was reads it there.
+#
+# A subset that COVERS the routine roster keeps its own variant and names the
+# coverage in it, so one row answers two columns: the owed column it was run
+# under, and the matrix column whose question it also settled.  Claimed only
+# where nothing was skipped — a run stopped by `--fail-fast` or by ^C planned a
+# roster it did not finish, and the plan's word for it is an intention.
 matrix_variant="$SELECTOR"
-if (( n < ROUTINE_TOTAL )); then matrix_variant="$SELECTOR owed"; fi
+if (( OWED || n < ROUTINE_TOTAL )); then
+  matrix_variant="$SELECTOR owed"
+  if [[ -n "$COVERS" && $skipped -eq 0 ]]; then matrix_variant="$SELECTOR owed covering"; fi
+fi
 if [[ ${#FAILED[@]} -eq 0 && $skipped -eq 0 && $deltas_bad -eq 0 ]]; then
   matrix_state=passed
 elif (( skipped == n )); then

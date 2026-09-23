@@ -54,7 +54,10 @@ lein cli repl --starter                                                    # int
   and `query` without one expands none. A sentence is
   written as an EDN string (`'(dog Muffet)'`), a context as a symbol, a handle as an
   integer, and a path as itself — an argument that reads as no EDN form is kept as the
-  string it already was, which is what `/var/lib/vaelii` is.
+  string it already was, which is what `/var/lib/vaelii` is. **One argument is one
+  form**: a second in the same argument is refused (`:bad-args`, naming the command)
+  rather than dropped, since `assert '(dog Muffet) (cat Felix)' CxWell` otherwise stored
+  the dog, printed its handle and exited 0 with nothing said about the cat.
 - **A command that answers a set prints it sorted.** `match`, `query` and `ask` answer
   sets, and a set has no order of its own — so an unsorted print was whichever order the
   retrieval enumerated, and two loads of the same knowledge printed it differently, which
@@ -109,7 +112,9 @@ lein cli repl --starter                                                    # int
   KB instead (`vaelii.core/export-text!`) — the premises, one `Cx<Name>.txt` per context,
   which `load` reads back; `--variant` and `--compression` describe a dump and are refused
   beside it rather than dropped, since a compression flag accepted and ignored reads from
-  the outside exactly like one that was applied. The destination must be empty or
+  the outside exactly like one that was applied. `text` is the **only** value `--format`
+  takes, and any other is refused for that same reason: dropped, `--format texr` wrote the
+  dump the flag was there to replace and exited 0. The destination must be empty or
   absent; a refusal is printed as `error: …` **on stderr** in the engine's own words,
   with a non-zero exit status — the same message the daemon and the browser report,
   because none of them writes one of its own, and on the stream that leaves stdout's
@@ -134,6 +139,14 @@ lein cli repl --starter                                                    # int
   prints the owner beside each flag, and the refusal names what the command does read.
 - **`repl`** holds the KB in-process, so a memory KB accumulates for the session. Each
   line is `<cmd> <edn-forms…>`.
+- **stdout is the answer and nothing else.** The refusal is not the only thing that would
+  otherwise land in it: the engine logs through Trove's console backend, which prints to
+  `*out*`, and with the dial unset that backend is Trove's own at `:info` — so an ordinary
+  `export` (`::exported`) or a `--starter` load (`::dropped-conclusion`) put lines inside
+  the answer with nothing set at all. `-main` installs a wrapper that writes the engine's
+  log lines to **stderr** for the CLI process, the servers keeping theirs where they are.
+  A script redirecting stdout gets the command's value; one wanting the lines too reads
+  stderr, or turns the dial down (`VAELII_LOG_LEVEL=error`).
 
 `dispatch` takes args already parsed to data, so the shell (which `edn`-reads each argv
 string) and the REPL (which reads forms off the line) share one command table.
@@ -453,6 +466,14 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   `:daemon-error` (an `{:ok false}` with no usable `:type` — the fallback holds even
   against `:type nil`) and `:bad-reply` (a reply that does not read as EDN, or reads
   as something other than a map — a proxy's HTML error page, a truncated body).
+- **Every refusal carries `:status`**, the HTTP status it came back under, beside the
+  `:type` a caller discriminates on. The status is the coarse split described above —
+  the caller's mistake at 4xx, the daemon's fault at 5xx — and a client that read the
+  body alone could not see it, so a `:type` outside the request-refusal roster (500)
+  arrived looking exactly like one inside it (400). `:bad-reply` needs it most, being
+  the one refusal no `:type` vocabulary covers: a proxy's 502 and a daemon that answered
+  200 with a truncated body are two different faults and the status is what tells them
+  apart.
 - **Every op has a wrapper, and the op table is what says so.** A wrapper mirrors the
   `vaelii.core` fn its op runs — bare or `!`-marked exactly as `vaelii.core` spells it,
   never as the op keyword does (the keywords drop the suffix, so `:retract` runs
@@ -589,7 +610,10 @@ rather than `java -jar`, because the jar's Main-Class is `vaelii.core`.
   volume answers in about three seconds; the start period is far longer than that because
   it is sized for the other case, where a restart over a populated volume runs `recover` —
   one pass over every stored record — before Jetty accepts a connection. That pass is
-  O(records), so a store large enough to outlast the window wants a longer one.
+  O(records), so a store large enough to outlast the window wants a longer one. The probe
+  curls `127.0.0.1`, and `/health` is behind the `Host` check like every route, so a
+  `VAELII_ALLOWED_HOSTS` naming only the public host answers it 400 and the container
+  reports unhealthy; keep `127.0.0.1` on the list, as the compose file does.
 - **The image sets `VAELII_LOG_LEVEL`.** Unset, the level installs no backend at all, and
   a container that writes nothing is one nobody can operate.
 - **No ASP solver is installed.** `set-solver` is `:stub` unless asked otherwise, and the
@@ -630,6 +654,10 @@ VAELII_LOG_LEVEL=debug lein serve 4200 /var/lib/vaelii   # the level this proces
   Trove's own default, its console backend at `:info`.
 - **Process-wide, not per-KB.** Two KBs in one JVM share one `*log-fn*`, so there is one
   dial and it is the process's.
+- **The sink is `*out*`, which the CLI moves.** Trove's console backend prints to
+  `*out*`; under `lein cli` that stream is the answer a script reads, so `-main` wraps
+  whatever backend is installed to write on stderr instead (above). The dial is
+  unaffected: the same lines at the same levels, on the other stream.
 - **What each level carries.** `:error` is a load or an export that failed outright.
   `:warn` is most of what the engine says, and nearly all of it is *a conclusion that
   did not land*: `::dropped-conclusion` with the ledger entry that names it,
@@ -715,7 +743,7 @@ so where they sit.
 NNN and read down*, and the number is rounded to a multiple of ten. An exact line was
 checked exactly and drifted the moment anything above it was edited — a comment six
 screens up failed the surface test with a diff that had nothing to do with
-configuration, and the fix was always to retype a number nobody is indistinguishable from a number.
+configuration, and the fix was always to retype a line number no reader used.
 
 The rule the test applies is **floor ≤ the file's first mention of the switch**, which
 is what makes the tolerance real and the check still worth running. Insertion above
@@ -734,10 +762,10 @@ the read still found one of them. Set a new floor by rounding the first mention 
 |---|---|---|---|---|
 | `VAELII_API_TOKEN` | `src/vaelii/host/guard.clj:140+` | any string; blank or whitespace-only is unset | unset | The one shared bearer token: with it set every daemon request carries `Authorization: Bearer …` or is answered 401, and a client and an attached browser present it from their own environment. |
 | `VAELII_ALLOWED_HOSTS` | `src/vaelii/host/guard.clj:40+` | comma-separated host **names**; a port on an entry is read as the name alone, and a value naming nothing is unset | unset | The `Host` headers a server answers, overriding the list the bind address implies. Entries are compared in the form a `Host` header is, so `kb.example.com:8080` and `kb.example.com` are one entry. |
-| `VAELII_MAX_BODY_BYTES` | `src/vaelii/host/guard.clj:160+` | a positive whole number of bytes | `16777216` (16 MiB) | The request-body ceiling both servers refuse above, with 413. |
+| `VAELII_MAX_BODY_BYTES` | `src/vaelii/host/guard.clj:160+` | a positive whole number of bytes; blank is unset | `16777216` (16 MiB) | The request-body ceiling both servers refuse above, with 413. |
 | `VAELII_MAX_QUERY_MS` | `src/vaelii/impl/config.clj:330+` | a whole number of milliseconds, 0 or more | `30000` | The wall clock a served read may name. A request may name less and is refused (`:over-ceiling`, 400) for naming more; a read naming none is given this, the four backward-search entry points included. `0` lifts the ceiling. |
 | `VAELII_MAX_QUERY_DEPTH` | `src/vaelii/impl/config.clj:340+` | a whole number of rule expansions, 0 or more | `256` | The rule-expansion depth a served read may name, refused the same way. `0` lifts it. |
-| `VAELII_WEB_PORT` | `src/vaelii/browser/web.clj:5830+` | a port number | `3000` | The port the browser binds. An unparseable value falls through to the property rather than failing the start. |
+| `VAELII_WEB_PORT` | `src/vaelii/browser/web.clj:5830+` | a port number | `3000` | The port the browser binds. An unparseable value, or a number outside 0–65535, falls through to the property rather than failing the start. |
 | `vaelii.web.port` | `src/vaelii/browser/web.clj:5830+` | a port number | `3000` | The same port, read after the variable. |
 | `VAELII_KB_DIR` | `src/vaelii/browser/web.clj:6930+` | a KB directory: a store, a dump or a corpus; blank is unset | unset | The directory the browser loads at startup, as a catalog job with belief recovered, while it serves the starter. The KB becomes the active one when the load finishes. A path holding no KB is logged and the browser stays on the starter. The three `scripts/start-vaelii*.sh` set it. |
 | `VAELII_HEAP` | `scripts/lib/start.sh:20+` | a JVM heap size (`40g`, `24g`) | `40g` | The `-Xmx` the three `scripts/start-vaelii*.sh` add to `JVM_OPTS`, beside `-XX:+ExitOnOutOfMemoryError`. |
@@ -757,7 +785,8 @@ crash window and not a shutdown one. `vaelii.disk.fsync=dsync` closes it and mak
 append durable when it returns, which is the trade a store of record wants and most of a
 common-sense KB does not. The other defaults are off because *on* is the choice that
 costs something a KB cannot give back for free: `tokens` adds a durable ground truth a
-store opts into, and `compress` spends CPU per frame.
+store opts into, and `compress` spends CPU per frame and can grow a store: each frame is
+compressed alone, so a frame holding one fact comes out larger by the codec's own framing.
 
 The mapped index image is not among them, because it is not a switch. It is an index
 representation, named in the KB's own opts as `{:backend :disk-snapshot}` — the one
@@ -771,13 +800,13 @@ representation nobody chose.
 
 | Switch | Read at | Legal values | Default | What it decides |
 |---|---|---|---|---|
-| `vaelii.disk.dir` | `src/vaelii/impl/disk/backend.clj:240+` | a directory path | `<java.io.tmpdir>/vaelii-disk` | The base a disk KB's space directory hangs under when no `:dir` names one. |
+| `vaelii.disk.dir` | `src/vaelii/impl/disk/backend.clj:240+` | a directory path; blank is unset | `<java.io.tmpdir>/vaelii-disk` | The base a disk KB's space directory hangs under when no `:dir` names one. |
 | `vaelii.disk.fsync` | `src/vaelii/impl/config.clj:10+` | `dsync`, or unset | unset | Whether every append is durable when it returns (`dsync`), or durability waits for the tick below. |
-| `vaelii.disk.sync-ms` | `src/vaelii/impl/config.clj:160+` | a whole number ≥ 0; `0` stops the daemon | `3000` | The durability daemon's tick, in milliseconds. |
+| `vaelii.disk.sync-ms` | `src/vaelii/impl/config.clj:160+` | a whole number ≥ 0; `0` starts no daemon | `3000` | The durability daemon's tick, in milliseconds. **Read once per process**: the first disk store to open starts the tick at this value, and a later open's value neither restarts it nor, at `0`, stops it. |
 | `vaelii.disk.auto-compact` | `src/vaelii/impl/config.clj:10+` | the boolean vocabulary | `true` | Whether background and opportunistic compaction runs at all — one knob for the fsync tick, the close path, and a `:disk-snapshot` KB's mid-life image refresh, which is an opportunistic compaction of a derived structure like the others. `false` is how a batch that fills a KB in one run and closes cleanly asks for exactly one image, at the end. |
 | `vaelii.disk.compact-dead-ratio` | `src/vaelii/impl/config.clj:200+` | a number from 0 to 1 | `0.5` | The dead fraction a log must reach before compacting it is worth the write. |
 | `vaelii.disk.compact-min-interval-ms` | `src/vaelii/impl/config.clj:210+` | a whole number ≥ 0 | `300000` | The floor between two auto-compactions of one backend. |
-| `vaelii.disk.compress` | `src/vaelii/impl/config.clj:170+` | `zstd` `lz4` `none` `off` `false` | uncompressed | The codec durable frames are written with. |
+| `vaelii.disk.compress` | `src/vaelii/impl/config.clj:170+` | `zstd` `lz4` `none` `off` `false` | uncompressed | The codec durable frames are written with, one frame at a time. A store of small facts grows under it: 3,000 facts measured 442,559 bytes uncompressed, 463,559 under `lz4` and 520,559 under `zstd`. |
 | `vaelii.disk.tokens` | `src/vaelii/impl/config.clj:60+` | the boolean vocabulary | `false` | Whether sentex bodies are written as token ids. Reading is never gated on it — a frame carries its own tag. |
 | `vaelii.disk.cache` | `src/vaelii/impl/config.clj:180+` | a whole number ≥ 0; `0` disables the cache | `65536` | Hot records held in memory per kind. |
 | `vaelii.disk.lock` | `src/vaelii/impl/config.clj:210+` | the boolean vocabulary | `true` | Whether the single-writer `FileLock` is taken when a directory opens. Off removes the enforcement and not the contract. |
@@ -800,6 +829,7 @@ representation nobody chose.
 |---|---|---|---|---|
 | `VAELII_ARBITRATE_CONSTRAINTS` | `src/vaelii/impl/config.clj:230+` | the boolean vocabulary | `false` | Whether the process arbitrates a definitional clash rather than refusing it. A KB naming a `:constraints` policy overrides it. |
 | `VAELII_ASSERTIVE_ARG_TYPES` | `src/vaelii/impl/config.clj:230+` | the boolean vocabulary | `true` | Whether the argument constraints entail types as well as constrain them; `=0` opts out to the constraint-only reading ([argtypes.md](argtypes.md)). |
+| `VAELII_PRUNE_SUBSUMED_MINTS` | `src/vaelii/impl/config.clj:230+` | the boolean vocabulary | `false` | Whether a minted argument type gives way to a membership the KB believes more specifically; `=1` opts in, storing about a tenth fewer sentexes for the same answers, at +42% on a settle-dense workload ([argtypes.md](argtypes.md)). |
 | `VAELII_ASP_SOLVER` | `src/vaelii/impl/config.clj:270+` | `clingo` `clasp` | unset | Which ASP backend solves. Unset is auto: in-process clingo when it loads, else clasp. A name outside the roster is refused rather than read as auto. |
 | `vaelii.asp.solver` | `src/vaelii/impl/config.clj:50+` | `clingo` `clasp` | unset | The same choice, and it is read **first**. |
 | `VAELII_CLINGO_MAX_BYTES` | `src/vaelii/impl/config.clj:280+` | a whole number of bytes, 0 or more | `3000` | The program size above which auto mode routes a plain-ASP program to clasp even where clingo loads. |
@@ -836,8 +866,8 @@ here.
 
 | Switch | Read at | Legal values | Default | What it decides |
 |---|---|---|---|---|
-| `vaelii.build` | `src/vaelii/impl/io/export.clj:180+` | any label | the git HEAD, else `dev` | How the writing build names itself in a dump's `meta.edn`. Diagnostic: a dump that will not read is first a question about which build wrote it. |
-| `VAELII_BUILD` | `src/vaelii/impl/io/export.clj:180+` | any label | as above | The same label, read after the property. |
+| `vaelii.build` | `src/vaelii/impl/io/export.clj:180+` | any label; blank is unset | the git HEAD, else `dev` | How the writing build names itself in a dump's `meta.edn`. Diagnostic: a dump that will not read is first a question about which build wrote it. |
+| `VAELII_BUILD` | `src/vaelii/impl/io/export.clj:180+` | any label; blank is unset | as above | The same label, read after the property. |
 
 ### Developer — the suite and the scripts
 
@@ -851,7 +881,7 @@ CI sets these too; nothing in a deployment does.
 | `VAELII_AUDIT_SUPPORT` | `test/vaelii/test_util.clj:460+` | a directory that exists | unset (no audit) | Makes the suite's teardown write, one EDN map per line into `<dir>/<pid>.edn`, every stored justification whose conclusion's context does not see the context of one of its supporters — an antecedent, or the rule a firing names. Changes no test's outcome. |
 | `VAELII_TEST_TMPDIR` | `test/vaelii/truncation_fuzz_test.clj:70+` | a directory that exists | unset (the platform temp directory) | Where the `^:fuzz` truncation sweep builds each probe's directory. A probe's whole cost is one device cache flush, so pointing this at a tmpfs (`/dev/shm`) takes the sweep from ~10 minutes to a couple. Nothing else reads it. |
 | `VAELII_TEST_LOG_LEVEL` | `project.clj:130+` | `error` `warn` `info` `debug` `trace` | `error` | The floor the `:test` profile installs the engine's logging at, through `set-log-level` itself. |
-| `VAELII_TEST_NS_COUNTS` | `project.clj:150+` | any non-empty value | unset | Prints one `NSCOUNT <namespace> <assertions>` line per test namespace. Two runs diffed name the namespace whose count moved, which is what `test-backends.sh`'s assertion-count check cannot say on its own. |
+| `VAELII_TEST_NS_COUNTS` | `project.clj:150+` | the boolean vocabulary | `false` | Prints one `NSCOUNT <namespace> <assertions>` line per test namespace. Two runs diffed name the namespace whose count moved, which is what `test-backends.sh`'s assertion-count check cannot say on its own. |
 | `VAELII_BENCH_LOG_LEVEL` | `project.clj:170+` | `error` `warn` `info` `debug` `trace` | `error` | The same floor for the `:bench` profile, so `lein perf` and the `bench-*` harnesses print readings rather than the logging their workloads provoke. |
 | `VAELII_LLM_LIVE` | `test/vaelii/test_util.clj:200+` | `1` `true` `yes` | unset | The consent to call a real model. The `^:llm` mark is the separate half, and both are needed. |
 | `VAELII_RETE` | `test/vaelii/test_util.clj:30+` | the boolean vocabulary | `false` | Runs the suite's forward chaining through the incremental matcher instead of the reference. |

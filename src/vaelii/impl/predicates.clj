@@ -138,6 +138,8 @@
     :edge                     ; a cached transitive closure — (F sub super)
     :keyed-pair               ; a table keyed on the argument pair — (F a b)
     :pred-position            ; a table keyed on [predicate position] — (F P n)
+    :pred-commuting           ; a table keyed on [predicate group] — (F P n) / (F P p …)
+    :roster                   ; a table keyed on [whole parts] — (F whole part part …)
     :none})                   ; nothing is cached; the declaration is read back per use
 
 (def facet-contract
@@ -260,7 +262,7 @@
 ;;
 ;; Written rather than spelled out, for the reason `special/prop-entry` is: an entry a
 ;; couple of parameters *construct* has no way for its fields to disagree with each
-;; other, and the twenty-two predicate marks `prop` builds differ in exactly one keyword.
+;; other, and the twenty-seven predicate marks `prop` builds differ in exactly one keyword.
 
 (defn- prop
   "A one-place predicate mark — `(F P)` — cached as taxonomy prop `kind`.
@@ -309,6 +311,23 @@
            :family  nil}
     sweeps (assoc :sweeps sweeps)
     notes  (assoc :notes notes)))
+
+(defn- roster
+  "A whole-and-parts declaration — `(F whole part part …)` — cached in a table keyed on
+  the whole and its sorted part roster together (`tax/cover-key`).
+
+  Variable-arity, and the arity is content: two parts and three parts are two claims
+  about one whole, so the roster is part of the key rather than something accumulated
+  under the whole."
+  [target & {:keys [facets notes sweeps opposing-read] :or {facets #{}}}]
+  (cond-> {:shape   {:args [:type] :variadic :type}
+           :storage [:roster target]
+           :checked true
+           :facets  (conj facets :cached :derived)
+           :family  nil}
+    sweeps        (assoc :sweeps sweeps)
+    opposing-read (assoc :opposing-read opposing-read)
+    notes         (assoc :notes notes)))
 
 (defn- wff-only
   "A declaration `special/entries` gives a well-formedness arm and nothing else — read
@@ -387,7 +406,7 @@
 ;; ---- the entries ---------------------------------------------------------
 
 (def entries
-  "`[term spec]` pairs, ordered.  `special/entries`' fifty functors first, in the table's
+  "`[term spec]` pairs, ordered.  `special/entries`' fifty-nine functors first, in the table's
   own order — that order is replayed by `rebuild-taxonomy` and so is content — then the
   rest of the grammar `vocabulary/roster` covers.
 
@@ -452,6 +471,57 @@
                      " disjoint_metatype would separate; read globally in disjointness-test,"
                      " and a retract re-arms through settle's :sib-exc-dirty sweep"))]
 
+     ;; ---- exhaustion: the parts that cover a whole ------------------------
+     ;;
+     ;; :derived, like the separations above and for the same argument — a rule may
+     ;; conclude a cover, and a `decontextualized_predicate` lift copies one into
+     ;; CxUniverse, and neither may wait for a restart to reach the taxonomy.  The
+     ;; sweep is `:type-separating` for all three spellings: `separating` and
+     ;; `partition` separate their parts from each other, and every one of them installs
+     ;; a `genl` edge per part, so any of them arriving after the memberships implicates
+     ;; the terms it names.
+     ['covering
+      (enforced (roster :cover :facets #{:reach :convicts :arbitrable}
+                        :sweeps :type-separating
+                        :opposing-read
+                        (str "the nogood holds the whole's membership and the negations,"
+                             " and the declaration the conviction is read through is not a"
+                             " member of it — disjoint's rule, for disjoint's reason: a"
+                             " nogood defeating the cover would read a taxonomy without it"
+                             " on the next pass, find no violation, and revive it.")
+                        :notes (str "the coverage half is answered by provers/CoveringProver"
+                                    " and convicts through settle's cover violation; the"
+                                    " genl edge per part is installed by the integrate arm,"
+                                    " against the covering sentex's own handle."))
+                (str "taxonomy/add-cover — the part roster consulted, never stored as a"
+                     " sentex per part, plus one taxonomy/add-genl per part"))]
+     ['separating
+      (enforced (roster :cover :facets #{:reach :convicts}
+                        :sweeps :type-separating
+                        :notes (str "the separation half alone: the roster reaches"
+                                    " disjointness-test and no coverage inference, so no"
+                                    " nogood of its own and no :arbitrable facet. The genl"
+                                    " edge per part is installed as covering's is."))
+                (str "taxonomy/add-cover — the part roster read by disjointness-test, which"
+                     " separates the parts the way it separates a disjoint metatype's"
+                     " members, plus one taxonomy/add-genl per part"))]
+     ['partition
+      (enforced (roster :cover :facets #{:reach :convicts :arbitrable}
+                        :sweeps :type-separating
+                        :opposing-read
+                        (str "the nogood holds the whole's membership and the negations,"
+                             " and the declaration the conviction is read through is not a"
+                             " member of it — disjoint's rule, for disjoint's reason: a"
+                             " nogood defeating the cover would read a taxonomy without it"
+                             " on the next pass, find no violation, and revive it.")
+                        :notes (str "covering's storage exactly, with the separating flag"
+                                    " set: one key and one table, so the coverage half"
+                                    " needs no second reader and no genl edge between the"
+                                    " two spellings."))
+                (str "taxonomy/add-cover — the same roster, read additionally by"
+                     " disjointness-test, which separates the parts the way it separates"
+                     " a disjoint metatype's members"))]
+
      ;; ---- the definitional marks -----------------------------------------
      ['transitive  (enforced (prop :transitive :facets #{:answers})
                              (str "taxonomy prop :transitive — the generic closure prover; also a"
@@ -461,6 +531,17 @@
      ['symmetric   (enforced (prop :symmetric :facets #{:answers})
                              (str "taxonomy prop :symmetric — canonical argument order, so both spellings"
                                   " are one sentex; also a binary_predicate type"))]
+     ['commutative (enforced (prop :commutative :facets #{:reach :answers}
+                                   :notes (str "the all-arguments spelling, and a queryable"
+                                               " classification. Its arm installs the"
+                                               " commuting group [:rest 1] beside the prop,"
+                                               " so the canonicalizer reads one table for"
+                                               " all three spellings and no rule derives"
+                                               " (commutativeInArgAndRest P 1) from it."
+                                               " Its reach is that group's."))
+                             (str "taxonomy prop :commutative, and the commuting group [:rest 1] its"
+                                  " arm installs alongside; also a binary_predicate-free"
+                                  " relation mark, since it holds at any arity"))]
      ['asymmetric  (enforced (assoc (prop :asymmetric :facets #{:reach :convicts :arbitrable
                                                                 :answers}
                                           :sweeps :predicate-marked)
@@ -614,6 +695,37 @@
                                       " read for the goal's own predicate and licenses"
                                       " them. The two sit on opposite sides of the"
                                       " prover/checker divide.")}]
+     ;; ---- the commutativity marks ----------------------------------------
+     ;;
+     ;; `symmetric` above commutes the two arguments of a binary predicate.  These two
+     ;; state the same licence at any arity — a tail from a position, or a named set of
+     ;; positions — and share the `:commuting` table, since the two written shapes reduce
+     ;; to one runtime group descriptor (`sentex/commuting-components`).  `commutative`
+     ;; is the third spelling and sits with the definitional marks above: it is a
+     ;; one-place mark, and its arm installs the group `[:rest 1]` in this table beside
+     ;; the `:commutative` prop it also maintains.
+     ['commutativeInArgAndRest
+      (enforced {:shape   {:args [:relation :position]}
+                 :storage [:pred-commuting :commuting]
+                 :checked true
+                 :facets  #{:cached :derived :reach :answers}
+                 :family  nil
+                 :notes   (str "the canonical runtime spelling of commutativity: the assert entry point sorts the arguments inside the component it names, so every permitted permutation of a ground fact is one sentex and one handle. A canonicalization mark, not a conviction — it refuses nothing and licenses nothing, so it carries no sweep and reaches no clash roster.")}
+                (str "sentex/sort-commuting-args at the assert entry point, and"
+                     " integrate/commute-existing for the facts already stored"))]
+     ['commutativeInArgs
+      (enforced {:shape   {:args [:relation] :variadic :position}
+                 :storage [:pred-commuting :commuting]
+                 :checked true
+                 :facets  #{:cached :derived :reach :answers}
+                 :family  nil
+                 :notes   (str "the named-set spelling of the same licence: exactly the"
+                               " positions written interchange and every unnamed position"
+                               " stays where it was. Two declarations that share a position"
+                               " are one component rather than two permutations applied in"
+                               " sequence — sentex/commuting-components says why.")}
+                (str "sentex/sort-commuting-args at the assert entry point, and"
+                     " integrate/commute-existing for the facts already stored"))]
      ['inverse (enforced (assoc (pair :inverse :predicate) :facets #{:cached :derived :answers})
                          "taxonomy/add-inverse — the prover that hands the swapped goal back")]
 
@@ -786,6 +898,54 @@
                                               " a stored supertype answers a subtype query there,"
                                               " where every other type position reads up genl."))
                            "checks/inter-args-problem — the conditional form, same two paths")]
+
+     ;; ---- the homogeneity constraints: interArg over a whole suffix ------
+     ;; `interArgs` / `interArgAndRest` demand of every argument in a suffix a type one
+     ;; argument there is known to hold.  Convict-and-answer only, like the covering
+     ;; forms: each stops short of `:reach` because the family's reach mints and a
+     ;; homogeneity constraint mints nothing, and short of `:retriggers` because it posts
+     ;; no exception re-check.
+     ['interArgs (enforced (assoc (prop :declares-inter-args-isa :arg :relation
+                                        :facets #{:convicts :answers})
+                                  :shape  {:args [:relation :type]}
+                                  :family :argument-constraint
+                                  :stops-short
+                                  {:reach
+                                   (str "the family's reach is special/entail-existing, which"
+                                        " MINTS what a late declaration says about stored"
+                                        " tuples, and a homogeneity constraint mints nothing:"
+                                        " it convicts a mixed application, it does not draw a"
+                                        " membership.  A conviction reach over the stored"
+                                        " tuples a late interArgs rejects is a different"
+                                        " mechanism from this facet's — the stop-short args"
+                                        " records.")
+                                   :retriggers
+                                   (str "it answers goals about the predicate at argument 1 but"
+                                        " licenses no inference that is a stored sentex reaching"
+                                        " an exception, so it is absent from"
+                                        " special/declaration-subjects and posts no re-check —"
+                                        " the reason args records.")}
+                                  :notes (str "the every-position form of interArgAndRest, and"
+                                              " interArgAndRest at start 1: CxCore's two"
+                                              " forward rules derive each spelling from the"
+                                              " other, and the check reads both as one"
+                                              " declaration.  Its type is trigger and target"
+                                              " at once, so MetaConstraintProver answers it"
+                                              " down the predicate hierarchy and at the"
+                                              " stated type only."))
+                           "checks/inter-args-homogeneity-problem — every position, one type")]
+     ['interArgAndRest (enforced (assoc (prop :declares-inter-arg-and-rest-isa :arg :relation
+                                              :facets #{:convicts :answers})
+                                        :shape  {:args [:relation :position :type]}
+                                        :family :argument-constraint
+                                        :stops-short
+                                        {:reach "the same as interArgs — see interArgs."
+                                         :retriggers "the same as interArgs — see interArgs."}
+                                        :notes (str "the suffix form: position and every later"
+                                                    " one, the prefix below the start"
+                                                    " unconstrained.  interArgs is"
+                                                    " interArgAndRest at 1."))
+                                 "checks/inter-args-homogeneity-problem — position n onward, one type")]
 
      ;; ---- the covering constraints: a whole tail typed at once ------------
      ;; `args` / `argsGenl` type every accepted position, `argAndRest` / `argAndRestGenl`
@@ -1734,11 +1894,6 @@
   back flat."
   []
   (into {} (keep (fn [[t spec]] (when-let [k (:sweeps spec)] [t k]))) entries))
-
-(defn by-sweep
-  "Every term whose arrival sweeps `kind`, as a set."
-  [kind]
-  (into #{} (comp (filter #(= kind (:sweeps (second %)))) (map first)) entries))
 
 (defn family
   "Every spelling in family `fam`, as a set — the family read as the thing it is, which

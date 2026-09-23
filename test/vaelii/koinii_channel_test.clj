@@ -31,7 +31,8 @@
   substrate: the reply verbs' `target_following_predicate` marks must be in force for a
   reply to cascade."
   []
-  (doto (tu/fresh) (core-context/load-into) (sa/load-speech-acts)))
+  (tu/load-dumped! (tu/fresh) :koinii/speech-acts
+                   #(doto % (core-context/load-into) (sa/load-speech-acts))))
 
 (use-fixtures :each (tu/neutral-fresh channel-kb))
 

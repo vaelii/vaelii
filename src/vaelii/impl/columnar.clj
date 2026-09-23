@@ -47,10 +47,10 @@
   (`index`/`unindex`/`lookup`/`count-at`/`children`) are native here; the secondary
   roots, the rule / exception indexes, the inverted term index, and the term roster
   beside it — all flat `key → set` maps — delegate to an embedded `KvIndexStore` over a
-  Phase-1 `TieredKvBackend` (int-dense postings already).  `index-sentex` writes those
-  root/term keys straight to the shared backend with `kv/root-keys` / `kv/sentex-terms`
-  (and the roster ops with `kv/roster-adds`), so both stores key identically and the
-  delegated reads stay consistent.
+  Phase-1 `TieredKvBackend` (int-dense postings already).  `index-sentex` and
+  `unindex-sentex!` take the ops for those families from `kv/flat-family-adds` /
+  `kv/flat-family-retires` and batch them straight to the shared backend, so both stores
+  write the same keys in the same order and the delegated reads stay consistent.
 
   Single-writer, like every index: the arrays are mutated in place; `lookup`/`children`
   /`leaves` materialize fresh Clojure collections at the boundary.  Proven set-equal to
@@ -74,8 +74,8 @@
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.tokens :as tok]
             [vaelii.impl.types.trie :as trie-types
-             :refer [t-child-count t-children t-clear! t-compact! t-count-at t-csr
-                     t-insert! t-install-csr! t-leaves-at t-lookup t-mapped? t-remove!]]))
+             :refer [t-child-count t-children t-clear! t-compact! t-count-at
+                     t-insert! t-leaves-at t-lookup t-remove!]]))
 
 ;; ---- the portable projection ---------------------------------------------
 ;; The trie here is a node graph, not a map of prefix keys, so its share of the index's
@@ -95,26 +95,17 @@
   ;; trie native; roots + term index straight to the shared int-keyed backend (same keys
   ;; as KvIndexStore, so the delegated reads below stay consistent)
   (index-sentex [_ sentex handle]
-    (let [pth     (sx/path sentex)
-          terms   (kv/sentex-terms sentex)
-          root-ks (kv/root-keys sentex)                 ; derived from the sentex alone
-          roster  (kv/roster-adds roots terms)          ; reads the pre-write postings
-          slots   (kv/slot-adds roots sentex)]          ; likewise — keeps the coarse
-                                                        ; argument reads answerable
+    (let [pth  (sx/path sentex)
+          flat (kv/flat-family-adds roots sentex handle)] ; reads the pre-write postings
       (t-insert! trie pth handle)
-      (p/kv-batch roots
-                  (concat (map (fn [t] [:add-to-set (kv/term-key t) handle]) terms)
-                          (map (fn [k] [:add-to-set k handle]) root-ks)
-                          roster slots))
+      (p/kv-batch roots (:ops flat))
       ;; the same tally `KvIndexStore` keeps, because this store writes the index itself
       ;; rather than through it — an instrument that went quiet on the backend the
-      ;; density work exists for would report a KB that never writes an index
+      ;; density work exists for would report a KB that never writes an index.  The four
+      ;; family counts come back from `flat-family-adds`, so only `:levels` — the trie
+      ;; depth, which is this store's own — is counted here.
       (when (prof/profiling?)
-        (prof/record-index-write sentex {:levels (inc (count pth))
-                                         :terms  (count terms)
-                                         :roots  (count root-ks)
-                                         :roster (count roster)
-                                         :slots  (count slots)})))
+        (prof/record-index-write sentex (assoc (:counts flat) :levels (inc (count pth))))))
     handle)
   ;; A stray unindex — `t-remove!` answers -1 when the handle is not at the leaf — touches
   ;; nothing: the roots and the term index are left as they are, the same no-op
@@ -128,21 +119,12 @@
       (if (neg? dead)
         (trove/log! {:level :warn :id ::unindex-absent
                      :data {:handle handle :path pth :context (:context sentex)}})
-        (let [terms   (kv/sentex-terms sentex)
-              root-ks (kv/root-keys sentex)                ; derived from the sentex alone
-              roster  (kv/roster-retires roots terms handle) ; reads the pre-write postings
-              slots   (kv/slot-retires roots sentex handle)] ; likewise
-          (p/kv-batch roots
-                      (concat (map (fn [t] [:remove-from-set (kv/term-key t) handle]) terms)
-                              (map (fn [k] [:remove-from-set k handle]) root-ks)
-                              roster slots))
+        (let [flat (kv/flat-family-retires roots sentex handle)] ; reads the pre-write postings
+          (p/kv-batch roots (:ops flat))
           (when (prof/profiling?)
-            (prof/record-index-retract sentex {:levels (inc (count pth))
-                                               :terms  (count terms)
-                                               :roots  (count root-ks)
-                                               :roster (count roster)
-                                               :slots  (count slots)
-                                               :dead   dead})))))
+            (prof/record-index-retract sentex (assoc (:counts flat)
+                                                     :levels (inc (count pth))
+                                                     :dead   dead))))))
     handle)
   ;; the same family labels `KvIndexStore` records, for the same reason: the split
   ;; between a retrieval walk and the planner's selectivity probes is the reading that
@@ -163,6 +145,9 @@
   (sentexes-with-functor [_ pred]     (p/sentexes-with-functor embedded pred))
   (count-with-functor    [_ pred]     (p/count-with-functor    embedded pred))
   (sentexes-with-arg     [_ pos term] (p/sentexes-with-arg     embedded pos term))
+  ;; the unary roster lives with the other root families, in the embedded store
+  (unary-sentexes-with-arg [_ term]   (p/unary-sentexes-with-arg embedded term))
+
   (count-with-arg        [_ pos term] (p/count-with-arg        embedded pos term))
   (sentexes-with-args    [_ pred pts] (p/sentexes-with-args    embedded pred pts))
   (index-rule            [_ h a c]    (p/index-rule            embedded h a c))
@@ -246,32 +231,10 @@
   (when (instance? ColumnarIndexStore store) (t-compact! (:trie store)))
   store)
 
-;; ---- the `SnapshotSink` / `SnapshotSource` protocols ---------------------------------------------------
-;; `vaelii.impl.disk.index-snapshot` writes a compacted trie's sections to disk and maps
-;; them back.  It reaches the CSR through these three rather than through the deftype, so
-;; the field access stays inside `Trie` and the snapshot depends on a shape rather than on
-;; a layout.
+;; ---- the snapshot's two participants -------------------------------------
+;; `vaelii.impl.disk.index-snapshot` writes the trie in `:trie` and the root columns in
+;; `:roots`, and asks each of them the same three questions through
+;; `vaelii.impl.types.snapshot`'s `SnapshotSections`.  Both fields are read off the store
+;; directly, so this namespace carries no second vocabulary for them.
 
 (defn columnar? [store] (instance? ColumnarIndexStore store))
-
-(defn mapped?
-  "Is this store's trie reading its leaves out of an mmap'd snapshot?  True exactly while
-  nothing has been written since the image was installed — a write thaws — so it is also
-  the answer to \"is the image on disk still what this store holds\"."
-  [store]
-  (boolean (and (columnar? store) (t-mapped? (:trie store)))))
-
-(defn csr
-  "The compacted trie's CSR sections (`:nodes` `:counts` `:offsets` `:edge-tok`
-  `:edge-tgt` `:leaf-off` `:handles`), or nil when the trie is still mutable — the
-  snapshot writer's read.  `compact!` first."
-  [store]
-  (when (columnar? store) (t-csr (:trie store))))
-
-(defn install-csr!
-  "Install CSR sections into a columnar store's trie, replacing whatever it held.  The
-  leaf pair (`:leaf-off*` `:handles*`) may be heap `int[]` or mapped `IntBuffer`s; the
-  skeleton is always heap."
-  [store sections]
-  (t-install-csr! (:trie store) sections)
-  store)

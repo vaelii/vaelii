@@ -20,12 +20,20 @@
        :system     [{:text \"…\" :cache? true} …]   ; blocks, in order
        :messages   [{:role \"user\"|\"assistant\" :content <string | [block …]}]
        :tools      [<tool schema> …]      ; vaelii.host.llm.tools/schemas
+       :format     {…}                    ; a JSON schema decoding is constrained to
        :max-tokens 8192
-       :effort     \"low\"|\"medium\"|\"high\"|\"xhigh\"|\"max\"}
+       :effort     \"low\"|\"medium\"|\"high\"|\"xhigh\"|\"max\"
+       :num-ctx    8192}                  ; window size; local providers only
 
   `:cache?` on a system block asks the provider to mark it as a cache breakpoint;
   the generated system prompt is a large stable prefix and the user's turn is the
   volatile part after it, which is exactly the shape prompt caching wants.
+
+  **This list is the whole of what a provider reads.**  A provider ignores what it
+  cannot express — `:cache?` is a no-op on Ollama, `:num-ctx` on Anthropic — but a key
+  the list does not name is a key an implementer has no reason to look for, and a
+  dropped constraint is invisible downstream: a turn that runs unconstrained answers in
+  the same shape as one that does not.  So a key any path sends belongs here.
 
   Response:
 

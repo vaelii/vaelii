@@ -99,6 +99,22 @@
       (is (= 1 (count @seen)) "three asserts, one settle, one event")
       (is (= 6 (count (added @seen))) "three premises and three conclusions"))))
 
+(tu/deftest-kb one-batch-in-two-orders-is-one-event-in-one-order
+  ;; an event's entries are ranked by content (`moved-handles`), so the order a batch
+  ;; lists its sentences in, and the handles they get, do not reach the order a listener
+  ;; reads them in
+  (tu/with-terms [dog Zed Abe Mo Bo]
+    (let [run (fn [order]
+                (let [[seen f] (recorder)
+                      tok      (v/watch kb f)]
+                  (v/assert-many kb (mapv #(list dog %) order) 'CxUniverse)
+                  (v/unwatch kb tok)
+                  (doseq [x order] (v/retract! kb (v/handle-of kb (list dog x) 'CxUniverse)))
+                  (added @seen)))
+          a (run [Zed Abe Mo Bo])]
+      (is (= 4 (count a)))
+      (is (= a (run [Bo Mo Abe Zed]))))))
+
 (tu/deftest-kb the-feed-and-the-consequence-report-are-the-same-answer
   ;; Two mechanisms, one answer.  If they diverged an application would have no way to
   ;; tell which one was the KB's.
@@ -532,6 +548,7 @@
                   (list 'ist 'CxUniverse (list dog '?x))
                   (list 'lessThan '?a '?b)
                   (list 'or (list dog '?x) (list cat '?x))
+                  (list 'and (list dog '?x) (list cat '?x))
                   'notASentence]]
       (let [e (try (v/watch kb goal 'CxUniverse (fn [_] nil))
                    (catch clojure.lang.ExceptionInfo e e))]
@@ -540,6 +557,26 @@
         (is (= :not-watchable (:type (ex-data e))))
         (is (string? (:reason (ex-data e))) "the refusal says why")))
     (is (empty? (v/watchers kb)) "and registered nothing")))
+
+(tu/deftest-kb one-conjunction-is-refused-in-both-its-spellings
+  ;; `[(dog ?x) (cat ?x)]` and `(and (dog ?x) (cat ?x))` are one goal written two ways.
+  ;; The vector was refused and the connective was not, so a watch on the second
+  ;; registered and then fired never: no stored sentence has `and` for a functor, which
+  ;; is the same silent-nothing the `or` arm beside it refuses by name.
+  (tu/with-terms [dog cat]
+    (let [vector-form [(list dog '?x) (list cat '?x)]
+          and-form    (list 'and (list dog '?x) (list cat '?x))
+          refusal     (fn [goal] (try (v/watch kb goal 'CxUniverse (fn [_] nil))
+                                      (catch clojure.lang.ExceptionInfo e (ex-data e))))]
+      (is (= :not-watchable (:type (refusal vector-form))))
+      (is (= :not-watchable (:type (refusal and-form)))
+          "the connective spelling of the same conjunction is refused too")
+      (is (string? (:reason (refusal and-form))) "and says why")
+      (testing "nested, not only at the top"
+        (is (= :not-watchable
+               (:type (refusal (list 'implies (list 'and (list dog '?x) (list cat '?x))
+                                     (list dog '?x)))))))
+      (is (empty? (v/watchers kb)) "and registered nothing"))))
 
 (tu/deftest-kb a-listener-that-is-not-a-function-is-refused
   ;; A keyword is `ifn?`, and so is a symbol — so the three-argument form written with

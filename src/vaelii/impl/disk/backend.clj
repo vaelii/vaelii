@@ -23,6 +23,7 @@
   across the suite's hundreds of KB constructions.  A true cross-JVM restart opens the
   directory fresh and rebuilds the RAM state from the durable logs."
   (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [taoensso.trove :as trove]
             [vaelii.impl.disk.durability :as dur]
             [vaelii.impl.disk.index-snapshot :as snap]
@@ -44,25 +45,32 @@
   (.getCanonicalPath (io/file dir)))
 
 (defn store-backend
-  "The `open-kb` backend the store in `dir` was written by, read off the files beside its
-  records, or nil when `dir` holds no store (no `records/format.edn`):
+  "The `open-kb` backend the store in `dir` was written by, read off its files, or nil when
+  `dir` holds no store:
 
-    * `index/trie.csr`, a mapped index image → `:disk-snapshot`;
-    * `index/kv.log`, a write-ahead-logged index → `:disk-log`;
-    * no `index/` file of either kind → `:disk-columnar`, which rebuilds the index from the
-      records on open.  `:disk-memory` and `:disk-dense` write the same files and read back
-      correctly as `:disk-columnar`.
+    * `records.sqlite`, the SQLite adapter's file → `:sqlite`;
+    * `records/format.edn` with `index/trie.csr`, a mapped index image → `:disk-snapshot`;
+    * `records/format.edn` with `index/kv.log`, a write-ahead-logged index → `:disk-log`;
+    * `records/format.edn` and no `index/` file of either kind → `:disk-columnar`, which
+      rebuilds the index from the records on open.  `:disk-memory` and `:disk-dense` write
+      the same files and read back correctly as `:disk-columnar`;
+    * `index/kv.log` with no `records/` → `:pg-disk-log`, a local index over records on a
+      server, which `open-kb` refuses until the caller names the server (`:pg`).
 
   An open under the wrong backend returns an empty KB and throws nothing: a
   `:disk-snapshot` or `:disk-columnar` store opened as `:disk-log` finds no index log, so
-  every read answers nothing although every record is on disk."
+  every read answers nothing although every record is on disk, and an `:sqlite` or
+  `:pg-disk-log` directory opened as `:disk-log` gets a second, empty store beside the one
+  it holds."
   [dir]
   (let [f (fn [& parts] (.exists ^java.io.File (apply io/file dir parts)))]
-    (when (f "records" "format.edn")
-      (cond
-        (f "index" "trie.csr") :disk-snapshot
-        (f "index" "kv.log")   :disk-log
-        :else                  :disk-columnar))))
+    (cond
+      (f "records.sqlite")          :sqlite
+      (f "records" "format.edn")    (cond
+                                      (f "index" "trie.csr") :disk-snapshot
+                                      (f "index" "kv.log")   :disk-log
+                                      :else                  :disk-columnar)
+      (f "index" "kv.log")          :pg-disk-log)))
 
 (defn- register-or-close!
   "Register `entry` with the durability daemon and return `[store id]` — closing the
@@ -387,9 +395,11 @@
 (defn disk-dir
   "The directory a disk KB lives in.  `:dir` names it explicitly; otherwise it derives
   from the space number under a base (`vaelii.disk.dir`, else `<tmpdir>/vaelii-disk`), so
-  the space the other backends key on still names a distinct store."
+  the space the other backends key on still names a distinct store.  A blank
+  `vaelii.disk.dir` is unset: read as a base it put every derived store at the root of
+  the filesystem."
   [{:keys [dir space] :or {space 0}}]
   (or dir
-      (let [base (or (System/getProperty "vaelii.disk.dir")
+      (let [base (or (some-> (System/getProperty "vaelii.disk.dir") str/trim not-empty)
                      (str (System/getProperty "java.io.tmpdir") "/vaelii-disk"))]
         (str base "/space-" space))))

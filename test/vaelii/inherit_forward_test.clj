@@ -290,18 +290,25 @@
           "and the edge arriving last reconnects and re-fires it"))))
 
 (tu/deftest-kb a-defeated-witness-with-a-surviving-route-keeps-the-entry-points-agreeing
-  ;; `support-for` names one witness — a shortest path — and arbitration can defeat
-  ;; that witness with no sentence arriving or leaving: the denial lands where it sees
-  ;; nothing, and a lattice edge arriving later exposes the pair.  The firing has to
-  ;; re-derive through the route the named witness did not travel, in the very settle
-  ;; that defeated it, or the fixpoint holds less than the backward entry point still proves.
+  ;; `supports-for` names one witness per reader, and arbitration can defeat that witness with no
+  ;; sentence arriving or leaving: the denial lands where it sees nothing, and a lattice
+  ;; edge arriving later exposes the pair.  The firing has to re-derive through the route
+  ;; the named witness did not travel, in the very settle that defeated it, or the
+  ;; fixpoint holds less than the backward entry point still proves.
+  ;;
+  ;;   CxUniverse   (transitiveInArg largerThan 1 genl)  (largerThan dog_t cat_t)
+  ;;    ├─ CxA      (genl chi_t mid_t) (genl mid_t dog_t)   the long route
+  ;;    │           (genl chi_t dog_t)                      the short route, the witness
+  ;;    └─ CxB      (not (genl chi_t dog_t))  monotonic
+  ;;
+  ;; Both routes are stated in CxA, so they place the conclusion in the same context and
+  ;; the shorter one is the witness (`taxonomy/general-reach-supports`).
   (tu/with-terms [dog_t mid_t chi_t cat_t largerThan noted CxA CxB]
     (v/with-deferred-settle kb
       (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
       (v/assert kb (list 'genlCx CxB 'CxUniverse) 'CxUniverse)
-      ;; the long route, visible everywhere; the short edge, visible only from A
-      (v/assert kb (list 'genl mid_t dog_t) 'CxUniverse)
-      (v/assert kb (list 'genl chi_t mid_t) 'CxUniverse)
+      (v/assert kb (list 'genl mid_t dog_t) CxA)
+      (v/assert kb (list 'genl chi_t mid_t) CxA)
       (v/assert kb (list 'genl chi_t dog_t) CxA)
       (v/assert kb (list 'transitiveInArg largerThan 1 'genl) 'CxUniverse)
       (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse))
@@ -309,7 +316,7 @@
               'CxUniverse {:direction :forward})
     (let [goal (list noted chi_t cat_t)]
       (is (seq (v/sentexes-matching kb goal CxA))
-          "the firing lands beside the short edge it named")
+          "the firing lands beside the edges it named")
       (testing "the denial lands where it sees nothing, and nothing moves"
         (v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB {:strength :monotonic})
         (is (seq (v/sentexes-matching kb goal CxA))))
@@ -320,12 +327,130 @@
         ;; way would make CxB the vantage, and the witness would stay believed in CxA
         ;; (docs/nmtms.md, "A defeat is scoped to its vantage").
         (v/assert kb (list 'genlCx CxA CxB) 'CxUniverse)
-        (is (v/ask? kb (list largerThan chi_t cat_t) 'CxUniverse)
+        (is (v/ask? kb (list largerThan chi_t cat_t) CxA)
             "the backward entry point still proves the claim through the long route")
-        (is (seq (v/sentexes-matching kb goal 'CxUniverse))
-            "and the fixpoint holds it again, homed where the long route is visible")
-        (is (v/ask? kb goal 'CxUniverse))
-        (is (v/ask? kb goal CxA) "both vantages agree with the prover")))))
+        (is (seq (v/sentexes-matching kb goal CxA))
+            "and the fixpoint holds it again, on the route that survived")
+        (is (v/ask? kb goal CxA) "both entry points agree with the prover")))))
+
+(tu/deftest-kb the-witness-is-the-route-that-places-the-conclusion-highest
+  ;; A reachability with two routes carries one witness, and which one it is decides where
+  ;; the conclusion lives.  The route through the general context is taken even where it is
+  ;; longer, so the firing is placed above both routes' specific contexts and every reader
+  ;; of either route holds it (docs/contexts.md, "The consumers, and what each of them may
+  ;; reach").
+  ;;
+  ;;   CxUniverse   (genl mid_t dog_t) (genl chi_t mid_t)   the long route
+  ;;                (transitiveInArg largerThan 1 genl)  (largerThan dog_t cat_t)
+  ;;    └─ CxA      (genl chi_t dog_t)                      the short route
+  ;;         └─ CxB (not (genl chi_t dog_t))  monotonic
+  (doseq [long-first? [true false]]
+    (testing (if long-first? "the long route arrives first" "the short route arrives first")
+      (tu/with-terms [dog_t mid_t chi_t cat_t largerThan noted CxA CxB]
+        (let [long! #(do (v/assert kb (list 'genl mid_t dog_t) 'CxUniverse)
+                         (v/assert kb (list 'genl chi_t mid_t) 'CxUniverse))
+              short! #(v/assert kb (list 'genl chi_t dog_t) CxA)
+              goal   (list noted chi_t cat_t)]
+          (v/with-deferred-settle kb
+            (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+            (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+            (v/assert kb (list 'transitiveInArg largerThan 1 'genl) 'CxUniverse)
+            (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse)
+            (v/assert kb (list 'implies (list largerThan '?x '?y) (list noted '?x '?y))
+                      'CxUniverse {:direction :forward}))
+          (if long-first? (do (long!) (short!)) (do (short!) (long!)))
+          (testing "the conclusion is placed where the long route is visible"
+            (is (seq (v/sentexes-matching kb goal 'CxUniverse))))
+          (testing "and rests on the long route's two edges, not on the short one"
+            (let [reasons (into #{}
+                                (comp (mapcat :because) (map :sentence))
+                                (:support (v/why kb (v/handle-of kb goal 'CxUniverse))))]
+              (is (contains? reasons (list 'genl mid_t dog_t)))
+              (is (contains? reasons (list 'genl chi_t mid_t)))
+              (is (not (contains? reasons (list 'genl chi_t dog_t))))))
+          (testing "and every reader holds it, in either arrival order"
+            (is (v/ask? kb goal 'CxUniverse))
+            (is (v/ask? kb goal CxA))
+            (is (v/ask? kb goal CxB)))
+          (testing "a clash below the general context moves no reader's answer"
+            (v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB {:strength :monotonic})
+            (is (v/ask? kb goal 'CxUniverse))
+            (is (v/ask? kb goal CxA))
+            (is (v/ask? kb goal CxB) "CxB sees the long route and reads the conclusion"))
+          (testing "and retracting it moves no reader's answer back"
+            (v/retract! kb (v/handle-of kb (list 'not (list 'genl chi_t dog_t)) CxB))
+            (is (v/ask? kb goal 'CxUniverse))
+            (is (v/ask? kb goal CxA))
+            (is (v/ask? kb goal CxB))))))))
+
+(defn- two-route-lattice!
+  "The lattice above without the clash: the long route `chi → mid → dog` in CxUniverse,
+  the short route `chi → dog` in CxA, CxB below CxA.  `routes` names which of the two are
+  asserted, in that order."
+  [kb {:keys [dog_t mid_t chi_t cat_t largerThan noted CxA CxB]} routes]
+  (v/with-deferred-settle kb
+    (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+    (v/assert kb (list 'transitiveInArg largerThan 1 'genl) 'CxUniverse)
+    (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse)
+    (v/assert kb (list 'implies (list largerThan '?x '?y) (list noted '?x '?y))
+              'CxUniverse {:direction :forward}))
+  (doseq [r routes]
+    (case r
+      :long  (do (v/assert kb (list 'genl mid_t dog_t) 'CxUniverse)
+                 (v/assert kb (list 'genl chi_t mid_t) 'CxUniverse))
+      :short (v/assert kb (list 'genl chi_t dog_t) CxA))))
+
+(defn- two-route-reading
+  "Where `(noted chi cat)` is stored, and what CxUniverse, CxA and CxB each answer."
+  [kb {:keys [chi_t cat_t noted CxA CxB]}]
+  (let [goal    (list noted chi_t cat_t)
+        readers ['CxUniverse CxA CxB]]
+    {:stored  (mapv #(some? (v/handle-of kb goal %)) readers)
+     :answers (mapv #(v/ask? kb goal %) readers)}))
+
+(tu/deftest-kb retracting-either-route-leaves-what-a-kb-built-without-it-holds
+  ;; The short route first stores the firing twice — once over the short route in CxA, and
+  ;; again in CxUniverse when the long route arrives — and the long route first stores it
+  ;; once.  Retracting either route from either order leaves the store and every reader's
+  ;; answer that a KB built with only the other route holds.
+  (doseq [order    [[:long :short] [:short :long]]
+          retracted [:long :short]]
+    (testing (str (name (first order)) " route first, the " (name retracted) " route retracted")
+      (let [kept (first (remove #{retracted} order))
+            terms (fn [] (zipmap [:dog_t :mid_t :chi_t :cat_t :largerThan :noted :CxA :CxB]
+                                 (map #(tu/fresh-term (tu/term-role %) %)
+                                      '[dog_t mid_t chi_t cat_t largerThan noted CxA CxB])))
+            built (terms)
+            alone (terms)]
+        (two-route-lattice! kb built order)
+        (let [{:keys [dog_t mid_t chi_t CxA]} built]
+          (doseq [[s c] (if (= :long retracted)
+                          [[(list 'genl mid_t dog_t) 'CxUniverse]
+                           [(list 'genl chi_t mid_t) 'CxUniverse]]
+                          [[(list 'genl chi_t dog_t) CxA]])]
+            (v/retract! kb (v/handle-of kb s c))))
+        (two-route-lattice! kb alone [kept])
+        (is (= (two-route-reading kb alone) (two-route-reading kb built)))))))
+
+(tu/deftest-kb a-reader-that-loses-the-long-route-reads-the-conclusion-in-either-order
+  ;; A scoped defeat of the long route at CxA withdraws the CxUniverse firing there, while
+  ;; CxA still reaches chi → dog over its own edge.  The short route first stored a firing
+  ;; in CxA before the long route arrived; the long route first stored none, and the settle
+  ;; re-derives one over CxA's route (settle/lost-firing-seeds).  Either way CxA holds a
+  ;; firing of its own afterwards, and it is kept rather than retired (docs/defenses.md, "A
+  ;; firing placed over a lower route is not retired").
+  (doseq [order [[:short :long] [:long :short]]]
+    (testing (str (name (first order)) " route first")
+      (tu/with-terms [dog_t mid_t chi_t cat_t largerThan noted CxA CxB]
+        (let [t {:dog_t dog_t :mid_t mid_t :chi_t chi_t :cat_t cat_t :largerThan largerThan
+                 :noted noted :CxA CxA :CxB CxB}]
+          (two-route-lattice! kb t order)
+          (v/assert kb (list 'not (list 'genl chi_t mid_t)) CxA {:strength :monotonic})
+          (is (= [true true true] (:answers (two-route-reading kb t)))
+              "CxA reaches chi → dog over its own edge and reads the conclusion")
+          (is (= [true true false] (:stored (two-route-reading kb t)))
+              "stored in CxUniverse and in CxA"))))))
 
 (tu/deftest-kb the-mirror-licenses-a-firing-in-either-order
   ;; A symmetric predicate's stored claim states both orientations, so the mirror

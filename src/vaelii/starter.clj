@@ -16,7 +16,7 @@
 
   Over 1,600 asserted sentexes — the spindle head, the upper spindle's members
   and the middle spindle's — which the rules take to 3,200+ stored once they have fired.  No
-  individuals: the starter is a schema to build on, not a world.  `starter_test` pins
-  both counts, so a shipped file that adds content moves a number here."
+  individuals: the starter is a schema to build on, not a world.  Loaded in any order the
+  same sentences build the same KB (`absent_type_order_test`)."
   [kb]
   (starter/load-into kb))

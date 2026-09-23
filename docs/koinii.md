@@ -100,6 +100,13 @@ Everything above the protocol — `assert`, the five reply verbs (`answer` / `en
 `justify` / `dispute` / `vote`), `reply-many`, and the recovery reads — runs the same over
 either medium. Only `subscribe` differs, because only the feed does.
 
+The rest of koinii takes a KB, not a medium. `dispute`, `adjudication`, `belief`, `deref` and
+`identity`'s ingest and registry writes call `vaelii.core` on the KB they are handed, so they
+run in the process that holds it — the daemon's, in the `wire` shape. A remote agent moves
+through `channel` and catches up through `catchup`; the dispute reads, the notify and stale
+sweeps, a ruling, a majority count and a belief projection run beside the daemon. Handed a
+`vaelii.client` connection in place of a KB, they fail inside the engine rather than refuse.
+
 ### When to stop
 
 `local` is the right shape until the moment agents become **separate processes**. Then `wire`
@@ -152,6 +159,15 @@ The auth **strength** is conditional on policy (decision D4):
   spoofable identity is worse than no trust. `authenticate` verifies a credential through the
   `verify-fn` extension point (sign-at-ingest, an authenticating proxy, A2A AgentCards / DIDs) and
   **refuses** an unverified request; a nil verifier fails *closed*.
+
+Both policies are checked where `authenticate` and `identity/ingest` run: the process that
+holds the KB. Nothing on the wire calls either. A `wire` channel write, and any
+`vaelii.client` call, reaches the daemon with the `:creator` and the context the caller sent,
+`CxRegistry` included, and a `retract!` from any connection removes any agent's claim. The
+refusals `channel` raises (`:koinii/registry-forbidden`, `:koinii/creator-mismatch`,
+`:koinii/speaker-mismatch`) are thrown in the caller's process before anything is sent, so a
+client that does not go through `channel` meets none of them; the daemon's one bearer token
+is the whole of its access control.
 
 The registry itself carries three facts per agent — a membership mark (`agent`), a display
 name (`displayNameOf`), and a **trust value** (`trustLevel`). Trust is a *mutable number*,
@@ -283,7 +299,9 @@ records the dispute, pushes it to whoever is watching, and manages its life. Thr
   tallied by claimed voter name is spoofable under cooperative (one operator, many names),
   which is exactly the trust-weighting the identity design forbids, so `resolve-by-majority`
   refuses there (`:koinii/identity-unverified`). Counting stays open for transparency; only
-  the ruling is gated.
+  the ruling is gated. The gate reads the policy bound where `resolve-by-majority` runs, not
+  how the ballots arrived: `channel/vote` authenticates nobody, so under `:proof-tier` the
+  count still includes ballots cast under names nobody verified.
 
 **Trust-resolve** — automatic resolution by source trust — is deliberately out of scope for
 this layer; it is engine-side reputation work, and reaching for it here would resolve
@@ -403,9 +421,12 @@ Five ideas, each grounded on a primitive that ships:
   print vars, so a symbol never digests as the like-spelled string.
 - **The commit is a Merkle function of belief.** `commit-id` is an RFC-6962 Merkle root over
   the seat's *sorted* per-sentex leaf digests, domain-separated (`0x00` leaf, `0x01` node) so
-  a leaf cannot be forged as an internal node. Order- and handle-independent by construction,
-  because belief and storage are order-independent ([nmtms.md](nmtms.md)) — so two seats that
-  reached the same beliefs by different routes compute the same commit id. The tree
+  a leaf cannot be forged as an internal node. Order- and handle-independent for every
+  sentence that names no handle, because belief and storage are order-independent
+  ([nmtms.md](nmtms.md)) — so two seats that reached the same beliefs by different routes
+  compute the same commit id. A sentence naming a sentex by `(sentexHandle n)` digests the
+  number: every response act does, so a pulled seat, which keeps the publisher's handles,
+  matches, and two seats that built one conversation in different orders do not. The tree
   shape buys pure auditability: `inclusion-proof` yields an audit path and `verify-inclusion`
   recomputes the root from just a `(locator, proof)` pair, with **no KB**. (`commit-id`
   fingerprints *knowledge*; `state-root` folds provenance in for a git-commit-like *snapshot*

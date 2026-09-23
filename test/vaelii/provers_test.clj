@@ -13,11 +13,7 @@
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
-;; `rule-planning-costs-antecedents-by-the-registry-and-memoizes-it` counts registry
-;; consultations, which the cost ranking is what makes — so the ranking is pinned on
-;; whatever the run installed, rather than the test standing aside under `VAELII_PLAN=0`
-;; (`tu/pinning`).
-(use-fixtures :each (tu/neutral-fresh tu/fresh) (tu/pinning [#'plan/*enabled*]))
+(use-fixtures :each (tu/neutral-fresh tu/fresh))
 
 (tu/deftest-kb transitivity-prover-answers-genl
   (let [dog (tu/tmp-type) mammal (tu/tmp-type) animal (tu/tmp-type)]
@@ -120,36 +116,42 @@
   ;; edges the trie can count.  Level 7 is that chainer, so it is what this drives; a
   ;; `prove`, whose leaf is the stored facts, correctly consults nothing here because for
   ;; that leaf the index model is the right one.
-  (let [p1 (tu/tmp-pred) p2 (tu/tmp-pred) p3 (tu/tmp-pred) p4 (tu/tmp-pred) q (tu/tmp-pred)
-        a (tu/tmp-ind) b (tu/tmp-ind) c (tu/tmp-ind) d (tu/tmp-ind) e (tu/tmp-ind)]
-    ;; backward, so the conclusion is not stored and a chainer has to expand the rule —
-    ;; four reorderable antecedents, none recursive, so the planner has a real choice
-    (v/assert-rule kb [(list p1 '?a '?b) (list p2 '?b '?c) (list p3 '?c '?d) (list p4 '?d '?e)]
-                   (list q '?a '?e) 'CxFam {:direction :backward})
-    (v/assert kb (list p1 a b) 'CxFam)
-    (v/assert kb (list p2 b c) 'CxFam)
-    (v/assert kb (list p3 c d) 'CxFam)
-    (v/assert kb (list p4 d e) 'CxFam)
-    (let [goal  (list q a '?e)
-          count-est (fn [f]
-                      (let [calls (atom 0), orig provers/est-goal]
-                        (with-redefs [provers/est-goal
-                                      (fn [& args] (swap! calls inc) (apply orig args))]
-                          (let [r (f)] [@calls r]))))
-          [n7 answer] (count-est (fn [] (set (map (comp (fn [m] (get m '?e)) :bindings)
-                                                  (v/lookup kb 7 goal 'CxFam)))))
-          [np _]      (count-est #(v/prove kb goal 'CxFam))]
-      (testing "the plan does not change the answer"
-        (is (= #{e} answer)))
-      (testing "the registry is consulted for the antecedents at all"
-        (is (pos? n7) "nothing costed the antecedents by the registry"))
-      (testing "est-goal is estimated once per distinct antecedent goal, not per pick"
-        ;; With the memo the planner evaluates each goal once (<= 4); un-memoized it
-        ;; re-estimates every remaining literal on every pick — 4 + 3 + 2 + 1 = 10 — so
-        ;; this bound is the guard.
-        (is (<= n7 4) (str "est-goal called " n7 " times for four antecedents")))
-      (testing "and a chainer whose leaf is the stored facts consults it not at all"
-        (is (zero? np))))))
+  ;;
+  ;; It counts registry consultations, which the cost ranking is what makes, so the
+  ;; ranking is pinned on whatever the run installed rather than the test standing aside
+  ;; under `VAELII_PLAN=0`, which deletes the question.  This test only: the rest of the
+  ;; file answers the same under the sweep.
+  (tu/with-pinned [#'plan/*enabled*]
+    (let [p1 (tu/tmp-pred) p2 (tu/tmp-pred) p3 (tu/tmp-pred) p4 (tu/tmp-pred) q (tu/tmp-pred)
+          a (tu/tmp-ind) b (tu/tmp-ind) c (tu/tmp-ind) d (tu/tmp-ind) e (tu/tmp-ind)]
+      ;; backward, so the conclusion is not stored and a chainer has to expand the rule —
+      ;; four reorderable antecedents, none recursive, so the planner has a real choice
+      (v/assert-rule kb [(list p1 '?a '?b) (list p2 '?b '?c) (list p3 '?c '?d) (list p4 '?d '?e)]
+                     (list q '?a '?e) 'CxFam {:direction :backward})
+      (v/assert kb (list p1 a b) 'CxFam)
+      (v/assert kb (list p2 b c) 'CxFam)
+      (v/assert kb (list p3 c d) 'CxFam)
+      (v/assert kb (list p4 d e) 'CxFam)
+      (let [goal  (list q a '?e)
+            count-est (fn [f]
+                        (let [calls (atom 0), orig provers/est-goal]
+                          (with-redefs [provers/est-goal
+                                        (fn [& args] (swap! calls inc) (apply orig args))]
+                            (let [r (f)] [@calls r]))))
+            [n7 answer] (count-est (fn [] (set (map (comp (fn [m] (get m '?e)) :bindings)
+                                                    (v/lookup kb 7 goal 'CxFam)))))
+            [np _]      (count-est #(v/prove kb goal 'CxFam))]
+        (testing "the plan does not change the answer"
+          (is (= #{e} answer)))
+        (testing "the registry is consulted for the antecedents at all"
+          (is (pos? n7) "nothing costed the antecedents by the registry"))
+        (testing "est-goal is estimated once per distinct antecedent goal, not per pick"
+          ;; With the memo the planner evaluates each goal once (<= 4); un-memoized it
+          ;; re-estimates every remaining literal on every pick — 4 + 3 + 2 + 1 = 10 — so
+          ;; this bound is the guard.
+          (is (<= n7 4) (str "est-goal called " n7 " times for four antecedents")))
+        (testing "and a chainer whose leaf is the stored facts consults it not at all"
+          (is (zero? np)))))))
 
 ;; ---- different: the unique-name assumption ------------------------------
 

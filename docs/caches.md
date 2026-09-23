@@ -187,6 +187,7 @@ need the QCN/temporal reasoners, `hot-records` needs a disk-backed store.
 | Pinned values `:pinned-values` | resident values | — | structural |
 | Justification dedup `:justification-dedup` | conclusions | — | structural |
 | Source parses `:source-parses` | source files | 1024 | wholesale clear; an entry is re-read when its file's modification time or length changes |
+| Preservation crossing reads `:preservation-crossing` | KBs | 64 | wholesale clear; an entry's parts are re-read when the `:preserving` roster or a permuting mark's posting moves |
 
-The units do not sum: nineteen rows counting nineteen different things. A total across
+The units do not sum: twenty rows counting twenty different things. A total across
 them is a number of nothing.

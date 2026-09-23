@@ -334,7 +334,38 @@
       (is (str/includes? d "space-15")))
     (is (not= (backend/disk-dir {:space 15})
               (backend/disk-dir {:space 13}))
-        "different spaces derive different directories")))
+        "different spaces derive different directories"))
+  (testing "a blank vaelii.disk.dir is unset, not a base at the filesystem root"
+    (let [prior (System/getProperty "vaelii.disk.dir")]
+      (try
+        (doseq [blank ["" "  "]]
+          (System/setProperty "vaelii.disk.dir" blank)
+          (is (= (str (System/getProperty "java.io.tmpdir") "/vaelii-disk/space-15")
+                 (backend/disk-dir {:space 15}))))
+        (finally (if prior (System/setProperty "vaelii.disk.dir" prior)
+                     (System/clearProperty "vaelii.disk.dir")))))))
+
+(deftest store-backend-names-a-store-an-adapter-wrote
+  ;; `lein serve <dir>` and `lein cli --dir <dir>` open what `store-backend` names, and a
+  ;; `:disk-log` store when it names nothing.  A directory an adapter wrote holds a store,
+  ;; so reading it as empty put a second, empty store beside it: the daemon served nothing
+  ;; over an `:sqlite` file, and rebuilt a `:pg-disk-log` index from zero records in place.
+  (let [root (io/file (System/getProperty "java.io.tmpdir") (str "store-backend-" (System/nanoTime)))
+        dir  (fn [nm & files]
+               (let [d (io/file root nm)]
+                 (doseq [f files] (io/make-parents (io/file d f)) (spit (io/file d f) ""))
+                 (str d)))]
+    (is (= :sqlite (backend/store-backend (dir "sqlite" "records.sqlite"))))
+    (is (= :pg-disk-log (backend/store-backend (dir "pg" "index/kv.log"))))
+    (is (= :disk-log (backend/store-backend (dir "log" "records/format.edn" "index/kv.log"))))
+    (is (= :disk-columnar (backend/store-backend (dir "col" "records/format.edn"))))
+    (is (nil? (backend/store-backend (dir "empty"))))
+    (testing "the pg index is refused for want of its server, not opened as a local store"
+      (is (= :missing-companion
+             (:mismatch (try (v/open-kb {:backend (backend/store-backend (dir "pg2" "index/kv.log"))
+                                         :dir (str (io/file root "pg2"))})
+                             nil
+                             (catch clojure.lang.ExceptionInfo e (ex-data e)))))))))
 
 (deftest a-durable-index-built-against-other-records-is-refused
   ;; A `:disk-log` index over records on a server is a directory and a database joined by

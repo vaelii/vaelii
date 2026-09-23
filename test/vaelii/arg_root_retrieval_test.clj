@@ -59,10 +59,12 @@
   "Up to `n` distinct positive bodies of stored ground facts (no rules), sampled
   *evenly* across the world's facts rather than the first `n` — the leading facts
   cluster by predicate, so an even spread spans more functors and argument shapes for
-  the same cost.  Deterministic: same KB, same sample.  This is a trie-vs-arg-root
-  equivalence oracle, so the sample is a regression net over the fact space."
+  the same cost.  The handles are sorted first: `sentex-ids` is a set in the store's own
+  order, so the same world gives the same sample on every backend.  This is a
+  trie-vs-arg-root equivalence oracle, so the sample is a regression net over the fact
+  space."
   [kb n]
-  (let [all (->> (p/sentex-ids (:records kb))
+  (let [all (->> (sort (p/sentex-ids (:records kb)))
                  (keep #(p/get-sentex (:records kb) %))
                  (remove #(some? (:antecedent %)))     ; drop rules
                  (keep sx/body)
@@ -118,6 +120,23 @@
               (let [[off on :as both] (both-ways #(res/matches-visible kb pat ctx))]
                 (is (= off on) (str "matches-visible diverged on " (pr-str pat) " @ " ctx))
                 both)))))
+
+(deftest a-sample-of-the-arg-root-oracle-runs-at-default
+  ;; The two sweeps above are `^:slow`, so `lein gate` never runs this harness.  Four
+  ;; facts' patterns through both comparisons keep it running at `:default`; the sweeps
+  ;; widen the sample to 80 and 48 facts.
+  (tu/with-kb [kb]
+    (let [pats (mapcat var-patterns (fact-sentences kb 4))]
+      (is (seq pats))
+      (doseq [pat pats]
+        (let [[off on] (both-ways #(res/match-pattern kb pat '?ctx))]
+          (is (= off on) (str "match-pattern diverged on " (pr-str pat)))))
+      (probed "a-sample-of-the-arg-root-oracle-runs-at-default"
+              (for [ctx '[CxMantle CxUniverse]
+                    pat pats]
+                (let [[off on :as both] (both-ways #(res/matches-visible kb pat ctx))]
+                  (is (= off on) (str "matches-visible diverged on " (pr-str pat) " @ " ctx))
+                  both))))))
 
 (deftest leading-variable-binary-patterns
   ;; the case the arg root exists for: a bound *second* argument with a variable first
