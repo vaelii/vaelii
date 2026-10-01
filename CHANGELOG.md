@@ -11,6 +11,31 @@ several releases is still a grep for the name you call. The full entry prose for
 released version is in this file's git history, at the tag of the release that shipped
 it — `git show v0.16.0:CHANGELOG.md`.
 
+## Unreleased
+
+### Refusals
+
+- **A durable fork remounted over a base that has grown into its handles is refused
+  `:fork-base-overlap`.** A fork keys its records and its excepts' targets by handle, and
+  mints them above the base's handles at the time. Remounted over a base that has since
+  grown (a newer starter, more files loaded at startup), the fork's record at each handle
+  the base now also held won every read: the base's sentence there answered `unknown`
+  through the fork, `argue` returned the fork's justification for it, and an except naming
+  a handle the fork had retracted hid the base sentence that took that handle (#99). Each
+  mount now records the base's watermark in the fork's bookkeeping, and the next mount
+  refuses when the base holds a handle the fork minted since; a fork mounted before this
+  release is checked on its first mount by comparing its own records with the base's at
+  the handles both hold. The refusal names the shared `:handles` and leaves the fork's
+  directory unlocked. [overlay.md](docs/overlay.md#the-merge-model--record-half).
+
+  *Class:* **Refusal** (a remount over a grown base answered base sentences with the
+  fork's records, with no error).
+  *Migration:* mount the fork over the base it was taken against, read its premises, and
+  re-assert them by content in a fresh fork over the new base, re-pointing each except
+  at the new handle of its target.
+
+  *Breaks:* `fork`, `open-kb`
+
 ## 0.22.0 — 2026-09-29 — "prove answers what ask answers, a rule record names the engines that run it, and a clash is decided where its grounds come into view"
 
 ### Breaking

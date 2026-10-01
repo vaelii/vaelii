@@ -386,7 +386,8 @@
     :compaction-failed :cover :cross-origin :daemon-error :damaged-dictionary
     :damaged-frame :disallowed-class
     :disjoint :disjunction-too-wide :disk-locked :duplicate-handle :duplicate-tokens :error
-    :exception-not-closed :export-busy :frozen-base :functional :handle-ceiling
+    :exception-not-closed :export-busy :fork-base-overlap :frozen-base :functional
+    :handle-ceiling
     :incomplete-racer :inter-arg-type :internal-error :irreflexive :job-busy
     :labeling-inconsistent :labeling-run-blocked
     :malformed-entry :malformed-manifest :malformed-record :manifest-too-large

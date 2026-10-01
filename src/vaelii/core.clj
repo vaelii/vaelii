@@ -89,6 +89,29 @@
 ;; (vaelii.impl.kb), so the two functions are injected rather than required.
 (declare recover reindex)
 
+(defn- releasing-on-throw
+  "Call `construct`, which opens the KB `opts` describes.  A throw *after* the durable
+  stores resolve — a stale-index refusal, a `:pg` identity mismatch, a fork's base that
+  grew into its handles, a `recover` over a corrupt store — returns no KB, so the exclusive
+  lock those stores took would be held for the JVM's life with nothing to release it.
+  Snapshot which of the KB's directories are already open (a healthy KB may share one —
+  `store-for` keys stores per canonical path), construct, and on a throw close only the
+  directories *this* call newly opened.  `store-for` already releases a lock its own
+  component-open throws under; this covers the gap where one component opened and a later
+  step threw."
+  [opts construct]
+  (let [dirs (kb/durable-dirs opts)
+        pre  (into #{} (filter #(seq (disk/opened %))) dirs)]
+    (try
+      (construct)
+      (catch Throwable t
+        (doseq [d dirs :when (and (not (contains? pre d)) (seq (disk/opened d)))]
+          (try (disk/close-dir! d)
+               ;; best-effort: the construction failure `t` is what the caller needs, and a
+               ;; release that itself throws must not replace it
+               (catch Throwable _ nil)))
+        (throw t)))))
+
 (defn open-kb
   "Construct a KB.  Every option is optional; `(open-kb {})` is records and index in RAM.
 
@@ -157,24 +180,7 @@
   documented on the record in `vaelii.impl.kb`."
   ([] (open-kb {}))
   ([opts]
-   ;; A throw *after* the durable stores resolve — a stale-index refusal, a `:pg` identity
-   ;; mismatch, a `recover` over a corrupt store — returns no KB, so the exclusive lock
-   ;; those stores took would be held for the JVM's life with nothing to release it.  Snapshot
-   ;; which of this KB's directories are already open (a healthy KB may share one — `store-for`
-   ;; keys stores per canonical path), construct, and on a throw close only the directories
-   ;; *this* call newly opened.  `store-for` already releases a lock its own component-open
-   ;; throws under; this covers the gap where one component opened and a later step threw.
-   (let [dirs (kb/durable-dirs opts)
-         pre  (into #{} (filter #(seq (disk/opened %))) dirs)]
-     (try
-       (recovery/register-fresh-store! (kb/open-kb opts recover reindex))
-       (catch Throwable t
-         (doseq [d dirs :when (and (not (contains? pre d)) (seq (disk/opened d)))]
-           (try (disk/close-dir! d)
-                ;; best-effort: the construction failure `t` is what the caller needs, and a
-                ;; release that itself throws must not replace it
-                (catch Throwable _ nil)))
-         (throw t))))))
+   (releasing-on-throw opts #(recovery/register-fresh-store! (kb/open-kb opts recover reindex)))))
 
 (defn fork
   "A private, writable KB over this one's stores — a **fork**.  Reads resolve fork-first
@@ -217,17 +223,15 @@
                   (not (seq own))              (mount/fresh-overlay-opts)
                   (or (:space own) (:dir own)) own
                   :else                        (merge (mount/fresh-overlay-opts) own))
-         forked (kb/open-kb {:records  :overlay
-                             :index    :overlay
-                             :base-stores {:records (:records kb) :index (:index kb)}
-                             :overlay  own
-                             :tms      (:tms opts :dense)
-                             :naming   (:naming opts (:naming kb :strict))
-                             :constraints (:constraints opts (:constraints kb))
-                             :recover? false}
-                            recover reindex)]
-     (recover forked)
-     forked)))
+         spec   {:records  :overlay
+                 :index    :overlay
+                 :base-stores {:records (:records kb) :index (:index kb)}
+                 :overlay  own
+                 :tms      (:tms opts :dense)
+                 :naming   (:naming opts (:naming kb :strict))
+                 :constraints (:constraints opts (:constraints kb))
+                 :recover? false}]
+     (releasing-on-throw spec #(doto (kb/open-kb spec recover reindex) recover)))))
 
 (def default-chain-opts
   "max-depth bounds derivation depth to catch productive infinite recursion;

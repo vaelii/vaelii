@@ -12,7 +12,10 @@
     at a handle the base *already* uses is therefore an **override** — the same handle,
     a different record — and the overlay's copy wins every read.  That is how a base
     record is edited without editing the base: `mark-premise` materializes an override
-    before it writes, since the assumption strength lives on the record.
+    before it writes, since the assumption strength lives on the record.  The boundary
+    holds over the base the handles were minted against, so a mount records the base's
+    watermark and refuses a base that has since grown into the fork's handles
+    (`check-base-overlap!`).
   * **Tombstones.**  Deleting a base handle cannot touch the base, so it is recorded and
     the read path filters it.  They are sticky: a base record cannot come back through
     fall-through, only by being written again into the overlay (a revival, at the same
@@ -41,6 +44,7 @@
   recovering over the merged view, and nothing here layers one truth-maintenance graph
   over another."
   (:require [clojure.set :as set]
+            [clojure.string :as str]
             [vaelii.impl.capabilities :as cap]
             [vaelii.impl.protocols :as p]))
 
@@ -51,6 +55,7 @@
 (def ^:private jd-tombstone-key ::justification-tombstoned)
 (def ^:private pv-tombstone-key ::provenance-tombstoned)
 (def ^:private released-key     ::premise-released)
+(def ^:private watermark-key    ::base-watermark)
 
 ;; ---- the fast view + its write-through --------------------------------------
 ;; Each atom is a mirror of one bookkeeping key; every mutation writes both, and a mount
@@ -325,6 +330,60 @@
       (p/prefetch-justifications! base ids))
     nil))
 
+(defn- minted-shared
+  "The handles this fork minted that the base now holds.
+
+  `watermark` is the base's `next-id` at the previous mount, so every handle the fork has
+  minted lies above it, and the base held none of them when it was minted.  Only the
+  handles in `(watermark, min(base-next, own-next))` can be shared, so the probe is bounded
+  by how far the base grew and by how far the fork reached, and a base that did not grow
+  probes nothing.  The range covers a handle the fork minted and then deleted too, which an
+  except can still name."
+  [base watermark base-next own-next]
+  (filterv #(or (p/get-sentex base %) (p/get-justification base %))
+           (range (inc (long watermark)) (min (long base-next) (long own-next)))))
+
+(defn- overridden-unlike
+  "The handles at which this fork holds a record that the base also holds with different
+  content — the check for a fork mounted before the watermark was recorded, which has no
+  range to probe.  An override copies the base record (`mark-premise`, a revival), so it
+  differs at most in its strength.  One pass over the fork's own records, on the one mount
+  that records the watermark."
+  [overlay base]
+  (let [unlike (fn [get-rec h]
+                 (when-let [b (get-rec base h)]
+                   (not= (dissoc b :strength) (dissoc (get-rec overlay h) :strength))))]
+    (into (filterv #(unlike p/get-sentex %) (sort (p/sentex-ids overlay)))
+          (filter #(unlike p/get-justification %))
+          (sort (p/justification-ids overlay)))))
+
+(def ^:private overlap-shown
+  "How many shared handles a `:fork-base-overlap` refusal names."
+  20)
+
+(defn- check-base-overlap!
+  "Refuse a mount over a base that has grown into this fork's handles since the fork was
+  last mounted — a newer starter, or more files loaded at startup.  The fork keys its
+  records and its excepts' targets by handle, so its record at a shared handle would be
+  read as an override of a base record it never saw, and the base's sentence there would
+  answer `unknown` through the fork."
+  [overlay base watermark base-next own-next]
+  (let [shared (if watermark
+                 (minted-shared base watermark base-next own-next)
+                 (overridden-unlike overlay base))]
+    (when (seq shared)
+      (throw (ex-info (str "this fork's base has changed since the fork was taken over it, and"
+                           " now holds " (count shared) " of the handles the fork's own records"
+                           " use (" (str/join ", " (take overlap-shown shared))
+                           (when (> (count shared) overlap-shown) ", …") ")."
+                           "  A fork keys its records by handle, so over this base they would"
+                           " hide the base's sentences there.  Mount the fork over the base it"
+                           " was taken against, and re-assert its premises by content in a fresh"
+                           " fork over this one")
+                      {:type      :fork-base-overlap
+                       :handles   (into [] (take overlap-shown) shared)
+                       :watermark watermark})))))
+
 (defn overlay-record-store
   "Compose a writable `overlay` `RecordStore` over a read-only `base` one, with `meta-kv`
   holding the overlay's record-level bookkeeping.
@@ -332,16 +391,24 @@
   The mount reads the bookkeeping back — so a durable overlay remounted over the same
   base serves the merged view it was left in — and seeds the handle counter above both
   stores' watermarks, which is what keeps a minted handle out of the base's range even
-  after a restart."
+  after a restart.  It records the base's watermark in the bookkeeping, and refuses
+  (`:fork-base-overlap`) a remount over a base that has since grown into the fork's
+  handles (`check-base-overlap!`)."
   [overlay base meta-kv]
   (let [base-next (long (p/next-id base))          ; allocation, not mutation (see `frozen`)
-        own-next  (long (p/next-id overlay))]
+        own-next  (long (p/next-id overlay))
+        hidden?   (some? (p/kv-get meta-kv cleared-key))
+        watermark (p/kv-get meta-kv watermark-key)]
+    ;; a cleared fork reads nothing of its base, so no base handle can be shadowed
+    (when-not hidden?
+      (check-base-overlap! overlay base watermark base-next own-next))
+    (p/kv-put meta-kv watermark-key base-next)
     (map->OverlayRecordStore
      {:overlay        overlay
       :base           base
       :meta-kv        meta-kv
       :counter        (atom (max base-next own-next))
-      :hidden?        (atom (some? (p/kv-get meta-kv cleared-key)))
+      :hidden?        (atom hidden?)
       :sx-tombstoned  (atom (set (p/kv-members meta-kv sx-tombstone-key)))
       :jd-tombstoned  (atom (set (p/kv-members meta-kv jd-tombstone-key)))
       :pv-tombstoned  (atom (set (p/kv-members meta-kv pv-tombstone-key)))

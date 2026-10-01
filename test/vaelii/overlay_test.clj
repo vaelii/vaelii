@@ -519,6 +519,72 @@
         (rm-rf! dir)
         (v/clear! base)))))
 
+(deftest a-durable-fork-remounted-over-a-grown-base-is-refused
+  ;; A fork keys its records, and its excepts' targets, by handle.  Remounted over a base
+  ;; that has since grown into the handles the fork minted, the fork's record at each
+  ;; shared handle would win the read and hide the base sentence there — so the remount
+  ;; is refused, naming the handles, and the fork's directory is left free.
+  (let [n     (gensym)
+        base  (fresh-base n)
+        grown (populate! (doto (v/open-kb {:backend :memory :space [::grown n] :recover? false})
+                           (v/clear!)))
+        dir   (tmpdir)]
+    (try
+      (let [f  (v/fork base {:backend :disk-log :dir dir})
+            _  (v/assert f '(dog Rex) 'CxOverlay {:strength :monotonic})
+            h2 (v/assert f '(dog Fido) 'CxOverlay {:strength :monotonic})]
+        (v/assert f (list 'except (list 'sentexHandle h2)) 'CxOverlay)
+        (v/retract! f h2)
+        (v/close! f))
+      (doseq [s '[(dog Ace) (dog Bo) (dog Cy) (dog Di) (dog Ed) (dog Flo)]]
+        (v/assert grown s 'CxOverlay {:strength :monotonic}))
+      (testing "over the grown base, the remount is refused and names the shared handles"
+        (let [e (try (v/fork grown {:backend :disk-log :dir dir}) nil
+                     (catch clojure.lang.ExceptionInfo e e))]
+          (is (= :fork-base-overlap (:type (ex-data e))))
+          (is (seq (:handles (ex-data e))))
+          (is (every? #(or (p/get-sentex (:records grown) %) (p/get-justification (:records grown) %))
+                      (:handles (ex-data e)))
+              "each named handle is one the grown base holds")
+          (is (empty? (disk/opened dir)) "and the refused mount holds no lock on the fork's directory")))
+      (testing "the refusal releases the fork's directory, and the fork is intact over its own base"
+        (let [f2 (v/fork base {:backend :disk-log :dir dir})]
+          (is (= '#{(dog Muffet) (dog Rex)}
+                 (sentences (v/sentexes-matching f2 '(dog ?x) 'CxOverlay))))
+          (v/close! f2)))
+      (testing "a fork that minted nothing remounts over a grown base"
+        (let [dir2 (tmpdir)]
+          (try
+            (v/close! (v/fork base {:backend :disk-log :dir dir2}))
+            (let [f3 (v/fork grown {:backend :disk-log :dir dir2})]
+              (is (contains? (sentences (v/sentexes-matching f3 '(dog ?x) 'CxOverlay)) '(dog Flo)))
+              (v/close! f3))
+            (finally (disk/close-dir! dir2) (rm-rf! dir2)))))
+      (finally
+        (disk/close-dir! dir)
+        (rm-rf! dir)
+        (v/clear! grown)
+        (v/clear! base)))))
+
+(deftest a-fork-with-no-recorded-watermark-is-checked-by-content
+  ;; A fork mounted before the watermark was recorded has no range to probe, so its own
+  ;; records at base handles are compared with the base's: an override is a copy of the
+  ;; base record and passes, a record of its own at a handle the base now holds does not.
+  (let [n     (gensym)
+        base  (doto (mem/memory-record-store {:space [::legacy-base n]}) p/clear-records!)
+        own   (doto (mem/memory-record-store {:space [::legacy-fork n]}) p/clear-records!)
+        meta  #(doto (mem/memory-kv-backend {:space [::legacy-meta n %]}) p/kv-clear!)
+        h     (p/put-sentex base {:sentence '(dog Muffet) :context 'CxOverlay})]
+    (testing "an override that differs only in strength mounts"
+      (p/put-sentex own {:id h :sentence '(dog Muffet) :context 'CxOverlay :strength :monotonic})
+      (is (some? (ostore/overlay-record-store own base (meta 1)))))
+    (testing "a different record at a base handle is refused"
+      (p/put-sentex own {:id h :sentence '(dog Rex) :context 'CxOverlay})
+      (let [e (try (ostore/overlay-record-store own base (meta 2)) nil
+                   (catch clojure.lang.ExceptionInfo e e))]
+        (is (= :fork-base-overlap (:type (ex-data e))))
+        (is (= [h] (:handles (ex-data e))))))))
+
 (deftest close-releases-a-durable-forks-own-directory-and-never-the-bases
   ;; `v/close!` on the fork, not `disk/close-dir!` on the path — the fork's writable half
   ;; takes the same exclusive lock and holds the same handles as any durable KB, so
@@ -999,6 +1065,8 @@
     (next-id [_] (p/next-id inner))
     (put-sentex [_ sx] (p/put-sentex inner sx))
     (get-sentex [_ id] (p/get-sentex inner id))
+    (sentex-ids [_] (p/sentex-ids inner))
+    (justification-ids [_] (p/justification-ids inner))
     (delete-sentex! [_ id] (p/delete-sentex! inner id) (deliver parked true) @release nil)
     (get-provenance [_ id] (p/get-provenance inner id))
     (delete-provenance! [_ id] (p/delete-provenance! inner id))

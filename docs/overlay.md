@@ -171,6 +171,16 @@ deliberately, because that is what the caller asked for.
   the overlay's copy wins every read. That is how a base record is edited without editing
   the base: `mark-premise` materializes an override before it writes, since the assumption
   strength lives on the record.
+- **A base that grew between mounts.** The boundary holds over the base the handles were
+  minted against. Each mount records the base's `next-id` in the bookkeeping, and the
+  next mount probes the handles between that watermark and the fork's own counter: a
+  base that now holds one of them has grown into the fork's range, and the mount is
+  refused (`:type :fork-base-overlap`, `:handles` naming the shared ones) rather than
+  serving the fork's records there as overrides of base records it never saw. A base
+  that did not grow probes nothing. A fork whose bookkeeping holds no watermark, mounted
+  before it was recorded, is checked once by content instead: each of its own records at
+  a handle the base holds must match the base's record except in its strength, as an
+  override does.
 - **Tombstones.** Deleting an inherited record cannot touch the base, so it is recorded
   and the read path filters it. They are sticky: an inherited record cannot come back
   through fall-through, only by being written into the overlay again (a revival, at the
