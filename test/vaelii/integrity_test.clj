@@ -3,7 +3,7 @@
 (ns vaelii.integrity-test
   "The bounded public KB-integrity sweep: declared specified-population obligations and
   query-only definition clashes over a caller-owned finite ground term set."
-  (:require [clojure.test :refer [is use-fixtures]]
+  (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.predall :as predall]
             [vaelii.impl.resolution :as res]
@@ -456,3 +456,97 @@
               :pred likes :position 2}
              (get (:all-specified-violations report)
                   ['predAllSpecified likes person]))))))
+
+;; ---- genl-arg-widening ----------------------------------------------------
+
+(defn- declare-binary! [kb pred t1 t2]
+  (v/assert kb (list 'binary_predicate pred) 'CxUniverse)
+  (v/assert kb (list 'arg pred 1 t1) 'CxUniverse)
+  (v/assert kb (list 'arg pred 2 t2) 'CxUniverse))
+
+(tu/deftest-kb a-genl-edge-that-widens-an-argument-type-is-reported
+  ;; The shape Pace asked the sweep to find: every animal parentage would be an
+  ;; originatorOf tuple, and originatorOf admits only persons.
+  (tu/with-terms [animal person parentOf originatorOf Fido Rex]
+    (v/assert kb (list 'genl person animal) 'CxUniverse)
+    (declare-binary! kb parentOf animal animal)
+    (declare-binary! kb originatorOf person person)
+    (v/assert kb (list 'genl parentOf originatorOf) 'CxUniverse)
+    (let [before (state-snapshot kb)
+          report (v/kb-integrity kb #{Fido Rex} 'CxUniverse)]
+      (is (= :gap (:status report)))
+      (is (= [{:spec parentOf :genl originatorOf :arg 1 :spec-type animal :genl-type person}
+              {:spec parentOf :genl originatorOf :arg 2 :spec-type animal :genl-type person}]
+             (:genl-arg-widening report)))
+      (is (= before (state-snapshot kb)) "the audit stores, believes and files nothing"))))
+
+(tu/deftest-kb a-genl-edge-that-narrows-or-keeps-an-argument-type-is-not-reported
+  (tu/with-terms [animal person fatherOf parentOf siblingOf relatedTo]
+    (v/assert kb (list 'genl person animal) 'CxUniverse)
+    (declare-binary! kb fatherOf person person)
+    (declare-binary! kb parentOf animal animal)
+    (declare-binary! kb siblingOf animal animal)
+    (declare-binary! kb relatedTo animal animal)
+    (v/assert kb (list 'genl fatherOf parentOf) 'CxUniverse)   ; narrower ⊆ wider
+    (v/assert kb (list 'genl siblingOf relatedTo) 'CxUniverse) ; the same type
+    (is (= {:status :audited :candidate-count 0}
+           (v/kb-integrity kb #{} 'CxUniverse)))))
+
+(tu/deftest-kb a-spec-that-declares-nothing-at-a-position-widens-nothing-there
+  ;; With no declaration of its own, the spec's position is typed by the genl's
+  ;; constraint alone, so there is no declared domain for the edge to widen.
+  (tu/with-terms [animal person parentOf originatorOf]
+    (v/assert kb (list 'binary_predicate parentOf) 'CxUniverse)
+    (v/assert kb (list 'arg parentOf 1 animal) 'CxUniverse)
+    (declare-binary! kb originatorOf animal person)
+    (v/assert kb (list 'genl parentOf originatorOf) 'CxUniverse)
+    (is (= :audited (:status (v/kb-integrity kb #{} 'CxUniverse))))))
+
+(tu/deftest-kb a-type-demanded-above-the-direct-genl-names-where-it-is-declared
+  (tu/with-terms [animal person parentOf ancestorOf originatorOf]
+    (declare-binary! kb parentOf animal animal)
+    (v/assert kb (list 'binary_predicate ancestorOf) 'CxUniverse)
+    (declare-binary! kb originatorOf person 'thing)
+    (v/assert kb (list 'genl animal 'thing) 'CxUniverse)
+    (v/assert kb (list 'genl person animal) 'CxUniverse)
+    (v/assert kb (list 'genl parentOf ancestorOf) 'CxUniverse)
+    (v/assert kb (list 'genl ancestorOf originatorOf) 'CxUniverse)
+    (is (= [{:spec parentOf :genl ancestorOf :arg 1 :spec-type animal :genl-type person
+             :genl-type-declared-on originatorOf}]
+           (:genl-arg-widening (v/kb-integrity kb #{} 'CxUniverse))))))
+
+(tu/deftest-kb widening-findings-respect-context-visibility
+  (tu/with-terms [animal person parentOf originatorOf CxHidden]
+    (v/assert kb (list 'genl person animal) 'CxUniverse)
+    (declare-binary! kb parentOf animal animal)
+    (declare-binary! kb originatorOf person person)
+    (v/assert kb (list 'genlCx CxHidden 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genl parentOf originatorOf) CxHidden)
+    (is (= :audited (:status (v/kb-integrity kb #{} 'CxUniverse)))
+        "an edge asserted below the audit context is not seen from it")
+    (is (= 2 (count (:genl-arg-widening (v/kb-integrity kb #{} CxHidden)))))))
+
+(tu/deftest-kb widening-findings-truncate-under-every-bound
+  (tu/with-terms [animal person parentOf originatorOf]
+    (v/assert kb (list 'genl person animal) 'CxUniverse)
+    (declare-binary! kb parentOf animal animal)
+    (declare-binary! kb originatorOf person person)
+    (v/assert kb (list 'genl parentOf originatorOf) 'CxUniverse)
+    (testing "a result cap below the finding count keeps the completed prefix"
+      (let [report (v/kb-integrity kb #{} 'CxUniverse {:max-results 1})]
+        (is (= :truncated (:status report)))
+        (is (= :max-results (:reason report)))
+        (is (= [{:spec parentOf :genl originatorOf :arg 1 :spec-type animal
+                 :genl-type person}]
+               (:genl-arg-widening report)))))
+    (testing "an exact result cap is complete"
+      (is (= :gap (:status (v/kb-integrity kb #{} 'CxUniverse {:max-results 2})))))
+    (testing "work exhaustion inside the pass is truncated, never audited, and keeps the
+              findings completed before it"
+      (let [run    #(v/kb-integrity kb #{} 'CxUniverse {:max-work %})
+            needed (first (filter #(= :gap (:status (run %))) (range 0 1000)))]
+        (is (some? needed) "some finite work budget completes the sweep")
+        (let [partials (map run (range 0 needed))]
+          (is (every? #(and (= :truncated (:status %)) (= :max-work (:reason %))) partials))
+          (is (some #(= 1 (count (:genl-arg-widening %))) partials)
+              "a budget exhausted between the two positions keeps the first finding"))))))

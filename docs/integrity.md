@@ -1,13 +1,15 @@
 # Bounded KB integrity
 
 - **Covers:** `kb-integrity` — one read-only checkpoint report for the complete visible
-  `predAllSpecified` / `predSpecifiedAll` population and query-only definition clashes
-  over a caller-owned finite set of ground candidate terms.
+  `predAllSpecified` / `predSpecifiedAll` population, query-only definition clashes
+  over a caller-owned finite set of ground candidate terms, and the predicate `genl`
+  edges that widen a declared argument type.
 - **Not here:** repairing findings, enumerating a domain, vocabulary completeness,
   generic constraint auditing, or the represented settled dilemmas returned by
   `contradictions`; how definitions infer membership → [defns.md](defns.md); what a
-  specified declaration requires → [predall.md](predall.md); general knowledge-quality
-  census readings → [quality.md](quality.md).
+  specified declaration requires → [predall.md](predall.md); how an `arg` declaration
+  descends a predicate `genl` edge → [argtypes.md](argtypes.md); general
+  knowledge-quality census readings → [quality.md](quality.md).
 - **Assumes:** sentex, context, ground term, `genl` → [glossary.md](glossary.md).
 
 ## The call
@@ -49,8 +51,9 @@ The definition pass performs one unavoidable open census of visible `defnSuffici
 declarations because callers intentionally supply terms, not collection names. It then
 validates one collection and one ground candidate at a time. The specified pass likewise
 uses small declaration censuses only to identify its finite worklist, then audits each
-declared predicate independently. These focused units are where cooperative checkpoints
-and partial-result preservation sit.
+declared predicate independently. The widening pass does the same: one census of visible
+`arg` declarations, then one direct `genl` edge at a time. These focused units are where
+cooperative checkpoints and partial-result preservation sit.
 
 An explicit `nil` options value means the same thing as omitting the options arity,
 in-process and through the generated daemon clients. The daemon still supplies its own
@@ -73,7 +76,7 @@ A finding changes the top-level status and adds only the populated categories:
   {:status :audited :violations #{Bob}}}}
 ```
 
-`:status :audited` means both passes ran and neither found a gap. `:status :gap` cannot
+`:status :audited` means all three passes ran and none found a gap. `:status :gap` cannot
 be confused with that clean shape even when only one sparse category is present. The
 specified category is exactly `all-specified-violations`, including its typed declaration
 gaps; it is composed, not reimplemented.
@@ -97,3 +100,57 @@ The sweep stores and files nothing. Aggregate diagnostics raised only because a
 definition condition was evaluated are redirected to an audit-local sink, preserving
 the condition's truth without changing the live violations ledger or logs. It identifies
 gaps; remediation remains a separate, explicit write.
+
+## What a widening finding means
+
+`(genl P Q)` between predicates says every `P` tuple is a `Q` tuple, so `Q`'s `arg`
+declarations constrain `P`'s tuples too ([argtypes.md](argtypes.md)). When `P` declares
+its own type at a position and `Q` demands one that type is not subsumed by, the edge
+does not say what its author meant: `(arg parentOf 1 animal)` under
+`(genl parentOf originatorOf)` with `(arg originatorOf 1 person)` makes every animal
+parentage an `originatorOf` tuple, which only persons may fill.
+
+Nothing on the write path reports this as a defect of the edge. Depending on the
+contexts the declarations sit in and on arrival order, `(parentOf Fido Rex)` over two
+dogs is refused `:arg-type`, or is admitted with `(person Fido)` minted onto it. Neither
+outcome files a violation or a contradiction naming the edge. So the sweep reads the
+declarations instead of any fact:
+
+```clojure
+{:status :gap
+ :candidate-count 0
+ :genl-arg-widening
+ [{:spec parentOf :genl originatorOf :arg 1 :spec-type animal :genl-type person}
+  {:spec parentOf :genl originatorOf :arg 2 :spec-type animal :genl-type person}]}
+```
+
+One finding is reported for each spec type at each position that no demanded type
+subsumes. Subsumption is the reflexive `genl` closure read from the audit context. A
+spec type that *is* subsumed (`fatherOf` declares `person` under `parentOf`'s `animal`)
+is compatible, and so is an identical type. A spec position that holds several declared
+types is their intersection, so it is compatible as soon as one of them is subsumed.
+`:genl-type-declared-on` is present when the demanded type is declared above `Q`, on a
+super-predicate the constraint inherits through `res/constraining-predicates`, the same
+closure `assert`'s argument check reads.
+
+The scope is deliberate:
+
+- **Declaration census, not candidate terms.** A widening is a fact about two
+  predicates' declarations, not about any individual, so the caller's candidate set does
+  not bound it. The pass reads every visible `arg` declaration once to find the
+  predicates that declare their own types (a few hundred on the shipped load), then each
+  such predicate's direct visible `genl` edges. Edges out of a predicate that declares
+  nothing of its own are skipped, because such a predicate has no declared domain for an
+  edge to widen. A multi-step chain is still covered: the demanded types come from the
+  whole closure above the direct genl.
+- **`arg` only.** `genlArg` bounds a position one level up (a subtype, not a member),
+  `quotedArg` types a mention, and `interArg` and the covering forms (`args`,
+  `argAndRest`, …) relate positions rather than typing one. Comparing any of them
+  against an `arg` type would compare different levels, so none is read here.
+- **`genl` only.** `genlInverse` and other relation-to-relation forms are not read.
+- **Visible from the audit context.** An edge or declaration asserted in a context the
+  audit context cannot see contributes nothing, as for every other read.
+
+Each declaration row, edge and position comparison spends one work unit, and
+`:max-results` counts these findings after the definition and specified categories, in
+that order.

@@ -84,3 +84,7 @@
 (defn record-specified! [declaration result]
   (when *progress* (swap! *progress* assoc-in [:specified declaration] result))
   [declaration result])
+
+(defn record-widening! [finding]
+  (when *progress* (swap! *progress* update :widenings conj finding))
+  finding)
