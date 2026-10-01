@@ -166,7 +166,7 @@
 (asymmetric preysOn)
 
 (comment siblingOf
-         "(siblingOf ?animal1 ?animal2) means that ?animal1 and ?animal2 share at least one parent. Declared symmetric, so one assertion answers both orders and the two spellings store as one sentex. Half-siblings count — nothing here asks that both parents match.")
+         "(siblingOf ?animal1 ?animal2) means that ?animal1 and ?animal2 share at least one biological parent, and chosen or elective kinship is not this predicate. Declared symmetric, so one assertion answers both orders and the two spellings store as one sentex. Half-siblings count — nothing here asks that both parents match.")
 (binary_predicate siblingOf)
 (instance_relation_predicate siblingOf)
 (arg siblingOf 1 animal)
