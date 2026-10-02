@@ -15,17 +15,19 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Refusals
 
-- **A durable fork remounted over a base that has grown into its handles is refused
+- **A durable fork remounted over a base that has grown since is refused
   `:fork-base-overlap`.** A fork keys its records and its excepts' targets by handle, and
   mints them above the base's handles at the time. Remounted over a base that has since
   grown (a newer starter, more files loaded at startup), the fork's record at each handle
   the base now also held won every read: the base's sentence there answered `unknown`
   through the fork, `argue` returned the fork's justification for it, and an except naming
-  a handle the fork had retracted hid the base sentence that took that handle (#99). Each
-  mount now records the base's watermark in the fork's bookkeeping, and the next mount
-  refuses when the base holds a handle the fork minted since; a fork mounted before this
-  release is checked on its first mount by comparing its own records with the base's at
-  the handles both hold. The refusal names the shared `:handles` and leaves the fork's
+  a handle the fork had retracted hid the base sentence that took that handle (#99). A
+  fork that had only retracted inherited premises hid the grown base's sentences too,
+  under any key it had emptied. Each mount now records the base's watermark in the fork's
+  bookkeeping, and the next mount refuses when the base holds a record at or above it and
+  the fork has written anything; a fork mounted before this release is checked on its
+  first mount by comparing its own records with the base's at the handles both hold. The
+  refusal names the fork's own `:handles` the base now holds and leaves the fork's
   directory unlocked. [overlay.md](docs/overlay.md#the-merge-model--record-half).
 
   *Class:* **Refusal** (a remount over a grown base answered base sentences with the

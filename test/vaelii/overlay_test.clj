@@ -566,6 +566,35 @@
         (v/clear! grown)
         (v/clear! base)))))
 
+(deftest a-fork-that-only-removed-is-refused-over-a-grown-base
+  ;; A fork that retracts an inherited premise mints no handle, so nothing it holds can
+  ;; share one with the base.  But retracting the only `ownerOf` empties that key, and the
+  ;; deletion is sticky: over a base that has since added `(ownerOf Bob Fido)`, the fork
+  ;; would not match it.  So any growth refuses a fork that has written anything.
+  (let [n     (gensym)
+        base  (fresh-base n)
+        grown (populate! (doto (v/open-kb {:backend :memory :space [::grown n] :recover? false})
+                           (v/clear!)))
+        dir   (tmpdir)]
+    (try
+      (let [f (v/fork base {:backend :disk-log :dir dir})]
+        (v/retract! f (v/handle-of f '(ownerOf Ann Muffet) 'CxOverlay))
+        (v/close! f))
+      (v/assert grown '(ownerOf Bob Fido) 'CxOverlay {:strength :monotonic})
+      (let [e (try (v/fork grown {:backend :disk-log :dir dir}) nil
+                   (catch clojure.lang.ExceptionInfo e e))]
+        (is (= :fork-base-overlap (:type (ex-data e))))
+        (is (= [] (:handles (ex-data e))) "no handle is shared; the base grew under a removal"))
+      (testing "over the base it was taken against, the removal stands"
+        (let [f2 (v/fork base {:backend :disk-log :dir dir})]
+          (is (empty? (v/sentexes-matching f2 '(ownerOf ?x ?y) 'CxOverlay)))
+          (v/close! f2)))
+      (finally
+        (disk/close-dir! dir)
+        (rm-rf! dir)
+        (v/clear! grown)
+        (v/clear! base)))))
+
 (deftest a-fork-with-no-recorded-watermark-is-checked-by-content
   ;; A fork mounted before the watermark was recorded has no range to probe, so its own
   ;; records at base handles are compared with the base's: an override is a copy of the

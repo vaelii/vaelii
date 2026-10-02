@@ -14,7 +14,7 @@
     record is edited without editing the base: `mark-premise` materializes an override
     before it writes, since the assumption strength lives on the record.  The boundary
     holds over the base the handles were minted against, so a mount records the base's
-    watermark and refuses a base that has since grown into the fork's handles
+    watermark and refuses a base that has grown since the fork wrote against it
     (`check-base-overlap!`).
   * **Tombstones.**  Deleting a base handle cannot touch the base, so it is recorded and
     the read path filters it.  They are sticky: a base record cannot come back through
@@ -330,18 +330,37 @@
       (p/prefetch-justifications! base ids))
     nil))
 
-(defn- minted-shared
-  "The handles this fork minted that the base now holds.
+(defn- base-holds? [base h]
+  (some? (or (p/get-sentex base h) (p/get-justification base h))))
 
-  `watermark` is the base's `next-id` at the previous mount, so every handle the fork has
-  minted lies above it, and the base held none of them when it was minted.  Only the
-  handles in `(watermark, min(base-next, own-next))` can be shared, so the probe is bounded
-  by how far the base grew and by how far the fork reached, and a base that did not grow
-  probes nothing.  The range covers a handle the fork minted and then deleted too, which an
-  except can still name."
+(defn- first-grown
+  "The lowest handle the base holds at or above `watermark`, or nil when it holds none.
+
+  `watermark` is the base's `next-id` at the previous mount: a handle allocated and never
+  stored, so a base that holds it, or anything above it, has grown since.  The walk stops
+  at the first hit, and over a base that did not grow it probes only the handles other
+  mounts allocated in between."
+  [base watermark base-next]
+  (first (filter #(base-holds? base %) (range (long watermark) (long base-next)))))
+
+(defn- minted-shared
+  "The handles this fork minted that the base now holds.  Every handle the fork minted lies
+  above `watermark`, so only `(watermark, min(base-next, own-next))` can be shared.  The
+  range covers a handle the fork minted and then deleted too, which an except can still
+  name."
   [base watermark base-next own-next]
-  (filterv #(or (p/get-sentex base %) (p/get-justification base %))
+  (filterv #(base-holds? base %)
            (range (inc (long watermark)) (min (long base-next) (long own-next)))))
+
+(defn- holds-state?
+  "Has this fork written anything — a record of its own, a tombstone or a released mark?
+  Each of these, and the index entries written beside them, was computed against the
+  base the fork was mounted over then."
+  [overlay meta-kv]
+  (boolean (or (cap/some-sentex-id overlay)
+               (cap/some-justification-id overlay)
+               (some #(seq (p/kv-members meta-kv %))
+                     [sx-tombstone-key jd-tombstone-key pv-tombstone-key released-key]))))
 
 (defn- overridden-unlike
   "The handles at which this fork holds a record that the base also holds with different
@@ -361,28 +380,38 @@
   "How many shared handles a `:fork-base-overlap` refusal names."
   20)
 
+(defn- refuse-overlap! [shared grown watermark]
+  (throw (ex-info (str "this fork's base has changed since the fork was last mounted over it"
+                       (when grown
+                         (str ": it now holds handle " grown ", and held none at or above "
+                              watermark " then"))
+                       (when (seq shared)
+                         (str (if grown ", including " ": it now holds ") (count shared)
+                              " of the handles the fork's own records use ("
+                              (str/join ", " (take overlap-shown shared))
+                              (when (> (count shared) overlap-shown) ", …") ")"))
+                       ".  A fork's records, removals and index counts are written against"
+                       " the base it was mounted over, so over this one it would hide base"
+                       " sentences.  Mount the fork over the base it was taken against, and"
+                       " re-assert its premises by content in a fresh fork over this one")
+                  {:type      :fork-base-overlap
+                   :handles   (into [] (take overlap-shown) shared)
+                   :watermark watermark})))
+
 (defn- check-base-overlap!
-  "Refuse a mount over a base that has grown into this fork's handles since the fork was
-  last mounted — a newer starter, or more files loaded at startup.  The fork keys its
-  records and its excepts' targets by handle, so its record at a shared handle would be
-  read as an override of a base record it never saw, and the base's sentence there would
-  answer `unknown` through the fork."
-  [overlay base watermark base-next own-next]
-  (let [shared (if watermark
-                 (minted-shared base watermark base-next own-next)
-                 (overridden-unlike overlay base))]
-    (when (seq shared)
-      (throw (ex-info (str "this fork's base has changed since the fork was taken over it, and"
-                           " now holds " (count shared) " of the handles the fork's own records"
-                           " use (" (str/join ", " (take overlap-shown shared))
-                           (when (> (count shared) overlap-shown) ", …") ")."
-                           "  A fork keys its records by handle, so over this base they would"
-                           " hide the base's sentences there.  Mount the fork over the base it"
-                           " was taken against, and re-assert its premises by content in a fresh"
-                           " fork over this one")
-                      {:type      :fork-base-overlap
-                       :handles   (into [] (take overlap-shown) shared)
-                       :watermark watermark})))))
+  "Refuse a mount over a base that has changed since this fork was last mounted — a newer
+  starter, or more files loaded at startup — once the fork has written anything.  A record
+  at a handle the base now also holds would be read as an override of a base record the
+  fork never saw, and a key the fork emptied stays deleted, hiding what the base has since
+  added under it; either way a base sentence answers `unknown` through the fork.  A fork
+  that has written nothing is a fresh fork, and mounts."
+  [overlay base meta-kv watermark base-next own-next]
+  (if watermark
+    (when-let [grown (first-grown base watermark base-next)]
+      (when (holds-state? overlay meta-kv)
+        (refuse-overlap! (minted-shared base watermark base-next own-next) grown watermark)))
+    (let [shared (overridden-unlike overlay base)]
+      (when (seq shared) (refuse-overlap! shared nil nil)))))
 
 (defn overlay-record-store
   "Compose a writable `overlay` `RecordStore` over a read-only `base` one, with `meta-kv`
@@ -392,8 +421,8 @@
   base serves the merged view it was left in — and seeds the handle counter above both
   stores' watermarks, which is what keeps a minted handle out of the base's range even
   after a restart.  It records the base's watermark in the bookkeeping, and refuses
-  (`:fork-base-overlap`) a remount over a base that has since grown into the fork's
-  handles (`check-base-overlap!`)."
+  (`:fork-base-overlap`) a remount over a base that has grown since, once the fork has
+  written anything (`check-base-overlap!`)."
   [overlay base meta-kv]
   (let [base-next (long (p/next-id base))          ; allocation, not mutation (see `frozen`)
         own-next  (long (p/next-id overlay))
@@ -401,7 +430,7 @@
         watermark (p/kv-get meta-kv watermark-key)]
     ;; a cleared fork reads nothing of its base, so no base handle can be shadowed
     (when-not hidden?
-      (check-base-overlap! overlay base watermark base-next own-next))
+      (check-base-overlap! overlay base meta-kv watermark base-next own-next))
     (p/kv-put meta-kv watermark-key base-next)
     (map->OverlayRecordStore
      {:overlay        overlay
