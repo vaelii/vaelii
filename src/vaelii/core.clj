@@ -41,6 +41,7 @@
             [vaelii.impl.foreign :as foreign]
             [vaelii.impl.inference :as inference]
             [vaelii.impl.integrate :as integrate]
+            [vaelii.impl.integrity :as integrity]
             [vaelii.impl.io.export :as export]
             [vaelii.impl.io.import :as io-import]
             [vaelii.impl.io.text :as text]
@@ -5263,8 +5264,8 @@
   that hold are omitted and gaps never are, so an empty map is a clean sweep a gap
   cannot fake.
 
-  The one call an integrity sweep makes; `specified-violations` is the per-declaration
-  reader behind it, and carries what determinacy means."
+  This public aggregate and `kb-integrity` both consume the same focused
+  per-declaration audit stream; only this wrapper returns its complete aggregate map."
   [kb context]
   (predall/all-specified-violations kb context))
 
@@ -5298,6 +5299,33 @@
   is the per-declaration reader behind it."
   [kb context]
   (fluent/all-functional-at-instant-violations kb context))
+
+(defn kb-integrity
+  "Run the bounded, read-only integrity sweep in `context`.
+
+  `candidate-terms` is a finite set of ground terms.  For those terms the sweep reports
+  query-time definitional inconsistencies: a collection whose sufficient definition
+  passes while its necessary definition fails, so both `(Coll term)` and
+  `(not (Coll term))` are definition-provable.  It also composes the complete visible
+  `predAllSpecified` / `predSpecifiedAll` audit.  It does not enumerate the domain,
+  broaden `contradictions`, or repair/file anything.
+
+  A clean result is `{:status :audited :candidate-count n}`.  Findings change `:status`
+  to `:gap` and add either or both sparse keys `:all-specified-violations` and
+  `:definition-inconsistencies`.  Inspect `:status`; it makes a successful audit and a
+  report with gaps different shapes by construction.
+
+  Optional `options` bounds cooperative query work, elapsed time and returned findings:
+  `{:max-work n :max-ms n :max-results n}`. Exhaustion returns `:status :truncated`
+  with its `:reason`, never an `:audited` prefix. The daemon supplies and clamps all
+  three bounds even when a remote caller omits the map. Work and time are cooperative:
+  they are checked between prover callbacks and result pulls; one opaque callback or a
+  chunk realized by one pull may overrun before control returns. `:max-results` is an
+  absolute cap on the findings carried by every complete or truncated report."
+  ([kb candidate-terms context]
+   (integrity/kb-integrity kb candidate-terms context nil))
+  ([kb candidate-terms context options]
+   (integrity/kb-integrity kb candidate-terms context options)))
 
 (defn chain-stats
   "Chaining-run instrumentation: `{:runs n :last {:derived n :truncated? bool}}`.
@@ -8170,7 +8198,8 @@
     :explain-levels :export! :export-text! :exposed-clashes :find-sentexes
     :find-sentexes-all :find-terms :functional-at-instant-violations :genl? :genls
     :handle-of :handles :has-prop? :in? :inverse-of :isa? :ist :justification
-    :kb-quality :last-program :lookup :metatype-members :possible-relations
+    :kb-integrity :kb-quality :last-program :lookup :metatype-members
+    :possible-relations
     :premise? :props :provable? :prove :prove-within :provenance
     :qualitative-network :qualitative-scenario :qualitative-scenarios :query
     :query-plan :query-status :query? :representative :same-class? :search-tree

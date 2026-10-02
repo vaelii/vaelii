@@ -154,7 +154,16 @@
    :prove              #{:max-depth :max-ms}
    :provable?          #{:max-depth :max-ms}
    :ask-within         #{:max-ms}
-   :prove-within       #{:max-depth :max-ms}})
+   :prove-within       #{:max-depth :max-ms}
+   :kb-integrity       #{:max-ms :max-work :max-results}})
+
+(def integrity-max-work
+  "The most cooperative query units one daemon integrity request may spend."
+  10000)
+
+(def integrity-max-results
+  "The most findings one daemon integrity response may carry."
+  1000)
 
 (def ^:private clock-fill
   "The ops whose ceiling has to reach a caller who sent **no option map at all**, and the
@@ -168,22 +177,28 @@
   the arity that has a map, with `vaelii.core`'s own default for each argument in
   between, and `under-ceiling` then fills the clock in.
 
-  Only the four search entry points, and only their one intervening argument — the context,
-  whose default is `?ctx` at each of them. An entry point added here owes the same reading of its
-  own arglists."
-  {:ask       ['?ctx]
-   :ask?      ['?ctx]
-   :prove     ['?ctx]
-   :provable? ['?ctx]})
+  The four search entry points fill their one intervening context argument with `?ctx`;
+  `kb-integrity` has no intervening default. `:option-arity` distinguishes an omitted
+  options map from an explicit nil already occupying that arity, which is normalized to
+  the same empty map. An entry point added here owes the same reading of its own arglists."
+  {:ask         {:fill ['?ctx] :option-arity 3}
+   :ask?        {:fill ['?ctx] :option-arity 3}
+   :prove       {:fill ['?ctx] :option-arity 3}
+   :provable?   {:fill ['?ctx] :option-arity 3}
+   :kb-integrity {:fill [] :option-arity 3}})
 
 (defn- with-opts-map
   "`args` padded out to the arity whose last argument is the option map: nothing to do
   when the caller already sent one (or sent nothing at all, which is an arity refusal the
   op itself owes), else the tail of `fill` the call is short by, and then an empty map for
   `under-ceiling` to write the clock into."
-  [args fill]
-  (if (or (empty? args) (map? (peek args)))
-    args
+  [args {:keys [fill option-arity]}]
+  (cond
+    (empty? args) args
+    (map? (peek args)) args
+    (and (= option-arity (count args)) (nil? (peek args)))
+    (assoc args (dec option-arity) {})
+    :else
     (conj (into args (subvec fill (min (count fill) (dec (count args))))) {})))
 
 (defn- ceiling-for
@@ -191,7 +206,9 @@
   [k]
   (let [n (case k
             :max-ms    (config/max-query-ms)
-            :max-depth (config/max-query-depth))]
+            :max-depth (config/max-query-depth)
+            :max-work integrity-max-work
+            :max-results integrity-max-results)]
     (when (pos? n) n)))
 
 (defn- under-ceiling
@@ -223,7 +240,8 @@
                               " holds every other caller behind it")
                          {:type :over-ceiling :op op :option k :requested v
                           :ceiling ceiling}))
-         (and (= :max-ms k) (nil? v))       (assoc m k ceiling)
+         (and (#{:max-ms :max-work :max-results} k) (nil? v))
+         (assoc m k ceiling)
          :else                              m)))
    opts
    ks))
@@ -353,6 +371,7 @@
     ;; over every believed `time_point`, like the pair above (docs/time.md)
     :functional-at-instant-violations     (op v/functional-at-instant-violations)
     :all-functional-at-instant-violations (op v/all-functional-at-instant-violations)
+    :kb-integrity             (op v/kb-integrity)
     ;; how a goal would be answered: the provers bearing on it with their estimates, or
     ;; for a conjunction the join order and the counts behind it
     :query-plan   (op v/query-plan)

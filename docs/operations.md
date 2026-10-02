@@ -285,9 +285,12 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   — and for the four backward-search entry points that holds even when the request sent no
   option map, since the alternative is an unbounded search on the write monitor. `0` on
   either variable lifts that ceiling. The ceilings hold the search bounds of reads, and
-  apply to fourteen ops — `:query`, `:query?`, `:query-status`, `:argue`, `:why`, `:why-not`,
+  apply to fifteen ops — `:query`, `:query?`, `:query-status`, `:argue`, `:why`, `:why-not`,
   `:search-tree`, `:compare-tacticians`, `:ask`, `:ask?`, `:prove`, `:provable?`,
-  `:ask-within`, `:prove-within`. **No write's bound is held to a ceiling.** Seven
+  `:ask-within`, `:prove-within`, `:kb-integrity`. `:kb-integrity` has two more dials,
+  `:max-work` (**10000**) and `:max-results` (**1000**), held the same way and filled with
+  the ceiling when a request omits them or sends no option map, so a served sweep always
+  runs under all three ([integrity.md](integrity.md)). **No write's bound is held to a ceiling.** Seven
   writes name one: `:assert`, `:assert-many`, `:assert-rule` and `:forward-chain` read
   `:max-depth` and `:max-derivations`, and `:edit`, `:edit-with-consequences` and
   `:preview` read the same two keys off each batch entry's opts. Both keys bound the
@@ -416,8 +419,10 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   second answer ([anytime.md](anytime.md)). The boolean is there rather than the key
   simply omitted, because the documented `(when (:resume r) …)` loop would otherwise read
   every partial as complete and stop one step in.
-- **The knowledge readings are served** (`:kb-quality`, `:quality-report`, `:argue`,
-  `:vocabulary-audit`, `:settle-stats`, `:provenance`, `:add-provenance`).
+- **The knowledge readings are served** (`:kb-quality`, `:kb-integrity`,
+  `:quality-report`, `:argue`, `:vocabulary-audit`, `:settle-stats`, `:provenance`,
+  `:add-provenance`). `:kb-integrity` takes its finite candidate set over the wire as an
+  EDN set ([integrity.md](integrity.md)).
   `:quality-report` takes the **map**, not the KB, so a client renders a reading it
   already holds; `:kb-quality`'s `:on-progress` is a function and does not cross, so a
   census over a large KB reports nothing until it answers ([quality.md](quality.md)).

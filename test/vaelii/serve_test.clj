@@ -772,6 +772,49 @@
           (is (false? (:ok r)) (str op))
           (is (= :unknown-option (:type r)) (str op " is a typed refusal, not a bare cast"))
           (is (= 400 (:status r)) (str op " is a client error, not a 500")))))))
+(tu/deftest-kb integrity-requests-are-clamped-and-release-the-monitor-on-exhaustion
+  (tu/with-terms [widget slowEnough required wrote CxServe]
+    (let [entered (atom nil)]
+      (v/add-evaluatable kb slowEnough
+                         (fn [_]
+                           (when-let [signal @entered] (deliver signal true))
+                           (Thread/sleep 5)
+                           true))
+      (v/add-evaluatable kb required (constantly false))
+      (v/assert kb (list 'defnSufficient widget (list slowEnough '?x)) CxServe)
+      (v/assert kb (list 'defnNecessary widget (list required '?x)) CxServe)
+      (let [handler (open-app kb)]
+        (testing "explicit nil options are the same request at every local/daemon arity"
+          (let [local    (v/kb-integrity kb #{7} CxServe nil)
+                omitted (:result (post-op handler :kb-integrity [#{7} CxServe]))
+                explicit (:result (post-op handler :kb-integrity [#{7} CxServe nil]))]
+            (is (= local omitted explicit))))
+        (with-redefs [serve/integrity-max-work 1000
+                      serve/integrity-max-results 20]
+          (testing "a caller may lower but not raise either daemon-owned ceiling"
+            (doseq [[option value] [[:max-work 1001] [:max-results 21]]]
+              (let [r (post-op handler :kb-integrity
+                               [#{7} CxServe {option value :max-ms 1000}])]
+                (is (false? (:ok r)))
+                (is (= :over-ceiling (:type r)))
+                (is (re-find (re-pattern (name option)) (:error r))))))
+          (testing "an omitted options map receives all three ceilings, and a queued writer proceeds"
+            (let [signal (promise)
+                  _      (reset! entered signal)
+                  audit  (future (post-op handler :kb-integrity
+                                          [(set (range 100)) CxServe]))]
+              (is (= true (deref signal 2000 ::timeout))
+                  "the audit reached KB-owned condition work while holding the monitor")
+              (let [writer (future (post-op handler :assert [(list wrote 1) CxServe]))
+                    ar     (deref audit 3000 ::timeout)
+                    wr     (deref writer 3000 ::timeout)]
+                (is (not= ::timeout ar) "the work ceiling ends the oversized audit")
+                (is (= :truncated (get-in ar [:result :status])))
+                (is (= :max-work (get-in ar [:result :reason])))
+                (is (not= :audited (get-in ar [:result :status])))
+                (is (not= ::timeout wr) "the queued writer acquires the released monitor")
+                (is (:ok wr))
+                (is (v/ask? kb (list wrote 1) CxServe))))))))))
 
 ;; ---- the body ceiling ----------------------------------------------------
 ;;
@@ -843,6 +886,9 @@
             (is (nat-int? (client/assert conn (list bird Tweety) CxWire)))
             (let [rs (client/sentexes-matching conn (list bird '?x) CxWire)]
               (is (= (list bird Tweety) (:sentence (first rs))))))
+          (testing "explicit nil integrity options match local and daemon defaults"
+            (is (= (v/kb-integrity kb #{} CxWire nil)
+                   (client/kb-integrity conn #{} CxWire nil))))
           (testing "a forward rule fires server-side and the derived fact is asked back"
             (client/assert-rule conn [(list bird '?b)] (list flies '?b) CxWire {:direction :forward})
             (is (client/ask? conn (list flies Tweety) CxWire)))

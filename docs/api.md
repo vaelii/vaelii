@@ -151,6 +151,22 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; omitted and the gaps never, so an empty map is a clean
                                                 ; sweep. A legacy-ternary gap keys by its whole stale
                                                 ; tuple [functor pred a b], displacing nothing
+(kb-integrity kb candidate-terms ctx)
+(kb-integrity kb candidate-terms ctx opts)       ; the bounded checkpoint sweep: the complete specified
+                                                ; audit above, query-only definition clashes over an
+                                                ; explicit finite set of ground terms, and every visible
+                                                ; predicate genl edge whose spec declares an arg type its
+                                                ; genl's constraint does not subsume. Returns
+                                                ; {:status :audited :candidate-count n} when clean, or
+                                                ; :status :gap plus any of the sparse categories
+                                                ; :all-specified-violations, :definition-inconsistencies
+                                                ; and :genl-arg-widening. opts may bound :max-work,
+                                                ; :max-ms and :max-results; exhaustion is :truncated,
+                                                ; never :audited. Work/time check between opaque callbacks
+                                                ; and result pulls (one callback/chunk may overrun);
+                                                ; :max-results absolutely caps returned findings.
+                                                ; The opts map is optional. Reads only
+                                                ; (docs/integrity.md)
 (last-program kb)                              ; the last edge Program solved — the tie, before belief erased it
 (set-solver kb :asp)                           ; the real answer-set backend, by name (:stub is the default)
 (set-solver kb solver)                         ; or any vaelii.impl.types.solve/Solver value

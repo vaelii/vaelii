@@ -76,6 +76,7 @@
             [vaelii.impl.caches :as caches]
             [vaelii.impl.datetime :as datetime]
             [vaelii.impl.inherit :as inherit]
+            [vaelii.impl.integrity-budget :as integrity-budget]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.modal :as modal]
             [vaelii.impl.naming :as nm]
@@ -231,10 +232,14 @@
   stable and the estimate is a function of the goal and the KB, so a tie still breaks
   on registry order and not on when the comparison happened."
   [kb applicable goal context]
-  (when (empty? (shadowing-channels kb goal context))
+  (when (empty? (integrity-budget/checked-call
+                 (fn [] (shadowing-channels kb goal context))))
     (->> applicable
-         (filter #(>= (completeness % kb goal context) 100))
-         (map (juxt identity #(est-bindings % kb goal context)))
+         (filter #(>= (integrity-budget/checked-call
+                       (fn [] (completeness % kb goal context)))
+                      100))
+         (map (juxt identity #(integrity-budget/checked-call
+                               (fn [] (est-bindings % kb goal context)))))
          (sort-by second)
          ffirst)))
 
@@ -2158,6 +2163,112 @@
   (mapcat #(defn-conditions kb 'defnNecessary % context)
           (tax/genls (reasoning/taxonomy kb) coll context)))
 
+(defn- definition-entries
+  "The visible `(pred coll condition)` declarations as witness maps.  Keeping the
+  declaring collection beside the condition matters to an integrity report: a
+  sufficient inherited from a spec is evidence about a different declaration than
+  the queried collection's own necessary."
+  [kb pred coll context]
+  (for [declaring-coll coll
+        [_ bindings _] (res/matches-visible
+                        kb (list pred declaring-coll '?condition) context)]
+    (do
+      (integrity-budget/spend!)
+      {:defined-collection declaring-coll
+       :condition          (get bindings '?condition)})))
+
+(defn- definition-inconsistency
+  "The definitional clash witness for one ground `(coll member)`, or nil."
+  [kb coll member context]
+  (binding [*defn-stack* (conj *defn-stack* coll)]
+    (let [tx (reasoning/taxonomy kb)
+          strict-failing?
+          (some (fn [ancestor]
+                  (some #(not (condition-holds? kb (:condition %) member context))
+                        (definition-entries kb 'defnNecessary [ancestor] context)))
+                (most-general-first tx context
+                                    (disj (tax/genls tx coll context) coll)))]
+      ;; Match the positive prover's short-circuit: once a strict ancestor excludes the
+      ;; member, its sufficient conditions are not evaluated at all.
+      (when-not strict-failing?
+        (let [passing
+              (->> (definition-entries kb 'defnSufficient
+                     (tax/specs tx coll context) context)
+                   (filter #(condition-holds? kb (:condition %) member context))
+                   (sort-by (juxt (comp nm/print-key :defined-collection)
+                                  (comp nm/print-key :condition)))
+                   vec)
+              own-failing
+              (->> (definition-entries kb 'defnNecessary [coll] context)
+                   (remove #(condition-holds? kb (:condition %) member context))
+                   (sort-by (comp nm/print-key :condition))
+                   vec)]
+          (when (and (seq passing) (seq own-failing))
+            {:collection coll
+             :term member
+             :passing-sufficient passing
+             :failing-necessary own-failing}))))))
+
+(defn- sufficient-definition-collections
+  "The finite visible collection population the positive definition prover can reach.
+
+  This is the sweep's one unavoidable open definition census: callers bound ground
+  candidate terms but deliberately do not restate collection names. Every validation
+  after this census is focused on one collection and one ground candidate."
+  [kb context]
+  (let [tx (reasoning/taxonomy kb)
+        declared
+        (into #{}
+              (map (fn [match]
+                     (integrity-budget/spend!)
+                     (get (second match) '?collection)))
+              (res/matches-visible
+               kb '(defnSufficient ?collection ?condition) context))]
+    (into #{} (mapcat #(tax/genls tx % context)) declared)))
+
+(defn definition-inconsistencies
+  "Query-only definitional inconsistencies over the finite ground `candidate-terms`.
+
+  Returns one witness per `[collection term]` for which the definition provers can
+  answer both `(collection term)` and `(not (collection term))`: some own-or-spec
+  sufficient condition passes, the collection's own necessary condition fails, and
+  no strict-genl necessary fast-fails the positive query.  Each witness carries every
+  passing sufficient and failing necessary declaration involved.
+
+  Collections are not supplied or guessed.  They are the finite visible population
+  induced by `defnSufficient` declarations and their `genl` ancestors, exactly the
+  collections the positive prover can reach.  The caller supplies the term bound; it
+  must be a set, so an accidental lazy or unbounded enumerator is refused before any
+  query work begins.  Reads only; stores and belief are untouched."
+  [kb candidate-terms context max-results]
+  (when-not (set? candidate-terms)
+    (throw (ex-info "definition-inconsistencies candidate-terms must be a finite set"
+                    {:type :bad-args :op 'definition-inconsistencies
+                     :arg :candidate-terms})))
+  (when-let [term (first (remove (fn [term]
+                                   (integrity-budget/spend!)
+                                   (sx/ground-term? term))
+                                 candidate-terms))]
+    (throw (ex-info "definition-inconsistencies candidate-terms must all be ground"
+                    {:type :bad-args :op 'definition-inconsistencies
+                     :arg :candidate-terms :term term})))
+  (let [query-colls (sufficient-definition-collections kb context)]
+    (loop [pairs (seq (for [coll   (sort-by nm/print-key query-colls)
+                            member (sort-by nm/print-key candidate-terms)]
+                        [coll member]))
+           findings []]
+      (if-let [[coll member] (first pairs)]
+        (do
+          (integrity-budget/spend!)
+          (if-let [finding (definition-inconsistency kb coll member context)]
+            (if (and max-results (>= (count findings) max-results))
+              {:status :truncated :reason :max-results :findings findings}
+              (let [findings' (conj findings finding)]
+                (integrity-budget/record-definition! finding)
+                (recur (next pairs) findings')))
+            (recur (next pairs) findings)))
+        {:status :complete :findings findings}))))
+
 (defrecord DefnNecessaryNegationProver []
   Prover
   ;; A ground `(not (Coll x))` for a `Coll` whose reflexive genl ancestor set carries a visible
@@ -2722,7 +2833,9 @@
   reports both — so a sweep that drifted between them would make the diagnostic lie
   about the dispatch it is there to explain."
   [kb provers goal context]
-  (filterv #(applicable? % kb goal context) provers))
+  (filterv #(integrity-budget/checked-call
+             (fn [] (applicable? % kb goal context)))
+           provers))
 
 ;; Membership tests for the lookup-to-query stack (vaelii.impl.levels), which runs
 ;; the engine over a *subset* of the registry: level 5 with the transitive provers
@@ -2854,7 +2967,9 @@
                                also))]
         (tax/meet-closure (reasoning/taxonomy kb) held))))))
 
-(defn- goal-cost-rank [pr kb goal context] (cost-rank (cost pr kb goal context)))
+(defn- goal-cost-rank [pr kb goal context]
+  (cost-rank (integrity-budget/checked-call
+              (fn [] (cost pr kb goal context)))))
 
 (defn- dispatch-provers
   "The prover dispatch itself, with `run` saying what one prover's answers look like:
@@ -2866,7 +2981,10 @@
   agreeing.  What differs between the callers is only the structure of an answer, which is
   exactly what `run` carries."
   [kb provers goal context run]
-  (let [applicable (applicable-provers kb provers goal context)
+  (let [run        (fn [prover]
+                     (let [answers (integrity-budget/checked-call #(run prover))]
+                       (integrity-budget/checked-seq answers)))
+        applicable (applicable-provers kb provers goal context)
         complete   (sole-prover kb applicable goal context)]
     (if complete
       (run complete)
