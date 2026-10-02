@@ -100,6 +100,14 @@
 
 (defn- cleared? [overlay] (some? (p/kv-get overlay cleared-key)))
 
+(defn index-cleared?
+  "Has the fork whose own index half is the `KvBackend` `own` cleared it — a `reindex`,
+  after which the base's index reads absent and the fork's index is wholly its own?  Asked
+  at a mount, where it counts as state the fork wrote against its base
+  (`vaelii.impl.overlay.store`)."
+  [own]
+  (cleared? own))
+
 (defn- shadowed?
   "Is the base's value at `k` invisible — wholesale-cleared, or tombstoned?
 

@@ -547,7 +547,7 @@ so one vocabulary reads both.
 | `:error` | a check reached something it could not classify, and reports the throwable's own message | [api.md](api.md) |
 | `:exception-not-closed` | an `exceptWhen` reads a variable no antecedent binds, or the anonymous wildcard `_`, which binds nothing | [exceptions.md](exceptions.md) |
 | `:export-busy` | an export is already running, and one runs at a time | [catalog.md](catalog.md) |
-| `:fork-base-overlap` | a durable fork that has written anything was remounted over a base that has grown since, so its records and removals would hide the base's sentences; `:handles` names the fork's own handles the base now also holds | [overlay.md](overlay.md) |
+| `:fork-base-overlap` | a durable fork that has written anything was remounted over a base that has grown or been rebuilt in another order since, so its records and removals would hide the base's sentences; `:handles` names the handles at issue | [overlay.md](overlay.md) |
 | `:frozen-base` | a write reached the overlay's base, which is mounted read-only | [overlay.md](overlay.md) |
 | `:functional` | a second value for a predicate declared `functional`, or for the position a `functionalInArg` declaration names — see [`assert` refused it](#assert-refused-it) | [equality.md](equality.md) |
 | `:handle-ceiling` | a handle past the dense TMS's int-keyed ceiling | [density.md](density.md) |

@@ -595,6 +595,62 @@
         (v/clear! grown)
         (v/clear! base)))))
 
+(deftest a-reindexed-fork-is-refused-over-a-grown-base
+  ;; `reindex` clears the fork's index and rebuilds it from the merged records, so the
+  ;; index is wholly the fork's own afterwards and holds nothing the base adds later —
+  ;; state the fork wrote against its base, with no record, tombstone or mark to show it.
+  (let [n     (gensym)
+        base  (fresh-base n)
+        grown (populate! (doto (v/open-kb {:backend :memory :space [::grown n] :recover? false})
+                           (v/clear!)))
+        dir   (tmpdir)]
+    (try
+      (let [f (v/fork base {:backend :disk-log :dir dir})]
+        (v/reindex f)
+        (v/close! f))
+      (v/assert grown '(dog Ace) 'CxOverlay {:strength :monotonic})
+      (is (= :fork-base-overlap
+             (:type (ex-data (try (v/fork grown {:backend :disk-log :dir dir}) nil
+                                  (catch clojure.lang.ExceptionInfo e e))))))
+      (finally
+        (disk/close-dir! dir)
+        (rm-rf! dir)
+        (v/clear! grown)
+        (v/clear! base)))))
+
+(deftest a-fork-is-refused-over-a-base-rebuilt-in-another-order
+  ;; The base did not grow, so no watermark sees it — but the handle the fork's tombstone
+  ;; names now holds another sentence, which the tombstone would hide.  The fork pinned
+  ;; the base record it removed, and the mount compares.
+  (let [n      (gensym)
+        mk     (fn [tag ss]
+                 (let [kb (doto (v/open-kb {:backend :memory :space [tag n] :recover? false})
+                            (v/clear!))]
+                   (doseq [s ss] (v/assert kb s 'CxOverlay {:strength :monotonic}))
+                   kb))
+        base   (mk ::order-a '[(dog Ace) (dog Bo)])
+        same   (mk ::order-same '[(dog Ace) (dog Bo)])
+        turned (mk ::order-turned '[(dog Bo) (dog Ace)])
+        dir    (tmpdir)
+        h      (v/handle-of base '(dog Ace) 'CxOverlay)]
+    (try
+      (let [f (v/fork base {:backend :disk-log :dir dir})]
+        (v/retract! f h)
+        (v/close! f))
+      (testing "over a base rebuilt in the same order the removal stands"
+        (let [f2 (v/fork same {:backend :disk-log :dir dir})]
+          (is (= '#{(dog Bo)} (sentences (v/sentexes-matching f2 '(dog ?x) 'CxOverlay))))
+          (v/close! f2)))
+      (testing "over one rebuilt in another order the mount is refused, naming the handle"
+        (let [e (try (v/fork turned {:backend :disk-log :dir dir}) nil
+                     (catch clojure.lang.ExceptionInfo e e))]
+          (is (= :fork-base-overlap (:type (ex-data e))))
+          (is (= [h] (:handles (ex-data e))))))
+      (finally
+        (disk/close-dir! dir)
+        (rm-rf! dir)
+        (doseq [kb [base same turned]] (v/clear! kb))))))
+
 (deftest a-fork-with-no-recorded-watermark-is-checked-by-content
   ;; A fork mounted before the watermark was recorded has no range to probe, so its own
   ;; records at base handles are compared with the base's: an override is a copy of the

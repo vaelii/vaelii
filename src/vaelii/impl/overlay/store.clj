@@ -46,6 +46,7 @@
   (:require [clojure.set :as set]
             [clojure.string :as str]
             [vaelii.impl.capabilities :as cap]
+            [vaelii.impl.io.fingerprint :as fp]
             [vaelii.impl.protocols :as p]))
 
 ;; ---- reserved bookkeeping keys --------------------------------------------
@@ -56,6 +57,13 @@
 (def ^:private pv-tombstone-key ::provenance-tombstoned)
 (def ^:private released-key     ::premise-released)
 (def ^:private watermark-key    ::base-watermark)
+(def ^:private pinned-key       ::base-pinned)
+
+(defn- digest-key
+  "Where the digest of the base record at handle `h` is kept, once the fork has written
+  something that depends on it (`pin!`)."
+  [h]
+  [::base-digest h])
 
 ;; ---- the fast view + its write-through --------------------------------------
 ;; Each atom is a mirror of one bookkeeping key; every mutation writes both, and a mount
@@ -98,7 +106,29 @@
   (swap! a disj id)
   (p/kv-remove-from-set meta-kv k id))
 
-(defrecord OverlayRecordStore [overlay base meta-kv counter
+(defn- base-digest
+  "The content digest of the base record at handle `h` — a sentex's or a justification's
+  (`vaelii.impl.io.fingerprint`) — or nil when the base holds neither there."
+  [base h]
+  (if-let [sx (p/get-sentex base h)]
+    (fp/record-hash h sx)
+    (when-let [j (p/get-justification base h)] (fp/justification-hash h j))))
+
+(defn- pin!
+  "Record what the base holds at `id` before the fork writes something that depends on it
+  — a tombstone, an override, a released mark — so a mount over a base that holds a
+  different record there is refused (`changed-pins`) instead of applying the write to it.
+  A handle at or above `base-top`, the base's `next-id` at the mount, is one the fork
+  minted, so an ordinary write pays one comparison and nothing else; a handle already
+  pinned keeps its first digest, which is the record the fork's state was written over."
+  [base meta-kv base-top hidden? id]
+  (when-let [h (handle id)]
+    (when (and (< h (long base-top)) (not @hidden?) (not (p/kv-member? meta-kv pinned-key h)))
+      (when-let [d (base-digest base h)]
+        (p/kv-put meta-kv (digest-key h) d)
+        (p/kv-add-to-set meta-kv pinned-key h)))))
+
+(defrecord OverlayRecordStore [overlay base meta-kv counter base-top
                                hidden? sx-tombstoned jd-tombstoned pv-tombstoned released]
 
   p/RecordStore
@@ -108,6 +138,7 @@
 
   (put-sentex [this sentex]
     (let [id (long (or (:id sentex) (p/next-id this)))]
+      (pin! base meta-kv base-top hidden? id)
       ;; an explicit handle (an import, a revival) must carry the counter with it, or the
       ;; next mint would reissue it and overwrite a record with no error
       (swap! counter max id)
@@ -129,6 +160,7 @@
   ;; answers the base's record, which the fork had overridden.
   (delete-sentex! [_ id]
     (let [id (handle id)]
+      (pin! base meta-kv base-top hidden? id)
       (when-not @hidden?
         (when (p/get-sentex base id)
           (note! sx-tombstoned meta-kv sx-tombstone-key id)
@@ -146,6 +178,7 @@
 
   (put-justification [this justification]
     (let [id (long (or (:id justification) (p/next-id this)))]
+      (pin! base meta-kv base-top hidden? id)
       (swap! counter max id)
       (let [r (p/put-justification overlay (assoc justification :id id))]
         (when (contains? @jd-tombstoned id) (unnote! jd-tombstoned meta-kv jd-tombstone-key id))
@@ -158,6 +191,7 @@
 
   (delete-justification! [_ id]
     (let [id (handle id)]
+      (pin! base meta-kv base-top hidden? id)
       (when-not @hidden?                        ; tombstones first, as in `delete-sentex!`
         (when (p/get-justification base id) (note! jd-tombstoned meta-kv jd-tombstone-key id))
         (when (p/get-provenance base id) (note! pv-tombstoned meta-kv pv-tombstone-key id)))
@@ -166,6 +200,7 @@
     nil)
 
   (put-provenance [_ id prov]
+    (pin! base meta-kv base-top hidden? id)
     (let [r (p/put-provenance overlay id prov)]
       (when (contains? @pv-tombstoned (handle id))
         (unnote! pv-tombstoned meta-kv pv-tombstone-key id))
@@ -178,6 +213,7 @@
 
   (delete-provenance! [_ id]
     (let [id (handle id)]
+      (pin! base meta-kv base-top hidden? id)
       (when (and (not @hidden?) (p/get-provenance base id))
         (note! pv-tombstoned meta-kv pv-tombstone-key id))
       (p/delete-provenance! overlay id))
@@ -201,6 +237,7 @@
   ;; first, then mark it in the overlay like any other handle.
   (mark-premise [this id strength]
     (let [id (long id)]
+      (pin! base meta-kv base-top hidden? id)
       (when-not (p/get-sentex overlay id)
         (when-let [sx (p/get-sentex this id)]
           (p/put-sentex overlay (assoc sx :id id))))
@@ -212,6 +249,7 @@
 
   (unmark-premise! [this id]
     (let [id (long id)]
+      (pin! base meta-kv base-top hidden? id)
       (if (p/get-sentex overlay id)
         (p/unmark-premise! overlay id)
         ;; materialize the override only when there is a mark to remove — the teardown
@@ -353,14 +391,23 @@
            (range (inc (long watermark)) (min (long base-next) (long own-next)))))
 
 (defn- holds-state?
-  "Has this fork written anything — a record of its own, a tombstone or a released mark?
-  Each of these, and the index entries written beside them, was computed against the
-  base the fork was mounted over then."
-  [overlay meta-kv]
-  (boolean (or (cap/some-sentex-id overlay)
+  "Has this fork written anything — a record of its own, a tombstone, a released mark, or
+  a rebuilt index (`index-cleared?`, which hides the base's index wholesale)?  Each was
+  computed against the base the fork was mounted over then."
+  [overlay meta-kv index-cleared?]
+  (boolean (or index-cleared?
+               (cap/some-sentex-id overlay)
                (cap/some-justification-id overlay)
                (some #(seq (p/kv-members meta-kv %))
                      [sx-tombstone-key jd-tombstone-key pv-tombstone-key released-key]))))
+
+(defn- changed-pins
+  "The pinned handles (`pin!`) at which the base no longer holds the record the fork's
+  state was written over — a base rebuilt in another order, or one that lost a record.
+  One read per pinned handle."
+  [base meta-kv]
+  (into [] (remove #(= (base-digest base %) (p/kv-get meta-kv (digest-key %))))
+        (sort (p/kv-members meta-kv pinned-key))))
 
 (defn- overridden-unlike
   "The handles at which this fork holds a record that the base also holds with different
@@ -380,38 +427,49 @@
   "How many shared handles a `:fork-base-overlap` refusal names."
   20)
 
-(defn- refuse-overlap! [shared grown watermark]
-  (throw (ex-info (str "this fork's base has changed since the fork was last mounted over it"
-                       (when grown
-                         (str ": it now holds handle " grown ", and held none at or above "
-                              watermark " then"))
-                       (when (seq shared)
-                         (str (if grown ", including " ": it now holds ") (count shared)
-                              " of the handles the fork's own records use ("
-                              (str/join ", " (take overlap-shown shared))
-                              (when (> (count shared) overlap-shown) ", …") ")"))
+(defn- refuse-overlap! [why handles watermark]
+  (throw (ex-info (str "this fork's base has changed since the fork was last mounted over it: "
+                       why (when (seq handles)
+                             (str " (" (str/join ", " (take overlap-shown handles))
+                                  (when (> (count handles) overlap-shown) ", …") ")"))
                        ".  A fork's records, removals and index counts are written against"
                        " the base it was mounted over, so over this one it would hide base"
                        " sentences.  Mount the fork over the base it was taken against, and"
                        " re-assert its premises by content in a fresh fork over this one")
                   {:type      :fork-base-overlap
-                   :handles   (into [] (take overlap-shown) shared)
+                   :handles   (into [] (take overlap-shown) handles)
                    :watermark watermark})))
 
 (defn- check-base-overlap!
   "Refuse a mount over a base that has changed since this fork was last mounted — a newer
-  starter, or more files loaded at startup — once the fork has written anything.  A record
-  at a handle the base now also holds would be read as an override of a base record the
-  fork never saw, and a key the fork emptied stays deleted, hiding what the base has since
-  added under it; either way a base sentence answers `unknown` through the fork.  A fork
-  that has written nothing is a fresh fork, and mounts."
-  [overlay base meta-kv watermark base-next own-next]
+  starter, more files loaded at startup, the same files loaded in another order — once
+  the fork has written anything.  A record at a handle the base now also holds would be
+  read as an override of a base record the fork never saw; a key the fork emptied stays
+  deleted, hiding what the base has since added under it; a tombstone or override at a
+  handle the base now fills with another record applies to that record.  Each way, a base
+  sentence answers `unknown` through the fork.  A fork that has written nothing is a
+  fresh fork, and mounts."
+  [overlay base meta-kv {:keys [watermark base-next own-next index-cleared?]}]
+  (let [changed (changed-pins base meta-kv)]
+    (when (seq changed)
+      (refuse-overlap! (str "the base records at " (count changed) " handle(s) the fork removed"
+                            " or overrode are not the ones it removed or overrode")
+                       changed watermark)))
   (if watermark
     (when-let [grown (first-grown base watermark base-next)]
-      (when (holds-state? overlay meta-kv)
-        (refuse-overlap! (minted-shared base watermark base-next own-next) grown watermark)))
+      (when (holds-state? overlay meta-kv index-cleared?)
+        (let [shared (minted-shared base watermark base-next own-next)]
+          (refuse-overlap! (str "it now holds handle " grown ", and held none at or above "
+                                watermark " then"
+                                (when (seq shared)
+                                  (str ", including " (count shared)
+                                       " of the handles the fork's own records use")))
+                           shared watermark))))
     (let [shared (overridden-unlike overlay base)]
-      (when (seq shared) (refuse-overlap! shared nil nil)))))
+      (when (seq shared)
+        (refuse-overlap! (str "it now holds other records at " (count shared)
+                              " of the handles the fork's own records use")
+                         shared nil)))))
 
 (defn overlay-record-store
   "Compose a writable `overlay` `RecordStore` over a read-only `base` one, with `meta-kv`
@@ -421,27 +479,33 @@
   base serves the merged view it was left in — and seeds the handle counter above both
   stores' watermarks, which is what keeps a minted handle out of the base's range even
   after a restart.  It records the base's watermark in the bookkeeping, and refuses
-  (`:fork-base-overlap`) a remount over a base that has grown since, once the fork has
-  written anything (`check-base-overlap!`)."
-  [overlay base meta-kv]
-  (let [base-next (long (p/next-id base))          ; allocation, not mutation (see `frozen`)
-        own-next  (long (p/next-id overlay))
-        hidden?   (some? (p/kv-get meta-kv cleared-key))
-        watermark (p/kv-get meta-kv watermark-key)]
-    ;; a cleared fork reads nothing of its base, so no base handle can be shadowed
-    (when-not hidden?
-      (check-base-overlap! overlay base meta-kv watermark base-next own-next))
-    (p/kv-put meta-kv watermark-key base-next)
-    (map->OverlayRecordStore
-     {:overlay        overlay
-      :base           base
-      :meta-kv        meta-kv
-      :counter        (atom (max base-next own-next))
-      :hidden?        (atom hidden?)
-      :sx-tombstoned  (atom (set (p/kv-members meta-kv sx-tombstone-key)))
-      :jd-tombstoned  (atom (set (p/kv-members meta-kv jd-tombstone-key)))
-      :pv-tombstoned  (atom (set (p/kv-members meta-kv pv-tombstone-key)))
-      :released       (atom (set (p/kv-members meta-kv released-key)))})))
+  (`:fork-base-overlap`) a remount over a base that has changed since, once the fork has
+  written anything (`check-base-overlap!`).  `index-cleared?` says the fork's own index
+  half has been rebuilt (`reindex`), which is state the record half cannot see."
+  ([overlay base meta-kv] (overlay-record-store overlay base meta-kv false))
+  ([overlay base meta-kv index-cleared?]
+   (let [base-next (long (p/next-id base))         ; allocation, not mutation (see `frozen`)
+         own-next  (long (p/next-id overlay))
+         hidden?   (some? (p/kv-get meta-kv cleared-key))
+         watermark (p/kv-get meta-kv watermark-key)]
+     ;; a cleared fork reads nothing of its base, so no base handle can be shadowed
+     (when-not hidden?
+       (check-base-overlap! overlay base meta-kv {:watermark      watermark
+                                                  :base-next      base-next
+                                                  :own-next       own-next
+                                                  :index-cleared? index-cleared?}))
+     (p/kv-put meta-kv watermark-key base-next)
+     (map->OverlayRecordStore
+      {:overlay        overlay
+       :base           base
+       :meta-kv        meta-kv
+       :counter        (atom (max base-next own-next))
+       :base-top       base-next
+       :hidden?        (atom hidden?)
+       :sx-tombstoned  (atom (set (p/kv-members meta-kv sx-tombstone-key)))
+       :jd-tombstoned  (atom (set (p/kv-members meta-kv jd-tombstone-key)))
+       :pv-tombstoned  (atom (set (p/kv-members meta-kv pv-tombstone-key)))
+       :released       (atom (set (p/kv-members meta-kv released-key)))}))))
 
 (defn overlay-record-store?
   "Is `store` one of these — i.e. is it already a fork's record half?  Asked by

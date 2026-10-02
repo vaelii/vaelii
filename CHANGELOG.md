@@ -23,11 +23,14 @@ it — `git show v0.16.0:CHANGELOG.md`.
   through the fork, `argue` returned the fork's justification for it, and an except naming
   a handle the fork had retracted hid the base sentence that took that handle (#99). A
   fork that had only retracted inherited premises hid the grown base's sentences too,
-  under any key it had emptied. Each mount now records the base's watermark in the fork's
-  bookkeeping, and the next mount refuses when the base holds a record at or above it and
-  the fork has written anything; a fork mounted before this release is checked on its
-  first mount by comparing its own records with the base's at the handles both hold. The
-  refusal names the fork's own `:handles` the base now holds and leaves the fork's
+  under any key it had emptied, and so did a reindexed fork; over a base rebuilt in another
+  order, a tombstone hid whichever sentence took the handle. Each mount now records the
+  base's watermark in the fork's bookkeeping, and the next mount refuses when the base
+  holds a record at or above it and the fork has written anything. A fork pins a digest
+  of each base record it tombstones, overrides or releases, and a mount over a base
+  holding another record at a pinned handle is refused. A fork mounted before this
+  release is checked on its first mount by comparing its own records with the base's at
+  the handles both hold. The refusal names the `:handles` at issue and leaves the fork's
   directory unlocked. [overlay.md](docs/overlay.md#the-merge-model--record-half).
 
   *Class:* **Refusal** (a remount over a grown base answered base sentences with the

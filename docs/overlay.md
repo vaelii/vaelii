@@ -171,17 +171,23 @@ deliberately, because that is what the caller asked for.
   the overlay's copy wins every read. That is how a base record is edited without editing
   the base: `mark-premise` materializes an override before it writes, since the assumption
   strength lives on the record.
-- **A base that grew between mounts.** The boundary holds over the base the handles were
-  minted against, and so do the fork's removals and copy-on-write counters: a key the
-  fork emptied stays deleted, so it would hide what a grown base has since added under
+- **A base that changed between mounts.** The boundary holds over the base the handles
+  were minted against, and so do the fork's removals and copy-on-write counters: a key
+  the fork emptied stays deleted, so it would hide what a grown base has since added under
   it. Each mount records the base's `next-id` in the bookkeeping, and the next mount
   looks for a base record at or above it. A base that holds one has grown, and a fork
-  that has written anything (a record, a tombstone, a released mark) is refused
-  (`:type :fork-base-overlap`, `:handles` naming the fork's own handles the base now also
-  holds) rather than served over it. A fork that has written nothing mounts. A fork whose
-  bookkeeping holds no watermark, mounted before it was recorded, is checked once by
-  content instead: each of its own records at a handle the base holds must match the
-  base's record except in its strength, as an override does.
+  that has written anything (a record, a tombstone, a released mark, a `reindex`) is
+  refused (`:type :fork-base-overlap`, `:handles` naming the fork's own handles the base
+  now also holds) rather than served over it. A fork that has written nothing mounts.
+  A base rebuilt in another order grows nothing, so before the fork writes a tombstone,
+  an override or a released mark at a base handle it **pins** the base record there — a
+  content digest in the bookkeeping — and a mount over a base holding another record at a
+  pinned handle is refused the same way, naming it. A write at a handle the fork minted
+  pins nothing. A fork whose bookkeeping holds no watermark, mounted before it was
+  recorded, is checked once by content instead: each of its own records at a handle the
+  base holds must match the base's record except in its strength, as an override does.
+  What none of this sees is a fork justification or except naming a base handle the fork
+  wrote no state at: over a reordered base, that names the record now there.
 - **Tombstones.** Deleting an inherited record cannot touch the base, so it is recorded
   and the read path filters it. They are sticky: an inherited record cannot come back
   through fall-through, only by being written into the overlay again (a revival, at the

@@ -1617,7 +1617,8 @@
         rstore  (if (= :overlay rkind)
                   (mount/mount-records own-rstore
                                        (:records base)
-                                       (mount/meta-kv ovr ov-opts))
+                                       (mount/meta-kv ovr ov-opts)
+                                       own-istore)
                   (record-store-for rkind opts))
         [istore index-durable?]
         (if (= :overlay ikind)
