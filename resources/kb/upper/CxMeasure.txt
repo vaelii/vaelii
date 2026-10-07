@@ -193,7 +193,9 @@
 
 (comment sign_value
          "One of the three values a quantity's sign takes: SignNegative, SignZero, SignPositive. Jointly exhaustive and pairwise disjoint over the reals — exactly one holds of any quantity — which is what makes a set of them a real constraint rather than an absence of knowledge, and what licenses the sign prover to answer a negated goal by refutation the way a relation algebra does.")
-(genl sign_value thing)
+;; A sign is in no space and at no time, so a sign value is a nowhere_never, and thing
+;; through it.
+(genl sign_value nowhere_never)
 
 (comment SignNegative "The sign of a quantity below zero: falling, when it is a trend.")
 (sign_value SignNegative)

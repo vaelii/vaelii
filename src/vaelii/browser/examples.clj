@@ -246,8 +246,7 @@
             it — so this is refused for what the KB knows the garage to be, not for
             what it has not been told."
     :rests-on [['(arg eats 2 food) 'CxLife]
-               ['(genl building container) 'CxAbstract]
-               ['(genl container made) 'CxAbstract]]
+               ['(genl building made) 'CxAbstract]]
     :premises '[(dog RexEx) (building GarageEx)]
     :kind :refusal
     :refuse '(eats RexEx GarageEx)}

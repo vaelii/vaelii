@@ -34,6 +34,22 @@ it — `git show v0.16.0:CHANGELOG.md`.
   do.
   *Breaks:* `transitiveInArg`, `transitiveInArgInverse`
 
+- **`container` is retired; `hollow` names the shape.** `container` was defined by what
+  a made thing is for, and a type says what a thing is. CxAbstract mints `hollow`: a
+  thing that has, at that time, an interior space other things can occupy, such as a
+  cup, a building, a cave, a pitcher plant or a cupped hand. `hollow` is below
+  `spatiotemporal`, orthogonal to `made`, `organism`, `body_part` and `food`, and
+  disjoint from `substance`. `building` states `(genl building made)` and
+  `(genl building hollow)` in place of its edge to `container`. The browser's refusal
+  example rests on `(genl building made)`. `ontology_test` pins the placement, the
+  orthogonals, a made hollow thing and a hollow organism as no clash, and the absence
+  of `container`.
+
+  *Class:* **Breaking** (a shipped type removed).
+  *Migration:* use `hollow`; a made container is `(and (made x) (hollow x))`;
+  containment relations are not modelled yet.
+  *Breaks:* `container`
+
 - **`siblingDisjointException` is retired; `orthogonal` is the exemption.** A stated
   `(orthogonal a b)` exempts the pair from a separation a `sibling_disjoint` parent or a
   `disjoint_metatype` would otherwise force, pair-local and read at the reader, as
@@ -197,6 +213,14 @@ it — `git show v0.16.0:CHANGELOG.md`.
   *Migration:* a KB that stated an instance of a tangible kind `acausal` now holds a
   clash; a paper record or a log file is tangible, and what is acausal is the
   information it carries.
+
+- **`relation_type` is below `nowhere_never`.** CxAbstract states
+  `(genl relation_type nowhere_never)` in place of `(genl relation_type aspatial)`, the
+  strongest true edge: a kind of relation is in no space and at no time, so it is
+  `atemporal` as well as `aspatial`, and the `aspatial` edge still derives through the
+  intersection. [taxonomy.md](docs/taxonomy.md)
+
+  *Class:* **Additive** (shipped ontology content).
 
 - **`kb-integrity` runs a bounded, read-only integrity sweep in a context.** Over a finite
   set of ground candidate terms it reports the definition clashes a candidate meets (a
@@ -672,6 +696,95 @@ it — `git show v0.16.0:CHANGELOG.md`.
   states that placement itself: `event` is orthogonal to both halves of
   `(partition thing spatial aspatial)`, since some events are located and some are not.
   *Breaks:* `capability`
+
+- **`causal` and `acausal` partition `thing`.** `(partition thing causal acausal)`
+  replaces `(disjoint causal acausal)` and the stated `genl` edges from `causal` and
+  `acausal` to `thing`, which the partition installs. A thing denied `causal` is now
+  concluded `acausal`; the two stay disjoint, and so do `causal_event` and
+  `acausal_event`. `ontology_test` pins the coverage and adds the three removed sentences
+  to its derived-and-unstated table.
+
+  *Class:* **Additive** (shipped ontology content, which takes no Breaking label however
+  far it moves an answer).
+  *Migration:* a KB that relied on `(disjoint causal acausal)`, `(genl causal thing)` or
+  `(genl acausal thing)` being stated, rather than derived, reads it from `disjoint?` or
+  `genl?` instead.
+
+- **`biological` and `hollow` are orthogonal.** A pitcher plant and a lab-grown bladder
+  are biological and hollow, a cup is hollow and not biological, and a leaf is
+  biological and not hollow. CxAbstract states `(orthogonal biological hollow)` beside
+  `hollow`'s orthogonals to `organism` and `body_part`, since an `orthogonal` is not
+  inherited along `genl`. `subsumption-status` reads the pair `:orthogonal`.
+  `ontology_test` pins the declaration and a hollow body part as no clash.
+
+  *Class:* **Additive** (shipped ontology content, which takes no Breaking label however
+  far it moves an answer).
+
+- **A sign value is in no space and at no time.** CxMeasure states
+  `(genl sign_value nowhere_never)` in place of `(genl sign_value thing)`, so
+  `SignNegative`, `SignZero` and `SignPositive` read `aspatial`, `atemporal` and
+  `intangible`. `ontology_test` pins the three readings and the removed edge as derived.
+
+  *Class:* **Additive** (shipped ontology content, which takes no Breaking label however
+  far it moves an answer).
+  *Migration:* a KB that relied on `(genl sign_value thing)` being stated, rather than
+  derived, reads it from `genl?` instead.
+
+- **Every cause is in time, and what is not in time is not a cause.** CxAbstract states
+  `(genl causal temporal)` and `(genl atemporal acausal)`, so a thing both causal and
+  atemporal is a clash, and the line y=x, a sign value or any other atemporal thing reads
+  `acausal`. `causal` stops at `temporal`, since a contract expiring at midnight is a
+  cause located in no space. `ontology_test` pins both edges, the disjointness and the
+  readings.
+
+  *Class:* **Additive** (shipped ontology content, which takes no Breaking label however
+  far it moves an answer).
+  *Migration:* a KB that states an atemporal thing causal chooses one.
+
+- **A situation is intangible, and located or not.** CxAbstract states
+  `(genl situation intangible)`, so a situation that is also tangible is a clash, and
+  states `situation` and `static_situation` each orthogonal to `spatial` and to
+  `aspatial`, and `situation` orthogonal to `spatiotemporal`: a battle, a party or a cat
+  on a mat is located, and a debt owed or a treaty in force is not. `situation`'s comment
+  says so. `ontology_test` pins the edge and each pair with a witness.
+
+  *Class:* **Additive** (shipped ontology content, which takes no Breaking label however
+  far it moves an answer).
+  *Migration:* a KB that states a situation tangible chooses one.
+
+- **An event is located or not.** CxAbstract states `event` orthogonal to `spatial` and
+  to `aspatial`: the battle of Waterloo is located, and a contract expiring at midnight
+  is not. An event stays temporal through `situation`. `ontology_test` pins both pairs
+  with a witness and the derived, unstated edge from `event` to `temporal`.
+
+  *Class:* **Additive** (shipped ontology content, which takes no Breaking label however
+  far it moves an answer).
+
+- **An event and a static situation are spatiotemporal or not.** CxAbstract states
+  `event` and `static_situation` each orthogonal to `spatiotemporal`, beside
+  `(orthogonal situation spatiotemporal)`: an orthogonal is not inherited along `genl`,
+  so each kind's pair is stated. A battle and a cat on a mat are spatiotemporal; a
+  contract expiring and a treaty in force are not. `ontology_test` pins both pairs with a
+  witness.
+
+  *Class:* **Additive** (shipped ontology content, which takes no Breaking label however
+  far it moves an answer).
+
+- **`spatial_event` is an event located in some space.** CxAbstract defines
+  `(intersection spatial_event event spatial)` and states
+  `(genl spatial_event spatiotemporal)`, so a battle or a smelting stated an event and
+  spatial reads `spatial_event` and `spatiotemporal`, and a contract expiring at midnight
+  stays an event that is no spatial event. `ontology_test` pins the edges and the
+  membership.
+
+  *Class:* **Additive**.
+
+- **A fluent is temporal.** CxAbstract states `(genl fluent temporal)`, so a fluent that
+  is also atemporal is a clash, as CxCore's `atemporal` comment already says.
+  `ontology_test` pins the edge and the disjointness.
+
+  *Class:* **Additive** (shipped ontology content, which takes no Breaking label however
+  far it moves an answer).
 
 ### Fixes: answers
 

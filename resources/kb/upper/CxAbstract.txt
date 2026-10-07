@@ -42,9 +42,6 @@
 (comment clothing "An artifact worn on the body.")
 (genl clothing made)
 
-(comment container "An artifact whose function is to hold other objects — a cup, a box, a bag.")
-(genl container made)
-
 (comment context "A context: the second half of a sentex, and what a sentence holds in.")
 
 (comment feather "A light keratin body part covering a bird.")
@@ -55,6 +52,8 @@
 
 (comment fluent "A state of affairs that holds over some stretches of time and not others — a cat being asleep, a light being on. What an event starts and stops, and what holdsAt asks about at a moment; aspatial and so intangible, because it is a way the world is rather than a thing in it. See docs/time.md.")
 (genl fluent aspatial)
+;; A fluent holds over stretches of time, so it is temporal and never atemporal.
+(genl fluent temporal)
 
 (comment food "A physical object eaten by an animal for nourishment.")
 (genl food tangible)
@@ -74,6 +73,18 @@
 (comment glass_stuff "A hard, brittle, transparent substance.")
 (genl glass_stuff substance)
 
+(comment hollow "Has, at that time, an interior space that other things can occupy: a cup, a box, a building, a cave, a pitcher plant, a cupped hand. A solid Rubik's cube or an empty clenched fist is not hollow. A thing can stop being hollow and still exist: a box crushed flat stops being hollow, and a hand is hollow only while it is cupped. What a thing is shaped like, not what it is for, so a made hollow thing is (and (made x) (hollow x)). Spatiotemporal rather than tangible, since a cave is a space in rock and is made of nothing.")
+(genl hollow spatiotemporal)
+;; A cup is hollow and made, a pitcher plant hollow and alive, a cupped hand hollow and a
+;; part an organism grew; a bread bowl is hollow and food.  Stuff has no interior of its own.
+(orthogonal hollow made)
+(orthogonal hollow organism)
+(orthogonal hollow body_part)
+(orthogonal hollow food)
+;; A pitcher plant and a lab-grown bladder are biological and hollow.  A cup and a cave
+;; are hollow and not biological, and a leaf is biological and not hollow.
+(orthogonal biological hollow)
+(set/monotonic (disjoint hollow substance))
 
 (comment language "A system of signs a person speaks, writes or signs in.")
 
@@ -155,7 +166,7 @@
 
 
 (comment relation_type "A type whose instances are relations between things.")
-(genl relation_type aspatial)
+(genl relation_type nowhere_never)
 
 (comment root "The body part a plant anchors itself and draws water with.")
 (genl root body_part)
@@ -188,12 +199,38 @@
 (set/monotonic (disjoint time situation))
 
 ;; --- situation / static_situation / event: the state-of-affairs hierarchy ------
-(comment situation "A state of affairs: objects bearing properties or relations over a time interval. Parent of static_situation (the state holds unchanged) and event (the world's state changes); change is the specialization axis.")
+(comment situation "A state of affairs: objects bearing properties or relations over a time interval. A situation is intangible, because it is a way things are and not a thing with mass. Some situations are located, such as a battle, a party or a cat on a mat. Other situations are located nowhere, such as a debt owed or a treaty in force. static_situation and event specialize situation by whether the state changes.")
 (genl situation temporal)
+(genl situation intangible)
+;; A situation can be located or not, so each situation kind is orthogonal to spatial
+;; and to aspatial, and to spatiotemporal.  A battle is a situation and spatiotemporal; a
+;; rock is spatiotemporal and no situation; a debt is a situation and not spatiotemporal.
+;; A cat on a mat is a static situation and spatiotemporal; a treaty in force is one and
+;; not.  An orthogonal is not inherited along genl, so each kind's pair is stated.
+(orthogonal situation spatial)
+(orthogonal situation aspatial)
+(orthogonal situation spatiotemporal)
+(orthogonal static_situation spatial)
+(orthogonal static_situation aspatial)
+(orthogonal static_situation spatiotemporal)
 
 (comment static_situation "A situation extended in time but unchanged, a held state, e.g. a file existing. Contrast event, the kind whose state changes.")
 
 (comment event "Something that happens: an occurrence located in time whose state changes. The event-calculus slots (happens/initiates/terminates) are typed temporal and no event collection was declared; this names one.")
+;; An event is temporal through situation, and an event can be located or not: the battle
+;; of Waterloo is located and spatiotemporal, and a contract expiring at midnight is
+;; neither.
+(orthogonal event spatial)
+(orthogonal event aspatial)
+(orthogonal event spatiotemporal)
+
+(comment spatial_event "An event located in some space: a battle, a smelting, a sawing, a footprint's step. An institutional change, such as a contract expiring, is an event located nowhere and is not a spatial event.")
+(intersection spatial_event event spatial)
+;; An event is temporal, so a spatial event is spatial and temporal.  spatiotemporal is
+;; the intersection of spatial and temporal.  The intersection rules place each spatial
+;; event's instances in spatiotemporal, but the taxonomy draws no genl edge between two
+;; intersections, so the type-level edge is stated.
+(genl spatial_event spatiotemporal)
 
 ;; A situation either holds unchanged or changes, never both and never neither.  The
 ;; partition installs both genl edges and the separation, and adds the coverage, so a
@@ -202,18 +239,25 @@
 
 ;; --- causal / acausal: whether a thing can occupy a cause slot -----------------
 (comment causal "A thing that can be a cause, i.e. can occupy the cause slot of a causal relation. One side of the causal/acausal division of thing.")
-(genl causal thing)
 
 (comment acausal "A thing that cannot be a cause: a time, a property line, an attribute, the information a record or piece of evidence carries (a reading of it can cause; the information itself causes nothing). The other side of the causal/acausal division of thing.")
-(genl acausal thing)
 
-;; The causal/acausal division: a thing either can be a cause or cannot, so the two
-;; sides are disjoint. This also makes causal_event and acausal_event disjoint, by the
-;; genl closure of disjointness.
-(set/monotonic (disjoint causal acausal))
+;; Every cause is in time.  A contract expiring at midnight is a cause located in no space,
+;; so causal stops at temporal rather than spatiotemporal.
+(genl causal temporal)
+;; What is not in time is not a cause.  The edge follows from (genl causal temporal) and
+;; the two partitions of thing, but the taxonomy draws no genl edge from partitions, so
+;; it is stated.
+(genl atemporal acausal)
+
+;; Every thing is causal or acausal, and no thing is both.  The partition installs the
+;; genl edges from causal and from acausal to thing, so neither edge is stated.  A thing
+;; denied causal is concluded acausal.  causal_event and acausal_event are disjoint,
+;; because disjointness descends a genl edge.
+(set/monotonic (partition thing causal acausal))
 
 ;; Anything with mass can fill a cause slot: the rock dented the car. tangible is in
-;; CxCore, so the edge lives here beside causal; with the disjointness above it also
+;; CxCore, so the edge lives here beside causal; with the partition above it also
 ;; keeps every tangible out of acausal.
 (genl tangible causal)
 
@@ -343,7 +387,8 @@
 (set/monotonic (disjoint_metatype stuff_type_by_substance))
 (metatype stuff_type_by_state_of_matter)
 (metatype stuff_type_by_substance)
-(genl building container)
+(genl building made)
+(genl building hollow)
 (genl gas substance)
 (genl plasma substance)
 (genl solid substance)

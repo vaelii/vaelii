@@ -1192,8 +1192,9 @@ their intersection. No edge or disjointness relates `intangible` to `spatial`: a
 of space is `spatiotemporal` and `intangible`.
 
 A kind with no location in any space sits below `aspatial`, which separates it from
-`spatial` and from every CxSpace argument. `fluent`, `organization` and `relation_type`
-(CxAbstract) are below `aspatial`.
+`spatial` and from every CxSpace argument. `fluent` and `organization` (CxAbstract) are
+below `aspatial`. `relation_type` (CxAbstract) is below `nowhere_never`, so
+`relation_type` is `aspatial` and `atemporal` both.
 The `expression` lattice is in CxCore. `expression` is below `nowhere_never`, and
 `context`, `relation`, `formula`, `relation_application`, `denotational_term` and
 `unrepresented_term` are below `expression`. The value kinds `string`, `number`,
