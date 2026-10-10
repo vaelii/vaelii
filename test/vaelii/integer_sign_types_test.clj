@@ -55,6 +55,26 @@
   (is (not (v/ask? kb (list 'integer "str") U)))
   (is (not (v/ask? kb (list 'integer 'foo) U))))
 
+(tu/deftest-kb the-value-kind-of-a-literal-is-computed
+  ;; A literal value's kind is its EDN kind, so EvaluableProver answers it the way it
+  ;; answers integer, both ways.
+  (testing "a literal is a member of its own value kind"
+    (is (true? (v/ask? kb (list 'string "foo") U)))
+    (is (true? (v/ask? kb (list 'number 7) U)))
+    (is (true? (v/ask? kb (list 'number 3.5) U)))
+    (is (true? (v/ask? kb (list 'keyword :a) U)))
+    (is (true? (v/ask? kb (list 'boolean true) U)))
+    (is (true? (v/ask? kb (list 'boolean false) U)))
+    (is (true? (v/ask? kb (list 'character \c) U))))
+  (testing "and provably not a member of another"
+    (is (true? (v/ask? kb (list 'not (list 'number "foo")) U)))
+    (is (true? (v/ask? kb (list 'not (list 'string 7)) U)))
+    (is (not (v/ask? kb (list 'number "foo") U)))
+    (is (not (v/ask? kb (list 'string 7) U))))
+  (testing "a symbol is not answered: a constant could denote a number"
+    (is (not (v/ask? kb (list 'number 'Muffet) U)) "not proven a number")
+    (is (not (v/ask? kb (list 'not (list 'number 'Muffet)) U)) "and not refuted either")))
+
 (tu/deftest-kb sign-types-admit-by-evaluation
   (doseq [[type _ member non-member] cases]
     (is (v/ask? kb (list type member) U) (str member " is a " type))

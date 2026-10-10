@@ -1,14 +1,18 @@
 ;; CxUniverse — the collector of the upper spindle.  Sees every upper member
-;; (CxAbstract, CxOrganism, CxSociety, CxLife, CxMeasure, CxSpace, CxTime),
+;; (CxAbstract, CxOrganism, CxSociety, CxLife, CxMeasure, CxReflection, CxSpace, CxTime),
 ;; so cross-member disjointness assertions that require both sides visible
 ;; live here rather than in CxCore (which cannot see the members) or in one
 ;; member (which cannot see the other).  A claim whose terms one member sees belongs
 ;; to that member.
 
 ;; --- cross-member disjointness (upper spindle) ---
-;; None is stated today.  organization and animal, the pair that stood here, are
-;; separated by (partition thing tangible intangible) in CxCore: organization is
-;; intangible and animal is tangible.
+;; organization and animal are separated by (partition thing tangible intangible) in
+;; CxCore: organization is intangible and animal is tangible.
+;; A bonsai or a grafted apple tree is a made plant (made is CxAbstract's, plant CxOrganism's).
+(orthogonal made plant)
+;; A water level or a tap's rate is a quantity, and a quantity causes nothing; what changes
+;; it does (quantity is CxMeasure's, acausal CxAbstract's).
+(genl quantity acausal)
 
 ;; --- the shipped contexts ---
 ;; Every genlCx edge is stored here, and (arg genlCx 1 context) and (arg genlCx 2 context)
@@ -26,6 +30,7 @@
 (context CxNormalPhysicalConditions)
 (context CxOrganism)
 (context CxPerception)
+(context CxReflection)
 (context CxSize)
 (context CxSocial)
 (context CxSocialExtension)

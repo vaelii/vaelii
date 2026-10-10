@@ -1295,7 +1295,8 @@ sees it); its members are `resources/kb/upper/` (`CxAbstract` = the kinds hangin
 skeleton CxCore holds, body parts and substances, `partOf`/`locatedIn`/`madeOf`, and the
 two **type-level** relations `largerThan`/`partType`; `CxOrganism` = the biological
 taxonomy + disjointness; `CxLife` = organism relations and states; `CxSociety` = social
-relations; `CxMeasure` = the theory of measurement; `CxSpace` = RCC-8 region relations
+relations; `CxMeasure` = the theory of measurement; `CxReflection` = the expression lattice and the
+use/mention vocabulary; `CxSpace` = RCC-8 region relations
 and cardinal directions; `CxTime` = Allen's interval relations, the point algebra, the
 calendar constructors and the event/fluent vocabulary); its collector is **CxUniverse**,
 free for lifted universal facts.

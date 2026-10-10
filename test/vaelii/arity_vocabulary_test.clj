@@ -224,17 +224,51 @@
       (v/assert kb (list 'arityMin RepeatFn 2) 'CxUniverse)
       (is (v/isa? kb RepeatFn 'function))
       (is (v/isa? kb RepeatFn 'variable_arity))
-      (is (v/isa? kb RepeatFn 'at_least_binary_relation)))))
+      (is (v/isa? kb RepeatFn 'at_least_binary)))))
 
 (tu/deftest-kb arity-minimum-classifies-relations-generically
   (testing "a minimum of two derives only the binary floor"
-    (is (v/isa? kb 'lessThan 'at_least_binary_relation))
-    (is (not (v/isa? kb 'lessThan 'at_least_ternary_relation))))
-  (testing "an exact arity is not also a variable floor"
-    (is (not (v/isa? kb 'interArg 'at_least_binary_relation)))
-    (is (not (v/isa? kb 'interArg 'at_least_ternary_relation))))
+    (is (v/isa? kb 'lessThan 'at_least_binary))
+    (is (not (v/isa? kb 'lessThan 'at_least_ternary))))
+  (testing "a fixed arity of two or more is at least binary too"
+    (is (v/isa? kb 'parentOf 'at_least_binary))
+    (is (not (v/isa? kb 'parentOf 'at_least_ternary)))
+    (is (v/isa? kb 'interArg 'at_least_binary))
+    (is (v/isa? kb 'interArg 'at_least_ternary)
+        "an arity no exact class maps to reaches the floors through the arity rules"))
+  (testing "a unary relation is at neither floor"
+    (is (not (v/isa? kb 'person 'at_least_binary))))
   (testing "the ternary floor specializes the binary floor"
-    (is (v/genl? kb 'at_least_ternary_relation 'at_least_binary_relation))))
+    (is (v/genl? kb 'at_least_ternary 'at_least_binary))))
+
+(def ^:private admits-argnum-definition
+  "admitsArgnum's defining rules as CxCore states them, inert."
+  '[(implies (relation ?relation) (admitsArgnum ?relation 1))
+    (implies (at_least_binary ?relation) (admitsArgnum ?relation 2))
+    (implies (at_least_ternary ?relation) (admitsArgnum ?relation 3))
+    (implies (and (unbounded_arity ?relation) (positive_integer ?position))
+             (admitsArgnum ?relation ?position))
+    (implies (and (bounded_arity ?relation) (arityMax ?relation ?max) (positive_integer ?position)
+                  (not (greaterThan ?position ?max)))
+             (admitsArgnum ?relation ?position))
+    (implies (and (arity ?relation ?arity) (positive_integer ?position)
+                  (not (greaterThan ?position ?arity)))
+             (admitsArgnum ?relation ?position))])
+
+(tu/deftest-kb admits-argnum-states-its-definition-as-inert-rules
+  (testing "each defining rule is stored in CxCore, believed, and run by neither engine"
+    (doseq [r admits-argnum-definition]
+      (let [h (v/handle-of kb (list 'set/inertRule r) 'CxCore)]
+        (is (some? h) (str "stored: " (pr-str r)))
+        (when h
+          (is (v/in? kb h))
+          (is (= #{} (:engines (v/sentex kb h))))))))
+  (testing "and none fires: no admitsArgnum fact is stored"
+    (is (empty? (v/sentexes-matching kb '(admitsArgnum ?r ?n) 'CxWell))))
+  (testing "while the prover answers as it did"
+    (is (v/ask? kb '(admitsArgnum parentOf 2) 'CxWell))
+    (is (not (v/ask? kb '(admitsArgnum parentOf 3) 'CxWell)))
+    (is (v/ask? kb '(admitsArgnum partition 40) 'CxWell))))
 
 (tu/deftest-kb admits-argnum-answers-the-position-query
   ;; #68: (admitsArgnum R n) is answered at query time from R's declared arity and
@@ -313,7 +347,7 @@
     (is (empty? violations)
         (str "relations outside the exactly-one arity-policy partition: "
              (pr-str violations)))
-    (is (some? (v/handle-of kb '(disjoint fixed_arity variable_arity) 'CxCore))
+    (is (some? (v/handle-of kb '(partition relation fixed_arity variable_arity) 'CxCore))
         "the partition is declared in KB data")))
 
 ;; ---- the declarations the merge added to the shipped functions ------------
@@ -352,19 +386,19 @@
       (is (v/ask? kb (list chainOf A B C) 'CxUniverse)))))
 
 (tu/deftest-kb the-ternary-floor-derives-and-withdraws-with-its-minimum
-  ;; No shipped relation states a minimum above two, so the `at_least_ternary_relation`
+  ;; No shipped relation states a minimum above two, so the `at_least_ternary`
   ;; rule fires on nothing in CxCore.  It is stated vocabulary either way, and this is
   ;; the case that reads it.
   (tu/with-terms [wideChainOf]
     (v/assert kb (list 'variable_arity_predicate wideChainOf) 'CxUniverse)
     (let [h (v/assert kb (list 'arityMin wideChainOf 4) 'CxUniverse)]
-      (is (v/isa? kb wideChainOf 'at_least_ternary_relation))
-      (is (v/isa? kb wideChainOf 'at_least_binary_relation)
+      (is (v/isa? kb wideChainOf 'at_least_ternary))
+      (is (v/isa? kb wideChainOf 'at_least_binary)
           "the ternary floor specializes the binary one")
       (v/retract! kb h)
-      (is (not (v/isa? kb wideChainOf 'at_least_ternary_relation))
+      (is (not (v/isa? kb wideChainOf 'at_least_ternary))
           "the floor rests on the minimum and goes with it")
-      (is (not (v/isa? kb wideChainOf 'at_least_binary_relation)))
+      (is (not (v/isa? kb wideChainOf 'at_least_binary)))
       (is (v/isa? kb wideChainOf 'variable_arity)
           "the policy was asserted separately and stands"))))
 

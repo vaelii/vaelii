@@ -1,0 +1,171 @@
+;; CxReflection — the language the KB is written in, as something the KB can talk about:
+;; the expression lattice (what a sentence is built out of, from symbols and values up to
+;; formulas and sentences, cut by open/closed and well-formed/ill-formed) and the
+;; use/mention vocabulary (proposition, means, denotes, expresses) that relates an
+;; expression to what it says or names. Sees CxCore; CxUniverse sees it, so a declaration
+;; over an expression kind is readable from every context below the upper spindle.
+;;
+;; CxCore keeps the expression kinds the engine or CxCore's own declarations name — symbol,
+;; the value kinds, unrepresented_term, formula, sentence and non_atomic_term — and
+;; linguistic, which language sits under. This context places them in the lattice.
+;;
+;; DOCUMENTARY: nothing in the engine reads the kinds stated here. An argument declaration
+;; over one types no compound, because a compound argument has no knowable kind —
+;; checks/value-kind answers nil for a compound by design (docs/argtypes.md), and no
+;; reader classifies a compound by its shape. So (quotedArg P n non_atomic_expression) is
+;; inert. The vocabulary is here because it should be one vocabulary when a shape
+;; classifier does exist; the classifier itself does not.
+
+(genlCx CxReflection CxCore)
+(genlCx CxUniverse CxReflection)
+
+;; The ladder is the standard one, and the docs are held to it (docs/naming.md's reserved
+;; words).  A PREDICATION is a predicate applied to terms.  A CLOSED_PREDICATION is a
+;; closed predication.  A LITERAL is a predication or its negation.  formula and sentence
+;; are CxCore's.
+;;
+;; A NON_ATOMIC_EXPRESSION is an expression with parts: an operator applied to arguments,
+;; (op a1 a2 ...), the one compound form KB text writes.  A formula and a non_atomic_term
+;; are both one, depending on whether the operator is a predicate or connective or a
+;; function.  They are disjoint, and the pair is not declared a covering of
+;; non_atomic_expression.
+(comment expression "A written form in this KB's own language, the thing (Quote …) names, e.g. a symbol, a value, or a compound written from them. This KB's grammar draws every cut of expression: atomic or non-atomic, open or closed, wff or ill-formed. A natural-language sentence is linguistic but not an expression, since no such cut applies to it. Not what a form denotes: what an expression names, e.g. a relation or a context, is not itself an expression.")
+(comment atomic_expression "An expression with no parts: an atomic_term or a variable.")
+(comment atomic_term "An atomic expression that denotes: a symbol or an unrepresented_term (a string, number, keyword, boolean or character).")
+(comment variable "A placeholder in a formula or query: an atomic expression that stands for whatever a quantifier, a rule match or a query answer supplies, e.g. ?x, ?person. It denotes nothing by itself; it ranges over values once a formula binds or a query answers it.")
+(comment non_atomic_expression "An expression with parts. KB text writes one as an operator applied to zero or more arguments, (op a1 a2 ...), whatever op is.")
+(comment denotational_term "An expression that DENOTES an entity: an atomic_term (a symbol or a value) or a non_atomic_term. The logic sense of 'term', spelled in full because plain 'term' is the vocabulary sense — a name the term index is keyed by.")
+(comment predication "A predicate applied to terms — (dog Muffet), (parentOf ?x Tom). Open or closed alike: the definition says nothing about variables.")
+(comment closed_predication "A closed predication — one with no free variables. What a stored LiteralSentex holds in its sentence slot.")
+(comment literal "A predication or its negation. What a LiteralSentex holds, with the record's polarity slot saying which of the two it is. A rule's antecedent is a vector of literals.")
+(comment negated_predication "A predication under not, e.g. (not (dog Muffet)), (not (parentOf ?x Tom)).")
+(genl expression linguistic)
+(set/monotonic (disjoint expression language))
+;; No written form is itself a relation or a context: a relation or a context is what an
+;; expression NAMES, not what an expression IS.  symbol reaches the relation disjoint
+;; through atomic_term and atomic_expression, so (disjoint symbol predicate) holds: a
+;; symbol is what (Quote dog) denotes, not what dog denotes, and dog written plainly in a
+;; sentence denotes the predicate dog.
+(set/monotonic (disjoint expression relation))
+(set/monotonic (disjoint expression context))
+(genl non_atomic_expression expression)
+(partition expression atomic_expression non_atomic_expression)
+(partition atomic_expression atomic_term variable)
+(genl atomic_term denotational_term)
+(partition denotational_term atomic_term non_atomic_term)
+(genl symbol atomic_term)
+(genl unrepresented_term atomic_term)
+(partition atomic_term unrepresented_term symbol)
+(genl non_atomic_term non_atomic_expression)
+(genl formula non_atomic_expression)
+(set/monotonic (disjoint formula non_atomic_term))
+(genl literal formula)
+(genl predication literal)
+(genl negated_predication literal)
+(partition literal predication negated_predication)
+(genl closed_predication sentence)
+(genl indeterminate_term denotational_term)
+
+;; Well-formedness crosses the kinds: an expression is wff or ill-formed whatever its
+;; shape, and formula and sentence split the same way, each half the intersection of
+;; the kind with the matching half of expression.
+(comment wff_expression "An expression whose every relation, function and connective is applied to as many arguments as its declared arity allows, and whose every quantifier binds a variable, e.g. Muffet, ?x, (MotherFn Muffet), (dog ?x). It is checked against the KB's declarations, so parsing alone cannot decide it. Only a wff_expression denotes or predicates.")
+(comment ill_formed_expression "An expression that is not well-formed: some operator has the wrong number of arguments, or is not a relation, function or connective at all, e.g. (3 4), (MotherFn) or (dog Muffet Rex): a number in operator position, a one-argument function given no argument, a one-place predicate given two.")
+(comment wff "A well-formed formula: it says something once its free variables have values, e.g. (dog Muffet), (not (dog ?x)), (forall ?x (implies (dog ?x) (animal ?x))).")
+(comment ill_formed "A formula-shaped expression that is not well-formed, so it says nothing, e.g. (dog Muffet Rex), a one-place predicate given two arguments.")
+(comment wff_sentence "A well-formed closed formula: what a stored sentex holds, e.g. (dog Muffet).")
+(comment ill_formed_sentence "A closed formula-shaped expression that is not well-formed, e.g. (dog Muffet Rex).")
+(genl wff_expression expression)
+(genl ill_formed_expression non_atomic_expression)
+(partition expression wff_expression ill_formed_expression)
+(partition formula wff ill_formed)
+(partition sentence wff_sentence ill_formed_sentence)
+(intersection wff formula wff_expression)
+(intersection ill_formed formula ill_formed_expression)
+(genl wff_sentence wff)
+(genl ill_formed_sentence ill_formed)
+(intersection wff_sentence sentence wff_expression)
+(intersection ill_formed_sentence sentence ill_formed_expression)
+(genl denotational_term wff_expression)
+(genl atomic_expression wff_expression)
+
+;; An expression is OPEN when a variable occurs free in it and CLOSED otherwise.  The
+;; split is reified only where it is used: formula, predication and literal, each half the
+;; intersection of the kind with the matching half of expression.  sentence and
+;; closed_predication are the closed halves of formula and predication under the names they
+;; already had.  denotational_term is closed by definition: a variable, or a term with one
+;; free, denotes nothing in particular.
+(comment open_expression "An expression in which a variable occurs free, e.g. ?x, (MotherFn ?x), (dog ?x), or (and (dog ?x) (forall ?y (cat ?y))), open in ?x though ?y is bound. A variable inside (Quote …) is part of the quoted form and is never free in the expression around it.")
+(comment closed_expression "An expression with no free variable, e.g. Muffet, (MotherFn Muffet), (dog Muffet), or (forall ?x (implies (dog ?x) (animal ?x))), where ?x occurs but is bound.")
+(comment open_formula "A formula with a free variable, such as (dog ?x). It is true or false only once its free variables have values.")
+(comment open_predication "A predication with a free variable, such as (dog ?x).")
+(comment open_literal "A literal in which a variable occurs free, e.g. (dog ?x), (not (dog ?x)). What a rule's antecedent holds.")
+(comment closed_literal "A literal with no free variable, e.g. (dog Muffet), (not (dog Muffet)). What a stored LiteralSentex holds.")
+(genl open_expression expression)
+(genl closed_expression expression)
+(partition expression open_expression closed_expression)
+(intersection variable atomic_expression open_expression)
+(intersection atomic_term atomic_expression closed_expression)
+(genl denotational_term closed_expression)
+(partition formula open_formula sentence)
+(intersection open_formula formula open_expression)
+(intersection sentence formula closed_expression)
+(partition predication open_predication closed_predication)
+(intersection open_predication predication open_expression)
+(intersection closed_predication predication closed_expression)
+(partition literal open_literal closed_literal)
+(intersection open_literal literal open_expression)
+(intersection closed_literal literal closed_expression)
+
+;; Each expression kind is a type, a one-place predicate over expressions.
+(unary_predicate expression)
+(unary_predicate atomic_expression)
+(unary_predicate non_atomic_expression)
+(unary_predicate atomic_term)
+(unary_predicate variable)
+(unary_predicate denotational_term)
+(unary_predicate predication)
+(unary_predicate closed_predication)
+(unary_predicate literal)
+(unary_predicate negated_predication)
+(unary_predicate open_expression)
+(unary_predicate closed_expression)
+(unary_predicate open_formula)
+(unary_predicate open_predication)
+(unary_predicate open_literal)
+(unary_predicate closed_literal)
+(unary_predicate wff_expression)
+(unary_predicate ill_formed_expression)
+(unary_predicate wff)
+(unary_predicate ill_formed)
+(unary_predicate wff_sentence)
+(unary_predicate ill_formed_sentence)
+
+;; ---- use and mention ------------------------------------------------------------
+;; Use is the default: dog written in a sentence denotes the predicate dog, and only
+;; (Quote dog) mentions it.  proposition names what a sentence says, apart from any
+;; language it is said in; means, denotes and expresses relate an expression to what it
+;; carries.
+(comment proposition "What a wff_sentence expresses: semantic content whose truth is evaluated in a context, which sentences in any language can carry. (dog Muffet) and \"Muffet est un chien\" express one proposition.")
+(unary_predicate proposition)
+(genl proposition nowhere_never)
+(set/monotonic (disjoint proposition linguistic))
+;; What a relation relates or says is not itself an operator.
+(set/monotonic (disjoint proposition relation))
+
+(comment means "(means ?expression ?meaning) means that ?expression, a closed wff_expression, has ?meaning as its semantic content: for a term what it denotes, for a sentence the proposition it expresses. (means (Quote Muffet) Muffet). Read in the context the sentence is stated in, which supplies the interpretation. Functional: an expression has at most one meaning in a context.")
+(binary_predicate means)
+(arg means 1 wff_expression)
+(arg means 1 closed_expression)
+(functional means)
+
+(comment denotes "(denotes ?term ?thing) means that the denotational_term ?term names ?thing. (denotes (Quote Muffet) Muffet): the symbol Muffet names the dog. (denotes (Quote dog) dog): the symbol dog names the predicate. (denotes (Quote (MotherFn Muffet)) (MotherFn Muffet)).")
+(binary_predicate denotes)
+(genl denotes means)
+(arg denotes 1 denotational_term)
+
+(comment expresses "(expresses ?sentence ?proposition) means that the wff_sentence ?sentence says ?proposition. Two sentences can express one proposition, in two languages or two phrasings, and two true sentences can express different ones.")
+(binary_predicate expresses)
+(genl expresses means)
+(arg expresses 1 wff_sentence)
+(arg expresses 2 proposition)

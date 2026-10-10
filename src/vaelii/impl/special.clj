@@ -6841,6 +6841,24 @@
                  (let [pred (second (:sentence sx))]
                    (tax/unmark-prop! (reasoning/taxonomy kb) :closed-extent pred (:id sx))
                    (index-closed-extent-rules kb pred)))))
+    ;; `(closedExtentForArg P n v)` is `closed_extent_predicate` narrowed to the goals
+    ;; whose argument n is v.  The arms mark P under `:closed-extent-arg`, scoped like
+    ;; `:closed-extent`, which is the gate `provers/closed-extent-for-arg?` reads before it
+    ;; reads the grant's position and value back from the believed grants.  The re-check
+    ;; postings are the whole-predicate grant's, for the same reason.
+    'closedExtentForArg
+    (-> (prop-entry 'closedExtentForArg)
+        (assoc :integrate
+               (fn [kb sx h]
+                 (let [pred (second (:sentence sx))]
+                   (tax/mark-prop (reasoning/taxonomy kb) :closed-extent-arg pred h (:context sx))
+                   (index-closed-extent-rules kb pred))))
+        (assoc :disintegrate
+               (fn [kb sx]
+                 (let [pred (second (:sentence sx))]
+                   (tax/unmark-prop! (reasoning/taxonomy kb) :closed-extent-arg pred (:id sx))
+                   (index-closed-extent-rules kb pred))))
+        (assoc :wff wff/closed-extent-for-arg-problems))
     ;; `(modal_predicate P)` is what makes `(P agent sentence)` project into the agent's
     ;; context (docs/belief.md) — `BeliefProjectionProver` reads it.  Not
     ;; decontextualized, and for `abducible_predicate`'s reason: which predicates a theory

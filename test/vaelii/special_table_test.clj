@@ -136,6 +136,7 @@
     [target_following_predicate         [:integrate :disintegrate :rebuild :wff]       :target-following          true]
     [abducible_predicate               [:integrate :disintegrate :rebuild :wff]       :abducible                 true]
     [closed_extent_predicate            [:integrate :disintegrate :rebuild :wff]       :closed-extent             true]
+    [closedExtentForArg                 [:integrate :disintegrate :rebuild :wff]       :closed-extent-arg         true]
     [modal_predicate                   [:integrate :disintegrate :rebuild :wff]       :modal                     true]
     [reifiable_function                [:integrate :disintegrate :rebuild :wff]       :reifiable                 true]
     [unreifiable_function              [:integrate :disintegrate :rebuild :wff]       :unreifiable               true]

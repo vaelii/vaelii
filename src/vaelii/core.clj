@@ -6956,7 +6956,7 @@
   | `:inert` | a denial of a literal on the forced-monotonic roster, stored and held OUT (docs/nmtms.md) | — |
   | `:unsupported` | not a premise, and every supporting justification has an antecedent that is OUT | `:support` with `:missing` |
   | `:excepted` | *(sentence arity only)* a rule applied and its `exceptWhen` query held, so it concluded nothing | `:rule` `:exception` `:via` |
-  | `:closed-extent` | *(sentence arity only)* nothing stored or derived says so, **and** `(closed_extent_predicate P)` is visible here — so the KB is not silent about it, it says the extent is complete and this is not in it | — |
+  | `:closed-extent` | *(sentence arity only)* nothing stored or derived says so, **and** `(closed_extent_predicate P)` is visible here, or a `(closedExtentForArg P n v)` whose position `n` the sentence fills with `v` — so the KB is not silent about it, it says the extent is complete and this is not in it | — |
 
   A believed handle yields `{:believed? true}` and no `:reason`.  An empty `:support`
   under `:unsupported` means it never had a justification at all.  A nil handle is
@@ -7020,7 +7020,7 @@
             ;; a closed extent is the *more specific* answer than "nobody said so": the
             ;; KB is not silent about this sentence, it says the extent is complete and
             ;; this is not in it — which is what makes `(not S)` derivable (docs/naf.md)
-            :reason (if (provers/closed-extent? kb (nm/functor sentence) context)
+            :reason (if (provers/closed-extent-for? kb sentence context)
                       :closed-extent
                       :not-stored)})))))
   ([kb sentence context opts]

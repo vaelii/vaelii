@@ -228,7 +228,7 @@
   saturating sentinel would overflow into a negative cost."
   1000000000)
 
-(defn- closed?
+(defn- settled-when-run?
   "Is this term settled by the time the literal runs — either literally ground, or a
   variable already in `bound`?  Distinct from `sx/ground-term?`, the test for a trie
   prefix token: a bound variable *will* have a value, but the planner does not know
@@ -414,7 +414,7 @@
        (not (sequential? goal)) 1
 
        ;; A literal with nothing left open is a test: it matches at most once.
-       (closed? goal bound) 1
+       (settled-when-run? goal bound) 1
 
        ;; A negative literal keys under [:false <body>], so no prefix built from its
        ;; own tokens reaches it and `count-at` would answer 0 — a *lower* bound, which

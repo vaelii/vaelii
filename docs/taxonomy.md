@@ -65,8 +65,8 @@ globally, and why: [below](#the-global-readers-and-who-may-use-one).
 arguments, while only predicates hold or fail and only functions denote values. Arity
 policy and the exact `arity` table are therefore relation-wide.
 
-`fixed_arity` and `variable_arity` classify two disjoint policies, with predicate and
-function specializations for each. Unsuffixed `unary`, `binary` and `ternary` classify
+`fixed_arity` and `variable_arity` partition `relation` into two policies, with predicate
+and function specializations for each. Unsuffixed `unary`, `binary` and `ternary` classify
 exact relations; `unary_predicate` / `unary_function` and their binary and ternary peers
 specialize those relation-wide classes. `relationTypeByArity` owns the shared mapping;
 `predicateTypeByArity` and `functionTypeByArity` are its `genl` specializations, and one
@@ -75,16 +75,25 @@ generator stamps, per mapping fact, the rule classifying a relation from its ass
 `unary`, `binary` and `ternary`. The predicate and function types reach them through
 their `genl` edges, so a `(predicateTypeByArity unary_predicate 1)` beside them would
 classify a unary function as a predicate. The two specializations stay declared for a KB
-mapping an arity the relation-wide table has no class for. `arityMin` states the lower bound of a variable-arity relation. Prefer
+mapping an arity the relation-wide table has no class for. `bounded_arity` and
+`unbounded_arity` partition `relation`: `fixed_arity` is below `bounded_arity`, and
+`unbounded_arity` below `variable_arity`, with `unbounded_arity_predicate` and
+`unbounded_arity_function` its intersections with `predicate` and `function`.
+`(arityMax R N)` states the upper bound of a `bounded_arity` relation. The three are
+documentary: the arity check reads `fixed_arity`, `variable_arity` and `arityMin`.
+`arityMin` states the lower bound of a variable-arity relation. Prefer
 variable arity for a repeatable, homogeneously typed argument role. A relation with a
 bounded optional tail declares variable arity too, with its `arityMin`, and its
 well-formedness check bounds the tail: `functionCorrespondingPredicate` is
 `variable_arity_predicate` with `arityMin 2`, and `wff/correspondence-problems` refuses
-it with other than two or three arguments, the third an optional argument position.
+it with other than two or three arguments, the third an optional argument position. It is
+also `bounded_arity` with `(arityMax functionCorrespondingPredicate 3)`, which states that
+bound in the KB.
 
-`at_least_binary_relation` and `at_least_ternary_relation` are generic derived
-classifications over `arityMin`; callers can conjoin them with `predicate` or `function`
-instead of maintaining duplicate predicate/function classes. `admitsArgnum` names the
+`at_least_binary` and `at_least_ternary` are the generic derived classes of relations of
+arity 2 or greater and 3 or greater, fixed or variable. `binary` and `ternary` are below
+them, and rules over `arity` and `arityMin` derive them. Callers can conjoin them with
+`predicate` or `function` instead of maintaining duplicate predicate/function classes. `admitsArgnum` names the
 separate question of whether one positive argument position exists. No WFF/query reader
 currently consumes it, and no parallel finite position roster is inferred.
 
@@ -1280,13 +1289,14 @@ CxCore places `spatiotemporal` and `nowhere_never` by `genl` edges, not by
 `nowhere_never`.
 
 A kind with no location in any space sits below `aspatial`, which separates it from
-`spatial` and from every CxSpace argument. `organization` (CxCore), `relation_type`
-(CxAbstract), `quantity` (CxMeasure) and `fluent` (CxTime) are below `aspatial`. The `expression` lattice is in CxCore. `expression` is below
-`nowhere_never`, and `context`, `relation`, `formula`, `relation_application`,
-`denotational_term` and `unrepresented_term` are below `expression`. The value kinds
-`string`, `number`, `keyword`, `boolean` and `character` are below `unrepresented_term`.
-`language` is below `nowhere_never` in CxCore too. Every spindle member therefore reads
-each of these kinds as disjoint from `spatial`. `ontology_test` pins each separation from
+`spatial` and from every CxSpace argument. `organization` (CxCore),
+`quantity` (CxMeasure) and `fluent` (CxTime) are below `aspatial`.
+`context`, `relation`, `measure` and `linguistic` are below `nowhere_never` in CxCore.
+`language`, `unrepresented_term`, `symbol`, `formula` and `non_atomic_term` are below
+`linguistic` in CxCore, and the value kinds `string`, `number`, `keyword`, `boolean` and
+`character` are below `unrepresented_term`. Every spindle member therefore reads each of
+these kinds as disjoint from `spatial`. The rest of the `expression` lattice is in
+CxReflection, where `expression` is below `linguistic`. `ontology_test` pins each separation from
 the contexts that read it.
 
 ## Predicate metadata
@@ -1913,11 +1923,12 @@ Four restrictions keep the arm to what it can actually prove:
   its author meant; an existential is skipped because its variables are local.
 - **Declared disjointness only**, so the arm stays as open-world as the ground one. The
   value kinds carry the declaration that makes the case above bite — each is an
-  `unrepresented_term`, and `(disjoint unrepresented_term relation)` in CxCore
-  separates it from every predicate, text and a number each being a thing no relation
-  is, and `number` carrying `integer` with it.
-  `symbol` deliberately carries neither: a name is exactly how a predicate is written, so
-  the disjointness would be false. `(disjoint function predicate)` is derived from
+  `unrepresented_term`, which CxCore places below `linguistic`, and `(disjoint linguistic
+  relation)` separates it from every predicate, text and a number each being a thing no
+  relation is, and `number` carrying `integer` with it.
+  `symbol` is below `linguistic` too: a symbol is what `(Quote dog)` names, not what `dog`
+  written in a sentence denotes, so a variable asked for a symbol at one end and a type at
+  the other is refused. `(disjoint function predicate)` is derived from
   CxCore's `(partition relation function truth_valued_relation)` and `(partition
   truth_valued_relation logical_constant predicate)` rather than stated; it is what
   `function`'s own comment has always said in prose, and it is what refuses

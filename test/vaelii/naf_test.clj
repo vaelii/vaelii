@@ -699,6 +699,134 @@
       (is (= :closed-extent
              (:reason (v/why-not kb (list month_of_year Smarch) CxCalendar)))))))
 
+;; ---- a closed extent per argument: closedExtentForArg -------------------
+
+(tu/deftest-kb a-per-argument-closed-extent-closes-only-the-named-value
+  ;; "the accounts on HostA are exactly the stored ones"
+  (tu/with-terms [accountOn Alice Carol HostA HostB CxHosts]
+    (v/assert kb (list 'genlCx CxHosts 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list accountOn Alice HostA) CxHosts)
+    (testing "without the grant, an account nobody listed is merely unknown"
+      (is (not (v/ask? kb (list 'not (list accountOn Carol HostA)) CxHosts))))
+    (v/assert kb (list 'closedExtentForArg accountOn 2 HostA) CxHosts)
+    (testing "under the grant, nothing answering the positive is what answers the negative"
+      (is (v/ask? kb (list 'not (list accountOn Carol HostA)) CxHosts))
+      (is (v/ask? kb (list accountOn Alice HostA) CxHosts))
+      (is (not (v/ask? kb (list 'not (list accountOn Alice HostA)) CxHosts))
+          "a member is not refuted by its own extent"))
+    (testing "a goal whose argument 2 is another value stays open-world"
+      (is (not (v/ask? kb (list 'not (list accountOn Carol HostB)) CxHosts))))))
+
+(tu/deftest-kb the-binary-sugar-derives-the-ternary-grant
+  (tu/with-terms [accountOn Alice Carol HostA HostB CxHosts]
+    (v/assert kb (list 'genlCx CxHosts 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list accountOn Alice HostA) CxHosts)
+    (v/assert kb (list 'closedExtentForArg2 accountOn HostA) CxHosts)
+    (testing "the sugar derives the ternary"
+      (is (v/ask? kb (list 'closedExtentForArg accountOn 2 HostA) CxHosts)))
+    (testing "and reads exactly as the ternary does"
+      (is (v/ask? kb (list 'not (list accountOn Carol HostA)) CxHosts))
+      (is (v/ask? kb (list accountOn Alice HostA) CxHosts))
+      (is (not (v/ask? kb (list 'not (list accountOn Carol HostB)) CxHosts))))))
+
+(tu/deftest-kb a-per-argument-closed-extent-is-scoped-to-its-context
+  (tu/with-terms [accountOn Alice Carol HostA CxHosts CxSibling]
+    (v/assert kb (list 'genlCx CxHosts 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxSibling 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list accountOn Alice HostA) 'CxUniverse)
+    (v/assert kb (list 'closedExtentForArg accountOn 2 HostA) CxHosts)
+    (is (v/ask? kb (list 'not (list accountOn Carol HostA)) CxHosts))
+    (is (not (v/ask? kb (list 'not (list accountOn Carol HostA)) CxSibling))
+        "a sibling theory without the grant answers open-world")))
+
+(tu/deftest-kb a-per-argument-closed-extent-follows-belief
+  (tu/with-terms [accountOn Alice HostA CxHosts]
+    (v/assert kb (list 'genlCx CxHosts 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'closedExtentForArg accountOn 2 HostA) CxHosts)
+    (let [h (v/assert kb (list accountOn Alice HostA) CxHosts)]
+      (is (not (v/ask? kb (list 'not (list accountOn Alice HostA)) CxHosts)))
+      (v/retract! kb h)
+      (is (v/ask? kb (list 'not (list accountOn Alice HostA)) CxHosts)
+          "a retracted member leaves the extent, and the negative holds"))))
+
+(tu/deftest-kb a-per-argument-closed-extent-needs-the-position-ground
+  (tu/with-terms [accountOn Alice HostA CxHosts]
+    (v/assert kb (list 'genlCx CxHosts 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list accountOn Alice HostA) CxHosts)
+    (v/assert kb (list 'closedExtentForArg accountOn 2 HostA) CxHosts)
+    (is (empty? (v/ask kb (list 'not (list accountOn Alice '?host)) CxHosts))
+        "an open argument 2 is a search over the complement, which the grant does not license")))
+
+(tu/deftest-kb a-per-argument-closed-extent-rule-antecedent-is-negation-as-failure
+  (tu/with-terms [accountOn candidate unknown_on_host Carol HostA CxHosts]
+    (v/assert kb (list 'genlCx CxHosts 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'closedExtentForArg accountOn 2 HostA) CxHosts)
+    (v/assert kb (list 'implies (list 'and (list candidate '?u)
+                                      (list 'not (list accountOn '?u HostA)))
+                       (list unknown_on_host '?u))
+              CxHosts {:direction :forward})
+    (v/assert kb (list candidate Carol) CxHosts)
+    (testing "the rule fires on the absence of an account, with nothing negative stored"
+      (is (v/ask? kb (list unknown_on_host Carol) CxHosts)))
+    (v/assert kb (list accountOn Carol HostA) CxHosts)
+    (testing "the account arriving withdraws the firing"
+      (is (not (v/ask? kb (list unknown_on_host Carol) CxHosts))))))
+
+(tu/deftest-kb a-per-argument-closed-extent-cycle-through-negation-is-refused
+  (tu/with-terms [accountOn candidate HostA CxHosts]
+    (v/assert kb (list 'genlCx CxHosts 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'closedExtentForArg accountOn 2 HostA) CxHosts)
+    (testing "a rule concluding P whose body reads (not (P …)) under the grant"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo #"not stratified"
+           (v/assert kb (list 'implies (list 'and (list candidate '?u)
+                                             (list 'not (list accountOn '?u HostA)))
+                              (list accountOn '?u HostA))
+                     CxHosts {:direction :forward}))))))
+
+(tu/deftest-kb a-per-argument-grant-that-would-close-a-cycle-is-refused
+  ;; The other arrival order: the rule is stored first, and the grant is what would add
+  ;; the negative edge.
+  (tu/with-terms [accountOn candidate HostA CxHosts]
+    (v/assert kb (list 'genlCx CxHosts 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'implies (list 'and (list candidate '?u)
+                                      (list 'not (list accountOn '?u HostA)))
+                       (list accountOn '?u HostA))
+              CxHosts {:direction :forward})
+    (testing "the ternary grant"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo #"not stratified"
+           (v/assert kb (list 'closedExtentForArg accountOn 2 HostA) CxHosts))))
+    (testing "and its binary sugar"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo #"not stratified"
+           (v/assert kb (list 'closedExtentForArg2 accountOn HostA) CxHosts))))))
+
+(tu/deftest-kb a-whole-closure-entails-every-per-argument-closure-inertly
+  (let [r '(implies (and (closed_extent_predicate ?pred) (admitsArgnum ?pred ?position)
+                         (thing ?value))
+                    (closedExtentForArg ?pred ?position ?value))
+        h (v/handle-of kb (list 'set/inertRule r) 'CxCore)]
+    (testing "the defining rule is stored in CxCore, believed, and run by neither engine"
+      (is (some? h))
+      (is (v/in? kb h))
+      (is (= #{} (:engines (v/sentex kb h)))))
+    (tu/with-terms [accountOn Alice HostA CxHosts]
+      (v/assert kb (list 'genlCx CxHosts 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'binary_predicate accountOn) CxHosts)
+      (v/assert kb (list accountOn Alice HostA) CxHosts)
+      (v/assert kb (list 'closed_extent_predicate accountOn) CxHosts)
+      (is (empty? (v/sentexes-matching kb (list 'closedExtentForArg accountOn '?n '?v) CxHosts))
+          "a whole-predicate grant stores no per-argument grant"))))
+
+(tu/deftest-kb why-not-says-the-extent-is-closed-for-the-argument
+  (tu/with-terms [accountOn Carol HostA HostB CxHosts]
+    (v/assert kb (list 'genlCx CxHosts 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'closedExtentForArg accountOn 2 HostA) CxHosts)
+    (is (= :closed-extent (:reason (v/why-not kb (list accountOn Carol HostA) CxHosts))))
+    (is (= :not-stored (:reason (v/why-not kb (list accountOn Carol HostB) CxHosts)))
+        "another value of the argument is simply not stored")))
+
 ;; ---- forall: sugar for the nested NAF ----------------------------------
 
 (deftest forall-desugars-to-a-nested-unknown
@@ -818,9 +946,9 @@
 
 (tu/deftest-kb forall-is-not-assertible
   (tu/with-terms [childOf asleep Bob Kid]
-    (testing "the written spelling carries a variable, so the ground check refuses it first"
+    (testing "the written spelling binds its variable, so it is closed and reaches the query-operator arm"
       (is (thrown-with-msg?
-           clojure.lang.ExceptionInfo #"not ground"
+           clojure.lang.ExceptionInfo #"query operator"
            (v/assert kb (list 'forall '?y (list 'implies (list childOf Bob '?y)
                                                 (list asleep '?y)))
                      'CxWell))))

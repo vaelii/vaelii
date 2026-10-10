@@ -351,6 +351,16 @@
     (not= 2 (count s))    (conj (str f " takes one argument"))
     (nm/individual? pred) (conj (str pred " is an individual; " f " marks a predicate"))))
 
+(defn closed-extent-for-arg-problems
+  "`(closedExtentForArg P n v)` — a predicate, a positive-integer position, and the value
+  that position holds in the goals whose extent the grant closes.  The value is any term."
+  [_ [f pred n :as s] _context]
+  (cond-> []
+    (not= 4 (count s))    (conj (str f " takes three arguments"))
+    (nm/individual? pred) (conj (str pred " is an individual; " f " marks a predicate"))
+    (not (and (integer? n) (pos? n)))
+    (conj (str f " position must be a positive integer"))))
+
 ;; ---- equality: rewriteOf / sameAs / equals / different -------------------
 ;; See docs/equality.md.  Three assertable relations feed one closure and one
 ;; unassertable one reads it.

@@ -372,6 +372,36 @@ reading the same predicate, answers only what it was told. It is belief-followin
 other predicate marks: a defeated or retracted member leaves the extent, and the closure
 follows.
 
+### A closed extent for one argument value
+
+`(closedExtentForArg P n v)` is the same grant narrowed to the goals whose argument `n` is
+`v`:
+
+```clojure
+(v/assert kb '(closedExtentForArg accountOn 2 HostA) 'CxHosts)
+;; "the accounts on HostA are exactly the stored ones"
+```
+
+Under it, nothing answering `(accountOn Carol HostA)` at level 6 is what answers
+`(not (accountOn Carol HostA))`. `(not (accountOn Carol HostB))` stays open-world in the
+same context, because argument 2 is not `HostA`. `ClosedExtentProver` answers both
+grants (`provers/closed-extent-for?`). The goal is ground, so argument `n` is ground too;
+an open `(not (accountOn Alice ?host))` is not closed.
+
+The per-argument grant is scoped and belief-following exactly as the whole-predicate grant
+is. Its arms mark `P` under the taxonomy prop `:closed-extent-arg`, read from the asking
+context, as the gate; the prover then reads the grant's position and value back from the
+believed grants visible there. A position past the goal's arity matches no goal.
+
+`closedExtentForArg1`, `closedExtentForArg2` and `closedExtentForArg3` are binary
+spellings: `(closedExtentForArg2 P v)` means `(closedExtentForArg P 2 v)`. A CxCore forward
+rule derives the ternary from each, and the engine reads only the ternary. An inert rule
+states the reverse direction, so a ternary grant mints no binary twin.
+
+A whole-predicate grant entails the per-argument grant at every admitted position and for
+every value. CxCore states that as an inert rule over `admitsArgnum`, with `(thing ?value)`
+binding the value, so a `closed_extent_predicate` grant stores no per-argument grants.
+
 ### Under the grant, a negative antecedent is NAF
 
 ```clojure
@@ -409,6 +439,10 @@ and queues it `:all-rejoin`, because the grant blocked nothing for the blocked s
 notice and the firings it licenses have no justification yet — the same asymmetry a
 widened `genlCx` ancestor set takes that marker for.
 
+A per-argument grant governs rules the same way. The join and the re-check index read
+`P` as granted wherever any `closedExtentForArg` names it (`rules/closed-extent-declared?`),
+and derive time decides the literal for the value it holds.
+
 ### Stratification, from both arrival orders
 
 A closed-extent negative antecedent is a **negative edge** on `P`, so a rule concluding
@@ -419,8 +453,12 @@ with a `[:not P]` antecedent (one antecedent-index lookup, no scan) and **refuse
 declaration**, which is the same answer `check-edge-stratified` gives a `genl` edge that
 closes one, and for the same reason: stored state is always stratified.
 
+A per-argument grant adds the same negative edge on `P`, whatever value it names, so
+`(closedExtentForArg P n v)` and its binary spellings are refused where
+`(closed_extent_predicate P)` would be.
+
 `why-not` reports `:closed-extent` for a positive goal nothing answers under a visible
-grant. That is the more specific answer than `:not-stored`: the KB is not silent about the
+grant that covers it. That is the more specific answer than `:not-stored`: the KB is not silent about the
 sentence, it says the extent is complete and this is not in it.
 
 **`defns` and `disjoint` are untouched.** A `defnIff` states a condition, not an extent —

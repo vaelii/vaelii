@@ -167,7 +167,7 @@
   (testing "and the type-valued position of the same literal is unaffected"
     (is (= [] (v/check kb '(implies (result ?f ?t) (genl ?t ?t)) 'CxUniverse)))))
 
-(tu/deftest-kb the-value-kinds-are-one-vocabulary-and-symbol-is-mention-only
+(tu/deftest-kb the-value-kinds-are-one-vocabulary-and-a-symbol-is-refused-into-a-type-slot
   (testing "the disjointness on number carries integer with it"
     ;; `(arg arity 2 non_negative_integer)`, and that type is below integer and number,
     ;; which no relation is
@@ -176,14 +176,16 @@
       (is (= [:arg-variable] (mapv :type ps)))
       (is (= '?n (:variable (first ps))))
       (is (= '[non_negative_integer unary_predicate] (:expected (first ps))))))
-  (testing "symbol carries no disjointness, a name being how a predicate is written"
-    ;; the deliberate absence, and the one that has to be pinned: `(disjoint symbol
-    ;; predicate)` would read as a use-level claim and be false of every predicate name,
-    ;; so a variable asked for a symbol at one end and a kind at the other is admissible
+  (testing "a symbol fed into a type slot is refused, mention and use being disjoint"
+    ;; symbol reaches expression through atomic_term and atomic_expression, and
+    ;; expression is disjoint from relation, so a variable asked for a symbol at one end
+    ;; and a kind at the other has nothing left that can fill it
     (let [p (tu/tmp-pred)]
       (v/assert kb (list 'arg p 1 'symbol) 'CxUniverse)
-      (is (= [] (v/check kb (list 'implies (list p '?x) (list 'genl '?x 'thing))
-                         'CxUniverse))))))
+      (let [ps (v/check kb (list 'implies (list p '?x) (list 'genl '?x 'thing)) 'CxUniverse)]
+        (is (= [:arg-variable] (mapv :type ps)))
+        (is (= '?x (:variable (first ps))))
+        (is (= '[symbol unary_predicate] (:expected (first ps))))))))
 
 ;; ---- the other entry point: a rule nobody typed ---------------------------------
 ;; `check-rule!` is read from two places.  The author's `assert` throws it, which is

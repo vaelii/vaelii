@@ -585,7 +585,7 @@
                  :family nil :facets #{:reach :convicts}
                  :notes (str "floors a variable_arity relation: a shorter tuple is a one-member"
                              " nogood the settle places. Ordinary CxCore rules"
-                             " also derive the at_least_*_relation classifications.")}
+                             " also derive the at_least_binary and at_least_ternary classifications.")}
                 "chain/place-arities! floors a variable-arity tuple at the minimum")]
      ['relationTypeByArity
       (enforced {:shape {:args [:type :integer]} :storage [:none] :checked false
@@ -712,6 +712,38 @@
                 (str "taxonomy prop :closed-extent — ClosedExtentProver answers (not (P …))"
                      " from the absence of a positive, and a closed negative rule antecedent"
                      " under the grant is negation as failure"))]
+     ['closedExtentForArg
+      (enforced (assoc (prop :closed-extent-arg :facets #{:answers :retriggers}
+                             :notes (str "closed_extent_predicate narrowed to the goals whose"
+                                         " argument n is v. The prop marks P alone, as the"
+                                         " gate; the position and value are read back from"
+                                         " the believed grants visible to the asker."))
+                       :shape {:args [:predicate :position :term]})
+                (str "taxonomy prop :closed-extent-arg — ClosedExtentProver answers a ground"
+                     " (not (P …)) whose argument n is v from the absence of a positive, and"
+                     " a closed negative rule antecedent under the grant is negation as"
+                     " failure"))]
+     ['closedExtentForArg1
+      (enforced {:shape {:args [:predicate :term]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "the binary spelling of (closedExtentForArg ?p 1 ?v). A CxCore"
+                             " forward rule derives the ternary, and the prover reads only the"
+                             " ternary.")}
+                (str "the CxCore forward rule deriving (closedExtentForArg P 1 V), and"
+                     " checks/check-closed-extent-stratified, which refuses the spelling where"
+                     " the ternary would be refused"))]
+     ['closedExtentForArg2
+      (enforced {:shape {:args [:predicate :term]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes "the binary spelling of (closedExtentForArg ?p 2 ?v) — see closedExtentForArg1."}
+                (str "the CxCore forward rule deriving (closedExtentForArg P 2 V); see"
+                     " closedExtentForArg1"))]
+     ['closedExtentForArg3
+      (enforced {:shape {:args [:predicate :term]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes "the binary spelling of (closedExtentForArg ?p 3 ?v) — see closedExtentForArg1."}
+                (str "the CxCore forward rule deriving (closedExtentForArg P 3 V); see"
+                     " closedExtentForArg1"))]
      ['modal_predicate (enforced (prop :modal)
                                  (str "taxonomy prop :modal — the gate BeliefProjectionProver reads to decide"
                                       " which predicates project their sentence into the agent's context"))]
@@ -1012,9 +1044,14 @@
                                   " answered from the equality closure under the unique-name"
                                   " assumption"))]
      ['unknown     (operator {:args [:sentence]})]
-     ['thereExists (operator {:args [:sentence]})]
-     ['forall      (operator {:args [:term :sentence]}
-                             :notes "sugar for a nested unknown, desugared at the rule entry point.")]
+     ['thereExists (enforced (operator {:args [:sentence]})
+                             "provers/ThereExistsProver — a ground existential, binding its variable(s) against the body and projecting the binder out")]
+     ['forall      (enforced (operator {:args [:term :sentence]}
+                                       :notes "sugar for a nested unknown, desugared at the rule entry point.")
+                             "sentex/desugar-forall-literal plus provers/ForallProver — desugars to the nested NAF (unknown (thereExists ...)) and hands that back to the registry")]
+     ['exists      (enforced (structural {:args [:term :sentence]}
+                                         "a head existential: a consequent variable no antecedent binds. Unlike forall/thereExists it is never answered by a prover — the canonicalizer strips and skolemizes it before the rule stores, so no wff arm of its own belongs in the special-predicate table.")
+                             "skolem/skolemize-conclusion, sentex/head-exists? — forward firing mints a fresh witness per firing (docs/skolem.md)")]
      ['bravely     (operator {:args [:sentence]}
                              :notes (str "a read of the current dilemmas — S in some optimal"
                                          " labeling; answered by the :brave-cautious prover."))]
@@ -1034,19 +1071,27 @@
 
     ;; ---- the syntactic and denotation type roots -------------------------
     (map (fn [[t where]]
-           [t (enforced (collection
+           [t (enforced (collection :facets #{:answers}
+                                    :notes (str "read by name by checks/syntactic-roots — the"
+                                                " kind quotedArg judges a value against — and an"
+                                                " evaluable kind check for a literal argument:"
+                                                " (string \"foo\") holds and (number \"foo\")"
+                                                " does not. A symbol argument is left to the"
+                                                " other provers."))
+                        where)])
+         '[[string "checks/syntactic-roots — the kind quotedArg judges a value against, matched by name; provers/EvaluableProver answers it for a literal"]
+           [number "checks/syntactic-roots — the same, with integer below it; provers/EvaluableProver answers it for a literal"]
+           [keyword "checks/syntactic-roots — the same; provers/EvaluableProver answers it for a literal"]
+           [boolean "checks/syntactic-roots — the same; provers/EvaluableProver answers it for a literal"]
+           [character "checks/syntactic-roots — the same, and a one-letter string is not one; provers/EvaluableProver answers it for a literal"]])
+    [['symbol (enforced (collection
                          :notes (str "read by name by checks/syntactic-roots — the kind"
                                      " quotedArg judges a value against."))
-                        where)])
-         '[[string "checks/syntactic-roots — the kind quotedArg judges a value against, matched by name"]
-           [number "checks/syntactic-roots — the same, with integer below it"]
-           [keyword "checks/syntactic-roots — the same"]
-           [boolean "checks/syntactic-roots — the same"]
-           [character "checks/syntactic-roots — the same; a one-letter string is not one"]
-           [symbol "checks/syntactic-roots — the same; mention-only, so nothing places it in the domain lattice"]])
+                        "checks/syntactic-roots — the same; a symbol is what (Quote X) denotes when X is a name")]]
     [['integer (enforced (collection :facets #{:answers}
-                                     :notes (str "both a syntactic root and the one *evaluable*"
-                                                 " kind check: (integer 5) holds because 5 is one,"
+                                     :notes (str "both a syntactic root and an evaluable kind"
+                                                 " check for any ground argument: (integer 5)"
+                                                 " holds because 5 is one,"
                                                  " which is what lets the four sign-refined"
                                                  " collections be defined by defn conditions"
                                                  " resolved at query time."))
@@ -1062,31 +1107,41 @@
            [non_negative_integer "checks/value-kinds — zero and positive integer values satisfy an arg declaration naming it"]
            [non_positive_integer "checks/value-kinds — zero and negative integer values satisfy an arg declaration naming it"]])
 
-    ;; ---- the expression kinds --------------------------------------------
-    ;; The shape lattice above the value kinds: what a sentence is BUILT OUT OF,
-    ;; named as collections so a declaration can one day type an argument by the
-    ;; shape of the expression written there.  Nothing reads them.  A compound
-    ;; argument has no knowable kind — `checks/value-kind` answers nil for one by
-    ;; design (docs/argtypes.md) — and no reader classifies a compound by its
-    ;; shape, so `(quotedArg P n relation_application)` stores and convicts
-    ;; nothing, and so does the `arg` form.  The vocabulary is one vocabulary and
-    ;; the classifier that would give it enforcement does not exist.
-    ;;
-    ;; `atomic_formula` and `non_atomic_term` are declared disjoint under
-    ;; `relation_application` and deliberately NOT declared covering: the KB has no
-    ;; vocabulary for stating that a pair of specs exhausts their parent, so a
-    ;; covering claim could only be made in prose and nothing would enforce it.
+    ;; ---- the expression kinds CxCore keeps --------------------------------
+    ;; The expression kinds CxCore's own declarations or the band contexts name;
+    ;; CxReflection holds the rest of the expression lattice and places these in it.
+    ;; Nothing reads them.  A compound argument has no knowable kind —
+    ;; `checks/value-kind` answers nil for one by design (docs/argtypes.md) — and no
+    ;; reader classifies a compound by its shape, so an `arg` or `quotedArg`
+    ;; declaration over `formula` or `non_atomic_term` stores and convicts nothing.
     (map (fn [[t why]] [t (inert (collection :notes why) why)])
-         '[[expression "documentary: the root of the expression kinds and of the value kinds, below nowhere_never. CxCore holds it so CxCore and every spindle member read those kinds below thing; nothing reads it by name."]
-           [unrepresented_term "documentary: the expression kind the value kinds sit under, disjoint from relation, formula, relation_application and context. The disjointness is read as any disjointness is; nothing reads the collection by name."]
-           [relation_application "documentary: a relation applied to arguments, the shape atomic_formula and non_atomic_term share. No reader classifies a compound by its shape."]
-           [denotational_term "documentary: the logic sense of term — an expression that denotes. Named so a declaration can say an argument is one; nothing reads it."]
-           [atomic_formula "documentary: a predicate applied to terms. Nothing reads it."]
-           [atomic_sentence "documentary: a closed atomic_formula — what a stored LiteralSentex holds. Nothing reads it."]
-           [literal "documentary: an atomic_formula or its negation, which is what the LiteralSentex record holds. The record is machinery; this is the collection, and nothing reads it."]
-           [formula "documentary: an atomic_formula, an operator applied to formulas, or a quantifier binding variables in one. Nothing reads it."]
+         '[[unrepresented_term "documentary: the expression kind the value kinds sit under, placed under linguistic so a context that sees CxCore alone reads every value kind as nowhere_never and disjoint from relation. The disjointness is read as any disjointness is; nothing reads the collection by name."]
+           [formula "documentary: a predication, an operator applied to formulas, or a quantifier binding variables in one. Nothing reads it."]
            [sentence "documentary: a closed formula, which checks/check-ground is what actually enforces on the way in. The collection itself is read by nothing."]
-           [non_atomic_term "documentary: a function applied to terms — the NAT of docs/nat.md, named as a collection. Reification reads the declaration on the function, never this."]])
+           [non_atomic_term "documentary: a function applied to as many closed terms as it takes — the NAT of docs/nat.md, named as a collection. Reification reads the declaration on the function, never this."]
+           [linguistic "documentary: a language, or an expression written in one — what has its being in a system of signs. CxCore holds it because language sits under it; nothing reads it by name."]])
+
+    ;; ---- Quote: syncategorematic, read by name in impl/quasiquote.clj -----
+    [['Quote (enforced (collection
+                        :notes (str "quasiquote.clj's quote-function — the literal symbol"
+                                    " ensure-quasiquote-functions declares reifiable_function"
+                                    " and quoting_function on, and reduce-term mints a (Quote"
+                                    " E) mention from a reduced ground Quasiquote. Takes no"
+                                    " arg, result or metatype declaration of its own: what"
+                                    " kind of expression (Quote X) is follows from X's shape,"
+                                    " per its CxCore comment."))
+                       "impl/quasiquote.clj — quote-function, ensure-quasiquote-functions, reduce-term")]]
+
+    ;; ---- bounded and unbounded arity ---------------------------------------
+    ;; The bounded/unbounded split of relation and arityMax are stated so the KB says
+    ;; what the arity check enforces; the check itself reads fixed_arity, variable_arity
+    ;; and arityMin, and bounds functionCorrespondingPredicate by name.
+    (map (fn [[t why]] [t (inert (collection :notes why) why)])
+         '[[bounded_arity "documentary: a relation with an upper bound on its arguments; with unbounded_arity it partitions relation. Nothing reads it by name."]
+           [unbounded_arity "documentary: a relation taking any number of arguments beyond its required ones. Nothing reads it by name."]
+           [unbounded_arity_predicate "documentary: unbounded_arity intersected with predicate. Nothing reads it by name."]
+           [unbounded_arity_function "documentary: unbounded_arity intersected with function. Nothing reads it by name."]
+           [arityMax "documentary: the upper bound of a bounded_arity relation; the arity check bounds functionCorrespondingPredicate by name, not through this."]])
 
     ;; ---- the upper-ontology skeleton -------------------------------------
     ;; The collections CxCore holds so that a spindle member can place its own types
@@ -1119,7 +1174,7 @@
          '[[temporal "ontology, not grammar: something that exists in time. CxCore holds it so CxTime and CxAbstract can extend it; no engine check names it."]
            [aspatial "ontology, not grammar: not located in any space, the complement of spatial. CxCore holds it so every spindle member can place a kind under it; no engine check names it."]
            [atemporal "ontology, not grammar: not located in time, the complement of temporal. CxCore holds it so nowhere_never can sit under it; no engine check names it."]
-           [nowhere_never "ontology, not grammar: in no space and at no time, below aspatial and atemporal and the parent of expression; no engine check names it."]
+           [nowhere_never "ontology, not grammar: in no space and at no time, below aspatial and atemporal and the parent of linguistic, measure, context and relation; no engine check names it."]
            [type "ontology, not grammar: a first-order type, on the metatype-order ladder. No engine check names it — typeGenl, which reads the ladder, is inert."]
            [metatype "ontology, not grammar: a second-order type, on the metatype-order ladder. No engine check names it."]
            [meta_metatype "ontology, not grammar: a third-order type, on the metatype-order ladder. No engine check names it."]
@@ -1228,12 +1283,14 @@
                  :notes (str "the function specialization of variable_arity; it shares the"
                              " relation-wide taxonomy. No function WFF reader consumes it."))
                 "generic taxonomy classification under variable_arity and function")]
-     ['at_least_binary_relation
-      (enforced (collection :notes "derived by a CxCore rule from arityMin greater than one.")
-                "ordinary CxCore rule inference from arityMin")]
-     ['at_least_ternary_relation
-      (enforced (collection :notes "derived by a CxCore rule from arityMin greater than two.")
-                "ordinary CxCore rule inference from arityMin")]
+     ['at_least_binary
+      (enforced (collection :notes (str "derived by CxCore rules from arity or arityMin greater"
+                                        " than one, and through (genl binary at_least_binary)."))
+                "ordinary CxCore rule inference from arity and arityMin")]
+     ['at_least_ternary
+      (enforced (collection :notes (str "derived by CxCore rules from arity or arityMin greater"
+                                        " than two, and through (genl ternary at_least_ternary)."))
+                "ordinary CxCore rule inference from arity and arityMin")]
      ['relation_kind     (enforced (collection :notes "a disjoint_metatype, so its two members separate each other.")
                                    "generic: a disjoint_metatype, so its two members separate each other")]
      ['instance_relation_predicate

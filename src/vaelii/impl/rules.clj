@@ -409,8 +409,9 @@
 ;; complete, so nothing being stored about `(P a)` is enough to conclude `(not (P a))`
 ;; (docs/naf.md).  In a rule body that turns a *closed* negative antecedent into a NAF
 ;; literal: withheld from the join, decided at derive time, and maintained on the same
-;; re-check index `unknown` uses.  The structural half lives here; whether the grant is
-;; in force is a taxonomy read the callers pass in.
+;; re-check index `unknown` uses.  `(closedExtentForArg P n v)` grants the same for the
+;; goals whose argument n is v.  The structural half lives here; whether a grant is in
+;; force is a taxonomy read the callers pass in.
 
 (defn negative-literal?
   "Is `a` a `(not (P …))` literal with a flat, symbol-headed body — the form a closed
@@ -434,19 +435,32 @@
         bound (into #{} (mapcat sx/free-vars) gens)]
     (filterv #(and (negative-literal? %) (every? bound (sx/free-vars %))) antes)))
 
+(defn closed-extent-declared?
+  "Does `tx` declare a closed extent on `pred` anywhere — whole, by
+  `closed_extent_predicate`, or for some argument value, by `closedExtentForArg`?
+
+  Unscoped and blind to the grant's position and value.  The callers are the join, the
+  re-check index and the stratification graph, and each over-approximates safely: a
+  literal selected here is decided at derive time by the full level-6 question in the
+  conclusion's context, which `ClosedExtentProver` answers only where a grant matching the
+  literal is visible."
+  [tx pred]
+  (or (tax/has-prop? tx :closed-extent pred)
+      (tax/has-prop? tx :closed-extent-arg pred)))
+
 (defn closed-extent-antecedents
   "The closed negative antecedents of `antes` whose predicate `tx` declares a closed
-  extent — read **unscoped**, because the join has no placement context to scope by, and
-  an over-selected literal is one derive time decides correctly anyway: it asks the full
-  level-6 question in the conclusion's context, which a context without the grant answers
-  exactly as it does today.
+  extent (`closed-extent-declared?`) — read **unscoped**, because the join has no
+  placement context to scope by, and an over-selected literal is one derive time decides
+  correctly anyway: it asks the full level-6 question in the conclusion's context, which a
+  context without the grant answers exactly as it does today.
 
   Gated on the KB declaring any closed extent at all, so a KB not using the feature pays
-  one set read on the join path and stops."
+  two set reads on the join path and stops."
   [tx antes]
-  (if (empty? (tax/props tx :closed-extent))
+  (if (and (empty? (tax/props tx :closed-extent)) (empty? (tax/props tx :closed-extent-arg)))
     []
-    (filterv #(tax/has-prop? tx :closed-extent (nm/functor (second %)))
+    (filterv #(closed-extent-declared? tx (nm/functor (second %)))
              (closed-negative-antecedents antes))))
 
 (defn closed-extent-predicates-of

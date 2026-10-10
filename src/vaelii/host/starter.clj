@@ -18,6 +18,10 @@
                                 fill it, the comparisons, weightOf / heightOf, and the
                                 sign vocabulary for the quantities nobody has a figure
                                 for (signOf / trendOf / the qualitative* arithmetic).
+        - CxReflection.txt — the expression lattice (atomic and non-atomic, open and
+                                closed, well-formed and ill-formed expressions) and the
+                                use/mention vocabulary (proposition, means, denotes,
+                                expresses).
         - CxSpace.txt    — qualitative space, four independent calculi: RCC-8
                                 topology (eight base + six derived), cardinal direction
                                 (nine + four), relative direction over a frame's own axes
