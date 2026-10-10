@@ -12,7 +12,7 @@
          "(alive ?organism) means that ?organism is currently living. True by default of every organism and blocked for one known to be dead, so a KB never told otherwise takes its organisms to be alive — which is the common-sense reading, and the one every story assumes without saying.")
 (unary_predicate alive)
 (arg alive 1 biological)
-(genl alive biological)
+(genl alive organism)
 
 (comment ancestorOf
          "(ancestorOf ?ancestor ?descendant) means that ?ancestor is a parent of ?descendant, or a parent of an ancestor of ?descendant. Both arguments are individual organisms. Declared transitive, so the chain is walked by the closure prover rather than materialized, and the base link is derived from parentOf by a rule — an ancestorOf fact normally follows from kinship rather than being asserted.")
@@ -59,7 +59,7 @@
          "(dead ?organism) means that ?organism has died. Assert it known-true and it both blocks the alive default and defeats what that default licensed. Not the same sentence as (not (alive ?x)): dead says something happened, and a rule derives the negation from it, so the KB ends up holding the positive claim and its consequence rather than only the absence of one.")
 (unary_predicate dead)
 (arg dead 1 biological)
-(genl dead biological)
+(genl dead organism)
 
 (comment eats
          "(eats ?animal ?food) means that ?animal takes ?food as nourishment. Both arguments are individuals — a particular animal and a particular food — and the fact says nothing about when or how often, there being no time argument to say it with. A whole kind's diet is a different sentence: state it of the kind, and declare (transitiveInArgInverse eats 1 genl) if it should reach that kind's members.")
@@ -126,6 +126,13 @@
 (unary_predicate mortal)
 (arg mortal 1 organism)
 (genl mortal organism)
+
+;; A dead dog is an animal that is not alive, and a living oak is alive and no animal.
+;; dead and mortal cut across animal the same way, e.g. a hydra is an animal that is not
+;; mortal.
+(orthogonal animal mortal)
+(orthogonal animal dead)
+(orthogonal animal alive)
 
 (comment MotherFn
          "(MotherFn ?animal) means the mother of ?animal. The same shape as FatherFn, over motherOf.")

@@ -16,25 +16,36 @@
 (separating biological organism body_part)
 ;; A leg of lamb or a chicken wing is food and a body part at once.
 (orthogonal food body_part)
-;; Something made can be biological too: an engineered bacterium, an organ grown in a lab
-;; and a cloned sheep are biological and made at once.
-(orthogonal biological made)
-;; An orthogonal is not inherited along genl, so each overlapping pair is stated.  A cloned
+;; An orthogonal is not inherited along genl, so each overlapping pair is stated or
+;; derived.  origin_type classifies a tangible by where its form came from, and each
+;; typeOrthogonal fact below makes made and natural both orthogonal to one type.  A cloned
 ;; sheep is a made organism and a wild sheep a natural one.  A lab-grown bladder is a made
 ;; body part and a heart a natural one.  Steel, water and sand are a made, a natural and a
 ;; formation substance.  Bread, an apple and sea salt are a made, a natural and a
-;; formation food, and an apple is biological food.
-(orthogonal organism made)
-(orthogonal organism natural)
-(orthogonal body_part made)
-(orthogonal body_part natural)
-(orthogonal substance made)
-(orthogonal substance natural)
+;; formation food, and an apple is biological food.  An engineered bacterium is made and
+;; biological.
+(comment origin_type "A type of tangible by where its form came from: made or natural.")
+(metatype origin_type)
+(typeGenl origin_type tangible)
+;; Each membership is definitional, so origin_type is on the forced-monotonic roster and
+;; typeOrthogonal's rule concludes an orthogonal from one alone (docs/nmtms.md).
+(forced_monotonic_predicate origin_type)
+(origin_type made)
+(origin_type natural)
+(partitionedByType tangible origin_type)
+(typeOrthogonal origin_type organism)
+(typeOrthogonal origin_type animal)
+(typeOrthogonal origin_type body_part)
+(typeOrthogonal origin_type substance)
+(typeOrthogonal origin_type food)
+(typeOrthogonal origin_type biological)
 (orthogonal substance formation)
-(orthogonal food made)
-(orthogonal food natural)
 (orthogonal food biological)
 (orthogonal food formation)
+;; A steel ingot is a made solid, and a granite boulder a natural one.
+(orthogonal made solid)
+;; A bladder is a biological container, and a cup a container that is not biological.
+(orthogonal biological container)
 
 (comment building "An artifact that is a fixed structure enclosing space.")
 
@@ -128,9 +139,6 @@
 (type mercury)
 
 (comment natural "A tangible whose form no living thing's action gave it: a wild sheep, a coral reef, a rock, a river, a star. Contrast made.")
-;; A wild sheep is natural and biological.  A cloned sheep is made and biological.  So
-;; biological is orthogonal to made and to natural.
-(orthogonal biological natural)
 
 (comment organization "A group of people acting as one body — a company, a school, a team.")
 
@@ -154,9 +162,6 @@
 (comment petal "A coloured body part of a flower.")
 (genl petal body_part)
 
-
-(comment relation_type "A type whose instances are relations between things.")
-(genl relation_type aspatial)
 
 (comment root "The body part a plant anchors itself and draws water with.")
 (genl root body_part)
@@ -209,6 +214,8 @@
 ;; CxCore, so the edge lives here beside causal; with the disjointness above it also
 ;; keeps every tangible out of acausal.
 (genl tangible causal)
+;; Every cause is in time, so nothing atemporal is a cause.
+(genl atemporal acausal)
 
 ;; A body of people can be a cause too: a company hires; a court rules. organization
 ;; is aspatial, and nothing separates aspatial from causal.
@@ -332,9 +339,7 @@
 (set/monotonic (disjoint clothing building))
 (set/monotonic (disjoint clothing furniture))
 (set/monotonic (disjoint clothing vehicle))
-(set/monotonic (disjoint formula relation))
 (set/monotonic (disjoint liquid stone))
-(set/monotonic (disjoint relation context))
 (set/monotonic (disjoint_metatype stuff_type_by_state_of_matter))
 (set/monotonic (disjoint_metatype stuff_type_by_substance))
 (metatype stuff_type_by_state_of_matter)

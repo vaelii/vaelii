@@ -194,7 +194,8 @@
   (merge
    {'[genl 1]  "predicate specializations: (genlArg genl 1 thing) is false of (genl predicateTypeByArity relationTypeByArity), whose ends are binary predicates"
     '[genl 2]  "the root: (genlArg genl 2 thing) would entail (genl thing thing), refused as irreflexive"
-    '[comment 1] "the commented term: a type, a predicate, an individual or a context, so no type below thing covers it"}
+    '[comment 1] "the commented term: a type, a predicate, an individual or a context, so no type below thing covers it"
+    '[implementationNote 1] "the noted term: a type, a predicate, an individual or a context, as comment's is"}
    ;; slots that hold a term of any kind, which no type below thing covers
    {'[believes 1]           "a believer, whose types CxCore cannot see"
     '[evaluate 2]           "an evaluate expression: a number or an application"
@@ -226,7 +227,9 @@
     '[predAllInstance 3]    "a rule generator's fixed filler"
     '[predExistsInstance 3] "a rule generator's fixed filler"
     '[predInstanceAll 2]    "a rule generator's fixed filler"
-    '[predInstanceExists 2] "a rule generator's fixed filler"}
+    '[predInstanceExists 2] "a rule generator's fixed filler"
+    '[means 2]              "the meaning: what a term denotes or the proposition a sentence expresses, a thing of any kind"
+    '[denotes 2]            "what a denotational_term names: a thing of any kind"}
    (into {} (for [p '[positiveExample negativeExample borderlineExample]]
               {[p 1] "an exemplified term"
                [p 2] "the example, a sentence written as a term"}))
@@ -506,10 +509,7 @@
   purpose — each with the reason.  A term absent from this roster that only one member uses
   fails the test below; a term here that gains a second member user fails it too, so the
   roster stays a list of reasons rather than a list of debts."
-  '{denotational_term "the logic sense of `term`, vocabulary the head documents and places under expression; no member references it today"
-    formula "the formula-ladder type the head documents beside the grammar sense; only CxAbstract references it, separating it from relation"
-    relation_application "an expression kind the head documents and places under expression; no member references it today"
-    typeToInstancePred "a relation-linking predicate the head declares as vocabulary; only CxAbstract uses it (partType / partOf) today"})
+  '{typeToInstancePred "a relation-linking predicate the head declares as vocabulary; only CxAbstract uses it (partType / partOf) today"})
 
 (tu/deftest-kb head-vocabulary-a-single-member-uses-belongs-in-that-member
   ;; The inverse of `no-authored-type-relation-names-a-term-its-own-context-cannot-see`.
@@ -978,6 +978,25 @@
   (testing "and so neither is a type the not-under-thing sweep asks to place"
     (is (nil? (:not-under-thing (v/kb-integrity kb #{'not 'implies} 'CxWell))))))
 
+(tu/deftest-kb the-quantifiers-are-quantifiers-and-not-connectives
+  ;; OE 6: forall, thereExists and exists are declared quantifier instances in CxCore —
+  ;; where the engine reads each as a query operator or rule-firing sugar rather than as
+  ;; a predicate with its own facts (forall desugars to a nested unknown, docs/naf.md;
+  ;; thereExists is the query existential, docs/naf.md; exists is a head existential
+  ;; forward firing skolemizes, docs/skolem.md).
+  (doseq [q '[forall thereExists exists]]
+    (is (true? (v/isa? kb q 'quantifier)) (str q " must be a quantifier"))
+    (is (true? (v/isa? kb q 'logical_constant)) (str q " must be a logical_constant"))
+    (is (not (v/isa? kb q 'logical_connective)) (str q " must not be a logical_connective")))
+  (testing "and is a logical_connective, not a quantifier"
+    (is (v/ask? kb (list 'not (list 'quantifier 'and)) 'CxUniverse)))
+  (testing "an ordinary term is neither"
+    (is (v/ask? kb (list 'not (list 'quantifier 'Muffet)) 'CxUniverse)))
+  (testing "forall is not a logical_connective"
+    (is (v/ask? kb (list 'not (list 'logical_connective 'forall)) 'CxUniverse)))
+  (testing "sign_value is closed-extent too (CxMeasure, beside its three instances)"
+    (is (v/ask? kb (list 'not (list 'sign_value 'Muffet)) 'CxUniverse))))
+
 (tu/deftest-kb what-has-no-place-in-space-or-time-has-no-mass
   ;; Mass entails a location in space and time, so what lacks either lacks mass.
   (is (true? (v/genl? kb 'aspatial 'intangible)))
@@ -991,8 +1010,7 @@
   "The kinds with no location in any space, each with the contexts that read it as
   aspatial.  `context` and `language` are read from two band contexts besides CxCore,
   which see CxCore's `expression` lattice and `language` edge."
-  '{relation_type [CxAbstract]
-    quantity      [CxMeasure]
+  '{quantity      [CxMeasure]
     fluent        [CxTime]
     organization  [CxCore CxSociety]
     context       [CxCore CxSpace CxSociety]
@@ -1065,16 +1083,14 @@
     [genl intangible thing CxCore "partition thing tangible intangible"]
     [genl nowhere_never intangible CxCore "nowhere_never genl aspatial genl intangible"]
     [genl organization intangible CxCore "organization genl aspatial genl intangible"]
-    [genl context intangible CxCore "context genl expression genl nowhere_never genl aspatial genl intangible"]
+    [genl context intangible CxCore "context genl nowhere_never genl aspatial genl intangible"]
     [genl language intangible CxCore "language genl nowhere_never genl aspatial genl intangible"]
-    [genl number thing CxCore "number genl unrepresented_term genl expression genl nowhere_never genl aspatial; partition thing spatial aspatial"]
-    [genl keyword thing CxCore "keyword genl unrepresented_term genl expression genl nowhere_never genl aspatial; partition thing spatial aspatial"]
-    [genl boolean thing CxCore "boolean genl unrepresented_term genl expression genl nowhere_never genl aspatial; partition thing spatial aspatial"]
-    [genl character thing CxCore "character genl unrepresented_term genl expression genl nowhere_never genl aspatial; partition thing spatial aspatial"]
-    [genl denotational_term thing CxCore "denotational_term genl expression genl nowhere_never genl aspatial; partition thing spatial aspatial"]
-    [genl formula thing CxCore "formula genl expression genl nowhere_never genl aspatial; partition thing spatial aspatial"]
-    [genl context nowhere_never CxCore "context genl expression genl nowhere_never"]
-    [genl relation_type intangible CxAbstract "relation_type genl aspatial genl intangible"]
+    [genl number thing CxCore "number genl unrepresented_term genl linguistic genl nowhere_never genl aspatial; partition thing spatial aspatial"]
+    [genl keyword thing CxCore "keyword genl unrepresented_term genl linguistic genl nowhere_never genl aspatial; partition thing spatial aspatial"]
+    [genl boolean thing CxCore "boolean genl unrepresented_term genl linguistic genl nowhere_never genl aspatial; partition thing spatial aspatial"]
+    [genl character thing CxCore "character genl unrepresented_term genl linguistic genl nowhere_never genl aspatial; partition thing spatial aspatial"]
+    [genl denotational_term thing CxReflection "denotational_term genl closed_expression genl expression genl linguistic genl nowhere_never genl aspatial; partition thing spatial aspatial"]
+    [genl formula thing CxCore "formula genl linguistic genl nowhere_never genl aspatial; partition thing spatial aspatial"]
     [genl quantity intangible CxMeasure "quantity genl aspatial genl intangible"]
     [genl fluent intangible CxTime "fluent genl aspatial genl intangible"]
     [genl temporal thing CxCore "partition thing temporal atemporal"]
@@ -1091,11 +1107,11 @@
     [disjoint organization substance CxAbstract "organization genl aspatial genl intangible, substance genl tangible; partition thing tangible intangible"]
     [disjoint language substance CxAbstract "language genl nowhere_never genl aspatial genl intangible, substance genl tangible; partition thing tangible intangible"]
     [disjoint organization animal CxUniverse "organization genl aspatial genl intangible, animal genl organism genl biological genl tangible; partition thing tangible intangible"]
-    [genl string intangible CxAbstract "string genl unrepresented_term genl expression genl nowhere_never genl intangible"]
-    [genl number intangible CxAbstract "number genl unrepresented_term genl expression genl nowhere_never genl intangible"]
-    [genl keyword intangible CxAbstract "keyword genl unrepresented_term genl expression genl nowhere_never genl intangible"]
-    [genl boolean intangible CxAbstract "boolean genl unrepresented_term genl expression genl nowhere_never genl intangible"]
-    [genl character intangible CxAbstract "character genl unrepresented_term genl expression genl nowhere_never genl intangible"]
+    [genl string intangible CxAbstract "string genl unrepresented_term genl linguistic genl nowhere_never genl intangible"]
+    [genl number intangible CxAbstract "number genl unrepresented_term genl linguistic genl nowhere_never genl intangible"]
+    [genl keyword intangible CxAbstract "keyword genl unrepresented_term genl linguistic genl nowhere_never genl intangible"]
+    [genl boolean intangible CxAbstract "boolean genl unrepresented_term genl linguistic genl nowhere_never genl intangible"]
+    [genl character intangible CxAbstract "character genl unrepresented_term genl linguistic genl nowhere_never genl intangible"]
     [genl building made CxAbstract "building genl container genl made"]
     [genl made tangible CxAbstract "partition tangible made natural"]
     [genl natural tangible CxAbstract "partition tangible made natural"]
@@ -1104,11 +1120,11 @@
     [disjoint formation organism CxAbstract "organism genl biological; separating tangible formation biological"]
     [disjoint formation body_part CxAbstract "body_part genl biological; separating tangible formation biological"]
     [genl asymmetric binary_predicate CxCore "asymmetric genl anti_symmetric genl binary_predicate"]
-    [disjoint string predicate CxAbstract "string genl unrepresented_term, predicate genl relation; disjoint unrepresented_term relation"]
-    [disjoint number predicate CxAbstract "number genl unrepresented_term, predicate genl relation; disjoint unrepresented_term relation"]
-    [disjoint keyword predicate CxAbstract "keyword genl unrepresented_term, predicate genl relation; disjoint unrepresented_term relation"]
-    [disjoint boolean predicate CxAbstract "boolean genl unrepresented_term, predicate genl relation; disjoint unrepresented_term relation"]
-    [disjoint character predicate CxAbstract "character genl unrepresented_term, predicate genl relation; disjoint unrepresented_term relation"]
+    [disjoint string predicate CxAbstract "string genl unrepresented_term, predicate genl relation; unrepresented_term genl linguistic, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint number predicate CxAbstract "number genl unrepresented_term, predicate genl relation; unrepresented_term genl linguistic, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint keyword predicate CxAbstract "keyword genl unrepresented_term, predicate genl relation; unrepresented_term genl linguistic, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint boolean predicate CxAbstract "boolean genl unrepresented_term, predicate genl relation; unrepresented_term genl linguistic, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint character predicate CxAbstract "character genl unrepresented_term, predicate genl relation; unrepresented_term genl linguistic, relation genl logical; separating nowhere_never logical linguistic quantitative"]
     [disjoint glass_stuff stone CxAbstract "disjoint_metatype stuff_type_by_substance"]
     [disjoint metal glass_stuff CxAbstract "disjoint_metatype stuff_type_by_substance"]
     [disjoint metal stone CxAbstract "disjoint_metatype stuff_type_by_substance"]
@@ -1119,7 +1135,25 @@
     [genl unreifiable_function function CxCore "partition function reifiable_function unreifiable_function"]
     [genl fixed_order_type unary_predicate CxCore "partition unary_predicate fixed_order_type variable_order_type"]
     [genl variable_order_type unary_predicate CxCore "partition unary_predicate fixed_order_type variable_order_type"]
-    [genl equivalence_relation binary_predicate CxCore "intersection equivalence_relation reflexive symmetric transitive; reflexive genl binary_predicate"]])
+    [genl equivalence_relation binary_predicate CxCore "intersection equivalence_relation reflexive symmetric transitive; reflexive genl binary_predicate"]
+    [genl linguistic nowhere_never CxCore "separating nowhere_never logical linguistic quantitative"]
+    [genl relation nowhere_never CxCore "separating logical relation context; separating nowhere_never logical linguistic quantitative"]
+    [genl context nowhere_never CxCore "separating logical relation context; separating nowhere_never logical linguistic quantitative"]
+    [genl measure nowhere_never CxCore "measure genl quantitative; separating nowhere_never logical linguistic quantitative"]
+    [disjoint linguistic relation CxCore "relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint linguistic measure CxCore "measure genl quantitative; separating nowhere_never logical linguistic quantitative"]
+    [disjoint measure relation CxCore "measure genl quantitative, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint relation context CxAbstract "separating logical relation context"]
+    [genl unit_of_measure nowhere_never CxMeasure "unit_of_measure genl quantitative; separating nowhere_never logical linguistic quantitative"]
+    [genl physical_dimension nowhere_never CxMeasure "physical_dimension genl quantitative; separating nowhere_never logical linguistic quantitative"]
+    [genl sign_value nowhere_never CxMeasure "sign_value genl quantitative; separating nowhere_never logical linguistic quantitative"]
+    [disjoint unit_of_measure relation CxMeasure "unit_of_measure genl quantitative, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint physical_dimension relation CxMeasure "physical_dimension genl quantitative, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [genl proposition nowhere_never CxReflection "separating logical relation proposition context; separating nowhere_never logical linguistic quantitative"]
+    [disjoint proposition linguistic CxReflection "proposition genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint proposition relation CxReflection "separating logical relation proposition context"]
+    [disjoint expression relation CxReflection "expression genl linguistic, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint expression context CxReflection "expression genl linguistic, context genl logical; separating nowhere_never logical linguistic quantitative"]])
 
 (tu/deftest-kb the-kb-states-no-relation-it-already-derives
   ;; Each relation is read from the context that held the removed sentence, so a removal
@@ -1155,15 +1189,16 @@
     (is (v/disjoint? kb 'integer 'predicate)
         "the declaration on number carries integer with it")))
 
-(tu/deftest-kb symbol-is-mention-only-and-carries-neither-claim
-  ;; the deliberate absence, and the one a later reader is most likely to "fix": a symbol
-  ;; does not denote itself, so the set of names and the set of things named are two sets
-  ;; — parentOf is written as a symbol and denotes a predicate.  Both claims below would
-  ;; be false of every predicate name in the KB.
-  (is (not (v/disjoint? kb 'symbol 'predicate))
-      "a name is exactly how a predicate is written")
-  (is (not (v/genl? kb 'symbol 'intangible))
-      "and nothing places it in the domain lattice, there being no use-level reading"))
+(tu/deftest-kb symbol-is-mention-only-and-is-disjoint-from-predicate
+  ;; a symbol does not denote itself, so the set of names and the set of things named are
+  ;; two sets — parentOf is written as a symbol and denotes a predicate.  symbol reaches
+  ;; expression through atomic_term and atomic_expression, and expression is disjoint
+  ;; from relation, so from predicate: a symbol is what (Quote parentOf) denotes, not
+  ;; what parentOf denotes.
+  (is (true? (v/disjoint? kb 'symbol 'predicate))
+      "a symbol is what (Quote dog) denotes, not what dog denotes")
+  (is (true? (v/genl? kb 'symbol 'linguistic))
+      "and a symbol is a written form: linguistic, so nowhere_never"))
 
 (tu/deftest-kb the-comment-text-position-derives-a-string-and-a-relation-clashes
   ;; the entailing reading: the derivation is the subject
@@ -1392,6 +1427,20 @@
     (is (= :orthogonal (v/subsumption-status kb 'dog tended)))
     (is (not-any? #(= :forced-conclusion (:violation %)) (v/violations kb)))))
 
+(tu/deftest-kb a-warm-blooded-animal-is-a-vertebrate-by-default
+  (let [edges (filter #(v/premise? kb (:id %)) (v/sentexes-matching kb '(genl warm_blooded vertebrate) 'CxUniverse))]
+    (is (= 1 (count edges)) "(genl warm_blooded vertebrate) is stated in CxUniverse")
+    (is (= :default (:strength (first edges))) "at default strength"))
+  (tu/with-terms [Warm1 Cat1 Trout1]
+    (v/assert kb (list 'warm_blooded Warm1) 'CxUniverse)
+    (is (true? (v/ask? kb (list 'vertebrate Warm1) 'CxUniverse)))
+    (testing "and the class rules that derive and deny warm_blooded raise no clash"
+      (v/assert kb (list 'mammal Cat1) 'CxBiology)
+      (v/assert kb (list 'fish Trout1) 'CxBiology)
+      (is (true? (v/ask? kb (list 'warm_blooded Cat1) 'CxBiology)))
+      (is (true? (v/ask? kb (list 'not (list 'warm_blooded Trout1)) 'CxBiology)))
+      (is (empty? (v/conflicts kb))))))
+
 (tu/deftest-kb artifact-is-declared-nowhere-and-the-seven-kinds-are-made
   ;; The KB declares no artifact term and no alias for one.  building, clothing,
   ;; container, furniture, machine, tool and vehicle are kinds of made.
@@ -1466,8 +1515,9 @@
 
 ;; ---- orthogonal pairs across made and natural -------------------------------
 ;; In each pair the two types overlap and neither subsumes the other.  An orthogonal is
-;; not inherited along genl, so the KB states each pair.  Each witness is an individual
-;; in both types.
+;; not inherited along genl, so the KB states each pair, or states a typeOrthogonal fact
+;; over origin_type that derives the pair with made and the pair with natural.  Each
+;; witness is an individual in both types.
 
 (def ^:private cross-cutting
   '[[organism made Dolly1] [organism natural WildSheep1]
@@ -1479,8 +1529,11 @@
 (tu/deftest-kb what-cuts-across-made-and-natural-is-stated-orthogonal
   (doseq [[a b witness] cross-cutting]
     (testing (str a " and " b)
-      (is (some #(v/premise? kb (:id %)) (v/sentexes-matching kb (list 'orthogonal a b) 'CxAbstract))
-          (str "(orthogonal " a " " b ") is stated"))
+      (if (contains? '#{made natural} b)
+        (is (some #(v/premise? kb (:id %)) (v/sentexes-matching kb (list 'typeOrthogonal 'origin_type a) 'CxAbstract))
+            (str "(typeOrthogonal origin_type " a ") is stated"))
+        (is (some #(v/premise? kb (:id %)) (v/sentexes-matching kb (list 'orthogonal a b) 'CxAbstract))
+            (str "(orthogonal " a " " b ") is stated")))
       (is (= :orthogonal (v/subsumption-status kb a b)) "the pair reads orthogonal")
       (is (not (v/disjoint? kb a b)))
       (let [w (tu/fresh-term :individual witness)]
@@ -1497,3 +1550,44 @@
     (v/assert kb (list 'substance WoodPortion1) 'CxUniverse)
     (is (not (tu/stored-in-clash? kb (list 'madeOf Trunk1 WoodPortion1) 'CxUniverse)))
     (is (true? (v/ask? kb (list 'madeOf Trunk1 WoodPortion1) 'CxUniverse)))))
+
+;; ---- the use/mention vocabulary: proposition, means, denotes, expresses -----
+
+(tu/deftest-kb a-sentence-denoting-symbol-is-well-formed-in-expresses
+  ;; MuffetsFavoriteSentence stands for a wff_sentence without spelling one out.  Arg 2 of
+  ;; expresses asks for a proposition — what a sentence EXPRESSES, not a sentence itself —
+  ;; and (number 212) is itself a wff_sentence (number is a unary_predicate, and (number
+  ;; 212) holds because 212 is one): a formula written where the vocabulary asks for its
+  ;; semantic content, not its shape.
+  (v/assert kb (list 'wff_sentence 'MuffetsFavoriteSentence) 'CxUniverse)
+  (let [sentence (list 'expresses 'MuffetsFavoriteSentence (list 'number 212))
+        h        (v/assert kb sentence 'CxUniverse)]
+    (is (some? h) "the write is accepted, not refused for a formula in a term position")
+    (is (true? (v/ask? kb sentence 'CxUniverse)) "and believed, not merely stored and convicted")))
+
+(tu/deftest-kb two-sentences-express-one-proposition
+  ;; MuffetEstUnChien stands for the French sentence "Muffet est un chien" without
+  ;; spelling it out.  It and (Quote (dog Muffet)) are two different wff sentences, and
+  ;; both express the one proposition that Muffet is a dog.
+  (v/assert kb (list 'wff_sentence 'MuffetEstUnChien) 'CxUniverse)
+  (v/assert kb (list 'proposition 'MuffetIsADog) 'CxUniverse)
+  (let [english (list 'expresses (list 'Quote (list 'dog 'Muffet)) 'MuffetIsADog)
+        french  (list 'expresses 'MuffetEstUnChien 'MuffetIsADog)]
+    (v/assert kb english 'CxUniverse)
+    (v/assert kb french 'CxUniverse)
+    (is (true? (v/ask? kb english 'CxUniverse)))
+    (is (true? (v/ask? kb french 'CxUniverse)))
+    (is (= 2 (count (v/sentexes-matching kb (list 'expresses '?s 'MuffetIsADog) 'CxUniverse)))
+        "(expresses ?s MuffetIsADog) finds both sentences")))
+
+(tu/deftest-kb means-is-functional-and-its-specs-inherit-it
+  ;; (functional means) constrains argument 2 of means — and, through props-over's walk
+  ;; up genl (taxonomy.clj: "a genl edge between predicates says the sub's tuples ARE the
+  ;; super's"), of every sub-predicate too.  denotes genl's to means, so two monotonic,
+  ;; distinct-symbol fillers of one denotes should derive (equals ...) the way two
+  ;; fillers of means itself would.
+  (tu/with-terms [X Y]
+    (v/assert kb (list 'denotes (list 'Quote 'Muffet) X) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'denotes (list 'Quote 'Muffet) Y) 'CxUniverse {:strength :monotonic})
+    (is (true? (v/ask? kb (list 'equals X Y) 'CxUniverse))
+        "functional on means reaches denotes through its genl edge")))

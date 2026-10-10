@@ -69,12 +69,25 @@ When you're about to assert a constraint (especially `disjoint`), first check wh
 
 ## DRY
 *One thing, one representation*
-**specPrinciple:** factor out commonalities, look before you mint
+**specPrinciple:** factor out commonalities, look before you mint, state it once
 If the same thing is represented two ways at the vocabulary level, merge them when feasible: two encodings drift apart, get queried inconsistently, and contradict silently.
 
 Merging is infeasible when the encodings put some dimension (time, modality, provenance) in structurally different places. Example: a Davidsonian event encoding gets time from an assertion about the event, while an n-ary predicate gets it from the context it's asserted in. Then keep both, bridge them with explicit rules, and say why in a comment.
 
 This is about vocabulary. Instance-level duplication can be fine for a good reason, e.g. two sources asserting the same fact, kept separately for provenance.
+
+## state it once
+*Don't state what the KB already derives*
+**genlPrinciple:** DRY
+If a fact follows from facts already stated (a genl implied by an intersection or a chain of genls, a disjoint implied by a partition or by two types' placements), don't state it. A stated redundancy is a second source for the same knowledge: when the facts it follows from change, it stays behind and asserts something nobody chose.
+
+Two exceptions, each marked with a comment saying which one applies:
+- **Implementation:** the engine needs the fact stated, for example because it reads the fact directly and doesn't derive it, or because it must hold in a context that can't see the facts it follows from.
+- **Documentation:** stating it makes the KB easier to read or browse, for example the parent edges an intersection implies.
+
+The same holds for comments. A comment doesn't restate a definitional assertion the KB already makes: no "the complement of X", "with Y it partitions Z" or bare member list when a `partition`, `intersection` or `genl` says it. The comment says what membership means, with examples, and leaves the structure to the assertions.
+
+**Audit:** for every new `genl`, `disjoint` or `arg`, ask whether the rest of the KB already entails it. If so, drop it or mark which exception applies. For every comment, delete any clause that a definitional assertion already states.
 
 ## don't skip the predicate
 *Don't skip the predicate*

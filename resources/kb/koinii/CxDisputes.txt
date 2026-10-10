@@ -17,6 +17,7 @@
          "(dispute (sentexHandle ?h1) (sentexHandle ?h2) …) denotes the dispute over the clash between the sentexes it names, the handles sorted and as many as the clash has: a nogood is a set, and an anti_transitive clash has three members. An unreifiable_function, so an application stays a structural term inside the mark that carries it and nothing is minted for it. The term is the key the notify and stale sweeps read a mark back by (dispute/dispute-term).")
 (unreifiable_function dispute)
 (variable_arity_function dispute)
+(unbounded_arity_function dispute)
 (arityMin dispute 1)
 
 (comment disputeNotified

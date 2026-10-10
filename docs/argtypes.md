@@ -79,8 +79,8 @@ An `arg` declaration on a unary predicate and a `genl` edge above it can say the
 thing, and which of the two is right turns on where the parent sits relative to the type
 the declaration names.
 
-`fixed_arity` carries `(arg fixed_arity 1 relation)` and `(genl fixed_arity relation)`
-names that same type. The edge concludes `(relation 5)` from `(fixed_arity 5)` and
+`fixed_arity` carries `(arg fixed_arity 1 relation)`, and the `(genl fixed_arity relation)`
+edge that `(partition relation fixed_arity variable_arity)` installs names that same type. The edge concludes `(relation 5)` from `(fixed_arity 5)` and
 nothing is disjoint from `relation` for a number, so the declaration's value conviction
 is the only refusal there is; drop it and `(fixed_arity 5)` is accepted. `variable_arity`
 and the function marks are in the same position and keep theirs.
@@ -815,9 +815,10 @@ open-world, so a second spelling stores clean and convicts nothing, with no repo
 ([why one vocabulary](defenses.md#one-vocabulary-not-two)).
 
 `symbol` is the exception, and is **mention-only**. A symbol does not denote itself, so
-the set of names and the set of things named are not one set — `parentOf` is written as a
-symbol and denotes a predicate. It therefore gets no placement in the domain lattice and
-no disjointness: a use-level claim about it would be false of every predicate name.
+the set of names and the set of things named are not one set — `parentOf` written in a
+sentence denotes a predicate, and `(Quote parentOf)` denotes the symbol. `symbol` is below
+`linguistic`, which is disjoint from `relation`, so no term is both a symbol and a
+predicate.
 
 ## Scope
 

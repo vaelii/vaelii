@@ -1236,7 +1236,7 @@
           walked (fn [goal bound]
                    (let [[t a] goal
                          ix (:index kb)]
-                     (if (#'plan/closed? goal bound)
+                     (if (#'plan/settled-when-run? goal bound)
                        1
                        (min 1000000000
                             (reduce (fn [acc t']

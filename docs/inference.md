@@ -2095,8 +2095,12 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   ground chain `(lessThan 1 2 3)` is checked end to end — every adjacent pair must
   hold — not just as a binary comparison. Complete for a ground comparison, so a rule
   antecedent like `(lessThan ?bx ?by)` is discharged by computation once its variables
-  are bound (e.g. the `olderThan` rule over birth years). This is the extension point
-  for arithmetic / CLP / any calculated relation.
+  are bound (e.g. the `olderThan` rule over birth years). It also answers the
+  value-kind checks: `integer` for any ground argument, and `string`, `number`,
+  `boolean`, `keyword` and `character` for a literal argument, so `(string "foo")` and
+  `(not (number "foo"))` are both proved. A symbol or compound argument is left to the
+  other provers, since a constant or a function application can denote a number. This
+  is the extension point for arithmetic / CLP / any calculated relation.
 - **AggregateProver** — the five reductions over a query's solutions:
   `(agg/count ?n ?v Body)` binds `?n` to how many **distinct** `?v` satisfy
   `Body`, `Sum` / `Min` / `Max` / `Avg` to the arithmetic ones. `?v` is projected out,

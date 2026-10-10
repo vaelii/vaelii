@@ -90,18 +90,12 @@
   materialized on, checked like any symbol — so a compound seen here is one that is never
   minted, and its function's declaration is the only thing the KB can know about it.
 
-  A boolean is tested before a symbol only because `false` and `nil` are the two values
-  a `cond` arm can be written to fall through by accident; the order is otherwise free."
+  A literal value's kind is `provers/literal-value-kind`'s, the table `EvaluableProver`
+  answers a value-kind membership from, so the argument checks and the prover read one
+  classification.  A symbol is the one kind added here."
   [x]
-  (cond
-    (string? x)                              'string
-    (boolean? x)                             'boolean
-    (integer? x)                             'integer
-    (number? x)                              'number
-    (keyword? x)                             'keyword
-    (char? x)                                'character
-    (and (symbol? x) (not (sx/variable? x))) 'symbol
-    :else                                    nil))
+  (or (provers/literal-value-kind x)
+      (when (and (symbol? x) (not (sx/variable? x))) 'symbol)))
 
 (defn- value-kinds
   "The most specific built-in types known from a value.
@@ -1022,7 +1016,7 @@
 
 (defn- formula-head?
   "Does the compound `x`, written in an argument position, have a head the KB knows as a
-  predicate — is it an `atomic_formula`, the other half of `relation_application`
+  predicate — is it a `predication`, the other half of `non_atomic_expression`
   (CxCore), rather than a function applied to terms?  A formula written as an argument is
   a sentence about its predicate's tuples, which that predicate's declarations do not
   type from here.  A head the KB has not classified is read as a function: its
@@ -1599,10 +1593,19 @@
                   ;; every part *but this one*: on the refusal path the sentence under
                   ;; assertion is not stored yet and holds by assumption, and on the
                   ;; settle path it is stored and would answer here anyway.
+                  ;; A part the membership `(t x)` puts `x` in (`t` or a supertype of
+                  ;; it) is denied only by a stored negation.  A closed extent's
+                  ;; negation as failure is withdrawn when a member arrives, and the
+                  ;; membership under assertion is that member, so reading the denial
+                  ;; before it is stored would make the arrival order decide.
                   :when (every? (fn [p]
                                   (or (= p part)
-                                      (provers/conjunction-derivable?
-                                       kb [(list 'not (list p x))] {} context)))
+                                      (if (and (nil? part)
+                                               (or (= p (nm/functor lit))
+                                                   (tax/genl? tax (nm/functor lit) p context)))
+                                        (seq (negation-handles kb p x context))
+                                        (provers/conjunction-derivable?
+                                         kb [(list 'not (list p x))] {} context))))
                                 parts)]
               {:type :cover :sentence sentence :types (vec (cons whole parts))
                ;; The membership and the other negations, and **not** the declaration
@@ -2924,10 +2927,11 @@
 
 (defn check-sentex-ground
   "`check-ground` over `s`, the sentex already built from `sentence` in `context`: throw
-  `:not-ground` when `s` is not a rule and still holds a pattern variable, unless
-  `sentence` is a schematic equation or a `defn*` definition."
+  `:not-ground` when `s` is not a rule and has a free variable, unless `sentence` is a
+  schematic equation or a `defn*` definition.  A variable inside a `(Quote …)` or bound
+  by a quantifier is not free (`sx/closed?`)."
   [s sentence context]
-  (when (and (nil? (:antecedent s)) (not (sx/ground? s))
+  (when (and (nil? (:antecedent s)) (not (sx/closed? s))
              (not (rewrite/schematic-equation? sentence))
              ;; a `defn*` collection definition carries the member variable `?x` in
              ;; its condition argument, the way a schematic equation carries its schema

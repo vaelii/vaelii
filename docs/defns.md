@@ -118,7 +118,8 @@ is asked instead.
 expression `?pattern`, and it answers false for a non-string subject. A string subtype is
 therefore defined by the shape check alone — `(defnSufficient dotted_quad (matchesPattern
 ?x "\d+\.\d+\.\d+\.\d+"))`, the pattern a Clojure string so each backslash is written
-twice — with no separate `(string ?x)` conjunct, which the registry does not evaluate. The
+twice — with no separate `(string ?x)` conjunct, since `matchesPattern` already answers
+false for a non-string. The
 match runs through a step-limited view, so a catastrophically-backtracking pattern is a
 `:pattern-too-costly` refusal rather than an unbounded match, and a pattern that does not
 compile is refused at the assert entry point.

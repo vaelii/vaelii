@@ -15,6 +15,77 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Breaking
 
+- **The expression lattice and the use/mention vocabulary move to a new upper member,
+  CxReflection, and `atomic_formula`, `atomic_sentence` and `relation_application` are
+  renamed.** `expression` is a written form in this KB's own language, the thing
+  `(Quote …)` names, so it is disjoint from `relation`, `context` and `language`, which
+  sit directly below `nowhere_never`. A natural-language sentence is `linguistic` but not
+  an `expression`. CxReflection (`resources/kb/upper/CxReflection.txt`) holds 22
+  expression kinds: `expression` is partitioned into `atomic_expression` and
+  `non_atomic_expression`, which replaces `relation_application`; `atomic_expression`
+  into `atomic_term` and `variable`; and `expression` again into `open_expression` and
+  `closed_expression` and into `wff_expression` and `ill_formed_expression`.
+  `atomic_formula` is `predication` and `atomic_sentence` is `closed_predication`, with
+  `open_predication`, `negated_predication`, `open_literal`, `closed_literal`,
+  `open_formula`, `wff`, `ill_formed`, `wff_sentence` and `ill_formed_sentence` beside
+  them. `proposition`, `means`, `denotes` and `expresses` relate an expression to what it
+  says or names. CxCore keeps `symbol`, the value kinds, `unrepresented_term`, `formula`,
+  `sentence`, `non_atomic_term` and the new `linguistic`, which `language` and every
+  expression sit under, so `symbol` and the value kinds are disjoint from `relation` from
+  every context. `forall`, `thereExists` and `exists` are declared binary quantifiers, and
+  `quantifier`, `logical_connective`, `logical_constant` and `sign_value` have closed
+  extents. `bounded_arity` and `unbounded_arity` partition `relation`, the 14 relations
+  that take any number of arguments are stated `unbounded_arity`, and `arityMax` bounds
+  `functionCorrespondingPredicate` at 3. [contexts.md](docs/contexts.md),
+  [naming.md](docs/naming.md#reserved-words), [taxonomy.md](docs/taxonomy.md).
+
+  *Class:* **Breaking** (KB vocabulary renamed and moved).
+  *Migration:* write `predication` for `atomic_formula`, `closed_predication` for
+  `atomic_sentence` and `non_atomic_expression` for `relation_application`. A context that
+  names an expression kind other than CxCore's sees CxReflection, as every context below
+  CxUniverse does.
+  *Breaks:* `atomic_formula`, `atomic_sentence`, `relation_application`
+
+- **`at_least_binary_relation` and `at_least_ternary_relation` are renamed
+  `at_least_binary` and `at_least_ternary`, and hold of fixed-arity relations too.**
+  `binary` is below `at_least_binary` and `ternary` below `at_least_ternary`. Rules over
+  `arity` conclude both beside the `arityMin` rules, and so reach the 5 shipped relations
+  of arity 4 to 7, which no exact-arity class names. `(orthogonal at_least_binary fixed_arity)` is stated.
+  `fixed_arity` and `variable_arity` partition `relation`, and `relation_type` is removed
+  from CxAbstract. [taxonomy.md](docs/taxonomy.md#relations-and-arity-policy).
+
+  *Class:* **Breaking** (KB vocabulary renamed and removed).
+  *Migration:* write `at_least_binary` for `at_least_binary_relation` and
+  `at_least_ternary` for `at_least_ternary_relation`; a query for one now also answers
+  fixed-arity relations, e.g. `parentOf`. `relation_type` has no replacement.
+  *Breaks:* `at_least_binary_relation`, `at_least_ternary_relation`, `relation_type`
+
+- **`partitionedByType` is binary, `(partitionedByType ?whole ?classifier)`, and draws
+  inference.** The members of `?classifier` partition `?whole`. A CxCore generator places
+  each member under `?whole`, and a rule concludes `(disjoint_metatype ?classifier)`. No
+  rule draws the coverage half (vaelii/vaelii#171), so the `partition` sentence stays
+  beside each of the 4 shipped facts: `fixed_order_type` by `type_type_by_order`,
+  `tangible` by `origin_type`, and `thing` by `spatiality_type` and by
+  `temporality_type`. [glossary.md](docs/glossary.md).
+
+  *Class:* **Breaking** (KB vocabulary arity changed).
+  *Migration:* drop the cell list: write `(partitionedByType W C)` for
+  `(partitionedByType W C A B …)`, and state each cell's membership `(C A)`.
+  *Breaks:* `partitionedByType`
+
+- **A variable inside `(Quote …)` or bound by a quantifier is not free, so a fact about a
+  quoted rule stores.** `(awesome_rule (Quote (implies (poodle ?x) (dog ?x))))` was
+  refused as `:not-ground`. `sentex/closed?` is new beside `sentex/ground?`: it is true
+  when every variable occurrence is bound by `forall`, `thereExists` or `exists`, or sits
+  inside a `(Quote …)`, and `check-ground` reads it. A written `(forall ?y (implies …))`
+  asserted as a fact is now refused by the query-operator check rather than as
+  `:not-ground`. [glossary.md](docs/glossary.md#g).
+
+  *Class:* **Breaking** (a refusal changes type).
+  *Migration:* a caller matching `:not-ground` on a quantified fact matches
+  `:not-well-formed`.
+  *Breaks:* `:not-ground`
+
 - **`query-status` reads `:incomplete` when a transitive goal answered its extent.** A
   goal `(P ?x ?y)` over a `transitive` `P`, solved with both arguments open, answers the
   stored pairs and not the closure, and `query-status` reported `:complete` over it.
@@ -30,6 +101,16 @@ it — `git show v0.16.0:CHANGELOG.md`.
   *Breaks:* `query-status`
 
 ### Fixes
+
+- **A new member of a closed part of a cover is admitted.** With every part of a
+  `covering` declared `closed_extent_predicate`, the cover check asked of `(quantifier
+  forall)` read `(not (quantifier forall))` off the closure's negation as failure, before
+  the membership that withdraws it was stored, and refused the membership as a coverage
+  violation. A part the membership puts its term in is now denied only by a stored
+  negation. The starter then loads the same KB whether the closures arrive before or
+  after the memberships.
+
+  *Class:* **Fix**.
 
 - **Two rule firings that pair the same facts with different literals are both stored.** A
   justification records the `[sub super]` predicate pairs its firing matched a fact to a
@@ -87,6 +168,34 @@ it — `git show v0.16.0:CHANGELOG.md`.
   draws `animal` above `mammal` and no arrow from `dog` to `animal`. An expansion costs
   at most two facade reads, and a page makes at most twelve expansions.
   [api.md](docs/api.md), [web.md](docs/web.md#a-terms-shape-drawn).
+
+  *Class:* **Additive**.
+
+- **The upper ontology states `logical`, `quantitative`, `typeOrthogonal`,
+  `orthogonalMetatypes` and `implementationNote`, and derives 43 genl, disjoint and
+  orthogonal sentences it stated.** `(separating nowhere_never logical linguistic
+  quantitative)` separates three kinds: `relation`, `proposition` and `context` are
+  `logical`, and `measure`, `unit_of_measure`, `physical_dimension` and `sign_value` are
+  `quantitative`. `(typeOrthogonal ?classifier ?type)` makes every member of a classifier
+  orthogonal to `?type`, and `(orthogonalMetatypes ?m1 ?m2 …)` makes every member of each
+  metatype orthogonal to every member of the others, for two and three metatypes
+  (vaelii/vaelii#170). Each is a CxCore rule generator. The classifiers `arity_type`,
+  `origin_type`, `spatiality_type` and `temporality_type` are new, and each classifier a
+  rule reads is on the forced-monotonic roster. 10 `typeOrthogonal` facts and one
+  `orthogonalMetatypes` fact derive 33 orthogonal pairs, 22 of them stated before, and
+  every arity type is orthogonal to `abducible_predicate`. 9 more orthogonal pairs are
+  stated, e.g. `made` and `vertebrate`, `animal` and `food`. `warm_blooded` is below
+  `vertebrate` by default. `implementationNote` is a
+  sibling of `comment` for how a term is implemented, and 14 CxCore terms carry one.
+  [taxonomy.md](docs/taxonomy.md), [glossary.md](docs/glossary.md).
+
+  *Class:* **Additive**.
+
+- **`string`, `number`, `boolean`, `keyword` and `character` are computed for a literal
+  argument.** `(string "foo")` and `(keyword :a)` hold, and `(not (number "foo"))` and
+  `(not (string 7))` are proved, by the evaluable prover that answers `integer`. A symbol
+  argument is left to the other provers, since a constant can denote a number.
+  [inference.md](docs/inference.md).
 
   *Class:* **Additive**.
 

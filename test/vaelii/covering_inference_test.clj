@@ -154,6 +154,21 @@
       (is (tu/stored-in-clash? kb (list animal Rex) 'CxUniverse))
       (is (= [:cover] (mapv :kind (v/contradictions kb)))))))
 
+(tu/deftest-kb a-new-member-of-closed-parts-is-no-refutation
+  ;; With every part's extent closed, a term in no part is denied of each by negation as
+  ;; failure.  The membership under assertion is what withdraws its own part's denial, so
+  ;; the cover is not refuted, and the order the closures and the members arrive in does
+  ;; not decide whether the member is admitted.
+  (tu/with-terms [animal dog cat Rex]
+    (v/assert kb (list 'covering animal dog cat) 'CxUniverse)
+    (v/assert kb (list 'genl dog animal) 'CxUniverse)
+    (v/assert kb (list 'genl cat animal) 'CxUniverse)
+    (v/assert kb (list 'closed_extent_predicate dog) 'CxUniverse)
+    (v/assert kb (list 'closed_extent_predicate cat) 'CxUniverse)
+    (is (= :ok (outcome kb (list dog Rex) 'CxUniverse)))
+    (is (v/ask? kb (list animal Rex) 'CxUniverse))
+    (is (empty? (v/contradictions kb)))))
+
 (tu/deftest-kb a-refuted-cover-names-the-evidence-it-is-against
   (tu/with-terms [animal dog cat Rex]
     (let [c (v/assert kb (list 'covering animal dog cat) 'CxUniverse)
