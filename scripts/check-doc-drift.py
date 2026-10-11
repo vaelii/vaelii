@@ -1369,6 +1369,11 @@ E17_ROSTER = {
     # either would drop a pair the context that can see both would find, and the pair
     # itself is decided scoped.
     ("src/vaelii/impl/quality.clj", "clash-partners"),
+    # The `quoting_function` mark: whether an argument is a mention is a fact about the
+    # sentence, read unscoped as `checks` reads it (`tax/mention-marks`).
+    ("src/vaelii/impl/provers.clj", "quoted-form"),
+    # The re-join reads every context, so an edge's upper end is read through every edge.
+    ("src/vaelii/impl/chain.clj", "computed-rejoin-rules"),
 }
 E17_CALL = re.compile(r"\btax/(" + "|".join(re.escape(n) for n in E17_GLOBAL) + r")(?![\w?-])")
 E17_DEF = re.compile(r"\(def[\w-]*\s+(?:\^[^\s]+\s+)*([^\s\)]+)")

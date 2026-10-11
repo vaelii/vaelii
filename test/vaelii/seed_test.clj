@@ -25,7 +25,7 @@
   ;; the point of layer discovery: a KB is added by dropping a file, no code change
   (testing "upper holds the definitional contexts, sorted"
     (is (= '[CxAbstract CxLife CxMeasure CxOrganism
-             CxSociety CxSpace CxTime]
+             CxReflection CxSociety CxSpace CxTime]
            (seed/layer-contexts "upper"))))
   (testing "middle holds the theory contexts"
     (is (= '[CxAnatomy CxBiology CxChange CxComputing CxKinship

@@ -8,16 +8,21 @@
   the NAT machinery with no new engine support.  What `quoting_function` adds is opacity in
   the equality congruence: a `rewriteOf` **spelling** rename reaches into the mention, but a
   `sameAs` / `equals` **identity** merge of the referent does not fold the quoted term."
-  (:require [clojure.test :refer [is testing use-fixtures]]
+  (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.host.core-context :as core-context]
+            [vaelii.host.seed :as seed]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.nat :as nat]
+            [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
-(use-fixtures :once (tu/loaded core-context/load-into))
+;; CxCore and CxReflection, whose expression lattice the shape classification answers in
+(use-fixtures :once (tu/loaded #(doto %
+                                  (core-context/load-into)
+                                  (seed/load-context 'CxReflection "upper"))))
 (use-fixtures :each (tu/neutral))
 
 (defn- declare-quote!
@@ -41,6 +46,137 @@
       (is (= (list Quote Muffet) (nat/nat-expression kb k)))
       (is (v/isa? kb k cycl_constant 'CxUniverse)   "K is a cycl_constant")
       (is (v/isa? kb k cycl_expression 'CxUniverse) "and a cycl_expression up the genl"))))
+
+;; ---- use versus mention: what a sentex denotes, not what it mentions ------
+;; `dog` written in a sentence denotes the predicate `dog`: use is the default.  Only
+;; `(Quote dog)` mentions `dog`, denoting the symbol `dog`.  symbol is below expression,
+;; and expression is disjoint from relation, so no term is both a symbol and a predicate.
+
+(tu/deftest-kb a-symbol-is-a-mention-and-no-predicate
+  (tu/with-terms [Quote dog holds]
+    (v/assert kb (list 'reifiable_function Quote) 'CxUniverse)
+    (v/assert kb (list 'quoting_function Quote)   'CxUniverse)
+    (v/assert kb (list 'unary_predicate dog)      'CxUniverse)
+    (v/assert kb (list 'unary_predicate holds)    'CxUniverse)
+    (v/assert kb (list holds (list Quote dog))    'CxUniverse)   ; mints (Quote dog) -> K
+    (testing "dog written plainly denotes the predicate dog"
+      (is (v/ask? kb (list 'predicate dog) 'CxUniverse)))
+    (testing "dog written plainly is not itself a symbol"
+      (is (not (v/ask? kb (list 'symbol dog) 'CxUniverse))))
+    (testing "symbol and predicate share no instance"
+      (is (v/disjoint? kb 'symbol 'predicate)))))
+
+;; ---- shape classification: what (Quote X) IS follows from X, not a declaration -----
+;; CxCore's `Quote` comment says Quote takes no result, arg or metatype declaration: what
+;; kind of expression `(Quote X)` is follows from X's shape (`provers/shape-kinds`).
+;; `Quote` is unreifiable here, so a ground quoted form reaches the prover as written; a
+;; reifiable one is read back through its constant's `termOfUnit` (the next test).
+(tu/deftest-kb quoted-forms-are-classified-by-shape
+  (tu/with-terms [Quote dog]
+    (v/assert kb (list 'unreifiable_function Quote) 'CxUniverse)
+    (v/assert kb (list 'quoting_function Quote)     'CxUniverse)
+    (v/assert kb (list 'unary_predicate dog)         'CxUniverse)
+    (doseq [[kind x holds? why]
+            [['symbol dog true "dog's shape being an atomic_term"]
+             ['number 212 true "212's shape being an unrepresented_term"]
+             ['integer 5 true "a quoted integer is an integer, a value denoting itself"]
+             ['non_atomic_expression (list dog 'Muffet) true "(dog Muffet)'s shape being one"]
+             ['symbol (list dog 'Muffet) false "a compound's shape is not atomic"]
+             ;; the expression ?x is open, CxReflection's variable being an
+             ;; open_expression; the sentence around (Quote ?x) is closed (`sx/closed?`)
+             ['variable '?x true "?x is a variable"]
+             ['wff_expression '?x true "an atomic_expression is a wff_expression"]
+             ['open_expression '?x true "?x is free in the quoted form"]
+             ['closed_expression '?x false "an expression is open or closed, not both"]
+             ['open_formula (list 'implies (list 'poodle '?x) (list dog '?x)) true
+              "?x is free in the quoted form"]
+             ['sentence (list 'forall '?x (list 'implies (list dog '?x) (list 'animal '?x))) true
+              "a quantifier binds its variable"]
+             ['ill_formed_expression (list 3 4) true "a number in operator position"]]]
+      (testing (str (list kind (list 'Quote x)) " " holds? ": " why)
+        (is (= holds? (v/ask? kb (list kind (list Quote x)) 'CxUniverse)))))))
+
+(tu/deftest-kb a-reified-quoted-form-is-classified-through-its-term-of-unit
+  (tu/with-terms [Quote dog cycl_expression cycl_constant said Tom]
+    (declare-quote! kb Quote cycl_expression cycl_constant)
+    (v/assert kb (list 'unary_predicate dog) 'CxUniverse)
+    (let [h (v/assert kb (list said Tom (list Quote (list 'not (list dog 'Muffet)))) 'CxUniverse)
+          k (nth (:sentence (v/sentex kb h)) 2)]
+      (is (nat/reified-nat-symbol? k) "the quoted form is minted")
+      (is (v/ask? kb (list 'sentence (list Quote (list 'not (list dog 'Muffet)))) 'CxUniverse)
+          "the quoted spelling reads back to its constant")
+      (is (v/ask? kb (list 'sentence k) 'CxUniverse) "and so does the constant")
+      (is (not (v/ask? kb (list 'symbol k) 'CxUniverse))
+          "a formula's shape is not atomic"))))
+
+(tu/deftest-kb a-firing-over-a-quoted-form-rests-on-the-quoting-mark
+  ;; `ExpressionKindProver` is a SupportingProver: the firing names the
+  ;; `quoting_function` statement, and the mark arriving last still fires the rule.  A
+  ;; `not` head makes the quoted form a sentence by its spelling alone.
+  (tu/with-terms [Quote dog said asserter Tom]
+    (v/assert kb (list 'unreifiable_function Quote) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate dog) 'CxUniverse)
+    (v/assert kb (list 'implies (list 'and (list said '?a '?q) (list 'sentence '?q))
+                       (list asserter '?a))
+              'CxUniverse {:direction :forward})
+    (v/assert kb (list said Tom (list Quote (list 'not (list dog 'Muffet)))) 'CxUniverse)
+    (is (not (v/ask? kb (list asserter Tom) 'CxUniverse))
+        "no quoted form until Quote is a quoting_function")
+    (let [m (v/assert kb (list 'quoting_function Quote) 'CxUniverse)]
+      (is (v/ask? kb (list asserter Tom) 'CxUniverse) "the mark re-joins the rule")
+      (v/retract! kb m)
+      (is (not (v/ask? kb (list asserter Tom) 'CxUniverse))
+          "and retracting it withdraws the conclusion"))))
+
+;; ---- closedness: a variable inside (Quote …) is not free around it ----------------
+;; `sx/ground?` answers whether a sentence holds any variable at all.  `sx/closed?` answers
+;; whether a sentence has a free variable: one bound by an enclosing quantifier, or one
+;; inside a (Quote …), is not free (vaelii/vaelii#160).
+
+(defn- lit
+  "A sentex map holding `sentence`, the shape `sx/ground?` and `sx/closed?` read."
+  [sentence]
+  {:sentence sentence})
+
+(deftest closed-reads-quote-and-quantifiers-as-binding-and-ground-reads-neither
+  (testing "a variable-free sentence is ground and closed"
+    (is (sx/ground? (lit '(dog Muffet))))
+    (is (sx/closed? (lit '(dog Muffet)))))
+  (testing "a free variable makes a sentence neither"
+    (is (not (sx/ground? (lit '(dog ?x)))))
+    (is (not (sx/closed? (lit '(dog ?x))))))
+  (testing "a variable inside a Quote is part of the quoted form"
+    (is (not (sx/ground? (lit '(awesome_rule (Quote (implies (poodle ?x) (dog ?x))))))))
+    (is (sx/closed? (lit '(awesome_rule (Quote (implies (poodle ?x) (dog ?x)))))))
+    (is (sx/closed? (lit '(variable (Quote ?x))))))
+  (testing "a variable a quantifier binds is not free"
+    (is (sx/closed? (lit '(forall ?x (implies (dog ?x) (animal ?x))))))
+    (is (sx/closed? (lit '(thereExists ?x (dog ?x)))))
+    (is (sx/closed? (lit '(exists (?x ?y) (parentOf ?x ?y))))))
+  (testing "a variable outside the Quote or the quantifier stays free"
+    (is (not (sx/closed? (lit '(likes ?y (Quote (dog ?x)))))))
+    (is (not (sx/closed? (lit '(thereExists ?x (likes ?x ?y)))))))
+  (testing "a Quasiquote is no Quote: its variables are meant to be bound from outside"
+    (is (not (sx/closed? (lit '(holds (Quasiquote (dog ?x)))))))))
+
+;; ---- a quoted rule is a closed fact, storable like any other mention ---------------
+;; awesome_rule's argument holds an (implies ...) form as syntax: the ?x inside the Quote
+;; is part of the quoted form, never free in the sentence around it, so the outer sentence
+;; is closed and stores.  check-ground reads `sx/closed?`, which treats a (Quote …) as
+;; opaque (vaelii/vaelii#160).
+(tu/deftest-kb a-quoted-rule-is-closed-and-storable
+  ;; The real Quote, not a fresh stand-in: closedness reads the form's syntax, and a
+  ;; quoting form is spelled (Quote …).
+  (tu/with-terms [awesome_rule]
+    (v/assert kb (list 'reifiable_function 'Quote) 'CxUniverse)
+    (v/assert kb (list 'quoting_function 'Quote)   'CxUniverse)
+    (v/assert kb (list 'unary_predicate awesome_rule) 'CxUniverse)
+    (v/assert kb (list 'arg awesome_rule 1 'formula)  'CxUniverse)
+    (let [quoted-rule (list 'Quote (list 'implies (list 'poodle '?x) (list 'dog '?x)))
+          stored      (try (v/assert kb (list awesome_rule quoted-rule) 'CxUniverse)
+                           (catch clojure.lang.ExceptionInfo _ nil))]
+      (testing "the quoted rule form stores as a closed sentence"
+        (is (some? stored))))))
 
 (tu/deftest-kb sameas-does-not-fold-a-quoted-term
   ;; The opacity: merging the *referents* Muffet and Fluffet leaves the two *terms* — and

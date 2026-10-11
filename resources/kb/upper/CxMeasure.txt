@@ -124,6 +124,7 @@
 (comment physical_dimension
          "A kind of extent a unit measures: Length, Mass, Duration. Two measures compare only when their units share one physical_dimension, and dimensionOf states which one a unit has.")
 (genl physical_dimension nowhere_never)
+(set/monotonic (disjoint physical_dimension relation))
 
 (comment qualitativeDifference
          "(qualitativeDifference ?a ?b ?q) means that quantity ?q is ?a minus ?b. A declaration about which quantities stand in the relation, not a sentence about numbers — there are no numbers in the sign theory at all — and what the sign prover reads to give ?q a sign from the signs of ?a and ?b. Read as ?a plus the negation of ?b, so it shares the addition table and its one ambiguity, with the cases turned round: two quantities of the SAME sign are the ambiguous difference, and greaterInMagnitudeThan is what resolves it.")
@@ -221,7 +222,8 @@
 
 (comment sign_value
          "One of the three values a quantity's sign takes: SignNegative, SignZero, SignPositive. Jointly exhaustive and pairwise disjoint over the reals — exactly one holds of any quantity — which is what makes a set of them a real constraint rather than an absence of knowledge, and what licenses the sign prover to answer a negated goal by refutation the way a relation algebra does.")
-(genl sign_value thing)
+(genl sign_value nowhere_never)
+(closed_extent_predicate sign_value)
 
 (comment SignNegative "The sign of a quantity below zero: falling, when it is a trend.")
 (sign_value SignNegative)
@@ -262,6 +264,7 @@
 (comment unit_of_measure
          "A standard amount of one physical_dimension that a magnitude is counted in: Meter, Kilogram, Second. A unit fills the first argument of dimensionOf and the first two of conversionFactor, so a unit table entry types its unit, and it is the last argument of a QuantityFn or QuantityIntervalFn application.")
 (genl unit_of_measure nowhere_never)
+(set/monotonic (disjoint unit_of_measure relation))
 
 (comment Week "Seven days.")
 (dimensionOf Week Duration)

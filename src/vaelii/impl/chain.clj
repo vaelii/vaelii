@@ -4134,15 +4134,28 @@
   (conversionFactor …))` reaches here too: it defeats the positive row and so moves the
   reading exactly as removing it would.
 
-  Two set lookups for every datum that is not one of these — the source set is
-  `#{dimensionOf conversionFactor}` on the shipped registry — and the index reads only for
-  a datum that is."
-  [kb bfn]
+  Two set lookups for every datum that is not one of these.  For one that is, the stored
+  rules' antecedent keys are read once, and the rules only for the answers some rule
+  takes.  A supporter reads a `genl` path up to the goal's predicate, so an edge `s`
+  installs (`tax/installed-edges`) moves only the answers at or above the edge's upper
+  end, read globally because the re-join reads every context."
+  [kb bfn s]
   (let [srcs (provers/support-source-preds kb)]
     (when (contains? srcs bfn)
-      (not-empty
-       (into #{} (mapcat #(reads/as-stored-rules-by-antecedent (:index kb) %))
-             (provers/support-answered-preds kb))))))
+      (let [answers (provers/support-answered-preds kb)
+            answers (if (contains? tax/edge-installing-functors bfn)
+                      (let [tx    (reasoning/taxonomy kb)
+                            above (into #{} (mapcat (fn [[_ super]] (tax/genls-global tx super)))
+                                        (tax/installed-edges s))]
+                        (filter above answers))
+                      answers)]
+        (when (seq answers)
+          (let [idx   (:index kb)
+                ruled (reads/as-stored-rule-keys idx)]
+            (not-empty
+             (into #{} (comp (filter #(contains? ruled %))
+                             (mapcat #(reads/as-stored-rules-by-antecedent idx %)))
+                   answers))))))))
 
 (defn- transitive-rejoin-rules
   "The forward rules to re-join because the arriving datum moved a transitive walk — it is
@@ -4254,14 +4267,15 @@
   permuting, computed, transitive or closure re-join (`fire-rules-for`'s sources)?
   Storage, not belief: a rule the index posts counts whether or not it is believed."
   [kb fact]
-  (let [ffn (nm/functor fact)
-        bfn (if (= sx/not-functor ffn) (nm/functor (kb/body-under-not fact)) ffn)]
+  (let [ffn  (nm/functor fact)
+        body (if (= sx/not-functor ffn) (kb/body-under-not fact) fact)
+        bfn  (nm/functor body)]
     (boolean
      (or (seq (rules/trigger-keys (reasoning/taxonomy kb) fact (reads/as-stored-rule-keys (:index kb))))
          (seq (qkb/calculi-triggered-by kb bfn))
          (inherit/rejoin-rules kb fact)
          (permuting-rejoin-rules kb fact)
-         (computed-rejoin-rules kb bfn)
+         (computed-rejoin-rules kb bfn body)
          (transitive-rejoin-rules kb fact bfn)
          (closure-rejoin-rules kb fact)))))
 
@@ -4366,7 +4380,8 @@
         ;; And once more for a prover rather than for the matcher: a datum on a predicate
         ;; a `SupportingProver` reads moves what a computed antecedent answers, and no
         ;; walk from `conversionFactor` reaches `quantityGreaterThan`.
-        crhs     (computed-rejoin-rules kb bfn)
+        crhs     (computed-rejoin-rules
+                  kb bfn (if (= sx/not-functor ffn) (kb/body-under-not fact) fact))
         ;; And once more for the walk rather than for the table: an arriving edge makes
         ;; pairs a `(transitive P)` antecedent reaches through it, and the trigger index
         ;; offers only the tuple the edge is stated at.

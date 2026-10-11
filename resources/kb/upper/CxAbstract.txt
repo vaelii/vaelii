@@ -25,6 +25,7 @@
 ;; formation substance.  Bread, an apple and sea salt are a made, a natural and a
 ;; formation food, and an apple is biological food.
 (orthogonal organism made)
+(orthogonal animal made)
 (orthogonal organism natural)
 (orthogonal body_part made)
 (orthogonal body_part natural)
@@ -155,9 +156,6 @@
 (genl petal body_part)
 
 
-(comment relation_type "A type whose instances are relations between things.")
-(genl relation_type aspatial)
-
 (comment root "The body part a plant anchors itself and draws water with.")
 (genl root body_part)
 
@@ -209,6 +207,8 @@
 ;; CxCore, so the edge lives here beside causal; with the disjointness above it also
 ;; keeps every tangible out of acausal.
 (genl tangible causal)
+;; Every cause is in time, so nothing atemporal is a cause.
+(genl atemporal acausal)
 
 ;; A body of people can be a cause too: a company hires; a court rules. organization
 ;; is aspatial, and nothing separates aspatial from causal.
@@ -332,7 +332,6 @@
 (set/monotonic (disjoint clothing building))
 (set/monotonic (disjoint clothing furniture))
 (set/monotonic (disjoint clothing vehicle))
-(set/monotonic (disjoint formula relation))
 (set/monotonic (disjoint liquid stone))
 (set/monotonic (disjoint relation context))
 (set/monotonic (disjoint_metatype stuff_type_by_state_of_matter))

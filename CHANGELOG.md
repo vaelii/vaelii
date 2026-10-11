@@ -15,6 +15,64 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Breaking
 
+- **The expression lattice and the use/mention vocabulary move to a new upper member,
+  CxReflection, and `atomic_formula`, `atomic_sentence` and `relation_application` are
+  renamed.** `expression` is a written form in this KB's own language, the thing
+  `(Quote …)` names, so it is disjoint from `relation`, `context` and `language`, which
+  sit directly below `nowhere_never`. A natural-language sentence is `linguistic` but not
+  an `expression`. CxReflection (`resources/kb/upper/CxReflection.txt`) holds 22
+  expression kinds: `expression` is partitioned into `atomic_expression` and
+  `non_atomic_expression`, which replaces `relation_application`; `atomic_expression`
+  into `atomic_term` and `variable`; and `expression` again into `open_expression` and
+  `closed_expression` and into `wff_expression` and `ill_formed_expression`.
+  `atomic_formula` is `predication` and `atomic_sentence` is `closed_predication`, with
+  `open_predication`, `negated_predication`, `open_literal`, `closed_literal`,
+  `open_formula`, `wff`, `ill_formed`, `wff_sentence` and `ill_formed_sentence` beside
+  them. `proposition`, `means`, `denotes` and `expresses` relate an expression to what it
+  says or names. CxCore keeps `symbol`, the value kinds, `unrepresented_term`, `formula`,
+  `sentence`, `non_atomic_term` and the new `linguistic`, which `language` and every
+  expression sit under, so `symbol` and the value kinds are disjoint from `relation` from
+  every context. `forall`, `thereExists` and `exists` are declared binary quantifiers, and
+  `quantifier`, `logical_connective`, `logical_constant` and `sign_value` have closed
+  extents. `bounded_arity` and `unbounded_arity` partition `relation`, the 14 relations
+  that take any number of arguments are stated `unbounded_arity`, and `arityMax` bounds
+  `functionCorrespondingPredicate` at 3. [contexts.md](docs/contexts.md),
+  [naming.md](docs/naming.md#reserved-words), [taxonomy.md](docs/taxonomy.md).
+
+  *Class:* **Breaking** (KB vocabulary renamed and moved).
+  *Migration:* write `predication` for `atomic_formula`, `closed_predication` for
+  `atomic_sentence` and `non_atomic_expression` for `relation_application`. A context that
+  names an expression kind other than CxCore's sees CxReflection, as every context below
+  CxUniverse does.
+  *Breaks:* `atomic_formula`, `atomic_sentence`, `relation_application`
+
+- **`at_least_binary_relation` and `at_least_ternary_relation` are renamed
+  `at_least_binary` and `at_least_ternary`, and hold of fixed-arity relations too.**
+  `binary` is below `at_least_binary` and `ternary` below `at_least_ternary`. Rules over
+  `arity` conclude both beside the `arityMin` rules, and so reach the 5 shipped relations
+  of arity 4 to 7, which no exact-arity class names. `(orthogonal at_least_binary fixed_arity)` is stated.
+  `fixed_arity` and `variable_arity` partition `relation`, and `relation_type` is removed
+  from CxAbstract. [taxonomy.md](docs/taxonomy.md#relations-and-arity-policy).
+
+  *Class:* **Breaking** (KB vocabulary renamed and removed).
+  *Migration:* write `at_least_binary` for `at_least_binary_relation` and
+  `at_least_ternary` for `at_least_ternary_relation`; a query for one now also answers
+  fixed-arity relations, e.g. `parentOf`. `relation_type` has no replacement.
+  *Breaks:* `at_least_binary_relation`, `at_least_ternary_relation`, `relation_type`
+
+- **A variable inside `(Quote …)` or bound by a quantifier is not free, so a fact about a
+  quoted rule stores.** `(awesome_rule (Quote (implies (poodle ?x) (dog ?x))))` was
+  refused as `:not-ground`. `sentex/closed?` is new beside `sentex/ground?`: it is true
+  when every variable occurrence is bound by `forall`, `thereExists` or `exists`, or sits
+  inside a `(Quote …)`, and `check-ground` reads it. A written `(forall ?y (implies …))`
+  asserted as a fact is now refused by the query-operator check rather than as
+  `:not-ground`. [glossary.md](docs/glossary.md#g).
+
+  *Class:* **Breaking** (a refusal changes type).
+  *Migration:* a caller matching `:not-ground` on a quantified fact matches
+  `:not-well-formed`.
+  *Breaks:* `:not-ground`
+
 - **`query-status` reads `:incomplete` when a transitive goal answered its extent.** A
   goal `(P ?x ?y)` over a `transitive` `P`, solved with both arguments open, answers the
   stored pairs and not the closure, and `query-status` reported `:complete` over it.
@@ -30,6 +88,16 @@ it — `git show v0.16.0:CHANGELOG.md`.
   *Breaks:* `query-status`
 
 ### Fixes
+
+- **A new member of a closed part of a cover is admitted.** With every part of a
+  `covering` declared `closed_extent_predicate`, the cover check asked of `(quantifier
+  forall)` read `(not (quantifier forall))` off the closure's negation as failure, before
+  the membership that withdraws it was stored, and refused the membership as a coverage
+  violation. A part the membership puts its term in is now denied only by a stored
+  negation. The starter then loads the same KB whether the closures arrive before or
+  after the memberships.
+
+  *Class:* **Fix**.
 
 - **Two rule firings that pair the same facts with different literals are both stored.** A
   justification records the `[sub super]` predicate pairs its firing matched a fact to a
@@ -75,6 +143,15 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Additions
 
+- **A query asks what kind of expression a quoted form is.** `(symbol (Quote dog))`,
+  `(variable (Quote ?x))`, `(open_formula (Quote (implies (poodle ?x) (dog ?x))))` and the
+  other kinds of CxReflection's lattice that X's spelling decides are answered, through a
+  reified constant's `termOfUnit` as well, and a forward rule over one fires with the
+  `quoting_function` statement in its support.
+  [argtypes.md](docs/argtypes.md#what-a-quoted-form-is).
+
+  *Class:* **Additive**.
+
 - **`min-genls` and `max-specs` read a type's nearest neighbours in the subsumption
   order, and the term page's concept graph draws them.** `(min-genls kb t [context])`
   answers the direct parents of `t` with no other direct parent of `t` strictly below
@@ -87,6 +164,14 @@ it — `git show v0.16.0:CHANGELOG.md`.
   draws `animal` above `mammal` and no arrow from `dog` to `animal`. An expansion costs
   at most two facade reads, and a page makes at most twelve expansions.
   [api.md](docs/api.md), [web.md](docs/web.md#a-terms-shape-drawn).
+
+  *Class:* **Additive**.
+
+- **`string`, `number`, `boolean`, `keyword` and `character` are computed for a literal
+  argument.** `(string "foo")` and `(keyword :a)` hold, and `(not (number "foo"))` and
+  `(not (string 7))` are proved, by the evaluable prover that answers `integer`. A symbol
+  argument is left to the other provers, since a constant can denote a number.
+  [inference.md](docs/inference.md).
 
   *Class:* **Additive**.
 

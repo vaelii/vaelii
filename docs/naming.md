@@ -359,12 +359,17 @@ reader cannot confuse is a *declared collision*, and the row below is the declar
 | **machine** | how it is *stored and found* |
 
 The formula stratum runs on the standard ladder, and the docs use it exactly:
-an **atomic formula** is a predicate applied to terms; an **atomic sentence** is a closed
-atomic formula; a **literal** is an atomic formula or its negation; a **formula** is an
-atomic formula, a logical operator applied to formulas, or a quantifier binding variables
-in one; a **sentence** is a closed formula. So `(P ?x)` is an open atomic formula and a
-positive literal and *not* a sentence, while `(P Alice)` is an atomic sentence and a
-positive literal. A possibly-open goal is a **pattern**, never a sentence.
+a **predication** is a predicate applied to terms; a **closed predication** has no free
+variable and an **open predication** has one; a **literal** is a predication or its
+negation; a **formula** is a predication, a logical operator applied to formulas, or a
+quantifier binding variables in one; a **sentence** is a closed formula. So `(P ?x)` is
+an open predication and a positive literal and *not* a sentence, while `(P Alice)` is a
+closed predication and a positive literal. A possibly-open goal is a **pattern**, never a
+sentence. A **wff** is a well-formed formula, one whose every operator has as many
+arguments as its arity allows; an **ill-formed** formula is one that is not. A variable is
+free unless a quantifier binds it or it sits inside a `(Quote …)`. CxReflection names each
+rung as a collection: `predication`, `closed_predication`, `open_predication`, `literal`,
+`wff`, `ill_formed`; CxCore names `formula` and `sentence`.
 
 A **qualified compound is a different word.** *Stack frame*, *binding frame*, *keyword
 literal*, *string literal*, *character literal* and *regex literal* are ordinary
@@ -381,9 +386,8 @@ word means adding its row here and its entry there, in the same commit.
 | arm | machine | 1 | Arm |
 | asserted | knowledge | 1 | Asserted |
 | atomic | term, machine | 2 | Atomic (term); Atomic (storage) |
-| atomic formula | formula | 1 | Atomic formula |
-| atomic sentence | formula | 1 | Atomic sentence |
 | belief | knowledge | 2 | Belief; Belief (an agent's) |
+| closed predication | formula | 1 | Closed predication |
 | constraint | formula, knowledge | 2 | Constraint (rule slot); Constraint network |
 | context | knowledge | 4 | Context; Query context; Placement context; context (ontology type) |
 | denotational term | term | 1 | Denotational term |
@@ -393,13 +397,16 @@ word means adding its row here and its entry there, in the same commit.
 | formula | formula | 2 | Formula; formula (ontology type) |
 | frame | machine | 1 | Frame |
 | ground | term | 1 | Ground |
+| ill-formed | formula | 1 | ill_formed (ontology type) |
 | inert | knowledge | 1 | Inert |
 | kind | term | 1 | Kind |
 | label | knowledge | 1 | Labeling |
 | lane | machine | 1 | Lane |
 | literal | formula | 1 | Literal |
+| open predication | formula | 1 | Open predication |
 | pattern | formula | 1 | Pattern |
 | polarity | formula | 1 | Polarity |
+| predication | formula | 1 | Predication |
 | reasoning | machine | 1 | Reasoning state |
 | record | machine | 1 | Record |
 | refusal | machine | 1 | Refusal |
@@ -411,6 +418,7 @@ word means adding its row here and its entry there, in the same commit.
 | term | machine | 1 | Term |
 | value | term | 1 | Value |
 | variable | term | 1 | Variable |
+| wff | formula, machine | 2 | wff (ontology type); WFF (well-formedness) |
 | wrapper | formula | 1 | Wrapper |
 
 What the check cannot do is notice a *third* sense arriving in prose. That is the

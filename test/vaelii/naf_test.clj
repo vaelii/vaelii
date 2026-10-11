@@ -818,9 +818,9 @@
 
 (tu/deftest-kb forall-is-not-assertible
   (tu/with-terms [childOf asleep Bob Kid]
-    (testing "the written spelling carries a variable, so the ground check refuses it first"
+    (testing "the written spelling binds its variable, so it is closed and reaches the query-operator arm"
       (is (thrown-with-msg?
-           clojure.lang.ExceptionInfo #"not ground"
+           clojure.lang.ExceptionInfo #"query operator"
            (v/assert kb (list 'forall '?y (list 'implies (list childOf Bob '?y)
                                                 (list asleep '?y)))
                      'CxWell))))

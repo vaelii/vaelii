@@ -51,6 +51,7 @@
          "(and ?antecedent1 ?antecedent2 …) means the conjunction of the antecedents inside an implies rule. A syntactic connective rather than a predicate: it is never asserted on its own, and a rule with a single antecedent needs no and at all.")
 (logical_connective and)
 (variable_arity and)
+(unbounded_arity and)
 
 (comment genlArg
          "(genlArg ?relation ?position ?type) means that argument ?position of ?relation must be a subtype of ?type. The arg constraint one level up, for arguments naming kinds rather than instances: (genlArg partType 1 tangible) says the argument names a kind of physical object, where (arg partOf 1 tangible) says it names one. Open-world, so an argument with no place in the genl hierarchy cannot violate it. Relation-wide vocabulary; the current function-input enforcement boundary is documented in docs/argtypes.md.")
@@ -194,7 +195,6 @@
 (defnNecessary  non_negative_integer (and (integer ?x) (greaterThan ?x -1)))
 (defnSufficient non_positive_integer (and (integer ?x) (lessThan ?x 1)))
 (defnNecessary  non_positive_integer (and (integer ?x) (lessThan ?x 1)))
-(genl symbol thing)
 ;; Each value kind is a type: a one-place predicate whose instances are the values of
 ;; that kind.  Stated here, beside the kinds, so a KB that loads CxCore alone reads their
 ;; arity as kb/relation-arity reads it.
@@ -230,7 +230,7 @@
 (comment spatial "Something with a location in some space, physical or mathematical. The line y=x is located in the Cartesian plane and a square of an abstract chessboard on that board, though neither is located anywhere in the world; a point has a location and no extent, and is spatial too. Everything spatiotemporal is spatial; spatial and aspatial partition thing. The four spatial calculi relate what is spatial, in whichever space a context is about.")
 (comment spatiotemporal "Something with a location in space and time — a physical object, but also a region or a place, which occupy space without being made of anything. Below both spatial and temporal.")
 (comment temporal "Something that happens or exists in time. Physical objects, events, and situations are all temporal.")
-(comment aspatial "Not located in any space: no location in any space, physical or mathematical. The complement of spatial — the two partition thing — and so nothing CxSpace's calculi relate.")
+(comment aspatial "Not located in any space: no location in any space, physical or mathematical. None of CxSpace's calculi relate to it.")
 (comment atemporal "Not located in time. Numbers, relations and the other kinds below nowhere_never are atemporal; a fluent is intangible but not atemporal, since it holds over time.")
 (comment tangible "Something with mass. Having mass, it necessarily has a location in space and time too, so it is spatiotemporal.")
 (comment organism "Something alive in its own right: it is born, grows, reproduces, and (by default) dies.")
@@ -257,7 +257,7 @@
 (genl animal organism)
 (genl food tangible)
 ;; A language is in no space and at no time.
-(genl language nowhere_never)
+(genl language linguistic)
 ;; An organization has no location in any space; its members and its buildings have one.
 (genl organization aspatial)
 (genl person tangible)
@@ -276,6 +276,8 @@
 ;; the coverage, so a situation denied being an event is concluded a static_situation.
 (genl situation temporal)
 (set/monotonic (partition situation static_situation event))
+;; A meeting happens somewhere, and a contract expiring happens nowhere in particular.
+(orthogonal situation spatial)
 ;; Each skeleton collection is a type, a one-place predicate.
 (unary_predicate intangible)
 (unary_predicate spatial)
@@ -301,48 +303,32 @@
 (unary_predicate event)
 (unary_predicate measure)
 
-;; The expression kinds — what a sentence is BUILT OUT OF, named as collections so a
-;; declaration can type an argument by the FORM of the expression written there rather
-;; than by what it denotes.  The value kinds above name a leaf; these name a compound.
-;;
-;; The ladder is the standard one, and the docs are held to it (docs/naming.md's reserved
-;; words).  An ATOMIC_FORMULA is a predicate applied to terms.  An ATOMIC_SENTENCE is a
-;; closed atomic_formula.  A LITERAL is an atomic_formula or its negation.  A FORMULA is
-;; an atomic_formula, a logical operator applied to formulas, or a quantifier binding
-;; variables in one.  A SENTENCE is a closed formula — which is what every stored sentex
-;; holds, since checks/check-ground refuses an open non-rule sentence and a rule's
-;; variables are implicitly universal.
-;;
-;; A RELATION_APPLICATION is the shape an atomic_formula and a non_atomic_term share: a
-;; relation applied to arguments.  Which of the two it is depends on whether the relation
-;; is a predicate or a function, and the two specializations below say so.  They are
-;; disjoint, and the pair is not declared a covering of relation_application.
+;; The expression kinds the engine and CxCore's own declarations name: formula, sentence and
+;; non_atomic_term, beside symbol and the value kinds above.  A FORMULA is a predication, a
+;; logical operator applied to formulas, or a quantifier binding variables in one.  A
+;; SENTENCE is a closed formula, which is what every stored sentex holds, since
+;; checks/check-ground refuses an open non-rule sentence and a rule's variables are
+;; implicitly universal.  The rest of the expression lattice, and where these three sit in
+;; it, is CxReflection's.
 ;;
 ;; DOCUMENTARY: nothing in the engine reads these.  An argument declaration over one
 ;; types no compound, because a compound argument has no knowable kind —
 ;; checks/value-kind answers nil for a compound by design (docs/argtypes.md), and no
-;; reader classifies a compound by its shape.  So (quotedArg P n relation_application)
-;; is inert, and the arg form convicts only a value written in the position and derives
-;; a membership only for a symbol written there.  The declarations below that type a
-;; sentence or a condition (believes, ist, implies, the defn family) read
-;; the same way.  The vocabulary is here because it should be one vocabulary when a
-;; shape classifier does exist; the classifier itself does not.
-(comment relation_application "A relation applied to zero or more arguments — the shape (R a1 a2 ...) has, whatever R is. Specializes into atomic_formula when R is a predicate and non_atomic_term when R is a function, and the two are disjoint.")
-(comment denotational_term "An expression that DENOTES an entity: a symbol, a value, a variable, or a non-atomic term. The logic sense of 'term', spelled in full because plain 'term' is the vocabulary sense — a name the term index is keyed by.")
-(comment atomic_formula "A predicate applied to terms — (dog Muffet), (parentOf ?x Tom). Open or closed alike: the definition says nothing about variables.")
-(comment atomic_sentence "A closed atomic_formula — one with no free variables. What a stored LiteralSentex holds in its sentence slot.")
-(comment literal "An atomic_formula or its negation. What a LiteralSentex holds, with the record's polarity slot saying which of the two it is. A rule's antecedent is a vector of literals.")
-(comment formula "An atomic_formula; a logical operator applied to formulas; or a quantifier binding variables in a formula. Open when it has free variables, closed when it does not.")
+;; reader classifies a compound by its shape.  So the declarations that type a sentence
+;; or a condition (believes, ist, implies, the defn family) convict only a value written
+;; in the position and derive a membership only for a symbol written there.
+(comment formula "A predication, a logical operator applied to formulas, or a quantifier binding variables in a formula.")
 (comment sentence "A closed formula. Every stored sentex holds one — checks/check-ground refuses an open non-rule sentence, and a rule's variables are implicitly universal. A possibly-open goal is a pattern, not a sentence.")
-(comment non_atomic_term "A function applied to terms — (MotherFn Muffet). The NAT of docs/nat.md, named here as a collection so a declaration can say an argument is one.")
-(genl relation_application thing)
-(genl atomic_formula relation_application)
-(genl non_atomic_term relation_application)
-(genl non_atomic_term denotational_term)
-(genl literal formula)
-(genl atomic_formula literal)
+(comment non_atomic_term "A function applied to as many closed terms as it takes, e.g. (MotherFn Muffet). The NAT of docs/nat.md, named here as a collection so a declaration can say an argument is one.")
+(unary_predicate formula)
+(unary_predicate sentence)
+(unary_predicate non_atomic_term)
+;; Implementation: CxReflection places the three under expression, so under linguistic.
+;; CxCore's own declarations type positions over them, and a context that sees CxCore
+;; alone reads them through these edges.
+(genl formula linguistic)
 (genl sentence formula)
-(genl atomic_sentence atomic_formula)
+(genl non_atomic_term linguistic)
 
 ;; argN names a position inside a written formula.  Position 0 is the relation or
 ;; operator, and the arguments count from 1, as arg's positions do.  The quotedArg at
@@ -354,17 +340,6 @@
 (ternary_predicate argN)
 (arg argN 2 non_negative_integer)
 (quotedArg argN 3 formula)
-(genl atomic_sentence sentence)
-(set/monotonic (disjoint atomic_formula non_atomic_term))
-;; Each expression kind is a type, a one-place predicate over expressions.
-(unary_predicate relation_application)
-(unary_predicate denotational_term)
-(unary_predicate atomic_formula)
-(unary_predicate atomic_sentence)
-(unary_predicate literal)
-(unary_predicate formula)
-(unary_predicate sentence)
-(unary_predicate non_atomic_term)
 
 ;; measure names what a QuantityFn or QuantityIntervalFn application denotes, and CxMeasure
 ;; states it as their result.  CxMeasure (weightOf, heightOf, the five comparisons) and
@@ -374,41 +349,39 @@
 (comment measure "A magnitude in a unit: (QuantityFn 5 Kilogram) or (QuantityIntervalFn 1 2 Meter). What a weight, a height, a duration or a temporal distance is stated as. See docs/quantity.md.")
 (genl measure nowhere_never)
 
-;; expression is the root of the expression kinds and of the value kinds, and it is below
-;; nowhere_never, so every one of them is in no space and at no time.  The edges are here
-;; rather than in a spindle member so that CxCore and every band context read the value
-;; kinds, the expression kinds and context below thing.
-(comment expression "The abstract parent of all representable forms — relations, formulas, contexts, and unrepresented terms.")
+;; linguistic is what has its being in a system of signs: a language, and every expression
+;; written in one.  CxCore holds it because language, which the band contexts type
+;; arguments over, sits under it.
+(comment linguistic "A language, or an expression written in one: what has its being in a system of signs. The line that the equation y=x describes and the mass (QuantityFn 5 Kilogram) denotes are nowhere_never but not linguistic; the written equation and the written term are.")
+(genl linguistic nowhere_never)
+(set/monotonic (disjoint linguistic measure))
+;; Use is the default, so the relation dog is not an expression; (Quote dog) is the symbol.
+(set/monotonic (disjoint linguistic relation))
+(unary_predicate linguistic)
+
+;; unrepresented_term holds the value kinds.  Implementation: CxReflection places it under
+;; expression, so under linguistic; a band context does not see CxReflection, and the edge
+;; below is what lets it read every value kind as nowhere_never and disjoint from relation.
+;; The relation disjoint is what lets a rule be refused for feeding a text-valued argument
+;; into a position that holds a type: every type is a unary_predicate, so the type position
+;; asks for a predicate, and one variable cannot be both at once.  The disjointness on
+;; number carries integer with it.
 (comment unrepresented_term "An expression that cannot be further decomposed in the KB — strings, numbers, keywords, booleans, characters.")
-(genl expression nowhere_never)
-(genl unrepresented_term expression)
-(genl context expression)
-(genl denotational_term expression)
-(genl formula expression)
-(genl relation expression)
-(genl relation_application expression)
-;; expression and unrepresented_term are types, one-place predicates over expressions.
-(unary_predicate expression)
 (unary_predicate unrepresented_term)
-;; The value kinds are placed in this lattice by their edges to unrepresented_term.  Text
-;; and a number have no mass and no location, and neither of them is a relation:
-;; unrepresented_term is an expression, so nowhere_never and so intangible, and it is
-;; disjoint from relation, so from predicate.  The second is what lets a rule be refused
-;; for feeding a text-valued argument into a position that holds a type: every type is a
-;; unary_predicate, so the type position asks for a predicate, and one variable cannot be
-;; both at once.  The disjointness on number carries integer with it.
-;;
-;; symbol gets no such edge, and the note above symbol's declaration says why: a name is
-;; exactly how a predicate is written, so (disjoint symbol predicate) would be false.
+(genl unrepresented_term linguistic)
+;; Implementation: symbol is placed the same way, so a context that sees CxCore alone
+;; reads (disjoint symbol predicate).
+(genl symbol linguistic)
 (genl boolean unrepresented_term)
 (genl character unrepresented_term)
 (genl keyword unrepresented_term)
 (genl number unrepresented_term)
 (genl string unrepresented_term)
-(set/monotonic (disjoint unrepresented_term context))
-(set/monotonic (disjoint unrepresented_term formula))
-(set/monotonic (disjoint unrepresented_term relation))
-(set/monotonic (disjoint unrepresented_term relation_application))
+(partition unrepresented_term boolean character keyword number string)
+
+(genl context nowhere_never)
+
+(comment Quote "Syncategorematic: part of vaelii's syntax, like a parenthesis, though written like a function. (Quote X) is X taken as a form, e.g. (Quote Muffet) names the symbol Muffet, not the dog. Quote takes no arg, result or metatype declaration; what kind of expression (Quote X) is follows from X's shape.")
 
 (comment interArg
          "(interArg ?relation ?position1 ?type1 ?position2 ?type2) means that whenever argument ?position1 of ?relation is a ?type1, argument ?position2 must be a ?type2. The conditional argument constraint, and it says what arg cannot: (interArg eats 1 carnivore 2 meat) types the second argument only for the eaters that are carnivores, where (arg eats 2 meat) would demand meat of every eater. Silence about the trigger argument's type leaves the constraint dormant rather than firing it. Once the trigger holds, the target is derived a ?type2 under assertive argument types, and under the constraint-only reading it is convicted when the KB places it outside ?type2. Read through genl transitivity from the writing context, like arg. Relation-wide vocabulary; the current function-input enforcement boundary is documented in docs/argtypes.md.")
@@ -451,17 +424,18 @@
 ;; predicate) — would derive the wrong thing: a relation whose only stated type is
 ;; variable_arity reaches relation and not predicate, so (binary_predicate P) after
 ;; (variable_arity P) would be derived a predicate where the contradiction is the arity
-;; policy, which the disjointness below stores as a clash.  A relation classified into the wrong kind is
-;; caught by (disjoint predicate function), which the partition of relation derives,
-;; through the genl edges instead.
+;; policy, which the partition below stores as a clash.  A relation classified into the
+;; wrong kind is caught by (disjoint predicate function), which the partition of relation
+;; derives, through the genl edges instead.
 ;;
 ;; The rule that split states, in general: a unary predicate declares its one argument
 ;; position when the type it would declare is NOT already implied by its own genl parent,
 ;; and declares none when the parent sits below that type.  fixed_arity is the first case.
-;; (genl fixed_arity relation) concludes (relation 5) from (fixed_arity 5), nothing is
-;; disjoint from relation for a number, and so the declaration is the only refusal there
-;; is.  instance_relation_predicate is the second.  Its parent is binary_predicate, which
-;; is below predicate, so (arg instance_relation_predicate 1 predicate) restates what the
+;; (partition relation fixed_arity variable_arity) installs (genl fixed_arity relation),
+;; which concludes (relation 5) from (fixed_arity 5); nothing is disjoint from relation for
+;; a number, and so the declaration is the only refusal there is.
+;; instance_relation_predicate is the second.  Its parent is binary_predicate, which is
+;; below predicate, so (arg instance_relation_predicate 1 predicate) restates what the
 ;; edge already concludes and turns that conclusion into a precondition: it refuses
 ;; (instance_relation_predicate P) stated after (arity P 2) because P is not yet a
 ;; predicate, when the assertion supplies predicate-hood through the edge.  Six marks are
@@ -476,7 +450,6 @@
          "(fixed_arity ?relation) means that ?relation takes one exact number of arguments. Exact arity classes and numeric arity declarations specialize this relation-wide policy.")
 (unary_predicate fixed_arity)
 (arg fixed_arity 1 relation)
-(genl fixed_arity relation)
 
 (comment fixed_arity_predicate
          "The fixed_arity relations that are predicates.")
@@ -494,7 +467,6 @@
          "(variable_arity ?relation) means that ?relation does not take one exact number of arguments; arityMin states its lower bound. Prefer it for a repeatable, homogeneously typed argument role. A relation with a bounded optional tail declares variable arity too, and its well-formedness check bounds the tail: functionCorrespondingPredicate takes two or three arguments. The arity check reads this generic type through specialization.")
 (unary_predicate variable_arity)
 (arg variable_arity 1 relation)
-(genl variable_arity relation)
 
 (comment variable_arity_predicate
          "The variable_arity relations that are predicates.")
@@ -508,7 +480,29 @@
 (genl variable_arity_function variable_arity)
 (genl variable_arity_function function)
 
-(set/monotonic (disjoint fixed_arity variable_arity))
+(set/monotonic (partition relation fixed_arity variable_arity))
+
+(comment bounded_arity "A relation whose number of arguments has an upper bound: one exact count, or a fixed range, e.g. parentOf takes two, functionCorrespondingPredicate two or three.")
+(unary_predicate bounded_arity)
+(arg bounded_arity 1 relation)
+(comment unbounded_arity "A relation that takes any number of arguments beyond its required ones, e.g. and, or, partition, different, greaterThan.")
+(unary_predicate unbounded_arity)
+(arg unbounded_arity 1 relation)
+(partition relation bounded_arity unbounded_arity)
+(genl fixed_arity bounded_arity)
+(genl unbounded_arity variable_arity)
+(comment unbounded_arity_predicate "An unbounded_arity relation that is a predicate, e.g. partition, different, greaterThan.")
+(unary_predicate unbounded_arity_predicate)
+(intersection unbounded_arity_predicate unbounded_arity predicate)
+(genl unbounded_arity_predicate variable_arity_predicate)
+(comment unbounded_arity_function "An unbounded_arity relation that is a function.")
+(unary_predicate unbounded_arity_function)
+(intersection unbounded_arity_function unbounded_arity function)
+(genl unbounded_arity_function variable_arity_function)
+(comment arityMax "(arityMax ?relation ?n) means that the bounded_arity relation ?relation takes at most ?n arguments, e.g. (arityMax functionCorrespondingPredicate 3).")
+(binary_predicate arityMax)
+(arg arityMax 1 bounded_arity)
+(arg arityMax 2 positive_integer)
 
 (comment unary "A relation of exactly one argument.")
 (unary_predicate unary)
@@ -579,7 +573,7 @@
 (binary_predicate arity)
 (instance_relation_predicate arity)
 (set/monotonic (functional arity))
-(arg arity 1 relation)
+(arg arity 1 fixed_arity)
 (arg arity 2 non_negative_integer)
 
 (set/forwardRule (implies (arity ?relation ?arity) (fixed_arity ?relation)))
@@ -598,30 +592,48 @@
 (arg admitsArgnum 1 relation)
 (arg admitsArgnum 2 positive_integer)
 
-(comment at_least_binary_relation
-         "The type of variable relations whose stated minimum arity is two or greater. Derived from arityMin.")
-(unary_predicate at_least_binary_relation)
-(arg at_least_binary_relation 1 relation)
-(genl at_least_binary_relation relation)
+(comment at_least_binary
+         "The type of relations of arity 2 or greater, fixed or variable. Derived from arity and from arityMin.")
+(unary_predicate at_least_binary)
+(arg at_least_binary 1 relation)
+(genl at_least_binary relation)
+(genl binary at_least_binary)
+;; partition is variable-arity and at least binary; parentOf is fixed-arity and at least binary.
+(orthogonal at_least_binary fixed_arity)
 
-(comment at_least_ternary_relation
-         "The type of relations whose stated minimum arity is three or greater. Every such relation is also an at_least_binary_relation.")
-(unary_predicate at_least_ternary_relation)
-(genl at_least_ternary_relation at_least_binary_relation)
+(comment at_least_ternary
+         "The type of relations of arity 3 or greater, fixed or variable. Every such relation is also an at_least_binary.")
+(unary_predicate at_least_ternary)
+(genl at_least_ternary at_least_binary)
+(genl ternary at_least_ternary)
 
 (set/forwardRule
  (implies
   (and
    (arityMin ?relation ?arity)
    (greaterThan ?arity 1))
-  (at_least_binary_relation ?relation)))
+  (at_least_binary ?relation)))
 
 (set/forwardRule
  (implies
   (and
    (arityMin ?relation ?arity)
    (greaterThan ?arity 2))
-  (at_least_ternary_relation ?relation)))
+  (at_least_ternary ?relation)))
+
+(set/forwardRule
+ (implies
+  (and
+   (arity ?relation ?arity)
+   (greaterThan ?arity 1))
+  (at_least_binary ?relation)))
+
+(set/forwardRule
+ (implies
+  (and
+   (arity ?relation ?arity)
+   (greaterThan ?arity 2))
+  (at_least_ternary ?relation)))
 
 ;; The meta-ontology rules below conclude into the ORDINARY placement — the maximal
 ;; context that sees the rule and the declaration — and not into a named one.  Every
@@ -682,6 +694,7 @@
 (comment contradicts
          "(contradicts (sentexHandle ?h1) (sentexHandle ?h2) …) means that the sentexes it names are the members of a nogood: each is believed in the network and the contexts stating them and the grounds the detection read have a common descendant. The engine derives it at each maximal common descendant of those contexts where no except in force hides a member or a ground, justified by the members, the grounds and the genlCx edges the placement is seen over, so retracting any of them takes it OUT. One argument per member, in content order (sentence, then context), never handle order, so two detections of one nogood store one sentex; a self-clash names one member and an anti_transitive clash three. A nogood with a unique weakest member stores the defeat of that member beside it; a dilemma or a conflict stores the contradicts alone. The reports that (conflicts kb) and (contradictions kb) return compose a contradicts form over the member sentences instead.")
 (variable_arity_predicate contradicts)
+(unbounded_arity_predicate contradicts)
 (arityMin contradicts 1)
 
 (comment defeat
@@ -738,6 +751,7 @@
 (comment covering
          "(covering ?whole ?part1 ?part2 ...) means that every instance of ?whole is an instance of at least one named part. Each part is a subtype of ?whole, which the declaration states rather than requires of the ontology beforehand: asserting the cover installs the genl edge per part, supported by the covering sentex and carrying its context, so a cover asserted before its parts carry any other fact settles where one asserted after them does. The parts may overlap; partition is the spelling that separates them as well, and separating is the separation without the coverage. Coverage is actionable only on explicit negation: (not (?part ?x)) for every part but one proves the remaining membership, and a whole instance with nothing else known stays unknown rather than being assigned a part. Negating every part contradicts the cover. At least two distinct parts, since one part covering a whole says only that the two have the same instances.")
 (variable_arity_predicate covering)
+(unbounded_arity_predicate covering)
 (genlArg covering 1 thing)
 (argAndRestGenl covering 2 thing)
 (arityMin covering 3)
@@ -746,6 +760,7 @@
 (comment separating
          "(separating ?whole ?part1 ?part2 ...) means that no two of the named parts share an instance. The separation half of partition without the coverage half: it says nothing about whether the parts exhaust ?whole, so an instance of ?whole belonging to none of them violates nothing. Each part is a subtype of ?whole, stated by the declaration as covering states it. The roster is recorded the way a disjoint_metatype's member set is, which is what this spelling is for — a named few types separated from each other, where disjoint_metatype needs a metatype term to hang them on and sibling_disjoint separates every specialization of the parent rather than the ones named.")
 (variable_arity_predicate separating)
+(unbounded_arity_predicate separating)
 (genlArg separating 1 thing)
 (argAndRestGenl separating 2 thing)
 (arityMin separating 3)
@@ -754,6 +769,7 @@
 (comment partition
          "(partition ?whole ?part1 ?part2 ...) means that the named parts cover ?whole and that no two of them share an instance. The coverage half is covering's exactly, and both declarations are recorded under one roster, so the coverage inference reads a partition as the cover it is. The separation half is recorded the way a disjoint_metatype's member set is — consulted by the disjointness test, never written out as a (disjoint …) sentex per pair — so a siblingDisjointException over two parts exempts that pair as it exempts two metatype members, and dropping the declaration releases every pair at once. disjoint_metatype keeps its own meaning and claims no coverage.")
 (variable_arity_predicate partition)
+(unbounded_arity_predicate partition)
 (genlArg partition 1 thing)
 (argAndRestGenl partition 2 thing)
 (arityMin partition 3)
@@ -845,6 +861,7 @@
 (comment intersection
          "(intersection ?combined . ?types) means ?combined is definitionally the intersection of ?types: a thing is a ?combined exactly when it is each of ?types. A definitional collection relation over kinds, like the defn* family above, and the twin of disjoint, which states that kinds do NOT overlap. Variable-arity; (intersection causal_event causal event) names a two-way intersection and further ?types extend it. arityMin is three: the combined kind plus at least two types, since the intersection of a single type is that type and drives no rule.")
 (variable_arity_predicate intersection)
+(unbounded_arity_predicate intersection)
 (genlArg intersection 1 thing)
 (genlArg intersection 2 thing)
 (argAndRestGenl intersection 3 thing)
@@ -993,7 +1010,6 @@
 
 (comment indeterminate_term
          "(indeterminate_term ?term) means that ?term is an indeterminate filler: it stands for some object without pinning down which, so it is not a determinate filler for a predAllSpecified audit, and the unique-name assumption is suspended for it — neither (equals ?term x) nor (different ?term x) is provable against a determinate term x until a rewriteOf pins it. An extensible category the predAllSpecified audit and the different prover read through one implementation, so they cannot disagree about a term. Skolem constants are the built-in first member, detected by their SkolemFn minting expression rather than a stored membership; a further kind is added with (genl NewKind indeterminate_term). See docs/skolem.md.")
-(genl indeterminate_term thing)
 (unary_predicate indeterminate_term)
 
 ;; --- Specified class: integrity audit, no inference -----------------------
@@ -1131,6 +1147,8 @@
 (comment functionCorrespondingPredicate
          "(functionCorrespondingPredicate ?function ?predicate ?position) means that ?function and ?predicate state the same relationship: ?function maps some arguments to a value exactly when ?predicate holds of those same arguments with the value at ?position. So (functionCorrespondingPredicate MotherFn motherOf 2) makes (MotherFn Muffet) resolve to the Mary of a believed (motherOf Muffet Mary), and, where no mother is known, projects the placeholder constant it mints back onto motherOf so the placeholder still answers questions about who Muffet's mother is. Reading it both ways is what stops the function and the predicate from being one claim the KB can reason with only half of, and a value arriving after its application is equated with the placeholder, so the order the two are asserted in does not decide the answer. ?position is 1-based over ?predicate's arguments and may be omitted, which puts the value last — the shape nearly every correspondence has. Read only for a reifiable_function, an undeclared function having no application to reify. See docs/nat.md.")
 (variable_arity_predicate functionCorrespondingPredicate)
+(bounded_arity functionCorrespondingPredicate)
+(arityMax functionCorrespondingPredicate 3)
 (arityMin functionCorrespondingPredicate 2)
 (arg functionCorrespondingPredicate 1 function)
 (arg functionCorrespondingPredicate 2 predicate)
@@ -1216,6 +1234,7 @@
 (comment different
          "(different ?term1 ?term2 ...) means that no two of the named terms denote one thing. Answered by the different prover from the equality closure under the unique-name assumption: distinct names denote distinct things until a rewriteOf, sameAs or equals merges them, and a merge the reading context cannot see leaves the two names different there. The unique-name assumption is suspended for an unpinned indeterminate_term, so a goal naming one is not provable against a determinate term until a rewriteOf pins it. A query operator: an assert of it is refused, and only a ground goal of two or more arguments is answered. Commutative, since the answer does not depend on the order of the terms. See docs/equality.md.")
 (variable_arity_predicate different)
+(unbounded_arity_predicate different)
 (arityMin different 2)
 (commutative different)
 
@@ -1249,6 +1268,7 @@
 (arg greaterThan 1 number)
 (arg greaterThan 2 number)
 (variable_arity_predicate greaterThan)
+(unbounded_arity_predicate greaterThan)
 (arityMin greaterThan 2)
 
 (comment implies
@@ -1283,6 +1303,7 @@
 (arg lessThan 1 number)
 (arg lessThan 2 number)
 (variable_arity_predicate lessThan)
+(unbounded_arity_predicate lessThan)
 (arityMin lessThan 2)
 
 (comment matchesPattern
@@ -1305,11 +1326,12 @@
          "(or ?disjunct1 ?disjunct2 …) means the disjunction of the disjuncts inside an implies rule's antecedent. A syntactic connective rather than a predicate: it is never asserted on its own, and it never reaches a stored sentence — the rule is polycanonicalized into one rule per alternative, exactly as a conjunctive consequent is split into one rule per conjunct. A disjunctive conclusion is a choice rather than a derivation, and is written with set/assumptionRule instead. See docs/canonicalization.md.")
 (logical_connective or)
 (variable_arity or)
+(unbounded_arity or)
 
 (comment relation            "The type of every operator that may be applied to arguments. function and truth_valued_relation partition it: an application of a function denotes or evaluates to a value, while an application of a truth_valued_relation is true or false.")
-;; Stated although (genl relation expression) derives it: with the edge stated, CxCore holds
-;; the same justifications in authored order and in content order (vaelii#140).
-(genl relation thing)
+(genl relation nowhere_never)
+;; What a relation relates or says is not itself an operator.
+(set/monotonic (disjoint measure relation))
 ;; relation holds functions, binary predicates and types alike, so its members are of
 ;; more than one order: a variable_order_type, which is a unary_predicate.
 (variable_order_type relation)
@@ -1323,7 +1345,7 @@
 ;; predicate holds binary predicates and types alike: a variable_order_type.
 (variable_order_type predicate)
 
-(comment truth_valued_relation "The type of all relations whose applications are true or false: the predicates and the logical constants. The complement of function within relation. Cyc's TruthFunction, not logic's truth function: a truth function's value is fixed by the truth values of its arguments, which holds of and, or, not and implies and of no predicate or quantifier.")
+(comment truth_valued_relation "The type of all relations whose applications are true or false: the predicates and the logical constants. Cyc's TruthFunction, not logic's truth function: a truth function's value is fixed by the truth values of its arguments, which holds of and, or, not and implies and of no predicate or quantifier.")
 (comment logical_constant    "The type of all quantifiers and logical connectives — the relations whose meaning the logic fixes, where a predicate's meaning is the domain's. A logical constant is a truth_valued_relation and is not a predicate.")
 (comment logical_connective  "The type of all relations that build a formula from formulas: and, or, not and implies. A logical connective holds of nothing: (and P Q) is a formula, not a fact about P and Q. Logical rather than grammatical: a connective of a natural language, such as English and, is not one.")
 (comment quantifier          "The type of all relations that bind variables in a formula, the application being a formula in which those variables are no longer free. A quantifier is a logical constant and is not a logical connective.")
@@ -1343,8 +1365,9 @@
 ;; which is what gives the separation its reach: a rule variable standing in a
 ;; function-valued position and a type-level one at once is refused at the entry point
 ;; rather than stored and convicted one conclusion at a time.  (implies (result ?f ?t)
-;; (genl ?f ?t)) is the shape it catches.  No shipped term is a quantifier: the engine
-;; reads forall and thereExists as query operators, and CxCore does not declare either.
+;; (genl ?f ?t)) is the shape it catches.  forall, thereExists and exists are quantifiers
+;; below, declared where the engine reads each as a query operator or rule-firing sugar
+;; rather than as predicates with their own facts.
 (set/monotonic (partition relation function truth_valued_relation))
 (set/monotonic (partition truth_valued_relation logical_constant predicate))
 (set/monotonic (partition logical_constant quantifier logical_connective))
@@ -1352,6 +1375,24 @@
 ;; a first-order type, as logical_constant is.
 (type quantifier)
 (type logical_connective)
+
+(comment forall
+         "(forall ?var (implies ?antecedent ?consequent)) means the universal. Rule sugar: the engine desugars it to the nested NAF (unknown (thereExists ?var (and ?antecedent (unknown ?consequent)))) and hands that back to the registry, so the quantified goal and a rule antecedent on the same shape are answered by one mechanism. See docs/naf.md.")
+(quantifier forall)
+(binary forall)
+(comment thereExists
+         "(thereExists ?var ?sentence) means the existential: ?sentence holds for some value of ?var. A query operator answered by a prover and never stored, which is what lets (unknown (thereExists ?var ?sentence)) read as 'no value of ?var makes ?sentence hold'. See docs/naf.md.")
+(quantifier thereExists)
+(binary thereExists)
+(comment exists
+         "(exists ?var ?consequent) means a head existential: ?var occurs in a rule's consequent and no antecedent binds it. Forward firing skolemizes it, minting a fresh witness per firing. See docs/skolem.md.")
+(quantifier exists)
+(binary exists)
+;; Implementation: a covering whose parts are all closed is closed, but stating that rule
+;; needs list membership (vaelii/vaelii#79), so the whole is closed by hand.
+(closed_extent_predicate logical_connective)
+(closed_extent_predicate quantifier)
+(closed_extent_predicate logical_constant)
 
 (comment reflexive
          "(reflexive ?predicate) means that ?predicate is reflexive, so (?predicate a a) holds for every a in its domain. Answered by a generic prover rather than materialized, the reflexive pairs of a large domain being a great many facts nobody wrote. Also a type: (reflexive P) classifies P as a binary_predicate.")
@@ -1429,6 +1470,7 @@
 (comment commutativeInArgs
          "(commutativeInArgs ?relation ?position1 ?position2 ...) means that the arguments of ?relation at the named positions may be permuted without changing the proposition, and that every position not named stays where it was written. At least two distinct positive positions, or the declaration licences nothing and is refused at the entry point. Two declarations sharing a position are one licence and not two applied in turn: positions 1 and 2 interchanging while 2 and 3 do means 1 and 3 interchange through 2, so the engine merges them into one component before it sorts. A named position past the relation's arity in some application simply forms no component there. See docs/canonicalization.md.")
 (variable_arity_predicate commutativeInArgs)
+(unbounded_arity_predicate commutativeInArgs)
 (decontextualized_predicate commutativeInArgs)
 (arityMin commutativeInArgs 3)
 (arg commutativeInArgs 1 relation)
@@ -1642,6 +1684,7 @@
 (comment termsRelated
          "(termsRelated ?term1 ?term2 …) means that the named terms form a related cluster — a curation grouping among vocabulary terms, so a reader meeting one is pointed at the rest. Variable arity, like lessThan: (termsRelated positiveExample negativeExample borderlineExample) groups the three example predicates as one family. Documentation only — nothing in the engine reads it and it draws no inference, the grouping being for a reader as comment's prose is.")
 (variable_arity_predicate termsRelated)
+(unbounded_arity_predicate termsRelated)
 (arityMin termsRelated 2)
 
 (comment seeAlso
@@ -1718,6 +1761,7 @@
 (comment type_type_by_order "A disjoint_metatype partitioning fixed_order_type into type, metatype, and meta_metatype.")
 (comment partitionedByType "(partitionedByType ?whole ?classifier . ?cells) declares that the ?cells exhaustively and disjointly partition ?whole, and that each cell is an instance of ?classifier. Inert — the disjointness and the memberships are stated directly beside it.")
 (variable_arity_predicate partitionedByType)
+(unbounded_arity_predicate partitionedByType)
 (arityMin partitionedByType 3)
 (unary_predicate type)
 (at_least_metatype disjoint_metatype)
@@ -1758,6 +1802,8 @@
 (variable_order_type at_least_metatype)
 (variable_order_type fixed_order_type)
 (variable_order_type variable_order_type)
+;; A food can be an organism: an oyster eaten live.
+(orthogonal food organism)
 ;; A type of any order may have no instance or may have one.
 (orthogonal empty type)
 (orthogonal empty metatype)

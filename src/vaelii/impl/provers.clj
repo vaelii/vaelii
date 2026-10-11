@@ -988,6 +988,33 @@
 
 ;; ---- evaluable predicates (computed, not stored) ------------------------
 
+(def literal-value-kinds
+  "The value kind of a literal value, most specific first: each kind with the EDN test a
+  value of it passes.  A value denotes itself, so its kind is decidable from the value
+  alone.  `checks/value-kind` classifies a value by the first test it passes, and
+  `EvaluableProver` answers a value-kind membership by the kind's own test, so `integer`
+  falls under `number` there by `number?`.  A symbol is not a literal: a constant can
+  denote a value of any kind."
+  [['string    string?]
+   ['boolean   boolean?]
+   ['integer   integer?]
+   ['number    number?]
+   ['keyword   keyword?]
+   ['character char?]])
+
+(defn literal-value-kind
+  "The most specific value kind of `x`, or nil when `x` is no literal value."
+  [x]
+  (some (fn [[k test]] (when (test x) k)) literal-value-kinds))
+
+(def ^:private value-kind-tests
+  (into {} literal-value-kinds))
+
+(def value-kind-predicates
+  "The value kinds `EvaluableProver` answers for a literal argument, beside `integer`,
+  which it answers for any ground argument."
+  '#{string number boolean keyword character})
+
 (def evaluable-predicates
   "Predicates a prover computes from its ground arguments rather than looks up.
   `lessThan` / `greaterThan` are the **variable arity** arithmetic comparisons —
@@ -1003,15 +1030,21 @@
   cost: a sufficient condition with no stored conjunct expands to no forward rule
   (docs/defns.md).
 
+  `string`, `number`, `boolean`, `keyword` and `character` are the other value kinds,
+  answered the same way but **only for a literal argument** (`literal-value-kind`):
+  `(string \"foo\")` holds, and `(not (number \"foo\"))` is proved, a literal's kind being
+  fixed.  A symbol or a compound
+  argument is left to the other provers, since a constant or a function application can
+  denote a number.
+
   `matchesPattern` is the **binary** string-shape check: `(matchesPattern ?string ?pattern)`
   holds when the whole of `?string` matches the regular expression `?pattern`, both ground
   strings.  It is one kind further than `integer` — from \"what EDN kind is this\" to \"what
   shape is this string\" — and it is the primitive a `defn` over a string subtype reads: a
   `(defnSufficient ipv4_address (matchesPattern ?x \"…\"))` resolves by evaluation at query
   time the way the sign-refined integer collections read `integer`.  `matchesPattern` answers
-  false for a non-string subject, so it needs no separate `(string ?x)` conjunct, which the
-  registry does not evaluate.  The match runs
-  through a step-limited view (`bounded-matches?`), so a catastrophically-backtracking pattern
+  false for a non-string subject, so it needs no separate `(string ?x)` conjunct.  The
+  match runs through a step-limited view (`bounded-matches?`), so a catastrophically-backtracking pattern
   is a `:pattern-too-costly` refusal rather than an unbounded match that leaves the
   completeness promise below dishonest.
 
@@ -1019,7 +1052,7 @@
   its arguments *as*, not a claim about what any predicate is answered by.  The
   declaration's half is the `:answers` facet each of the four carries, pinned against
   this set by `predicates_test`."
-  '#{lessThan greaterThan integer matchesPattern})
+  (into '#{lessThan greaterThan integer matchesPattern} value-kind-predicates))
 
 (def ^:private ^:const match-step-budget
   "Characters one `matchesPattern` match may read before it is refused as too costly.  A
@@ -1055,35 +1088,160 @@
                  (toString [_] s))]
       (.matches (.matcher re ^CharSequence view)))))
 
+(defn- literal-value-kind-goal?
+  "Is `goal` a value-kind membership `(k x)`, `k` one of `value-kind-predicates` and `x` a
+  literal value?"
+  [goal]
+  (and (sequential? goal) (contains? value-kind-predicates (first goal))
+       (= 1 (count (rest goal))) (some? (literal-value-kind (second goal)))))
+
+(defn- negated-value-kind-goal?
+  "Is `goal` `(not (k x))` over a literal-value-kind goal?"
+  [goal]
+  (and (sequential? goal) (= 'not (first goal)) (= 2 (count goal))
+       (literal-value-kind-goal? (second goal))))
+
+(defn- literal-of-kind?
+  "Does the literal `x` pass value kind `k`'s test?"
+  [k x]
+  ((value-kind-tests k) x))
+
+;; ---- expression kinds: what a quoted form is, read off its shape --------------
+;; `(Quote X)` denotes the expression X, and which kind of expression X is follows from
+;; how X is written (docs/argtypes.md, "What a quoted form is").  This section reads only
+;; the spelling; whether `(R a)` is a predication or a non_atomic_term is R's stored
+;; kind, which it does not read.
+
+(def formula-heads
+  "The heads whose application is a formula whatever its operands: the connectives, the
+  rule and exception frames, and the quantifiers."
+  '#{not and or implies exceptWhen ist unknown thereExists forAll forall exists})
+
+(defn shape-kinds
+  "The most specific expression kinds of the form `x` that its spelling decides, as a
+  set: `variable`, `symbol`, a value kind (`literal-value-kind`), or for a compound one
+  of `open_formula` / `sentence` under a `formula-heads` head, `non_atomic_expression`
+  beside `open_expression` / `closed_expression` under a symbol or variable head, and
+  `ill_formed_expression` beside the same under any other head.  A variable inside a
+  nested `(Quote …)` or bound by a quantifier in `x` is not free (`sx/unquoted-free-vars`).
+  `#{}` for nil."
+  [x]
+  (let [openness #(if (seq (sx/unquoted-free-vars x)) 'open_expression 'closed_expression)]
+    (cond
+      (sx/variable? x)       #{'variable}
+      (symbol? x)            #{'symbol}
+      (literal-value-kind x) #{(literal-value-kind x)}
+      (sequential? x)
+      (let [h (first x)]
+        (cond
+          (contains? formula-heads h)
+          #{(if (= 'open_expression (openness)) 'open_formula 'sentence)}
+          (symbol? h) #{'non_atomic_expression (openness)}
+          :else       #{'ill_formed_expression (openness)}))
+      :else #{})))
+
+(def expression-kind-predicates
+  "The kinds `ExpressionKindProver` answers of a quoted form, as a set: CxReflection's
+  expression lattice and the value kinds below it.  Forward chaining discharges an
+  antecedent through the prover only when its functor is here (`support-answered-preds`),
+  so a kind a KB adds below `expression` is answered by a query and not by a firing."
+  '#{expression atomic_expression non_atomic_expression atomic_term variable symbol
+     unrepresented_term string number integer keyword boolean character
+     denotational_term non_atomic_term formula sentence open_formula
+     wff_expression ill_formed_expression open_expression closed_expression})
+
+(defn- quoted-form
+  "`[F x handles]` when the term `q` is a quoted form: `(F x)` with `F` a
+  `quoting_function`, handles empty, or a reified constant whose `termOfUnit`, visible
+  from `context`, is one, handles that statement.  Else nil.  The mark is read unscoped,
+  as `checks` reads it: whether an argument is a mention is a fact about the sentence
+  (`tax/mention-marks`).  A reified constant is a symbol in the `nat` namespace
+  (`nat/reified-nat-symbol?`, which this namespace sits below)."
+  [kb q context]
+  (let [quoting? #(tax/quoting-function? (reasoning/taxonomy kb) %)]
+    (cond
+      (and (sequential? q) (= 2 (count q)) (quoting? (first q)))
+      [(first q) (second q) []]
+
+      (and (symbol? q) (= "nat" (namespace q)))
+      (some->> (res/matches-visible kb (list 'termOfUnit q '?e) context)
+               (keep (fn [[h b]]
+                       (let [e (get b '?e)]
+                         (when (and (sequential? e) (= 2 (count e)) (quoting? (first e)))
+                           [(first e) (second e) [h]]))))
+               seq
+               (nm/min-by-content-key #(nth % 1))))))
+
+(defn- expression-kind-goal?
+  "Is `goal` `(k q)`, `k` a ground type below `expression` from `context` and `q` a
+  quoted form (`quoted-form`)?"
+  [kb goal context]
+  (let [tax (reasoning/taxonomy kb)
+        q   (when (and (sequential? goal) (= 2 (count goal))) (second goal))]
+    ;; the spelling tests run first: every membership goal reaches this
+    (and (some? q) (symbol? (first goal)) (not (sx/variable? (first goal)))
+         (or (and (sequential? q) (= 2 (count q)) (tax/quoting-function? tax (first q)))
+             (and (symbol? q) (= "nat" (namespace q))))
+         (tax/genl? tax (first goal) 'expression context)
+         (some? (quoted-form kb q context)))))
+
+(defn- expression-kind-support
+  "The handles `(k q)` rests on, as a vector, or nil when no kind of the form `q` quotes
+  reaches `k` from `context`: every `(quoting_function F)` statement, the `termOfUnit`
+  statement when `q` is a reified constant, then one `genl` path from the first kind of
+  the form, in name order, that reaches `k`."
+  [kb [k q] context]
+  (let [tax (reasoning/taxonomy kb)]
+    (when-let [[f x hs] (quoted-form kb q context)]
+      (some (fn [s]
+              (when-let [path (tax/reach-support tax :genl s k context)]
+                (-> (vec (sort (tax/prop-supporters tax :quoting f)))
+                    (into hs)
+                    (into (map first) path))))
+            (sort-by nm/name-key (shape-kinds x))))))
+
 (defrecord EvaluableProver []                    ; arithmetic comparison, EDN-kind + string-shape check
   Prover
-  (applicable? [_ _ goal _]
-    (and (sequential? goal) (contains? evaluable-predicates (first goal))
-         (case (first goal)
-           integer
-           ;; the unary kind check: one ground argument, of any EDN kind (a non-integer
-           ;; simply yields no solution — which is what makes a failing `(integer ?x)`
-           ;; necessary a sound negative witness for a string / symbol member).
-           (and (= 1 (count (rest goal))) (ground? goal))
-           matchesPattern
-           ;; the binary string-shape check: two ground arguments.  A non-string subject
-           ;; yields no solution, so a failing `(matchesPattern ?x p)` is a sound negative
-           ;; witness the way `integer` is for a non-integer.
-           (and (= 2 (count (rest goal))) (ground? goal))
-           ;; lessThan / greaterThan: the variable-arity arithmetic comparisons
-           (and (>= (count (rest goal)) 2)
-                (every? number? (rest goal))))))
+  (applicable? [_ kb goal context]
+    (or
+     ;; a literal's value kind is fixed, so its negation is computed too: (not (string 7))
+     (negated-value-kind-goal? goal)
+     (and (sequential? goal) (contains? evaluable-predicates (first goal))
+          (case (first goal)
+            integer
+            ;; the unary kind check: one ground argument, of any EDN kind (a non-integer
+            ;; simply yields no solution — which is what makes a failing `(integer ?x)`
+            ;; necessary a sound negative witness for a string / symbol member).  A
+            ;; quoted form is `ExpressionKindProver`'s: `(Quote 5)` denotes an integer.
+            (and (= 1 (count (rest goal))) (ground? goal)
+                 (nil? (quoted-form kb (second goal) context)))
+            (string number boolean keyword character)
+            ;; the other value kinds: one argument, and a literal value, since a symbol
+            ;; or a compound could denote a value of the kind
+            (literal-value-kind-goal? goal)
+            matchesPattern
+            ;; the binary string-shape check: two ground arguments.  A non-string subject
+            ;; yields no solution, so a failing `(matchesPattern ?x p)` is a sound negative
+            ;; witness the way `integer` is for a non-integer.
+            (and (= 2 (count (rest goal))) (ground? goal))
+            ;; lessThan / greaterThan: the variable-arity arithmetic comparisons
+            (and (>= (count (rest goal)) 2)
+                 (every? number? (rest goal)))))))
   (est-bindings [_ _ _ _] 1)
   (cost         [_ _ _ _] :lookup)
   ;; Authoritative for a ground goal: the arithmetic cannot be wrong about two numbers, nor
-  ;; `integer?` about one term's EDN kind, nor `matchesPattern` about a string and a pattern.
+  ;; `integer?` about one term's EDN kind, nor a value-kind test about a literal, nor
+  ;; `matchesPattern` about a string and a pattern.
   (completeness [_ _ _ _] 100)
   (solve [_ _ goal _]
     (let [args (rest goal)
           ok   (case (first goal)
+                 not            (let [[k x] (second goal)] (not (literal-of-kind? k x)))
                  lessThan       (apply < args)
                  greaterThan    (apply > args)
                  integer        (integer? (first args))
+                 (string number boolean keyword character)
+                 (literal-of-kind? (first goal) (first args))
                  matchesPattern (let [[s p] args]
                                   (and (string? s) (string? p) (bounded-matches? p s)))
                  false)]
@@ -1406,6 +1564,30 @@
   and the computation lands with everything ground.  Deliberately below `Long/MAX_VALUE`,
   which the planner's fan-out sums."
   1000000000)
+
+(defrecord ExpressionKindProver []          ; what kind of expression a quoted form is
+  Prover
+  (applicable?  [_ kb goal context]
+    (or (expression-kind-goal? kb goal context)
+        ;; open, so the join planner reads `deferred-est` and binds it first; only a
+        ;; support functor, the one a re-join plans
+        (and (sequential? goal) (= 2 (count goal))
+             (contains? expression-kind-predicates (first goal)) (sx/variable? (second goal))
+             (tax/genl? (reasoning/taxonomy kb) (first goal) 'expression context))))
+  (est-bindings [_ _ goal _] (if (sx/variable? (second goal)) deferred-est 1))
+  (cost         [_ _ _ _] :lookup)
+  ;; 50, not 100: a stored membership of a quoted form answers beside this, and a kind
+  ;; this does not decide (a predication) is a contribution of none rather than a "no"
+  (completeness [_ _ _ _] 50)
+  (solve [_ kb goal context]
+    (if (expression-kind-support kb goal context) [{}] []))
+  SupportingProver
+  (support-functors [_] expression-kind-predicates)
+  ;; the lattice reaches a kind through `genl` edges and the rosters that install them,
+  ;; and the quoted form is one only through its function's `quoting_function` mark
+  (support-sources  [_] (conj tax/edge-installing-functors 'quoting_function))
+  (solve-with-support [_ kb goal context]
+    (if-let [sup (expression-kind-support kb goal context)] [[{} sup]] [])))
 
 (defrecord EvaluatableFn [pred f arities result cost-tier complete]
   Prover
@@ -2826,7 +3008,7 @@
 (def default-provers
   [(->TransitivityProver) (->DisjointnessProver)
    (->TransitivePredicateProver) (->TransitiveInArgProver) (->SymmetricProver) (->InverseProver) (->ReflexiveProver)
-   (->EvaluableProver) (->DifferentProver) (->EqualityProver) (->EvaluateProver) (->QuantityProver)
+   (->EvaluableProver) (->ExpressionKindProver) (->DifferentProver) (->EqualityProver) (->EvaluateProver) (->QuantityProver)
    (->AdmitsArgnumProver)
    (->UnknownProver) (->ThereExistsProver) (->ForallProver) (->ClosedExtentProver)
    (->DefnSufficientProver) (->DefnNecessaryNegationProver) (->CoveringProver)

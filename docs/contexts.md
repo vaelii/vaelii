@@ -65,7 +65,7 @@ topology is **two spindles stacked**, most general (top) to most specific (botto
 
 | | head | members | collector |
 |---|---|---|---|
-| the upper spindle | CxCore | `resources/kb/upper/` — seven contexts | CxUniverse |
+| the upper spindle | CxCore | `resources/kb/upper/` — eight contexts | CxUniverse |
 | the middle spindle | CxUniverse | `kb/middle/` — seven contexts, beside four opt-in theories | CxWell |
 
 CxUniverse is the joint, the first spindle's collector and the second's head, and it can
@@ -80,7 +80,7 @@ Data hangs below CxWell.
   spindle](#a-context-outside-the-spindle)). It also holds the collections at the top
   of the ontology — the parts of the three partitions of `thing`
   ([taxonomy.md](taxonomy.md#the-three-partitions-of-thing)), `spatiotemporal`,
-  `nowhere_never`, `expression`, `biological`, `organism` and `measure` — which the
+  `nowhere_never`, `linguistic`, `biological`, `organism` and `measure` — which the
   engine reads by no name (`vaelii.impl.predicates` classifies each inert) and which are
   here for the reason below: the members of a spindle see each other not at all, so a
   term two of them extend has to be defined in the head.
@@ -101,6 +101,12 @@ Data hangs below CxWell.
     `signOf` / `trendOf`, the three qualitative arithmetic relations and the
     `derivativeOf` edge, for the quantities nobody has a figure for
     ([sign.md](sign.md)).
+  - `CxReflection` — the language the KB is written in, as something the KB can talk
+    about: the expression lattice (atomic and non-atomic expressions, open and closed,
+    well-formed and ill-formed) and the use/mention vocabulary `proposition`, `means`,
+    `denotes` and `expresses`. CxCore keeps the expression kinds the engine or its own
+    declarations name (`symbol`, the value kinds, `formula`, `sentence`,
+    `non_atomic_term`) and `linguistic`.
   - `CxSpace` — qualitative space, four independent calculi in one context because
     all four are *about* space: RCC-8 topology, cardinal direction, relative direction
     and qualitative distance, fifty predicates between them ([space.md](space.md)).

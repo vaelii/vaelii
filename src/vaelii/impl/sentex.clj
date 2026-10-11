@@ -2706,9 +2706,43 @@
   (conj (key-tokens sentex) (:context sentex)))
 
 (defn ground?
-  "True when the sentence contains no pattern variables (anywhere, nested)."
+  "True when the sentence contains no pattern variables (anywhere, nested).  A plain tree
+  search: a variable inside a `(Quote …)` or under a quantifier counts.  `closed?` is the
+  test for a sentence with no free variable."
   [sx]
   (not (some-symbol? variable? (sentence-of sx))))
+
+(def quote-functor
+  "The quoting function whose argument is a form taken as syntax: `(Quote X)` mentions X.
+  The same symbol as `quasiquote/quote-function`, which this namespace cannot require."
+  'Quote)
+
+(defn- quote-form?
+  "Is `form` a `(Quote X)` mention?"
+  [form]
+  (and (sequential? form) (= quote-functor (first form)) (= 2 (count form))))
+
+(defn unquoted-free-vars
+  "The variables of `form` free in it: every variable occurrence that no enclosing
+  `forall`, `thereExists` or head `exists` binds and no `(Quote …)` holds.  A `Quasiquote`
+  is not opaque, since its variables are meant to be bound from outside."
+  [form]
+  (cond
+    (quote-form? form)   #{}
+    (or (there-exists? form) (forall? form) (head-exists? form))
+    (into #{} (remove (quantified-vars form)) (unquoted-free-vars (nth form 2)))
+    (variable? form)     #{form}
+    (sequential? form)   (into #{} (mapcat unquoted-free-vars) form)
+    :else                #{}))
+
+(defn closed?
+  "True when the sentence has no free variable: every variable occurrence is bound by an
+  enclosing quantifier or sits inside a `(Quote …)`, the quoted form being syntax the
+  sentence mentions.  A `ground?` sentence answers at once.  This is the test for \"is
+  this sentence closed\"; `ground?` is the test for \"does it hold any variable\"."
+  [sx]
+  (or (ground? sx)
+      (empty? (unquoted-free-vars (sentence-of sx)))))
 
 (defn subterms
   "Every subterm of a sentence — each atom and each compound subterm, recursively,
