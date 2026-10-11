@@ -2465,7 +2465,9 @@
 
   A placement the edge gives back lies in a context under its `sub`, for a fact stated
   in a context one of those sees, so only those facts draw again and only those
-  placements are kept.  Both sets are read through every edge, without `except` holes:
+  placements are kept.  The released facts are read from the smaller side by index
+  counts: the lost contexts' records through the terms they release, or every fact
+  stored in that seen set.  Both sets are read through every edge, without `except` holes:
   the re-derivation serves every reader under `sub`, and a hole only narrows the sets,
   so the unscoped ones draw at least every placement a scoped reader gets back."
   [kb edges]
@@ -2498,23 +2500,32 @@
                       (group-by first (map (fn [[f d]] [d f]) pairs)))]
     (if-not checks/*prune-subsumed-mints?*
       mints
-      (let [terms (->> lost
-                       (into [] (comp (mapcat #(reads/as-stored-in-context idx %))
-                                      (keep #(p/get-sentex recs %))
-                                      (filter #(and (subsumer-shaped? (:sentence %))
-                                                    (not (context-edge-shaped? (:sentence %)))
-                                                    (jtms/in? tms (:id %))))
-                                      (mapcat #(released-terms kb %))
-                                      (filter symbol?)
-                                      (distinct)))
-                       (sort-by nm/name-key))]
-        (reduce (fn [acc x]
-                  (merge-with into acc
-                              (rederive-mints kb (filterv #(seen (:context %)) (facts-naming kb x))
-                                              (fn [s c] (and (= x (roster-term s))
-                                                             (contains? under c))))))
-                mints
-                terms)))))
+      (let [seen-cs  (sort-by nm/name-key seen)
+            count-in #(reduce + 0 (map (fn [c] (reads/stored-count-in-context idx c)) %))
+            stored-in #(into [] (comp (mapcat (fn [c] (reads/as-stored-in-context idx c)))
+                                      (keep (fn [h] (p/get-sentex recs h))))
+                             %)]
+        (merge-with
+         into mints
+         ;; the smaller side by index counts: the lost contexts' records through the terms
+         ;; they release, or every fact stored where a reader under `sub` sees
+         (if (<= (count-in lost) (count-in seen-cs))
+           (reduce (fn [acc x]
+                     (merge-with into acc
+                                 (rederive-mints kb (filterv #(seen (:context %)) (facts-naming kb x))
+                                                 (fn [s c] (and (= x (roster-term s))
+                                                                (contains? under c))))))
+                   {:new []}
+                   (->> (stored-in lost)
+                        (into [] (comp (filter #(and (subsumer-shaped? (:sentence %))
+                                                     (not (context-edge-shaped? (:sentence %)))
+                                                     (jtms/in? tms (:id %))))
+                                       (mapcat #(released-terms kb %))
+                                       (filter symbol?)
+                                       (distinct)))
+                        (sort-by nm/name-key)))
+           (rederive-mints kb (stored-in seen-cs)
+                           (fn [s c] (and (some? (roster-term s)) (contains? under c))))))))))
 
 (defn withheld-releases
   "The mints no longer withheld because a record that subsumed them left, and the
