@@ -231,7 +231,9 @@
 (comment spatiotemporal "Something with a location in space and time — a physical object, but also a region or a place, which occupy space without being made of anything. Below both spatial and temporal.")
 (comment temporal "Something that happens or exists in time. Physical objects, events, and situations are all temporal.")
 (comment aspatial "Not located in any space: no location in any space, physical or mathematical. The complement of spatial — the two partition thing — and so nothing CxSpace's calculi relate.")
-(comment atemporal "Not located in time. Numbers, relations and the other kinds below nowhere_never are atemporal; a fluent is intangible but not atemporal, since it holds over time.")
+(comment uninterrupted "Something temporal that is present at every moment between its start and its end: a moment, a year, a meeting, a held state. The complement of intermittent within temporal; the two partition temporal.")
+(comment intermittent "Something temporal with a gap: there is a moment between its start and its end at which it is absent. The writing of a novel, a trial with its recesses, a World Series, a bicycle taken apart and put back together. The complement of uninterrupted within temporal.")
+(comment atemporal "Not located in time. Numbers, relations and the other kinds below nowhere_never are atemporal; a fluent is not atemporal, since it holds over time.")
 (comment tangible "Something with mass. Having mass, it necessarily has a location in space and time too, so it is spatiotemporal.")
 (comment organism "Something alive in its own right: it is born, grows, reproduces, and (by default) dies.")
 (comment biological "A tangible that is an organism or part of one.")
@@ -261,21 +263,47 @@
 ;; An organization has no location in any space; its members and its buildings have one.
 (genl organization aspatial)
 (genl person tangible)
-;; A time is a moment or a stretch, never both: an instant has no extent.  CxAbstract
-;; comments the three types and places time under acausal; these edges and the partition
-;; sit here because CxTime, which does not see CxAbstract, types its calendar results
-;; time_interval and its moments time_point.  The partition installs each part's genl
-;; edge to time, so time_point and time_interval reach temporal and aspatial through it.
+;; A time is uninterrupted or intermittent, and an uninterrupted time is a moment or a
+;; stretch, never both: an instant has no extent.  CxAbstract comments the five types and
+;; places time under acausal; these edges, the partitions and the intersections sit here
+;; because CxTime, which does not see CxAbstract, types its calendar results time_interval
+;; and its moments time_point.  Each partition installs its parts' genl edges to the whole,
+;; so time_point and time_interval reach time, temporal and aspatial through
+;; uninterrupted_time.  The intersections make a time that is uninterrupted an
+;; uninterrupted_time and a time that is intermittent an intermittent_time.
 (genl time temporal)
 (genl time aspatial)
-(set/monotonic (partition time time_point time_interval))
-;; A situation either holds unchanged or changes, never both and never neither.
-;; CxAbstract comments the three types; the edge and the partition sit here because
-;; CxLife, which does not see CxAbstract, declares event as the genlArg of capabilityType
-;; and hasCapability.  The partition installs both genl edges and the separation, and adds
-;; the coverage, so a situation denied being an event is concluded a static_situation.
+(set/monotonic (partition time uninterrupted_time intermittent_time))
+(intersection uninterrupted_time uninterrupted time)
+(intersection intermittent_time intermittent time)
+(set/monotonic (partition uninterrupted_time time_point time_interval))
+;; A situation holds or happens, over any extent, never both and never neither: it is a
+;; fluent or a happening.  An uninterrupted_situation is a situation that is uninterrupted.
+;; A static_situation is an uninterrupted fluent, and an event an uninterrupted happening.
+;; The intersections separate the two but do not cover uninterrupted_situation, so the
+;; partition of uninterrupted_situation is stated, and a situation denied being an event
+;; is concluded a static_situation.  CxAbstract comments situation, uninterrupted_situation, static_situation and
+;; event, and CxTime comments fluent and happening.  The edge, the partition and the
+;; intersections sit here because CxLife, which does not see CxAbstract, declares event as
+;; the genlArg of capabilityType and hasCapability, and CxTime types holdsAt's first
+;; argument fluent.
 (genl situation temporal)
-(set/monotonic (partition situation static_situation event))
+(set/monotonic (partition situation fluent happening))
+(intersection uninterrupted_situation uninterrupted situation)
+(intersection static_situation uninterrupted fluent)
+(intersection event uninterrupted happening)
+(set/monotonic (partition uninterrupted_situation static_situation event))
+;; A situation may have a place: a boulder rolling, thin ice.  orthogonal is not
+;; inherited, so the pair is stated for uninterrupted_situation as well.
+(set/monotonic (orthogonal situation spatial))
+(set/monotonic (orthogonal uninterrupted_situation spatial))
+(set/monotonic (orthogonal situation spatiotemporal))
+(set/monotonic (orthogonal happening spatial))
+;; A situation is not the matter in it.
+(set/monotonic (disjoint tangible situation))
+;; The partition of thing into tangible and intangible does not derive a genl edge from
+;; the disjointness, so the edge is stated.
+(set/monotonic (genl situation intangible))
 ;; Each skeleton collection is a type, a one-place predicate.
 (unary_predicate intangible)
 (unary_predicate spatial)
@@ -283,10 +311,14 @@
 (unary_predicate temporal)
 (unary_predicate aspatial)
 (unary_predicate atemporal)
+(unary_predicate uninterrupted)
+(unary_predicate intermittent)
 (unary_predicate tangible)
 (unary_predicate biological)
 (unary_predicate organism)
 (unary_predicate nowhere_never)
+(unary_predicate causal)
+(unary_predicate acausal)
 (unary_predicate context)
 (unary_predicate language)
 (unary_predicate animal)
@@ -294,9 +326,14 @@
 (unary_predicate organization)
 (unary_predicate person)
 (unary_predicate time)
+(unary_predicate uninterrupted_time)
+(unary_predicate intermittent_time)
 (unary_predicate time_point)
 (unary_predicate time_interval)
 (unary_predicate situation)
+(unary_predicate fluent)
+(unary_predicate happening)
+(unary_predicate uninterrupted_situation)
 (unary_predicate static_situation)
 (unary_predicate event)
 (unary_predicate measure)
@@ -1790,17 +1827,30 @@
 ;; overlap with neither side subsuming the other; not every cross-axis pair does, since
 ;; tangible is below spatiotemporal and aspatial below intangible.  Stated, each pair reads
 ;; :orthogonal without waiting for a shared instance.  A witness of the overlap per pair, and of neither side holding the other:
-;; a rock is spatial and temporal; the line y=x is only spatial; a fluent is only temporal.
+;; a rock is spatial and temporal; the line y=x is only spatial; a time is only temporal.
 (set/monotonic (orthogonal spatial temporal))
-;; a number is aspatial and atemporal (nowhere_never); a fluent is aspatial and temporal.
+;; a number is aspatial and atemporal (nowhere_never); a time is aspatial and temporal.
 (set/monotonic (orthogonal aspatial atemporal))
 ;; the line y=x is spatial and atemporal, located in the Cartesian plane and in no time.
 (set/monotonic (orthogonal spatial atemporal))
-;; a fluent is aspatial and temporal: it holds over time and is located in no space.
+;; a time is aspatial and temporal: it is in time and located in no space.
 (set/monotonic (orthogonal aspatial temporal))
 ;; a region of space is intangible and spatial.
 (set/monotonic (orthogonal intangible spatial))
-;; a fluent is intangible and temporal.
+;; a time is intangible and temporal.
 (set/monotonic (orthogonal intangible temporal))
 ;; a region of space is intangible and spatiotemporal, occupying space without mass.
 (set/monotonic (orthogonal intangible spatiotemporal))
+;; A temporal thing is present at every moment between its start and its end, or it has a
+;; gap.  The partition installs both parts' edges to temporal.
+(set/monotonic (partition temporal uninterrupted intermittent))
+;; A tangible is uninterrupted by default.  The edge is a default because a tangible
+;; can be intermittent, e.g. a watch taken apart and rebuilt.
+(genl tangible uninterrupted)
+;; A thing either can be a cause or cannot, and a cause is in time.  CxAbstract comments
+;; causal and acausal; the partition and the edges sit here so that every spindle member
+;; reads them.  The partitions separate atemporal from causal but install no genl edge
+;; from atemporal to acausal, so that edge is stated.
+(set/monotonic (partition thing causal acausal))
+(genl causal temporal)
+(genl atemporal acausal)

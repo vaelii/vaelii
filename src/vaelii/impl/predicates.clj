@@ -1113,12 +1113,15 @@
     ;; for them and they are classified inert like the skeleton above: ontology the engine
     ;; reads by no name.  `temporal` is `spatial`'s
     ;; time twin; `aspatial` / `atemporal` are the not-in-any-space / not-in-time collections
-    ;; `nowhere_never` sits under; the ladder is the metatype-order theory that `typeGenl` reads,
+    ;; `nowhere_never` sits under; `uninterrupted` / `intermittent` partition `temporal` by
+    ;; whether a thing has a gap in time; the ladder is the metatype-order theory that `typeGenl` reads,
     ;; and `typeGenl` is itself inert.
     (map (fn [[t why]] [t (inert (collection :notes why) why)])
          '[[temporal "ontology, not grammar: something that exists in time. CxCore holds it so CxTime and CxAbstract can extend it; no engine check names it."]
            [aspatial "ontology, not grammar: not located in any space, the complement of spatial. CxCore holds it so every spindle member can place a kind under it; no engine check names it."]
            [atemporal "ontology, not grammar: not located in time, the complement of temporal. CxCore holds it so nowhere_never can sit under it; no engine check names it."]
+           [uninterrupted "ontology, not grammar: something temporal present at every moment between its start and its end, one side of the partition of temporal. CxCore holds it so every spindle member can place a kind under it; no engine check names it."]
+           [intermittent "ontology, not grammar: something temporal with a gap between its start and its end, the other side of the partition of temporal. CxCore holds it so every spindle member can place a kind under it; no engine check names it."]
            [nowhere_never "ontology, not grammar: in no space and at no time, below aspatial and atemporal and the parent of expression; no engine check names it."]
            [type "ontology, not grammar: a first-order type, on the metatype-order ladder. No engine check names it — typeGenl, which reads the ladder, is inert."]
            [metatype "ontology, not grammar: a second-order type, on the metatype-order ladder. No engine check names it."]

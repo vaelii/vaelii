@@ -45,7 +45,8 @@ The unit is an **interval**, not an instant. A meeting, a reign, a journey — s
 with a start and an end — so two of them can meet, overlap or nest, which is exactly the
 structure a point calculus throws away. The interval relations are declared `(arg …
 temporal)` and the instant relations `(arg … time_point)`, `time_point` sitting
-under `temporal` (through `time`, which `time_point` and `time_interval` partition),
+under `temporal` (through `uninterrupted_time`, which `time_point` and `time_interval`
+partition, and `time`),
 so `startOf` and `endOf` bridge the two by declaration as well as by meaning. A
 temporal relation between two predicates is refused rather than stored. The algebra
 itself knows nothing of clocks or calendars — only order and containment; the calendar
@@ -307,6 +308,18 @@ What it does not do:
   `temporalDistance` network ([stp.md](stp.md)).
 - **The culprits name one derivation.** They are the support of the pair that emptied, which
   contains every fact whose removal alone restores consistency but may name more.
+
+## The time a thing occupies
+
+`(TimeOfFn X)` names the time X occupies: the moment or the stretches of time over which X
+exists, holds or happens. It is a `time`, and a `reifiable_function` with one value per
+temporal thing. `timeOf` is its corresponding predicate, so `(timeOf X T)` and
+`(TimeOfFn X)` name one time. A time is its own time: a rule in `CxTime` concludes
+`(timeOf T T)` of every `time` T, so `(TimeOfFn T)` is T.
+
+`time` divides into `uninterrupted_time`, a moment or one unbroken stretch, and
+`intermittent_time`, a time with a gap. `temporal` divides the same way into
+`uninterrupted` and `intermittent`.
 
 ## Naming an interval: the calendar constructors
 

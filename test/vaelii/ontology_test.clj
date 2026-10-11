@@ -748,11 +748,14 @@
 
 (tu/deftest-kb a-time-is-in-time-and-in-no-space-and-causes-nothing
   ;; A date cannot be a cause: the year 2000 broke nothing — two-digit years did, at the
-  ;; rollover.  `time` is temporal, aspatial and acausal, and time_point and time_interval
-  ;; partition it, so a moment and a stretch are all three and never each other.  A
+  ;; rollover.  `time` is temporal, aspatial and acausal, uninterrupted_time and
+  ;; intermittent_time partition it, and time_point and time_interval partition
+  ;; uninterrupted_time, so a moment and a stretch are all three and never each other.  A
   ;; calendar term is never minted, so its result type is read where it is checked: an
   ;; argument typed with a kind no result type reaches refuses it, one it reaches admits it.
   (testing "both parts reach time, and time_point still reaches temporal through it"
+    (is (v/genl? kb 'time_point 'uninterrupted_time N))
+    (is (v/genl? kb 'time_interval 'uninterrupted_time N))
     (is (v/genl? kb 'time_point 'time N))
     (is (v/genl? kb 'time_interval 'time N))
     (is (v/genl? kb 'time_point 'temporal N)))
@@ -793,21 +796,112 @@
 (tu/deftest-kb a-band-context-reads-the-time-partition-without-cxabstract
   ;; CxTime types its calendar results time_interval and its moments time_point, and does
   ;; not see CxAbstract, so CxCore holds time's edges to temporal and aspatial and the
-  ;; partition.  The partition derives each part's edge to time, so CxCore states none.
+  ;; partitions.  Each partition derives its parts' edges to the whole, so CxCore states
+  ;; none.
   (testing "in CxTime a moment and a stretch are temporal, aspatial and never each other"
     (doseq [t '[time_point time_interval]
-            up '[time temporal aspatial]]
+            up '[uninterrupted_time uninterrupted time temporal aspatial]]
       (is (true? (v/genl? kb t up 'CxTime)) (str t " must reach " up " in CxTime")))
     (is (true? (v/disjoint? kb 'time_point 'time_interval 'CxTime))))
   (testing "CxCore states no edge the partition derives"
     (let [stated (set (map (comp first text/peel-strength)
                            (text/read-forms (io/file "resources/kb/CxCore.txt"))))]
-      (doseq [s '[(genl time_point temporal) (genl time_point time) (genl time_interval time)]]
+      (doseq [s '[(genl time_point temporal) (genl time_point uninterrupted_time)
+                  (genl time_interval uninterrupted_time) (genl uninterrupted_time time)
+                  (genl intermittent_time time)]]
         (is (not (contains? stated s)) (str (pr-str s) " is derived from the partition")))))
   (testing "CxTime stores its calendar facts under both argument-type readings"
     (doseq [s cxtime-calendar-facts]
       (is (= :stored (tu/with-entailing (refusal kb s 'CxTime))) (pr-str s))
       (is (= :stored (tu/without-entailing (refusal kb s 'CxTime))) (pr-str s)))))
+
+;; ---- whether a temporal thing has a gap ------------------------------------
+;; uninterrupted and intermittent partition temporal: a thing is present at every moment
+;; between its start and its end, or there is a moment between them at which it is not.
+
+(tu/deftest-kb uninterrupted-and-intermittent-partition-temporal
+  (doseq [ctx '[CxCore CxTime CxUniverse]]
+    (testing (str ctx)
+      (is (true? (v/genl? kb 'uninterrupted 'temporal ctx)))
+      (is (true? (v/genl? kb 'intermittent 'temporal ctx)))
+      (is (true? (v/disjoint? kb 'uninterrupted 'intermittent ctx)))))
+  (testing "a temporal thing denied being uninterrupted is intermittent — the coverage half"
+    (tu/with-terms [Trial]
+      (v/assert kb (list 'temporal Trial) 'CxUniverse)
+      (v/assert kb (list 'not (list 'uninterrupted Trial)) 'CxUniverse)
+      (is (true? (v/ask? kb (list 'intermittent Trial) 'CxUniverse))))))
+
+(tu/deftest-kb a-tangible-is-uninterrupted-by-default
+  ;; A rock is present at every moment between its start and its end.  A watch taken
+  ;; apart and rebuilt is not, and stating so is allowed.
+  (is (true? (v/genl? kb 'tangible 'uninterrupted 'CxCore)))
+  (is (empty? (filter #(= :monotonic (:strength %))
+                      (v/sentexes-matching kb '(genl tangible uninterrupted) 'CxCore)))
+      "the edge is a default")
+  (tu/with-terms [Rock Watch]
+    (v/assert kb (list 'stone Rock) 'CxUniverse)
+    (is (true? (v/ask? kb (list 'uninterrupted Rock) 'CxUniverse)))
+    (v/assert kb (list 'tangible Watch) 'CxUniverse)
+    (is (some? (v/assert kb (list 'intermittent Watch) 'CxUniverse)) "the write is stored")
+    (is (true? (v/ask? kb (list 'intermittent Watch) 'CxUniverse)))))
+
+(tu/deftest-kb the-watch-of-theseus-is-intermittent
+  ;; A watch taken apart and rebuilt exists intermittently, so its exception is stated
+  ;; monotonically and defeats the default edge from tangible to uninterrupted.
+  (let [clashes (fn [w] (count (filter #(some #{w} (flatten (map :sentence (:sides %))))
+                                       (v/contradictions kb))))]
+    (testing "a tangible with no stated exception is uninterrupted by default"
+      (tu/with-terms [Rock]
+        (v/assert kb (list 'tangible Rock) 'CxUniverse)
+        (is (true? (v/ask? kb (list 'uninterrupted Rock) 'CxUniverse)))))
+    (testing "the tangible membership first, then the monotonic exception"
+      (tu/with-terms [WatchOfTheseus]
+        (v/assert kb (list 'tangible WatchOfTheseus) 'CxUniverse)
+        (v/assert kb (list 'intermittent WatchOfTheseus) 'CxUniverse {:strength :monotonic})
+        (is (true? (v/ask? kb (list 'intermittent WatchOfTheseus) 'CxUniverse)))
+        (is (false? (v/ask? kb (list 'uninterrupted WatchOfTheseus) 'CxUniverse)))
+        (is (zero? (clashes WatchOfTheseus)))))
+    (testing "the monotonic exception first, then the tangible membership"
+      (tu/with-terms [WatchOfTheseus]
+        (v/assert kb (list 'intermittent WatchOfTheseus) 'CxUniverse {:strength :monotonic})
+        (v/assert kb (list 'tangible WatchOfTheseus) 'CxUniverse)
+        (is (true? (v/ask? kb (list 'intermittent WatchOfTheseus) 'CxUniverse)))
+        (is (false? (v/ask? kb (list 'uninterrupted WatchOfTheseus) 'CxUniverse)))
+        (is (zero? (clashes WatchOfTheseus)))))))
+
+(tu/deftest-kb a-time-is-uninterrupted-or-intermittent
+  ;; A week's evenings are a time with gaps; a moment and a stretch are times with none.
+  (doseq [ctx '[CxCore CxTime CxUniverse]]
+    (testing (str ctx)
+      (is (true? (v/genl? kb 'uninterrupted_time 'uninterrupted ctx)))
+      (is (true? (v/genl? kb 'intermittent_time 'intermittent ctx)))
+      (is (true? (v/genl? kb 'intermittent_time 'time ctx)))
+      (is (true? (v/disjoint? kb 'uninterrupted_time 'intermittent_time ctx)))
+      (is (true? (v/disjoint? kb 'intermittent_time 'time_interval ctx)))))
+  (testing "a time denied being uninterrupted is an intermittent_time"
+    (tu/with-terms [Evenings]
+      (v/assert kb (list 'time Evenings) 'CxUniverse)
+      (v/assert kb (list 'not (list 'uninterrupted Evenings)) 'CxUniverse)
+      (is (true? (v/ask? kb (list 'intermittent_time Evenings) 'CxUniverse)))))
+  (testing "and an uninterrupted time is an uninterrupted_time"
+    (tu/with-terms [Afternoon]
+      (v/assert kb (list 'time Afternoon) 'CxUniverse)
+      (v/assert kb (list 'uninterrupted Afternoon) 'CxUniverse)
+      (is (true? (v/ask? kb (list 'uninterrupted_time Afternoon) 'CxUniverse))))))
+
+(tu/deftest-kb a-temporal-thing-has-a-time-and-a-time-is-its-own
+  (testing "TimeOfFn ships with its corresponding predicate"
+    (is (true? (v/ask? kb '(functionCorrespondingPredicate TimeOfFn timeOf) 'CxTime)))
+    (is (true? (v/ask? kb '(reifiable_function TimeOfFn) 'CxTime)))
+    (is (true? (v/ask? kb '(arg TimeOfFn 1 temporal) 'CxTime)))
+    (is (true? (v/ask? kb '(result TimeOfFn time) 'CxTime)))
+    (is (true? (v/ask? kb '(arg timeOf 1 temporal) 'CxTime)))
+    (is (true? (v/ask? kb '(arg timeOf 2 time) 'CxTime))))
+  (testing "a time is its own time, so the function names it"
+    (tu/with-terms [Afternoon]
+      (v/assert kb (list 'time_interval Afternoon) 'CxUniverse)
+      (is (true? (v/ask? kb (list 'timeOf Afternoon Afternoon) 'CxUniverse)))
+      (is (true? (v/ask? kb (list 'time_interval (list 'TimeOfFn Afternoon)) 'CxUniverse))))))
 
 ;; ---- the upper divisions by location and by mass --------------------------
 ;; Two partitions of `thing`.  `spatial` / `aspatial` divides by a location in SOME space —
@@ -987,13 +1081,34 @@
     (is (true? (v/ask? kb (list 'intangible Prime) 'CxUniverse)))
     (is (true? (tu/stored-in-clash? kb (list 'tangible Prime) 'CxUniverse)))))
 
+(tu/deftest-kb a-fluent-may-be-located
+  ;; A boulder rolling and thin ice are held states with a place, so nothing separates
+  ;; fluent from spatial.
+  (is (not (v/disjoint? kb 'fluent 'spatial 'CxTime)))
+  (is (not (v/genl? kb 'fluent 'aspatial 'CxTime)))
+  (tu/with-terms [ThinIce]
+    (v/assert kb (list 'fluent ThinIce) 'CxUniverse)
+    (is (not (tu/stored-in-clash? kb (list 'spatial ThinIce) 'CxUniverse)))))
+
+(tu/deftest-kb a-quantity-is-in-time-causes-nothing-and-is-no-situation
+  ;; A water level is a magnitude that changes over time.  It causes nothing itself, and
+  ;; the level being 3 m is a fluent about it rather than the quantity.
+  (doseq [ctx '[CxMeasure CxUniverse]]
+    (testing (str ctx)
+      (is (true? (v/genl? kb 'quantity 'temporal ctx)))
+      (is (true? (v/genl? kb 'quantity 'acausal ctx)))
+      (is (true? (v/disjoint? kb 'quantity 'situation ctx)))
+      (is (true? (v/disjoint? kb 'quantity 'fluent ctx)))))
+  (tu/with-terms [WaterLevel]
+    (v/assert kb (list 'quantity WaterLevel) 'CxUniverse)
+    (is (true? (tu/stored-in-clash? kb (list 'fluent WaterLevel) 'CxUniverse)))))
+
 (def ^:private aspatial-kinds
   "The kinds with no location in any space, each with the contexts that read it as
   aspatial.  `context` and `language` are read from two band contexts besides CxCore,
   which see CxCore's `expression` lattice and `language` edge."
   '{relation_type [CxAbstract]
     quantity      [CxMeasure]
-    fluent        [CxTime]
     organization  [CxCore CxSociety]
     context       [CxCore CxSpace CxSociety]
     language      [CxCore CxSpace CxSociety]})
@@ -1003,18 +1118,18 @@
           ctx         (conj ctxs 'CxUniverse)
           located     '[spatial spatiotemporal]]
     (is (true? (v/disjoint? kb kind located ctx)) (str kind " and " located " in " ctx)))
-  (testing "a spatial relation between a fluent and an organization derives two clashes"
+  (testing "a spatial relation between a quantity and an organization derives two clashes"
     ;; Pinned to the entailing reading: the clash sides are the minted (spatial X), and
     ;; the constraint-only reading refuses the northOf instead.
     (tu/with-entailing
-      (tu/with-terms [LampLit AcmeCo]
-        (v/assert kb (list 'fluent LampLit) 'CxUniverse)
+      (tu/with-terms [WaterLevel AcmeCo]
+        (v/assert kb (list 'quantity WaterLevel) 'CxUniverse)
         (v/assert kb (list 'organization AcmeCo) 'CxUniverse)
-        (v/assert kb (list 'northOf LampLit AcmeCo) 'CxUniverse)
+        (v/assert kb (list 'northOf WaterLevel AcmeCo) 'CxUniverse)
         (let [clashes (into #{} (comp (filter #(= :disjoint (:kind %)))
                                       (map #(into #{} (map :sentence) (:sides %))))
                             (v/contradictions kb))]
-          (is (contains? clashes #{(list 'fluent LampLit) (list 'spatial LampLit)}))
+          (is (contains? clashes #{(list 'quantity WaterLevel) (list 'spatial WaterLevel)}))
           (is (contains? clashes #{(list 'organization AcmeCo) (list 'spatial AcmeCo)}))))))
   (testing "and a dog stays disjoint from a number and a relation"
     (is (true? (v/disjoint? kb 'dog 'number)))
@@ -1076,10 +1191,12 @@
     [genl context nowhere_never CxCore "context genl expression genl nowhere_never"]
     [genl relation_type intangible CxAbstract "relation_type genl aspatial genl intangible"]
     [genl quantity intangible CxMeasure "quantity genl aspatial genl intangible"]
-    [genl fluent intangible CxTime "fluent genl aspatial genl intangible"]
     [genl temporal thing CxCore "partition thing temporal atemporal"]
     [genl atemporal thing CxCore "partition thing temporal atemporal"]
     [disjoint temporal atemporal CxCore "partition thing temporal atemporal"]
+    [genl causal thing CxAbstract "partition thing causal acausal"]
+    [genl acausal thing CxAbstract "partition thing causal acausal"]
+    [disjoint causal acausal CxAbstract "partition thing causal acausal"]
     [genl spatiotemporal thing CxCore "spatiotemporal genl spatial, spatial genl thing (partition)"]
     [genl organism tangible CxCore "organism genl biological genl tangible"]
     [genl body_part tangible CxAbstract "body_part genl biological genl tangible"]
@@ -1304,11 +1421,13 @@
 
 ;; ---- situations: change divides them ---------------------------------------
 
-(tu/deftest-kb static-situations-and-events-partition-situation
+(tu/deftest-kb static-situations-and-events-partition-uninterrupted-situation
+  ;; The intersections defining static_situation and event separate them; the stated
+  ;; partition of uninterrupted_situation adds the coverage.
   (is (true? (v/disjoint? kb 'static_situation 'event)))
-  (testing "a situation that is not an event is a static_situation — the coverage half"
+  (testing "an uninterrupted situation that is not an event is a static_situation — the coverage half"
     (tu/with-terms [Drought]
-      (v/assert kb (list 'situation Drought) 'CxUniverse)
+      (v/assert kb (list 'uninterrupted_situation Drought) 'CxUniverse)
       (v/assert kb (list 'not (list 'event Drought)) 'CxUniverse)
       (is (true? (v/ask? kb (list 'static_situation Drought) 'CxUniverse))))))
 

@@ -93,7 +93,7 @@
   (tu/with-entailing
     ;; Bone1 is never given a type; it is only ever eaten by Muffet. Because
     ;; (arg eats 2 food), the KB derives that a thing eaten is food — and, by genl, a
-    ;; tangible, a causal and a thing, which it answers without storing them.  The record is
+    ;; tangible, a causal, an uninterrupted and a thing, which it answers without storing them.  The record is
     ;; read off a fact asserted here, since the fixture may load under either reading.
     (testing "the declared type is a derived record, and its supertypes are not stored"
       (tu/with-terms [Bone]
@@ -105,7 +105,7 @@
       (is (v/ask? kb '(tangible Bone1)))            ; a supertype of food
       (is (not (v/ask? kb '(vehicle Bone1)))))            ; but only what actually follows
     (testing "asking for all of an individual's inferred types"
-      (is (= '#{food tangible causal spatial spatiotemporal temporal thing}
+      (is (= '#{food tangible causal spatial spatiotemporal temporal uninterrupted thing}
              (set (map #(get % '?t) (v/ask kb '(?t Bone1) '?ctx))))))))
 
 ;; ---- arithmetic, and the ordering derived from it ------------------------

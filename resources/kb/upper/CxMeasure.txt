@@ -149,6 +149,12 @@
 (comment quantity
          "A magnitude that has a sign and can change, such as a water level or the rate a tap runs at. The sign vocabulary relates quantities: signOf and trendOf give one a value, derivativeOf joins a rate to its quantity, and the three qualitative relations and greaterInMagnitudeThan relate two or three of them. A quantity is not a measure: a measure is a figure in a unit, and a quantity is what a measure would measure.")
 (genl quantity aspatial)
+;; A quantity changes over time, so it is temporal.  It causes nothing itself.  A quantity
+;; is the magnitude, and the water level being 3 m is a fluent about it, so a quantity is
+;; no situation.
+(genl quantity temporal)
+(genl quantity acausal)
+(set/monotonic (disjoint quantity situation))
 
 (comment QuantityFn
          "(QuantityFn ?magnitude ?unit) means the measure of ?magnitude ?unit. So (QuantityFn 5 Kilogram) is five kilograms. An unreifiable_function application, a structural NAT: it stays structural instead of being minted into an opaque constant, so the magnitude and the unit are still readable inside the sentence, and the quantity provers normalize it through the dimensionOf and conversionFactor facts.")

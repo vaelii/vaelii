@@ -40,6 +40,15 @@
 ;; measured in, is CxMeasure's.
 (termsRelated time_interval Duration)
 
+;; --- a cause starts no later than its effect ------------------------------------
+;; causes is CxAbstract's and StartFn is CxTime's, so only the collector sees both.  The
+;; rule concludes a point relation, which the point network reads: with the point reasoner
+;; registered, a stated order that puts an effect's start before its cause's is a
+;; qualitative inconsistency.  A cause may go on after its effect starts.
+(set/forwardRule
+ (implies (and (causes ?cause ?effect))
+          (instantNotAfter (StartFn ?cause) (StartFn ?effect))))
+
 ;; --- travelling / flying: event kinds an ability names ------------------------
 ;; CxLife's hasCapability and capabilityType take an event kind as their second argument:
 ;; (hasCapability Tweety flying) says Tweety can be the doer of a flying event.  The event

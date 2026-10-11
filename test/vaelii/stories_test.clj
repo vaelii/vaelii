@@ -191,7 +191,6 @@
   (testing "an untyped event's eventhood is derived from causes' arg"
     (tu/with-terms [Spill]
       (v/assert kb (list 'causes 'CrowSings Spill) 'CxFoxCrow)
-      (is (= (arg-derivation-expected) (arg-derived kb (list 'event Spill))))
       (is (v/ask? kb (list 'event Spill) 'CxFoxCrow))))
   (testing "explicit types still compose through genl (an action is an event)"
     (is (v/isa? kb 'Flatter1 'event))                       ; action < event

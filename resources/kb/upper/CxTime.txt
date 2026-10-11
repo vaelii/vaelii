@@ -96,8 +96,9 @@
 (genlCx CxTime CxCore)
 (genlCx CxUniverse CxTime)
 
-(comment fluent "A state of affairs that holds over some stretches of time and not others — a cat being asleep, a light being on. What an event starts and stops, and what holdsAt asks about at a moment; aspatial and so intangible, because it is a way the world is rather than a thing in it. See docs/time.md.")
-(genl fluent aspatial)
+(comment fluent "A state of affairs that holds, over any extent: over some stretches of time and not others — a cat being asleep, a light being on. What an event starts and stops, and what holdsAt asks about at a moment. One of the two kinds of situation, with happening. See docs/time.md.")
+
+(comment happening "A situation that happens rather than holds, over any extent: the writing of a novel, a trial, a course of bedbug treatment, the Ramadan fast, a World Series. An uninterrupted happening is an event. One of the two kinds of situation, with fluent.")
 
 (comment after
          "(after ?interval1 ?interval2) means that ?interval1 begins strictly after ?interval2 ends. They share no time and do not touch, so some gap separates them. The converse of before.")
@@ -265,7 +266,7 @@
 (comment initiates
          "(initiates ?event ?fluent ?instant) means that ?fluent is the case from ?instant onwards because ?event happened then. Stated of the event and the fluent together, since the same event can start one state and end another — waking starts being awake and ends being asleep. Says nothing on its own about whether the event occurred: that is happens, and both are needed. See docs/time.md.")
 (ternary_predicate initiates)
-(arg initiates 1 temporal)
+(arg initiates 1 causal)
 (arg initiates 2 fluent)
 (arg initiates 3 time_point)
 
@@ -516,9 +517,29 @@
 (comment terminates
          "(terminates ?event ?fluent ?instant) means that ?fluent stops being the case at ?instant because ?event happened then. The converse half of initiates, and what a later-arriving event uses to withdraw a conclusion inertia had already drawn — retract the event and the conclusion comes back. See docs/time.md.")
 (ternary_predicate terminates)
-(arg terminates 1 temporal)
+(arg terminates 1 causal)
 (arg terminates 2 fluent)
 (arg terminates 3 time_point)
+
+(comment TimeOfFn
+         "(TimeOfFn ?thing) means the time ?thing occupies: the moment or the stretches of time over which it exists, holds or happens. The time of an uninterrupted thing is an uninterrupted_time, and the time of an intermittent thing an intermittent_time. A time is its own time. A reifiable_function, one value per temporal thing, and timeOf is the corresponding predicate, so (TimeOfFn ?thing) and a believed (timeOf ?thing ?time) name one time. See docs/time.md.")
+(reifiable_function TimeOfFn)
+(unary_function TimeOfFn)
+(functionCorrespondingPredicate TimeOfFn timeOf)
+(arg TimeOfFn 1 temporal)
+(result TimeOfFn time)
+
+(comment timeOf
+         "(timeOf ?thing ?time) means that ?time is the time ?thing occupies, the time (TimeOfFn ?thing) names. TimeOfFn is the corresponding function, and its value is the last argument. See docs/time.md.")
+(binary_predicate timeOf)
+(instance_relation_predicate timeOf)
+(arg timeOf 1 temporal)
+(arg timeOf 2 time)
+
+;; A time is its own time.
+(set/forwardRule
+ (implies (and (time ?time))
+          (timeOf ?time ?time)))
 
 (comment totalDuration
          "(totalDuration (list ?interval1 ?interval2 …) ?duration) means that ?duration is the sum of the listed intervals' lengths, which must all be of one dimension. Binary rather than ternary: the (list …) of components is one argument, which is also why the signature is read as a description instead of substituted into. Computed by a prover, never stored.")

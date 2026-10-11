@@ -171,12 +171,17 @@
 ;; typeGenl requires this because the stuff metatypes classify it (typeGenl … substance).
 (type substance)
 
-;; --- time / time_point / time_interval: time itself --------------------------
-(comment time "A time, as in \"at that time\": a moment or a stretch of time as such, not something that happens in it. In time and in no space, and never a cause: the year 2000 broke nothing, two-digit years did, at the rollover. Parent of time_point (a moment) and time_interval (a stretch).")
-;; CxCore states time's edges to temporal and aspatial and (partition time time_point
-;; time_interval), so a band context that does not see CxAbstract reads a calendar term
-;; as a time.
+;; --- time / uninterrupted_time / intermittent_time / time_point / time_interval ---
+(comment time "A time, as in \"at that time\": a moment, a stretch, or stretches with gaps between them, as such, not something that happens in it. In time and in no space, and never a cause: the year 2000 broke nothing, two-digit years did, at the rollover. Parent of uninterrupted_time and intermittent_time.")
+;; CxCore states time's edges to temporal and aspatial, (partition time uninterrupted_time
+;; intermittent_time), the intersections defining the two parts and (partition
+;; uninterrupted_time time_point time_interval), so a band context that does not see
+;; CxAbstract reads a calendar term as a time.
 (genl time acausal)
+
+(comment uninterrupted_time "A time with no gap: a moment, or one unbroken stretch of time. The intersection of uninterrupted and time. Parent of time_point (a moment) and time_interval (a stretch).")
+
+(comment intermittent_time "A time with a gap: there is a moment between its start and its end that it does not include, as with the evenings of one week or the days of a trial. The intersection of intermittent and time.")
 
 (comment time_point "A moment rather than a stretch — one of the two instants bounding an interval. What the point algebra relates, and what startOf and endOf reach from an interval.")
 
@@ -185,28 +190,29 @@
 ;; A time is not a state of affairs in it.
 (set/monotonic (disjoint time situation))
 
-;; --- situation / static_situation / event: the state-of-affairs hierarchy ------
-(comment situation "A state of affairs: objects bearing properties or relations over a time interval. Parent of static_situation (the state holds unchanged) and event (the world's state changes); change is the specialization axis.")
+;; --- situation / uninterrupted_situation / static_situation / event ------------
+(comment situation "A state of affairs: objects bearing properties or relations over some time, with or without gaps. Parent of fluent (it holds) and happening (it happens), and of uninterrupted_situation (it has no gap). A situation is located in its region, not made of the matter in it, e.g. a boulder is an input to its rolling and not a part of it.")
 
-(comment static_situation "A situation extended in time but unchanged, a held state, e.g. a file existing. Contrast event, the kind whose state changes.")
+(comment uninterrupted_situation "A situation with no gap in its time: the intersection of uninterrupted and situation. Parent of static_situation (the state holds unchanged) and event (the world's state changes); change is the specialization axis.")
 
-(comment event "Something that happens: an occurrence located in time whose state changes. The event-calculus slots (happens/initiates/terminates) are typed temporal and no event collection was declared; this names one.")
-;; CxCore holds (genl situation temporal) and the partition of situation into these two.
+(comment static_situation "A situation extended in time but unchanged, a held state, e.g. a file existing: the intersection of uninterrupted and fluent. Contrast event, the kind whose state changes.")
+
+(comment event "Something that happens: an occurrence located in time, with no gap, whose state changes. The intersection of uninterrupted and happening. The event-calculus slots do not name it: happens takes a temporal thing, and initiates and terminates take a causal one.")
+;; CxCore holds (genl situation temporal), the partition of situation into fluent and
+;; happening, and the intersections defining uninterrupted_situation, static_situation and
+;; event.
 
 ;; --- causal / acausal: whether a thing can occupy a cause slot -----------------
-(comment causal "A thing that can be a cause, i.e. can occupy the cause slot of a causal relation. One side of the causal/acausal division of thing.")
-(genl causal thing)
+(comment causal "A thing that can be a cause, i.e. can occupy the cause slot of a causal relation. A cause is in time, so causal is below temporal. One side of the causal/acausal division of thing.")
 
 (comment acausal "A thing that cannot be a cause: a time, a property line, an attribute, the information a record or piece of evidence carries (a reading of it can cause; the information itself causes nothing). The other side of the causal/acausal division of thing.")
-(genl acausal thing)
 
-;; The causal/acausal division: a thing either can be a cause or cannot, so the two
-;; sides are disjoint. This also makes causal_event and acausal_event disjoint, by the
-;; genl closure of disjointness.
-(set/monotonic (disjoint causal acausal))
+;; CxCore holds (partition thing causal acausal) and (genl causal temporal).  The
+;; partition also makes causal_event and acausal_event disjoint, by the genl closure of
+;; disjointness.
 
 ;; Anything with mass can fill a cause slot: the rock dented the car. tangible is in
-;; CxCore, so the edge lives here beside causal; with the disjointness above it also
+;; CxCore, so the edge lives here beside causal's comment; with the partition it also
 ;; keeps every tangible out of acausal.
 (genl tangible causal)
 
@@ -224,7 +230,7 @@
 
 ;; --- causes: a causal thing brings a situation about ---------------------------
 (comment causes
-         "(causes ?cause ?effect) means that ?cause brings ?effect about: the flattery made the crow sing, the rock dented the car, the drought ruined the harvest. The cause is a causal thing: a causal event, a tangible or an organization. The effect is a situation: an event or a held state. Declared transitive, so a chain of causes is itself a cause and the chain is answered by the closure prover rather than stored.")
+         "(causes ?cause ?effect) means that ?cause brings ?effect about: the flattery made the crow sing, the rock dented the car, the drought ruined the harvest. The cause is a causal thing: a causal event, a tangible or an organization. The effect is a situation: something that holds or happens, over any extent. Declared transitive, so a chain of causes is itself a cause and the chain is answered by the closure prover rather than stored.")
 (binary_predicate causes)
 (instance_relation_predicate causes)
 (arg causes 1 causal)
