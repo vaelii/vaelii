@@ -1157,6 +1157,99 @@
     (v/assert kb (list 'quantity WaterLevel) 'CxUniverse)
     (is (true? (tu/stored-in-clash? kb (list 'fluent WaterLevel) 'CxUniverse)))))
 
+(tu/deftest-kb a-sign-value-is-in-no-space-and-at-no-time
+  (is (true? (v/genl? kb 'sign_value 'nowhere_never 'CxMeasure)))
+  (doseq [t '[aspatial atemporal intangible]]
+    (is (true? (v/ask? kb (list t 'SignPositive) 'CxMeasure)) (str "SignPositive is " t))))
+
+(defn- located-or-not
+  "Each [kind side witness] row: the pair is stated orthogonal in CxCore, reads
+  :orthogonal, and an individual of the kind that is also of the side is no clash."
+  [kb rows]
+  (doseq [[a b witness] rows]
+    (testing (str a " and " b)
+      (is (some #(v/premise? kb (:id %)) (v/sentexes-matching kb (list 'orthogonal a b) 'CxCore))
+          (str "(orthogonal " a " " b ") is stated"))
+      (is (= :orthogonal (v/subsumption-status kb a b)))
+      (let [w (tu/fresh-term :individual witness)]
+        (v/assert kb (list a w) 'CxUniverse)
+        (is (not (tu/stored-in-clash? kb (list b w) 'CxUniverse)) (str "a " a " that is " b))))))
+
+(tu/deftest-kb a-situation-or-a-held-state-may-be-located-nowhere
+  ;; A debt owed or a treaty in force is located nowhere; a cat on a mat is located.
+  (located-or-not kb '[[situation aspatial Debt1]
+                       [static_situation spatial CatOnMat1]
+                       [static_situation aspatial TreatyInForce1]]))
+
+(tu/deftest-kb an-event-is-temporal-and-may-or-may-not-be-located
+  ;; The battle of Waterloo is located; a contract expiring at midnight is not.
+  (is (true? (v/genl? kb 'event 'temporal 'CxAbstract)) "an event is temporal through situation")
+  (is (not-any? #(v/premise? kb (:id %)) (v/sentexes-matching kb '(genl event temporal) '?ctx))
+      "and the edge is not stated")
+  (located-or-not kb '[[event spatial Waterloo1] [event aspatial ContractExpiry1]]))
+
+(tu/deftest-kb an-event-and-a-held-state-may-or-may-not-be-spatiotemporal
+  ;; A battle is an event and spatiotemporal, and a contract expiring is an event and not.
+  ;; A cat on a mat is a held state and spatiotemporal, and a treaty in force is one and not.
+  (located-or-not kb '[[event spatiotemporal Battle2]
+                       [static_situation spatiotemporal CatOnMat2]]))
+
+;; ---- hollow: what a thing is shaped like, not what it is for ---------------
+;; `hollow` holds of a thing while it has an interior space that other things can occupy.
+;; It says nothing about what the thing is used for.  A container is made and hollow.
+
+(tu/deftest-kb hollow-is-a-shape-located-in-space-and-time
+  (is (true? (v/genl? kb 'hollow 'spatiotemporal 'CxAbstract)))
+  (is (seq (v/sentexes-matching kb '(comment hollow ?text) 'CxAbstract)))
+  (testing "a cup, a pitcher plant and a cupped hand are hollow; stuff is not"
+    (is (= :orthogonal (v/subsumption-status kb 'hollow 'made)))
+    (is (= :orthogonal (v/subsumption-status kb 'hollow 'organism)))
+    (is (= :orthogonal (v/subsumption-status kb 'hollow 'body_part)))
+    (is (true? (v/disjoint? kb 'hollow 'substance)))
+    (is (true? (v/disjoint? kb 'hollow 'nowhere_never))))
+  (testing "a hollow organism is no clash"
+    (tu/with-terms [PitcherPlant]
+      (v/assert kb (list 'organism PitcherPlant) 'CxUniverse)
+      (is (not (tu/stored-in-clash? kb (list 'hollow PitcherPlant) 'CxUniverse))))))
+
+(tu/deftest-kb a-biological-thing-can-be-hollow
+  ;; A pitcher plant and a lab-grown bladder are biological and hollow.  A cup and a cave
+  ;; are hollow and not biological, and a leaf is biological and not hollow.
+  (is (some #(v/premise? kb (:id %)) (v/sentexes-matching kb '(orthogonal biological hollow) 'CxAbstract)))
+  (is (= :orthogonal (v/subsumption-status kb 'biological 'hollow)))
+  (tu/with-terms [LabBladder1]
+    (v/assert kb (list 'body_part LabBladder1) 'CxUniverse)
+    (is (not (tu/stored-in-clash? kb (list 'hollow LabBladder1) 'CxUniverse)))
+    (is (true? (v/ask? kb (list 'hollow LabBladder1) 'CxUniverse)))))
+
+(tu/deftest-kb a-container-is-made-and-hollow
+  (doseq [t '[made hollow]]
+    (is (some #(v/premise? kb (:id %)) (v/sentexes-matching kb (list 'genl 'container t) 'CxAbstract))
+        (str "(genl container " t ") is stated"))
+    (is (true? (v/genl? kb 'building t 'CxAbstract)) (str "building genl " t " through container")))
+  (testing "a container stays clear of organism, person and substance"
+    (doseq [t '[organism person substance]]
+      (is (true? (v/disjoint? kb 'container t)) (str "container and " t))))
+  (testing "a made hollow organism is no clash, and is not concluded a container"
+    ;; A potted pitcher plant is made, hollow and an organism.
+    (tu/with-terms [PottedPitcherPlant]
+      (v/assert kb (list 'organism PottedPitcherPlant) 'CxUniverse)
+      (v/assert kb (list 'made PottedPitcherPlant) 'CxUniverse)
+      (is (not (tu/stored-in-clash? kb (list 'hollow PottedPitcherPlant) 'CxUniverse)))
+      (is (not (true? (v/ask? kb (list 'container PottedPitcherPlant) 'CxUniverse)))))))
+
+(tu/deftest-kb a-spatial-event-is-an-event-located-in-some-space
+  (is (seq (v/sentexes-matching kb '(comment spatial_event ?text) 'CxAbstract)))
+  (doseq [t '[event spatial spatiotemporal temporal situation]]
+    (is (true? (v/genl? kb 'spatial_event t 'CxAbstract)) (str "spatial_event genl " t)))
+  (tu/with-terms [Smelting1 Waterloo1]
+    (v/assert kb (list 'spatial_event Smelting1) 'CxUniverse)
+    (is (true? (v/ask? kb (list 'spatiotemporal Smelting1) 'CxUniverse)))
+    (v/assert kb (list 'event Waterloo1) 'CxUniverse)
+    (v/assert kb (list 'spatial Waterloo1) 'CxUniverse)
+    (is (true? (v/ask? kb (list 'spatial_event Waterloo1) 'CxUniverse))
+        "an event located in some space is a spatial event")))
+
 (def ^:private aspatial-kinds
   "The kinds with no location in any space, each with the contexts that read it as
   aspatial.  `context` and `language` are read from two band contexts besides CxCore,
@@ -1248,6 +1341,7 @@
     [genl causal thing CxAbstract "partition thing causal acausal"]
     [genl acausal thing CxAbstract "partition thing causal acausal"]
     [disjoint causal acausal CxAbstract "partition thing causal acausal"]
+    [genl sign_value thing CxMeasure "sign_value genl nowhere_never genl intangible genl thing"]
     [genl spatiotemporal thing CxCore "spatiotemporal genl spatial, spatial genl thing (partition)"]
     [genl organism tangible CxCore "organism genl biological genl tangible"]
     [genl body_part tangible CxAbstract "body_part genl biological genl tangible"]
@@ -1265,6 +1359,7 @@
     [genl boolean intangible CxAbstract "boolean genl unrepresented_term genl linguistic genl nowhere_never genl intangible"]
     [genl character intangible CxAbstract "character genl unrepresented_term genl linguistic genl nowhere_never genl intangible"]
     [genl building made CxAbstract "building genl container genl made"]
+    [genl building hollow CxAbstract "building genl container genl hollow"]
     [genl made tangible CxAbstract "partition tangible made natural"]
     [genl natural tangible CxAbstract "partition tangible made natural"]
     [genl formation tangible CxAbstract "formation genl natural genl tangible"]

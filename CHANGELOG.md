@@ -115,6 +115,64 @@ it — `git show v0.16.0:CHANGELOG.md`.
   reasoner is registered.
   *Breaks:* `time`, `situation`, `fluent`, `initiates`, `terminates`, `causes`
 
+### Additions
+
+- **A situation or a held state may be located nowhere.** CxCore states
+  `(orthogonal situation aspatial)`, `(orthogonal static_situation spatial)` and
+  `(orthogonal static_situation aspatial)`, beside `(orthogonal situation spatial)`: a debt
+  owed and a treaty in force are located nowhere, and a cat on a mat is a held state with
+  a place. An `orthogonal` is not inherited along `genl`, so each pair is stated.
+  `ontology_test` pins each pair with a witness.
+
+  *Class:* **Additive** (shipped ontology content).
+
+- **An event may be located or not.** CxCore states `(orthogonal event spatial)` and
+  `(orthogonal event aspatial)`: the battle of Waterloo is located, and a contract
+  expiring at midnight is not. `ontology_test` pins both pairs with a witness and the
+  derived, unstated edge from `event` to `temporal`.
+
+  *Class:* **Additive** (shipped ontology content).
+
+- **`spatial_event` is an event located in some space.** CxAbstract defines
+  `(intersection spatial_event event spatial)` and states
+  `(genl spatial_event spatiotemporal)`, so a battle or a smelting stated an event and
+  spatial reads `spatial_event` and `spatiotemporal`, and a contract expiring at midnight
+  stays an event that is no spatial event. `ontology_test` pins the edges and the
+  membership.
+
+  *Class:* **Additive**.
+
+- **An event and a static situation are spatiotemporal or not.** CxCore states `event`
+  and `static_situation` each orthogonal to `spatiotemporal`, beside
+  `(orthogonal situation spatiotemporal)`. An `orthogonal` is not inherited along `genl`,
+  so each kind's pair is stated. A battle and a cat on a mat are spatiotemporal; a
+  contract expiring and a treaty in force are not. `ontology_test` pins both pairs with a
+  witness.
+
+  *Class:* **Additive** (shipped ontology content).
+
+- **`hollow` names a shape, and `container` is placed under `made` and `hollow`.**
+  CxAbstract mints `hollow`: a thing that has, at that time, an interior space other
+  things can occupy, such as a cup, a building, a cave, a pitcher plant or a cupped hand.
+  `hollow` is below `spatiotemporal`, orthogonal to `made`, `organism`, `body_part` and
+  `food`, and disjoint from `substance`. CxAbstract states `(genl container hollow)`
+  beside `(genl container made)`, so `container`, `building` and `dwelling` reach
+  `hollow`. `container` keeps its disjoints from `organism`, `person` and `substance`. A
+  made hollow thing is not concluded a container, so a potted pitcher plant is no clash.
+  `ontology_test` pins the placement, the orthogonals, the edges and a made hollow
+  organism as no clash.
+
+  *Class:* **Additive** (shipped ontology content).
+
+- **`biological` and `hollow` are orthogonal.** A pitcher plant and a lab-grown bladder
+  are biological and hollow, a cup is hollow and not biological, and a leaf is
+  biological and not hollow. CxAbstract states `(orthogonal biological hollow)` beside
+  `hollow`'s orthogonals to `organism` and `body_part`, since an `orthogonal` is not
+  inherited along `genl`. `subsumption-status` reads the pair `:orthogonal`.
+  `ontology_test` pins the declaration and a hollow body part as no clash.
+
+  *Class:* **Additive** (shipped ontology content).
+
 ## 0.25.0 — 2026-10-11 — "Context NATs reified by position under `(result F context)`, the expression lattice in CxReflection, more placed contradictions and separations, `IndexStore` family methods and index layout 13"
 
 | Area | Change |

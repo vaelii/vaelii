@@ -35,8 +35,8 @@
 (comment mcp_tool "A software tool that a Model Context Protocol server lists and runs on request, e.g. a file-reading tool, a calendar-lookup tool.")
 (genl mcp_tool software_tool)
 
-;; The edges to acausal and causal separate the two kinds below, through CxAbstract's
-;; (disjoint causal acausal), so no disjoint is stated between them.
+;; The edges to acausal and causal separate the two kinds below, through CxCore's
+;; (partition thing causal acausal), so no disjoint is stated between them.
 (comment read_only_software_tool "A software tool whose invocation reads state and changes none, e.g. a text search, a directory listing, a DNS lookup.")
 (genl read_only_software_tool software_tool)
 (genl read_only_software_tool acausal)
