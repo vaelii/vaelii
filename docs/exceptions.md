@@ -732,7 +732,7 @@ exception is about another, so the sentence could not narrow the right firings a
 - **A declaration, where no fact moved at all.** The extent of every predicate is
   exactly what it was, and what changed is what may be concluded from it:
   `(symmetric sibOf)` makes a stored `(sibOf Ann Bob)` answer `(sibOf Bob Ann)`,
-  `(transitive partOf)` closes a chain, `(inverse childOf parentOf)` answers a goal from
+  `(transitive tangiblePartOf)` closes a chain, `(inverse childOf parentOf)` answers a goal from
   the partner predicate's facts, `(transitiveInArg P n R)` opens the inheritance over
   claims already stored, and `(asymmetric P)` is what gives a converse the standing to
   close one again. The sentence's functor is the declaration's, never the exception's,

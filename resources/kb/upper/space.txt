@@ -54,6 +54,11 @@
 ;; and nothing narrower, since none of the four calculi needs time; picking them out
 ;; more finely is not this file's job. The context keeps two spaces apart, as it keeps
 ;; two frames of reference apart. See docs/space.md.
+;;
+;; Each converse pair is stated inert, as (set/inert (inverse P Q)), so the pair is
+;; written down where a reader looks. The algebra computes every converse itself. A
+;; believed inverse would be a source the calculus prover does not read, and the engine
+;; would then stop letting that prover answer a goal alone.
 
 (comment atSomeDistanceFrom
          "(atSomeDistanceFrom ?thing1 ?thing2) means that ?thing1 and ?thing2 are some distance apart. Any class of the distance chain but the zero one, so it is the complement of coLocatedWith and holds of nothing and itself.")
@@ -63,21 +68,21 @@
 (arg atSomeDistanceFrom 2 spatial)
 
 (comment behind
-         "(behind ?object ?reference) means that ?object lies directly behind ?reference. To the rear on the front-back axis and level on the left-right one, in the frame of reference the context is. The converse of inFrontOf.")
+         "(behind ?object ?reference) means that ?object lies directly behind ?reference. To the rear on the front-back axis and level on the left-right one, in the frame of reference the context is.")
 (binary_predicate behind)
 (set/monotonic (instance_relation_predicate behind))
 (arg behind 1 spatial)
 (arg behind 2 spatial)
 
 (comment behindLeftOf
-         "(behindLeftOf ?object ?reference) means that ?object lies behind ?reference and to its left. Both axes at once. The converse of frontRightOf.")
+         "(behindLeftOf ?object ?reference) means that ?object lies behind ?reference and to its left. Both axes at once.")
 (binary_predicate behindLeftOf)
 (set/monotonic (instance_relation_predicate behindLeftOf))
 (arg behindLeftOf 1 spatial)
 (arg behindLeftOf 2 spatial)
 
 (comment behindRightOf
-         "(behindRightOf ?object ?reference) means that ?object lies behind ?reference and to its right. Both axes at once. The converse of frontLeftOf.")
+         "(behindRightOf ?object ?reference) means that ?object lies behind ?reference and to its right. Both axes at once.")
 (binary_predicate behindRightOf)
 (set/monotonic (instance_relation_predicate behindRightOf))
 (arg behindRightOf 1 spatial)
@@ -105,11 +110,12 @@
 (arg coLocatedWith 2 spatial)
 
 (comment eastOf
-         "(eastOf ?place1 ?place2) means that ?place1 lies due east of ?place2. East on the east-west axis and level on the north-south one. The converse of westOf.")
+         "(eastOf ?place1 ?place2) means that ?place1 lies due east of ?place2. East on the east-west axis and level on the north-south one.")
 (binary_predicate eastOf)
 (set/monotonic (instance_relation_predicate eastOf))
 (arg eastOf 1 spatial)
 (arg eastOf 2 spatial)
+(set/inert (inverse eastOf westOf))
 
 (comment eastwardOf
          "(eastwardOf ?place1 ?place2) means that ?place1 lies somewhere east of ?place2. East, northeast or southeast: it constrains the east-west axis alone and leaves the north-south one open.")
@@ -117,6 +123,7 @@
 (set/monotonic (instance_relation_predicate eastwardOf))
 (arg eastwardOf 1 spatial)
 (arg eastwardOf 2 spatial)
+(set/inert (inverse eastwardOf westwardOf))
 
 (comment externallyConnected
          "(externallyConnected ?region1 ?region2) means that ?region1 and ?region2 touch but share no interior. RCC-8's EC, a base relation and its own converse. What two countries either side of a border stand in.")
@@ -133,18 +140,20 @@
 (arg farFrom 2 spatial)
 
 (comment frontLeftOf
-         "(frontLeftOf ?object ?reference) means that ?object lies in front of ?reference and to its left. Both axes at once, so it is the strongest thing a single relative-direction fact can say. The converse of behindRightOf.")
+         "(frontLeftOf ?object ?reference) means that ?object lies in front of ?reference and to its left. Both axes at once, so it is the strongest thing a single relative-direction fact can say.")
 (binary_predicate frontLeftOf)
 (set/monotonic (instance_relation_predicate frontLeftOf))
 (arg frontLeftOf 1 spatial)
 (arg frontLeftOf 2 spatial)
+(set/inert (inverse frontLeftOf behindRightOf))
 
 (comment frontRightOf
-         "(frontRightOf ?object ?reference) means that ?object lies in front of ?reference and to its right. Both axes at once. The converse of behindLeftOf.")
+         "(frontRightOf ?object ?reference) means that ?object lies in front of ?reference and to its right. Both axes at once.")
 (binary_predicate frontRightOf)
 (set/monotonic (instance_relation_predicate frontRightOf))
 (arg frontRightOf 1 spatial)
 (arg frontRightOf 2 spatial)
+(set/inert (inverse frontRightOf behindLeftOf))
 
 (comment frontwardOf
          "(frontwardOf ?object ?reference) means that ?object lies somewhere in front of ?reference. In front, front-left or front-right: it constrains the front-back axis alone and leaves the left-right one open.")
@@ -152,27 +161,31 @@
 (set/monotonic (instance_relation_predicate frontwardOf))
 (arg frontwardOf 1 spatial)
 (arg frontwardOf 2 spatial)
+(set/inert (inverse frontwardOf rearwardOf))
 
 (comment hasRegionPart
-         "(hasRegionPart ?region1 ?region2) means that ?region2 is part of ?region1. RCC-8's Pi, the converse of partOfRegion, denoting TPPi, NTPPi or EQ. Derived, so asserting it says only that one contains the other and not how.")
+         "(hasRegionPart ?region1 ?region2) means that ?region2 is part of ?region1. RCC-8's Pi, denoting TPPi, NTPPi or EQ. Derived, so asserting it says only that one contains the other and not how.")
 (binary_predicate hasRegionPart)
 (set/monotonic (instance_relation_predicate hasRegionPart))
 (arg hasRegionPart 1 spatial)
 (arg hasRegionPart 2 spatial)
+(set/inert (genlInverse hasRegionPart partOf))
 
 (comment inFrontOf
-         "(inFrontOf ?object ?reference) means that ?object lies directly in front of ?reference. Forward on the front-back axis and level on the left-right one, in the frame of reference the context is. The converse of behind.")
+         "(inFrontOf ?object ?reference) means that ?object lies directly in front of ?reference. Forward on the front-back axis and level on the left-right one, in the frame of reference the context is.")
 (binary_predicate inFrontOf)
 (set/monotonic (instance_relation_predicate inFrontOf))
 (arg inFrontOf 1 spatial)
 (arg inFrontOf 2 spatial)
+(set/inert (inverse inFrontOf behind))
 
 (comment leftOf
-         "(leftOf ?object ?reference) means that ?object lies directly to the left of ?reference. Left on the left-right axis and level on the front-back one, as seen from the frame of reference the context is: a relative direction is read from a viewpoint, and here the context is that viewpoint. The converse of rightOf.")
+         "(leftOf ?object ?reference) means that ?object lies directly to the left of ?reference. Left on the left-right axis and level on the front-back one, as seen from the frame of reference the context is: a relative direction is read from a viewpoint, and here the context is that viewpoint.")
 (binary_predicate leftOf)
 (set/monotonic (instance_relation_predicate leftOf))
 (arg leftOf 1 spatial)
 (arg leftOf 2 spatial)
+(set/inert (inverse leftOf rightOf))
 
 (comment leftwardOf
          "(leftwardOf ?object ?reference) means that ?object lies somewhere to the left of ?reference. Left, front-left or behind-left: it constrains the left-right axis alone and leaves the front-back one open.")
@@ -180,6 +193,7 @@
 (set/monotonic (instance_relation_predicate leftwardOf))
 (arg leftwardOf 1 spatial)
 (arg leftwardOf 2 spatial)
+(set/inert (inverse leftwardOf rightwardOf))
 
 (comment moderatelyFarFrom
          "(moderatelyFarFrom ?thing1 ?thing2) means that ?thing1 and ?thing2 are moderately far apart. The middle of the distance chain, between nearTo and farFrom.")
@@ -196,32 +210,37 @@
 (arg nearTo 2 spatial)
 
 (comment nonTangentialProperPart
-         "(nonTangentialProperPart ?region1 ?region2) means that ?region1 lies strictly inside ?region2, touching no part of its boundary. RCC-8's NTPP, a base relation, with nonTangentialProperPartInverse as its converse.")
+         "(nonTangentialProperPart ?region1 ?region2) means that ?region1 lies strictly inside ?region2, touching no part of its boundary. RCC-8's NTPP, a base relation.")
 (binary_predicate nonTangentialProperPart)
 (set/monotonic (instance_relation_predicate nonTangentialProperPart))
 (arg nonTangentialProperPart 1 spatial)
 (arg nonTangentialProperPart 2 spatial)
+(set/inert (genl nonTangentialProperPart properPartOfRegion))
+(set/inert (inverse nonTangentialProperPart nonTangentialProperPartInverse))
 
 (comment nonTangentialProperPartInverse
-         "(nonTangentialProperPartInverse ?region1 ?region2) means that ?region2 lies strictly inside ?region1, touching no part of its boundary. RCC-8's NTPPi, the converse of nonTangentialProperPart.")
+         "(nonTangentialProperPartInverse ?region1 ?region2) means that ?region2 lies strictly inside ?region1, touching no part of its boundary. RCC-8's NTPPi, a base relation.")
 (binary_predicate nonTangentialProperPartInverse)
 (set/monotonic (instance_relation_predicate nonTangentialProperPartInverse))
 (arg nonTangentialProperPartInverse 1 spatial)
 (arg nonTangentialProperPartInverse 2 spatial)
+(set/inert (genlInverse nonTangentialProperPartInverse partOf))
 
 (comment northeastOf
-         "(northeastOf ?place1 ?place2) means that ?place1 lies north and east of ?place2. Both axes at once, so it is the strongest thing a single direction fact can say. The converse of southwestOf.")
+         "(northeastOf ?place1 ?place2) means that ?place1 lies north and east of ?place2. Both axes at once, so it is the strongest thing a single direction fact can say.")
 (binary_predicate northeastOf)
 (set/monotonic (instance_relation_predicate northeastOf))
 (arg northeastOf 1 spatial)
 (arg northeastOf 2 spatial)
+(set/inert (inverse northeastOf southwestOf))
 
 (comment northOf
-         "(northOf ?place1 ?place2) means that ?place1 lies due north of ?place2. North on the north-south axis and level on the east-west one, so it is one of the nine base directions rather than a disjunction of them. The converse of southOf.")
+         "(northOf ?place1 ?place2) means that ?place1 lies due north of ?place2. North on the north-south axis and level on the east-west one, so it is one of the nine base directions rather than a disjunction of them.")
 (binary_predicate northOf)
 (set/monotonic (instance_relation_predicate northOf))
 (arg northOf 1 spatial)
 (arg northOf 2 spatial)
+(set/inert (inverse northOf southOf))
 
 (comment northwardOf
          "(northwardOf ?place1 ?place2) means that ?place1 lies somewhere north of ?place2. North, northeast or northwest: it constrains the north-south axis alone and leaves the east-west one open. Derived, so it is entailed by any of the three and asserts none of them.")
@@ -229,13 +248,15 @@
 (set/monotonic (instance_relation_predicate northwardOf))
 (arg northwardOf 1 spatial)
 (arg northwardOf 2 spatial)
+(set/inert (inverse northwardOf southwardOf))
 
 (comment northwestOf
-         "(northwestOf ?place1 ?place2) means that ?place1 lies north and west of ?place2. Both axes at once. The converse of southeastOf.")
+         "(northwestOf ?place1 ?place2) means that ?place1 lies north and west of ?place2. Both axes at once.")
 (binary_predicate northwestOf)
 (set/monotonic (instance_relation_predicate northwestOf))
 (arg northwestOf 1 spatial)
 (arg northwestOf 2 spatial)
+(set/inert (inverse northwestOf southeastOf))
 
 (comment partiallyOverlapping
          "(partiallyOverlapping ?region1 ?region2) means that ?region1 and ?region2 share a part, and each also has a part outside the other. RCC-8's PO, a base relation and its own converse.")
@@ -245,18 +266,26 @@
 (arg partiallyOverlapping 2 spatial)
 
 (comment partOfRegion
-         "(partOfRegion ?region1 ?region2) means that ?region1 is part of ?region2. RCC-8's P, which denotes TPP, NTPP or EQ, so a region is part of itself. A derived relation: it is entailed by any of those three and asserts none of them in particular.")
+         "(partOfRegion ?region1 ?region2) means that ?region1 is part of ?region2. RCC-8's P, which denotes TPP, NTPP or EQ. A derived relation: it is entailed by any of those three and asserts none of them in particular.")
 (binary_predicate partOfRegion)
 (set/monotonic (instance_relation_predicate partOfRegion))
 (arg partOfRegion 1 spatial)
 (arg partOfRegion 2 spatial)
+(set/inert (inverse partOfRegion hasRegionPart))
+(set/monotonic (reflexive partOfRegion))
+(genl partOfRegion partOf)
 
 (comment properPartOfRegion
-         "(properPartOfRegion ?region1 ?region2) means that ?region1 is part of ?region2 and not the whole of it. RCC-8's PP, denoting TPP or NTPP. Irreflexive, unlike partOfRegion.")
+         "(properPartOfRegion ?region1 ?region2) means that ?region1 is part of ?region2 and not the whole of it. RCC-8's PP, denoting TPP or NTPP.")
 (binary_predicate properPartOfRegion)
 (set/monotonic (instance_relation_predicate properPartOfRegion))
 (arg properPartOfRegion 1 spatial)
 (arg properPartOfRegion 2 spatial)
+(set/monotonic (irreflexive properPartOfRegion))
+(set/monotonic (transitive properPartOfRegion))
+(set/inert (genl properPartOfRegion partOfRegion))
+(genl properPartOfRegion properPartOf)
+(set/inert (properCounterpart partOfRegion properPartOfRegion))
 
 (comment rearwardOf
          "(rearwardOf ?object ?reference) means that ?object lies somewhere behind ?reference. Behind, behind-left or behind-right: it constrains the front-back axis alone and leaves the left-right one open.")
@@ -287,7 +316,7 @@
 (arg regionOverlaps 2 spatial)
 
 (comment rightOf
-         "(rightOf ?object ?reference) means that ?object lies directly to the right of ?reference. Right on the left-right axis and level on the front-back one, in the frame of reference the context is. The converse of leftOf.")
+         "(rightOf ?object ?reference) means that ?object lies directly to the right of ?reference. Right on the left-right axis and level on the front-back one, in the frame of reference the context is.")
 (binary_predicate rightOf)
 (set/monotonic (instance_relation_predicate rightOf))
 (arg rightOf 1 spatial)
@@ -315,14 +344,14 @@
 (arg sameRelativePositionAs 2 spatial)
 
 (comment southeastOf
-         "(southeastOf ?place1 ?place2) means that ?place1 lies south and east of ?place2. Both axes at once. The converse of northwestOf.")
+         "(southeastOf ?place1 ?place2) means that ?place1 lies south and east of ?place2. Both axes at once.")
 (binary_predicate southeastOf)
 (set/monotonic (instance_relation_predicate southeastOf))
 (arg southeastOf 1 spatial)
 (arg southeastOf 2 spatial)
 
 (comment southOf
-         "(southOf ?place1 ?place2) means that ?place1 lies due south of ?place2. South on the north-south axis and level on the east-west one. The converse of northOf.")
+         "(southOf ?place1 ?place2) means that ?place1 lies due south of ?place2. South on the north-south axis and level on the east-west one.")
 (binary_predicate southOf)
 (set/monotonic (instance_relation_predicate southOf))
 (arg southOf 1 spatial)
@@ -336,7 +365,7 @@
 (arg southwardOf 2 spatial)
 
 (comment southwestOf
-         "(southwestOf ?place1 ?place2) means that ?place1 lies south and west of ?place2. Both axes at once. The converse of northeastOf.")
+         "(southwestOf ?place1 ?place2) means that ?place1 lies south and west of ?place2. Both axes at once.")
 (binary_predicate southwestOf)
 (set/monotonic (instance_relation_predicate southwestOf))
 (arg southwestOf 1 spatial)
@@ -355,20 +384,24 @@
 (set/monotonic (instance_relation_predicate spatiallyEqual))
 (arg spatiallyEqual 1 spatial)
 (arg spatiallyEqual 2 spatial)
+(set/inert (genl spatiallyEqual partOfRegion))
 
 (comment tangentialProperPart
-         "(tangentialProperPart ?region1 ?region2) means that ?region1 lies inside ?region2 and touches its boundary. RCC-8's TPP, a base relation, with tangentialProperPartInverse as its converse.")
+         "(tangentialProperPart ?region1 ?region2) means that ?region1 lies inside ?region2 and touches its boundary. RCC-8's TPP, a base relation.")
 (binary_predicate tangentialProperPart)
 (set/monotonic (instance_relation_predicate tangentialProperPart))
 (arg tangentialProperPart 1 spatial)
 (arg tangentialProperPart 2 spatial)
+(set/inert (genl tangentialProperPart properPartOfRegion))
+(set/inert (inverse tangentialProperPart tangentialProperPartInverse))
 
 (comment tangentialProperPartInverse
-         "(tangentialProperPartInverse ?region1 ?region2) means that ?region2 lies inside ?region1 and touches its boundary. RCC-8's TPPi, the converse of tangentialProperPart.")
+         "(tangentialProperPartInverse ?region1 ?region2) means that ?region2 lies inside ?region1 and touches its boundary. RCC-8's TPPi, a base relation.")
 (binary_predicate tangentialProperPartInverse)
 (set/monotonic (instance_relation_predicate tangentialProperPartInverse))
 (arg tangentialProperPartInverse 1 spatial)
 (arg tangentialProperPartInverse 2 spatial)
+(set/inert (genlInverse tangentialProperPartInverse partOf))
 
 (comment veryCloseTo
          "(veryCloseTo ?thing1 ?thing2) means that ?thing1 and ?thing2 are very close together. The nearest class of the distance chain above zero. The seven classes tile the whole range without overlapping, so exactly one of them holds of any pair.")
@@ -385,7 +418,7 @@
 (arg veryFarFrom 2 spatial)
 
 (comment westOf
-         "(westOf ?place1 ?place2) means that ?place1 lies due west of ?place2. West on the east-west axis and level on the north-south one. The converse of eastOf.")
+         "(westOf ?place1 ?place2) means that ?place1 lies due west of ?place2. West on the east-west axis and level on the north-south one.")
 (binary_predicate westOf)
 (set/monotonic (instance_relation_predicate westOf))
 (arg westOf 1 spatial)

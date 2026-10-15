@@ -2031,6 +2031,19 @@
     (into [] (for [[dh pl] below, pctx pl]
                [(checks/declaration-entailments kb sentence pctx dh handle) pctx]))))
 
+(defn- inert-handle?
+  "Is the sentex at `id` inert (`assert-inert`, or one `import!` restored): no premise, no
+  justification concluding it, and stored with no strength?  A derived sentex has a
+  justification even when defeated, so the three read an inert one apart from it.  The
+  two TMS reads come first and settle a premise or a derived sentex without a record
+  fetch."
+  [kb id]
+  (let [tms (reasoning/tms kb)]
+    (boolean (and id
+                  (not (jtms/premise? tms id))
+                  (empty? (jtms/supports tms id))
+                  (when-let [sx (p/get-sentex (:records kb) id)] (nil? (:strength sx)))))))
+
 (defn deduce-below
   "Materialize what the declarations `declarations-below` finds say about the fact
   `sentence` stored at `handle` in `context`, at each of their placements:
@@ -2053,15 +2066,18 @@
   "Materialize every entailment of the stored literal fact `sentence` at `handle` in
   `context`: those of the declarations `context` sees, there (`deduce-arg-types`), and
   those of the declarations below it, at their placements (`deduce-below`).  `keep?`,
-  when given, takes an entailment and its placement."
+  when given, takes an entailment and its placement.  An inert sentex draws none
+  (`inert-handle?`), whichever sweep reaches it."
   ([kb sentence handle context] (deduce-placed kb sentence handle context nil))
   ([kb sentence handle context keep?]
-   (merge-with into
-               (deduce-arg-types
-                kb (cond->> (checks/constraint-entailments kb sentence context)
-                     keep? (filterv #(keep? % context)))
-                handle context)
-               (deduce-below kb sentence handle context keep?))))
+   (if (inert-handle? kb handle)
+     empty-entailment-result
+     (merge-with into
+                 (deduce-arg-types
+                  kb (cond->> (checks/constraint-entailments kb sentence context)
+                       keep? (filterv #(keep? % context)))
+                  handle context)
+                 (deduce-below kb sentence handle context keep?)))))
 
 (defn redraw-mints
   "Draw the argument-type entailments of the stored literal fact at `h` over the spelling
@@ -2109,10 +2125,13 @@
   function.
 
   A genuine negation is not argument-checked, so it entails nothing; nor does a rule,
-  whose stored sentence is an implication."
+  whose stored sentence is an implication; nor does an inert sentex (`inert-handle?`),
+  which claims nothing and never revives.  The fact-side path draws no mint from an inert
+  fact, so a sweep that read one would mint on a rechain, or on a context edge, what the
+  load did not."
   ([kb sx dh] (retroactive-mints kb sx dh (placements-of kb dh)))
   ([kb sx dh placements]
-   (if-not (and (nil? (:antecedent sx)) (not (sx/negative? sx)))
+   (if-not (and (nil? (:antecedent sx)) (not (sx/negative? sx)) (not (inert-handle? kb (:id sx))))
      empty-entailment-result
      (let [sctx (:context sx)
            h    (:id sx)]
@@ -2247,6 +2266,8 @@
   JTMS already says what a disbelieved antecedent means — whereas skipping it would
   leave the type missing when the fact revives, which is belief depending on the order
   the defeat and the declaration arrived in.
+
+  An inert sentex draws nothing (`retroactive-mints`).
 
   The extent is read off the **predicate extents of `P`'s whole spec subtree**, which is the
   precise answer to \"every stored tuple this declaration constrains\": a declaration on
@@ -2506,10 +2527,17 @@
 
   Unscoped (E17) for `checks/subsumed-mint`'s reason: the mints sit in contexts other than
   the edges', and each candidate is asked in its own context, so the unscoped walk only
-  asks more candidates than a scoped one."
+  asks more candidates than a scoped one.
+
+  A part of a roster is asked about its own mints as well: the edge a roster installs out
+  of a part subsumes the edges minted out of that part, as a stated `genl` edge does, and
+  no `[handle by]` pair names it, since `says-more-than?` reads a `genl` edge alone."
   [kb edges]
   (let [idx  (:index kb)
-        subs (into #{} (comp (mapcat #(tax/installed-edges (:sentence %))) (map first)) edges)]
+        subs (into #{} (comp (mapcat #(tax/installed-edges (:sentence %))) (map first)) edges)
+        parts (into #{} (comp (remove #(edge-shaped? (:sentence %)))
+                              (mapcat #(tax/installed-edges (:sentence %))) (map first))
+                    edges)]
     (when (and (seq subs) (pos? (reads/stored-mint-count-global idx)))
       (let [tax     (reasoning/taxonomy kb)
             below   (if (= 1 (count subs))
@@ -2517,6 +2545,7 @@
                       (tax/specs-of-all tax subs))
             strict? (fn [z]
                       (or (not (contains? subs z))
+                          (contains? parts z)
                           (some #(and (not= z %) (contains? subs %)) (tax/genls-global tax z))))
             types   (if (< (reads/stored-mint-term-count idx) (count below))
                       (filter #(contains? below %) (reads/as-stored-mint-terms idx))

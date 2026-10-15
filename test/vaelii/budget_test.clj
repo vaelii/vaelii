@@ -148,11 +148,11 @@
   ;; existed to avoid.  So a `:max-cost` outside the three tiers has to say so, and
   ;; carry a `:type` a caller can discriminate on rather than an NPE from inside a
   ;; comparison.
-  (tu/with-terms [partOf A B D CxFam]
-    (v/assert kb (list 'transitive partOf) CxFam)
-    (v/assert kb (list partOf A B) CxFam)
-    (v/assert kb (list partOf B D) CxFam)
-    (let [goal (list partOf A '?y)]
+  (tu/with-terms [tangiblePartOf A B D CxFam]
+    (v/assert kb (list 'transitive tangiblePartOf) CxFam)
+    (v/assert kb (list tangiblePartOf A B) CxFam)
+    (v/assert kb (list tangiblePartOf B D) CxFam)
+    (let [goal (list tangiblePartOf A '?y)]
       (testing "a real tier answers"
         (is (= :complete (:status (v/ask-within kb goal CxFam {:max-cost :compute})))))
       (doseq [bogus [:Lookup :cheap :lookups "lookup"]]

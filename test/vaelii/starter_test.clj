@@ -206,7 +206,7 @@
     (is (v/ask? kb '(ancestorOf Tom Ann)))            ; transitive closure of parentOf
     (is (v/ask? kb '(childOf Bob Tom)))               ; inverse of parentOf
     (is (v/ask? kb '(siblingOf Carol Ann)))           ; symmetric
-    (is (v/ask? kb '(partOf Piston1 Car1))))          ; transitive
+    (is (v/ask? kb '(tangiblePartOf Piston1 Car1))))  ; transitive
   (testing "functional birthYearOf makes a second, different value a clash"
     (is (tu/stored-in-clash? kb '(birthYearOf Tom 1971) 'CxSocialWorld))))
 
@@ -246,7 +246,7 @@
   (testing "every domain relation is documented"
     (doseq [p '[parentOf grandparentOf childOf ancestorOf siblingOf marriedTo
                 motherOf fatherOf
-                likes eats owns partOf locatedIn hasCapability capabilityType
+                likes eats owns tangiblePartOf locatedIn hasCapability capabilityType
                 mortal birthYearOf olderThan
                 weightOf heightOf heavierThan tallerThan
                 signOf trendOf derivativeOf greaterInMagnitudeThan

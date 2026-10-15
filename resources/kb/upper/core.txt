@@ -85,7 +85,7 @@
 (unbounded_arity and)
 
 (comment genlArg
-         "(genlArg ?relation ?position ?type) means that argument ?position of ?relation must be a subtype of ?type. The arg constraint one level up, for arguments naming kinds rather than instances: (genlArg partType 1 tangible) says the argument names a kind of physical object, where (arg partOf 1 tangible) says it names one. Open-world, so an argument with no place in the genl hierarchy cannot violate it. Relation-wide vocabulary; the current function-input enforcement boundary is documented in docs/argtypes.md.")
+         "(genlArg ?relation ?position ?type) means that argument ?position of ?relation must be a subtype of ?type. The arg constraint one level up, for arguments naming kinds rather than instances: (genlArg partType 1 tangible) says the argument names a kind of physical object, where (arg tangiblePartOf 1 tangible) says it names one. Open-world, so an argument with no place in the genl hierarchy cannot violate it. Relation-wide vocabulary; the current function-input enforcement boundary is documented in docs/argtypes.md.")
 (ternary_predicate genlArg)
 (arg genlArg 1 relation)
 (arg genlArg 2 positive_integer)
@@ -247,7 +247,8 @@
 ;; here because organism (organism.txt) and body_part (abstract.txt) both extend it.
 (comment intangible "Something with no mass: a region, a shadow, a number, a relation, a time. It may have a location — a region of space is spatiotemporal and intangible both.")
 (comment spatial "Something with a location in some space, physical or mathematical. The line y=x is located in the Cartesian plane and a square of an abstract chessboard on that board, though neither is located anywhere in the world; a point has a location and no extent, and is spatial too. Time is not one of these spaces; being in time is what temporal says. Everything spatiotemporal is spatial; spatial and aspatial partition thing. The four spatial calculi relate what is spatial, in whichever space a context is about.")
-(comment spatiotemporal "Something with a location in space and time — a physical object, but also a region or a place, which occupy space without being made of anything. Below both spatial and temporal.")
+(comment physical "Something with a location in the physical space of our universe. A region of physical space is physical; the line y=x, located only in the Cartesian plane, is not. Everything physical is spatial, and everything spatiotemporal is physical.")
+(comment spatiotemporal "Something with a location in physical space and time — a physical object, but also a region or a place, which occupy space without being made of anything. Below both physical and temporal.")
 (comment temporal "Something that happens or exists in time. Physical objects, events, and situations are all temporal.")
 (comment aspatial "Not located in any space: no location in any space, physical or mathematical. None of the spatial calculi relate to it.")
 (comment uninterrupted "Something temporal that is present at every moment between its start and its end: a moment, a year, a meeting, a held state. The complement of intermittent within temporal; the two partition temporal.")
@@ -259,13 +260,20 @@
 (comment nowhere_never "In no space and at no time: no location in any space, physical or mathematical, and none in time. An expression, a language. The line y=x is not one: it is located in the Cartesian plane, so it is spatial.")
 ;; spatial, aspatial, temporal, atemporal, tangible and intangible reach thing through
 ;; the three partitions of thing below, each of which installs its parts' edges to the
-;; whole; spatiotemporal reaches it through spatial.  spatiotemporal is below spatial and
-;; temporal, and nowhere_never below aspatial and atemporal, by genl edges alone: an
-;; intersection's membership rule would store a membership of every term under both
-;; types, and nothing reads one (docs/taxonomy.md, "Relations and arity policy").
-(genl spatiotemporal spatial)
+;; whole; physical reaches it through spatial, and spatiotemporal through physical.
+;; spatiotemporal is below physical and temporal, and nowhere_never below aspatial and
+;; atemporal, by genl edges alone: an intersection's membership rule would store a
+;; membership of every term under both types, and nothing reads one (docs/taxonomy.md,
+;; "Relations and arity policy").
+;; Definition (documentation, not a premise): (intersection spatiotemporal physical temporal).
+;; Stated by genl edges so no membership is materialized; the converse is not concluded.
+(genl physical spatial)
+(genl spatiotemporal physical)
 (genl spatiotemporal temporal)
 (genl tangible spatiotemporal)
+;; tangible's instances are individuals, so it is a first-order `type`.  The interArg on
+;; typeGenl requires this of abstract.txt's (typeGenl origin_type tangible).
+(type tangible)
 (genl biological tangible)
 ;; A separating roster installs its parts' taxonomy edges and stores no genl sentence, so
 ;; the two edges below are stated beside (separating biological organism body_part) in
@@ -340,6 +348,7 @@
 ;; Each skeleton collection is a type, a one-place predicate.
 (unary_predicate intangible)
 (unary_predicate spatial)
+(unary_predicate physical)
 (unary_predicate spatiotemporal)
 (unary_predicate temporal)
 (unary_predicate aspatial)
@@ -391,8 +400,9 @@
 (unary_predicate formula)
 (unary_predicate sentence)
 (unary_predicate non_atomic_term)
-;; reflection.txt places the three under expression, so under linguistic.  This file's own
-;; declarations type positions over them.
+(implementationNote formula "reflection.txt places formula under expression, so under linguistic. core.txt's own declarations type positions over formula.")
+(implementationNote sentence "reflection.txt places sentence in the expression lattice. core.txt's own declarations type positions over sentence.")
+(implementationNote non_atomic_term "reflection.txt places non_atomic_term under expression, so under linguistic. core.txt's own declarations type positions over non_atomic_term.")
 (genl formula linguistic)
 (genl sentence formula)
 (genl non_atomic_term linguistic)
@@ -414,29 +424,35 @@
 ;; declare an argument position over it, so the type is stated here with the top of the
 ;; ontology it hangs from.
 (comment measure "A magnitude in a unit: (QuantityFn 5 Kilogram) or (QuantityIntervalFn 1 2 Meter). What a weight, a height, a duration or a temporal distance is stated as. See docs/quantity.md.")
-(genl measure nowhere_never)
+(genl measure quantitative)
 
 ;; linguistic is what has its being in a system of signs: a language, and every expression
 ;; written in one.  This file states it because language, which several domain files type
 ;; arguments over, sits under it.
 (comment linguistic "A language, or an expression written in one: what has its being in a system of signs. The line that the equation y=x describes and the mass (QuantityFn 5 Kilogram) denotes are nowhere_never but not linguistic; the written equation and the written term are.")
-(genl linguistic nowhere_never)
-(set/monotonic (disjoint linguistic measure))
-;; Use is the default, so the relation dog is not an expression; (Quote dog) is the symbol.
-(set/monotonic (disjoint linguistic relation))
 (unary_predicate linguistic)
 
-;; unrepresented_term holds the value kinds.  reflection.txt places it under expression, so
-;; under linguistic, and the edge below reads every value kind as nowhere_never and
-;; disjoint from relation.
-;; The relation disjoint is what lets a rule be refused for feeding a text-valued argument
-;; into a position that holds a type: every type is a unary_predicate, so the type position
-;; asks for a predicate, and one variable cannot be both at once.  The disjointness on
-;; number carries integer with it.
+;; logical, linguistic and quantitative are three kinds of nowhere_never thing.  Use is
+;; the default, so the relation dog is logical and not an expression; (Quote dog) is the
+;; symbol, which is linguistic.  Nothing says every nowhere_never thing is of one of the
+;; three kinds.
+(comment logical "What a logic is about rather than written in: what a sentence predicates, what it says, or what it holds in, e.g. a relation, a proposition, a context, a truth table. Not every logical thing is a relation, a proposition or a context.")
+(unary_predicate logical)
+(comment quantitative "What a measurement is made of or yields, e.g. the measure (QuantityFn 5 Kilogram), the unit Kilogram, the dimension Mass, the sign SignPositive. A quantity that changes, e.g. a water level, is not quantitative: the quantity is temporal, and a measure of it is quantitative.")
+(unary_predicate quantitative)
+(set/monotonic (separating nowhere_never logical linguistic quantitative))
+;; reflection.txt separates proposition from the two as well.
+(set/monotonic (separating logical relation context))
+
+;; unrepresented_term holds the value kinds.  The relation disjoint is what lets a rule be
+;; refused for feeding a text-valued argument into a position that holds a type: every
+;; type is a unary_predicate, so the type position asks for a predicate, and one variable
+;; cannot be both at once.  The disjointness on number carries integer with it.
 (comment unrepresented_term "An expression that cannot be further decomposed in the KB — strings, numbers, keywords, booleans, characters.")
 (unary_predicate unrepresented_term)
+(implementationNote unrepresented_term "reflection.txt places unrepresented_term under expression, so under linguistic. The edge to linguistic stated in core.txt reads every value kind as nowhere_never and disjoint from relation.")
 (genl unrepresented_term linguistic)
-;; symbol is placed the same way, so (disjoint symbol predicate) holds.
+(implementationNote symbol "reflection.txt places symbol under expression, so under linguistic. The edge to linguistic stated in core.txt is what reads (disjoint symbol predicate).")
 (genl symbol linguistic)
 (genl boolean unrepresented_term)
 (genl character unrepresented_term)
@@ -444,8 +460,6 @@
 (genl number unrepresented_term)
 (genl string unrepresented_term)
 (partition unrepresented_term boolean character keyword number string)
-
-(genl context nowhere_never)
 
 (comment Quote "Syncategorematic: part of vaelii's syntax, like a parenthesis, though written like a function. (Quote X) is X taken as a form, e.g. (Quote Muffet) names the symbol Muffet, not the dog. Quote takes no arg, result or metatype declaration; what kind of expression (Quote X) is follows from X's shape.")
 
@@ -711,6 +725,26 @@
    (greaterThan ?arity 2))
   (at_least_ternary ?relation)))
 
+;; arity_type classifies relations by how many arguments they take.  Each membership is
+;; definitional, so arity_type is on the forced-monotonic roster, and typeOrthogonal's
+;; rule concludes an orthogonal from one alone (docs/nmtms.md).
+(comment arity_type "A type of relation by how many arguments its members take, e.g. binary, variable_arity, at_least_ternary. Whether a relation may be hypothesized does not depend on its arity, so every arity_type is orthogonal to abducible_predicate.")
+;; unary holds every type, so the members of arity_type are of more than one order, and
+;; arity_type is at_least_metatype rather than metatype.
+(at_least_metatype arity_type)
+(typeGenl arity_type relation)
+(forced_monotonic_predicate arity_type)
+(arity_type unary)
+(arity_type binary)
+(arity_type ternary)
+(arity_type fixed_arity)
+(arity_type variable_arity)
+(arity_type bounded_arity)
+(arity_type unbounded_arity)
+(arity_type at_least_binary)
+(arity_type at_least_ternary)
+(typeOrthogonal arity_type abducible_predicate)
+
 (set/forwardRule
  (implies
   (and
@@ -780,6 +814,13 @@
 (binary_predicate comment)
 (set/monotonic (instance_relation_predicate comment))
 (arg comment 2 string)
+
+(comment implementationNote
+         "(implementationNote ?term ?text) means that ?text records how the engine or this KB's own text implements ?term, or a limit of that implementation, e.g. a rule stated only for some arities. A comment says what ?term means, and an implementation note says how the meaning is carried out. A note can go stale when the engine changes, and a comment cannot. Ordinary sentexes, queried like any fact. Nothing in the engine reads one and it draws no inference.")
+(binary_predicate implementationNote)
+(instance_relation_predicate implementationNote)
+(arg implementationNote 2 string)
+(termsRelated comment implementationNote)
 
 (comment contradicts
          "(contradicts (sentexHandle ?h1) (sentexHandle ?h2) …) means that the sentexes it names are the members of a nogood: each is believed in the network and the contexts stating them and the grounds the detection read have a common descendant. The engine derives it at each maximal common descendant of those contexts where no except in force hides a member or a ground, justified by the members, the grounds and the genlCx edges the placement is seen over, so retracting any of them takes it OUT. One argument per member, in content order (sentence, then context), never handle order, so two detections of one nogood store one sentex; a self-clash names one member and an anti_transitive clash three. A nogood with a unique weakest member stores the defeat of that member beside it; a dilemma or a conflict stores the contradicts alone. The reports that (conflicts kb) and (contradictions kb) return compose a contradicts form over the member sentences instead.")
@@ -899,9 +940,7 @@
 (at_least_metatype empty)
 (at_least_metatype nonempty)
 ;; Vacuous by design: thing is already a genl of every type, so these name no new genl
-;; edge.  Inert, since typeGenl has no inference path (src/vaelii/impl/predicates.clj
-;; classifies it :storage [:none], :checked false) — a future typeGenl rule must not fire
-;; for a thing target.
+;; edge.
 (typeGenl empty thing)
 (typeGenl nonempty thing)
 (termsRelated empty nonempty disjoint orthogonal)
@@ -961,9 +1000,9 @@
 ;; intersection is the definitional twin of disjoint (which states two kinds do NOT overlap).
 (termsRelated disjoint intersection)
 
-;; --- defining rules (binary and ternary; general arity pends memberOfList, see the
-;;     upstream list proposal). A combined kind is genl each type it intersects, and
-;;     anything that is each type is a member of the combined kind. ------------------
+;; --- defining rules. A combined kind is genl each type it intersects, and anything
+;;     that is each type is a member of the combined kind. ---------------------------
+(implementationNote intersection "The defining rules are stated for two and for three intersected types. A rule for any number of types needs list membership (vaelii/vaelii#79), so an intersection of four or more types derives neither its genl edges nor its memberships.")
 ;; Forward rules: an intersection fact materializes the genl edges when it is asserted,
 ;; so the derived edge reaches the taxonomy closure and answers a variable-free genl
 ;; goal at every read entry point. A bare (implies …) defaults to :backward, which the
@@ -1451,7 +1490,7 @@
 (arg implies 2 formula)
 
 (comment instance_relation_predicate
-         "(instance_relation_predicate ?predicate) means that ?predicate relates individuals rather than kinds. So (?predicate x y) is a ground fact between two specific things. A binary_predicate, which is what makes the pairing with type_relation_predicate mean anything: partOf holds between two individuals where partType holds between two kinds, and typeToInstancePred links the pair. The default classification for an extracted binary predicate, and one half of the relation_kind metatype. A relation of any other arity carries neither mark and declares its argument types directly — lessThan reads a chain and interArg has five positions, so neither is the two-place claim this classifies.")
+         "(instance_relation_predicate ?predicate) means that ?predicate relates individuals rather than kinds. So (?predicate x y) is a ground fact between two specific things. A binary_predicate, which is what makes the pairing with type_relation_predicate mean anything: tangiblePartOf holds between two individuals where partType holds between two kinds, and typeToInstancePred links the pair. The default classification for an extracted binary predicate, and one half of the relation_kind metatype. A relation of any other arity carries neither mark and declares its argument types directly — lessThan reads a chain and interArg has five positions, so neither is the two-place claim this classifies.")
 (unary_predicate instance_relation_predicate)
 (set/monotonic (genl instance_relation_predicate binary_predicate))
 
@@ -1501,9 +1540,6 @@
 (unbounded_arity or)
 
 (comment relation            "The type of every operator that may be applied to arguments. function and truth_valued_relation partition it: an application of a function denotes or evaluates to a value, while an application of a truth_valued_relation is true or false.")
-(genl relation nowhere_never)
-;; What a relation relates or says is not itself an operator.
-(set/monotonic (disjoint measure relation))
 ;; relation holds functions, binary predicates and types alike, so its members are of
 ;; more than one order: a variable_order_type, which is a unary_predicate.
 (set/monotonic (variable_order_type relation))
@@ -1560,8 +1596,7 @@
          "(exists ?var ?consequent) means a head existential: ?var occurs in a rule's consequent and no antecedent binds it. Forward firing skolemizes it, minting a fresh witness per firing. See docs/skolem.md.")
 (quantifier exists)
 (binary exists)
-;; Implementation: a covering whose parts are all closed is closed, but stating that rule
-;; needs list membership (vaelii/vaelii#79), so the whole is closed by hand.
+(implementationNote logical_constant "A covering whose parts are all closed is closed, but stating that rule needs list membership (vaelii/vaelii#79), so the closed extent of logical_constant is stated by hand beside those of its parts.")
 (closed_extent_predicate logical_connective)
 (closed_extent_predicate quantifier)
 (closed_extent_predicate logical_constant)
@@ -1571,6 +1606,7 @@
 (unary_predicate reflexive)
 (decontextualized_predicate reflexive)
 (set/monotonic (genl reflexive binary_predicate))
+(implementationNote reflexive "The reflexive prover reads no argument type. It answers (P a a) for any ground a, so (tangiblePartOf 5 5) is answered although 5 is no tangible. A domain read off P's arg declarations would close the gap.")
 
 (comment irreflexive
          "(irreflexive ?predicate) means that ?predicate never holds of a thing and itself, so (?predicate a a) is contradictory: a one-member nogood that each context reading the mark decides, whichever of the mark and the tuple arrives first. A default self tuple is not believed there, and a monotonic one is a hard clash conflicts reports (docs/nmtms.md). The strict counterpart of reflexive, and stronger than asymmetric — asymmetry needs a believed opposing claim to convict and so admits the lone self tuple. Also a type: (irreflexive P) classifies P as a binary_predicate. Declared of a strict order such as largerThan, for instance.")
@@ -1744,7 +1780,7 @@
 (set/monotonic (variable_order_type thing))
 
 (comment transitive
-         "(transitive ?predicate) means that ?predicate is transitive, so (?predicate a b) and (?predicate b c) imply (?predicate a c). Answered by a generic closure prover rather than materialized, since writing the closure out is quadratic in the extent and nobody asserted it. Declared of ancestorOf and partOf, for instance. Also a type: (transitive P) classifies P as a binary_predicate, so a KB can be queried for the transitive predicates.")
+         "(transitive ?predicate) means that ?predicate is transitive, so (?predicate a b) and (?predicate b c) imply (?predicate a c). Answered by a generic closure prover rather than materialized, since writing the closure out is quadratic in the extent and nobody asserted it. Declared of ancestorOf and tangiblePartOf, for instance. Also a type: (transitive P) classifies P as a binary_predicate, so a KB can be queried for the transitive predicates.")
 (unary_predicate transitive)
 (decontextualized_predicate transitive)
 (set/monotonic (genl transitive binary_predicate))
@@ -1812,11 +1848,28 @@
 (set/monotonic (genl type_relation_predicate binary_predicate))
 
 (comment typeToInstancePred
-         "(typeToInstancePred ?typePredicate ?instancePredicate) means that ?typePredicate and ?instancePredicate are the type-level and instance-level readings of one underlying relation. Declared of partType and partOf, for instance. A link rather than a rule: moving a claim from one level to the other needs a quantifier reading that nothing here fixes.")
+         "(typeToInstancePred ?typePredicate ?instancePredicate) means that ?typePredicate and ?instancePredicate are the type-level and instance-level readings of one underlying relation. Declared of partType and tangiblePartOf, for instance. A link rather than a rule: moving a claim from one level to the other needs a quantifier reading that nothing here fixes.")
 (binary_predicate typeToInstancePred)
 (set/monotonic (instance_relation_predicate typeToInstancePred))
 (arg typeToInstancePred 1 type_relation_predicate)
 (arg typeToInstancePred 2 instance_relation_predicate)
+
+;; properCounterpart pairs a relation with its proper reading.  A generator stamps the
+;; definition for each pair: the proper tuple from a tuple and a stated or proved denial of
+;; its reverse.  An `unknown` there would read an absent reverse tuple as a false one.  The
+;; other half of the contract — the proper relation below the plain one, and the proper
+;; tuple denying the reverse plain one — is a genl and a rule stated beside the pair.  A
+;; family of pairs needs that rule once, at its root: a proper tuple of a spec is a proper
+;; tuple of the root, and a denial of the root's tuple denies each spec's.
+(comment properCounterpart
+         "(properCounterpart ?predicate ?properPredicate) means that ?properPredicate is the proper reading of ?predicate: (?properPredicate x y) holds exactly when (?predicate x y) holds and (?predicate y x) does not. Declared of partOf and properPartOf, for instance. A reverse tuple nobody stated is not a reverse tuple denied, so the proper tuple needs (not (?predicate y x)) believed and is not concluded from the absence of (?predicate y x).")
+(implementationNote properCounterpart "A generator stamps the definition half of the contract per pair. The other half, the proper tuple denying the reverse plain one, is a rule stated once at the root of a family of pairs, since stamping it per pair would repeat what the root's rule already concludes through genl.")
+(binary_predicate properCounterpart)
+(set/monotonic (instance_relation_predicate properCounterpart))
+(arg properCounterpart 1 binary_predicate)
+(arg properCounterpart 2 binary_predicate)
+(implies (properCounterpart ?pred ?proper)
+         (set/forwardRule (implies (and (?pred ?x ?y) (not (?pred ?y ?x))) (?proper ?x ?y))))
 
 (comment unary_predicate      "A predicate of one argument: every type (a snake_case unary predicate) and every one-place property such as flies.")
 (set/monotonic (genl unary_predicate unary))
@@ -1910,8 +1963,8 @@
 (unary_predicate declined_rule_macro)
 
 ;; --- Lacuna proposals (upper ontology overhaul) ---
-;; Two predicates the engine does not yet act on (inert, no inference path — see
-;; vaelii.impl.predicates):
+(implementationNote genlInverse "No rule or engine path reads genlInverse, so a stated (genlInverse ?spec ?genl-inv) concludes nothing.")
+(implementationNote typeGenl "No rule or engine path reads typeGenl, so a stated (typeGenl ?classifier ?genl) concludes no genl edge. A rule added for it must not fire for a thing target: (typeGenl empty thing) and (typeGenl nonempty thing) are vacuous on purpose.")
 (binary_predicate genlInverse)
 (binary_predicate typeGenl)
 (arg genlInverse 1 binary_predicate)
@@ -1920,6 +1973,41 @@
 (arg typeGenl 2 unary_predicate)
 (comment genlInverse "Like binary `genl`, but with the arg order flipped. (genlInverse ?spec ?genl-inv) means (?spec ?x ?y) entails (?genl-inv ?y ?x). Does not license the converse.")
 (comment typeGenl "Higher-order genl: (typeGenl ?classifier ?genl) means every instance of ?classifier is a genl of ?genl.")
+
+;; typeOrthogonal is typeGenl's orthogonal twin, with the classifier first as typeGenl
+;; has it.  A generator stamps one membership rule per fact.  The stamped rule is strict,
+;; and it concludes a roster literal, so its firings are believed only where the
+;; classifier is on the forced-monotonic roster.
+(comment typeOrthogonal "(typeOrthogonal ?classifier ?type) means that every instance of ?classifier is orthogonal to ?type, e.g. (typeOrthogonal arity_type abducible_predicate) says that binary, unary and every other arity type each overlap abducible_predicate without either side subsuming the other.")
+(binary_predicate typeOrthogonal)
+(arg typeOrthogonal 1 at_least_metatype)
+(arg typeOrthogonal 2 unary_predicate)
+(implies (typeOrthogonal ?classifier ?type)
+         (set/forwardRule (implies (?classifier ?x) (orthogonal ?type ?x))))
+(implementationNote typeOrthogonal "The rule concludes (orthogonal ?type ?x), a literal on the forced-monotonic roster, from the membership (?classifier ?x). A firing from a membership off the roster supports nothing and is reported as a :forced-conclusion violation, so a classifier named by typeOrthogonal is declared forced_monotonic_predicate.")
+(implementationNote typeOrthogonal "The rule writes (orthogonal ?type ?x). orthogonal is symmetric, so (orthogonal ?x ?type) is the same sentence, but with that spelling a genlArg entailment over the conclusion reads a different position after a text export reloads the KB: https://github.com/vaelii/vaelii/issues/173")
+(termsRelated typeGenl typeOrthogonal orthogonal)
+
+;; orthogonalMetatypes crosses two or more classifiers member by member.  A generator per
+;; pair of positions stamps one strict rule over the two memberships, so, as with
+;; typeOrthogonal, a firing is believed only where both classifiers are on the
+;; forced-monotonic roster.
+(comment orthogonalMetatypes "(orthogonalMetatypes ?metatype1 ?metatype2 ...) means that every member of each named metatype is orthogonal to every member of each other named metatype, e.g. (orthogonalMetatypes spatiality_type temporality_type) says that each of spatial and aspatial overlaps each of temporal and atemporal without either side subsuming the other. Two members of one metatype are not made orthogonal.")
+(variable_arity_predicate orthogonalMetatypes)
+(unbounded_arity_predicate orthogonalMetatypes)
+(arityMin orthogonalMetatypes 2)
+(argAndRest orthogonalMetatypes 1 at_least_metatype)
+(commutative orthogonalMetatypes)
+(implies (orthogonalMetatypes ?metatype1 ?metatype2)
+         (set/forwardRule (implies (and (?metatype1 ?x) (?metatype2 ?y)) (orthogonal ?x ?y))))
+(implies (orthogonalMetatypes ?metatype1 ?metatype2 ?metatype3)
+         (set/forwardRule (implies (and (?metatype1 ?x) (?metatype2 ?y)) (orthogonal ?x ?y))))
+(implies (orthogonalMetatypes ?metatype1 ?metatype2 ?metatype3)
+         (set/forwardRule (implies (and (?metatype1 ?x) (?metatype3 ?y)) (orthogonal ?x ?y))))
+(implies (orthogonalMetatypes ?metatype1 ?metatype2 ?metatype3)
+         (set/forwardRule (implies (and (?metatype2 ?x) (?metatype3 ?y)) (orthogonal ?x ?y))))
+(implementationNote orthogonalMetatypes "The rules are stated for two and for three metatypes, so a fact of four or more concludes nothing. A rule for any arity needs engine support for ranging over a fact's arguments: https://github.com/vaelii/vaelii/issues/170")
+(termsRelated typeOrthogonal orthogonalMetatypes)
 (termsRelated genlInverse inverse)
 
 ;; The metatype-order ladder: a type is first-order (its instances are individuals), a
@@ -1934,10 +2022,21 @@
 (comment fixed_order_type "A type all of whose members are of one order — a type, a metatype, or a meta_metatype. Contrast variable_order_type.")
 (comment variable_order_type "A type that can hold members of any order.")
 (comment type_type_by_order "A disjoint_metatype partitioning fixed_order_type into type, metatype, and meta_metatype.")
-(comment partitionedByType "(partitionedByType ?whole ?classifier . ?cells) declares that the ?cells exhaustively and disjointly partition ?whole, and that each cell is an instance of ?classifier. Inert — the disjointness and the memberships are stated directly beside it.")
-(variable_arity_predicate partitionedByType)
-(unbounded_arity_predicate partitionedByType)
-(arityMin partitionedByType 3)
+(comment partitionedByType "(partitionedByType ?whole ?classifier) means that the members of ?classifier partition ?whole: each member is a subtype of ?whole, no two members share an instance, and every instance of ?whole is an instance of some member. e.g. (partitionedByType tangible origin_type) says that made and natural partition tangible.")
+(binary_predicate partitionedByType)
+(arg partitionedByType 1 unary_predicate)
+(arg partitionedByType 2 at_least_metatype)
+;; A generator stamps the strict membership rule placing each member under the whole.  It
+;; skips a thing whole: thing is a genl of every type, so the edge would say nothing, as
+;; (typeGenl empty thing) says nothing.  The separation half concludes the clique mark
+;; rather than a disjoint per pair: a pair rule needs (different ?part1 ?part2), which is
+;; not a roster antecedent, so a disjoint it concluded would support nothing.
+(implies (and (partitionedByType ?whole ?classifier) (different ?whole thing))
+         (set/forwardRule (implies (?classifier ?part) (genl ?part ?whole))))
+(set/forwardRule (implies (partitionedByType ?whole ?classifier) (disjoint_metatype ?classifier)))
+(implementationNote partitionedByType "No rule draws the coverage half, so a partition stated beside each fact carries it. Coverage read from the classifier's members needs engine support: https://github.com/vaelii/vaelii/issues/171")
+(implementationNote partitionedByType "The genl rule skips a thing whole. With (partitionedByType thing temporality_type) deriving (genl atemporal thing) beside the partition, a text export reloaded in content order holds fewer argAndRestGenl justifications of that edge than the KB loaded in authored order: https://github.com/vaelii/vaelii/issues/173")
+(termsRelated partition partitionedByType)
 (unary_predicate type)
 (at_least_metatype disjoint_metatype)
 ;; Stated rather than left to (arg typeGenl 1 at_least_metatype) to mint, so the typeGenl
@@ -1954,10 +2053,7 @@
 (set/monotonic (partition unary_predicate fixed_order_type variable_order_type))
 (interArg typeGenl 1 meta_metatype 2 metatype)
 (interArg typeGenl 1 metatype 2 type)
-(partitionedByType fixed_order_type type_type_by_order type metatype meta_metatype)
-;; The partition's memberships and subtype edges, stated explicitly so the disjoint_metatype
-;; separates the three orders and each is a fixed_order_type — partitionedByType is inert and
-;; expands to nothing.
+(partitionedByType fixed_order_type type_type_by_order)
 (type_type_by_order type)
 (type_type_by_order metatype)
 (type_type_by_order meta_metatype)
@@ -1979,17 +2075,18 @@
 (set/monotonic (variable_order_type variable_order_type))
 ;; A food can be an organism: an oyster eaten live.
 (orthogonal food organism)
-;; A type of any order may have no instance or may have one.
-(orthogonal empty type)
-(orthogonal empty metatype)
-(orthogonal empty meta_metatype)
+;; A shrimp eaten whole is an animal and a food, and an apple a food that is no animal.
+(orthogonal animal food)
+;; A type of any order may have no instance or may have one.  The order memberships are
+;; definitional, so type_type_by_order is on the forced-monotonic roster and the two
+;; typeOrthogonal facts conclude the pairs over type, metatype and meta_metatype.
+(forced_monotonic_predicate type_type_by_order)
+(typeOrthogonal type_type_by_order empty)
+(typeOrthogonal type_type_by_order nonempty)
 (orthogonal empty fixed_order_type)
 (orthogonal empty variable_order_type)
 (orthogonal at_least_metatype empty)
 (orthogonal disjoint_metatype empty)
-(orthogonal nonempty type)
-(orthogonal metatype nonempty)
-(orthogonal meta_metatype nonempty)
 (orthogonal fixed_order_type nonempty)
 (orthogonal nonempty variable_order_type)
 (orthogonal at_least_metatype nonempty)
@@ -2009,16 +2106,34 @@
 ;; The three partitions cut thing along three axes — location in some space, location in
 ;; time, mass — so a part of one may overlap a part of another.  The seven pairs below each
 ;; overlap with neither side subsuming the other; not every cross-axis pair does, since
-;; tangible is below spatiotemporal and aspatial below intangible.  Stated, each pair reads
-;; :orthogonal without waiting for a shared instance.  A witness of the overlap per pair, and of neither side holding the other:
-;; a rock is spatial and temporal; the line y=x is only spatial; a time is only temporal.
-(set/monotonic (orthogonal spatial temporal))
-;; a number is aspatial and atemporal (nowhere_never); a time is aspatial and temporal.
-(set/monotonic (orthogonal aspatial atemporal))
-;; the line y=x is spatial and atemporal, located in the Cartesian plane and in no time.
-(set/monotonic (orthogonal spatial atemporal))
-;; a time is aspatial and temporal: it is in time and located in no space.
-(set/monotonic (orthogonal aspatial temporal))
+;; tangible is below spatiotemporal and aspatial below intangible.  Stated or derived, each
+;; pair reads :orthogonal without waiting for a shared instance.
+;;
+;; spatiality_type and temporality_type classify a thing by location in space and by
+;; location in time, and orthogonalMetatypes crosses them, which derives the four pairs
+;; over spatial, aspatial, temporal and atemporal.  A witness per pair: a rock is spatial
+;; and temporal; the line y=x is spatial and atemporal, located in the Cartesian plane and
+;; in no time; a time is aspatial and temporal; a number is aspatial and atemporal.
+;; Each classifier holds types of more than one order, e.g. aspatial holds every
+;; relation, so each is at_least_metatype.  Each membership is definitional, so each is on
+;; the forced-monotonic roster.
+(comment spatiality_type "A type of thing by whether it has a location in some space: spatial or aspatial.")
+(comment temporality_type "A type of thing by whether it has a location in time: temporal or atemporal.")
+(at_least_metatype spatiality_type)
+(at_least_metatype temporality_type)
+(typeGenl spatiality_type thing)
+(typeGenl temporality_type thing)
+(forced_monotonic_predicate spatiality_type)
+(forced_monotonic_predicate temporality_type)
+(implementationNote spatiality_type "Its memberships are at default strength. Written monotonic, with (orthogonalMetatypes spatiality_type temporality_type), they give the derived orthogonals genlArg justifications that differ between authored order and a reloaded text export: https://github.com/vaelii/vaelii/issues/173")
+(implementationNote temporality_type "Its memberships are at default strength, for the reason the note on spatiality_type gives: https://github.com/vaelii/vaelii/issues/173")
+(spatiality_type spatial)
+(spatiality_type aspatial)
+(temporality_type temporal)
+(temporality_type atemporal)
+(orthogonalMetatypes spatiality_type temporality_type)
+(partitionedByType thing spatiality_type)
+(partitionedByType thing temporality_type)
 ;; a region of space is intangible and spatial.
 (set/monotonic (orthogonal intangible spatial))
 ;; a time is intangible and temporal.

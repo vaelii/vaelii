@@ -46,9 +46,9 @@
            (sees ?x ?y)))
 
 ;; ---- image_viewing: the ability, read as an event kind -------------------
-;; life.txt's hasCapability takes an event kind as its second argument
-;; (resources/kb/upper/life.txt): (hasCapability ?x ?eventKind) means ?x can be the
-;; doer of an event of that kind. image_viewing pairs with seeImage the way flying
+;; life.txt's hasCapability takes a happening kind as its second argument
+;; (resources/kb/upper/life.txt): (hasCapability ?x ?happeningKind) means ?x can be the
+;; doer of a happening of that kind, and image_viewing is an event kind. image_viewing pairs with seeImage the way flying
 ;; pairs with flies: the relation states who is looking, the event kind states the
 ;; ability to be its doer. Taking in an image changes nothing about what it depicts,
 ;; so image_viewing is a kind of acausal_event, abstract.txt's intersection of acausal

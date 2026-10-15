@@ -22,7 +22,7 @@
   `(arg transitiveInArg 3 transitive)` cannot say so — arg is
   open-world, and an untyped relation cannot violate it.  Naming the relation is what
   keeps this from being a `genl` special case: an argument can equally be preserved
-  along `partOf`, `connectedTo`, or anything else transitive.  `transitiveInArg` carries
+  along `tangiblePartOf`, `connectedTo`, or anything else transitive.  `transitiveInArg` carries
   the claim along `R`'s arrow and `transitiveInArgInverse` against it, the directions of
   Cyc's `transitiveViaArg` / `transitiveViaArgInverse`; the two names exist so neither
   direction requires declaring an inverse predicate that has no other purpose.
@@ -392,7 +392,7 @@
 (defn- reach
   "The terms one argument may be stated of, over **every** declaration at its
   position: a union, because each independently licenses the claim.  A position
-  preserved along both `genl` and a declared-transitive `partOf` reaches what either
+  preserved along both `genl` and a declared-transitive `tangiblePartOf` reaches what either
   reaches, and `below?` compares along the same union."
   [kb poss x context]
   (if (= 1 (count poss))

@@ -98,6 +98,12 @@ Seven **derived** predicates each name a disjunction:
 usually mean by "before". `subintervalOf` contains `:equal`, so it holds of an interval
 and itself, where `properSubintervalOf` does not. The last two are exact complements.
 
+`subintervalOf` and `properSubintervalOf` take two time intervals, and the other eighteen
+take any temporal thing. The network answers the two only over arguments that hold no
+type disjoint from `time_interval`. So `(during S1 S2)` between two situations answers
+`(hasSubinterval S2 S1)`, and answers neither `(subintervalOf S1 S2)` nor
+`(properSubintervalOf S1 S2)`. An argument with no type is admitted.
+
 All twenty are declared `binary_predicate` in `resources/kb/upper/time.txt`, beside the
 six instant predicates and the metric ones, each with its own `comment` sentex, in a domain file
 rather than `core.txt`, because they are *about* time and `core.txt` holds only the

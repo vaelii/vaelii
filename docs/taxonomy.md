@@ -1328,10 +1328,12 @@ covers `thing`:
 | `(partition thing temporal atemporal)` | a location in time | none |
 | `(partition thing tangible intangible)` | mass | no mass |
 
-`genl` edges in `core.txt` relate the parts across the three divisions. `tangible` is below
-`spatiotemporal`, which is below `spatial` and `temporal`. `aspatial` and `atemporal` are
-below `intangible`, and `nowhere_never` is below both. No edge or disjointness relates
-`intangible` to `spatial`: a region of space is `spatiotemporal` and `intangible`.
+`genl` edges in `core.txt` relate the parts across the three divisions. `physical` is below
+`spatial`: a location in the physical space of our universe, where the line y=x, located
+only in the Cartesian plane, has none. `tangible` is below `spatiotemporal`, which is
+below `physical` and `temporal`. `aspatial` and `atemporal` are below `intangible`, and
+`nowhere_never` is below both. No edge or disjointness relates `intangible` to `spatial`:
+a region of space is `spatiotemporal` and `intangible`.
 
 Two more partitions sit beside the three. `(partition thing causal acausal)` divides
 `thing` by whether it can be a cause. `causal` is below `temporal`, and `atemporal` is
@@ -1345,15 +1347,22 @@ intersection of `uninterrupted` and `situation`, and `static_situation` and `eve
 partition it. `static_situation` is the intersection of `uninterrupted` and `fluent`, and
 `event` the intersection of `uninterrupted` and `happening`.
 
-`core.txt` places `spatiotemporal` and `nowhere_never` by `genl` edges, not by
-`intersection`: a thing stated `spatial` and `temporal` is not concluded
-`spatiotemporal`, and a thing stated `aspatial` and `atemporal` is not concluded
-`nowhere_never`.
+`spatiotemporal` is by definition the intersection of `physical` and `temporal`. `core.txt`
+places `spatiotemporal` and `nowhere_never` by `genl` edges, not by `intersection`. A
+thing stated `physical` and `temporal` is not concluded `spatiotemporal`, nor concluded
+not `spatiotemporal`. A thing stated `aspatial` and `atemporal` is not concluded
+`nowhere_never`. `core.txt` records the definition of `spatiotemporal` in a comment beside
+its `genl` edges, not as a premise.
 
 A kind with no location in any space sits below `aspatial`, which separates it from
 `spatial` and from every argument `space.txt` types. `organization` (`core.txt`)
 and `quantity` (`measure.txt`) are below `aspatial`.
-`context`, `relation`, `measure` and `linguistic` are below `nowhere_never` in `core.txt`.
+`(separating nowhere_never logical linguistic quantitative)` in `core.txt` places three
+kinds below `nowhere_never` and separates them. `relation` and `context` are below
+`logical`, and `reflection.txt` places `proposition` there too. `measure` is below
+`quantitative` in `core.txt`, and `unit_of_measure`, `physical_dimension` and `sign_value`
+are below it in `measure.txt`. `quantity` is not below `quantitative`: a quantity is
+`temporal`.
 `language`, `unrepresented_term`, `symbol`, `formula` and `non_atomic_term` are below
 `linguistic` in `core.txt`, and the value kinds `string`, `number`, `keyword`, `boolean` and
 `character` are below `unrepresented_term`. Every context therefore reads each of
@@ -1828,7 +1837,7 @@ These are structural checks; the *content* check that an argument actually reach
 it to be a **subtype** — `arg` one level up. An `instance_relation_predicate` takes
 the first, a `type_relation_predicate` the second, and the same symbol answers them
 differently: `penguin` satisfies `(genlArg partType 1 tangible)` and fails
-`(arg partOf 1 tangible)`, which is exactly the distinction between a claim
+`(arg tangiblePartOf 1 tangible)`, which is exactly the distinction between a claim
 about a kind and a claim about a thing.
 
 **A constraint on a predicate binds its sub-predicates' tuples.** `(genl fatherOf

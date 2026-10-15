@@ -201,21 +201,21 @@
   ;; so the tuple is believed at CxA and OUT at CxB.
   ;;
   ;;   CxUniverse  (genl dog thing) (genl cat thing) (disjoint dog cat) monotonic
-  ;;   CxA         (partOf Kit Kit) default   (dog Kit) default
-  ;;               (partOf ?x ?x) => (cat ?x) monotonic
-  ;;   CxB sees CxA: (irreflexive partOf)
-  (tu/with-terms [partOf dog cat Kit CxA CxB]
+  ;;   CxA         (tangiblePartOf Kit Kit) default   (dog Kit) default
+  ;;               (tangiblePartOf ?x ?x) => (cat ?x) monotonic
+  ;;   CxB sees CxA: (irreflexive tangiblePartOf)
+  (tu/with-terms [tangiblePartOf dog cat Kit CxA CxB]
     (let [wiring  [(w (list 'genl dog 'thing) U) (w (list 'genl cat 'thing) U)
                    (w (list 'genlCx CxA U) U) (w (list 'genlCx CxB CxA) U)
                    (w (list 'disjoint dog cat) U :monotonic)]
-          content [(w (list 'irreflexive partOf) CxB :monotonic)
-                   (w (gen/forward (list 'implies (list partOf '?x '?x) (list cat '?x))) CxA
+          content [(w (list 'irreflexive tangiblePartOf) CxB :monotonic)
+                   (w (gen/forward (list 'implies (list tangiblePartOf '?x '?x) (list cat '?x))) CxA
                       :monotonic)
-                   (w (list partOf Kit Kit) CxA)
+                   (w (list tangiblePartOf Kit Kit) CxA)
                    (w (list dog Kit) CxA)]
           world    {:contexts #{U CxA CxB} :writes (into wiring content)}
-          expected {CxA {(list partOf Kit Kit) true (list cat Kit) true (list dog Kit) true}
-                    CxB {(list partOf Kit Kit) false (list cat Kit) false (list dog Kit) true}}
+          expected {CxA {(list tangiblePartOf Kit Kit) true (list cat Kit) true (list dog Kit) true}
+                    CxB {(list tangiblePartOf Kit Kit) false (list cat Kit) false (list dog Kit) true}}
           orders   (mapv #(into wiring %) (gen/permutations content))
           {fails :failures known :known} (expected-failures world orders expected)]
       (is (= [] (reference-agrees world expected)))

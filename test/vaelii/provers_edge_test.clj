@@ -74,20 +74,20 @@
 ;; ---- generic relation reasoners, in every argument mode ----------------
 
 (tu/deftest-kb a-transitive-predicate-answers-in-both-argument-directions
-  (tu/with-terms [partOf wheel axle machine]
-    (v/assert kb (list 'transitive partOf) 'CxUniverse)
-    (v/assert kb (list partOf wheel axle) 'CxUniverse)
-    (v/assert kb (list partOf axle machine) 'CxUniverse)
+  (tu/with-terms [tangiblePartOf wheel axle machine]
+    (v/assert kb (list 'transitive tangiblePartOf) 'CxUniverse)
+    (v/assert kb (list tangiblePartOf wheel axle) 'CxUniverse)
+    (v/assert kb (list tangiblePartOf axle machine) 'CxUniverse)
     (testing "forward: what is this part of? (the covered direction)"
-      (is (contains? (binds (v/ask kb (list partOf wheel '?w) 'CxUniverse) '?w)
+      (is (contains? (binds (v/ask kb (list tangiblePartOf wheel '?w) 'CxUniverse) '?w)
                      machine)))
     (testing "reverse: what are the parts of this? (reads the *predecessor* closure)"
-      (let [parts (binds (v/ask kb (list partOf '?p machine) 'CxUniverse) '?p)]
+      (let [parts (binds (v/ask kb (list tangiblePartOf '?p machine) 'CxUniverse) '?p)]
         (is (contains? parts axle)  "the direct part")
         (is (contains? parts wheel) "and the transitively reachable one")))
     (testing "ground both ways"
-      (is (v/ask? kb (list partOf wheel machine) 'CxUniverse))
-      (is (not (v/ask? kb (list partOf machine wheel) 'CxUniverse))))))
+      (is (v/ask? kb (list tangiblePartOf wheel machine) 'CxUniverse))
+      (is (not (v/ask? kb (list tangiblePartOf machine wheel) 'CxUniverse))))))
 
 (tu/deftest-kb a-reflexive-predicate-binds-either-open-argument-to-the-ground-one
   (tu/with-terms [sameRegionAs Paris Lyon]

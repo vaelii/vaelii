@@ -223,14 +223,14 @@
 
 (deftest scoped-predicate-properties-and-inverse
   (let [t (lattice)]
-    (tax/mark-prop t :transitive 'partOf 1 'CxA)
+    (tax/mark-prop t :transitive 'tangiblePartOf 1 'CxA)
     (tax/add-inverse t 'parentOf 'childOf 2 'CxB)
     (testing "a property holds where its declaration is visible"
-      (is (tax/has-prop? t :transitive 'partOf 'CxA))
-      (is (tax/has-prop? t :transitive 'partOf 'CxW))
-      (is (not (tax/has-prop? t :transitive 'partOf 'CxB)))
-      (is (tax/has-prop? t :transitive 'partOf))
-      (is (tax/has-prop? t :transitive 'partOf '?ctx)))
+      (is (tax/has-prop? t :transitive 'tangiblePartOf 'CxA))
+      (is (tax/has-prop? t :transitive 'tangiblePartOf 'CxW))
+      (is (not (tax/has-prop? t :transitive 'tangiblePartOf 'CxB)))
+      (is (tax/has-prop? t :transitive 'tangiblePartOf))
+      (is (tax/has-prop? t :transitive 'tangiblePartOf '?ctx)))
     (testing "an inverse answers where its declaration is visible"
       (is (= 'childOf (tax/inverse-of t 'parentOf 'CxB)))
       (is (= 'parentOf (tax/inverse-of t 'childOf 'CxW)))

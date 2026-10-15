@@ -1,6 +1,6 @@
 ;; CxAnatomy — what kinds of thing have what kinds of part. Every sentence here
-;; is a `partType` claim, which is the *type-level* reading of `partOf`: (partType bird
-;; wing) says birds have wings, where (partOf LeftWing Pingu) would say one particular
+;; is a `partType` claim, which is the *type-level* reading of `tangiblePartOf`: (partType bird
+;; wing) says birds have wings, where (tangiblePartOf LeftWing Pingu) would say one particular
 ;; thing is part of another. Sees the shared upper ontology via CxUniverse;
 ;; CxWell sees it.
 ;;
@@ -8,7 +8,7 @@
 ;; from "birds have wings" to "Pingu has a wing" needs a quantifier reading — every
 ;; bird has SOME wing, a wing nobody has named — and inventing one is how a claim about
 ;; kinds silently becomes a false claim about things. `typeToInstancePred` records that
-;; partType and partOf are two readings of one relation without moving a claim between
+;; partType and tangiblePartOf are two readings of one relation without moving a claim between
 ;; them; a KB that wants the individual parts states them.
 
 (genlCx CxAnatomy CxUniverse)

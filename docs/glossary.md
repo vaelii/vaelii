@@ -255,7 +255,7 @@ in — every sentex is in exactly one. Contexts form a `genlCx` hierarchy: a
 sub-context *sees* its supers. Names start with `Cx`, then CapitalCamelCase. See
 [contexts.md](contexts.md).
 
-**`context` (ontology type)** ![kb](../.github/badges/cat-kb.svg): The collection of contexts, below `nowhere_never` — `(genl context nowhere_never)` — and disjoint from `expression`: a context is what an expression names. The theory a sentex holds in is the knowledge-stratum sense, **Context**. See [taxonomy.md](taxonomy.md).
+**`context` (ontology type)** ![kb](../.github/badges/cat-kb.svg): The collection of contexts, below `logical` and so below `nowhere_never`, and disjoint from `expression`: a context is what an expression names. The theory a sentex holds in is the knowledge-stratum sense, **Context**. See [taxonomy.md](taxonomy.md).
 
 **Contradiction** ![tms](../.github/badges/cat-tms.svg): A believed `P` and
 `(not P)` visible from a common context. A defeasible tie is a *represented
@@ -587,6 +587,12 @@ that are not well-formed, so say nothing: some operator has the wrong number of
 arguments, e.g. `(dog Muffet Rex)` for a one-place `dog`. With `wff` it partitions
 `formula`. See [taxonomy.md](taxonomy.md).
 
+**`implementationNote`** ![kb](../.github/badges/cat-kb.svg): A documentation sentex,
+`(implementationNote <term> "…")`, that records how the engine or the KB text implements a
+term, or where that implementation stops short. A sibling of `comment`, not a
+specialization of it: `comment` carries what a term means, and an implementation note
+carries how the meaning is carried out. No inference path reads it.
+
 **`indeterminate_term`** ![kb](../.github/badges/cat-kb.svg): The extensible
 category of terms that stand for some object without pinning down which. A skolem
 constant is its built-in first member, read off the `SkolemFn` expression it was minted
@@ -829,7 +835,9 @@ stored exception answers `(orthogonal a b)` and is read as one. See
 
 ## P
 
-**`partitionedByType`** ![kb](../.github/badges/cat-kb.svg): Declares the cells that exhaustively and disjointly partition a whole, each cell an instance of a named classifier. Inert — declared, read by no inference path. See [taxonomy.md](taxonomy.md).
+**`partitionedByType`** ![kb](../.github/badges/cat-kb.svg): `(partitionedByType ?whole ?classifier)` says that the members of a classifier partition a whole, e.g. `(partitionedByType tangible origin_type)` for `made` and `natural`. core.txt rules place each member under the whole and separate every two members. No rule draws the coverage half, so a `partition` stated beside the fact carries it. See [taxonomy.md](taxonomy.md).
+
+**`partOf`** ![kb](../.github/badges/cat-kb.svg): `(partOf ?part ?whole)` says that one thing is a part of another, of any kind. `partOf` is transitive, reflexive and untyped in both positions, and the KB states that it is not antisymmetric. `tangiblePartOf`, `partOfRegion`, `subSituationOf` and `subintervalOf` are below it by `genl`, so a fact of any of the four answers `partOf`. A `partOfRegion` or `subintervalOf` tuple the RCC-8 or interval network entails answers `partOf` too, and a proper one answers `properPartOf`. Its proper reading is `properPartOf`. Every spec of `partOf` is reflexive or below `properPartOf`. See [taxonomy.md](taxonomy.md).
 
 **Path consistency** ![qr](../.github/badges/cat-qr.svg): The fixpoint that
 tightens a constraint network: for every triple, intersect the constraint on a
@@ -841,6 +849,8 @@ and it is order-independent. See [qcn.md](qcn.md).
 variables, are read as a *pattern to match* rather than as a claim. Never stored as a non-rule
 sentence — `checks/check-ground` refuses that — so a pattern reaches the engine only as a
 goal or inside a rule. See [inference.md](inference.md).
+
+**`physical`** ![kb](../.github/badges/cat-kb.svg): An entity with a location in the physical space of our universe. A region of physical space is physical; the line y=x, located only in the Cartesian plane, is not. Below `spatial`; `spatiotemporal` is below it. See [taxonomy.md](taxonomy.md#the-three-partitions-of-thing).
 
 **Placement context** ![inference](../.github/badges/cat-inference.svg): Where a
 forward-derived sentex lands — the maximal contexts that see the firing rule and
@@ -903,6 +913,14 @@ nothing about variables. A `reflection.txt` collection too, `predication`, parti
 unconditionally (subject to defeat/supersession), as opposed to a derived
 conclusion resting on a justification. Carries an assumption strength. See
 [nmtms.md](nmtms.md).
+
+**`properCounterpart`** ![kb](../.github/badges/cat-kb.svg): `(properCounterpart ?predicate ?properPredicate)` says that `(?properPredicate x y)` holds exactly when `(?predicate x y)` holds and `(?predicate y x)` does not. A core.txt generator stamps the definition for each pair, and the proper tuple needs a believed denial of the reverse tuple, not its absence. The other half, a proper tuple denying the reverse plain one, is a rule stated once at a family's root. Declared of `partOf` and `properPartOf`, and of each parthood relation and its proper reading. See [taxonomy.md](taxonomy.md).
+
+**`properPartOf`** ![kb](../.github/badges/cat-kb.svg): `(properPartOf ?part ?whole)` says that one thing is a part of another and the other is not a part of it. Irreflexive, transitive, untyped and below `partOf`. `properTangiblePartOf`, `properSubSituationOf`, `properPartOfRegion` and `properSubintervalOf` are below it. See [taxonomy.md](taxonomy.md).
+
+**`properSubSituationOf`** ![kb](../.github/badges/cat-kb.svg): `(properSubSituationOf ?part ?whole)` says that one situation is a part of another and the other is not a part of it. Irreflexive, transitive, and below `subSituationOf` and `properPartOf`. See [time.md](time.md).
+
+**`properTangiblePartOf`** ![kb](../.github/badges/cat-kb.svg): `(properTangiblePartOf ?part ?whole)` says that one tangible is a component of another and the other is not a component of it. Irreflexive, transitive, and below `tangiblePartOf` and `properPartOf`. See [inherit.md](inherit.md).
 
 **Provenance** ![backend](../.github/badges/cat-backend.svg): The per-handle open
 map kept beside a record — `:creator` / `:created` and any application fields —
@@ -1177,7 +1195,7 @@ by a build whose source identity equals the one the image was written under. See
 
 **`spatial`** ![kb](../.github/badges/cat-kb.svg): An entity with a location in some space — physical space, or a mathematical one such as the Cartesian plane, where the line y=x is located though it has no location in the world. `spatial` and `aspatial` partition `thing`, and every argument of the spatial calculi is declared at `spatial`. See [space.md](space.md).
 
-**`spatiotemporal`** ![kb](../.github/badges/cat-kb.svg): An entity with a location in space and time — a physical object, a region, a place. Below both `spatial` and `temporal`. See [space.md](space.md).
+**`spatiotemporal`** ![kb](../.github/badges/cat-kb.svg): An entity with a location in physical space and time — a physical object, a region, a place. Below both `physical` and `temporal`, and so below `spatial`. By definition the intersection of `physical` and `temporal`; `core.txt` places it by `genl` edges, so a thing stated `physical` and `temporal` is not concluded `spatiotemporal`. See [space.md](space.md).
 
 **Spurious miss** ![backend](../.github/badges/cat-backend.svg): A miss of a
 derived-state row whose recompute returns the value a write retired: the write retired
@@ -1193,6 +1211,8 @@ purely positive cycle is ordinary recursion. See [exceptions.md](exceptions.md).
 premise / the class a justification confers — exactly two, `:monotonic` >
 `:default`. It propagates from the antecedents: a conclusion is never stronger
 than what it rests on. See [nmtms.md](nmtms.md).
+
+**`subSituationOf`** ![kb](../.github/badges/cat-kb.svg): `(subSituationOf ?part ?whole)` says that one situation is a part of another. `subSituationOf` is transitive, reflexive and below `partOf`, and its proper reading is `properSubSituationOf`. A part's time is within its whole's time, and two situations sharing a time are not thereby parts of one another. See [time.md](time.md).
 
 **Subsumption (rules)** ![inference](../.github/badges/cat-inference.svg): One rule
 covering another — a substitution σ making the covering rule's antecedents a subset of the
@@ -1244,6 +1264,8 @@ orders at match time. See [canonicalization.md](canonicalization.md).
 
 **`tangible`** ![kb](../.github/badges/cat-kb.svg): An entity with mass — and so, necessarily, a location in space and time: below `spatiotemporal`. `tangible` and `intangible` partition `thing`. See [taxonomy.md](taxonomy.md#the-three-partitions-of-thing).
 
+**`tangiblePartOf`** ![kb](../.github/badges/cat-kb.svg): `(tangiblePartOf ?part ?whole)` says that one tangible is a component of another, e.g. an engine of a car. `tangiblePartOf` is transitive, reflexive and below `partOf`, and its proper reading is `properTangiblePartOf`. `partType` is its type-level reading. See [inherit.md](inherit.md).
+
 **Taxonomy** ![kb](../.github/badges/cat-kb.svg): The in-memory cache of the
 `genl` / `genlCx` closures, the equality partition, the predicate metadata,
 and the disjointness caches, reconciled each `settle`. Each reads the network's labels,
@@ -1287,7 +1309,7 @@ hierarchy — every type reaches `thing` upward. See [taxonomy.md](taxonomy.md).
 licenses carrying a claim about `P`'s *n*-th argument across an `R`-related pair,
 along `R`'s arrow: a stored `(P … W …)` and `(R W A)` give `(P … A …)`, as Cyc's
 `transitiveViaArg` does. `transitiveInArgInverse` carries it against the arrow — what
-makes "the part of a wooden table is wooden" derivable from `partOf` without a rule per
+makes "the part of a wooden table is wooden" derivable from `tangiblePartOf` without a rule per
 predicate. See [inherit.md](inherit.md).
 
 **Transitivity** ![kb](../.github/badges/cat-kb.svg): The lifeblood of common

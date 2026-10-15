@@ -66,6 +66,7 @@
             [vaelii.impl.caches :as caches]
             [vaelii.impl.except :as exc]
             [vaelii.impl.jtms :as jtms]
+            [vaelii.impl.kb :as kb]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.protocols :as p]
@@ -122,11 +123,16 @@
   than per call: `calculi-triggered-by` runs per asserted sentence, and computing a union
   there would allocate a set per assert.
 
+  `typed` is the set of predicates whose `arg` declarations are narrower than the
+  network's nodes, so an entailment of one is answered only over arguments its declared
+  types admit (`solve-goal`).  Empty for a calculus whose every predicate takes any node.
+
   The value carries the two caches its passes fill, so it is also registered in
   `built-calculi` on the way out — that is how a reader can be told what they hold
   without every calculus namespace having to say so itself."
   ([nm algebra denotation] (calculus nm algebra denotation nil))
-  ([nm algebra denotation narrowing]
+  ([nm algebra denotation narrowing] (calculus nm algebra denotation narrowing #{}))
+  ([nm algebra denotation narrowing typed]
    (let [answered (set (keys denotation))
          c {:name       nm
             ;; the algebra is carried exactly as written — a plain value a test can reason
@@ -136,6 +142,7 @@
             :algebra    algebra
             :denotation denotation
             :predicates answered
+            :typed      (set typed)
             :narrowing  narrowing
             :node?      (or (:node? narrowing) node-term?)
             :trigger-predicates (into answered (:sources narrowing))
@@ -832,6 +839,34 @@
                (contains? (:predicates calc) (first lit)))
       lit)))
 
+(defn- declared-arg-types
+  "`[types1 types2]`: the types the `arg` declarations `context` sees bind `pred`'s two
+  positions to, `pred`'s own and its visible super-predicates' — the reader `assert`'s
+  argument check uses (`res/constraining-predicates`)."
+  [kb pred context]
+  (let [ps (res/constraining-predicates kb 'arg pred context)]
+    (mapv (fn [n]
+            (into #{}
+                  (for [p     ps
+                        [_ b] (res/matches-visible kb (list 'arg p n '?t) context)
+                        :let  [t (get b '?t)]
+                        :when (and (symbol? t) (not (pvar? t)))]
+                    t)))
+          [1 2])))
+
+(defn- admits-fn
+  "A predicate `(fn [x position] …)`: does every type `types` names for `position` (0 or
+  1) admit node `x`?  A type admits a node unless the node holds a type `context` sees as
+  disjoint from it, so an untyped node is admitted, as `assert` admits it.  Each node's
+  types are read once per call."
+  [kb types context]
+  (let [tax  (reasoning/taxonomy kb)
+        held (memoize (fn [x] (vec (kb/types-of kb x context))))]
+    (fn [x position]
+      (let [hs (held x)]
+        (not-any? (fn [t] (some #(tax/disjoint? tax % t context) hs))
+                  (nth types position))))))
+
 (defn- solve-goal
   "Solutions for a goal `(P a b)` — or `(not (P a b))` — in `context`, read off the
   path-consistent network.
@@ -851,6 +886,13 @@
   allows anywhere else, and it is licensed by the algebra, not by a closed world.  It
   stays sound in only one direction: a refutation is real, while a **failure** to refute
   is still \"not provable\", never \"provably true\".
+
+  **A typed predicate is answered within its declared domain.**  For a predicate in the
+  calculus's `:typed` set, a positive answer also needs each argument admitted by the
+  types its `arg` declarations name (`admits-fn`).  `subintervalOf` takes time intervals,
+  while the base relation `during` it is read from takes any temporal thing, so
+  `(during S1 S2)` between two situations answers `during` and not `subintervalOf`.
+  Refutation reads the network alone.
 
   Four shapes, on which of the two arguments are bound, and they behave the same under
   either polarity: a ground pair is a check, one variable enumerates the nodes, and two
@@ -883,12 +925,15 @@
          [net pc extended?] (tighten-for-goal kb calc context extra)
          pairs (when-not extended? pairs)]
      (when-not (= pc :inconsistent)
-       (let [holds? (fn [x y]
-                      (let [poss (constraint calc pc x y)]
-                        (and (seq poss)
-                             (if neg?
-                               (empty? (set/intersection poss denot))
-                               (set/subset? poss denot)))))
+       (let [admits? (when (and (not neg?) (contains? (:typed calc) pred))
+                       (admits-fn kb (declared-arg-types kb pred context) context))
+             holds?  (fn [x y]
+                       (let [poss (constraint calc pc x y)]
+                         (and (seq poss)
+                              (if neg?
+                                (empty? (set/intersection poss denot))
+                                (set/subset? poss denot))
+                              (or (nil? admits?) (and (admits? x 0) (admits? y 1))))))
              answer (fn [x y] (cond-> {} (pvar? a) (assoc a x) (pvar? b) (assoc b y)))]
          (if pairs
            ;; the diagonal is asked for by `(P ?x ?x)` alone, and its constraint is the
@@ -919,19 +964,45 @@
                :else
                (for [x ns y ns :when (and (not= x y) (holds? x y))] (answer x y))))))))))
 
+(defn- lifted-predicates
+  "The calculus predicates `goal`'s predicate sits above by `genl`, as `context` sees the
+  edges, when `goal` is a positive binary literal on a predicate the calculus does not
+  answer; else nil.  `(genl subintervalOf partOf)` makes every `subintervalOf` tuple a
+  `partOf` tuple, so a `partOf` goal lifts to `subintervalOf`."
+  [calc kb goal context]
+  (when (and (sequential? goal) (= 3 (count goal)))
+    (let [q (first goal)]
+      (when (and (symbol? q) (not (pvar? q)) (not= sx/not-functor q)
+                 (not (contains? (:predicates calc) q)))
+        ;; most predicates have no spec, so the one closure read answers them
+        (let [specs (tax/specs (reasoning/taxonomy kb) q context)]
+          (when (< 1 (count specs))
+            (seq (sort (filter #(contains? (:predicates calc) %) specs)))))))))
+
+(defn- answered-goals
+  "The calculus goals `goal` is answered by: `goal` itself when the calculus claims it,
+  else one `(P a b)` per calculus predicate P the goal's predicate lifts to."
+  [calc kb goal context]
+  (if (claimed-literal calc goal)
+    [goal]
+    (map #(list % (nth goal 1) (nth goal 2)) (lifted-predicates calc kb goal context))))
+
 (defrecord CalculusProver [calculus]
   prover-types/Prover
   ;; both polarities: `(P a b)` is claimed by entailment and `(not (P a b))` by
   ;; refutation, and a believed negative literal is itself read into the network as a
-  ;; constraint — so the goal and the fact meet in the same place.
-  (applicable? [_ _ goal _]
-    (some? (claimed-literal calculus goal)))
+  ;; constraint — so the goal and the fact meet in the same place.  A positive goal on a
+  ;; super-predicate of a calculus predicate is answered too, by lifting
+  ;; (`lifted-predicates`): an entailed tuple is a tuple of every predicate above its own.
+  (applicable? [_ kb goal context]
+    (or (some? (claimed-literal calculus goal))
+        (some? (lifted-predicates calculus kb goal context))))
   ;; O(1) reads and an upper bound: the node count bounds an open enumeration, and the number of
   ;; stored facts of this calculus bounds the node count.  That is a sum of O(1)
   ;; predicate-extent reads, where actually building the network is a query per predicate —
   ;; an estimate must not cost what it estimates.
   (est-bindings [_ kb goal _]
-    (let [[_ a b] (claimed-literal calculus goal)
+    (let [[_ a b] (or (claimed-literal calculus goal) goal)
           n (max 1 (reduce + (map #(reads/stored-count-with-functor (:index kb) %)
                                   (:predicates calculus))))]
       (cond (and (pvar? a) (pvar? b)) (* n n)
@@ -949,7 +1020,11 @@
   ;; What the network cannot read is a claim nobody stored — which is `sole-prover`'s
   ;; question rather than this one's, asked once of the goal instead of once per
   ;; claimant.
-  (completeness [_ _ _ _] 100)
+  ;;
+  ;; A lifted goal is one reader among several: the super-predicate has stored tuples and
+  ;; other specs the network does not read, so the answer augments theirs.
+  (completeness [_ _ goal _]
+    (if (claimed-literal calculus goal) 100 50))
   ;; A **variable** context means "in some context", and the answer to that is the
   ;; union of what the readers answer — not one read taken over the union of what they
   ;; see.  Those differ, and in the unsound direction: `(ntpp A B)` in one context and
@@ -958,9 +1033,14 @@
   ;; entailed.  Every other prover reads a variable context as "any", and the fan is what
   ;; makes this one agree: each binding it yields is entailed for a reader that exists.
   (solve [_ kb goal context]
-    (if (pvar? context)
-      (distinct (mapcat #(solve-goal calculus kb goal %) (reader-contexts kb calculus)))
-      (solve-goal calculus kb goal context))))
+    (let [goals (answered-goals calculus kb goal context)
+          one   (fn [g]
+                  (if (pvar? context)
+                    (mapcat #(solve-goal calculus kb g %) (reader-contexts kb calculus))
+                    (solve-goal calculus kb g context)))]
+      (if (and (= 1 (count goals)) (not (pvar? context)))
+        (one (first goals))
+        (distinct (mapcat one goals))))))
 
 (defn prover
   "The entailment prover for `calc`, to register with `vaelii.core/add-prover`."

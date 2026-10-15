@@ -93,11 +93,11 @@
   ;; Which entry point refuses it is the spelling's to say.  A snake_case property is a unary
   ;; predicate by its name, so a second argument is a NAMING violation and never reaches
   ;; `prop-problems`; a bare lowercase one claims no arity and is caught by `wff`.
-  (tu/with-terms [partOf otherPred]
+  (tu/with-terms [tangiblePartOf otherPred]
     (doseq [prop '[transitive symmetric reflexive functional
                    decontextualized_predicate forced_decontextualized_predicate]]
       (is (= (if (str/includes? (name prop) "_") :naming :not-well-formed)
-             (ex-type #(v/assert kb (list prop partOf otherPred) 'CxUniverse)))
+             (ex-type #(v/assert kb (list prop tangiblePartOf otherPred) 'CxUniverse)))
           (str prop " takes one argument")))))
 
 (tu/deftest-kb inverse-relates-two-predicates

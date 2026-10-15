@@ -5,8 +5,8 @@
 (genlCx CxMereology CxUniverse)
 (genlCx CxWell CxMereology)
 
-(set/forwardRule (implies (and (partOf ?part ?whole) (locatedIn ?whole ?place))
+(set/forwardRule (implies (and (tangiblePartOf ?part ?whole) (locatedIn ?whole ?place))
                           (locatedIn ?part ?place)))
 
-(set/forwardRule (implies (and (owns ?p ?whole) (partOf ?part ?whole))
+(set/forwardRule (implies (and (owns ?p ?whole) (tangiblePartOf ?part ?whole))
                           (owns ?p ?part)))

@@ -1,7 +1,7 @@
 ;; life.txt — relations about organisms: kinship (parentOf/childOf/siblingOf/
 ;; ancestorOf/grandparentOf), age (birthYearOf/olderThan/mortal), and behaviour
-;; (eats, and the capabilityType/hasCapability pair, whose second argument is an
-;; event kind such as abstract.txt's flying or travelling). Loaded into CxUniverse with
+;; (eats, and the capabilityType/hasCapability pair, whose second argument is a
+;; happening kind such as abstract.txt's flying or travelling). Loaded into CxUniverse with
 ;; the rest of kb/upper/.
 
 (comment alive
@@ -87,19 +87,19 @@
 (arg grandparentOf 2 organism)
 
 (comment capabilityType
-         "(capabilityType ?kind ?eventKind) means that a ?kind can be the doer of an event of kind ?eventKind. The type-level reading of hasCapability: (capabilityType bird flying) says the kind flies, where (hasCapability Tweety flying) says one bird does. Two predicates rather than one because they are two claims — a claim about a kind and a claim about a member — and one symbol read at both levels has to declare one position's argument check for both, which is a choice that mistypes whichever half it was not written for. Declared transitiveInArgInverse along genl on the FIRST position, which carries a claim about a kind down to its subkinds: a kind of bird flies with nothing written about it. Declared transitiveInArg along genl on the second, which carries it UP the genl hierarchy of event kinds: flying is a kind of travelling, so a kind that can fly can travel. Paired with hasCapability, and the pairing moves no claim between the two: going from the kind to its members needs a quantifier reading (every bird, or some bird) that nothing here fixes, so the descent is a rule written where the kinds are. The comment below hasCapability says why that pairing is prose rather than a typeToInstancePred sentex.")
+         "(capabilityType ?kind ?happeningKind) means that a ?kind can be the doer of a happening of kind ?happeningKind. The type-level reading of hasCapability: (capabilityType bird flying) says the kind flies, where (hasCapability Tweety flying) says one bird does. Two predicates rather than one because they are two claims — a claim about a kind and a claim about a member — and one symbol read at both levels has to declare one position's argument check for both, which is a choice that mistypes whichever half it was not written for. Declared transitiveInArgInverse along genl on the FIRST position, which carries a claim about a kind down to its subkinds: a kind of bird flies with nothing written about it. Declared transitiveInArg along genl on the second, which carries it UP the genl hierarchy of happening kinds: flying is a kind of travelling, so a kind that can fly can travel. Paired with hasCapability, and the pairing moves no claim between the two: going from the kind to its members needs a quantifier reading (every bird, or some bird) that nothing here fixes, so the descent is a rule written where the kinds are. The comment below hasCapability says why that pairing is prose rather than a typeToInstancePred sentex.")
 (binary_predicate capabilityType)
 (set/monotonic (type_relation_predicate capabilityType))
 (genlArg capabilityType 1 animal)
-(genlArg capabilityType 2 event)
+(genlArg capabilityType 2 happening)
 (set/monotonic (transitiveInArgInverse capabilityType 1 genl))
 (transitiveInArg capabilityType 2 genl)
 
 (comment hasCapability
-         "(hasCapability ?animal ?eventKind) means that ?animal can be the doer of an event of kind ?eventKind. The instance-level reading: (hasCapability Tweety flying) says this bird can fly and says nothing about birds, where the claim about the kind is capabilityType. The descent from the one to the other is a rule written where the kinds are, never an inference from the pairing. Carries no relation_kind because it is MIXED — the first position holds one animal and takes arg, the second names an event KIND and takes genlArg — and the metatype classifies a predicate whose two ends sit at one level, so result and functionCorrespondingPredicate are left unmarked for the same reason. Declared transitiveInArg along genl on the second position, which carries a claim up the genl hierarchy of event kinds: flying is a kind of travelling, so whatever can fly can travel.")
+         "(hasCapability ?animal ?happeningKind) means that ?animal can be the doer of a happening of kind ?happeningKind. The instance-level reading: (hasCapability Tweety flying) says this bird can fly and says nothing about birds, where the claim about the kind is capabilityType. The descent from the one to the other is a rule written where the kinds are, never an inference from the pairing. Carries no relation_kind because it is MIXED — the first position holds one animal and takes arg, the second names a happening KIND and takes genlArg — and the metatype classifies a predicate whose two ends sit at one level, so result and functionCorrespondingPredicate are left unmarked for the same reason. Declared transitiveInArg along genl on the second position, which carries a claim up the genl hierarchy of happening kinds: flying is a kind of travelling, so whatever can fly can travel.")
 (binary_predicate hasCapability)
 (arg hasCapability 1 animal)
-(genlArg hasCapability 2 event)
+(genlArg hasCapability 2 happening)
 (transitiveInArg hasCapability 2 genl)
 
 ;; The pairing is stated in both comments above and NOT as (typeToInstancePred
@@ -122,6 +122,13 @@
 (unary_predicate mortal)
 (arg mortal 1 organism)
 (genl mortal organism)
+
+;; A dead dog is an animal that is not alive, and a living oak is alive and no animal.
+;; dead and mortal cut across animal the same way, e.g. a hydra is an animal that is not
+;; mortal.
+(orthogonal animal mortal)
+(orthogonal animal dead)
+(orthogonal animal alive)
 
 (comment MotherFn
          "(MotherFn ?animal) means the mother of ?animal. The same shape as FatherFn, over motherOf.")
@@ -175,3 +182,5 @@
 (unary_predicate warm_blooded)
 (arg warm_blooded 1 animal)
 (genl warm_blooded animal)
+;; Mammals and birds are warm-blooded, so a warm-blooded animal is a vertebrate by default.
+(genl warm_blooded vertebrate)

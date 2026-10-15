@@ -362,12 +362,12 @@
       (v/assert kb (list pred o) 'CxUniverse))))
 
 (tu/deftest-kb the-surviving-claims-are-realized-inside-the-memo-that-computed-them
-  (tu/with-terms [partOf needsWork]
+  (tu/with-terms [tangiblePartOf needsWork]
     (let [base   (tu/tmp-ind "Part")
           owners (vec (repeatedly 5 #(tu/tmp-ind "Whole")))
           goal   (list needsWork base)
           drain  #(doall (inherit/surviving kb goal 'CxUniverse))]
-      (preserved-fan! kb partOf needsWork base owners)
+      (preserved-fan! kb tangiblePartOf needsWork base owners)
       (drain)                                   ; warm whatever caches persist between asks
       (let [bare (visible-reads drain)
             held (visible-reads #(inherit/with-memo (drain)))]
@@ -383,12 +383,12 @@
   ;; `solve-with-support`'s open arm is the other escape: `licensed-product` walks a reach
   ;; per claim and `supports-for` opens a memo of its own per tuple, so a seq handed out
   ;; shares nothing between the tuples of one literal.  Same measurement, same claim.
-  (tu/with-terms [partOf needsWork]
+  (tu/with-terms [tangiblePartOf needsWork]
     (let [base   (tu/tmp-ind "Part")
           owners (vec (repeatedly 5 #(tu/tmp-ind "Whole")))
           lit    (list needsWork '?x)
           drain  #(doall (inherit/solve-with-support kb lit '?ctx))]
-      (preserved-fan! kb partOf needsWork base owners)
+      (preserved-fan! kb tangiblePartOf needsWork base owners)
       (drain)
       (let [bare (visible-reads drain)
             held (visible-reads #(inherit/with-memo (drain)))]

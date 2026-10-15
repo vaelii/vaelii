@@ -1069,7 +1069,7 @@
 
 (defn- retract-added!
   "Retract every premise the test added since `before` (a set of sentex ids), and every
-  record it added that is not a network datum at all.  A roster declaration whose
+  record it added that is not a network datum at all, and every inert sentex it added.  A roster declaration whose
   retraction `retract!` refuses an author (`checks/forcing-retraction-problem`) is
   retracted too, since a test that loads the upper ontology into a scratch KB owes the
   baseline.  Dependency-directed retraction sweeps the derived consequences, so the KB
@@ -1078,8 +1078,13 @@
   (with-redefs [checks/forcing-retraction-problem (constantly nil)]
     (loop [guard 0]
       (let [prems (premise-ids kb)
+            ;; An inert sentex restored by `import!` is a TMS datum held OUT with no
+            ;; strength, so it is neither a premise nor an unknown datum, and it is
+            ;; retracted by the third test.
+            inert (fn [h] (and (nil? (:strength (v/sentex kb h))) (not (v/in? kb h))))
             added (filter #(and (not (contains? before %))
-                                (or (prems %) (not (jtms/known-datum? (reasoning/tms kb) %))))
+                                (or (prems %) (not (jtms/known-datum? (reasoning/tms kb) %))
+                                    (inert %)))
                           (p/sentex-ids (:records kb)))]
         (when (and (seq added) (< guard 50))
           (doseq [h added] (try (v/retract! kb h) (catch Throwable _)))

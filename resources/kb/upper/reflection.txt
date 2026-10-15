@@ -37,13 +37,6 @@
 (comment negated_predication "A predication under not, e.g. (not (dog Muffet)), (not (parentOf ?x Tom)).")
 (genl expression linguistic)
 (set/monotonic (disjoint expression language))
-;; No written form is itself a relation or a context: a relation or a context is what an
-;; expression NAMES, not what an expression IS.  symbol reaches the relation disjoint
-;; through atomic_term and atomic_expression, so (disjoint symbol predicate) holds: a
-;; symbol is what (Quote dog) denotes, not what dog denotes, and dog written plainly in a
-;; sentence denotes the predicate dog.
-(set/monotonic (disjoint expression relation))
-(set/monotonic (disjoint expression context))
 (genl non_atomic_expression expression)
 (partition expression atomic_expression non_atomic_expression)
 (partition atomic_expression atomic_term variable)
@@ -55,6 +48,9 @@
 (genl non_atomic_term non_atomic_expression)
 (genl formula non_atomic_expression)
 (set/monotonic (disjoint formula non_atomic_term))
+;; A literal can be ill-formed, e.g. (dog Muffet Fido) with dog unary, and a well-formed
+;; term is a wff_expression that is no literal.
+(orthogonal literal wff_expression)
 (genl literal formula)
 (genl predication literal)
 (genl negated_predication literal)
@@ -144,10 +140,9 @@
 ;; carries.
 (comment proposition "What a wff_sentence expresses: semantic content whose truth is evaluated in a context, which sentences in any language can carry. (dog Muffet) and \"Muffet est un chien\" express one proposition.")
 (unary_predicate proposition)
-(genl proposition nowhere_never)
-(set/monotonic (disjoint proposition linguistic))
-;; What a relation relates or says is not itself an operator.
-(set/monotonic (disjoint proposition relation))
+;; What a sentence says is neither an operator nor what the sentence holds in.  core.txt
+;; separates relation from context; this roster adds proposition.
+(set/monotonic (separating logical relation proposition context))
 
 (comment means "(means ?expression ?meaning) means that ?expression, a closed wff_expression, has ?meaning as its semantic content: for a term what it denotes, for a sentence the proposition it expresses. (means (Quote Muffet) Muffet). Read in the context the sentence is stated in, which supplies the interpretation. Functional: an expression has at most one meaning in a context.")
 (binary_predicate means)

@@ -24,7 +24,7 @@
   The cast's type memberships live in CxNaturalWorld, so the biology and kinship
   theories — which every CxWell descendant sees — place their conclusions back in
   CxNaturalWorld, where the tests query them.  Social facts sit in a sibling
-  CxSocialWorld, so a rule joining an owns-fact with a natural-world partOf-fact
+  CxSocialWorld, so a rule joining an owns-fact with a natural-world tangiblePartOf-fact
   finds no shared context and does not fire — the placement isolation the tests check.
 
   `load-into` layers onto a KB that already has the starter schema."
@@ -55,7 +55,7 @@
   '[(parentOf Tom Bob) (parentOf Bob Ann) (parentOf Bob Carol) (parentOf Dave Eve)
     (siblingOf Ann Carol)
     (eats Muffet Kibble) (eats Muffet Bone1)
-    (partOf Engine1 Car1) (partOf Piston1 Engine1)
+    (tangiblePartOf Engine1 Car1) (tangiblePartOf Piston1 Engine1)
     (locatedIn Car1 Garage1) (locatedIn Garage1 House1)])
 
 (def fluent-functions
@@ -108,7 +108,7 @@
 
     (marriedTo Bob Nancy)
     (owns Tom Car1) (owns Tom House1)
-    (partOf Roof1 House1) (partOf Chimney1 House1)
+    (tangiblePartOf Roof1 House1) (tangiblePartOf Chimney1 House1)
     (likes Ann Muffet)
     (birthYearOf Tom 1970) (birthYearOf Bob 1995)])
 

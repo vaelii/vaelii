@@ -185,21 +185,21 @@
     :shows "Location was stated of the car and parthood of the wheel; the conclusion is
             about neither on its own. Retract either premise and it goes — the
             justification names both, so the sweep is dependency-directed."
-    :rests-on [['(implies (and (partOf ?part ?whole) (locatedIn ?whole ?place))
+    :rests-on [['(implies (and (tangiblePartOf ?part ?whole) (locatedIn ?whole ?place))
                           (locatedIn ?part ?place))
                 'CxMereology]]
     :premises '[(vehicle CarEx) (made WheelEx) (building GarageEx)
-                (partOf WheelEx CarEx) (locatedIn CarEx GarageEx)]
+                (tangiblePartOf WheelEx CarEx) (locatedIn CarEx GarageEx)]
     :goal '(locatedIn WheelEx GarageEx) :expect :yes}
 
    {:id "owns-parts" :group "Rules that join"
     :title "Owning a whole is owning its parts"
     :shows "The same join shape on a social relation rather than a spatial one. One
             rule, and every part of everything anyone owns follows."
-    :rests-on [['(implies (and (owns ?p ?whole) (partOf ?part ?whole)) (owns ?p ?part))
+    :rests-on [['(implies (and (owns ?p ?whole) (tangiblePartOf ?part ?whole)) (owns ?p ?part))
                 'CxMereology]]
     :premises '[(person AdaEx) (vehicle CarEx) (made WheelEx)
-                (owns AdaEx CarEx) (partOf WheelEx CarEx)]
+                (owns AdaEx CarEx) (tangiblePartOf WheelEx CarEx)]
     :goal '(owns AdaEx WheelEx) :expect :yes}
 
    {:id "symmetry-then-rule" :group "Rules that join"

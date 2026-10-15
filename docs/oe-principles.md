@@ -195,3 +195,11 @@ An inferentially inert defining rule is still better than text, because it is mo
 - Run `kb-integrity` over the new terms.
 
 **Audit:** apply those three steps to every new term.
+
+## bank the decision
+*If you think about something and decide not to do it, bank that decision*
+When a modelling question is weighed and answered no, state the no in the KB as an explicit negation. A relation decided not transitive gets `(not (transitive R))`. The decision is then visible to the engine and to the next reviewer, and a later PR that would reverse it meets the stated decision instead of a silence. The negation belongs in the KB rather than in a code comment or a review thread, as **OE over code over text** has it. Absence is not negation: a missing `(transitive R)` says only that nobody stated it. So a `(not …)` is asserted only for a decision actually made, never to fill a gap.
+
+**Audit:** for each property, edge or declaration a vocab PR weighed and declined, the KB states its negation. Behind each `(not …)` mark stands a decision someone made.
+
+**Example:** `partOf` is not antisymmetric, since two coextensive regions stay two regions, so abstract.txt states `(not (anti_symmetric partOf))`. `anti_symmetric` is on the forced-monotonic roster, so that denial is stored and held OUT rather than believed, and it still records the decision. core.txt's `(not (transitiveInArg orthogonal 1 genl))` is an earlier, believed one.

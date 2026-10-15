@@ -293,17 +293,19 @@ A mark's reach is asked at three points — whether the KB declares any, which g
 conclusion joins, and whether two conclusions share one — and all three go through one
 reader, so a spelling reaches the detector through every read or through none.
 
-"Jointly satisfiable" is **shallow**, and four things rule it out: a literal appearing
-under σ together with its own negation, one term claimed to be of two separated types, one
+"Jointly satisfiable" is **shallow**, and five things rule it out: a literal appearing
+under σ together with its own negation, a literal beside the negation of a predicate its own
+is a spec of — `(properPartOf ?x ?y)` beside `(not (partOf ?x ?y))`, a spec's tuple being
+the predicate's — one term claimed to be of two separated types, one
 term bound to two arities — `(arity ?p 1)` beside `(arity ?p 2)`, and `(arity ?p 1)` beside
 `(equivalence_relation ?p)`, which claims 2 by reaching `binary_predicate` up `genl` — and
 one term an `arg` declaration demands be of a type disjoint from one the two rules place it
-in. Each of the four is a **declaration read**: **no inference is run and no fact is
+in. Each of the five is a **declaration read**: **no inference is run and no fact is
 consulted.** This is what the rules say about each other, so a pair here is a clash that
 *could* form rather than one that has — a clash already formed is in
 `(contradictions kb)`, which is the other question and the other reader.
 
-The fourth rule-out reads the two consequents beside the antecedents, because the type an
+The fifth rule-out reads the two consequents beside the antecedents, because the type an
 `arg` declaration demands of one rule's variable is disjoint from the type the **other**
 rule *concludes* about the unified term. `(arity ?r ?a) => (fixed_arity ?r)` demands `?r`
 be a `relation` through `(arg arity 1 relation)`, and CxCriedWolf's

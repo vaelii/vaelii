@@ -704,7 +704,7 @@
   `genlArg` is `arg` one level up: it constrains the argument to be a **subtype**
   of the named type rather than an instance of it, which is what a type-level relation
   wants — `(genlArg partType 1 tangible)` says the first argument names a kind
-  of physical object, where `(arg partOf 1 tangible)` says it names one.
+  of physical object, where `(arg tangiblePartOf 1 tangible)` says it names one.
 
   Which constraints apply is context-scoped exactly as `arg` is, and so is the
   subtype test itself: absence of a *visible* path to the constraint type is what
@@ -2613,18 +2613,33 @@
   directed acyclic graph that has another route leaves the same closure, which is why
   dropping them all at once is stable rather than a cascade that eats the route it was
   reading.  The taxonomy refuses a `genl` cycle (`edge-stratification-violation`), so the
-  acyclicity the argument rests on is the store's invariant rather than an assumption."
+  acyclicity the argument rests on is the store's invariant rather than an assumption.
+
+  An edge out of `x` that a `covering`, `separating` or `partition` roster installs
+  (`tax/installed-edges`) is a route like a stated one, so the roster's handle answers
+  too, read off the edge's supporters (`tax/genl-edge-supporters`).  Without it a type
+  whose only parent edge comes from a roster keeps every minted edge to an ancestor, and
+  each new justification of that record moves a `genl` edge out of the type."
   [kb x t context]
-  (let [tax (reasoning/taxonomy kb)]
-    (first
-     (for [h    (reads/as-stored-with-args (:index kb) 'genl {1 x})
-           :let [sx (p/get-sentex (:records kb) h)
-                 s  (when sx (nth (:sentence sx) 2 nil))]
-           :when (and sx (= 3 (count (:sentence sx))) (symbol? s)
-                      (not= s t) (tax/genl? tax s t context)
-                      (tax/sees? tax context (:context sx))
-                      (res/believed-at? kb h context))]
-       h))))
+  (let [tax (reasoning/taxonomy kb)
+        ok? (fn [h sx] (and (tax/sees? tax context (:context sx))
+                            (res/believed-at? kb h context)))]
+    (or
+     (first
+      (for [h    (reads/as-stored-with-args (:index kb) 'genl {1 x})
+            :let [sx (p/get-sentex (:records kb) h)
+                  s  (when sx (nth (:sentence sx) 2 nil))]
+            :when (and sx (= 3 (count (:sentence sx))) (symbol? s)
+                       (not= s t) (tax/genl? tax s t context)
+                       (ok? h sx))]
+        h))
+     (first
+      (for [s    (sort-by nm/name-key (tax/direct-genls tax x context))
+            :when (and (symbol? s) (not= s t) (tax/genl? tax s t context))
+            h    (sort (tax/genl-edge-supporters tax x s context))
+            :let [sx (p/get-sentex (:records kb) h)]
+            :when (and sx (not= 'genl (nm/functor (:sentence sx))) (ok? h sx))]
+        h)))))
 
 (defn subsumed-mint
   "The handle of the believed record that already says, more specifically, what the

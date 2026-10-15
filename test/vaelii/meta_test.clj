@@ -132,7 +132,7 @@
     (is (v/isa? kb 'siblingOf 'symmetric))
     (is (v/isa? kb 'marriedTo 'symmetric))
     (is (v/isa? kb 'ancestorOf 'transitive))
-    (is (v/isa? kb 'partOf 'transitive))
+    (is (v/isa? kb 'tangiblePartOf 'transitive))
     (is (v/isa? kb 'birthYearOf 'functional)))
   (testing "and inherit binary_predicate / predicate through genl"
     (is (v/isa? kb 'siblingOf 'binary_predicate))
@@ -171,7 +171,8 @@
     ;; `greaterInMagnitudeThan` is the fourth, over quantities rather than objects.
     ;; `instantBefore` / `instantAfter` are the point algebra's strict orders, transitive
     ;; so a forward join reads a narrative's consecutive links as one ordering.
-    (is (= '#{ancestorOf partOf locatedIn largerThan instantBefore instantAfter
+    (is (= '#{ancestorOf partOf tangiblePartOf subSituationOf properPartOf properTangiblePartOf
+              properSubSituationOf properPartOfRegion properSubintervalOf locatedIn largerThan instantBefore instantAfter
               causes beforeEvent genl genlCx
               heavierThan tallerThan olderThan greaterInMagnitudeThan}
            (set (map #(get % '?p) (v/ask kb '(transitive ?p) '?ctx)))))

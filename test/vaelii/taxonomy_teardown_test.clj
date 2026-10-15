@@ -37,18 +37,18 @@
         (is (empty? (v/contradictions kb)))))))
 
 (tu/deftest-kb retracting-a-predicate-property-unmarks-it
-  (tu/with-terms [partOf siblingOf sameAs marriedTo]
-    (let [ht (v/assert kb (list 'transitive partOf)  'CxUniverse)
+  (tu/with-terms [tangiblePartOf siblingOf sameAs marriedTo]
+    (let [ht (v/assert kb (list 'transitive tangiblePartOf)  'CxUniverse)
           hs (v/assert kb (list 'symmetric siblingOf) 'CxUniverse)
           hr (v/assert kb (list 'reflexive sameAs)    'CxUniverse)
           hf (v/assert kb (list 'functional marriedTo) 'CxUniverse)]
-      (is (v/has-prop? kb :transitive partOf))
+      (is (v/has-prop? kb :transitive tangiblePartOf))
       (is (v/has-prop? kb :symmetric siblingOf))
       (is (v/has-prop? kb :reflexive sameAs))
       (is (v/has-prop? kb :functional marriedTo))
       (run! #(v/retract! kb %) [ht hs hr hf])
       (testing "each property is released when the sentex declaring it goes"
-        (is (not (v/has-prop? kb :transitive partOf)))
+        (is (not (v/has-prop? kb :transitive tangiblePartOf)))
         (is (not (v/has-prop? kb :symmetric siblingOf)))
         (is (not (v/has-prop? kb :reflexive sameAs)))
         (is (not (v/has-prop? kb :functional marriedTo)))))))

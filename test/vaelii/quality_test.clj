@@ -831,9 +831,9 @@
       (is (= 1 (:pair-count (clashes kb)))))))
 
 (tu/deftest-kb antecedents-that-cannot-both-hold-are-not-a-clash-in-waiting
-  ;; The shallow satisfiability test, all three halves of it: a literal beside its own
-  ;; negation, one term claimed to be of two separated types, and one term bound to two
-  ;; arities.  None runs inference — they are the three things readable off the antecedent
+  ;; The shallow satisfiability test, all four halves of it: a literal beside its own
+  ;; negation, one term claimed to be of two separated types, one term bound to two
+  ;; arities, and a literal beside the negation of a predicate it is a spec of.  None runs inference — they are the three things readable off the antecedent
   ;; sets themselves.
   (testing "a literal and its negation"
     (tu/with-terms [bird_kind penguin_kind flies]
@@ -867,7 +867,17 @@
         (v/assert kb (list 'genl equiv_kind 'binary_predicate) 'CxUniverse)
         (v/assert-rule kb [(list equiv_kind '?p)] (list twoish '?p) 'CxUniverse {:direction :forward})
         (is (= 1 (:pair-count (clashes kb)))
-            "equiv_kind reaches binary_predicate up genl, so it claims arity 2")))))
+            "equiv_kind reaches binary_predicate up genl, so it claims arity 2"))))
+  (testing "and a literal beside the negation of a predicate it is a spec of"
+    (let [before (:pair-count (clashes kb))]
+      (tu/with-terms [coversOf properCoversOf]
+        (v/assert kb (list 'genl properCoversOf coversOf) 'CxUniverse)
+        (v/assert-rule kb [(list coversOf '?x '?y) (list 'not (list coversOf '?y '?x))]
+                       (list properCoversOf '?x '?y) 'CxUniverse {:direction :forward})
+        (v/assert-rule kb [(list properCoversOf '?x '?y)] (list 'not (list coversOf '?y '?x))
+                       'CxUniverse {:direction :forward})
+        (is (= before (:pair-count (clashes kb)))
+            "the second rule needs a proper tuple where the first denies its plain one")))))
 
 (tu/deftest-kb an-arg-type-disjoint-from-the-other-conclusion-is-not-a-clash-in-waiting
   ;; The fourth half of the satisfiability test, the one `separated-antecedents?` cannot

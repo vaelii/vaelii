@@ -819,7 +819,7 @@
         ;;
         ;; Answered by one condensation rather than one closure per source: `reaches? x x`
         ;; walks x's whole reach to *fail*, so the acyclic case — the ordinary one for a
-        ;; `before` or `partOf` chain — would cost O(n²) to answer nothing.
+        ;; `before` or `tangiblePartOf` chain — would cost O(n²) to answer nothing.
         ;; A printed key, never a bare `sort`: these are **terms**, and a term need not
         ;; be `Comparable` — an unreifiable function application stays structural in
         ;; argument position, so a binding can be a list, and a bare sort throws

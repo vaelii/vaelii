@@ -406,7 +406,8 @@
 (tu/deftest-kb a-recover-asks-the-preserved-claims-and-not-every-stored-sentex
   ;; recover's settle reads the whole store as its region; its discovery asks the stored
   ;; extent of the preserved predicate, read off the index, and reads no record of the
-  ;; facts beside it.  The `::asked` log line counts the questions.
+  ;; facts beside it.  The `::asked` log line counts the questions.  One inert record is
+  ;; in no region, so the region is a whole store only by reading it as inert.
   (tu/with-terms [carriesLoad hauler_kind cart_kind]
     (let [terms {:pred carriesLoad :hauler hauler_kind :cart cart_kind}
           asked (atom [])]
@@ -414,15 +415,21 @@
       (v/assert kb (list carriesLoad hauler_kind 'Bone1) U mono)
       (v/assert kb (list 'not (list carriesLoad cart_kind 'Bone1)) U mono)
       (dotimes [_ 40] (v/assert kb (list 'animal (tu/tmp-ind "Beast")) U))
-      (binding [trove/*log-fn* (fn [_ns _coords _level id payload]
-                                 (when (= :vaelii.impl.discovery/asked id)
-                                   (swap! asked conj (:data (force payload)))))]
-        (v/recover kb))
-      (let [{:keys [region fresh] n :asked} (first @asked)]
-        (is (= :whole-store fresh))
-        (is (< 40 region))
-        (is (= 2 n) "the two stored carriesLoad sentences"))
-      (is (= 1 (count (inherited-reports kb carriesLoad)))))))
+      (let [inert (list 'animal (tu/tmp-ind "Inert"))]
+        (v/assert-inert kb inert U)
+        (binding [trove/*log-fn* (fn [_ns _coords _level id payload]
+                                   (when (= :vaelii.impl.discovery/asked id)
+                                     (swap! asked conj (:data (force payload)))))]
+          (v/recover kb))
+        (let [{:keys [region fresh] n :asked} (first @asked)]
+          (is (= :whole-store fresh))
+          (is (< 40 region))
+          (is (= 2 n) "the two stored carriesLoad sentences"))
+        (is (= 1 (count (inherited-reports kb carriesLoad))))
+        (testing "the inert record is stored and OUT after the recover"
+          (let [h (v/handle-of kb inert U)]
+            (is (some? h))
+            (is (not (v/believed? kb h U)))))))))
 
 (tu/deftest-kb a-write-beside-a-standing-inherited-clash-journals-none-of-its-members
   ;; Each settle pass empties the inherited clashes and installs what its discovery finds

@@ -10,18 +10,18 @@
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
 
 (tu/deftest-kb transitive-predicate
-  (let [partOf (tu/tmp-pred)
+  (let [tangiblePartOf (tu/tmp-pred)
         wheel (tu/tmp-ind) car (tu/tmp-ind) vehicle (tu/tmp-ind) machine (tu/tmp-ind)]
-    (v/assert kb (list 'transitive partOf) 'CxNaturalWorld)
-    (v/assert kb (list partOf wheel car)     'CxNaturalWorld)
-    (v/assert kb (list partOf car vehicle)   'CxNaturalWorld)
-    (v/assert kb (list partOf vehicle machine) 'CxNaturalWorld)
+    (v/assert kb (list 'transitive tangiblePartOf) 'CxNaturalWorld)
+    (v/assert kb (list tangiblePartOf wheel car)     'CxNaturalWorld)
+    (v/assert kb (list tangiblePartOf car vehicle)   'CxNaturalWorld)
+    (v/assert kb (list tangiblePartOf vehicle machine) 'CxNaturalWorld)
     (testing "transitive closure over facts"
-      (is (v/ask? kb (list partOf wheel machine) 'CxNaturalWorld))   ; 3 steps
+      (is (v/ask? kb (list tangiblePartOf wheel machine) 'CxNaturalWorld))   ; 3 steps
       (is (= #{car vehicle machine}
-             (set (map #(get % '?w) (v/ask kb (list partOf wheel '?w) 'CxNaturalWorld))))))
+             (set (map #(get % '?w) (v/ask kb (list tangiblePartOf wheel '?w) 'CxNaturalWorld))))))
     (testing "non-parts are not derived"
-      (is (not (v/ask? kb (list partOf machine wheel) 'CxNaturalWorld))))))
+      (is (not (v/ask? kb (list tangiblePartOf machine wheel) 'CxNaturalWorld))))))
 
 (tu/deftest-kb symmetric-predicate
   (let [siblingOf (tu/tmp-pred) bob (tu/tmp-ind) ann (tu/tmp-ind)]

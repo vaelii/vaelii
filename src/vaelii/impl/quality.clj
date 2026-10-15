@@ -1076,14 +1076,33 @@
                      (for [i (range (count ts)), j (range (inc i) (count ts))] [i j]))))
            demands))))
 
+(defn- negation-met-by-a-spec?
+  "Does a positive literal over a spec of `P` stand beside `(not (P …))` with the same
+  arguments?  A tuple of a spec is a tuple of `P` (`genl` between predicates), so the two
+  cannot both hold: `(properPartOf a b)` beside `(not (partOf a b))`.  The equal-literal case
+  is the reflexive edge of the same read."
+  [kb pos neg context]
+  (let [tax (reasoning/taxonomy kb)]
+    (boolean
+     (some (fn [n]
+             (let [p (nm/functor n)]
+               (and (symbol? p) (not (sx/variable? p))
+                    (some (fn [l]
+                            (let [q (nm/functor l)]
+                              (and (symbol? q) (not (sx/variable? q))
+                                   (= (nm/args l) (nm/args n))
+                                   (contains? (tax/genls tax q context) p))))
+                          pos))))
+           neg))))
+
 (defn- jointly-satisfiable?
   "Could both antecedent sets hold at once — **shallowly**?
 
-  Four things rule it out and nothing else does: a literal appearing under σ together with
-  its own negation, one term claimed to be of two separated types, one term bound to two
-  arities, and one term an `arg` declaration demands be of a type disjoint from one the two
-  rules place it in.  **No inference is run and no fact is consulted** — each of the four is
-  a declaration read.  This is what the rules say about each other, and a pair it admits
+  Five things rule it out and nothing else does: a literal appearing under σ together with
+  its own negation, or with the negation of a predicate it is a spec of; one term claimed to
+  be of two separated types; one term bound to two arities; and one term an `arg`
+  declaration demands be of a type disjoint from one the two rules place it in.  **No
+  inference is run and no fact is consulted** — each of the five is a declaration read.  This is what the rules say about each other, and a pair it admits
   is a clash that *could* form rather than one that will — which is the whole reading,
   since a clash that had already formed would be in `(contradictions kb)` instead.
 
@@ -1097,6 +1116,7 @@
         neg   (into #{} (comp (filter sx/negation?) (map second)) lits)
         heads (conj pos (subst (:consequent a)) (subst (:consequent b)))]
     (and (empty? (set/intersection pos neg))
+         (not (negation-met-by-a-spec? kb pos neg context))
          (not (separated-antecedents? kb pos context))
          (not (arity-conflicted? kb pos context))
          (not (arg-type-conflicted? kb heads context)))))
