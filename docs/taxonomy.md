@@ -975,6 +975,45 @@ Three mechanisms declare that types share no instance; all are closed under `gen
   **The exemption is the exception's alone.** A stated `orthogonal` exempts nothing, and
   the predicate `genl` edge carries no exemption from the exception up to it.
 
+**A separation answers a denial.** With `(S x)` believed and visible from the reader,
+and `S` separated from `T` there, `query` answers `(not (T x))` and `argue` of `(T x)`
+answers `:false` (`provers/DisjointnessNegationProver`, [inference.md](inference.md)).
+The denial is read at the query and never stored, so it leaves when the membership or the
+separation leaves. Only a ground goal is answered: `(not (T ?x))` binds nothing from it.
+`res/separation-denials` is the read, and it returns the witnesses: the denying
+memberships, and the declarations and `genl` edges each denial rests on.
+
+**The denial climbs only `:monotonic` edges.** A denial read through a `:default` `genl`
+edge contraposes a default, and a default does not contrapose: "a `pa` is typically a
+`pb`" does not exclude `Xy` being an atypical `pa` outside `pb`. So the read holds both
+sides of the separation to one rule:
+
+- **`T`'s side.** Every `genl` edge from `T` up to the separated supertype holds at
+  `:monotonic`, read as the widest-bottleneck floor (`tax/reach-support` with a
+  `supporter-class`, [Strength of a subsumption path](#strength-of-a-subsumption-path)).
+  With `(genl pa pb)` at `:default`, `(disjoint pc pb)` and `(pc Xy)`, `argue (pa Xy)`
+  answers `:unknown`; with the edge at `:monotonic` it answers `:false`.
+- **`S`'s side.** The membership `(S x)` that does the denying reaches its separated
+  supertype through `:monotonic` edges as well. A `:default` edge on that side applies
+  forward, and it can be defeated for this `x`: `core.txt` states `(genl tangible
+  uninterrupted)` at `:default` and partitions `temporal` into `uninterrupted` and
+  `intermittent`, and a monotonic `(intermittent WatchOfTheseus)` defeats the edge for the
+  watch, so `intermittent` denies neither `made` nor `natural` of it
+  (`ontology_test/the-watch-of-theseus-is-intermittent`). Reading the believed inherited
+  membership and capping the denial at `:default` is the other reading, and the larger
+  one; the engine takes the monotonic rule on both sides.
+- **A disjoint metatype's membership** `(M T)` is an ordinary fact, so it separates here
+  only at `:monotonic`. The declarations themselves (`disjoint`, `partition`,
+  `sibling_disjoint`, `disjoint_metatype`, `separating`) and the part edges a `covering`
+  installs are on the forced-monotonic roster and hold while believed
+  (`res/holding-class`).
+- **A `siblingDisjointException`** the reader sees exempts its pair from the read, as it
+  does from `disjoint?` (`tax/route-exempted?`).
+
+The rule is the defense in [defenses.md](defenses.md); the cover family reads the same
+denial ([The coverage inference is gated on explicit
+negation](#the-coverage-inference-is-gated-on-explicit-negation)).
+
 **All three separating mechanisms — `disjoint`, `disjoint_metatype` and `sibling_disjoint` — separate any term, not only individuals.** `checks/checkable-term?`
 admits every non-variable symbol, so the predicate meta-ontology is enforced the same
 way the domain is: `(relation_kind …)` is a `disjoint_metatype` over
@@ -1279,6 +1318,18 @@ The nogood names the membership and the
 negations and **not** the declaration, which is `disjoint`'s rule and is there for
 `disjoint`'s reason: a nogood that could defeat the cover would read a taxonomy without
 it on the next pass, find no violation, and revive it.
+
+A separation's denial rules out a part as a stated one does ([A separation answers a
+denial](#disjointness)). With `(covering W A B)`, `(disjoint S A)` and `(disjoint T B)`,
+the memberships `(W X)`, `(S X)` and `(T X)` refute the cover, and the nogood is `{(W X),
+(S X), (T X)}`: each denying membership is a member, and the separations and the `genl`
+edges they climb are grounds. The write that completes it names those memberships as the
+sentexes it opposes (`checks/cover-refutations`), so it is stored and placed, never
+refused, and the settle forms the same nogood from what is stored
+(`membership/term-nogoods`), so `contradictions` lists the cover `argue` reads as
+refuted (`order_independence_test/a-cover-a-separation-denies-every-part-of-is-one-nogood-in-every-order`).
+The separation answers here under the same soundness rule as at the query: an edge it
+climbs at `:default` rules out no part.
 
 ### `partition` and `separating` add no separation mechanism of their own
 

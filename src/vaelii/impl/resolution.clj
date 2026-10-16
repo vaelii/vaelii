@@ -12,6 +12,7 @@
             [clojure.walk :as walk]
             [vaelii.impl.budget :as budget]
             [vaelii.impl.capabilities :as cap]
+            [vaelii.impl.decide :as decide]
             [vaelii.impl.except :as exc]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.literal-cache :as lc]
@@ -2342,6 +2343,134 @@
                    #(visible-matches kb canonical view-context)))))))
 
 ;; ---- whose declarations bind a tuple ------------------------------------
+
+(defn type-memberships
+  "The membership sentexes `(T x)` of term `x` that `kb/types-of` reads its types off, as
+  records: believed, asserted in a context `context` sees, and not hidden from it by an
+  `except` (default: any context, each membership read at its own).  A caller that names
+  the membership a type rests on reads this; `kb/types-of` is its functors.
+
+  The same three filters `matches-visible` applies, since this *is* the retrieval
+  `isa?` and the disjointness check are built on and the two must not disagree about
+  what the KB holds.  A negative membership is excluded by the argument test rather than
+  by a truth filter — a `(not (T x))` sentex has `not` for its functor and `(T x)` for
+  its lone argument, so it is not a unary sentence *about* `x` at all."
+  ([kb x] (type-memberships kb x '?ctx))
+  ([kb x context]
+   (let [recs     (:records kb)
+         tms      (reasoning/tms kb)
+         visible? (if (sx/variable? context)
+                    (constantly true)
+                    (let [up (tax/context-up (reasoning/taxonomy kb) context)] #(contains? up %)))
+         ;; a read with no reader reads each membership at its own context
+         hidden?  (or (if (sx/variable? context) (exc/own-hidden-fn kb) (exc/hidden-fn kb context))
+                      (constantly false))]
+     ;; the unary roster goes straight to the sentexes holding x as their LONE
+     ;; argument, instead of every sentex mentioning x anywhere (any position, any
+     ;; nesting) or even every one holding it at argument 1 — this runs on every unary
+     ;; assert, via disjoint-problem, and a term at argument 1 of n binary facts cost n
+     ;; record fetches here to find the handful of types it holds
+     ;; (`reads/as-stored-unary-with-arg-global`).  The read is a superset, so the arity and
+     ;; argument tests below decide the answer.
+     ;;
+     ;; The filters are one `keep` rather than a stack of threaded stages: every
+     ;; definitional check bottoms out here, the postings are short, and a chain of
+     ;; six `filter`/`map` stages allocates six conses per entry to do a few field
+     ;; reads.  Lazy, so a caller looking for one type does not pay for a long posting
+     ;; — which is also why this is not a transducer: at these lengths `sequence` spends
+     ;; more on building the pipeline than the pipeline saves.
+     (->> (reads/as-stored-unary-with-arg-global (:index kb) x)
+          (keep (fn [h]
+                  (when-not (hidden? h)
+                    (when-let [s (p/get-sentex recs h)]
+                      (when (and (jtms/in? tms (:id s))      ; believed memberships only
+                                 (visible? (:context s)))
+                        (let [sen (:sentence s)]
+                          (when (and (= 1 (nm/arity sen)) (= x (first (nm/args sen))))
+                            s)))))))))))
+
+(defn holding-class
+  "`handle → class` for a separation's denial (`tax/monotonic-route-witness`): the live
+  JTMS defeat class of the handle, nil while it is OUT, and `:monotonic` for a believed
+  literal on the forced-monotonic roster (`decide/roster-literal?`) whatever strength it
+  was written at.  A roster literal goes OUT only by retraction (docs/nmtms.md, \"The
+  forced-monotonic roster\"), so a declaration and the part edges a `covering` installs
+  hold for every term as a `:monotonic` edge does."
+  [kb]
+  (let [tms  (reasoning/tms kb)
+        recs (:records kb)
+        tax  (reasoning/taxonomy kb)]
+    (fn [h]
+      (when-let [c (jtms/defeat-class tms h)]
+        (if (and (not= :monotonic c)
+                 (some->> (p/get-sentex recs h) :sentence (decide/roster-literal? tax)))
+          :monotonic
+          c)))))
+
+(def ^:dynamic *membership-memo*
+  "A volatile `{[x context] memberships}` the separation's denial reads a term's
+  memberships through while bound (`checks/cover-refutations` binds it over one write's
+  covers, where nothing is stored), or nil to read `type-memberships` afresh."
+  nil)
+
+(defn- memberships-for
+  "`type-memberships` of `x` at `context`, through `*membership-memo*` when it is bound."
+  [kb x context]
+  (if-let [memo *membership-memo*]
+    (let [k [x context]]
+      (if-let [hit (find @memo k)]
+        (val hit)
+        (let [ms (vec (type-memberships kb x context))]
+          (vswap! memo assoc k ms)
+          ms)))
+    (type-memberships kb x context)))
+
+(defn- separation-denial-witnesses
+  "`separation-denials`' witnesses, lazily and in the order the memberships and routes
+  are read.  The routes are read off the closure cache (`tax/separation-routes-held`), and
+  a pair no declaration separates is skipped on the held test (`tax/pair-separated?`)."
+  [kb t x context]
+  (let [tax (reasoning/taxonomy kb)]
+    (when (and (symbol? t) (tax/separable? tax t))
+      (let [cls (holding-class kb)
+            ctx (when-not (sx/variable? context) context)]
+        (for [m     (memberships-for kb x context)
+              :let  [s (nm/functor (:sentence m))]
+              :when (and (not= s t) (symbol? s) (tax/pair-separated? tax s t))
+              r     (tax/separation-routes-held tax s t)
+              :let  [wit (tax/monotonic-route-witness tax r ctx cls)]
+              :when wit]
+          {:membership (:id m) :sentence (:sentence m) :context (:context m) :route wit})))))
+
+(defn separation-denials
+  "The witnesses of `(not (t x))` a reader at `context` reads off a separation, in
+  content order: one per believed, visible, unexcepted membership `(s x)`
+  (`type-memberships`) and per route a declaration separates `s` from `t` through
+  (`tax/separation-routes`) that meets the soundness rule (`tax/monotonic-route-witness`):
+  each key believed and visible, the separated pair not exempted by a
+  `siblingDisjointException` the reader sees, and every `genl` edge climbed on either
+  side holding at `:monotonic`.  Each witness is `{:membership h :sentence (s x)
+  :context c :route {:keys :pair :supports :edges}}`.  Empty when no separation reaches
+  `t` (`tax/separable?`).  The routes are read over the unscoped closures, a superset over
+  every reader, and the reader's context scopes each one's keys and edges.
+
+  The one read of a separation's denial.  `provers/DisjointnessNegationProver` answers
+  the query from it, and `checks/cover-refutations` names its memberships as the members
+  of a refuted cover, so `argue` and the cover family read one denial (docs/taxonomy.md,
+  \"A separation answers a denial\")."
+  [kb t x context]
+  (nm/sort-by-content-key
+   #(nm/print-key [(:sentence %) (:context %) (:keys (:route %)) (:pair (:route %))])
+   compare
+   (separation-denial-witnesses kb t x context)))
+
+(defn separation-denied?
+  "Does a reader at `context` read `(not (t x))` off a separation: is
+  `separation-denials` non-empty?  Reads the witnesses lazily and stops at the first,
+  for a caller that asks whether the denial holds and names no member
+  (`provers/DisjointnessNegationProver`)."
+  [kb t x context]
+  (some? (first (separation-denial-witnesses kb t x context))))
 
 (defn constraining-predicates
   "The predicates whose argument declarations of kind `kind` bind a `pred` tuple —

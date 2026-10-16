@@ -486,8 +486,10 @@ sentence, it says the extent is complete and this is not in it.
 **`defns` and `disjoint` are untouched.** A `defnIff` states a condition, not an extent —
 a thing whose condition is merely unknown is concluded neither a member nor a non-member
 ([defns.md](defns.md)) — and disjointness refutes from a *positive* claim about a sibling
-type. Both stay open-world by design; this grant is the one place a KB says otherwise, and
-it says it per predicate and per context.
+type: a believed `(S x)` of a type a separation keeps apart from `T` answers `(not (T
+x))` over `:monotonic` edges ([taxonomy.md](taxonomy.md#disjointness), "A separation
+answers a denial"). Both stay open-world by design; this grant is the one place a KB says
+otherwise, and it says it per predicate and per context.
 
 ## Order independence, and the re-check
 
@@ -501,6 +503,15 @@ leaves. This is the `exceptWhen` block/sweep/revive path, reused verbatim:
   its own meta-sentex into the same index (`special/index-exceptWhen-meta`), so both
   kinds of block condition key one index. A fact arriving or leaving on one
   of those predicates (or any subtype, via the genl spec fan-out) queues the rule.
+- A negated literal `(not (T …))` in either kind of condition is posted under the types
+  a declaration separates from `T` as well (`rules/separation-denial-predicates`), since
+  a membership of a type below one of them answers the denial
+  (`provers/DisjointnessNegationProver`). The spec fan-out reaches that membership's
+  type, and the firing filter keeps a firing whose literal the membership denies
+  (`recheck/separation-reaches?`). A separation or a `genl` edge that moves `T`'s
+  separations posts the rule again and queues it whole
+  (`special/repost-separation-denial-rules`), so the block does not depend on whether
+  the rule, the separation or the membership came last.
 - An **equality** queues it too, and that one no predicate can key. `(unknown (flies
   Tweety))` is answered under Tweety's representative, so merging Tweety with a Birdy
   that flies makes the inner query derivable with nothing on `flies` having moved at

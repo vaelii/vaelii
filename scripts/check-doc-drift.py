@@ -1353,7 +1353,7 @@ E16_GLOBAL_ROSTER = {
     ("src/vaelii/impl/special.clj", "transitive-left-ends"),
     ("src/vaelii/impl/abduce.clj", "edge-handles"),
     ("src/vaelii/impl/clashes.clj", "believed-at-arg1"),
-    ("src/vaelii/impl/kb.clj", "type-memberships"),
+    ("src/vaelii/impl/resolution.clj", "type-memberships"),
     ("src/vaelii/impl/decide/membership.clj", "term-entries"),
 }
 E16_GLOBAL_CALL = re.compile(r"\breads/([\w?!*-]+-global)(?![\w?-])")
@@ -1602,6 +1602,7 @@ E17_ROSTER = {
     ("src/vaelii/impl/decide/membership.clj", "term-nogoods"),
     ("src/vaelii/impl/decide/membership.clj", "cover-routes"),
     ("src/vaelii/impl/decide/membership.clj", "separation-tests"),
+    ("src/vaelii/impl/decide/membership.clj", "cover-convicted-at?"),
     ("src/vaelii/impl/decide/related.clj", "contradicted-somewhere?"),
     ("src/vaelii/impl/decide/tuple.clj", "roster-marks"),
     ("src/vaelii/impl/decide/tuple.clj", "det-marks"),
@@ -1617,6 +1618,8 @@ E17_ROSTER = {
     ("src/vaelii/impl/inherit.clj", "stated-claims"),
     ("src/vaelii/impl/recheck.clj", "cross-argument-predicate?"),
     ("src/vaelii/impl/rules.clj", "closed-extent-declared?"),
+    ("src/vaelii/impl/rules.clj", "separation-denial-predicates"),
+    ("src/vaelii/impl/special.clj", "repost-separation-denial-rules"),
     ("src/vaelii/impl/special.clj", "licensing-functors"),
     ("src/vaelii/impl/special.clj", "transitive-seeds"),
     ("src/vaelii/impl/special.clj", "transitive-rule-seeds"),

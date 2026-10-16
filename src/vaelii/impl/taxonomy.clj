@@ -3964,6 +3964,58 @@
   (when (and (some #(= super %) (adj sub)) (admit? [sub super]))
     (when-let [w (witness [sub super])] [w])))
 
+(defn- reach-support*
+  "`reach-support`'s walk.  The six- and seven-argument arities call it directly rather
+  than one another through the var, so a walk is one call to either of them."
+  [tax rel-key sub super context supporter-class thresholds]
+  (if (= sub super)
+    []
+    (let [t   @tax
+          rel (get t rel-key)
+          scope (relation-scope tax rel-key context)
+          ;; nil `vis` is the unscoped walk — every asserting context is visible, so
+          ;; the plain adjacency *is* the visible one, exactly as in `genls`
+          adj (if (nil? scope) #(get (:fwd rel) %) #(visible-neighbours t rel-key :fwd scope %))
+          ;; `nm/print-key` keeps a node that is not a symbol (a NAT) sortable, and
+          ;; prints it with the bounds released — a bare `str` would let an ambient
+          ;; `*print-length*` elide two nested nodes to one prefix and expand the
+          ;; adjacency in the set's own order, which is what the witness path (and so a
+          ;; justification's antecedents) would then rest on.  Built once per adjacency,
+          ;; and a node with 0/1 neighbour — common in a sparse relation — sorts nothing
+          nbrs (fn [n] (pass-held [::sorted rel-key scope n]
+                                  #(nm/sort-by-content-key nm/print-key compare (adj n))))
+          ;; the walk enters only types above `sub` under any scope, since a scoped
+          ;; adjacency is a subset of the global one, and every type on a path from one
+          ;; of them to `super` is above `sub` too: a walk down from `super` through
+          ;; `sub`'s global ancestors enters exactly those with a path to `super`, and
+          ;; it is held by this call alone
+          reaches? (delay (let [up      (closure-of tax rel-key :fwd sub)
+                                between (closure-while tax rel-key :rev super #(contains? up %))]
+                            #(contains? between %)))
+          direct #(direct-witness adj sub super %1 %2)]
+      ;; a walk from a source with no edge it sees finds no path
+      (cond
+        (empty? (adj sub))     nil
+        (nil? supporter-class)
+        (let [witness #(edge-supporter tax t rel-key % scope)]
+          (or (direct (fn [_] true) witness)
+              (bfs-witness-path sub super nbrs (fn [_] true) witness reaches?)))
+        :else
+        ;; each edge's class read once for both thresholds
+        (let [ranks (java.util.HashMap.)
+              rank  (fn [e]
+                      (or (.get ranks e)
+                          (let [r (strength/rank-of (edge-class t rel-key e scope supporter-class))]
+                            (.put ranks e r)
+                            r)))
+              admit (fn [threshold] (fn [e] (>= (long (rank e)) (long (strength/rank-of threshold)))))
+              witness #(strongest-edge-supporter tax t rel-key % scope supporter-class)]
+          ;; the first threshold's walk is the one an edge straight to `super` ends
+          (or (direct (admit :monotonic) witness)
+              (some (fn [threshold]
+                      (bfs-witness-path sub super nbrs (admit threshold) witness reaches?))
+                    thresholds)))))))
+
 (defn reach-support
   "A witness for `sub →* super` in relation `rel-key`, as the `[handle ctx]` of one
   supporter per edge along a single path — or nil when `context` sees no such path.
@@ -3988,56 +4040,15 @@
   capped at the floor and no lower.  Since there are exactly two classes
   (`strength.clj`), the widest floor is found by trying each class as a threshold, highest
   first, and taking the first shortest path made only of edges that clear it — a threshold
-  scan that stays correct for any fixed number of classes and is two passes for two."
+  scan that stays correct for any fixed number of classes and is two passes for two.
+  `thresholds` names the classes tried, highest first: `[:monotonic]` asks for a path
+  every edge of which holds at `:monotonic` and walks no second pass when there is none
+  (`monotonic-route-witness`)."
   ([tax rel-key sub super context] (reach-support tax rel-key sub super context nil))
   ([tax rel-key sub super context supporter-class]
-   (if (= sub super)
-     []
-     (let [t   @tax
-           rel (get t rel-key)
-           scope (relation-scope tax rel-key context)
-           ;; nil `vis` is the unscoped walk — every asserting context is visible, so
-           ;; the plain adjacency *is* the visible one, exactly as in `genls`
-           adj (if (nil? scope) #(get (:fwd rel) %) #(visible-neighbours t rel-key :fwd scope %))
-           ;; `nm/print-key` keeps a node that is not a symbol (a NAT) sortable, and
-           ;; prints it with the bounds released — a bare `str` would let an ambient
-           ;; `*print-length*` elide two nested nodes to one prefix and expand the
-           ;; adjacency in the set's own order, which is what the witness path (and so a
-           ;; justification's antecedents) would then rest on.  Built once per adjacency,
-           ;; and a node with 0/1 neighbour — common in a sparse relation — sorts nothing
-           nbrs (fn [n] (pass-held [::sorted rel-key scope n]
-                                   #(nm/sort-by-content-key nm/print-key compare (adj n))))
-           ;; the walk enters only types above `sub` under any scope, since a scoped
-           ;; adjacency is a subset of the global one, and every type on a path from one
-           ;; of them to `super` is above `sub` too: a walk down from `super` through
-           ;; `sub`'s global ancestors enters exactly those with a path to `super`, and
-           ;; it is held by this call alone
-           reaches? (delay (let [up      (closure-of tax rel-key :fwd sub)
-                                 between (closure-while tax rel-key :rev super #(contains? up %))]
-                             #(contains? between %)))
-           direct #(direct-witness adj sub super %1 %2)]
-       ;; a walk from a source with no edge it sees finds no path
-       (cond
-         (empty? (adj sub))     nil
-         (nil? supporter-class)
-         (let [witness #(edge-supporter tax t rel-key % scope)]
-           (or (direct (fn [_] true) witness)
-               (bfs-witness-path sub super nbrs (fn [_] true) witness reaches?)))
-         :else
-         ;; each edge's class read once for both thresholds
-         (let [ranks (java.util.HashMap.)
-               rank  (fn [e]
-                       (or (.get ranks e)
-                           (let [r (strength/rank-of (edge-class t rel-key e scope supporter-class))]
-                             (.put ranks e r)
-                             r)))
-               admit (fn [threshold] (fn [e] (>= (long (rank e)) (long (strength/rank-of threshold)))))
-               witness #(strongest-edge-supporter tax t rel-key % scope supporter-class)]
-           ;; the first threshold's walk is the one an edge straight to `super` ends
-           (or (direct (admit :monotonic) witness)
-               (some (fn [threshold]
-                       (bfs-witness-path sub super nbrs (admit threshold) witness reaches?))
-                     [:monotonic :default]))))))))
+   (reach-support* tax rel-key sub super context supporter-class [:monotonic :default]))
+  ([tax rel-key sub super context supporter-class thresholds]
+   (reach-support* tax rel-key sub super context supporter-class thresholds)))
 
 (defn context-specificity
   "How specific context `c` is, as the size of its `genlCx` ancestor set; 0 for a supporter
@@ -5621,6 +5632,74 @@
   False for a route through a stated `disjoint` and for a route with no `:pair`."
   [tax {:keys [pair mark?]} context]
   (boolean (and mark? pair ((exemption tax context) (first pair) (second pair)))))
+
+(defn monotonic-route-witness
+  "What a reader at `context` reads the separation route `route` (`separation-routes`)
+  through when the route answers a denial, or nil when the reader reads no denial off
+  it.  Three conditions, the soundness rule of docs/taxonomy.md, \"A separation answers a
+  denial\":
+
+  * every flat-cache key of the route has a supporter the reader sees
+    (`visible-supporters`) that `supporter-class` reads `:monotonic`.  The declarations
+    are on the forced-monotonic roster, which `res/holding-class` reads `:monotonic`
+    while believed, so for them the test is belief and visibility.  A disjoint
+    metatype's `[:member m y]` membership is an ordinary fact, and a `:default` one
+    separates nothing here;
+  * no `siblingDisjointException` the reader sees exempts the route's separated pair
+    (`route-exempted?`);
+  * each subsumption the route climbs has a path the reader sees whose every edge holds
+    at `:monotonic` (`reach-support` with `supporter-class`, the widest bottleneck).  A
+    `:default` edge on either side applies forward and does not contrapose.
+
+  `supporter-class` is `handle → class`, a live JTMS `defeat-class` read, nil for a handle
+  that is OUT.  The witness is `{:keys :pair :supports :edges}`: the route's keys and
+  separated pair, one `:monotonic` supporter handle per key, and the `[handle ctx]`
+  supporters of the edges climbed."
+  [tax {:keys [keys links pair] :as route} context supporter-class]
+  (let [mono? #(= :monotonic (supporter-class %))]
+    (when-not (route-exempted? tax route context)
+      (when-let [sups (reduce (fn [acc k]
+                                (if-let [h (first (filter mono? (sort (visible-supporters tax k context))))]
+                                  (conj acc h)
+                                  (reduced nil)))
+                              [] (nm/sort-by-content-key nm/print-key compare keys))]
+        (when-let [edges (reduce (fn [acc [sub super]]
+                                   (let [path (reach-support tax :genl sub super context
+                                                             supporter-class [:monotonic])]
+                                     (if (and path (every? #(mono? (first %)) path))
+                                       (into acc path)
+                                       (reduced nil))))
+                                 [] links)]
+          {:keys keys :pair pair :supports sups :edges edges})))))
+
+(defn separation-routes-held
+  "`separation-routes` of `a` and `b`, as a vector held in the closure cache under the
+  `genl` generation and the separation stamp: the routes are read over the unscoped
+  closures and the declarations alone, so a reader asking one pair again before either
+  moves reads a map entry (`res/separation-denials`, `membership/cover-routes`)."
+  [tax a b]
+  (let [t   @tax
+        lru (:closure-lru t)
+        k   [:separation-routes (:gen (:genl t)) (separation-stamp tax) a b]]
+    (or (caches/lru-get lru k)
+        (caches/lru-put! lru k (vec (separation-routes tax a b))))))
+
+(defn pair-separated?
+  "Does a declaration separate the type `a` from the type `b` over the unscoped closures,
+  with no `siblingDisjointException` read: `separation-test` with no reader and no
+  exemption, a superset over every reader, and symmetric.  Held in the closure cache
+  under the `genl` generation and the separation stamp, so the membership family's cover
+  arm (`membership/term-nogoods`) tests a held type against a part once per stamp and
+  reads a map entry after."
+  [tax a b]
+  (let [t   @tax
+        lru (:closure-lru t)
+        k   [:pair-separated (:gen (:genl t)) (separation-stamp tax) a b]
+        v   (caches/lru-get lru k)]
+    (if (some? v)
+      v
+      (caches/lru-put! lru k (boolean (some-> (separation-test tax a nil (constantly false))
+                                              (apply [b])))))))
 
 (defn separating-pairs
   "Every **ordered** pair `[x y]`, `x` ≠ `y`, that a visible declaration separates —

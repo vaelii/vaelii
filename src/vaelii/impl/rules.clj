@@ -484,6 +484,33 @@
   [tx rule-sentence]
   (keep #(nm/functor (second %)) (closed-extent-antecedents tx (antecedents rule-sentence))))
 
+(defn separation-denial-predicates
+  "The types a separation's denial can move a negated literal of `queries` on, as the
+  re-check index's extra keys: for each `(not (T …))` a re-check watches
+  (`watched-literals`) with a unary `T`, every type a declaration separates `T` from
+  (`tax/separating-partners`, read unscoped with no exception, a superset over every
+  reader).  `provers/DisjointnessNegationProver` answers `(not (T x))` from a membership
+  `(S x)` of a type below one of them, and the trigger fans an arriving `(S x)` out to
+  `S`'s supertypes (`special/recheck-on-predicate`), so a rule posted under them is
+  re-checked when such a membership arrives or leaves.  Empty for a `T` no separation
+  reaches."
+  [tx queries]
+  (distinct
+   (for [l     (mapcat watched-literals queries)
+         :when (and (seq? l) (= 'not (first l)))
+         :let  [b (second l)]
+         :when (and (seq? b) (= 2 (count b)) (symbol? (first b)) (tax/separable? tx (first b)))
+         p     (sort (tax/separating-partners tx (first b) nil (constantly false)))]
+     p)))
+
+(defn separation-denial-predicates-of
+  "`separation-denial-predicates` of a raw rule *sentence*'s `unknown` antecedents: the
+  extra keys the re-check index posts the rule under beside `recheck-predicates`
+  (`special/index-rule-sentex`), a taxonomy read as `closed-extent-predicates-of` is."
+  [tx rule-sentence]
+  (separation-denial-predicates tx (mapcat sx/naf-query-conjuncts
+                                           (naf-antecedents-of rule-sentence))))
+
 (defn has-nested-naf?
   "Does this rule carry a NAF query with a **NAF inside it** — a nested `(unknown …)`,
   or an aggregate under the quantifier?

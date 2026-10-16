@@ -2354,6 +2354,13 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   and a `Coll` with no necessary in its ancestor set leaves it inapplicable. Ground only.
   `:compute`, partial (50) — it augments the stored `(not (Coll a))` and
   `ClosedExtentProver`. See [defns.md](defns.md).
+- **DisjointnessNegationProver** — a ground `(not (T a))` proved by a believed
+  membership `(S a)` visible from the asking context whose type `S` a visible separation
+  keeps apart from `T`, with every `genl` edge the separation climbs on either side
+  holding at `:monotonic` (`res/separation-denials`). Open-world: it fires on a stated
+  membership, never on an unprovable one, and a `T` no separation reaches
+  (`tax/separable?`) leaves it inapplicable. Ground only. `:lookup`, partial (50). See
+  [taxonomy.md](taxonomy.md#disjointness).
 - **CoveringProver** — a ground unary membership goal `(Part a)` for a `Part` some visible
   `(covering W …)` names: with `(W a)` believed and every other part believed **not** to
   hold of `a`, the remaining part holds. Explicit negation only, never an unprovable part.

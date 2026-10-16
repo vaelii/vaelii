@@ -3719,3 +3719,51 @@
         (is (seq (:placed single))))
       (is (= single bulk))))
   (tu/clear-kb! (tu/test-kb)))
+
+;; ---- a cover refuted through a separation's denial ------------------------
+
+(deftest a-cover-a-separation-denies-every-part-of-is-one-nogood-in-every-order
+  ;; https://github.com/vaelii/vaelii/issues/183: `(covering ww aa bb)` with `(ww Ex)`, and
+  ;; each part denied by a membership in a type separated from it.  The settle places the
+  ;; cover nogood over the three memberships, so `contradictions` lists the nogood
+  ;; behind `argue`'s `:contradiction` on a part, in all 720 orders, and each write is
+  ;; needed for it.
+  (tu/with-terms [ww aa bb ss tt Ex]
+    (let [observe (fn [kb]
+                    {:clashes (into #{} (map (fn [r] [(:kind r) (set (map :sentence (:sides r)))]))
+                                    (v/contradictions kb))
+                     :aa      (:verdict (v/argue kb (list aa Ex) 'CxUniverse))})
+          outcome (one-outcome-necessarily!
+                   "cover refuted through separations"
+                   (mapv assert-op [(list 'covering ww aa bb) (list 'disjoint ss aa)
+                                    (list 'disjoint tt bb) (list ww Ex) (list ss Ex)
+                                    (list tt Ex)])
+                   observe)]
+      (is (= {:clashes #{[:cover #{(list ww Ex) (list ss Ex) (list tt Ex)}]}
+              :aa      :contradiction}
+             outcome))))
+  (tu/clear-kb! (tu/test-kb)))
+
+(deftest a-separation-s-denial-re-checks-a-negated-condition-in-every-order
+  ;; https://github.com/vaelii/vaelii/issues/183: `(qc Xy)` with `(disjoint qc qb)` answers
+  ;; `(not (qb Xy))`, so a rule blocked by that denial, through an `unknown` antecedent or
+  ;; an `exceptWhen`, holds no firing for `Xy` whichever write comes last: the membership,
+  ;; the separation or the rule.
+  (doseq [[label rule] [["unknown" '(set/forwardRule
+                                     (implies (and (qa ?x) (unknown (not (qb ?x)))) (flagged ?x)))]
+                        ["exceptWhen" '(exceptWhen (not (qb ?x))
+                                                   (set/forwardRule (implies (qa ?x) (flagged ?x))))]]]
+    (testing label
+      (tu/with-terms [qa qb qc flagged Xy]
+        (let [rule    (walk/postwalk-replace {'qa qa 'qb qb 'flagged flagged} rule)
+              observe (fn [kb] {:flagged (v/ask? kb (list flagged Xy) 'CxUniverse)})]
+          (is (= {:flagged false}
+                 (one-outcome! (str label ": a separation's denial blocks the firing")
+                               (mapv assert-op [rule (list 'disjoint qc qb) (list qa Xy)
+                                                (list qc Xy)])
+                               observe)))
+          (is (= {:flagged true}
+                 (one-outcome! (str label ": no membership denies, so the rule fires")
+                               (mapv assert-op [rule (list 'disjoint qc qb) (list qa Xy)])
+                               observe)))))))
+  (tu/clear-kb! (tu/test-kb)))

@@ -142,6 +142,14 @@
   [c x]
   (boolean (seq (get-in c [::denials x]))))
 
+(defn- cover-candidate?
+  "Can a cover over one of term `x`'s types be refuted from what the candidate index `c`
+  keeps of it: the taxonomy stores a cover, and `x` holds a denial or a second type, a
+  membership a separation can deny a part through (`term-nogoods`)."
+  [tax c x]
+  (boolean (and (seq (tax/coverings tax))
+                (or (denied? c x) (< 1 (count (get-in c [::types x])))))))
+
 (defn- drop-term
   "`c` with term `x` and every row naming it dropped."
   [c x]
@@ -158,9 +166,14 @@
   memberships of a pair of types a separation holds apart (`::sep`, a superset over every
   reader), `:disjoint`, marked `:spared? true` for a pair a stored exception exempts;
   a membership beside a denial of a strict supertype of its type, `:supertype`; and a
-  membership under a cover's whole with, for each part, a denial of the part or of a
-  supertype of it, `:cover`, one nogood per choice of denials, less a member set the
-  `:supertype` arm already holds.  Read through the write view `w` (`decide/write-view`)."
+  membership under a cover's whole with, for each part, a denier of it, `:cover`, one
+  nogood per choice of deniers, less a member set the `:disjoint` or `:supertype` arm
+  already holds.  A denier of a part is a denial of the part or of a supertype of it, or a
+  membership of another type a declaration separates from the part
+  (`tax/pair-separated?`, unscoped and with no exception read): the separation's denial
+  (`res/separation-denials`), whose soundness rule and exemptions the placement reads
+  (`routes`, `chain/route-placements`).  Read through the write view `w`
+  (`decide/write-view`)."
   [tax w c x]
   (let [above (:genls-global w)
         types (get-in c [::types x])
@@ -174,28 +187,33 @@
                     :when (not= s q)
                     h (get types s), d ds]
                 {:members #{h d} :kind :supertype})
-        held  (into #{} (map :members) sups)]
+        dis   (for [[[a b] how] (get-in c [::sep x])
+                    h1 (get-in c [::types x a])
+                    h2 (get-in c [::types x b])]
+                (cond-> {:members #{h1 h2} :kind :disjoint}
+                  (= :spared how) (assoc :spared? true)))
+        held  (into #{} (map :members) (concat dis sups))]
     (concat
-     (for [[[a b] how] (get-in c [::sep x])
-           h1 (get-in c [::types x a])
-           h2 (get-in c [::types x b])]
-       (cond-> {:members #{h1 h2} :kind :disjoint}
-         (= :spared how) (assoc :spared? true)))
+     dis
      sups
-     (when (and (denied? c x) (seq (tax/coverings tax)))
+     (when (cover-candidate? tax c x)
        (let [m   (get-in c [::mem x])
              pos (filterv #(nth (val %) 2) m)
              neg (filterv #(not (nth (val %) 2)) m)]
-         (for [[h [s]]   pos
-               [_ parts] (distinct (tax/covers-over tax s nil))
-               :let [per (for [p (distinct parts)
-                               :let [ups (above p)]]
-                           (for [[d [q]] neg :when (contains? ups q)] d))]
-               :when (every? seq per)
-               combo (combinations per)
-               :let [ms (into #{h} combo)]
-               :when (not (held ms))]
-           {:members ms :kind :cover}))))))
+         (distinct
+          (for [[h [s]]   pos
+                [_ parts] (distinct (tax/covers-over tax s nil))
+                :let [per (for [p (distinct parts)
+                                :let [ups (above p)]]
+                            (concat (for [[d [q]] neg :when (contains? ups q)] d)
+                                    (for [[d [s']] pos
+                                          :when (and (not= s' s) (tax/pair-separated? tax s' p))]
+                                      d)))]
+                :when (every? seq per)
+                combo (combinations per)
+                :let [ms (into #{h} combo)]
+                :when (not (held ms))]
+            {:members ms :kind :cover})))))))
 
 (defn- place-term
   "`c` with term `x`'s nogoods read again through the unscoped taxonomy (`term-nogoods`),
@@ -208,7 +226,7 @@
   (let [tax (:tax w)
         old (get-in c [::live-mem x])
         was (get-in c [::ngs x])
-        ngs (when (or (seq (get-in c [::sep x])) (denied? c x))
+        ngs (when (or (seq (get-in c [::sep x])) (denied? c x) (cover-candidate? tax c x))
               (not-empty (vec (term-nogoods tax w c x))))
         new (not-empty (into #{} (mapcat :members) ngs))]
     (as-> c c
@@ -293,7 +311,8 @@
   (`tax/moves-since`), are tested again (`listed-under`), since no other pair's
   separation moved.  With no stamp to compare, or the `genl` relation rebuilt from nothing,
   every kept term's pairs are.  The terms tested are placed again, and so are the terms
-  with a denial and a membership at or below a type whose cover nogoods the move can move:
+  with a membership at or below a type whose cover nogoods the move can move, beside a
+  denial or a second type (`cover-candidate?`):
   the lower end of a moved edge, the whole of a cover with a part at or below one
   (`cover-wholes-under`), and the whole of a moved cover (`tax/cover-moves`).  Every term
   placed is queued when an edge moved.  On a full test every term holding nogoods is
@@ -322,7 +341,7 @@
                                 decl?      (into (tax/cover-moves old st)))]
                    [(reduce (fn [c [x t]] (retest c x [t])) c hits)
                     (concat (map first hits)
-                            (keep (fn [[x _]] (when (denied? c x) x))
+                            (keep (fn [[x _]] (when (cover-candidate? tax c x) x))
                                   (holding c (listed-under kb w covers [:kept :denied]))))]))
         xs     (cond-> (set xs)
                  full (into (keys (::ngs c))))
@@ -439,6 +458,17 @@
                                   xs)))
             (listed-under kb w ends [:kept :denied])))))
 
+(defn terms-under-edges
+  "The kept terms with a nogood whose routes climb a `genl` edge with its lower end at one
+  of the types `lows`: those holding a type at or below one of them, and those holding a
+  type at or below the whole of a cover with a part at or below one
+  (`cover-wholes-under`).  An edge's defeat class moving moves which placements a cover
+  refuted through a separation's denial reads (`chain/route-placements`), with no
+  membership and no declaration moving."
+  [kb w c lows]
+  (when (seq lows)
+    (terms-under kb w c (into (set lows) (cover-wholes-under w lows)))))
+
 (defn nogoods-terms
   "The kept terms holding a nogood under the candidate index `c`."
   [c]
@@ -463,33 +493,60 @@
 (defn kind-of
   "The kind of the membership nogood over the member handles `ms`, read off their
   sentences and the unscoped `genl` closure of the write view `w` (`decide/write-view`):
-  `:disjoint` for two memberships of one term in distinct types, `:supertype` for one
-  membership of a term beside one denial of a strict supertype of its type, `:cover` for
-  any other membership of a term beside denials of it, else nil."
+  `:disjoint` for two memberships of one term in distinct types a declaration separates
+  (`tax/pair-separated?`), `:supertype` for one membership of a term beside one denial of
+  a strict supertype of its type, `:cover` for any other membership of a term beside
+  denials of it and for two or more memberships of a term in distinct types (a cover
+  refuted through a separation's denial), else nil."
   [w recs ms]
   (when-let [[_ pos neg] (member-types recs ms)]
     (cond
-      (and (empty? neg) (= 2 (count pos) (count ms))) :disjoint
+      (and (empty? neg) (= 2 (count pos) (count ms))
+           (tax/pair-separated? (:tax w) (first pos) (second pos)))
+      :disjoint
       (and (= 1 (count pos) (count neg)) (= 2 (count ms))
            (not= (first pos) (first neg))
            ((:genl?-global w) (first pos) (first neg)))
       :supertype
-      (and (= 1 (count pos)) (seq neg))               :cover)))
+      (and (= 1 (count pos)) (seq neg))               :cover
+      (< 1 (count pos))                               :cover)))
 
 (defn- cover-routes
-  "The routes of a cover nogood over the held type `s` and the denied types `neg`
-  (`routes`), read off every stored cover: a route is a superset over every reader, and
-  the placement decides which contexts see it."
-  [w s neg]
-  (for [[whole parts] (distinct (tax/covers-over (:tax w) s nil))
-        :let [qs (map (fn [p] (first (filter #(contains? ((:genls-global w) p) %) neg)))
-                      parts)]
-        :when (every? some? qs)
-        [ps kind] (tax/covers-of (:tax w) whole)
-        :when (= ps parts)]
-    {:keys #{[:cover [whole parts] kind]}
-     :links (into [] (remove (fn [[a b]] (= a b)))
-                  (cons [s whole] (map vector parts qs)))}))
+  "The routes of a cover nogood over the held types `pos` and the denied types `neg`
+  (`routes`), read off every stored cover: for each held type `s` and each cover over a
+  whole above it, one route per choice of a denier for each part.  A part a denial of
+  the part or of a supertype of it covers takes the first such denial, its subsumption a
+  link.  Any other part takes each route a declaration separates another held type from
+  it through (`tax/separation-routes`): the route's keys and links join the cover's, its
+  links are `:strict-links`, its `[:member m y]` keys are `:strict-keys`, and a mark
+  route's separated pair is in `:pairs`.  The placement reads the soundness rule of a
+  separation's denial off those three (`chain/route-placements`).  A route is a superset
+  over every reader, and the placement decides which contexts see it."
+  [w pos neg]
+  (let [tax (:tax w)]
+    (distinct
+     (for [s         pos
+           [whole parts] (distinct (tax/covers-over tax s nil))
+           [ps kind] (tax/covers-of tax whole)
+           :when (= ps parts)
+           :let [per (for [p parts]
+                       (if-let [q (first (filter #(contains? ((:genls-global w) p) %) neg))]
+                         [{:links [[p q]]}]
+                         (for [d pos
+                               :when (not= d s)
+                               r (tax/separation-routes-held tax d p)]
+                           {:keys   (:keys r) :links (:links r)
+                            :strict (filterv #(= :member (first %)) (:keys r))
+                            :pair   (when (:mark? r) (:pair r))})))]
+           :when (every? seq per)
+           combo (combinations per)]
+       (let [strict (into [] (mapcat :links) (filter :keys combo))]
+         (cond-> {:keys  (into #{[:cover [whole parts] kind]} (mapcat :keys) combo)
+                  :links (into [] (remove (fn [[a b]] (= a b)))
+                               (cons [s whole] (mapcat :links combo)))}
+           (seq strict)                  (assoc :strict-links strict)
+           (some (comp seq :strict) combo) (assoc :strict-keys (into #{} (mapcat :strict) combo))
+           (some :pair combo)            (assoc :pairs (into [] (keep :pair) combo))))))))
 
 (defn routes
   "Each way the declarations convict the membership nogood `ng` over the unscoped
@@ -498,8 +555,12 @@
   and the separated pair.  For a `:cover` one, a cover over a whole above the held type
   with a member denial at or above each part: the cover's key, the subsumption from the
   held type to the whole and from each part to the first such denial's type, and no
-  pair.  For a `:supertype` one, the subsumption from the held type to the denied type
-  with no key, and each cover route besides.  Empty when the members are not one term's.
+  pair, and for a part a held type's separation denies, the separation's keys and links
+  with the soundness rule's `:strict-links`, `:strict-keys` and `:pairs` (`cover-routes`).
+  A `:disjoint` one takes each cover route of its two memberships besides, since
+  `term-nogoods` keeps a cover refuted by the same two memberships as the one nogood.
+  For a `:supertype` one, the subsumption from the held type to the denied type with no
+  key, and each cover route besides.  Empty when the members are not one term's.
   Read over the write view `w` (`decide/write-view`): a route is a superset over every
   reader, and the placement decides which contexts see it."
   [w recs {:keys [members kind]}]
@@ -507,31 +568,56 @@
     (case kind
       :disjoint
       (when (= 2 (count pos))
-        (let [[a b] (seq pos)] (tax/separation-routes (:tax w) a b)))
+        (let [[a b] (seq pos)]
+          (concat (tax/separation-routes (:tax w) a b) (cover-routes w pos neg))))
       :supertype
       (when (= 1 (count pos) (count neg))
         (let [s (first pos) q (first neg)]
-          (cond->> (cover-routes w s neg)
+          (cond->> (cover-routes w pos neg)
             ((:genl?-global w) s q) (cons {:keys #{} :links [[s q]]}))))
       :cover
-      (when (= 1 (count pos))
-        (cover-routes w (first pos) neg))
+      (when (seq pos)
+        (cover-routes w pos neg))
       nil)))
+
+(defn- cover-convicted-at?
+  "Does a reader with ancestor set `up` read a cover refuted by the held types `pos` and
+  the denied types `neg` of one term: a held type `s` under a cover's whole each of whose
+  parts a denial of it or of a supertype of it covers, or another held type `tax/disjoint?`
+  over `up` separates from it, the exceptions the reader sees applied."
+  [tax pos neg up]
+  (boolean
+   (some (fn [s]
+           (some (fn [[_ parts]]
+                   (every? (fn [p]
+                             (or (some #(or (= p %) (tax/genl?-global tax p %)) neg)
+                                 (some #(and (not= % s) (tax/disjoint? tax % p up)) pos)))
+                           parts))
+                 (distinct (tax/covers-over tax s nil))))
+         pos)))
 
 (defn exempt-at?
   "Does a reader with ancestor set `up` read no separation of the membership nogood
   `members` while the KB stores a `siblingDisjointException`: two memberships of one term
-  whose types `tax/disjoint?` over `up` does not separate.  An exception the reader sees removes a
-  separation its placement reads, the one read below a placement that seeing more takes
-  away (docs/taxonomy.md).  False for any other nogood."
+  whose types `tax/disjoint?` over `up` does not separate, or two or more memberships of
+  one term refuting a cover through a separation the reader reads no cover refutation of
+  (`cover-convicted-at?`).  An exception the reader sees removes a separation its
+  placement reads, the one read below a placement that seeing more takes away
+  (docs/taxonomy.md).  False for any other nogood."
   [tax recs members up]
   (boolean
    (and (tax/sib-exceptions? tax)
-        (= 2 (count members))
         (when-let [[_ pos neg] (member-types recs members)]
-          (and (empty? neg) (= 2 (count pos))
-               (let [[a b] (seq pos)]
-                 (not (or (tax/disjoint? tax a b up) (tax/disjoint? tax b a up)))))))))
+          (cond
+            (and (empty? neg) (= 2 (count pos) (count members))
+                 (tax/pair-separated? tax (first pos) (second pos)))
+            (let [[a b] (seq pos)]
+              (not (or (tax/disjoint? tax a b up) (tax/disjoint? tax b a up))))
+
+            (< 1 (count pos))
+            (not (cover-convicted-at? tax pos neg up))
+
+            :else false)))))
 
 (def family
   "The membership family's entry in `decide/registry`.  Recover keeps the entries of the

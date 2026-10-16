@@ -113,8 +113,10 @@ believed?(W, S, C) = S is in believed(W, C)
      (decision 7);
    - **`anti_transitive`**: `(P a b)`, `(P b c)` and `(P a c)`, three members
      ([nmtms.md](nmtms.md#a-nogood-is-a-set-anti_transitive-has-three-members));
-   - **`covering`**: `(W x)` and a believed `(not (A x))` for every part `A` of a
-     believed `(covering W A …)`; grounds the declaration and the `genl` route
+   - **`covering`**: `(W x)` and a denier of every part `A` of a believed `(covering W A
+     …)`: a believed `(not (A x))`, or a believed membership `(S x)` of another type a
+     believed `disjoint` separates from `A` with every `genl` edge on both sides
+     `:monotonic`; grounds the declaration, the `disjoint` and the `genl` routes
      ([taxonomy.md](taxonomy.md#covering-a-whole-and-the-parts-named-against-it));
    - **inherited**: a stored `(not (P … A …))` beside a claim `(P … W …)` that a believed
      `(transitiveInArgInverse P n genl)` carries down a `genl` path from `W` to `A`, when every

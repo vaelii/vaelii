@@ -72,6 +72,26 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Fixes: answers
 
+- **A membership in a type separated from `T` answers `(not (T x))`, and the cover family
+  reads the same denial.** With `(pc Xy)` believed and `pc` separated from `pb` by a
+  visible `disjoint`, disjoint metatype, `sibling_disjoint` parent or `partition`, `query`
+  of `(not (pb Xy))` answers and `argue` of `(pb Xy)` answers `:false` where both answered
+  nothing (`provers/DisjointnessNegationProver`, `res/separation-denials`). The denial
+  climbs only `:monotonic` `genl` edges on both sides, since a default does not
+  contrapose: with `(genl pa pb)` at `:default`, `argue (pa Xy)` stays `:unknown`, and at
+  `:monotonic` it answers `:false`. A cover every part of which such a denial rules out is
+  a `:cover` nogood over the whole's membership and the denying memberships, placed by the
+  settle in every arrival order, so `contradictions` lists what `argue` reads as refuted;
+  the write that completes one is stored, never refused. A rule's `(unknown (not (T …)))`
+  antecedent and an `exceptWhen` on `(not (T …))` are re-checked when such a membership
+  or separation arrives or leaves.
+  [taxonomy.md](docs/taxonomy.md#disjointness)
+  ([#183](https://github.com/vaelii/vaelii/issues/183)).
+
+  *Class:* **Fix**.
+  *Migration:* none. A KB holding a membership under a cover whose every part another of
+  the term's memberships is separated from now holds a `:cover` nogood over them.
+
 - **`tool` is retired.** The ontology classifies by what a thing is, and `tool` named
   an artifact by what it is for. `abstract.txt` drops the type, its comment, its `genl`
   edge to `made` and `(disjoint building tool)`, and CxSocial drops `(disjoint dwelling

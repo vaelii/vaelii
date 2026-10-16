@@ -1657,9 +1657,20 @@ determinants. Each tuple nogood is placed
 **The membership families.** A `disjoint` nogood is two memberships of one term whose types
 a separation holds apart, a `supertype` nogood is a membership beside a denial of a strict
 supertype of its type, `(dog Rex)` and `(not (animal Rex))` under `(genl dog animal)`, and
-a cover nogood is a membership under a cover's whole with a denial of each part or of a
-supertype of it; all three are keyed by the term. A cover nogood whose member set a
-`supertype` nogood holds is that one nogood, with the cover's routes beside the edge's. The index keeps
+a cover nogood is a membership under a cover's whole with a denier of each part; all
+three are keyed by the term. A denier of a part is a denial of the part or of a supertype
+of it, or a membership of another type a declaration separates from the part: the
+separation's denial `provers/DisjointnessNegationProver` answers, so `contradictions`
+lists the cover `argue` reads as refuted. The denying membership is a member, and the
+separation and the `genl` edges it climbs are grounds. The candidate is read over the
+unscoped taxonomy (`tax/pair-separated?`, held in the closure cache under the `genl`
+generation and the separation stamp), and the placement holds the separation to the
+denial's soundness rule: each edge it climbs reaches at `:monotonic` from the placement,
+a disjoint metatype's membership is supported at `:monotonic`, and a
+`siblingDisjointException` the placement sees exempts the pair
+(`chain/route-placements`, [taxonomy.md](taxonomy.md#disjointness)). A cover nogood whose
+member set a `supertype` or a `disjoint` nogood holds is that one nogood, with the
+cover's routes beside the edge's or the separation's. The index keeps
 each term holding two memberships, or a membership and a denial, read off the term's unary
 roster once when the second arrives and kept in step after (`membership/note-membership!`),
 with each kept term's memberships and denials by type. The kept terms under a type are
@@ -1681,14 +1692,16 @@ declaration arriving therefore reads no membership; `lein perf`'s
 `membership-declaration-arrival` holds it flat in the memberships under the types it
 separates, and `separation-beside-kept-terms` flat in the kept terms holding no type under
 it. A cover nogood moves only with its membership's chain up to the
-cover's whole or a denial's chain down to a part, so a cover or a `genl` edge moving places
-again the kept terms with a denial and a membership at or below the whole of a moved cover
-(`tax/cover-moves`), the lower end of a moved edge, or the whole of a cover with a part at
-or below one; `lein perf`'s `cover-beside-kept-denials` holds a cover's arrival flat in
+cover's whole or a denier's chain down to a part, so a cover or a `genl` edge moving places
+again the kept terms with a membership beside a denial or a second type at or below the
+whole of a moved cover (`tax/cover-moves`), the lower end of a moved edge, or the whole of
+a cover with a part at or below one. A `genl` edge the pass relabels places them again
+too, since its defeat class moves which placements read a separation's denial
+(`membership/terms-under-edges`); `lein perf`'s `cover-beside-kept-denials` holds a cover's arrival flat in
 the kept terms with a denial it does not reach. A `supertype` nogood moves with the
 membership's chain up to the denied type, so the moved edge's lower end places it again.
-A term holding a pair the unscoped taxonomy separates, or a membership and a denial,
-keeps its nogoods through that taxonomy (`::ngs`), a superset
+A term holding a pair the unscoped taxonomy separates, a membership and a denial, or two
+memberships under a stored cover, keeps its nogoods through that taxonomy (`::ngs`), a superset
 of what any reader reads, and its members are candidates. Each is placed as a nogood with
 its separating declarations and the `genl` edges its reading climbs as grounds; a
 `supertype` nogood has the edges alone
@@ -2359,7 +2372,8 @@ What reaches a membership nogood with no relabel reaches it through the index:
   moving is logged at its lower end (`tax/moves-since`), and the index reads again only the
   pairs holding a type at or below it, queueing those terms
   (`membership/sync-memberships`); a cover or an edge moving places again the kept terms
-  with a denial and a membership at or below the whole it moves a cover nogood under.
+  with a membership at or below the whole it moves a cover nogood under, beside a denial
+  or a second type.
   Neither reads a membership. The index compares its
   stamp with the taxonomy's roster by roster on identity. An installed image holds the two
   as equal values read back apart, so the first read compares them by value once and takes

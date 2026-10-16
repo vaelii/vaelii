@@ -346,3 +346,42 @@
     (testing "and the entailed membership is admitted, not refused as a clash"
       (v/assert kb (list bb x) 'CxNaturalWorld)
       (is (v/isa? kb x aa 'CxNaturalWorld) "every bb is an aa, so x is an aa"))))
+
+;; https://github.com/vaelii/vaelii/issues/183.  A membership in a type a separation keeps
+;; apart from `pb` answers `(not (pb Xy))`, and the denial reaches a spec `pa` of `pb` only
+;; over a `:monotonic` edge: a `:default` edge applies forward and does not contrapose.
+
+(tu/deftest-kb a-membership-in-a-separated-type-is-read-as-denied
+  (doseq [[strength pa-verdict] [[:default :unknown] [:monotonic :false]]]
+    (testing (str "with (genl pa pb) at " strength)
+      (tu/with-terms [pa pb pc Xy CxBeside]
+        (v/assert kb (list 'genl pa pb) 'CxUniverse {:strength strength})
+        (v/assert kb (list 'disjoint pc pb) 'CxUniverse)
+        (v/assert kb (list 'genlCx CxBeside 'CxUniverse) 'CxUniverse)
+        (let [member (v/assert kb (list pc Xy) CxBeside)]
+          (doseq [opts [nil {:max-depth 5}]]
+            (testing (str "under " opts)
+              (is (= :false (:verdict (v/argue kb (list pb Xy) CxBeside opts))))
+              (is (= pa-verdict (:verdict (v/argue kb (list pa Xy) CxBeside opts))))
+              (is (= :true (:verdict (v/argue kb (list 'not (list pb Xy)) CxBeside opts))))
+              (is (= :true (:verdict (v/argue kb (list pc Xy) CxBeside opts))))))
+          (is (= [{}] (vec (v/query kb (list 'not (list pb Xy)) CxBeside))))
+          (is (= (if (= :false pa-verdict) [{}] [])
+                 (vec (v/query kb (list 'not (list pa Xy)) CxBeside))))
+          (testing "a context that does not see the membership reads no denial"
+            (is (= :unknown (:verdict (v/argue kb (list pb Xy) 'CxUniverse)))))
+          (testing "retracting the membership withdraws the denial"
+            (v/retract! kb member)
+            (is (= :unknown (:verdict (v/argue kb (list pb Xy) CxBeside))))))))))
+
+(tu/deftest-kb the-denying-side-climbs-only-monotonic-edges
+  ;; The membership doing the denying reaches the separated type through its own `genl`
+  ;; edges, and a `:default` one there can be defeated for the term (the watch of Theseus,
+  ;; ontology_test), so it denies nothing.
+  (doseq [[strength verdict] [[:default :unknown] [:monotonic :false]]]
+    (testing (str "with (genl pd pc) at " strength)
+      (tu/with-terms [pb pc pd Yz]
+        (v/assert kb (list 'disjoint pc pb) 'CxUniverse)
+        (v/assert kb (list 'genl pd pc) 'CxUniverse {:strength strength})
+        (v/assert kb (list pd Yz) 'CxUniverse)
+        (is (= verdict (:verdict (v/argue kb (list pb Yz) 'CxUniverse))))))))

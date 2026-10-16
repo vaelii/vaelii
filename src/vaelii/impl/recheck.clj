@@ -85,11 +85,22 @@
       (into (tax/specs-global tax pred) (tax/genls-global tax pred))
       (tax/specs-global tax pred))))
 
+(defn- separation-reaches?
+  "Can a trigger on the predicate `tp` answer the negated unary conjunct `lit` on `pred`
+  through a separation's denial: a membership `(tp x)` of a type a declaration separates
+  from `pred` (`tax/pair-separated?`, unscoped, a superset over every reader) answers
+  `(not (pred x))` (`res/separation-denials`)."
+  [kb pred lit tp]
+  (boolean (and (sx/negation? lit) (symbol? tp) (symbol? pred)
+                (= 1 (count (nm/args (peel-negation lit))))
+                (tax/pair-separated? (reasoning/taxonomy kb) tp pred))))
+
 (defn- firing-reachable?
   "Could a trigger of a shape in `shapes` have flipped this firing's block condition?
   `except` is the rule's block literals; `bindings` are substituted into each, and one
   literal whose arguments agree with a trigger's and whose `reachable-predicates` hold the
-  trigger's predicate is enough.  An unreadable literal, or one on a `cross?` predicate,
+  trigger's predicate, or whose denial a membership on it answers through a separation
+  (`separation-reaches?`), is enough.  An unreadable literal, or one on a `cross?` predicate,
   keeps the firing.
 
   `cross?` is `cross-argument-predicate?` memoized by the caller for the pass, because
@@ -103,7 +114,10 @@
              (if-let [[lp la] (literal-shape lit')]
                (or (cross? lp)
                    (let [reach (reachable-predicates kb lp lit')]
-                     (some (fn [[tp ta]] (and (= la ta) (contains? reach tp))) shapes)))
+                     (some (fn [[tp ta]] (and (= la ta)
+                                              (or (contains? reach tp)
+                                                  (separation-reaches? kb lp lit' tp))))
+                           shapes)))
                true)))                                    ; unreadable conjunct: keep
          except)))
 

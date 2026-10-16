@@ -3266,21 +3266,37 @@
   `[handle context]` supporters, each context `placements-over` places the members,
   those supporters and the route's subsumptions at, with the members, the supporters and
   the edge handles it names as antecedents.  A placement that reads a
-  `siblingDisjointException` exempting a mark route's separated pair is left out
-  (`tax/route-exempted?`), and so is one the route's `:excluded-at` names.  Given the
+  `siblingDisjointException` exempting a mark route's separated pair, or one of the
+  route's `:pairs`, is left out (`tax/route-exempted?`), and so is one the route's
+  `:excluded-at` names.  A route through a separation's denial (`membership/routes`)
+  holds its separation to the soundness rule of `res/separation-denials`: each of its
+  `:strict-links` reaches at `:monotonic` from the placement (`tax/reach-strength`), and
+  each supporter chosen for one of its `:strict-keys` holds at `:monotonic`
+  (`res/holding-class`).  Given the
   context set `within`, only the placements in it (`placements-over`)."
   [kb members routes within]
   (let [tax   (reasoning/taxonomy kb)
         recs  (:records kb)
         exc?  (tax/sib-exceptions? tax)
+        cls   (delay (res/holding-class kb))
         mctxs (mapv #(:context (p/get-sentex recs %)) members)]
     (into #{}
-          (for [{:keys [keys links choices excluded-at] :as route} routes
-                sups (or choices (route-supporters kb keys))
+          (for [{:keys [keys links choices excluded-at strict-links strict-keys pairs] :as route} routes
+                sups (cond->> (or choices (route-supporters kb keys))
+                       (seq strict-keys)
+                       (filter (fn [sups]
+                                 (every? (fn [[k [h]]] (or (not (contains? strict-keys k))
+                                                           (= :monotonic (@cls h))))
+                                         (map vector (seq keys) sups)))))
                 :let [[ps m] (placements-over kb links (into (vec members) (map first) sups)
                                               (into mctxs (map second) sups) within)]
                 pctx ps
                 :when (not (and exc? (tax/route-exempted? tax route pctx)))
+                :when (not (and exc? (seq pairs)
+                                (some #(tax/route-exempted? tax {:pair % :mark? true} pctx) pairs)))
+                :when (every? (fn [[sub super]]
+                                (= :monotonic (tax/reach-strength tax :genl sub super pctx @cls)))
+                              strict-links)
                 :when (not (and excluded-at (excluded-at pctx)))]
             [pctx (-> (set members) (into (map first) sups) (into (get m pctx)))]))))
 
@@ -3434,7 +3450,9 @@
   of those gone, and return the handles created: the nogoods of the terms `moved` names
   (`membership/take-moved!`), of the terms with a membership or denial among the handles
   `fresh` the pass relabelled or `placed` (`placed-members`), of the terms holding a type
-  under a separation or cover declaration among `fresh` (`membership/terms-under`), and
+  under a separation or cover declaration among `fresh` (`membership/terms-under`), of the
+  terms under the lower end of a `genl` edge among `fresh`, whose defeat class a
+  separation's denial reads (`membership/terms-under-edges`), and
   of the terms with a candidate a `genlCx` move reaches or a type under a ground stated
   where it reaches (`reach-handles` over `reach`, `ground-ends`).
   Each is placed at the placements its routes give (`membership/routes`,
@@ -3448,6 +3466,9 @@
           full (-> (set (keys moved))
                    (into (membership/terms-of kb c fresh))
                    (into (membership/terms-of kb c placed))
+                   ;; a relabelled `genl` edge can move its defeat class, which a cover
+                   ;; refuted through a separation's denial reads at the placement
+                   (into (membership/terms-under-edges kb w c (genl-lower-ends kb fresh)))
                    (into (membership/terms-under kb w c (into #{} (comp (keep #(tax/separation-ends tax %)) cat)
                                                               (tax/supported-keys tax fresh))))
                    (into (when (= ::all rh) (membership/nogoods-terms c))))

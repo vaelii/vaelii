@@ -514,6 +514,42 @@
                    (not-any? #(next (below %)) (nm/args s)))
       (not-empty (into #{} (mapcat below) (tax/sentence-separation-ends tx s))))))
 
+(defn- negated-recheck-types
+  "The types of the negated unary literals rule `rh` re-checks: in its `unknown`
+  antecedents and in the queries of its believed exceptWhen meta-sentexes."
+  [kb rh]
+  (when-let [rsx (p/get-sentex (:records kb) rh)]
+    (into #{}
+          (keep (fn [l] (when (and (seq? l) (= 'not (first l)))
+                          (let [b (second l)]
+                            (when (and (seq? b) (= 2 (count b)) (symbol? (first b)))
+                              (first b))))))
+          (concat (when (rules/rule? rsx) (rules/naf-queries rsx))
+                  (mapcat rules/watched-literals (mapcat identity (provers/rule-exceptions kb rh)))))))
+
+(defn- repost-separation-denial-rules
+  "A sentence `s` arrived or left and moved the separations of the types at or below
+  the types `tax/sentence-separation-ends` names: post every rule watched under `not`
+  (`reads/watched-rules-on`) with a negated re-check literal over one of them under the
+  types a separation now keeps apart from that literal's type
+  (`rules/separation-denial-predicates`), read unscoped as the re-check index is, and
+  queue it for a blanket re-check, since a membership already stored can deny the literal
+  now.  A posting the move took away is left in place: a spurious re-check costs a query,
+  as `index-closed-extent-rules` says.  A sentence that moves no separation reads only
+  the taxonomy, and the index is read only once one does."
+  [kb s]
+  (let [tx (reasoning/taxonomy kb)]
+    (when-let [ends (seq (tax/sentence-separation-ends tx s))]
+      (let [idx (:index kb)]
+        (when-let [rhs (seq (reads/watched-rules-on idx 'not))]
+          (let [moved (into #{} (mapcat #(tax/specs-global tx %)) ends)]
+            (doseq [rh  rhs
+                    :let [ts (filter moved (negated-recheck-types kb rh))]
+                    :when (seq ts)]
+              (let [sd (distinct (mapcat #(tax/separating-partners tx % nil (constantly false)) ts))]
+                (when (seq sd) (rules/index-exception idx rh (sort sd)))
+                (mark-recheck kb [rh] :all)))))))))
+
 (defn- recheck-on-separation
   "A sentence `s` arrived or left and moved the separations of the types
   `separation-moved-types` names: queue every rule carrying a `disjoint` antecedent with
@@ -526,12 +562,15 @@
 
   A sentence that moves no separation costs a functor compare and taxonomy reads, and no
   index read.  The rules stated in every context are read, since each firing is
-  re-decided at its own conclusion's context."
+  re-decided at its own conclusion's context.  The rules with a negated re-check literal
+  over a moved type are posted again under the types a separation's denial moves it on
+  (`repost-separation-denial-rules`)."
   [kb s]
   (when-let [moved (separation-moved-types kb s)]
     (when (reads/stored-rule-key? (:index kb) 'disjoint)
       (mark-recheck kb (reads/as-stored-rules-by-antecedent-global (:index kb) 'disjoint)
-                    {::separation moved}))))
+                    {::separation moved})))
+  (repost-separation-denial-rules kb s))
 
 (defn recheck-on-sentence
   "The re-check trigger for a whole sentence: its functor, and — for a negation — the
@@ -990,10 +1029,16 @@
     ;; read rather than a property of the sentence, so it is asked here where the kb is
     ;; (`rules/closed-extent-predicates-of`).  A grant asserted *after* the rule reaches
     ;; it through `index-closed-extent-rules` below.
-    (let [ce (rules/closed-extent-predicates-of (reasoning/taxonomy kb) (sx/sentence-of rule-sentex))]
-      (when (or (rules/rechecked? rule-sentex) (seq ce))
+    ;; ...and by the types a separation keeps apart from a negated `unknown` literal's
+    ;; type, whose memberships deny it (`rules/separation-denial-predicates-of`), another
+    ;; taxonomy read.  A separation moving after the rule re-posts it
+    ;; (`repost-separation-denial-rules`).
+    (let [tx (reasoning/taxonomy kb)
+          ce (rules/closed-extent-predicates-of tx (sx/sentence-of rule-sentex))
+          sd (rules/separation-denial-predicates-of tx (sx/sentence-of rule-sentex))]
+      (when (or (rules/rechecked? rule-sentex) (seq ce) (seq sd))
         (rules/index-exception (:index kb) handle
-                               (distinct (concat (rules/recheck-predicates rule-sentex) ce)))
+                               (distinct (concat (rules/recheck-predicates rule-sentex) ce sd)))
         ;; `:all`: a freshly indexed rule has no triggering sentence to narrow by, and by
         ;; the time settle drains the queue it may already have fired
         (mark-recheck kb [handle] :all)))))
@@ -1061,21 +1106,33 @@
 
 (defn index-exceptWhen-meta
   "Register the exceptWhen meta-sentex `meta-sentex` in the re-check index: post the
-  rule it names under each predicate its query mentions and into the `:rules` roster,
+  rule it names under each predicate its query mentions, and under the types a
+  separation's denial moves a negated conjunct of it on
+  (`rules/separation-denial-predicates`), and into the `:rules` roster,
   queue the rule for a blanket re-check (a fact may already have arrived that its
   new exception blocks), lower the rule's firings to `:default`
   (`restrength-firings!`), and hold void the firings of a roster rule it convicts
   (`checks/force-sentexes!`)."
   [kb meta-sentex]
   (let [rh    (sx/exceptWhen-rule-handle (:sentence meta-sentex))
-        preds (rules/watched-predicates
-               (sx/exception-query-conjuncts (:sentence meta-sentex)))]
+        qs    (sx/exception-query-conjuncts (:sentence meta-sentex))
+        preds (concat (rules/watched-predicates qs)
+                      (rules/separation-denial-predicates (reasoning/taxonomy kb) qs))]
     (when rh
       (rules/index-exception (:index kb) rh preds)
       (mark-recheck kb [rh] :all)
       (restrength-firings! kb rh)
       (force-rule! kb rh))
     nil))
+
+(defn- exception-recheck-predicates
+  "The re-check keys of the exceptWhen meta-sentence `meta`: the predicates its query
+  mentions and the types a separation's denial moves a negated conjunct of it on
+  (`rules/separation-denial-predicates`)."
+  [kb meta]
+  (let [qs (sx/exception-query-conjuncts meta)]
+    (concat (rules/watched-predicates qs)
+            (rules/separation-denial-predicates (reasoning/taxonomy kb) qs))))
 
 (defn- rule-remaining-recheck-preds
   "The predicates the rule `rh` must stay registered under after the exceptWhen
@@ -1089,11 +1146,12 @@
                            (filter #(and (sx/exceptWhen-meta? (:sentence %))
                                          (= rh (sx/exceptWhen-rule-handle (:sentence %)))
                                          (not= dropping-id (:id %))))
-                           (mapcat #(rules/watched-predicates
-                                     (sx/exception-query-conjuncts (:sentence %)))))
+                           (mapcat #(exception-recheck-predicates kb (:sentence %))))
                      (reads/as-stored-with-term (:index kb) (sx/sentex-handle rh)))
         rsx    (p/get-sentex (:records kb) rh)]
-    (into others (when rsx (rules/recheck-predicates rsx)))))
+    (into others (when rsx (concat (rules/recheck-predicates rsx)
+                                   (rules/separation-denial-predicates-of
+                                    (reasoning/taxonomy kb) (sx/sentence-of rsx)))))))
 
 (defn unindex-exceptWhen-meta
   "The mirror of `index-exceptWhen-meta`: withdraw the departing exceptWhen
@@ -1106,8 +1164,7 @@
   roster rule no exception convicts any more (`checks/force-sentexes!`)."
   [kb meta-sentex]
   (let [rh        (sx/exceptWhen-rule-handle (:sentence meta-sentex))
-        this-preds (rules/watched-predicates
-                    (sx/exception-query-conjuncts (:sentence meta-sentex)))]
+        this-preds (exception-recheck-predicates kb (:sentence meta-sentex))]
     (when rh
       (rules/unindex-exception! (:index kb) rh this-preds)
       (when-let [remaining (seq (rule-remaining-recheck-preds kb rh (:id meta-sentex)))]
@@ -1870,7 +1927,7 @@
           []
           (into []
                 (for [x terms
-                      m (kb/type-memberships kb x)
+                      m (res/type-memberships kb x)
                       :let [t' (nm/functor (:sentence m))]
                       r (if (= t' t) [[]] (tax/general-reach-supports tax :genl t' t nil))]
                   (into [[(:id m) (:context m)]] r))))))))
@@ -7664,9 +7721,11 @@
           ;; posting — harmless, but recomputing is the rule that cannot drift.  The
           ;; rule's `unknown` antecedents' predicates come back out here; an exceptWhen
           ;; exception's are withdrawn by its own meta-sentex leaving (above).
-          (when (rules/rechecked? sentex)
-            (rules/unindex-exception! (:index kb) (:id sentex)
-                                      (rules/recheck-predicates sentex)))
+          (let [sd (rules/separation-denial-predicates-of (reasoning/taxonomy kb)
+                                                          (sx/sentence-of sentex))]
+            (when (or (rules/rechecked? sentex) (seq sd))
+              (rules/unindex-exception! (:index kb) (:id sentex)
+                                        (distinct (concat (rules/recheck-predicates sentex) sd)))))
           ;; ...and the firings it refused before they could become justifications.  A
           ;; refusal is dead when its rule goes, and this is the event that says so —
           ;; entries are otherwise dropped lazily, when a queued rule's record is

@@ -15,6 +15,7 @@
             [vaelii.impl.naming :as nm]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reads :as reads]
+            [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.special :as special]
             [vaelii.impl.strength :as strength]
@@ -140,6 +141,42 @@
                      :when (= ps parts)]
                  [:cover [whole parts] kind])))])))
 
+(defn- separated-cover-keys
+  "The flat-cache keys of a cover refuted through a separation's denial over the member
+  sentences `sens`, at vantage `v` (`membership/term-nogoods`' cover arm): for a
+  membership `(s x)` under a cover's whole each of whose parts a denial among `sens` or
+  another membership among them denies, the cover's key and the keys of each route a
+  separation denies a part through under the soundness rule of `res/separation-denials`
+  (`tax/monotonic-route-witness`).  Empty unless `sens` holds two memberships of one
+  term."
+  [kb sens v]
+  (let [tax    (reasoning/taxonomy kb)
+        pos    (filterv #(and (not (sx/negation? %)) (= 1 (nm/arity %))) sens)
+        denied (mapv second (filter sx/negation? sens))
+        x      (first (nm/args (first pos)))]
+    (when (and (< 1 (count pos)) (= (count pos) (count (remove sx/negation? sens)))
+               (every? #(= [x] (vec (nm/args %))) (concat pos denied))
+               (every? #(symbol? (nm/functor %)) pos))
+      (let [cls   (res/holding-class kb)
+            types (mapv nm/functor pos)
+            ds    (map nm/functor denied)]
+        (into #{}
+              cat
+              (for [s             types
+                    [whole parts] (tax/covers-over tax s v)
+                    :let [per (for [p parts]
+                                (if (some #(contains? (tax/genls tax p v) %) ds)
+                                  [#{}]
+                                  (for [d types
+                                        :when (not= d s)
+                                        r (tax/separation-routes-held tax d p)
+                                        :when (tax/monotonic-route-witness tax r v cls)]
+                                    (:keys r))))]
+                    :when (every? seq per)
+                    [ps kind] (tax/covers-of tax whole)
+                    :when (= ps parts)]
+                (into #{[:cover [whole parts] kind]} (comp cat cat) per)))))))
+
 (defn- minted-from
   "The handles of the sentences the `genl` edges among `hs` were minted from: the source
   of each justification of such an edge an argument declaration's entailment holds up
@@ -183,7 +220,8 @@
 (defn clash-grounds
   "The declarations report `r` convicts through, as `{:handle :sentence :context}` maps in
   content order: the believed supporters of the flat-cache entries its conviction reads
-  (`ground-keys`) that one of its vantages sees, or the whole KB for a report weighed at
+  (`ground-keys`, and `separated-cover-keys` for a cover refuted through a separation's
+  denial) that one of its vantages sees, or the whole KB for a report weighed at
   none; for an arity clash, the grounds it is placed through at each vantage
   (`placed-grounds`).  No `genl` edge is named; an edge an argument declaration minted is
   named by the sentence it was minted from.  Empty for a rebuttal and an `:inherited`
@@ -198,7 +236,8 @@
           at   (fn [v]
                  (if (contains? #{:arity :arity-descension} (:kind r))
                    (placed-grounds kb (set (:nogood r)) (when (symbol? v) v))
-                   (mapcat #(tax/visible-supporters tax % v) (ground-keys tax sens v))))]
+                   (mapcat #(tax/visible-supporters tax % v)
+                           (into (ground-keys tax sens v) (separated-cover-keys kb sens v)))))]
       (->> (or (seq (report-vantages r)) [nil])
            (into #{} (mapcat at))
            (into [] (comp (filter #(jtms/in? tms %))

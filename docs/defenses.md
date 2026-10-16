@@ -1026,6 +1026,29 @@ declarations are three or four. The answer is read off `a`'s own declarations in
 sized by what `a` actually declares rather than by everything the KB knows (see
 [taxonomy.md](taxonomy.md) for `tax/separating-partners`).
 
+### A separation's denial climbs only monotonic edges
+
+With `(genl pa pb)`, `(disjoint pc pb)` and `(pc Xy)`, the obvious prover reads `(not (pa
+Xy))` off `tax/disjoint?`: `pa` is below `pb`, `pb` is separated from `pc`, and `Xy` is a
+`pc`. The read is modus tollens over the `genl` edge, and it is sound only when the edge is.
+
+Do not read the denial through a `:default` edge. "A `pa` is typically a `pb`" leaves room
+for an atypical `pa` outside `pb`, and `Xy` is exactly the term that would be one. A
+default applies forward and does not contrapose. The same holds on the other side: the
+membership `(pc Xy)` reaching its separated supertype through a `:default` edge is a
+default that this term can defeat. The suite holds the witness. `core.txt` states `(genl
+tangible uninterrupted)` at `:default` and partitions `temporal` into `uninterrupted` and
+`intermittent`. A naive prover reads `made` separated from `intermittent`, and denies
+`made` and `natural` of a monotonic `intermittent` watch that the default edge never
+reached (`ontology_test/the-watch-of-theseus-is-intermittent`).
+
+So `res/separation-denials` asks every edge on both sides to hold at `:monotonic`, read as
+the widest-bottleneck floor, and a disjoint metatype's membership to hold at `:monotonic`
+too. Capping the denial at `:default` and reading the believed inherited membership on the
+denying side would answer more, and it would need a second strength on a read the cover
+family names members off. The engine takes the smaller rule ([taxonomy.md](taxonomy.md),
+*A separation answers a denial*).
+
 ## Contexts and placement
 
 Defends [contexts.md](contexts.md).

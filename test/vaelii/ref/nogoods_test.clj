@@ -188,6 +188,25 @@
          (member-sets (ng/covering (view-of '[(covering w p1 p2) (genl p1 q) (w X)
                                               (not (p1 X)) (not (q X)) (not (p2 X))]))))))
 
+(deftest a-membership-in-a-type-separated-from-a-part-denies-the-part
+  ;; https://github.com/vaelii/vaelii/issues/183: the separation's denial is a denier of
+  ;; the part, and the membership doing the denying is the member
+  (is (= [{:kind    :covering
+           :members #{'(w X) '(s1 X) '(s2 X)}
+           :ground  #{'(covering w p1 p2) '(disjoint s1 p1) '(disjoint s2 p2)}}]
+         (ng/covering (view-of '[(covering w p1 p2) (disjoint s1 p1) (disjoint s2 p2)
+                                 (w X) (s1 X) (s2 X)])))))
+
+(deftest a-separation-denies-a-part-only-over-monotonic-edges
+  ;; a `:default` edge from the part up to the separated type does not contrapose
+  (let [world '[(covering w p1 p2) (genl p1 q) (disjoint s1 q) (disjoint s2 p2)
+                (w X) (s1 X) (s2 X)]]
+    (is (= [] (ng/covering (view-of world))))
+    (is (= [{:kind    :covering
+             :members #{'(w X) '(s1 X) '(s2 X)}
+             :ground  #{'(covering w p1 p2) '(disjoint s1 q) '(disjoint s2 p2) '(genl p1 q)}}]
+           (ng/covering (view-of world '{(genl p1 q) :monotonic}))))))
+
 ;; ---- inherited (transitiveInArgInverse) --------------------------------------------
 
 (def ^:private scenario-e
