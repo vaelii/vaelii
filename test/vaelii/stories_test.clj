@@ -29,11 +29,11 @@
 ;; ---- connected conjunctive antecedents in the starter -------------------
 
 (tu/deftest-kb a-part-is-located-where-its-whole-is
-  ;; (implies (and (partOf ?part ?whole) (locatedIn ?whole ?place)) (locatedIn ?part ?place))
+  ;; (implies (and (tangiblePartOf ?part ?whole) (locatedIn ?whole ?place)) (locatedIn ?part ?place))
   ;; joins on ?whole — the Engine is in the Garage because the Car is.
   (testing "the joined rule places the part in the whole's location"
     (is (seq (v/sentexes-matching kb '(locatedIn Engine1 Garage1) 'CxNaturalWorld)))
-    ;; Piston1 partOf Engine1, and Engine1's derived location feeds the rule again
+    ;; Piston1 tangiblePartOf Engine1, and Engine1's derived location feeds the rule again
     (is (seq (v/sentexes-matching kb '(locatedIn Piston1 Garage1) 'CxNaturalWorld))))
   (testing "the forward conclusion composes with transitive locatedIn"
     ;; locatedIn Engine1 Garage1 (derived) + locatedIn Garage1 House1 ⇒ Engine1 in House1
@@ -41,22 +41,22 @@
     (is (v/ask? kb '(locatedIn Piston1 House1) 'CxNaturalWorld))))
 
 (tu/deftest-kb owning-a-whole-entails-owning-its-parts
-  ;; (implies (and (owns ?p ?whole) (partOf ?part ?whole)) (owns ?p ?part)) joins on ?whole.
+  ;; (implies (and (owns ?p ?whole) (tangiblePartOf ?part ?whole)) (owns ?p ?part)) joins on ?whole.
   (testing "the parts of an owned whole are owned — when the facts share a context"
     (is (seq (v/sentexes-matching kb '(owns Tom Roof1) 'CxSocialWorld)))
     (is (seq (v/sentexes-matching kb '(owns Tom Chimney1) 'CxSocialWorld))))
   (testing "but a cross-context binding yields no conclusion — placement needs a common view"
-    ;; owns Tom Car1 (CxSocialWorld) joins partOf Engine1 Car1 (CxNaturalWorld); the two
+    ;; owns Tom Car1 (CxSocialWorld) joins tangiblePartOf Engine1 Car1 (CxNaturalWorld); the two
     ;; sibling contexts share no view, so the conclusion has nowhere to be placed.
     (is (empty? (v/sentexes-matching kb '(owns Tom Engine1) 'CxSocialWorld)))
     (is (empty? (v/sentexes-matching kb '(owns Tom Engine1) 'CxNaturalWorld)))))
 
 (tu/deftest-kb joined-antecedents-infer-a-part-type
-  ;; partOf carries (arg partOf 2 tangible), so an untyped part is a
+  ;; tangiblePartOf carries (arg tangiblePartOf 2 tangible), so an untyped part is a
   ;; tangible from how it is used: the declaration, inherited from CxUniverse,
   ;; derives the membership (docs/argtypes.md), and under the constraint-only reading
   ;; the backward read answers it with nothing stored.
-  (testing "Roof1 is never typed, but its tangible-hood is derived from partOf"
+  (testing "Roof1 is never typed, but its tangible-hood is derived from tangiblePartOf"
     (is (= (arg-derivation-expected) (arg-derived kb '(tangible Roof1))))
     (is (v/ask? kb '(tangible Roof1)))))
 
@@ -130,7 +130,7 @@
   ;; A *middle* theory (biology) is seen by every CxWell
   ;; descendant, so it DOES reach story characters — the mortal default lands on the
   ;; lion, placed back in its own leaf.  What stays isolated is a join across sibling
-  ;; data contexts (owns/partOf, tested above) and a rule whose type does not match.
+  ;; data contexts (owns/tangiblePartOf, tested above) and a rule whose type does not match.
   (testing "a middle biology theory reaches a story animal, in that animal's leaf"
     (is (seq (v/sentexes-matching kb '(mortal LionA) 'CxLionMouse))))
   (testing "but a default whose antecedent type does not hold never fires — neither a

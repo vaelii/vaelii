@@ -161,7 +161,12 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; tuple [functor pred a b], displacing nothing
 (kb-integrity kb candidate-terms ctx)
 (kb-integrity kb candidate-terms ctx opts)       ; the bounded checkpoint sweep: the complete specified
-                                                ; audit above, query-only definition clashes over an
+                                                ; audit above, every visible (typeAllSpecified
+                                                ; classifier indep) requirement, each instance of indep
+                                                ; with no believed membership in a member of classifier,
+                                                ; every functionCorrespondingPredicate pair whose function
+                                                ; and predicate are believed of different rigidity kinds,
+                                                ; query-only definition clashes over an
                                                 ; explicit finite set of ground terms, every visible
                                                 ; predicate genl edge whose spec declares an arg type its
                                                 ; genl's constraint does not subsume, every candidate
@@ -182,6 +187,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; {:status :audited :candidate-count n}
                                                 ; when clean, or :status :gap plus any of the sparse
                                                 ; categories :all-specified-violations,
+                                                ; :type-specified-violations,
+                                                ; :rigidity-correspondence,
                                                 ; :definition-inconsistencies, :genl-arg-widening,
                                                 ; :not-under-thing, :implicit-genl,
                                                 ; :orthogonal-over-separation, :rule-macro,
@@ -1321,8 +1328,8 @@ topology is three levels, most general (top) to most specific (bottom).
 **CxUniverse** is the root, seen by every context the topology wires in. It holds the
 upper layer: `core.txt`, the vocabulary and the top of the ontology; `abstract.txt`, the
 kinds below the skeleton `core.txt` holds, body parts and substances,
-`partOf`/`locatedIn`/`madeOf`, and the two **type-level** relations
-`largerThan`/`partType`; `organism.txt`, the biological taxonomy and its disjointness;
+`tangiblePartOf`/`locatedIn`/`madeOf`, and the two **type-level** relations
+`typeLargerThan`/`partType`; `organism.txt`, the biological taxonomy and its disjointness;
 `life.txt`, the organism relations and states; `society.txt`, the social relations;
 `measure.txt`, the theory of measurement; `reflection.txt`, the expression lattice and
 the use/mention vocabulary; `space.txt`, the four spatial calculi of
@@ -1359,7 +1366,7 @@ a variable so they join — grandparentOf, part-location, owns-parts).
 **A binary predicate says which level it relates at, unless its two ends disagree.**
 `relation_kind` is a `disjoint_metatype` over `instance_relation_predicate` and
 `type_relation_predicate`: `parentOf`, `northOf` and `madeOf` relate individuals; `genl`,
-`disjoint`, `orthogonal`, `largerThan`, `partType` and `capabilityType` relate kinds. *At most* one, not
+`disjoint`, `orthogonal`, `typeLargerThan`, `partType` and `capabilityType` relate kinds. *At most* one, not
 exactly one — the unmarked are those whose two ends sit at different levels, or at no
 level at all (`implies` is a connective; `rewriteOf` takes either role so long as its two
 sides agree; `result` and `genlResult` relate a function to a type;
@@ -1368,7 +1375,7 @@ relates one animal to an event kind). The mark is not decoration: it decides whi
 argument-check family the predicate may use, one for **every** position, which is why a
 mixed predicate cannot carry one — `arg` on a `type_relation_predicate` and `genlArg` on
 an `instance_relation_predicate` are both refused `:arg-constraint-kind`. The distinction is
-what `typeToInstancePred` is stated over, and it is the difference between `(largerThan
+what `typeToInstancePred` is stated over, and it is the difference between `(typeLargerThan
 dog cat)` — dogs are bigger than cats — and a claim about two particular animals.
 
 **Contingent data lives in the tests.** The starter ships no cast: individuals, facts,

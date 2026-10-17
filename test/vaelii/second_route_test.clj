@@ -81,16 +81,16 @@
        :below   #{CxA CxB}})
 
     :preserve
-    (let [{:syms [dog_t mid_t chi_t cat_t largerThan noted CxA CxB]}
-          (terms '[dog_t mid_t chi_t cat_t largerThan noted CxA CxB])]
+    (let [{:syms [dog_t mid_t chi_t cat_t typeLargerThan noted CxA CxB]}
+          (terms '[dog_t mid_t chi_t cat_t typeLargerThan noted CxA CxB])]
       {:base    [[(list 'genlCx CxA 'CxUniverse) 'CxUniverse]
                  [(list 'genlCx CxB CxA) 'CxUniverse]
-                 [(list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse]
-                 [(list 'set/forwardRule (list 'implies (list largerThan '?x '?y) (list noted '?x '?y)))
+                 [(list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse]
+                 [(list 'set/forwardRule (list 'implies (list typeLargerThan '?x '?y) (list noted '?x '?y)))
                   'CxUniverse]]
        :named   [[(list 'genl mid_t dog_t) 'CxUniverse] [(list 'genl chi_t mid_t) 'CxUniverse]]
        :other   [[(list 'genl chi_t dog_t) CxA]]
-       :claim   [[(list largerThan dog_t cat_t) 'CxUniverse]]
+       :claim   [[(list typeLargerThan dog_t cat_t) 'CxUniverse]]
        :knock   [(list 'genl chi_t mid_t) 'CxUniverse]
        :at      CxA
        :goal    (list noted chi_t cat_t)
@@ -100,16 +100,16 @@
     ;; Both routes in CxA, so they tie on generality and the shorter one is named; the
     ;; knock lands in CxB below them (docs/nmtms.md, "Where the layer stops").
     :tie
-    (let [{:syms [dog_t mid_t chi_t cat_t largerThan noted CxA CxB]}
-          (terms '[dog_t mid_t chi_t cat_t largerThan noted CxA CxB])]
+    (let [{:syms [dog_t mid_t chi_t cat_t typeLargerThan noted CxA CxB]}
+          (terms '[dog_t mid_t chi_t cat_t typeLargerThan noted CxA CxB])]
       {:base    [[(list 'genlCx CxA 'CxUniverse) 'CxUniverse]
                  [(list 'genlCx CxB CxA) 'CxUniverse]
-                 [(list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse]
-                 [(list 'set/forwardRule (list 'implies (list largerThan '?x '?y) (list noted '?x '?y)))
+                 [(list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse]
+                 [(list 'set/forwardRule (list 'implies (list typeLargerThan '?x '?y) (list noted '?x '?y)))
                   'CxUniverse]]
        :named   [[(list 'genl chi_t dog_t) CxA]]
        :other   [[(list 'genl chi_t mid_t) CxA] [(list 'genl mid_t dog_t) CxA]]
-       :claim   [[(list largerThan dog_t cat_t) 'CxUniverse]]
+       :claim   [[(list typeLargerThan dog_t cat_t) 'CxUniverse]]
        :knock   [(list 'genl chi_t dog_t) CxA]
        :at      CxB
        :goal    (list noted chi_t cat_t)
@@ -117,18 +117,18 @@
        :below   #{CxB}})
 
     :preserve-fact
-    (let [{:syms [partOf rel noted A B C Z CxA CxB]}
-          (terms '[partOf rel noted A B C Z CxA CxB])]
+    (let [{:syms [tangiblePartOf rel noted A B C Z CxA CxB]}
+          (terms '[tangiblePartOf rel noted A B C Z CxA CxB])]
       {:base    [[(list 'genlCx CxA 'CxUniverse) 'CxUniverse]
                  [(list 'genlCx CxB CxA) 'CxUniverse]
-                 [(list 'transitive partOf) 'CxUniverse]
-                 [(list 'transitiveInArgInverse rel 1 partOf) 'CxUniverse]
+                 [(list 'transitive tangiblePartOf) 'CxUniverse]
+                 [(list 'transitiveInArgInverse rel 1 tangiblePartOf) 'CxUniverse]
                  [(list 'set/forwardRule (list 'implies (list rel '?x '?y) (list noted '?x '?y)))
                   'CxUniverse]]
-       :named   [[(list partOf B A) 'CxUniverse] [(list partOf C B) 'CxUniverse]]
-       :other   [[(list partOf C A) CxA]]
+       :named   [[(list tangiblePartOf B A) 'CxUniverse] [(list tangiblePartOf C B) 'CxUniverse]]
+       :other   [[(list tangiblePartOf C A) CxA]]
        :claim   [[(list rel A Z) 'CxUniverse]]
-       :knock   [(list partOf C B) 'CxUniverse]
+       :knock   [(list tangiblePartOf C B) 'CxUniverse]
        :at      CxA
        :goal    (list noted C Z)
        :readers ['CxUniverse CxA CxB]
@@ -154,17 +154,17 @@
        :below   #{CxD}})
 
     :sibling-fact
-    (let [{:syms [partOf rel noted A B C Z CxA CxB CxD]}
-          (terms '[partOf rel noted A B C Z CxA CxB CxD])]
+    (let [{:syms [tangiblePartOf rel noted A B C Z CxA CxB CxD]}
+          (terms '[tangiblePartOf rel noted A B C Z CxA CxB CxD])]
       {:base    (into (sibling-contexts CxA CxB CxD)
-                      [[(list 'transitive partOf) 'CxUniverse]
-                       [(list 'transitiveInArgInverse rel 1 partOf) 'CxUniverse]
+                      [[(list 'transitive tangiblePartOf) 'CxUniverse]
+                       [(list 'transitiveInArgInverse rel 1 tangiblePartOf) 'CxUniverse]
                        [(list 'set/forwardRule (list 'implies (list rel '?x '?y) (list noted '?x '?y)))
                         'CxUniverse]])
-       :named   [[(list partOf C B) CxA] [(list partOf B A) CxA]]
-       :other   [[(list partOf C A) CxB]]
+       :named   [[(list tangiblePartOf C B) CxA] [(list tangiblePartOf B A) CxA]]
+       :other   [[(list tangiblePartOf C A) CxB]]
        :claim   [[(list rel A Z) 'CxUniverse]]
-       :knock   [(list partOf C B) CxA]
+       :knock   [(list tangiblePartOf C B) CxA]
        :at      CxD
        :goal    (list noted C Z)
        :readers ['CxUniverse CxA CxB CxD]
@@ -326,8 +326,8 @@
   order (a vector of `[part [[sentence context] …]]`), the `:goal`, and the `:expect`ed
   answers at `:readers`."
   [shape]
-  (let [{:syms [low_t mid_t high_t val_t aRel noted alive_t partOf P1 P2 P3 Fido CxA CxB CxD]}
-        (terms '[low_t mid_t high_t val_t aRel noted alive_t partOf P1 P2 P3 Fido CxA CxB CxD])
+  (let [{:syms [low_t mid_t high_t val_t aRel noted alive_t tangiblePartOf P1 P2 P3 Fido CxA CxB CxD]}
+        (terms '[low_t mid_t high_t val_t aRel noted alive_t tangiblePartOf P1 P2 P3 Fido CxA CxB CxD])
         ctxs    (sibling-contexts CxA CxB CxD)
         pres    [[(list 'transitiveInArgInverse aRel 1 'genl) 'CxUniverse]]
         noting  [[(list 'set/forwardRule (list 'implies (list aRel '?x '?y) (list noted '?x '?y)))
@@ -370,10 +370,10 @@
        :goal  (list noted low_t val_t) :readers readers :expect [false true true true]}
 
       :fact-relation
-      {:base  (concat ctxs noting [[(list 'transitive partOf) 'CxUniverse]
-                                   [(list 'transitiveInArgInverse aRel 1 partOf) 'CxUniverse]])
-       :parts [[:a1 [[(list partOf P3 P2) CxA]]] [:a2 [[(list partOf P2 P1) CxA]]]
-               [:b [[(list partOf P3 P1) CxB]]] [:claim [[(list aRel P1 val_t) 'CxUniverse]]]]
+      {:base  (concat ctxs noting [[(list 'transitive tangiblePartOf) 'CxUniverse]
+                                   [(list 'transitiveInArgInverse aRel 1 tangiblePartOf) 'CxUniverse]])
+       :parts [[:a1 [[(list tangiblePartOf P3 P2) CxA]]] [:a2 [[(list tangiblePartOf P2 P1) CxA]]]
+               [:b [[(list tangiblePartOf P3 P1) CxB]]] [:claim [[(list aRel P1 val_t) 'CxUniverse]]]]
        :goal  (list noted P3 val_t) :readers readers :expect [false true true true]}
 
       :subsumed-match
@@ -398,9 +398,9 @@
       ;; (`wff/arg-preserving-problems`), so only the orders that bring one first are
       ;; admitted.
       :transitive-twice
-      {:base    (concat ctxs noting [[(list partOf P3 P1) 'CxUniverse]])
-       :parts   [[:ta [[(list 'transitive partOf) CxA]]] [:tb [[(list 'transitive partOf) CxB]]]
-                 [:decl [[(list 'transitiveInArgInverse aRel 1 partOf) 'CxUniverse]]]
+      {:base    (concat ctxs noting [[(list tangiblePartOf P3 P1) 'CxUniverse]])
+       :parts   [[:ta [[(list 'transitive tangiblePartOf) CxA]]] [:tb [[(list 'transitive tangiblePartOf) CxB]]]
+                 [:decl [[(list 'transitiveInArgInverse aRel 1 tangiblePartOf) 'CxUniverse]]]
                  [:claim [[(list aRel P1 val_t) 'CxUniverse]]]]
        :admits  (fn [order]
                   (let [at #(.indexOf ^java.util.List order %)]

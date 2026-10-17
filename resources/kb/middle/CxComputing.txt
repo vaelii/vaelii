@@ -28,6 +28,7 @@
 
 (comment software_tool "A computational system that performs one bounded operation each time an agent invokes it, e.g. a command-line program, a Model Context Protocol tool, a web API endpoint.")
 (genl software_tool computational_system)
+(set/monotonic (time_invariant_relation software_tool))
 
 (comment command_line_tool "A software tool invoked by a command line that a shell runs, e.g. a text-search program, a file-copy program.")
 (genl command_line_tool software_tool)
@@ -73,12 +74,15 @@
 
 (comment ip_address "A string denoting an Internet Protocol network address, e.g. 192.0.2.1, 2001:db8::1. A host name is not an IP address.")
 (genl ip_address string)
+(set/monotonic (time_invariant_relation ip_address))
 
 (comment ipv4_address "A string denoting a 32-bit Internet Protocol version 4 address, e.g. 192.0.2.1.")
 (comment ipv6_address "A string denoting a 128-bit Internet Protocol version 6 address, e.g. 2001:db8::1.")
 ;; Every IP address is of one version or the other. The partition installs both genl
 ;; edges to ip_address and separates the two parts.
 (partition ip_address ipv4_address ipv6_address)
+(set/monotonic (time_invariant_relation ipv4_address))
+(set/monotonic (time_invariant_relation ipv6_address))
 
 ;; ---- a media resource's address ------------------------------------------
 (comment resourceUrl "(resourceUrl ?resource ?url) means that ?resource is retrievable at ?url, e.g. an https address.")

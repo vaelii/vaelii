@@ -9,7 +9,7 @@
 - **Assumes:** `genl`, transitive predicates, defeat-class, justification →
   [glossary.md](glossary.md).
 
-`(largerThan dog cat)` says something about two *kinds*. Whether it also says something
+`(typeLargerThan dog cat)` says something about two *kinds*. Whether it also says something
 about `golden_retriever` and `maine_coon` is not decidable from the sentence — it
 depends on whether the relation distributes over the kinds' subkinds. Some relations do:
 `disjoint` is closed under `genl`, and subtypes of disjoint types are disjoint. Some
@@ -38,12 +38,12 @@ in each of its scenarios — and under `transitiveInArg` a claim about a narrow 
 reaches the ones above it.
 
 Naming the relation is what keeps this from being a `genl` special case. An argument can
-be preserved along `partOf` just as readily:
+be preserved along `tangiblePartOf` just as readily:
 
 ```clojure
-(transitive partOf)
-(partOf Engine Car)  (partOf Piston Engine)
-(transitiveInArgInverse needs_maintenance 1 partOf)
+(transitive tangiblePartOf)
+(tangiblePartOf Engine Car)  (tangiblePartOf Piston Engine)
+(transitiveInArgInverse needs_maintenance 1 tangiblePartOf)
 (needs_maintenance Car)
 ;; => (needs_maintenance Piston)   two hops, no types involved
 ```
@@ -57,24 +57,24 @@ position; their reaches union, since each independently licenses the claim.
 A declaration is read for the goal's **own** predicate. It no more descends to a
 sub-predicate than `transitive` or `symmetric` does: distribution over subkinds is a
 claim about the relation that has it, and `muchLargerThan` may fail to distribute
-where `largerThan` distributes. The sub-predicate's *facts* still serve the
+where `typeLargerThan` distributes. The sub-predicate's *facts* still serve the
 super-predicate's goals — the claim reach fans through `matches-visible` like every
 read — so the asymmetry is the semantics: facts travel up the predicate hierarchy,
 licences do not travel down it.
 
 ## Four predicates ship with one
 
-`largerThan` and `partType` are in `resources/kb/upper/abstract.txt`, `capabilityType`
+`typeLargerThan` and `partType` are in `resources/kb/upper/abstract.txt`, `capabilityType`
 and `hasCapability` in `resources/kb/upper/life.txt`. The first two are worth comparing
 because they are declared **differently on purpose**:
 
 ```clojure
-(transitiveInArgInverse largerThan 1 genl)   (transitiveInArgInverse largerThan 2 genl)
+(transitiveInArgInverse typeLargerThan 1 genl)   (transitiveInArgInverse typeLargerThan 2 genl)
 (transitiveInArgInverse partType   1 genl)
 ```
 
-`largerThan` preserves on both positions, so `(largerThan mammal insect)` in
-`CxSize` answers `(largerThan dog ant)` with nothing stored about dogs or ants.
+`typeLargerThan` preserves on both positions, so `(typeLargerThan mammal insect)` in
+`CxSize` answers `(typeLargerThan dog ant)` with nothing stored about dogs or ants.
 `partType` preserves on the **first only**: a kind of bird has whatever parts birds have,
 so `(partType bird wing)` answers `(partType penguin wing)` — but birds having wings says
 nothing about which *kinds of wing* they have, so position 2 preserves nothing. Each
@@ -91,15 +91,15 @@ directions at once:
 
 Position 1 of `capabilityType` carries a claim about a kind *down* to its subkinds — a
 kind of bird flies with nothing written about it — while position 2 of both predicates
-carries it *up* the `genl` hierarchy of event kinds: `flying` is a kind of `travelling`, so
-whatever can fly can travel. The second position of both predicates is an event kind,
-`(genlArg hasCapability 2 event)`, so `(hasCapability Tweety flying)` says Tweety can be
+carries it *up* the `genl` hierarchy of happening kinds: `flying` is a kind of `travelling`,
+so whatever can fly can travel. The second position of both predicates is a happening kind,
+`(genlArg hasCapability 2 happening)`, so `(hasCapability Tweety flying)` says Tweety can be
 the doer of a flying event.
 
 The size claims are also where the sharp edge shows. Preservation runs downward, so
-`(largerThan mammal mouse)` reaches every pair below it and lands on `(largerThan mouse
-mouse)` — a kind reported larger than itself, which is not what `largerThan` is for.
-`(largerThan mammal mouse)` is therefore not a fact this ontology can hold, however true
+`(typeLargerThan mammal mouse)` reaches every pair below it and lands on `(typeLargerThan mouse
+mouse)` — a kind reported larger than itself, which is not what `typeLargerThan` is for.
+`(typeLargerThan mammal mouse)` is therefore not a fact this ontology can hold, however true
 it sounds; every pair in `CxSize` is between kinds that are not `genl`-related, and that
 is a requirement rather than a coincidence.
 
@@ -160,7 +160,7 @@ each vantage, and answered there by walking nothing.
 nothing about Rex and Whiskers, and that silence is the semantics rather than a gap.
 `relation_kind` is a `disjoint_metatype` over `type_relation_predicate` and
 `instance_relation_predicate` — one predicate symbol relates kinds *or* instances, never
-both — so a `largerThan` that inherited across the line would be a predicate of both
+both — so a `typeLargerThan` that inherited across the line would be a predicate of both
 kinds at once, which the meta-ontology refuses.
 
 Preservation moves an **argument** along a relation; the predicate, and the level it
@@ -180,7 +180,7 @@ unmarked, which `relation_kind`'s own comment says of `result` and
 `functionCorrespondingPredicate`. `hasCapability` is the third: one animal, one event
 kind. So `capabilityType`/`hasCapability` are named as a pair in their comments and not by
 the predicate that exists to name pairs — declaring the mark to satisfy it would trade an
-argument check that convicts for a link nothing reads. `partType`/`partOf` is the pair the
+argument check that convicts for a link nothing reads. `partType`/`tangiblePartOf` is the pair the
 link does state, both halves relating individuals to individuals.
 
 ## Specificity, and why it is not the deleted axis
@@ -212,12 +212,12 @@ asserted, with no second declaration:
 
 ```clojure
 ;; the declarations and the genl edges under dog and cat {:strength :monotonic}
-(asymmetric largerThan)
-(transitiveInArgInverse largerThan 1 genl)  (transitiveInArgInverse largerThan 2 genl)
+(asymmetric typeLargerThan)
+(transitiveInArgInverse typeLargerThan 1 genl)  (transitiveInArgInverse typeLargerThan 2 genl)
 
-(largerThan dog cat)                        {:strength :monotonic}
-(largerThan maine_coon chihuahua)           ; => stored, and not believed
-;   (largerThan dog cat) is known true and reaches (largerThan chihuahua maine_coon)
+(typeLargerThan dog cat)                        {:strength :monotonic}
+(typeLargerThan maine_coon chihuahua)           ; => stored, and not believed
+;   (typeLargerThan dog cat) is known true and reaches (typeLargerThan chihuahua maine_coon)
 ;   by argument preservation, so the contrary claim is the weaker member
 ```
 
@@ -445,9 +445,9 @@ above work at all — `(typicallyLargerThan maine_coon chihuahua)` counts as evi
 against the inherited `(typicallyLargerThan chihuahua maine_coon)` only because the two
 cannot both hold.
 
-And it makes a strict order **detectable**. Without it, `(largerThan dog cat)` and
-`(largerThan cat dog)` coexist silently — zero conflicts, both believed — and with
-`(transitive largerThan)` on top you get `(largerThan dog dog)` and nothing objects.
+And it makes a strict order **detectable**. Without it, `(typeLargerThan dog cat)` and
+`(typeLargerThan cat dog)` coexist silently — zero conflicts, both believed — and with
+`(transitive typeLargerThan)` on top you get `(typeLargerThan dog dog)` and nothing objects.
 With it, the second claim is judged against the first's **defeat class**, and a first
 claim reached by preservation against the weakest class of the claim and its reading:
 known-true, and a default second claim is defeated; merely believed, and the two are a
@@ -501,8 +501,8 @@ and ~21 µs, and the difference is the declared predicate's own read.
 
 A forward rule's antecedents are matched against stored facts, and an inherited claim is
 not one. So the two entry points into the same knowledge answered differently: `ask` reached
-`(largerThan chihuahua maine_coon)` through the prover above, while the fixpoint fired
-`(implies (largerThan ?x ?y) (outweighs ?x ?y))` on the claims that were written and on
+`(typeLargerThan chihuahua maine_coon)` through the prover above, while the fixpoint fired
+`(implies (typeLargerThan ?x ?y) (outweighs ?x ?y))` on the claims that were written and on
 nothing else, and `sentexes-matching` read that back. The engine treats a
 forward/backward disagreement as a defect elsewhere — `provers/exception-holds?` is one
 shared function precisely so an exception cannot block a rule one way and not the other
@@ -514,8 +514,8 @@ Support is what closes it, exactly as it does for a relation a constraint networ
 entails ([qcn.md](qcn.md)). An inherited claim has no handle, but it was **read from**
 things that do:
 
-- the **claim that was stated** — `(largerThan dog cat)`;
-- the **declaration** licensing the move — `(transitiveInArgInverse largerThan 1 genl)`, one per
+- the **claim that was stated** — `(typeLargerThan dog cat)`;
+- the **declaration** licensing the move — `(transitiveInArgInverse typeLargerThan 1 genl)`, one per
   position that actually moved;
 - the **relation edges** the reach travelled — `(genl chihuahua dog)`, `(genl maine_coon
   cat)`, one path per position, the one that places the conclusion highest, or one per
@@ -531,9 +531,9 @@ goes, `why` names the actual reasons, and the conclusion is placed only where al
 them can be seen — the contract an ordinarily matched antecedent has.
 
 ```clojure
-(transitiveInArgInverse largerThan 1 genl)  (transitiveInArgInverse largerThan 2 genl)
-(largerThan dog cat)
-(implies (largerThan ?x ?y) (outweighs ?x ?y))
+(transitiveInArgInverse typeLargerThan 1 genl)  (transitiveInArgInverse typeLargerThan 2 genl)
+(typeLargerThan dog cat)
+(implies (typeLargerThan ?x ?y) (outweighs ?x ?y))
 
 (v/ask? kb '(outweighs chihuahua maine_coon) C)              ; => true
 (v/sentexes-matching kb '(outweighs chihuahua maine_coon) C) ; => the derived sentex
@@ -561,9 +561,9 @@ not.
 Five more things follow, and each needed its own wiring.
 
 **The trigger index cannot connect any of it.** A rule is fired by a datum whose
-predicate keys it, and `(genl chihuahua dog)` licenses a `largerThan` antecedent with
-neither of its terms appearing anywhere near `largerThan`. Nor is a claim on the
-predicate itself enough on its own: `(largerThan dog cat)` unifies with the antecedent at
+predicate keys it, and `(genl chihuahua dog)` licenses a `typeLargerThan` antecedent with
+neither of its terms appearing anywhere near `typeLargerThan`. Nor is a claim on the
+predicate itself enough on its own: `(typeLargerThan dog cat)` unifies with the antecedent at
 the one tuple it is *stated* at, and the tuples it licenses are reached by joining rather
 than by matching. So such a datum **re-joins in full** every forward rule carrying an
 antecedent on a preserved predicate whose licensed set it moved, and those rules leave
@@ -884,8 +884,8 @@ the order the retrieval answered in.
 **A `genl` edge between two types can flip an exception stated over a predicate neither
 type appears in.** `TransitiveInArgProver` sits in the level-6 stack that `exceptWhen` and
 `unknown` evaluate through, and it answers by walking the *arguments'* reach — so
-`(genl chihuahua dog)` changes whether `(largerThan chihuahua maine_coon)` holds, and
-with it whether a rule excepted on `largerThan` fires. The re-check index is keyed on the
+`(genl chihuahua dog)` changes whether `(typeLargerThan chihuahua maine_coon)` holds, and
+with it whether a rule excepted on `typeLargerThan` fires. The re-check index is keyed on the
 exception's own predicate and its supertypes, which cannot see that: without an
 argument-side trigger the firings that predate the edge keep a conclusion the firings
 after it correctly drop, and which you get depends on when the edge arrived.

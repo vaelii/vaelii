@@ -35,6 +35,7 @@
 (comment conversionFactor
          "(conversionFactor ?unit ?baseUnit ?factor) means that one ?unit equals ?factor of ?baseUnit. So (conversionFactor Gram Kilogram 0.001) says a gram is a thousandth of a kilogram. Every unit states its factor against its dimension's base unit directly rather than against a neighbouring one, so normalizing a magnitude is a single multiply and never a chain. An ordinary stored fact, read by the quantity provers.")
 (ternary_predicate conversionFactor)
+(set/monotonic (time_invariant_relation conversionFactor))
 (arg conversionFactor 1 unit_of_measure)
 (arg conversionFactor 2 unit_of_measure)
 (arg conversionFactor 3 number)
@@ -47,6 +48,7 @@
          "(derivativeOf ?rate ?quantity) means that ?rate is the rate at which ?quantity changes. So (derivativeOf NetInflow WaterLevel) says the net inflow is how fast the water level rises. What joins a sign to a trend: the trend of a quantity IS the sign of its rate, so the two are one value read at either end of this edge, and the sign prover carries it both ways — a rate whose sign is known gives the trend, and a stated trend pins the rate, which can then be an addend of something else. A rate is a quantity like any other, so the rate of a sum is stated as a sum of the rates rather than read off the sum.")
 (binary_predicate derivativeOf)
 (set/monotonic (instance_relation_predicate derivativeOf))
+(set/monotonic (time_varying_relation derivativeOf))
 (arg derivativeOf 1 quantity)
 (arg derivativeOf 2 quantity)
 
@@ -54,6 +56,7 @@
          "(dimensionOf ?unit ?dimension) means that ?unit measures ?dimension. So (dimensionOf Kilogram Mass) says kilograms measure mass. Two measures are comparable only within one dimension, so this is what the quantity provers consult before they normalize anything, and a mismatch comes back not comparable rather than false. An ordinary stored fact.")
 (binary_predicate dimensionOf)
 (set/monotonic (instance_relation_predicate dimensionOf))
+(set/monotonic (time_invariant_relation dimensionOf))
 (arg dimensionOf 1 unit_of_measure)
 (arg dimensionOf 2 physical_dimension)
 
@@ -69,13 +72,14 @@
          "(greaterInMagnitudeThan ?quantity1 ?quantity2) means that ?quantity1 is further from zero than ?quantity2, whichever side of zero each falls on. Between two QUANTITIES, which is what separates it from quantityGreaterThan: that one compares two ground measure terms and is computed from the unit table, where this is a stated claim about quantities nobody has put a figure on — the tap running faster than the drain. It exists for the one ambiguous entry in the sign addition table: a positive and a negative sum to the sign of whichever is larger, and this is what says which. Transitive and asymmetric, a strict order, so a cycle of magnitude claims is a contradiction the KB reports rather than a chain it walks.")
 (binary_predicate greaterInMagnitudeThan)
 (set/monotonic (instance_relation_predicate greaterInMagnitudeThan))
+(set/monotonic (time_varying_relation greaterInMagnitudeThan))
 (arg greaterInMagnitudeThan 1 quantity)
 (arg greaterInMagnitudeThan 2 quantity)
 (set/monotonic (transitive greaterInMagnitudeThan))
 (set/monotonic (asymmetric greaterInMagnitudeThan))
 
 (comment heavierThan
-         "(heavierThan ?object1 ?object2) means that ?object1 weighs more than ?object2. Between two particular objects, and derivable rather than only asserted: a rule compares their two weightOf measures with quantityGreaterThan, so it holds whenever both weights are known and ordered. The instance-level counterpart of the type-level largerThan, and a strict order like it — transitive and asymmetric together. Transitivity is what answers a chain nobody weighed: two stated comparisons carry the third, so a KB that knows an elephant outweighs a horse and a horse a dog answers the elephant against the dog with no measure anywhere. Asymmetry makes the mirror of a claim deny it, and the pair entails irreflexivity as a reading without setting the mark: a lone (heavierThan a a) names no second sentex to weigh against and is admitted, exactly as it is for largerThan.")
+         "(heavierThan ?object1 ?object2) means that ?object1 weighs more than ?object2. Between two particular objects, and derivable rather than only asserted: a rule compares their two weightOf measures with quantityGreaterThan, so it holds whenever both weights are known and ordered. The instance-level counterpart of the type-level typeLargerThan, and a strict order like it — transitive and asymmetric together. Transitivity is what answers a chain nobody weighed: two stated comparisons carry the third, so a KB that knows an elephant outweighs a horse and a horse a dog answers the elephant against the dog with no measure anywhere. Asymmetry makes the mirror of a claim deny it, and the pair entails irreflexivity as a reading without setting the mark: a lone (heavierThan a a) names no second sentex to weigh against and is admitted, exactly as it is for typeLargerThan.")
 (binary_predicate heavierThan)
 (set/monotonic (instance_relation_predicate heavierThan))
 (arg heavierThan 1 tangible)
@@ -121,12 +125,13 @@
 
 (comment physical_dimension
          "A kind of extent a unit measures: Length, Mass, Duration. Two measures compare only when their units share one physical_dimension, and dimensionOf states which one a unit has.")
-(genl physical_dimension nowhere_never)
-(set/monotonic (disjoint physical_dimension relation))
+(genl physical_dimension quantitative)
+(set/monotonic (time_invariant_relation physical_dimension))
 
 (comment qualitativeDifference
          "(qualitativeDifference ?a ?b ?q) means that quantity ?q is ?a minus ?b. A declaration about which quantities stand in the relation, not a sentence about numbers — there are no numbers in the sign theory at all — and what the sign prover reads to give ?q a sign from the signs of ?a and ?b. Read as ?a plus the negation of ?b, so it shares the addition table and its one ambiguity, with the cases turned round: two quantities of the SAME sign are the ambiguous difference, and greaterInMagnitudeThan is what resolves it.")
 (ternary_predicate qualitativeDifference)
+(set/monotonic (time_varying_relation qualitativeDifference))
 (arg qualitativeDifference 1 quantity)
 (arg qualitativeDifference 2 quantity)
 (arg qualitativeDifference 3 quantity)
@@ -134,6 +139,7 @@
 (comment qualitativeProduct
          "(qualitativeProduct ?a ?b ?q) means that quantity ?q is ?a times ?b. The one arithmetic relation that is never ambiguous: anything times nothing is nothing, like signs give a positive and opposite signs a negative, and magnitudes do not come into it — so no greaterInMagnitudeThan is ever read for a product and a product of two known signs is always a known sign.")
 (ternary_predicate qualitativeProduct)
+(set/monotonic (time_varying_relation qualitativeProduct))
 (arg qualitativeProduct 1 quantity)
 (arg qualitativeProduct 2 quantity)
 (arg qualitativeProduct 3 quantity)
@@ -141,6 +147,7 @@
 (comment qualitativeSum
          "(qualitativeSum ?a ?b ?q) means that quantity ?q is ?a plus ?b. A declaration about which quantities stand in the relation, not a sentence about numbers. The sign prover reads it to give ?q a sign from the signs of ?a and ?b: two positives give a positive and two negatives a negative, a zero is the identity, and a positive with a negative gives the sign of whichever is larger — which is all three values, and so no answer at all, until a greaterInMagnitudeThan says which. Never a guess between the three.")
 (ternary_predicate qualitativeSum)
+(set/monotonic (time_varying_relation qualitativeSum))
 (arg qualitativeSum 1 quantity)
 (arg qualitativeSum 2 quantity)
 (arg qualitativeSum 3 quantity)
@@ -226,8 +233,9 @@
 
 (comment sign_value
          "One of the three values a quantity's sign takes: SignNegative, SignZero, SignPositive. Jointly exhaustive and pairwise disjoint over the reals — exactly one holds of any quantity — which is what makes a set of them a real constraint rather than an absence of knowledge, and what licenses the sign prover to answer a negated goal by refutation the way a relation algebra does.")
-(genl sign_value nowhere_never)
+(genl sign_value quantitative)
 (closed_extent_predicate sign_value)
+(set/monotonic (time_invariant_relation sign_value))
 
 (comment SignNegative "The sign of a quantity below zero: falling, when it is a trend.")
 (sign_value SignNegative)
@@ -236,6 +244,7 @@
          "(signOf ?quantity ?sign) means that ?quantity is negative, nil or positive, ?sign being one of SignNegative, SignZero and SignPositive. The coarsest measurement there is, and the one a common-sense KB nearly always has: nobody knows how fast the tap runs, and everybody knows that it runs. Computed by a prover from the stated signs, the three qualitative arithmetic relations, the greaterInMagnitudeThan comparisons and the derivativeOf edges — and a stated one is answered back out of that same reading, so registering the prover never changes what a KB says about what it wrote down. NOT declared functional, though a quantity has one sign: functional merges two symbol arguments through the equality partition, so a KB that had said both positive and negative would have the two sign terms made one instead of the contradiction reported, and the prover reports it as a :sign-inconsistency entry.")
 (binary_predicate signOf)
 (set/monotonic (instance_relation_predicate signOf))
+(set/monotonic (time_varying_relation signOf))
 (arg signOf 1 quantity)
 (arg signOf 2 sign_value)
 
@@ -262,13 +271,14 @@
          "(trendOf ?quantity ?sign) means that ?quantity is falling, steady or rising — the sign of its rate of change. Not a second theory beside signOf: it is signOf read at the other end of a derivativeOf edge, so a rate known positive makes the quantity it is the rate of rising, and a quantity stated rising makes that rate positive. Stated directly where the rate has no name worth giving it.")
 (binary_predicate trendOf)
 (set/monotonic (instance_relation_predicate trendOf))
+(set/monotonic (time_varying_relation trendOf))
 (arg trendOf 1 quantity)
 (arg trendOf 2 sign_value)
 
 (comment unit_of_measure
          "A standard amount of one physical_dimension that a magnitude is counted in: Meter, Kilogram, Second. A unit fills the first argument of dimensionOf and the first two of conversionFactor, so a unit table entry types its unit, and it is the last argument of a QuantityFn or QuantityIntervalFn application.")
-(genl unit_of_measure nowhere_never)
-(set/monotonic (disjoint unit_of_measure relation))
+(genl unit_of_measure quantitative)
+(set/monotonic (time_invariant_relation unit_of_measure))
 
 (comment Week "Seven days.")
 (dimensionOf Week Duration)

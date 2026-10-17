@@ -58,17 +58,35 @@
     (is (not (contains? (set (v/terms kb)) 'capability)))
     (is (empty? (v/find-sentexes kb 'capability)))))
 
-(tu/deftest-kb both-ability-predicates-type-their-second-argument-as-an-event-kind
+(tu/deftest-kb all-dogs-have-shell-access
+  ;; Pins that argument 2 of capabilityType and of hasCapability is a happening kind, not
+  ;; only an event kind.  Shell access comes and goes: a dog logs in, wanders off, and logs
+  ;; in again, so shell_access lies under happening and intermittent, never under event.
+  ;; Both predicates take it with no clash, and neither places it under event.
+  (tu/with-terms [shell_access Rex]
+    (v/assert kb (list 'genl shell_access 'happening) 'CxUniverse)
+    (v/assert kb (list 'genl shell_access 'intermittent) 'CxUniverse)
+    (v/assert kb (list 'capabilityType 'dog shell_access) 'CxUniverse)
+    (is (true? (v/ask? kb (list 'capabilityType 'dog shell_access) 'CxUniverse))
+        "every dog may have shell access")
+    (v/assert kb (list 'dog Rex) 'CxUniverse)
+    (v/assert kb (list 'hasCapability Rex shell_access) 'CxUniverse)
+    (is (true? (v/ask? kb (list 'hasCapability Rex shell_access) 'CxUniverse))
+        "and this one does")
+    (is (not (v/genl? kb shell_access 'event)) "a happening with a gap is no event")
+    (is (empty? (v/conflicts kb)) "and nothing clashes")))
+
+(tu/deftest-kb both-ability-predicates-type-their-second-argument-as-a-happening-kind
   (testing "the declarations"
-    (is (v/ask? kb '(genlArg hasCapability 2 event)))
-    (is (v/ask? kb '(genlArg capabilityType 2 event))))
+    (is (v/ask? kb '(genlArg hasCapability 2 happening)))
+    (is (v/ask? kb '(genlArg capabilityType 2 happening))))
   (testing "an event kind nobody listed as an ability is accepted as one"
     (tu/with-terms [swimming Wanda]
       (v/assert kb (list 'genl swimming 'event) 'CxUniverse)
       (v/assert kb (list 'animal Wanda) N)
       (is (v/assert kb (list 'hasCapability Wanda swimming) N))
       (is (v/assert kb (list 'capabilityType 'fish swimming) N))))
-  (testing "a kind that is not an event kind is convicted by genlArg, against event"
+  (testing "a kind that is not a happening kind is convicted by genlArg, against happening"
     ;; Pinned to the constraint-only reading, where `check` reports the conviction.
     (tu/without-entailing
      (tu/with-terms [Wanda]
@@ -76,7 +94,7 @@
        (doseq [s [(list 'hasCapability Wanda 'metal) (list 'capabilityType 'fish 'metal)]]
          (let [p (first (filter #(= :arg-genl (:type %)) (v/check kb s N)))]
            (is (= :arg-genl (:type p)) (str (pr-str s) " is convicted by genlArg"))
-           (is (= 'event (:expected p)) (str (pr-str s) " is convicted against event"))))))))
+           (is (= 'happening (:expected p)) (str (pr-str s) " is convicted against happening"))))))))
 
 (tu/deftest-kb a-bird-that-flies-travels
   ;; flying genl travelling, and (transitiveInArg hasCapability 2 genl) carries a
@@ -152,7 +170,7 @@
       (is (not (v/ask? kb '(instance_relation_predicate hasCapability))))
       (is (not (v/ask? kb '(type_relation_predicate hasCapability))))
       (is (v/ask? kb '(arg hasCapability 1 animal)))
-      (is (v/ask? kb '(genlArg hasCapability 2 event))))
+      (is (v/ask? kb '(genlArg hasCapability 2 happening))))
     (testing "so declaring the pairing would mark the mixed half — typeToInstancePred
             types its second argument an instance half, and derives that mark"
       (tu/with-terms [CxPairing]
@@ -201,7 +219,8 @@
   (merge
    {'[genl 1]  "predicate specializations: (genlArg genl 1 thing) is false of (genl predicateTypeByArity relationTypeByArity), whose ends are binary predicates"
     '[genl 2]  "the root: (genlArg genl 2 thing) would entail (genl thing thing), refused as irreflexive"
-    '[comment 1] "the commented term: a type, a predicate, an individual or a context, so no type below thing covers it"}
+    '[comment 1] "the commented term: a type, a predicate, an individual or a context, so no type below thing covers it"
+    '[implementationNote 1] "the noted term: a type, a predicate, an individual or a context, as comment's is"}
    ;; slots that hold a term of any kind, which no type below thing covers
    {'[believes 1]           "a believer, whose type the upper ontology does not name"
     '[evaluate 2]           "an evaluate expression: a number or an application"
@@ -241,7 +260,13 @@
     '[closedExtentForArg 3]  "the argument value a closed extent is granted for: a term of any kind"
     '[closedExtentForArg1 2] "the argument value a closed extent is granted for: a term of any kind"
     '[closedExtentForArg2 2] "the argument value a closed extent is granted for: a term of any kind"
-    '[closedExtentForArg3 2] "the argument value a closed extent is granted for: a term of any kind"}
+    '[closedExtentForArg3 2] "the argument value a closed extent is granted for: a term of any kind"
+    '[partOf 1]             "a part of any kind: a component of an object, a region, a stage of a situation"
+    '[partOf 2]             "a whole of any kind: an object, a region, a situation"
+    '[properPartOf 1]       "a proper part of any kind, as partOf's part is of any kind"
+    '[properPartOf 2]       "a whole of any kind, as partOf's whole is of any kind"
+    '[permanentPartOf 1]    "a permanent part of any kind: a region, a stage of a situation"
+    '[permanentPartOf 2]    "a whole of any kind, as partOf's whole is of any kind"}
    (into {} (for [p '[positiveExample negativeExample borderlineExample]]
               {[p 1] "an exemplified term"
                [p 2] "the example, a sentence written as a term"}))
@@ -615,12 +640,36 @@
   ;; `arg` declarations: `(arg lied_before 1 person)` types the liar rule's variable a
   ;; `person`, disjoint from what the other rule states or concludes about the same term,
   ;; so `arg-type-conflicted?` drops every such pair as unreachable (vaelii#95).
-  (let [pairs (:pairs (:clashes (v/kb-quality kb {:limit 100})))
-        kinds (frequencies (map :kind pairs))]
-    (is (= {:negation 4} kinds)
+  ;;
+  ;; Two pairs are left unexcepted on purpose.  A proper reading's definition concludes a
+  ;; proper tangible part or a proper sub-situation, so a part, and the root rule
+  ;; `(properPartOf x y) → (not (partOf y x))` denies one.  Both fire for one tuple only
+  ;; where the facts already contradict the root rule: a part whose whole is stated a proper
+  ;; part of it.  Both rules are strict definitions, so that clash is the one the facts owe,
+  ;; and an exception would hide it.
+  ;;
+  ;; Five `:disjoint` pairs are left on purpose too.  The rigidity-correspondence rules give
+  ;; a function its corresponding predicate's kind, one rule per kind, and the
+  ;; temporalIndexArg rule makes a relation time-indexed, so time-invariant.  A function
+  ;; corresponding to two predicates of two kinds, or a time-indexed function whose
+  ;; predicate is not time-invariant, is a clash the facts owe, and an exception would
+  ;; hide it.  CxNormalPhysicalConditions' default rules make a metal solid and mercury
+  ;; liquid, and the metal rule states mercury as its exception.
+  (let [pairs       (:pairs (:clashes (v/kb-quality kb {:limit 100})))
+        kinds       (frequencies (map :kind pairs))
+        root-denial '(implies (properPartOf ?part ?whole) (not (partOf ?whole ?part)))
+        definition? #(some #{root-denial} (:sentences %))
+        rigidity    '#{time_invariant_relation time_agnostic_relation time_varying_relation
+                       time_indexed_relation}
+        rigidity?   (fn [pair] (every? #(contains? rigidity (first (nth % 2))) (:sentences pair)))]
+    (is (= {:negation 6 :disjoint 6} kinds)
         (str "clashes: " (pr-str (mapv (juxt :kind :sentences) pairs))))
-    (is (every? :excepted (filter #(= :negation (:kind %)) pairs))
-        "negation clashes are excepted")))
+    (is (every? :excepted (remove rigidity? (filter #(= :disjoint (:kind %)) pairs)))
+        "the one other disjoint pair, a metal solid and mercury liquid, is excepted")
+    (is (every? :excepted (remove definition? (filter #(= :negation (:kind %)) pairs)))
+        "negation clashes are excepted")
+    (is (= 2 (count (filter definition? pairs)))
+        "and the root denial meets the two proper readings' definitions, unexcepted")))
 
 (tu/deftest-kb the-arity-rules-clash-with-each-other-in-neither-direction
   ;; The reading's own half of the arity separation.  The generator stamps one rule per
@@ -887,9 +936,10 @@
 ;; Two partitions of `thing`.  `spatial` / `aspatial` divides by a location in SOME space —
 ;; physical space, or a mathematical one, where a line or a square of an abstract board
 ;; has a location and none in the world.  `tangible` / `intangible` divides by mass.
-;; `spatiotemporal` is below `spatial` and `temporal`: what has a location in space and
-;; time.  CxUniverse states the two edges as `genl` edges and not as an intersection, so a
-;; thing stated spatial and temporal is not concluded spatiotemporal; `nowhere_never` is
+;; `spatiotemporal` is below `physical` and `temporal`, and so below `spatial`: what has a
+;; location in physical space and time.  CxUniverse states the edges as `genl` edges and not
+;; as an intersection, so a thing stated spatial and temporal is not concluded
+;; spatiotemporal; `nowhere_never` is
 ;; placed below `aspatial` and `atemporal` the same way.  The spatial calculi relate
 ;; anything spatial.  A region is the case the two partitions cross on: spatiotemporal,
 ;; and massless.
@@ -915,6 +965,41 @@
       (is (true? (v/ask? kb (list 'spatiotemporal Pebble) 'CxUniverse)))
       (is (true? (v/ask? kb (list 'spatial Pebble) 'CxUniverse)))
       (is (true? (v/ask? kb (list 'temporal Pebble) 'CxUniverse))))))
+
+;; `physical` is `spatial` narrowed to the physical space of our universe.  spatiotemporal
+;; is by definition what is physical and temporal, and CxUniverse places it below both by
+;; genl edges and not by an intersection, so neither the membership nor its negation is
+;; concluded from the two types.
+
+(tu/deftest-kb spatiotemporal-is-below-physical-and-physical-below-spatial
+  (is (true? (v/genl? kb 'physical 'spatial)))
+  (is (true? (v/genl? kb 'spatiotemporal 'physical)))
+  (is (true? (v/genl? kb 'spatiotemporal 'temporal)))
+  (is (true? (v/genl? kb 'tangible 'physical))))
+
+(tu/deftest-kb a-tangible-individual-is-physical-and-spatial
+  (tu/with-terms [Pebble]
+    (v/assert kb (list 'tangible Pebble) 'CxUniverse)
+    (is (true? (v/ask? kb (list 'physical Pebble) 'CxUniverse)))
+    (is (true? (v/ask? kb (list 'spatial Pebble) 'CxUniverse)))))
+
+(tu/deftest-kb something-physical-and-temporal-is-not-concluded-spatiotemporal
+  (is (true? (v/genl? kb 'spatiotemporal 'physical)))
+  (tu/with-terms [CxPond Puddle]
+    (v/assert kb (list 'genlCx CxPond 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'physical Puddle) CxPond)
+    (v/assert kb (list 'temporal Puddle) CxPond)
+    (is (not (v/ask? kb (list 'spatiotemporal Puddle) CxPond)))
+    (is (not (v/ask? kb (list 'not (list 'spatiotemporal Puddle)) CxPond)))))
+
+(tu/deftest-kb a-line-in-the-plane-is-not-concluded-physical
+  ;; Located in the Cartesian plane and in no time, the line y=x is spatial and atemporal.
+  (is (true? (v/genl? kb 'physical 'spatial)))
+  (tu/with-terms [Diagonal]
+    (v/assert kb (list 'spatial Diagonal) 'CxUniverse)
+    (v/assert kb (list 'atemporal Diagonal) 'CxUniverse)
+    (is (not (v/ask? kb (list 'physical Diagonal) 'CxUniverse)))
+    (is (not (v/ask? kb (list 'not (list 'physical Diagonal)) 'CxUniverse)))))
 
 (tu/deftest-kb an-abstract-figure-is-spatial-without-being-spatiotemporal
   ;; A line in a plane has a location in that plane and none in the world, no mass,
@@ -955,7 +1040,7 @@
 (tu/deftest-kb spatial-and-aspatial-partition-thing
   (is (true? (v/disjoint? kb 'spatial 'aspatial)))
   (is (true? (v/disjoint? kb 'spatiotemporal 'aspatial))
-      "the partition separates spatiotemporal from aspatial through the genl to spatial")
+      "the partition separates spatiotemporal from aspatial through physical's genl to spatial")
   (is (true? (v/genl? kb 'spatial 'thing)))
   (is (true? (v/genl? kb 'aspatial 'thing)))
   (testing "a thing cannot be both"
@@ -1075,8 +1160,14 @@
   ;; declares it.  The review-only :missing-arg pass reports every untyped position; a
   ;; position untyped-positions excuses is expected, and any other fails here.
   (let [terms '#{closedExtentForArg closedExtentForArg1 closedExtentForArg2 closedExtentForArg3}]
-    (is (= :audited (:status (v/kb-integrity kb terms 'CxUniverse)))
-        "the default passes find nothing")
+    ;; Beside the rigidity classification still open for every relation, which the
+    ;; type-specified pass reports whatever the candidates are.
+    (let [report (v/kb-integrity kb terms 'CxUniverse)]
+      (is (= {:status :gap :candidate-count (count terms)}
+             (dissoc report :type-specified-violations))
+          "the default passes find nothing")
+      (is (= ['[typeAllSpecified rigidity_kind relation]]
+             (keys (:type-specified-violations report)))))
     (let [missing (:missing-arg (v/kb-integrity kb terms 'CxUniverse {:categories #{:missing-arg}}))]
       (is (empty? (for [{:keys [predicate missing]} missing
                         :when (contains? terms predicate)
@@ -1276,7 +1367,8 @@
   disjointness descends a genl edge — so a stated sentence repeating one of those is not
   written."
   '[[genl aspatial thing CxUniverse "partition thing spatial aspatial"]
-    [disjoint spatiotemporal aspatial CxUniverse "spatiotemporal genl spatial; partition thing spatial aspatial"]
+    [genl spatiotemporal spatial CxUniverse "spatiotemporal genl physical genl spatial"]
+    [disjoint spatiotemporal aspatial CxUniverse "spatiotemporal genl physical genl spatial; partition thing spatial aspatial"]
     [genl intangible thing CxUniverse "partition thing tangible intangible"]
     [genl nowhere_never intangible CxUniverse "nowhere_never genl aspatial genl intangible"]
     [genl organization intangible CxUniverse "organization genl aspatial genl intangible"]
@@ -1296,7 +1388,7 @@
     [genl acausal thing CxUniverse "partition thing causal acausal"]
     [disjoint causal acausal CxUniverse "partition thing causal acausal"]
     [genl sign_value thing CxUniverse "sign_value genl nowhere_never genl intangible genl thing"]
-    [genl spatiotemporal thing CxUniverse "spatiotemporal genl spatial, spatial genl thing (partition)"]
+    [genl spatiotemporal thing CxUniverse "spatiotemporal genl physical genl spatial, spatial genl thing (partition)"]
     [genl organism tangible CxUniverse "organism genl biological genl tangible"]
     [genl body_part tangible CxUniverse "body_part genl biological genl tangible"]
     [genl body_part biological CxUniverse "separating biological organism body_part"]
@@ -1321,11 +1413,11 @@
     [disjoint formation organism CxUniverse "organism genl biological; separating tangible formation biological"]
     [disjoint formation body_part CxUniverse "body_part genl biological; separating tangible formation biological"]
     [genl asymmetric binary_predicate CxUniverse "asymmetric genl anti_symmetric genl binary_predicate"]
-    [disjoint string predicate CxUniverse "string genl unrepresented_term, predicate genl relation; unrepresented_term genl linguistic; disjoint linguistic relation"]
-    [disjoint number predicate CxUniverse "number genl unrepresented_term, predicate genl relation; unrepresented_term genl linguistic; disjoint linguistic relation"]
-    [disjoint keyword predicate CxUniverse "keyword genl unrepresented_term, predicate genl relation; unrepresented_term genl linguistic; disjoint linguistic relation"]
-    [disjoint boolean predicate CxUniverse "boolean genl unrepresented_term, predicate genl relation; unrepresented_term genl linguistic; disjoint linguistic relation"]
-    [disjoint character predicate CxUniverse "character genl unrepresented_term, predicate genl relation; unrepresented_term genl linguistic; disjoint linguistic relation"]
+    [disjoint string predicate CxUniverse "string genl unrepresented_term, predicate genl relation; unrepresented_term genl linguistic, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint number predicate CxUniverse "number genl unrepresented_term, predicate genl relation; unrepresented_term genl linguistic, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint keyword predicate CxUniverse "keyword genl unrepresented_term, predicate genl relation; unrepresented_term genl linguistic, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint boolean predicate CxUniverse "boolean genl unrepresented_term, predicate genl relation; unrepresented_term genl linguistic, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint character predicate CxUniverse "character genl unrepresented_term, predicate genl relation; unrepresented_term genl linguistic, relation genl logical; separating nowhere_never logical linguistic quantitative"]
     [disjoint glass_stuff stone CxUniverse "disjoint_metatype stuff_type_by_substance"]
     [disjoint metal glass_stuff CxUniverse "disjoint_metatype stuff_type_by_substance"]
     [disjoint metal stone CxUniverse "disjoint_metatype stuff_type_by_substance"]
@@ -1336,7 +1428,25 @@
     [genl unreifiable_function function CxUniverse "partition function reifiable_function unreifiable_function"]
     [genl fixed_order_type unary_predicate CxUniverse "partition unary_predicate fixed_order_type variable_order_type"]
     [genl variable_order_type unary_predicate CxUniverse "partition unary_predicate fixed_order_type variable_order_type"]
-    [genl equivalence_relation binary_predicate CxUniverse "intersection equivalence_relation reflexive symmetric transitive; reflexive genl binary_predicate"]])
+    [genl equivalence_relation binary_predicate CxUniverse "intersection equivalence_relation reflexive symmetric transitive; reflexive genl binary_predicate"]
+    [genl linguistic nowhere_never CxUniverse "separating nowhere_never logical linguistic quantitative"]
+    [genl relation nowhere_never CxUniverse "separating logical relation context; separating nowhere_never logical linguistic quantitative"]
+    [genl context nowhere_never CxUniverse "separating logical relation context; separating nowhere_never logical linguistic quantitative"]
+    [genl measure nowhere_never CxUniverse "measure genl quantitative; separating nowhere_never logical linguistic quantitative"]
+    [disjoint linguistic relation CxUniverse "relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint linguistic measure CxUniverse "measure genl quantitative; separating nowhere_never logical linguistic quantitative"]
+    [disjoint measure relation CxUniverse "measure genl quantitative, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint relation context CxUniverse "separating logical relation context"]
+    [genl unit_of_measure nowhere_never CxUniverse "unit_of_measure genl quantitative; separating nowhere_never logical linguistic quantitative"]
+    [genl physical_dimension nowhere_never CxUniverse "physical_dimension genl quantitative; separating nowhere_never logical linguistic quantitative"]
+    [genl sign_value nowhere_never CxUniverse "sign_value genl quantitative; separating nowhere_never logical linguistic quantitative"]
+    [disjoint unit_of_measure relation CxUniverse "unit_of_measure genl quantitative, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint physical_dimension relation CxUniverse "physical_dimension genl quantitative, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [genl proposition nowhere_never CxUniverse "separating logical relation proposition context; separating nowhere_never logical linguistic quantitative"]
+    [disjoint proposition linguistic CxUniverse "proposition genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint proposition relation CxUniverse "separating logical relation proposition context"]
+    [disjoint expression relation CxUniverse "expression genl linguistic, relation genl logical; separating nowhere_never logical linguistic quantitative"]
+    [disjoint expression context CxUniverse "expression genl linguistic, context genl logical; separating nowhere_never logical linguistic quantitative"]])
 
 (tu/deftest-kb the-kb-states-no-relation-it-already-derives
   ;; Each relation is read from the context that held the removed sentence, so a removal
@@ -1612,6 +1722,20 @@
     (is (= :orthogonal (v/subsumption-status kb 'dog tended)))
     (is (not-any? #(= :forced-conclusion (:violation %)) (v/violations kb)))))
 
+(tu/deftest-kb a-warm-blooded-animal-is-a-vertebrate-by-default
+  (let [edges (filter #(v/premise? kb (:id %)) (v/sentexes-matching kb '(genl warm_blooded vertebrate) 'CxUniverse))]
+    (is (= 1 (count edges)) "(genl warm_blooded vertebrate) is stated in CxUniverse")
+    (is (= :default (:strength (first edges))) "at default strength"))
+  (tu/with-terms [Warm1 Cat1 Trout1]
+    (v/assert kb (list 'warm_blooded Warm1) 'CxUniverse)
+    (is (true? (v/ask? kb (list 'vertebrate Warm1) 'CxUniverse)))
+    (testing "and the class rules that derive and deny warm_blooded raise no clash"
+      (v/assert kb (list 'mammal Cat1) 'CxBiology)
+      (v/assert kb (list 'fish Trout1) 'CxBiology)
+      (is (true? (v/ask? kb (list 'warm_blooded Cat1) 'CxBiology)))
+      (is (true? (v/ask? kb (list 'not (list 'warm_blooded Trout1)) 'CxBiology)))
+      (is (empty? (v/conflicts kb))))))
+
 (tu/deftest-kb artifact-is-declared-nowhere-and-the-six-kinds-are-made
   ;; The KB declares no artifact term and no alias for one.  building, clothing,
   ;; container, furniture, machine and vehicle are kinds of made.
@@ -1686,8 +1810,9 @@
 
 ;; ---- orthogonal pairs across made and natural -------------------------------
 ;; In each pair the two types overlap and neither subsumes the other.  An orthogonal is
-;; not inherited along genl, so the KB states each pair.  Each witness is an individual
-;; in both types.
+;; not inherited along genl, so the KB states each pair, or states a typeOrthogonal fact
+;; over origin_type that derives the pair with made and the pair with natural.  Each
+;; witness is an individual in both types.
 
 (def ^:private cross-cutting
   '[[organism made Dolly1] [organism natural WildSheep1]
@@ -1699,8 +1824,11 @@
 (tu/deftest-kb what-cuts-across-made-and-natural-is-stated-orthogonal
   (doseq [[a b witness] cross-cutting]
     (testing (str a " and " b)
-      (is (some #(v/premise? kb (:id %)) (v/sentexes-matching kb (list 'orthogonal a b) 'CxUniverse))
-          (str "(orthogonal " a " " b ") is stated"))
+      (if (contains? '#{made natural} b)
+        (is (some #(v/premise? kb (:id %)) (v/sentexes-matching kb (list 'typeOrthogonal 'origin_type a) 'CxUniverse))
+            (str "(typeOrthogonal origin_type " a ") is stated"))
+        (is (some #(v/premise? kb (:id %)) (v/sentexes-matching kb (list 'orthogonal a b) 'CxUniverse))
+            (str "(orthogonal " a " " b ") is stated")))
       (is (= :orthogonal (v/subsumption-status kb a b)) "the pair reads orthogonal")
       (is (not (v/disjoint? kb a b)))
       (let [w (tu/fresh-term :individual witness)]
@@ -1758,3 +1886,148 @@
     (v/assert kb (list 'denotes (list 'Quote 'Muffet) Y) 'CxUniverse {:strength :monotonic})
     (is (true? (v/ask? kb (list 'equals X Y) 'CxUniverse))
         "functional on means reaches denotes through its genl edge")))
+
+(tu/deftest-kb a-tangible-part-is-a-part-and-parthood-chains-across-kinds
+  ;; (genl tangiblePartOf partOf) makes every tangiblePartOf tuple a partOf tuple, and
+  ;; (transitive partOf) chains a tangible part with a stated broad one.
+  (tu/with-terms [Piston Engine Car Fleet]
+    (v/assert kb (list 'tangiblePartOf Piston Engine) 'CxUniverse)
+    (v/assert kb (list 'tangiblePartOf Engine Car) 'CxUniverse)
+    (v/assert kb (list 'partOf Car Fleet) 'CxUniverse)
+    (is (true? (v/ask? kb (list 'partOf Piston Engine) 'CxUniverse))
+        "a tangiblePartOf fact answers partOf")
+    (is (true? (v/ask? kb (list 'partOf Piston Fleet) 'CxUniverse))
+        "partOf's transitivity chains through its tangiblePartOf tuples")
+    (is (not (v/ask? kb (list 'tangiblePartOf Piston Fleet) 'CxUniverse))
+        "a broad partOf fact is not a tangiblePartOf one")))
+
+(tu/deftest-kb a-sub-situation-is-a-part-and-a-shared-time-makes-none
+  ;; subSituationOf is transitive and below partOf.  Parthood is not read off time: two
+  ;; situations occupying one time are not thereby parts of one another.
+  (tu/with-terms [Inning Game Series Rally Afternoon]
+    (doseq [s [Inning Game Series Rally]]
+      (v/assert kb (list 'situation s) 'CxUniverse))
+    (v/assert kb (list 'subSituationOf Inning Game) 'CxUniverse)
+    (v/assert kb (list 'subSituationOf Game Series) 'CxUniverse)
+    (v/assert kb (list 'timeOf Game Afternoon) 'CxUniverse)
+    (v/assert kb (list 'timeOf Rally Afternoon) 'CxUniverse)
+    (is (true? (v/ask? kb (list 'subSituationOf Inning Series) 'CxUniverse))
+        "subSituationOf chains")
+    (is (true? (v/ask? kb (list 'partOf Inning Series) 'CxUniverse))
+        "a sub-situation is a part")
+    (is (not (v/ask? kb (list 'subSituationOf Rally Game) 'CxUniverse))
+        "a shared time derives no subSituationOf")
+    (is (not (v/ask? kb (list 'subSituationOf Game Rally) 'CxUniverse))
+        "nor in the other direction")))
+
+(tu/deftest-kb each-non-proper-parthood-relation-holds-of-a-thing-and-itself
+  ;; partOf, tangiblePartOf, partOfRegion and subSituationOf each carry their own
+  ;; (reflexive P) mark, since the reflexive prover reads the mark and not a genl edge.
+  (tu/with-terms [Wheel]
+    (doseq [p '[partOf tangiblePartOf partOfRegion subSituationOf]]
+      (is (true? (v/has-prop? kb :reflexive p)) (str p " carries its own mark"))
+      (is (true? (v/ask? kb (list p Wheel Wheel) 'CxUniverse)) (str p " holds of a thing and itself")))))
+
+(tu/deftest-kb a-proper-counterpart-needs-the-reverse-tuple-denied
+  ;; properCounterpart's generator: the proper tuple follows from a tuple and a believed
+  ;; denial of its reverse, never from the reverse tuple being absent.
+  (tu/with-terms [coversOf properCoversOf A B]
+    (v/assert kb (list 'properCounterpart coversOf properCoversOf) 'CxUniverse)
+    (v/assert kb (list coversOf A B) 'CxUniverse)
+    (is (not (v/ask? kb (list properCoversOf A B) 'CxUniverse))
+        "a reverse tuple nobody stated is not a reverse tuple denied")
+    (v/assert kb (list 'not (list coversOf B A)) 'CxUniverse)
+    (is (true? (v/ask? kb (list properCoversOf A B) 'CxUniverse))
+        "a tuple and its denied reverse make the proper tuple")))
+
+(tu/deftest-kb a-proper-part-is-a-part-whose-whole-is-not-part-of-it
+  ;; Each non-proper parthood relation has a proper counterpart below it and below
+  ;; properPartOf.  The proper tuple needs the reverse tuple denied, not merely unstated.
+  (tu/with-terms [Piston Engine Car]
+    (v/assert kb (list 'properTangiblePartOf Piston Engine) 'CxUniverse)
+    (doseq [g [(list 'tangiblePartOf Piston Engine) (list 'properPartOf Piston Engine)
+               (list 'partOf Piston Engine) (list 'not (list 'tangiblePartOf Engine Piston))]]
+      (is (true? (v/ask? kb g 'CxUniverse)) (str "a proper tangible part answers " (pr-str g))))
+    (v/assert kb (list 'tangiblePartOf Engine Car) 'CxUniverse)
+    (is (not (v/ask? kb (list 'properTangiblePartOf Engine Car) 'CxUniverse))
+        "a part whose whole is not denied to be part of it is not thereby proper")
+    (v/assert kb (list 'not (list 'tangiblePartOf Car Engine)) 'CxUniverse)
+    (is (true? (v/ask? kb (list 'properTangiblePartOf Engine Car) 'CxUniverse)))
+    (is (true? (v/ask? kb (list 'properTangiblePartOf Piston Car) 'CxUniverse))
+        "a proper part of a proper part is a proper part")
+    (is (not (v/ask? kb (list 'properPartOf Piston Piston) 'CxUniverse))
+        "nothing is a proper part of itself"))
+  (testing "two regions each part of the other are neither proper and stay two"
+    (tu/with-terms [Lot Parcel]
+      (v/assert kb (list 'partOfRegion Lot Parcel) 'CxUniverse)
+      (v/assert kb (list 'partOfRegion Parcel Lot) 'CxUniverse)
+      (is (not (v/ask? kb (list 'properPartOfRegion Lot Parcel) 'CxUniverse)))
+      (is (not (v/ask? kb (list 'equals Lot Parcel) 'CxUniverse)))
+      (is (some? (v/handle-of kb '(not (anti_symmetric partOf)) 'CxUniverse))
+          "and the KB states antisymmetry declined, not merely unstated")))
+  (testing "a proper region part is a proper part"
+    (tu/with-terms [Plot Field]
+      (v/assert kb (list 'properPartOfRegion Plot Field) 'CxUniverse)
+      (is (true? (v/ask? kb (list 'properPartOf Plot Field) 'CxUniverse))))))
+
+(tu/deftest-kb a-subinterval-is-a-part-of-a-time
+  ;; subintervalOf and properSubintervalOf relate time intervals, so each is parthood:
+  ;; subintervalOf is reflexive and below partOf, properSubintervalOf below properPartOf.
+  (tu/with-terms [Morning Day Hour Week]
+    (v/assert kb (list 'subintervalOf Morning Day) 'CxUniverse)
+    (is (true? (v/ask? kb (list 'time_interval Morning) 'CxUniverse)) "its arguments are time intervals")
+    (is (true? (v/ask? kb (list 'partOf Morning Day) 'CxUniverse)))
+    (is (true? (v/ask? kb (list 'subintervalOf Week Week) 'CxUniverse)))
+    (v/assert kb (list 'properSubintervalOf Hour Morning) 'CxUniverse)
+    (is (true? (v/ask? kb (list 'properPartOf Hour Morning) 'CxUniverse)))))
+
+;; ---- parthood invariants ----------------------------------------------------
+;; A parthood relation is either non-proper, and then reflexive, or proper, and then below
+;; properPartOf.  "Proper" is read off the genl edge to properPartOf, whose definition is
+;; settled, and never off a relation's name.  A spec of partOf carrying neither is
+;; unclassified, and the classification never defaults one to proper.
+
+(defn- parthood-specs
+  "Every spec of partOf, at any depth, partOf included."
+  [kb]
+  (set (map #(get % '?s) (v/ask kb '(genl ?s partOf) 'CxUniverse))))
+
+(defn- unclassified-parthood-specs
+  "The specs of partOf marked neither reflexive nor below properPartOf, sorted."
+  [kb]
+  (sort (remove #(or (v/has-prop? kb :reflexive %) (v/genl? kb % 'properPartOf))
+                (parthood-specs kb))))
+
+(defn- symmetric-irreflexive-parthood-specs
+  "A review flag, not a proof: the specs of partOf marked both symmetric and irreflexive,
+  sorted.  Such a relation holds between distinct mutual parts, which is worth a second
+  look.  A relation the flag passes is certified as nothing."
+  [kb]
+  (sort (filter #(and (v/has-prop? kb :symmetric %) (v/has-prop? kb :irreflexive %))
+                (parthood-specs kb))))
+
+(tu/deftest-kb every-parthood-relation-is-reflexive-or-proper
+  (is (= [] (unclassified-parthood-specs kb)) "the shipped parthood relations are classified")
+  (testing "a spec carrying neither mark is unclassified, whatever its name says"
+    (tu/with-terms [gluedTo properGluedTo]
+      (v/assert kb (list 'genl gluedTo 'tangiblePartOf) 'CxUniverse)
+      (v/assert kb (list 'genl properGluedTo 'tangiblePartOf) 'CxUniverse)
+      (is (= (sort [gluedTo properGluedTo]) (unclassified-parthood-specs kb)))
+      (v/assert kb (list 'reflexive gluedTo) 'CxUniverse)
+      (v/assert kb (list 'genl properGluedTo 'properTangiblePartOf) 'CxUniverse)
+      (is (= [] (unclassified-parthood-specs kb)) "and classified once marked"))))
+
+(tu/deftest-kb a-symmetric-irreflexive-parthood-relation-is-flagged-for-review
+  (is (= [] (symmetric-irreflexive-parthood-specs kb)) "no shipped parthood relation is flagged")
+  (testing "symmetric and irreflexive: distinct mutual parts, flagged for review"
+    (tu/with-terms [weldedTo]
+      (v/assert kb (list 'genl weldedTo 'tangiblePartOf) 'CxUniverse)
+      (v/assert kb (list 'symmetric weldedTo) 'CxUniverse)
+      (v/assert kb (list 'irreflexive weldedTo) 'CxUniverse)
+      (is (= [weldedTo] (symmetric-irreflexive-parthood-specs kb)))))
+  (testing "symmetric and reflexive, as spatiallyEqual is, is not flagged"
+    (tu/with-terms [coextensiveWith]
+      (v/assert kb (list 'genl coextensiveWith 'partOf) 'CxUniverse)
+      (v/assert kb (list 'symmetric coextensiveWith) 'CxUniverse)
+      (v/assert kb (list 'reflexive coextensiveWith) 'CxUniverse)
+      (is (not-any? #{coextensiveWith} (symmetric-irreflexive-parthood-specs kb))))))

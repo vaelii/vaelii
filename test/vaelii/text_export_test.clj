@@ -245,18 +245,18 @@
           "and the rest keep their own order — the partition is stable, not a sort")))
 
   (testing "an entry refused because what it needs has not arrived yet is retried"
-    ;; the docstring's own case: `(transitiveInArgInverse largerThan 1 partOf)` files under
-    ;; `largerThan` and `(transitive partOf)` under `partOf`, and `l` sorts before `p`
+    ;; the docstring's own case: `(transitiveInArgInverse typeLargerThan 1 tangiblePartOf)` files under
+    ;; `typeLargerThan` and `(transitive tangiblePartOf)` under `tangiblePartOf`, and `l` sorts before `t`
     (let [seen    (atom [])
           assert! (fn [sen _ _]
                     (when (and (= 'transitiveInArgInverse (first sen))
-                               (not (some #{'(transitive partOf)} @seen)))
-                      (throw (ex-info "partOf is not transitive yet" {:type :arg-type})))
+                               (not (some #{'(transitive tangiblePartOf)} @seen)))
+                      (throw (ex-info "tangiblePartOf is not transitive yet" {:type :arg-type})))
                     (swap! seen conj sen))
-          entries '[[(transitiveInArgInverse largerThan 1 partOf) CxA]
-                    [(transitive partOf) CxA]]]
+          entries '[[(transitiveInArgInverse typeLargerThan 1 tangiblePartOf) CxA]
+                    [(transitive tangiblePartOf) CxA]]]
       (is (= 2 (text/load-entries! assert! nil entries)) "both entries were read")
-      (is (= '[(transitive partOf) (transitiveInArgInverse largerThan 1 partOf)] @seen)
+      (is (= '[(transitive tangiblePartOf) (transitiveInArgInverse typeLargerThan 1 tangiblePartOf)] @seen)
           "the refused one landed on the retry round, after what it needed")))
 
   (testing "and one nothing can help still throws, carrying its own refusal"

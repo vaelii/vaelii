@@ -10,7 +10,7 @@
         - core.txt       — the vocabulary the engine interprets and the top of the
                                 ontology.
         - abstract.txt   — the abstract type skeleton (physical/intangible and
-                                their kinds) + the structural relations partOf/locatedIn.
+                                their kinds) + the structural relations tangiblePartOf/locatedIn.
         - organism.txt   — the biological taxonomy + its disjointness.
         - life.txt       — the organism relations (parentOf, siblingOf, flies,
                                 mortal, birthYearOf, olderThan, …) with arg + metadata.

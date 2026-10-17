@@ -604,6 +604,37 @@
           "withdrawn: the route through axle_kind says it")
       (is (v/genl? kb wheel_kind physical_thing CxWorld) "and the closure still answers"))))
 
+(tu/deftest-kb a-minted-edge-gives-way-to-a-route-a-roster-installs
+  ;; The route of `a-minted-edge-gives-way-to-a-longer-route` with its first edge
+  ;; installed by a `separating` roster rather than stated: `wheel_kind → axle_kind`
+  ;; comes from the roster, `axle_kind → physical_thing` is stated.  The roster's edge is
+  ;; a route like a stated one, so the minted `wheel_kind → physical_thing` is withheld
+  ;; when the roster is there first, withdrawn when it arrives second, and drawn again
+  ;; when it leaves.
+  (doseq [roster-first? [true false]]
+    (tu/with-neutral-kb [kb tu/fresh]
+      (tu/with-terms [physical_thing wheel_kind spoke_kind axle_kind partType CxWorld]
+        (with-pruning
+          (a-context kb CxWorld)
+          (a-type kb physical_thing CxWorld)
+          (v/assert kb (list 'genl axle_kind physical_thing) CxWorld)
+          (v/assert kb (list 'genlArg partType 1 physical_thing) CxWorld)
+          (let [roster #(v/assert kb (list 'separating axle_kind wheel_kind spoke_kind) CxWorld)
+                fact   #(v/assert kb (list partType wheel_kind axle_kind) CxWorld)
+                rh     (if roster-first?
+                         (let [h (roster)] (fact) h)
+                         (do (fact)
+                             (is (believed? kb (list 'genl wheel_kind physical_thing) CxWorld)
+                                 "minted while no route holds it")
+                             (roster)))]
+            (testing (str "roster " (if roster-first? "first" "second"))
+              (is (nil? (v/handle-of kb (list 'genl wheel_kind physical_thing) CxWorld))
+                  "no record: the roster's edge and the stated one say it")
+              (is (v/genl? kb wheel_kind physical_thing CxWorld) "and the closure still answers")
+              (v/retract! kb rh)
+              (is (believed? kb (list 'genl wheel_kind physical_thing) CxWorld)
+                  "the roster gone, the mint is drawn again"))))))))
+
 (tu/deftest-kb a-query-mints-nothing
   (tu/with-terms [animal parentOf Fred Mary CxWorld]
     (with-entailing
@@ -1850,3 +1881,21 @@
               (is (nil? (v/handle-of re (list animal Fred) CxWorld))
                   "withdrawn by the membership that arrives after it")))
           (finally (tu/clear-kb! kb)))))))
+
+(tu/deftest-kb a-declaration-draws-no-type-from-an-inert-fact
+  ;; An inert sentex claims nothing, so it is no fact a declaration's sweep reads.  The
+  ;; fact-side path already draws nothing from one, and the declaration-side sweep has to
+  ;; agree with it, or a rechain mints what the load did not.
+  (with-entailing
+    (tu/with-terms [animal parentOf Fred Mary Ann Bob CxWorld]
+      (a-context kb CxWorld)
+      (a-type kb animal CxWorld)
+      (testing "the declaration arriving after the inert fact"
+        (v/assert-inert kb (list parentOf Fred Mary) CxWorld)
+        (v/assert kb (list 'arg parentOf 1 animal) CxWorld)
+        (is (nil? (v/handle-of kb (list animal Fred) CxWorld))))
+      (testing "and a rechain after an inert fact arriving under the declaration"
+        (v/assert-inert kb (list parentOf Ann Bob) CxWorld)
+        (v/forward-chain kb {})
+        (is (nil? (v/handle-of kb (list animal Ann) CxWorld)))
+        (is (nil? (v/handle-of kb (list animal Fred) CxWorld)))))))

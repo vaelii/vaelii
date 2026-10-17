@@ -83,11 +83,15 @@
 (unary_predicate folk_biological_class)
 (genlArg folk_biological_class 1 organism)
 (metatype folk_biological_class)
+(set/monotonic (time_invariant_relation folk_biological_class))
 ;; typeGenl requires its target to be a first-order type: (interArg typeGenl 1 metatype 2 type).
 (type organism)
 (typeGenl folk_biological_class organism)
 ;; Every member is a first-order type, whose instances are individual organisms.
 (genl folk_biological_class type)
+;; A mammal or a tree is one for as long as it exists, so every folk biological class is
+;; time-invariant.
+(set/monotonic (genl folk_biological_class time_invariant_relation))
 ;; The roster installs each part's genl edge to folk_biological_class.
 (set/monotonic (separating folk_biological_class vertebrate_class invertebrate_class plant_class))
 
@@ -99,6 +103,8 @@
 (typeGenl folk_species organism)
 ;; Every member is a first-order type, whose instances are individual organisms.
 (genl folk_species type)
+;; A mouse is a mouse for as long as it exists, so every folk species is time-invariant.
+(set/monotonic (genl folk_species time_invariant_relation))
 (set/monotonic (disjoint_metatype folk_species))
 (set/monotonic (disjoint folk_biological_class folk_species))
 ;; A species membership is definitional, so each is written :monotonic and folk_species
@@ -106,6 +112,7 @@
 ;; of one is inert, and a rule concluding a roster literal such as orthogonal from
 ;; (folk_species ?s) alone is a roster rule whose firings are believed (docs/nmtms.md).
 (forced_monotonic_predicate folk_species)
+(set/monotonic (time_invariant_relation folk_species))
 
 (comment fox "A wild canine mammal — the flatterer of the Fox and the Crow.")
 (genl fox mammal)
@@ -149,6 +156,7 @@
 (genlArg invertebrate_class 1 invertebrate)
 (metatype invertebrate_class)
 (set/monotonic (disjoint_metatype invertebrate_class))
+(set/monotonic (time_invariant_relation invertebrate_class))
 (typeGenl invertebrate_class invertebrate)
 
 (comment lion "A large wild feline — the strong animal of the Lion-and-Mouse fable.")
@@ -187,6 +195,7 @@
 (genlArg plant_class 1 plant)
 (metatype plant_class)
 (set/monotonic (disjoint_metatype plant_class))
+(set/monotonic (time_invariant_relation plant_class))
 (typeGenl plant_class plant)
 
 (comment rabbit "A small burrowing mammal with long ears.")
@@ -234,6 +243,7 @@
 (genlArg vertebrate_class 1 vertebrate)
 (metatype vertebrate_class)
 (set/monotonic (disjoint_metatype vertebrate_class))
+(set/monotonic (time_invariant_relation vertebrate_class))
 (typeGenl vertebrate_class vertebrate)
 
 (comment wolf "A wild canine predator — the danger the boy falsely cries about.")

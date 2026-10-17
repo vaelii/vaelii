@@ -142,29 +142,29 @@
 (tu/deftest-kb an-open-transitive-goal-reports-the-closure-it-did-not-enumerate
   ;; `(P ?x ?y)` over a transitive `P` answers the extent, so the two-hop `(R0 R2)` is
   ;; missing, and the report names `P` and reads `:incomplete`.
-  (tu/with-terms [largerThan biggerThan R0 R1 R2 CxT]
-    (v/assert kb (list 'transitive largerThan) CxT)
-    (v/assert kb (list largerThan R0 R1) CxT)
-    (v/assert kb (list largerThan R1 R2) CxT)
+  (tu/with-terms [typeLargerThan biggerThan R0 R1 R2 CxT]
+    (v/assert kb (list 'transitive typeLargerThan) CxT)
+    (v/assert kb (list typeLargerThan R0 R1) CxT)
+    (v/assert kb (list typeLargerThan R1 R2) CxT)
     (testing "both ends open: the extent, marked incomplete, at a depth and facts-only"
       (doseq [opts [{:max-depth 1} {:max-depth 0} nil]]
-        (let [r (v/query-status kb (list largerThan '?x '?y) CxT opts)]
+        (let [r (v/query-status kb (list typeLargerThan '?x '?y) CxT opts)]
           (is (= 2 (:count r)))
-          (is (= [largerThan] (:unenumerated r)))
+          (is (= [typeLargerThan] (:unenumerated r)))
           (is (= :incomplete (:status r)))
           (is (not (:truncated? r))))))
     (testing "one end bound: the closure, complete"
-      (let [r (v/query-status kb (list largerThan R0 '?y) CxT {:max-depth 1})]
+      (let [r (v/query-status kb (list typeLargerThan R0 '?y) CxT {:max-depth 1})]
         (is (= #{R1 R2} (into #{} (map #(get % '?y)) (:answers r))))
         (is (= [] (:unenumerated r)))
         (is (= :complete (:status r)))))
     (testing "a rule antecedent solved with both ends open"
-      (v/assert-rule kb [(list largerThan '?x '?y)] (list biggerThan '?x '?y) CxT
+      (v/assert-rule kb [(list typeLargerThan '?x '?y)] (list biggerThan '?x '?y) CxT
                      {:direction :backward})
       (let [r (v/query-status kb (list biggerThan '?x '?y) CxT {:max-depth 1})]
-        (is (= [largerThan] (:unenumerated r)))
+        (is (= [typeLargerThan] (:unenumerated r)))
         (is (= :incomplete (:status r)))))
     (testing "search-tree names it as well"
-      (is (= [largerThan]
-             (:unenumerated (v/search-tree kb (list largerThan '?x '?y) CxT
+      (is (= [typeLargerThan]
+             (:unenumerated (v/search-tree kb (list typeLargerThan '?x '?y) CxT
                                            {:max-depth 1})))))))

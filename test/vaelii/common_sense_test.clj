@@ -63,17 +63,17 @@
     (is (not (v/isa? kb 'Muffet 'food)))))
 
 (tu/deftest-kb a-size-claim-about-two-kinds-reaches-the-kinds-beneath-them
-  ;; (largerThan mammal insect) is stated; nothing is stated about dogs or ants.  The
+  ;; (typeLargerThan mammal insect) is stated; nothing is stated about dogs or ants.  The
   ;; reach is licensed by `transitiveInArgInverse` on both positions along genl, which is a
-  ;; claim about largerThan and not about the world — declared, so it can be wrong,
+  ;; claim about typeLargerThan and not about the world — declared, so it can be wrong,
   ;; rather than assumed, where it could not be.
   (testing "the stated claim, and one nobody stated"
-    (is (v/ask? kb '(largerThan mammal insect)))
-    (is (v/ask? kb '(largerThan dog ant))))
+    (is (v/ask? kb '(typeLargerThan mammal insect)))
+    (is (v/ask? kb '(typeLargerThan dog ant))))
   (testing "the inherited one is answered and not stored"
-    (is (empty? (v/sentexes-matching kb '(largerThan dog ant) '?ctx))))
+    (is (empty? (v/sentexes-matching kb '(typeLargerThan dog ant) '?ctx))))
   (testing "and the relation stays asymmetric under inheritance"
-    (is (not (v/ask? kb '(largerThan ant dog))))))
+    (is (not (v/ask? kb '(typeLargerThan ant dog))))))
 
 (tu/deftest-kb what-a-kind-has-is-inherited-downward-and-not-upward
   ;; partType preserves its FIRST position along genl and not its second, and the
@@ -105,7 +105,7 @@
       (is (v/ask? kb '(tangible Bone1)))            ; a supertype of food
       (is (not (v/ask? kb '(vehicle Bone1)))))            ; but only what actually follows
     (testing "asking for all of an individual's inferred types"
-      (is (= '#{food tangible causal spatial spatiotemporal temporal uninterrupted thing}
+      (is (= '#{food tangible causal physical spatial spatiotemporal temporal uninterrupted thing}
              (set (map #(get % '?t) (v/ask kb '(?t Bone1) '?ctx))))))))
 
 ;; ---- arithmetic, and the ordering derived from it ------------------------
@@ -492,7 +492,7 @@
   (testing "so the ownership rule reaches the parts written beside it"
     (is (seq (v/sentexes-matching kb '(owns Tom Chimney1) S))))
   (testing "and not the parts written in the sibling theory"
-    (is (seq (v/sentexes-matching kb '(partOf Engine1 Car1) N)))
+    (is (seq (v/sentexes-matching kb '(tangiblePartOf Engine1 Car1) N)))
     (is (empty? (v/sentexes-matching kb '(owns Tom Engine1) '?ctx))))
   (testing "a context sees up its own ancestor set and no further"
     (is (v/sees? kb N 'CxBiology))

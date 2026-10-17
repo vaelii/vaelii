@@ -26,8 +26,9 @@
 (def ^:dynamic *whole-store-region?*
   "True while `recover` runs the settle that follows `rebuild-tms`, whose region is the
   whole store.  `preserving-entries` skips its store-wide sweep under it, and only
-  when the region is also at least the store's sentex count (docs/nmtms.md, \"Which
-  entry point the content came through\")."
+  when the region is also at least the store's sentex count, or misses only inert
+  sentexes, which no settle touches (docs/nmtms.md, \"Which entry point the content came
+  through\")."
   false)
 
 (def ^:dynamic *incremental-preserving*
@@ -324,6 +325,15 @@
        (reasoning/tms kb)
        (into #{} (mapcat #(take-while some? (iterate target %))) roots)))))
 
+(defn- inert-datum?
+  "Is the sentex at `h` inert (`assert-inert`, or one `import!` restored): no premise, no
+  justification concluding it, and stored with no strength?  No settle touches one, so a
+  region missing only inert sentexes is still the whole store to `preserving-entries`."
+  [tms recs h]
+  (and (not (jtms/premise? tms h))
+       (empty? (jtms/supports tms h))
+       (when-let [sx (p/get-sentex recs h)] (nil? (:strength sx)))))
+
 (defn- preserving-entries
   "The standing inherited clashes after this call, `[{handle entry} by]`
   (`preserving-entry`), `by` their inverted index (`file-entries`).  An entry is carried
@@ -359,7 +369,11 @@
         left    (:left prev {})
         ;; built from the entries when an image written without it installed them
         by      (delay (or (:by prev) (file-entries {} entries true)))
-        whole?  (and *whole-store-region?* (>= (count handles) (cap/count-sentexes recs)))
+        whole?  (and *whole-store-region?*
+                     (or (>= (count handles) (cap/count-sentexes recs))
+                         (let [in-region (set handles)]
+                           (every? #(or (contains? in-region %) (inert-datum? tms recs %))
+                                   (p/sentex-ids recs)))))
         why     (cond whole?                          :whole-store
                       (not *incremental-preserving*)  :exhaustive
                       (or (:all? reach) (nil? moved)) :rebuilt

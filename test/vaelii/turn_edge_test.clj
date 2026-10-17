@@ -164,20 +164,25 @@
 
 (deftest property-marks-reflexive-and-dual-property
   ;; meta_test covers symmetric/transitive/functional membership + enumeration;
-  ;; here: reflexive (empty then populated), functional enumeration, and a single
+  ;; here: reflexive (absent then present), functional enumeration, and a single
   ;; predicate carrying two algebraic properties.  Each mark is queryable directly.
+  ;; The starter KB ships reflexive predicates of its own, so the enumeration is
+  ;; measured before the mark and the test holds the difference to exactly the mark.
   (tu/with-neutral-kb [kb core-context-kb]
-    (let [sameSpotAs (tu/tmp-pred) heightOf (tu/tmp-pred) adjacentTo (tu/tmp-pred)]
-      (testing "with no reflexive metadata the enumeration is empty"
-        (is (empty? (v/ask kb '(reflexive ?p) '?ctx))))
+    (let [sameSpotAs (tu/tmp-pred) heightOf (tu/tmp-pred) adjacentTo (tu/tmp-pred)
+          reflexives #(set (map (fn [b] (get b '?p)) (v/ask kb '(reflexive ?p) '?ctx)))
+          before     (reflexives)]
+      (testing "before the mark the fresh predicate is not enumerated as reflexive"
+        (is (not (contains? before sameSpotAs)))
+        (is (not (v/ask? kb (list 'reflexive sameSpotAs)))))
       (v/assert kb (list 'reflexive sameSpotAs) 'CxUniverse)
       (v/assert kb (list 'functional heightOf)  'CxUniverse)
       (v/assert kb (list 'symmetric  adjacentTo) 'CxUniverse)
       (v/assert kb (list 'transitive adjacentTo) 'CxUniverse)     ; the same predicate, two properties
       (testing "reflexive/functional memberships answer and enumerate from the mark"
         (is (v/ask? kb (list 'reflexive sameSpotAs)))
-        (is (= #{sameSpotAs}
-               (set (map #(get % '?p) (v/ask kb '(reflexive ?p) '?ctx)))))
+        ;; the mark adds exactly the fresh predicate and nothing else
+        (is (= (conj before sameSpotAs) (reflexives)))
         ;; containment, not equality: CxUniverse declares (functional arity) itself,
         ;; so the shipped vocabulary is a member of this enumeration too
         (is (contains? (set (map #(get % '?p) (v/ask kb '(functional ?p) '?ctx)))

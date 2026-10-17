@@ -13,7 +13,221 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Breaking
+
+- **`partOf` between two tangibles is `tangiblePartOf`, and `partOf` is parthood of any
+  kind.** `tangiblePartOf` keeps both arguments `tangible`, its transitivity and partType's
+  `typeToInstancePred`. The new `partOf` is transitive and untyped in both positions, and
+  `tangiblePartOf`, `partOfRegion` and `subSituationOf` are below it by `genl`. A
+  `tangiblePartOf` fact answers `partOf`, and a `partOf` fact answers no `tangiblePartOf`.
+  CxMereology's two rules read `tangiblePartOf`. [glossary.md](docs/glossary.md).
+
+  *Class:* **Breaking** (KB vocabulary renamed).
+  *Migration:* write `tangiblePartOf` for a `partOf` fact, rule or declaration between
+  two tangibles; a query for any parthood keeps `partOf`.
+  *Breaks:* `partOf`
+
+- **`subintervalOf` and `properSubintervalOf` take two `time_interval`s, not two
+  `temporal`s.** Both comments say "?interval1 falls within ?interval2". No KB file
+  states a tuple of either, and every calendar term already yields a `time_interval`.
+  Once tightened they are parthood of times: `subintervalOf` is reflexive and below
+  `partOf`, and `properSubintervalOf` is irreflexive, transitive and below `properPartOf`.
+  [time.md](docs/time.md).
+
+  *Class:* **Breaking** (argument type narrowed).
+  *Migration:* relate two events by `during`, `starts` or `finishes`, or relate their
+  times; a `subintervalOf` between two situations now types each as a `time_interval`,
+  which `(disjoint time situation)` refuses.
+  *Breaks:* `subintervalOf`, `properSubintervalOf`
+
+- **`largerThan` is `typeLargerThan`.** The relation compares two kinds, as a
+  `type_relation_predicate`, and the new name keeps it from reading as a sibling of
+  `tallerThan` and `heavierThan`, which compare two individuals. Its declarations, its
+  facts in CxSize and its comment are unchanged apart from the name.
+
+  *Class:* **Breaking** (KB vocabulary renamed).
+  *Migration:* write `typeLargerThan` for `largerThan` in every fact, rule and query.
+  *Breaks:* `largerThan`
+
+- **`partitionedByType` is binary, `(partitionedByType ?whole ?classifier)`, and draws
+  inference.** The members of `?classifier` partition `?whole`. A core.txt generator places
+  each member under `?whole`, and a rule concludes `(disjoint_metatype ?classifier)`. No
+  rule draws the coverage half (vaelii/vaelii#171), so the `partition` sentence stays
+  beside each of the 4 shipped facts: `fixed_order_type` by `type_type_by_order`,
+  `tangible` by `origin_type`, and `thing` by `spatiality_type` and by
+  `temporality_type`. The three `genl` edges to `fixed_order_type` stay stated at
+  `:monotonic` beside the derived ones. [glossary.md](docs/glossary.md).
+
+  *Class:* **Breaking** (KB vocabulary arity changed).
+  *Migration:* drop the cell list: write `(partitionedByType W C)` for
+  `(partitionedByType W C A B …)`, and state each cell's membership `(C A)`.
+  *Breaks:* `partitionedByType`
+
 ### Additive
+
+- **The upper ontology states `logical`, `quantitative`, `typeOrthogonal`,
+  `orthogonalMetatypes` and `implementationNote`, and derives 43 genl, disjoint and
+  orthogonal sentences it stated, and no longer states 40 of them.** `(separating nowhere_never logical linguistic
+  quantitative)` separates three kinds: `relation`, `proposition` and `context` are
+  `logical`, and `measure`, `unit_of_measure`, `physical_dimension` and `sign_value` are
+  `quantitative`. `(typeOrthogonal ?classifier ?type)` makes every member of a classifier
+  orthogonal to `?type`, and `(orthogonalMetatypes ?m1 ?m2 …)` makes every member of each
+  metatype orthogonal to every member of the others, for two and three metatypes
+  (vaelii/vaelii#170). Each is a core.txt rule generator. The classifiers `arity_type`,
+  `origin_type`, `spatiality_type` and `temporality_type` are new, and each classifier a
+  rule reads is on the forced-monotonic roster. 10 `typeOrthogonal` facts and one
+  `orthogonalMetatypes` fact derive 33 orthogonal pairs, 22 of them stated before, and
+  every arity type is orthogonal to `abducible_predicate`. 9 more orthogonal pairs are
+  stated, e.g. `made` and `vertebrate`, `animal` and `food`. `warm_blooded` is below
+  `vertebrate` by default. `physical` is new: a location in the physical space of our
+  universe, below `spatial`. `spatiotemporal` is below `physical` and `temporal`, and
+  reaches `spatial` through `physical`. `implementationNote` is a
+  sibling of `comment` for how a term is implemented, and 17 core.txt terms carry one.
+  [taxonomy.md](docs/taxonomy.md), [glossary.md](docs/glossary.md).
+
+  *Class:* **Additive**.
+
+- **The upper ontology states `subSituationOf` and the 15 converse pairs of the spatial
+  calculi.** `(subSituationOf ?part ?whole)` relates two situations, is transitive, and is
+  below `partOf`. A part's time is within its whole's time, and the converse does not
+  hold; no rule concludes the containment yet, since no upper relation states one time
+  within another that covers an intermittent time. space.txt states each converse pair of
+  the RCC-8, cardinal and relative-direction calculi as `(set/inert (inverse P Q))`, so
+  each calculus prover still answers its goals alone. `space_test` pins the pairs against
+  each algebra's converse. space.txt also states `(genl spatiallyEqual partOfRegion)` and
+  `(genlInverse P partOf)` for `hasRegionPart`, `tangentialProperPartInverse` and
+  `nonTangentialProperPartInverse` under `set/inert`. RCC-8 entails each of the four
+  edges, and `space_test` pins that entailment.
+
+  *Class:* **Additive**.
+
+- **Parthood is reflexive or proper, and each parthood relation has its proper reading.**
+  `partOf`, `tangiblePartOf`, `partOfRegion`, `subSituationOf` and `subintervalOf` each
+  carry their own `reflexive` mark. `properPartOf` is irreflexive, transitive and below
+  `partOf`. Its definition is `(partOf x y)` with `(partOf y x)` denied, and antisymmetry
+  is declined and stated so: `(not (anti_symmetric partOf))`. `properTangiblePartOf` and
+  `properSubSituationOf` are new, and `properPartOfRegion` and `properSubintervalOf` join
+  them below `properPartOf`. `(properCounterpart ?predicate ?properPredicate)` records each
+  pair, and a core.txt generator stamps its definition. The proper tuple needs a believed
+  denial of the reverse, never the reverse being unknown. One rule at the root,
+  `(properPartOf x y)` to `(not (partOf y x))`, denies the reverse for every proper
+  relation below it. The two calculus-owned pairs
+  state their counterpart and their inner `genl` edges inert, so each calculus still
+  answers alone. `ontology_test` holds two invariants. Every spec of `partOf` is reflexive
+  or below `properPartOf`. A spec both symmetric and irreflexive is flagged for review.
+  [glossary.md](docs/glossary.md).
+
+  *Class:* **Additive**.
+
+- **A new OE principle, "bank the decision".** A modelling question weighed and answered
+  no is stated in the KB as an explicit negation, and a `(not …)` is asserted only for a
+  decision actually made. [oe-principles.md](docs/oe-principles.md).
+
+  *Class:* **Additive**.
+
+- **`capabilityType` and `hasCapability` take a happening kind as argument 2, not only an
+  event kind.** `(genlArg … 2 happening)` replaces `(genlArg … 2 event)` in life.txt, so an
+  ability whose exercise has gaps, such as a happening kind under `intermittent`, is
+  accepted. Each event kind is still accepted, being a happening kind.
+  `ontology_test`'s `all-dogs-have-shell-access` pins both predicates over such a kind, with
+  no `genl` to `event` drawn. [inherit.md](docs/inherit.md).
+
+  *Class:* **Additive**.
+
+- **The rigidity kinds of relation.** core.txt partitions `relation` into
+  `time_invariant_relation`, `time_agnostic_relation` and `time_varying_relation`
+  (OntoClean's +R, -R and ~R, read modally), with `possibly_time_invariant_relation` the
+  first two together. Possible invariance is preserved up `genl` and time variance down
+  it, so a time-varying genl of a time-invariant type is an inherited clash `conflicts`
+  reports. `rigidity_kind` names the three kinds.
+
+  *Class:* **Additive**.
+
+- **`typeAllSpecified`, a classification requirement `kb-integrity` audits.**
+  `(typeAllSpecified ?classifier ?indep)` requires every instance of `?indep` to have a
+  believed membership in some member of `?classifier`; a partition does not satisfy it.
+  The sweep reports it in a new default category, `:type-specified-violations`. core.txt
+  states `(typeAllSpecified rigidity_kind relation)`, and not every shipped relation is
+  classified yet, so a default sweep over CxUniverse now answers `:gap` with that one
+  requirement.
+  [integrity.md](docs/integrity.md#what-a-type-specified-finding-means).
+
+  *Class:* **Additive**.
+
+  states `(typeAllSpecified rigidity_kind relation)`, and not every shipped relation is
+- **The shipped relations' rigidity kinds.** 388 of the starter's 575 relations now
+  have a rigidity kind visible from CxUniverse: 302 time-invariant, 57 time-agnostic
+  and 29 time-varying. Types over numbers, expressions, relations and types, every
+  metatype, the folk kinds, the meta, logical and type-relation predicates, kinship,
+  `madeOf`, `contains`, `length`, `totalDuration`, `overlapDuration`, the integrity
+  requirements and the predall placeholders are time-invariant.
+  `(genl folk_species time_invariant_relation)`,
+  `(genl folk_biological_class time_invariant_relation)` and
+  `(genl arity_type time_invariant_relation)` classify those families with one edge
+  each. The social relations, `knows`, `livesIn`, `locatedIn`, `eats`,
+  `hasCapability`, `asleep`, `awake`, `breathes_air`, `preysOn`, a quantity's sign,
+  trend and derivative, `greaterInMagnitudeThan` and the qualitative arithmetic are
+  time-varying, and `(genl stuff_type_by_state_of_matter time_varying_relation)` makes
+  every phase of matter time-varying. The fifty spatial relations, the six predall
+  world-statement cells and `contradicts` are time-agnostic. CxSocial,
+  CxSocialExtension and CxComputing classify their own relations, which CxUniverse does
+  not see.
+
+  *Class:* **Additive**.
+
+- **A function and its corresponding predicate must share a rigidity kind.** A default
+  `kb-integrity` pass, `:rigidity-correspondence`, reports each
+  `functionCorrespondingPredicate` pair whose function and predicate are both classified
+  and of different kinds. A pair with an unclassified side is left to
+  `:type-specified-violations`.
+  [integrity.md](docs/integrity.md#what-a-rigidity-correspondence-finding-means).
+
+  *Class:* **Additive**.
+
+- **Every spec of `time` and every spec of `situation` is time-invariant.** Two
+  core.txt forward rules classify `time`, `situation` and each type below either, a
+  type stated later included.
+
+  *Class:* **Additive**.
+
+- **`temporalIndexArg` and `time_indexed_relation`.** `(temporalIndexArg ?relation
+  ?position)` names the argument that carries the time a tuple holds at. A forward rule
+  concludes `(time_indexed_relation ?relation)` from it, and
+  `(genl time_indexed_relation time_invariant_relation)` makes each such relation
+  time-invariant.
+
+  *Class:* **Additive**.
+
+- **A function takes the rigidity kind of its corresponding predicate.** A generator over
+  `rigidity_kind` stamps one forward rule per kind, concluding `(?kind ?function)` from
+  `(functionCorrespondingPredicate ?function ?predicate)` and `(?kind ?predicate)`, a kind
+  the predicate inherits down `genl` included. Each `Pred…Fn` takes its placeholder's
+  kind this way. A function believed of a second kind is reported by
+  `:rigidity-correspondence`.
+
+  *Class:* **Additive**.
+
+- **`permanentPartOf`, a time-invariant spec of `partOf`.** `partOfRegion` and
+  `subSituationOf` are below it, and `tangiblePartOf` is not, since a wheel can come off
+  a car. It is transitive, reflexive and untyped, as `partOf` is.
+  [glossary.md](docs/glossary.md).
+
+  *Class:* **Additive**.
+
+- **`stable_once_true` and `stable_once_false`, two kinds of time-varying relation.** A
+  `stable_once_true` relation that holds at a time holds at every later time, and a
+  `stable_once_false` relation that fails at a time fails at every later time. Both are
+  below `time_varying_relation`, so no time-invariant relation is either. `dead` is
+  `stable_once_true` and `alive` is `stable_once_false`. No rule states either
+  definition, since the KB has no sentence for a relation holding at a time.
+
+  *Class:* **Additive**.
+
+- **A new OE principle, "consistent at each commit".** Assume the KB is consistent, and
+  revise a theory in one atomic commit, so consistency and soundness hold at each commit.
+  [oe-principles.md](docs/oe-principles.md).
+
+  *Class:* **Additive**.
 
 - **`+with-postgres`, `+with-sqlite` and `+with-foreign` add the published siblings to any
   lein task, the uberjar included.** `lein with-profile +with-postgres browser` opens a
@@ -29,7 +243,81 @@ it — `git show v0.16.0:CHANGELOG.md`.
   *Migration:* `scripts/with-foreign.sh <task>` is gone; run `lein with-profile
   +with-foreign <task>`.
 
+### Fix: answers
+
+- **`knows` follows from `relativeOf` by a default rule, not a `genl` edge.** Two
+  relatives need not have met. A stated `(not (knows ?x ?y))` now overrides the default,
+  where the edge made every relative an acquaintance.
+  `(declined_rule_macro (genl relativeOf knows))` records the declined suggestion.
+
+  *Class:* **Fix** (shipped ontology content).
+  *Migration:* none for a KB that only reads `knows`. A query for the `genl` edge from
+  `relativeOf` to `knows` answers no.
+
+- **CxNormalPhysicalConditions states each room-temperature phase as a default rule.** A
+  phase is a state a portion of stuff is in, not a kind it is. Four default rules replace
+  `(genl stone solid)`, `(genl wood solid)`, `(genl glass_stuff solid)` and
+  `(genl mercury liquid)`, and each suggestion is recorded with `declined_rule_macro`.
+
+  *Class:* **Fix** (shipped ontology content).
+  *Migration:* none for a KB that reads a portion's phase. A query for one of the four
+  `genl` edges answers no.
+
+- **`kb-quality`'s clash reading drops a pair whose antecedents put a literal beside a
+  denial of a predicate it is a spec of.** A tuple of a spec is a tuple of the predicate
+  above it, so `(properPartOf a b)` and `(not (partOf a b))` cannot both hold, and the
+  pair is no clash in waiting. [quality.md](docs/quality.md).
+
+  *Class:* **Fix**.
+
+- **The interval prover answers `subintervalOf` and `properSubintervalOf` only within
+  their declared domain.** Each argument must hold no type disjoint from `time_interval`.
+  Two situations `(during S1 S2)` relates answered both, though `situation` and
+  `time_interval` are disjoint. The pair now answers `during` and the reverse
+  `hasSubinterval`, which take any temporal thing, and neither containment. An argument
+  with no type is admitted.
+  [time.md](docs/time.md).
+
+  *Class:* **Fix**.
+
+- **A containment or region part a calculus entails answers `partOf` and
+  `properPartOf`.** A calculus prover lifts a positive goal on a super-predicate of one
+  of its predicates to that predicate, and answers it beside the stored tuples. Time
+  intervals A and B with `(during A B)` answered `subintervalOf` and not `partOf`, since
+  the `genl` edge reached only stored tuples. `partOfRegion` and `properPartOfRegion`
+  lift the same way. [glossary.md](docs/glossary.md).
+
+  *Class:* **Fix**.
+
+### Fix: order independence
+
+- **An inert fact draws no argument type on any sweep.** An inert fact asserted after
+  an `arg` declaration got no type. A declaration arriving after it, a forward chain, or
+  a `genlCx` edge minted one anyway. `deduce-placed` and `retroactive-mints` now skip an
+  inert sentex, so every arrival order draws the same types.
+  [argtypes.md](docs/argtypes.md).
+
+  *Class:* **Fix**.
+
 ### Fix: performance
+
+- **An edge a `covering`, `separating` or `partition` roster installs subsumes a minted
+  `genl` edge, as a stated edge does.** A type whose only parent edge came from a roster
+  kept every edge `genlArg` minted to an ancestor, such as `(genl context thing)`. Each
+  new justification of that record moved a `genl` edge into `thing`, and the inherited-clash
+  memo then asked every membership again. The mint is now withheld when the roster is
+  there first, withdrawn when it arrives second, and drawn again when it leaves.
+  [argtypes.md](docs/argtypes.md).
+
+  *Class:* **Fix**.
+
+- **`recover` skips the store-wide inherited-clash sweep in a store holding inert
+  facts.** The skip asked for a region at least the store's size, and an inert sentex
+  is never in a settle's region, so the 15 inert `inverse` facts in `space.txt` turned
+  each `recover` into a sweep over every membership. A region missing only inert
+  sentexes now counts as the whole store.
+
+  *Class:* **Fix**.
 
 - **A goal on a predicate with many sub-predicates reads only the members that can answer
   it.** A literal's matches are read once per member of its functor's fan, so a ground

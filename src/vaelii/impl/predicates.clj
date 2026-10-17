@@ -1187,11 +1187,14 @@
     (map (fn [[t why]] [t (inert (collection :notes why) why)])
          '[[intangible "ontology, not grammar: something with no mass, the complement of tangible. core.txt states it as the top of the ontology the domain files extend; no engine check names it."]
            [spatial "ontology, not grammar: something with a location in some space, physical or mathematical. core.txt states it as the top of the ontology the domain files extend; no engine check names it."]
-           [spatiotemporal "ontology, not grammar: something with a location in space and time. core.txt states it as the top of the ontology the domain files extend; no engine check names it."]
+           [physical "ontology, not grammar: something with a location in the physical space of our universe. core.txt states it as the top of the ontology the domain files extend; no engine check names it."]
+           [spatiotemporal "ontology, not grammar: something with a location in physical space and time. core.txt states it as the top of the ontology the domain files extend; no engine check names it."]
            [tangible "ontology, not grammar: something with mass, and so with a location. core.txt states it as the top of the ontology the domain files extend; no engine check names it."]
            [organism "ontology, not grammar: something alive in its own right. core.txt states it as the top of the ontology organism.txt's kinds hang from; no engine check names it."]
            [biological "ontology, not grammar: a tangible that is an organism or part of one. core.txt states it because organism (organism.txt) and body_part (abstract.txt) both extend it; no engine check names it."]
-           [measure "ontology, not grammar: what a QuantityFn or QuantityIntervalFn application denotes. core.txt states it because measure.txt and time.txt both declare a position over it; no engine check names it."]])
+           [measure "ontology, not grammar: what a QuantityFn or QuantityIntervalFn application denotes. core.txt states it because measure.txt and time.txt both declare a position over it; no engine check names it."]
+           [logical "ontology, not grammar: what a logic is about, the whole above relation, proposition and context. core.txt states it so the separation from linguistic and quantitative reaches relation and context; no engine check names it."]
+           [quantitative "ontology, not grammar: what a measurement is made of or yields, the whole above measure, unit_of_measure, physical_dimension and sign_value. core.txt states it so the separation from logical and linguistic reaches measure; no engine check names it."]])
 
     ;; ---- the space/time complements, nowhere_never, and the metatype ladder ----
     ;; core.txt comments these too, beside their genl edges, so `vocabulary/audit` answers
@@ -1207,14 +1210,25 @@
            [atemporal "ontology, not grammar: not located in time, the complement of temporal. core.txt states it so nowhere_never can sit under it; no engine check names it."]
            [uninterrupted "ontology, not grammar: something temporal present at every moment between its start and its end, one side of the partition of temporal. core.txt states it as the top of the ontology the domain files place kinds under; no engine check names it."]
            [intermittent "ontology, not grammar: something temporal with a gap between its start and its end, the other side of the partition of temporal. core.txt states it as the top of the ontology the domain files place kinds under; no engine check names it."]
-           [nowhere_never "ontology, not grammar: in no space and at no time, below aspatial and atemporal and the parent of linguistic, measure, context and relation; no engine check names it."]
+           [nowhere_never "ontology, not grammar: in no space and at no time, below aspatial and atemporal and the whole that logical, linguistic and quantitative are separated under; no engine check names it."]
            [type "ontology, not grammar: a first-order type, on the metatype-order ladder. No engine check names it — typeGenl, which reads the ladder, is inert."]
            [metatype "ontology, not grammar: a second-order type, on the metatype-order ladder. No engine check names it."]
            [meta_metatype "ontology, not grammar: a third-order type, on the metatype-order ladder. No engine check names it."]
            [at_least_metatype "ontology, not grammar: a type of order two or higher, on the metatype-order ladder. No engine check names it."]
            [fixed_order_type "ontology, not grammar: a type whose members are all of one order, on the metatype-order ladder. No engine check names it."]
            [variable_order_type "ontology, not grammar: a type holding members of any order, on the metatype-order ladder. No engine check names it."]
-           [type_type_by_order "ontology, not grammar: the disjoint_metatype partitioning fixed_order_type by order. No engine check names it."]])
+           [type_type_by_order "ontology, not grammar: the disjoint_metatype partitioning fixed_order_type by order. No engine check names it."]
+           [spatiality_type "ontology, not grammar: the at_least_metatype holding spatial and aspatial. The orthogonalMetatypes and partitionedByType rules read its memberships as any membership is; no engine check names it."]
+           [temporality_type "ontology, not grammar: the at_least_metatype holding temporal and atemporal. The orthogonalMetatypes and partitionedByType rules read its memberships as any membership is; no engine check names it."]
+           [arity_type "ontology, not grammar: the at_least_metatype of the relation-level arity types, e.g. binary and variable_arity. The typeOrthogonal rule reads its memberships as any membership is; no engine check names it."]
+           [time_invariant_relation "ontology, not grammar: a relation no instance of which could lose it and still exist (OntoClean +R), one part of the rigidity partition of relation. No engine check names it."]
+           [time_agnostic_relation "ontology, not grammar: a relation some instances of which could lose it and still exist and some not (OntoClean -R), one part of the rigidity partition of relation. No engine check names it."]
+           [time_varying_relation "ontology, not grammar: a relation every instance of which could lose it and still exist (OntoClean ~R), preserved down genl by transitiveInArgInverse. No engine check names it."]
+           [possibly_time_invariant_relation "ontology, not grammar: time_invariant_relation and time_agnostic_relation together, preserved up genl by transitiveInArg. No engine check names it."]
+           [rigidity_kind "ontology, not grammar: the at_least_metatype holding the three rigidity kinds of relation. No engine check names it."]
+           [time_indexed_relation "ontology, not grammar: a relation one argument of which names the time a tuple holds at, below time_invariant_relation. A core.txt rule concludes membership from temporalIndexArg; no engine check names it."]
+           [stable_once_true "ontology, not grammar: a time-varying relation that, once it holds at a time, holds at every later time. No engine check names it."]
+           [stable_once_false "ontology, not grammar: a time-varying relation that, once it fails at a time, fails at every later time. No engine check names it."]])
 
     ;; ---- the two halves of unary_predicate ---------------------------------
     ;; `empty` and `nonempty` partition `unary_predicate`.  The disjointness audit reads
@@ -1526,17 +1540,55 @@
                           " derive (genl ?x ?genl) from (?classifier ?x) once rule support lands.")}
              (str "aspirational: a higher-order genl constraint whose rule-based derivation"
                   " depends on engine support for higher-order patterns. No inference path."))]
+     ['typeOrthogonal
+      (enforced {:shape {:args [:type :type]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "enforced by the generic chain, not by name: the core.txt"
+                             " generator beside the declaration stamps (implies (?classifier ?x)"
+                             " (orthogonal ?type ?x)) per fact, the type first. The stamped rule"
+                             " concludes a roster literal, so a firing is believed only from a"
+                             " classifier on the forced-monotonic roster.")}
+                (str "generic rule generator (docs/generators.md): the core.txt generator"
+                     " beside it stamps one membership rule per fact, and chain inference"
+                     " concludes every member of the classifier orthogonal to the type"))]
+     ['properCounterpart
+      (enforced {:shape {:args [:term :term]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "enforced by the generic chain, not by name: a core.txt generator"
+                             " stamps, per pair, a rule concluding the proper tuple from a tuple and"
+                             " a believed denial of its reverse. The denial half is a rule stated"
+                             " once at a family's root. An inert fact stamps nothing, which is how"
+                             " the calculus-owned pairs are recorded.")}
+                (str "generic rule generator (docs/generators.md): each pair's definition,"
+                     " (?proper x y) from (?pred x y) and not (?pred y x), is stamped as a"
+                     " forward rule"))]
+     ['orthogonalMetatypes
+      (enforced {:shape {:args [:type :type] :variadic :type} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "enforced by the generic chain, not by name: core.txt generators"
+                             " stamp one membership-pair rule concluding orthogonal per pair of"
+                             " positions, for two and three metatypes only.")}
+                (str "generic rule generators (docs/generators.md): a fact of two or three"
+                     " metatypes stamps rules making every member of each orthogonal to every"
+                     " member of the others; four or more pends variable-arity rule support"))]
+     ['temporalIndexArg
+      (enforced {:shape {:args [:relation :position]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "enforced by the generic chain, not by name: a core.txt forward rule"
+                             " concludes (time_indexed_relation ?relation) from each fact.")}
+                (str "a core.txt rule: a relation with a temporal index argument is a"
+                     " time_indexed_relation, and so time-invariant"))]
      ['partitionedByType
-      (inert {:shape {:args [:term :term :term] :variadic :term} :storage [:none] :checked false
-              :family nil :facets #{}
-              :notes (str "(partitionedByType ?whole ?classifier . ?cells) records that the"
-                          " ?cells exhaustively and disjointly partition ?whole, each a"
-                          " ?classifier instance. Inert: the disjointness rides a"
-                          " disjoint_metatype and the memberships are stated beside it, so this"
-                          " draws no inference and expands to nothing.")}
-             (str "a partition declaration (variable arity) documenting that the cell types"
-                  " exhaustively and disjointly cover the whole. Nothing infers from it — the"
-                  " disjoint_metatype and the explicit memberships carry the separation."))]
+      (enforced {:shape {:args [:type :type]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "enforced by the generic chain, not by name: a core.txt generator"
+                             " stamps a membership rule concluding (genl ?part ?whole), and a"
+                             " core.txt rule concludes (disjoint_metatype ?classifier), which"
+                             " separates every two members. The coverage half has no rule, and"
+                             " a partition stated beside the fact carries it.")}
+                (str "generic rule generators (docs/generators.md): a fact places every member"
+                     " of the classifier under the whole and separates the members; coverage"
+                     " pends the engine reading it from the classifier's members"))]
      ['argN
       (inert {:shape {:args [:term :integer :sentence]} :storage [:none] :checked false
               :family nil :facets #{}
@@ -1563,6 +1615,15 @@
              (str "a documentation 'see also' cross-reference between two terms; read like"
                   " comment and by nobody for inference. Directional — (seeAlso a b)"
                   " does not imply (seeAlso b a); the reverse is a separate assertion."))]
+     ['implementationNote
+      (inert {:shape {:args [:term :term]} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes (str "documentation the engine stores and never reads: how a term is"
+                          " implemented or where its implementation stops short, beside the"
+                          " comment that says what the term means.")}
+             (str "an implementation note on a term, a sibling of comment: comment carries"
+                  " the meaning, and this carries how the engine or the KB text implements it."
+                  " Nothing infers from it."))]
 
      ;; A reviewer's record that a rule-macro suggestion was read and declined.  It names
      ;; the suggestion by content rather than the rule by handle, so a text export keeps it.
@@ -1682,6 +1743,18 @@
                              " binary, filler type derived from ?pred's slot-1 contract.")}
                 (str "vaelii.core/specified-violations with :first — audits ?pred's"
                      " first position, the argument-swapped twin"))]
+     ['typeAllSpecified
+      (enforced {:shape {:args [:type :type]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "an on-demand audit, not a stored constraint: nothing fires on"
+                             " assert, and kb-integrity's :type-specified-violations pass reads"
+                             " it. Every ?indep instance needs a believed membership in some"
+                             " ?classifier member; a classifier with no member is a gap the"
+                             " audit reports explicitly.")}
+                (str "vaelii.impl.predall/type-specified-violations — kb-integrity's"
+                     " :type-specified-violations pass reads the declaration and returns the"
+                     " instances of ?indep no member of ?classifier is believed to hold;"
+                     " stamps no rule"))]
      ['PredAllExistsFn
       (enforced (collection :notes (str "a function constant, never a sentence functor; its"
                                         " unreifiable_function mark keeps a ground"

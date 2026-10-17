@@ -530,7 +530,7 @@
   - Two preserved positions on one predicate: each step moves one position, and a
     claim a step reaches is a claim the next step moves from, so `(P dog cat)` under
     both positions reaches `(P chi siamese)` through `(P chi cat)` or `(P dog siamese)`.
-    docs/inherit.md's `largerThan` example answers such a tuple and does not say how.
+    docs/inherit.md's `typeLargerThan` example answers such a tuple and does not say how.
     The inherited family reads an inherited claim in `:believed` as a general claim, so
     its nogoods cover the same tuples.
   - A denial of an intermediate tuple, `(not (P … mid …))` with `mid` between `sub` and

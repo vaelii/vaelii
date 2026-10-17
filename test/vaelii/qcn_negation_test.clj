@@ -185,7 +185,11 @@
     (is (seq (v/sentexes-matching kb (list 'not (list 'partOfRegion A B)) C)))
     (testing "the calculus answers nothing at all"
       (is (not (v/ask? kb (list 'nonTangentialProperPart A B) C)))
-      (is (not (v/ask? kb (list 'not (list 'partOfRegion A B)) C))))
+      ;; The denial is read off the network rather than asked: abstract.txt's rule
+      ;; (properPartOf x y) → (not (partOf y x)) concludes denials of partOf, a genl of
+      ;; partOfRegion, so a rule the calculus does not read reaches the goal and the
+      ;; stored denial answers it.
+      (is (= #{} (qkb/possible space/rcc8 kb C A B))))
     (testing "and reports the pair the two facts emptied"
       (let [es (filter #(= :qualitative-inconsistency (:violation %)) (v/violations kb))]
         (is (= 1 (count es)))

@@ -88,42 +88,42 @@
 ;; ---- the shapes the two paths could differ on ---------------------------
 
 (tu/deftest-kb a-negated-claim-is-found-the-same-way-by-both
-  (tu/with-terms [dog_t animal_t cat_t feline_t largerThan]
+  (tu/with-terms [dog_t animal_t cat_t feline_t typeLargerThan]
     (v/with-deferred-settle kb
       (v/assert kb (list 'genl dog_t animal_t) ctx)
       (v/assert kb (list 'genl cat_t feline_t) ctx)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) ctx)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 2 'genl) ctx))
-    (v/assert kb (list 'not (list largerThan animal_t feline_t)) ctx)
-    (let [cs (both-paths-agree kb (list largerThan dog_t cat_t))]
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) ctx)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 2 'genl) ctx))
+    (v/assert kb (list 'not (list typeLargerThan animal_t feline_t)) ctx)
+    (let [cs (both-paths-agree kb (list typeLargerThan dog_t cat_t))]
       (is (= [:against] (mapv :polarity cs)))
       (is (= [[animal_t feline_t]] (mapv :tuple cs))))))
 
 (tu/deftest-kb an-asymmetric-converse-is-filed-against-the-same-tuple-either-way
-  (tu/with-terms [dog_t animal_t cat_t feline_t largerThan]
+  (tu/with-terms [dog_t animal_t cat_t feline_t typeLargerThan]
     (v/with-deferred-settle kb
       (v/assert kb (list 'genl dog_t animal_t) ctx)
       (v/assert kb (list 'genl cat_t feline_t) ctx)
-      (v/assert kb (list 'asymmetric largerThan) ctx)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) ctx)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 2 'genl) ctx))
-    ;; the converse of the goal's direction: it denies (largerThan animal feline)
-    (v/assert kb (list largerThan feline_t animal_t) ctx)
-    (let [cs (both-paths-agree kb (list largerThan dog_t cat_t))]
+      (v/assert kb (list 'asymmetric typeLargerThan) ctx)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) ctx)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 2 'genl) ctx))
+    ;; the converse of the goal's direction: it denies (typeLargerThan animal feline)
+    (v/assert kb (list typeLargerThan feline_t animal_t) ctx)
+    (let [cs (both-paths-agree kb (list typeLargerThan dog_t cat_t))]
       (is (= [:against] (mapv :polarity cs)))
       (is (= [[animal_t feline_t]] (mapv :tuple cs))
           "filed against the tuple it denies, not the tuple it is stated at"))))
 
 (tu/deftest-kb a-sub-predicate-claim-is-found-the-same-way-by-both
-  (tu/with-terms [dog_t animal_t cat_t feline_t largerThan muchLargerThan]
+  (tu/with-terms [dog_t animal_t cat_t feline_t typeLargerThan muchLargerThan]
     (v/with-deferred-settle kb
       (v/assert kb (list 'genl dog_t animal_t) ctx)
       (v/assert kb (list 'genl cat_t feline_t) ctx)
-      (v/assert kb (list 'genl muchLargerThan largerThan) ctx)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) ctx)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 2 'genl) ctx))
+      (v/assert kb (list 'genl muchLargerThan typeLargerThan) ctx)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) ctx)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 2 'genl) ctx))
     (v/assert kb (list muchLargerThan animal_t feline_t) ctx)
-    (let [cs (both-paths-agree kb (list largerThan dog_t cat_t))]
+    (let [cs (both-paths-agree kb (list typeLargerThan dog_t cat_t))]
       (is (= 1 (count cs)))
       (is (= (list muchLargerThan animal_t feline_t) (:sentence (first cs)))
           "the sub-predicate's own sentence, reached through the genl fan"))))
@@ -142,51 +142,51 @@
       (is (seq cs) "the mirror is read on both paths or on neither"))))
 
 (tu/deftest-kb the-strongest-statement-of-a-tuple-wins-on-both-paths
-  (tu/with-terms [dog_t animal_t cat_t feline_t largerThan CxSide]
+  (tu/with-terms [dog_t animal_t cat_t feline_t typeLargerThan CxSide]
     (v/assert kb (list 'genlCx CxSide ctx) ctx)
     (v/with-deferred-settle kb
       (v/assert kb (list 'genl dog_t animal_t) ctx)
       (v/assert kb (list 'genl cat_t feline_t) ctx)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) ctx)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 2 'genl) ctx))
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) ctx)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 2 'genl) ctx))
     ;; the same sentence twice, at two strengths, in two contexts CxSide sees
-    (v/assert kb (list largerThan animal_t feline_t) ctx {:strength :default})
-    (v/assert kb (list largerThan animal_t feline_t) CxSide {:strength :monotonic})
-    (let [cs (both-paths-agree kb (list largerThan dog_t cat_t) CxSide)]
+    (v/assert kb (list typeLargerThan animal_t feline_t) ctx {:strength :default})
+    (v/assert kb (list typeLargerThan animal_t feline_t) CxSide {:strength :monotonic})
+    (let [cs (both-paths-agree kb (list typeLargerThan dog_t cat_t) CxSide)]
       (is (= 1 (count cs)) "one claim per tuple, not one per sentex")
       (is (= :monotonic (:class (first cs)))
           "the strongest, and both paths agree which that is"))))
 
 (tu/deftest-kb a-goal-off-the-product-finds-nothing-on-either-path
-  (tu/with-terms [dog_t animal_t cat_t feline_t bird_t largerThan]
+  (tu/with-terms [dog_t animal_t cat_t feline_t bird_t typeLargerThan]
     (v/with-deferred-settle kb
       (v/assert kb (list 'genl dog_t animal_t) ctx)
       (v/assert kb (list 'genl cat_t feline_t) ctx)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) ctx)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 2 'genl) ctx))
-    (v/assert kb (list largerThan animal_t feline_t) ctx)
-    (is (empty? (both-paths-agree kb (list largerThan bird_t cat_t)))
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) ctx)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 2 'genl) ctx))
+    (v/assert kb (list typeLargerThan animal_t feline_t) ctx)
+    (is (empty? (both-paths-agree kb (list typeLargerThan bird_t cat_t)))
         "bird is not below animal, so nothing reaches this tuple")))
 
 (tu/deftest-kb one-preserved-position-pins-the-other-on-both-paths
-  (tu/with-terms [dog_t animal_t cat_t largerThan]
+  (tu/with-terms [dog_t animal_t cat_t typeLargerThan]
     (v/with-deferred-settle kb
       (v/assert kb (list 'genl dog_t animal_t) ctx)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) ctx))
-    (v/assert kb (list largerThan animal_t cat_t) ctx)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) ctx))
+    (v/assert kb (list typeLargerThan animal_t cat_t) ctx)
     (testing "the pinned argument must match exactly"
-      (is (seq (both-paths-agree kb (list largerThan dog_t cat_t))))
-      (is (empty? (both-paths-agree kb (list largerThan dog_t animal_t)))))))
+      (is (seq (both-paths-agree kb (list typeLargerThan dog_t cat_t))))
+      (is (empty? (both-paths-agree kb (list typeLargerThan dog_t animal_t)))))))
 
 (tu/deftest-kb defeat-is-respected-identically-by-both-paths
-  (tu/with-terms [dog_t animal_t cat_t feline_t largerThan]
+  (tu/with-terms [dog_t animal_t cat_t feline_t typeLargerThan]
     (v/with-deferred-settle kb
       (v/assert kb (list 'genl dog_t animal_t) ctx)
       (v/assert kb (list 'genl cat_t feline_t) ctx)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) ctx)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 2 'genl) ctx))
-    (let [h (v/assert kb (list largerThan animal_t feline_t) ctx)]
-      (is (seq (both-paths-agree kb (list largerThan dog_t cat_t))))
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) ctx)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 2 'genl) ctx))
+    (let [h (v/assert kb (list typeLargerThan animal_t feline_t) ctx)]
+      (is (seq (both-paths-agree kb (list typeLargerThan dog_t cat_t))))
       (v/retract! kb h)
-      (is (empty? (both-paths-agree kb (list largerThan dog_t cat_t)))
+      (is (empty? (both-paths-agree kb (list typeLargerThan dog_t cat_t)))
           "a retracted claim is gone from both paths"))))

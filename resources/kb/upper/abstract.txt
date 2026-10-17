@@ -1,8 +1,8 @@
 ;; abstract.txt — non-biological upper-ontology types (intangible, physical
 ;; objects, substances, made things, body parts, events and their kinds), the
-;; physical-structure relations partOf/locatedIn/madeOf, the event relations
+;; physical-structure relations tangiblePartOf/locatedIn/madeOf, the event relations
 ;; doneBy/performedBy and input/output, and the two type-level relations
-;; largerThan/partType. Loaded into CxUniverse with the rest of kb/upper/.
+;; typeLargerThan/partType. Loaded into CxUniverse with the rest of kb/upper/.
 
 (comment body_part "A part an organism grew — a wing, a heart, a leaf. It stays a body part once transplanted into another organism or shed from its own.")
 ;; An organism and a part it grew are both biological and never the same thing; nothing
@@ -11,28 +11,42 @@
 (separating biological organism body_part)
 ;; A leg of lamb or a chicken wing is food and a body part at once.
 (orthogonal food body_part)
-;; Something made can be biological too: an engineered bacterium, an organ grown in a lab
-;; and a cloned sheep are biological and made at once.
-(orthogonal biological made)
-;; An orthogonal is not inherited along genl, so each overlapping pair is stated.  A cloned
+;; An orthogonal is not inherited along genl, so each overlapping pair is stated or
+;; derived.  origin_type classifies a tangible by where its form came from, and each
+;; typeOrthogonal fact below makes made and natural both orthogonal to one type.  A cloned
 ;; sheep is a made organism and a wild sheep a natural one.  A lab-grown bladder is a made
 ;; body part and a heart a natural one.  Steel, water and sand are a made, a natural and a
 ;; formation substance.  Bread, an apple and sea salt are a made, a natural and a
-;; formation food, and an apple is biological food.
-(orthogonal organism made)
-(orthogonal animal made)
-;; A bonsai or a grafted apple tree is a made plant.
-(orthogonal made plant)
-(orthogonal organism natural)
-(orthogonal body_part made)
-(orthogonal body_part natural)
-(orthogonal substance made)
-(orthogonal substance natural)
+;; formation food, and an apple is biological food.  An engineered bacterium is made and
+;; biological.
+(comment origin_type "A type of tangible by where its form came from: made or natural.")
+(metatype origin_type)
+(typeGenl origin_type tangible)
+;; Each membership is definitional, so origin_type is on the forced-monotonic roster and
+;; typeOrthogonal's rule concludes an orthogonal from one alone (docs/nmtms.md).
+(forced_monotonic_predicate origin_type)
+(set/monotonic (time_invariant_relation origin_type))
+(origin_type made)
+(origin_type natural)
+(partitionedByType tangible origin_type)
+(typeOrthogonal origin_type organism)
+(typeOrthogonal origin_type animal)
+(typeOrthogonal origin_type body_part)
+(typeOrthogonal origin_type substance)
+(typeOrthogonal origin_type food)
+(typeOrthogonal origin_type biological)
+;; A bonsai or a grafted apple tree is a made plant, and a rock is natural and no plant.
+(typeOrthogonal origin_type plant)
+;; A cloned sheep is a made vertebrate, and a lab-bred fruit fly a made invertebrate.
+(orthogonal made vertebrate)
+(orthogonal made invertebrate)
 (orthogonal substance formation)
-(orthogonal food made)
-(orthogonal food natural)
 (orthogonal food biological)
 (orthogonal food formation)
+;; A steel ingot is a made solid, and a granite boulder a natural one.
+(orthogonal made solid)
+;; A bladder is a biological container, and a cup a container that is not biological.
+(orthogonal biological container)
 
 (comment building "An artifact that is a fixed structure enclosing space.")
 
@@ -44,6 +58,7 @@
 (genl container hollow)
 
 (comment context "A context: the second half of a sentex, and what a sentence holds in.")
+(set/monotonic (time_invariant_relation context))
 
 (comment feather "A light keratin body part covering a bird.")
 (genl feather body_part)
@@ -82,17 +97,18 @@
 (set/monotonic (disjoint hollow substance))
 
 (comment language "A system of signs a person speaks, writes or signs in.")
+(set/monotonic (time_invariant_relation language))
 
-(comment largerThan
-         "(largerThan ?kind1 ?kind2) means that a ?kind1 is bigger than a ?kind2. A claim about two KINDS rather than about two things — a type_relation_predicate — so (largerThan dog cat) says dogs are bigger than cats and says nothing whatever about any particular dog. Transitive and asymmetric, so a cycle of size claims is a contradiction the KB reports rather than a chain it walks. Declared transitiveInArgInverse on both positions along genl, which is what carries a claim down to subkinds: a kind of dog is larger than a kind of cat. That distribution is itself a claim about largerThan, which is why it is declared rather than assumed — the same inheritance is false of a chihuahua and a maine coon, and nothing in a sentence says which case it is in.")
-(binary_predicate largerThan)
-(set/monotonic (type_relation_predicate largerThan))
-(genlArg largerThan 1 tangible)
-(genlArg largerThan 2 tangible)
-(set/monotonic (transitive largerThan))
-(set/monotonic (asymmetric largerThan))
-(set/monotonic (transitiveInArgInverse largerThan 1 genl))
-(set/monotonic (transitiveInArgInverse largerThan 2 genl))
+(comment typeLargerThan
+         "(typeLargerThan ?kind1 ?kind2) means that a ?kind1 is bigger than a ?kind2. A claim about two KINDS rather than about two things — a type_relation_predicate — so (typeLargerThan dog cat) says dogs are bigger than cats and says nothing whatever about any particular dog. Transitive and asymmetric, so a cycle of size claims is a contradiction the KB reports rather than a chain it walks. Declared transitiveInArgInverse on both positions along genl, which is what carries a claim down to subkinds: a kind of dog is larger than a kind of cat. That distribution is itself a claim about typeLargerThan, which is why it is declared rather than assumed — the same inheritance is false of a chihuahua and a maine coon, and nothing in a sentence says which case it is in.")
+(binary_predicate typeLargerThan)
+(set/monotonic (type_relation_predicate typeLargerThan))
+(genlArg typeLargerThan 1 tangible)
+(genlArg typeLargerThan 2 tangible)
+(set/monotonic (transitive typeLargerThan))
+(set/monotonic (asymmetric typeLargerThan))
+(set/monotonic (transitiveInArgInverse typeLargerThan 1 genl))
+(set/monotonic (transitiveInArgInverse typeLargerThan 2 genl))
 
 (comment leaf "A flat green body part a plant photosynthesizes with.")
 (genl leaf body_part)
@@ -107,6 +123,7 @@
          "(locatedIn ?object ?place) means that ?object sits within ?place. Declared transitive, so a chain of containments is walked by the closure prover rather than materialized, and a joined rule carries location down parthood — a part is located wherever its whole is. Both arguments are physical objects: a region is the spatial calculi's business, and partOfRegion is the relation to reach for there.")
 (binary_predicate locatedIn)
 (set/monotonic (instance_relation_predicate locatedIn))
+(set/monotonic (time_varying_relation locatedIn))
 (arg locatedIn 1 tangible)
 (arg locatedIn 2 tangible)
 (set/monotonic (transitive locatedIn))
@@ -124,6 +141,7 @@
          "(madeOf ?object ?substance) means that ?object is made of ?substance. About one particular object and the stuff it is made of, so it is instance-level; what a whole kind is made of is a claim about that kind. Partial rather than exhaustive — a thing may be made of several substances, and saying it is made of one does not deny the others.")
 (binary_predicate madeOf)
 (set/monotonic (instance_relation_predicate madeOf))
+(set/monotonic (time_invariant_relation madeOf))
 (arg madeOf 1 tangible)
 (arg madeOf 2 substance)
 
@@ -138,28 +156,71 @@
 (type mercury)
 
 (comment natural "A tangible whose form no living thing's action gave it: a wild sheep, a coral reef, a rock, a river, a star. Contrast made.")
-;; A wild sheep is natural and biological.  A cloned sheep is made and biological.  So
-;; biological is orthogonal to made and to natural.
-(orthogonal biological natural)
 
 (comment organization "A group of people acting as one body — a company, a school, a team.")
 
 (comment partOf
-         "(partOf ?part ?whole) means that ?part is a component of ?whole. Declared transitive, so a part of a part is a part and the chain is answered by the closure prover rather than stored. Structural parthood between physical objects — not membership in a collection, and not the spatial containment partOfRegion states of regions.")
+         "(partOf ?part ?whole) means that ?part is a part of ?whole, of any kind. A component of an object, a region inside a region and a stage of a situation are all parts. Declared transitive, so a part of a part is a part. Both positions are untyped, because a part and its whole can be of any kind.")
 (binary_predicate partOf)
 (set/monotonic (instance_relation_predicate partOf))
-(arg partOf 1 tangible)
-(arg partOf 2 tangible)
 (set/monotonic (transitive partOf))
+(set/monotonic (reflexive partOf))
+;; Antisymmetry was weighed and declined: two coextensive regions stay two regions, so
+;; two things each part of the other are not thereby one.  anti_symmetric is on the
+;; forced-monotonic roster, so the denial is stored and held OUT rather than believed.
+(not (anti_symmetric partOf))
+
+(comment properPartOf
+         "(properPartOf ?part ?whole) means that ?part is a part of ?whole and ?whole is not a part of ?part, of any kind. Both positions are untyped, as partOf's are. Two things each a part of the other are neither a proper part of the other, and they stay two things.")
+(binary_predicate properPartOf)
+(set/monotonic (instance_relation_predicate properPartOf))
+(set/monotonic (irreflexive properPartOf))
+(set/monotonic (transitive properPartOf))
+(genl properPartOf partOf)
+(set/monotonic (properCounterpart partOf properPartOf))
+;; A proper part's whole is not a part of it.  Stated once here, at the root: every proper
+;; parthood relation is below properPartOf, and a denial of partOf denies each spec's tuple.
+(set/forwardRule (implies (properPartOf ?part ?whole) (not (partOf ?whole ?part))))
+
+(comment permanentPartOf
+         "(permanentPartOf ?part ?whole) means that ?part is a part of ?whole that could not stop being one while both exist. A region's parts and a situation's parts are permanent parts. A wheel is a part of a car and no permanent part, since it can come off. Declared transitive, and both positions are untyped, as partOf's are.")
+(binary_predicate permanentPartOf)
+(set/monotonic (instance_relation_predicate permanentPartOf))
+(set/monotonic (time_invariant_relation permanentPartOf))
+(set/monotonic (transitive permanentPartOf))
+(set/monotonic (reflexive permanentPartOf))
+(genl permanentPartOf partOf)
+
+(comment tangiblePartOf
+         "(tangiblePartOf ?part ?whole) means that the tangible ?part is a component of the tangible ?whole. Declared transitive, so a part of a part is a part and the chain is answered by the closure prover rather than stored. Structural parthood between physical objects — not membership in a collection, and not the spatial containment partOfRegion states of regions.")
+(binary_predicate tangiblePartOf)
+(set/monotonic (instance_relation_predicate tangiblePartOf))
+(arg tangiblePartOf 1 tangible)
+(arg tangiblePartOf 2 tangible)
+(set/monotonic (transitive tangiblePartOf))
+(set/monotonic (reflexive tangiblePartOf))
+(genl tangiblePartOf partOf)
+
+(comment properTangiblePartOf
+         "(properTangiblePartOf ?part ?whole) means that the tangible ?part is a component of the tangible ?whole and ?whole is not a component of ?part.")
+(binary_predicate properTangiblePartOf)
+(set/monotonic (instance_relation_predicate properTangiblePartOf))
+(arg properTangiblePartOf 1 tangible)
+(arg properTangiblePartOf 2 tangible)
+(set/monotonic (irreflexive properTangiblePartOf))
+(set/monotonic (transitive properTangiblePartOf))
+(genl properTangiblePartOf tangiblePartOf)
+(genl properTangiblePartOf properPartOf)
+(set/monotonic (properCounterpart tangiblePartOf properTangiblePartOf))
 
 (comment partType
-         "(partType ?wholeKind ?partKind) means that a ?wholeKind has a ?partKind among its parts. The type-level reading of partOf: (partType bird wing) says birds have wings, where (partOf LeftWing Pingu) says one thing is part of another. Declared transitiveInArgInverse along genl on the FIRST position only, and the asymmetry is the claim: a kind of bird has whatever parts birds have, so penguins have wings without a word being written about penguins, while the second position preserves nothing — birds having wings says nothing about which kinds of wing they have. Linked to partOf by typeToInstancePred, which records that the two are readings of one relation and deliberately moves no claim between them: going from the kinds to their members needs a quantifier reading (every bird has SOME wing) that nothing here fixes, and guessing it is how a claim about kinds quietly becomes a false claim about individuals.")
+         "(partType ?wholeKind ?partKind) means that a ?wholeKind has a ?partKind among its parts. The type-level reading of tangiblePartOf: (partType bird wing) says birds have wings, where (tangiblePartOf LeftWing Pingu) says one thing is part of another. Declared transitiveInArgInverse along genl on the FIRST position only, and the asymmetry is the claim: a kind of bird has whatever parts birds have, so penguins have wings without a word being written about penguins, while the second position preserves nothing — birds having wings says nothing about which kinds of wing they have. Linked to tangiblePartOf by typeToInstancePred, which records that the two are readings of one relation and deliberately moves no claim between them: going from the kinds to their members needs a quantifier reading (every bird has SOME wing) that nothing here fixes, and guessing it is how a claim about kinds quietly becomes a false claim about individuals.")
 (binary_predicate partType)
 (set/monotonic (type_relation_predicate partType))
 (genlArg partType 1 tangible)
 (genlArg partType 2 tangible)
 (set/monotonic (transitiveInArgInverse partType 1 genl))
-(typeToInstancePred partType partOf)
+(typeToInstancePred partType tangiblePartOf)
 
 (comment petal "A coloured body part of a flower.")
 (genl petal body_part)
@@ -212,6 +273,30 @@
 ;; spatiotemporal is below spatial and temporal by genl edges and is no intersection, so
 ;; nothing derives the edge, and it is stated.
 (genl spatial_event spatiotemporal)
+
+;; --- subSituationOf: a situation that is part of another ---------------------
+(comment subSituationOf
+         "(subSituationOf ?part ?whole) means that the situation ?part is a part of the situation ?whole. Declared transitive, so a part of a part is a part. A part's time is within its whole's time. The converse does not hold: two situations sharing a time are not thereby parts of one another. subSituationOf supplies parthood only. It rolls no role of the part up to the whole, and it closes no situation under the sum of its parts.")
+(implementationNote subSituationOf "No rule concludes the temporal containment of a part in its whole. The upper ontology has no relation for one time falling within another that covers an intermittent time.")
+(binary_predicate subSituationOf)
+(set/monotonic (instance_relation_predicate subSituationOf))
+(arg subSituationOf 1 situation)
+(arg subSituationOf 2 situation)
+(set/monotonic (transitive subSituationOf))
+(set/monotonic (reflexive subSituationOf))
+(genl subSituationOf permanentPartOf)
+
+(comment properSubSituationOf
+         "(properSubSituationOf ?part ?whole) means that the situation ?part is a part of the situation ?whole and ?whole is not a part of ?part.")
+(binary_predicate properSubSituationOf)
+(set/monotonic (instance_relation_predicate properSubSituationOf))
+(arg properSubSituationOf 1 situation)
+(arg properSubSituationOf 2 situation)
+(set/monotonic (irreflexive properSubSituationOf))
+(set/monotonic (transitive properSubSituationOf))
+(genl properSubSituationOf subSituationOf)
+(genl properSubSituationOf properPartOf)
+(set/monotonic (properCounterpart subSituationOf properSubSituationOf))
 
 ;; --- causal / acausal: whether a thing can occupy a cause slot -----------------
 (comment causal "A thing that can be a cause, i.e. can occupy the cause slot of a causal relation. A cause is in time, so causal is below temporal. One side of the causal/acausal division of thing.")
@@ -374,11 +459,15 @@
 (set/monotonic (disjoint clothing furniture))
 (set/monotonic (disjoint clothing vehicle))
 (set/monotonic (disjoint liquid stone))
-(set/monotonic (disjoint relation context))
 (set/monotonic (disjoint_metatype stuff_type_by_state_of_matter))
 (set/monotonic (disjoint_metatype stuff_type_by_substance))
 (metatype stuff_type_by_state_of_matter)
+(set/monotonic (time_invariant_relation stuff_type_by_state_of_matter))
+;; A portion of stuff can change its phase and go on existing, so every member is
+;; time-varying.
+(set/monotonic (genl stuff_type_by_state_of_matter time_varying_relation))
 (metatype stuff_type_by_substance)
+(set/monotonic (time_invariant_relation stuff_type_by_substance))
 (genl building container)
 (genl gas substance)
 (genl plasma substance)

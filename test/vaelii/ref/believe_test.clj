@@ -446,7 +446,7 @@
   (let [roster  '[(irreflexive likes) (anti_symmetric likes) (asymmetric likes)
                   (functional likes) (functionalInArg likes 2) (anti_transitive likes)
                   (disjoint dog cat)
-                  (covering vehicle car boat) (genl partOf nearTo)]
+                  (covering vehicle car boat) (genl tangiblePartOf nearTo)]
         n       (count roster)
         refused (fn [triple] (unsupported? #(w/check-world (world triple))))
         stored  (fn [triple] (mapv :strength (:writes (w/check-world (world triple)))))
@@ -459,7 +459,7 @@
            [(stored ['(genl dog animal) 'CxA :default])
             (stored ['(not (genl dog animal)) 'CxA :default])
             (inert ['(not (genl dog animal)) 'CxA :default])]))
-    (is (refused ['(transitiveInArgInverse likes 1 partOf) 'CxA :monotonic])
+    (is (refused ['(transitiveInArgInverse likes 1 tangiblePartOf) 'CxA :monotonic])
         "a transitiveInArgInverse over a relation other than genl")))
 
 (deftest a-mark-reaches-a-sub-predicate-over-a-predicate-edge-written-default
@@ -560,7 +560,7 @@
     (is (= [:merge :merge :merge :hard :hard :defeat :hard]
            [(verdict mono :functional '#{(fatherOf Ann Bob) (fatherOf Ann Cy)})
             (verdict mono :functional-in-arg '#{(bornIn Ann Oslo) (bornIn Ann Rome)})
-            (verdict mono :anti-symmetric '#{(partOf Hub Rim) (partOf Rim Hub)})
+            (verdict mono :anti-symmetric '#{(tangiblePartOf Hub Rim) (tangiblePartOf Rim Hub)})
             (verdict mono :functional '#{(ageOf Bob 5) (ageOf Bob 6)})
             (verdict mono :disjoint '#{(dog Rex) (cat Rex)})
             (verdict {'(fatherOf Ann Bob) :monotonic '(fatherOf Ann Cy) :default}
@@ -610,7 +610,7 @@
   (let [forms '[(set/forwardRule (implies (dog ?x) (disjoint ?x cat)))
                 (set/forwardRule (implies (dog ?x) (not (disjoint ?x cat))))
                 (set/forwardRule (implies (likes ?x ?y) (functional likes)))
-                (set/forwardRule (implies (dog ?x) (genl partOf nearTo)))]]
+                (set/forwardRule (implies (dog ?x) (genl tangiblePartOf nearTo)))]]
     (is (= [true true true true] (mapv #(:inert? (w/parse-rule %)) forms)))
     (is (= [[] 4] (let [c (w/check-world (apply world (map #(vector % 'CxA) forms)))]
                     [(:writes c) (count (:inert c))])))

@@ -850,7 +850,7 @@
 (tu/deftest-kb the-relation-kind-marks-are-binary-and-say-so
   ;; `instance_relation_predicate` and `type_relation_predicate` are the two halves of
   ;; the `relation_kind` metatype, and the pairing only means something two-place:
-  ;; `partOf` holds between two individuals where `partType` holds between two kinds,
+  ;; `tangiblePartOf` holds between two individuals where `partType` holds between two kinds,
   ;; and `typeToInstancePred` links that pair.  Each mark's own comment writes the
   ;; shape — `(?predicate x y)` and `(?predicate T1 T2)` — so the `genl` edge says it.
   (testing "each mark carries the arity its definition writes"

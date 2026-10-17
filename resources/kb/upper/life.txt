@@ -1,7 +1,7 @@
 ;; life.txt — relations about organisms: kinship (parentOf/childOf/siblingOf/
 ;; ancestorOf/grandparentOf), age (birthYearOf/olderThan/mortal), and behaviour
-;; (eats, and the capabilityType/hasCapability pair, whose second argument is an
-;; event kind such as abstract.txt's flying or travelling). Loaded into CxUniverse with
+;; (eats, and the capabilityType/hasCapability pair, whose second argument is a
+;; happening kind such as abstract.txt's flying or travelling). Loaded into CxUniverse with
 ;; the rest of kb/upper/.
 
 (comment alive
@@ -9,6 +9,7 @@
 (unary_predicate alive)
 (arg alive 1 biological)
 (genl alive organism)
+(set/monotonic (stable_once_false alive))
 
 (comment ancestorOf
          "(ancestorOf ?ancestor ?descendant) means that ?ancestor is a parent of ?descendant, or a parent of an ancestor of ?descendant. Both arguments are individual organisms. Declared transitive, so the chain is walked by the closure prover rather than materialized, and the base link is derived from parentOf by a rule — an ancestorOf fact normally follows from kinship rather than being asserted.")
@@ -17,16 +18,19 @@
 (arg ancestorOf 1 organism)
 (arg ancestorOf 2 organism)
 (set/monotonic (transitive ancestorOf))
+(set/monotonic (time_invariant_relation ancestorOf))
 
 (comment asleep
          "(asleep ?animal) means that ?animal is sleeping. Stated rather than derived, and what blocks the awake default; a rule concludes (not (awake ?x)) from it, so the two cannot both be believed of one animal and neither has to be retracted for the other to be told.")
 (unary_predicate asleep)
+(set/monotonic (time_varying_relation asleep))
 (arg asleep 1 animal)
 (genl asleep animal)
 
 (comment awake
          "(awake ?animal) means that ?animal is awake and able to act. True by default of an animal and blocked for one known to be asleep — the same shape as flight and penguins, on a state that changes rather than a species that does not.")
 (unary_predicate awake)
+(set/monotonic (time_varying_relation awake))
 (arg awake 1 animal)
 (genl awake animal)
 
@@ -37,17 +41,20 @@
 (arg birthYearOf 1 organism)
 (arg birthYearOf 2 integer)
 (set/monotonic (functional birthYearOf))
+(set/monotonic (time_invariant_relation birthYearOf))
 
 (comment breathes_air
          "(breathes_air ?animal) means that ?animal takes its oxygen from the air. True by default of an animal and blocked for a fish. The exception names a whole CLASS rather than one awkward species, so it reaches every kind of fish ever added and needs no upkeep — matching fans the antecedent out over the subtype closure, so the exception does too.")
 (unary_predicate breathes_air)
 (arg breathes_air 1 animal)
 (genl breathes_air animal)
+(set/monotonic (time_varying_relation breathes_air))
 
 (comment childOf
          "(childOf ?child ?parent) means that ?parent is a biological parent of ?child. Declared the inverse of parentOf and never asserted alongside it: (parentOf Ann Tom) answers (childOf Tom Ann) through the inverse prover, and retracting the one withdraws the other.")
 (binary_predicate childOf)
 (set/monotonic (instance_relation_predicate childOf))
+(set/monotonic (time_invariant_relation childOf))
 (arg childOf 1 organism)
 (arg childOf 2 organism)
 
@@ -56,11 +63,13 @@
 (unary_predicate dead)
 (arg dead 1 biological)
 (genl dead organism)
+(set/monotonic (stable_once_true dead))
 
 (comment eats
          "(eats ?animal ?food) means that ?animal takes ?food as nourishment. Both arguments are individuals — a particular animal and a particular food — and the fact says nothing about when or how often, there being no time argument to say it with. A whole kind's diet is a different sentence: state it of the kind, and declare (transitiveInArgInverse eats 1 genl) if it should reach that kind's members.")
 (binary_predicate eats)
 (set/monotonic (instance_relation_predicate eats))
+(set/monotonic (time_varying_relation eats))
 (arg eats 1 animal)
 (arg eats 2 food)
 
@@ -68,6 +77,7 @@
          "(FatherFn ?animal) means the father of ?animal. A reifiable_function, so a ground application denotes an object rather than being computed, and it reifies to an opaque constant before it reaches the index. Corresponding to fatherOf is what keeps it from minting a second name for a father the KB already knows: (FatherFn Muffet) resolves to the father of a believed (fatherOf Muffet F). Where none is known it mints a placeholder and projects that back onto fatherOf, so the placeholder still answers whose father it is, and a father arriving later is equated with it. See docs/nat.md.")
 (reifiable_function FatherFn)
 (unary_function FatherFn)
+(set/monotonic (time_invariant_relation FatherFn))
 (functionCorrespondingPredicate FatherFn fatherOf)
 (result FatherFn animal)
 
@@ -78,28 +88,31 @@
 (arg fatherOf 1 animal)
 (arg fatherOf 2 animal)
 (set/monotonic (functional fatherOf))
+(set/monotonic (time_invariant_relation fatherOf))
 
 (comment grandparentOf
          "(grandparentOf ?grandparent ?grandchild) means that ?grandparent is a parent of a parent of ?grandchild. Derived by a joined rule over two parentOf facts rather than asserted, so it is believed exactly as long as both links are.")
 (binary_predicate grandparentOf)
 (set/monotonic (instance_relation_predicate grandparentOf))
+(set/monotonic (time_invariant_relation grandparentOf))
 (arg grandparentOf 1 organism)
 (arg grandparentOf 2 organism)
 
 (comment capabilityType
-         "(capabilityType ?kind ?eventKind) means that a ?kind can be the doer of an event of kind ?eventKind. The type-level reading of hasCapability: (capabilityType bird flying) says the kind flies, where (hasCapability Tweety flying) says one bird does. Two predicates rather than one because they are two claims — a claim about a kind and a claim about a member — and one symbol read at both levels has to declare one position's argument check for both, which is a choice that mistypes whichever half it was not written for. Declared transitiveInArgInverse along genl on the FIRST position, which carries a claim about a kind down to its subkinds: a kind of bird flies with nothing written about it. Declared transitiveInArg along genl on the second, which carries it UP the genl hierarchy of event kinds: flying is a kind of travelling, so a kind that can fly can travel. Paired with hasCapability, and the pairing moves no claim between the two: going from the kind to its members needs a quantifier reading (every bird, or some bird) that nothing here fixes, so the descent is a rule written where the kinds are. The comment below hasCapability says why that pairing is prose rather than a typeToInstancePred sentex.")
+         "(capabilityType ?kind ?happeningKind) means that a ?kind can be the doer of a happening of kind ?happeningKind. The type-level reading of hasCapability: (capabilityType bird flying) says the kind flies, where (hasCapability Tweety flying) says one bird does. Two predicates rather than one because they are two claims — a claim about a kind and a claim about a member — and one symbol read at both levels has to declare one position's argument check for both, which is a choice that mistypes whichever half it was not written for. Declared transitiveInArgInverse along genl on the FIRST position, which carries a claim about a kind down to its subkinds: a kind of bird flies with nothing written about it. Declared transitiveInArg along genl on the second, which carries it UP the genl hierarchy of happening kinds: flying is a kind of travelling, so a kind that can fly can travel. Paired with hasCapability, and the pairing moves no claim between the two: going from the kind to its members needs a quantifier reading (every bird, or some bird) that nothing here fixes, so the descent is a rule written where the kinds are. The comment below hasCapability says why that pairing is prose rather than a typeToInstancePred sentex.")
 (binary_predicate capabilityType)
 (set/monotonic (type_relation_predicate capabilityType))
 (genlArg capabilityType 1 animal)
-(genlArg capabilityType 2 event)
+(genlArg capabilityType 2 happening)
 (set/monotonic (transitiveInArgInverse capabilityType 1 genl))
 (transitiveInArg capabilityType 2 genl)
 
 (comment hasCapability
-         "(hasCapability ?animal ?eventKind) means that ?animal can be the doer of an event of kind ?eventKind. The instance-level reading: (hasCapability Tweety flying) says this bird can fly and says nothing about birds, where the claim about the kind is capabilityType. The descent from the one to the other is a rule written where the kinds are, never an inference from the pairing. Carries no relation_kind because it is MIXED — the first position holds one animal and takes arg, the second names an event KIND and takes genlArg — and the metatype classifies a predicate whose two ends sit at one level, so result and functionCorrespondingPredicate are left unmarked for the same reason. Declared transitiveInArg along genl on the second position, which carries a claim up the genl hierarchy of event kinds: flying is a kind of travelling, so whatever can fly can travel.")
+         "(hasCapability ?animal ?happeningKind) means that ?animal can be the doer of a happening of kind ?happeningKind. The instance-level reading: (hasCapability Tweety flying) says this bird can fly and says nothing about birds, where the claim about the kind is capabilityType. The descent from the one to the other is a rule written where the kinds are, never an inference from the pairing. Carries no relation_kind because it is MIXED — the first position holds one animal and takes arg, the second names a happening KIND and takes genlArg — and the metatype classifies a predicate whose two ends sit at one level, so result and functionCorrespondingPredicate are left unmarked for the same reason. Declared transitiveInArg along genl on the second position, which carries a claim up the genl hierarchy of happening kinds: flying is a kind of travelling, so whatever can fly can travel.")
 (binary_predicate hasCapability)
+(set/monotonic (time_varying_relation hasCapability))
 (arg hasCapability 1 animal)
-(genlArg hasCapability 2 event)
+(genlArg hasCapability 2 happening)
 (transitiveInArg hasCapability 2 genl)
 
 ;; The pairing is stated in both comments above and NOT as (typeToInstancePred
@@ -114,19 +127,29 @@
          "(livesIn ?animal ?place) means that ?animal makes its home in ?place. Where the animal belongs rather than where it is at this moment, which is what locatedIn says. A default rule carries the one to the other, so an animal that lives somewhere is taken to be there unless something better is known.")
 (binary_predicate livesIn)
 (set/monotonic (instance_relation_predicate livesIn))
+(set/monotonic (time_varying_relation livesIn))
 (arg livesIn 1 animal)
 (arg livesIn 2 tangible)
 
 (comment mortal
          "(mortal ?organism) means that ?organism will die. Asserted as a default of every organism, so it is defeasible: something known not to die defeats it instead of contradicting the KB.")
 (unary_predicate mortal)
+(set/monotonic (time_invariant_relation mortal))
 (arg mortal 1 organism)
 (genl mortal organism)
+
+;; A dead dog is an animal that is not alive, and a living oak is alive and no animal.
+;; dead and mortal cut across animal the same way, e.g. a hydra is an animal that is not
+;; mortal.
+(orthogonal animal mortal)
+(orthogonal animal dead)
+(orthogonal animal alive)
 
 (comment MotherFn
          "(MotherFn ?animal) means the mother of ?animal. The same shape as FatherFn, over motherOf.")
 (reifiable_function MotherFn)
 (unary_function MotherFn)
+(set/monotonic (time_invariant_relation MotherFn))
 (functionCorrespondingPredicate MotherFn motherOf)
 (result MotherFn animal)
 
@@ -137,6 +160,7 @@
 (arg motherOf 1 animal)
 (arg motherOf 2 animal)
 (set/monotonic (functional motherOf))
+(set/monotonic (time_invariant_relation motherOf))
 
 (comment olderThan
          "(olderThan ?organism1 ?organism2) means that ?organism1 was born before ?organism2. Derivable rather than only asserted — a rule compares the two birthYearOf values with the evaluable lessThan — so it holds whenever both birth years are known and ordered. Declared transitive, the same instance-level strict order heavierThan and tallerThan are: born-before composes, so two stated comparisons carry the third and a chain is answered off the closure with no birth year written down.")
@@ -150,6 +174,7 @@
          "(parentOf ?parent ?child) means that ?parent is a biological parent of ?child. Both arguments are individual organisms — a plant or a bacterium has a parent as an animal does — and step- or adoptive parenthood is not this predicate. The primitive of the kinship theory: childOf, siblingOf, grandparentOf and ancestorOf are all read off it rather than asserted beside it.")
 (binary_predicate parentOf)
 (set/monotonic (instance_relation_predicate parentOf))
+(set/monotonic (time_invariant_relation parentOf))
 (arg parentOf 1 organism)
 (arg parentOf 2 organism)
 (inverse parentOf childOf)
@@ -158,6 +183,7 @@
          "(preysOn ?predator ?prey) means that ?predator hunts and eats ?prey. Between two particular animals; what a whole kind preys on is a claim about kinds and not this predicate. Declared asymmetric, so the mirror of a hunt denies it and a KB told both ways round has a contradiction to report rather than a food chain to walk.")
 (binary_predicate preysOn)
 (set/monotonic (instance_relation_predicate preysOn))
+(set/monotonic (time_varying_relation preysOn))
 (arg preysOn 1 animal)
 (arg preysOn 2 animal)
 (set/monotonic (asymmetric preysOn))
@@ -169,9 +195,13 @@
 (arg siblingOf 1 organism)
 (arg siblingOf 2 organism)
 (set/monotonic (symmetric siblingOf))
+(set/monotonic (time_invariant_relation siblingOf))
 
 (comment warm_blooded
          "(warm_blooded ?animal) means that ?animal holds its own body temperature rather than taking the temperature around it. Derived of the mammals and the birds and denied of the three cold-blooded classes, so it is never asserted of any particular animal — which is what makes it a worked example of a claim inherited from a kind rather than stated of a thing.")
 (unary_predicate warm_blooded)
+(set/monotonic (time_invariant_relation warm_blooded))
 (arg warm_blooded 1 animal)
 (genl warm_blooded animal)
+;; Mammals and birds are warm-blooded, so a warm-blooded animal is a vertebrate by default.
+(genl warm_blooded vertebrate)

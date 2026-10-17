@@ -13,15 +13,24 @@
 
 (genlCx CxNormalPhysicalConditions CxRealWorld)
 
+;; A phase is a state a portion of stuff is in, not a kind it is: ice melts and the
+;; water goes on existing.  So each room-temperature phase is a default rule rather than
+;; a genl edge, and the rule-macro suggestion to make it an edge is declined.
+
 ;; ---- the solids ---------------------------------------------------------
 ;; Stone, wood and glass are solid at room temperature. Glass is an amorphous solid: a
 ;; pane does not flow.
-(genl stone solid)
-(genl wood solid)
-(genl glass_stuff solid)
+(set/defaultRule (set/forwardRule (implies (and (stone ?x)) (solid ?x))))
+(set/defaultRule (set/forwardRule (implies (and (wood ?x)) (solid ?x))))
+(set/defaultRule (set/forwardRule (implies (and (glass_stuff ?x)) (solid ?x))))
+(declined_rule_macro (genl stone solid))
+(declined_rule_macro (genl wood solid))
+(declined_rule_macro (genl glass_stuff solid))
 
 ;; ---- the liquid metal ---------------------------------------------------
-(genl mercury liquid)
+(set/defaultRule (set/forwardRule (implies (and (mercury ?x)) (liquid ?x))))
+(declined_rule_macro (genl mercury liquid))
+(implementationNote stuff_type_by_state_of_matter "The phases this theory gives stone, wood, glass_stuff and mercury are default rules, not genl edges, since a phase is a state a portion of stuff is in, not a kind it is. The rule-macro suggestion of each edge is recorded declined.")
 
 ;; ---- a metal is solid, by default ---------------------------------------
 ;; A default rule with its exception rather than a genl edge per known metal: a metal

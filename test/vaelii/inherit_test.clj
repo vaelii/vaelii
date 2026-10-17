@@ -5,7 +5,7 @@
   `(transitiveInArgInverse P n R)`, the specificity that lets a stated claim override an
   inherited one, and the `(asymmetric P)` conflict that a strict claim raises instead.
 
-  The running example is the one that makes the semantics necessary: `(largerThan dog
+  The running example is the one that makes the semantics necessary: `(typeLargerThan dog
   cat)` reaches a golden retriever and a maine coon, and it also reaches a *chihuahua*
   and a maine coon, where it is false.  Which of those two the KB gets is decided by
   how the general claim was asserted, not by the vocabulary — known-true content is a
@@ -40,30 +40,30 @@
 ;; ---- the inheritance itself ----------------------------------------------
 
 (tu/deftest-kb a-claim-about-two-kinds-reaches-their-subkinds
-  (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t chihuahua_t siamese_t largerThan]
+  (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t chihuahua_t siamese_t typeLargerThan]
     (kinds! kb {:dog dog_t :cat cat_t :gr golden_retriever_t
                 :chi chihuahua_t :mc maine_coon_t :sia siamese_t})
-    (preserving! kb largerThan)
-    (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse)
+    (preserving! kb typeLargerThan)
+    (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse)
     (testing "both positions inherit, together and singly"
-      (is (v/ask? kb (list largerThan golden_retriever_t maine_coon_t) 'CxUniverse))
-      (is (v/ask? kb (list largerThan golden_retriever_t cat_t) 'CxUniverse))
-      (is (v/ask? kb (list largerThan dog_t maine_coon_t) 'CxUniverse))
-      (is (v/ask? kb (list largerThan dog_t cat_t) 'CxUniverse)))
+      (is (v/ask? kb (list typeLargerThan golden_retriever_t maine_coon_t) 'CxUniverse))
+      (is (v/ask? kb (list typeLargerThan golden_retriever_t cat_t) 'CxUniverse))
+      (is (v/ask? kb (list typeLargerThan dog_t maine_coon_t) 'CxUniverse))
+      (is (v/ask? kb (list typeLargerThan dog_t cat_t) 'CxUniverse)))
     (testing "and it does not run backwards, or sideways to an unrelated kind"
-      (is (not (v/ask? kb (list largerThan maine_coon_t golden_retriever_t) 'CxUniverse)))
-      (is (not (v/ask? kb (list largerThan cat_t dog_t) 'CxUniverse))))))
+      (is (not (v/ask? kb (list typeLargerThan maine_coon_t golden_retriever_t) 'CxUniverse)))
+      (is (not (v/ask? kb (list typeLargerThan cat_t dog_t) 'CxUniverse))))))
 
 (tu/deftest-kb no-declaration-means-no-inheritance
   ;; The default for every predicate: a claim about two kinds says nothing about their
   ;; subkinds until someone says it does.
-  (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t chihuahua_t siamese_t largerThan]
+  (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t chihuahua_t siamese_t typeLargerThan]
     (kinds! kb {:dog dog_t :cat cat_t :gr golden_retriever_t
                 :chi chihuahua_t :mc maine_coon_t :sia siamese_t})
-    (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse)
-    (is (v/ask? kb (list largerThan dog_t cat_t) 'CxUniverse))
-    (is (not (v/ask? kb (list largerThan golden_retriever_t maine_coon_t) 'CxUniverse)))
-    (is (nil? (inherit/verdict kb (list largerThan golden_retriever_t maine_coon_t)
+    (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse)
+    (is (v/ask? kb (list typeLargerThan dog_t cat_t) 'CxUniverse))
+    (is (not (v/ask? kb (list typeLargerThan golden_retriever_t maine_coon_t) 'CxUniverse)))
+    (is (nil? (inherit/verdict kb (list typeLargerThan golden_retriever_t maine_coon_t)
                                'CxUniverse)))))
 
 (tu/deftest-kb one-position-can-be-preserved-without-the-other
@@ -81,12 +81,12 @@
 (tu/deftest-kb the-preserved-relation-need-not-be-genl
   ;; `(transitiveInArg P n R)` names R.  Here it is an ordinary declared-transitive
   ;; predicate over individuals, with no types in sight.
-  (tu/with-terms [partOf needs_maintenance Car Engine Piston]
+  (tu/with-terms [tangiblePartOf needs_maintenance Car Engine Piston]
     (v/with-deferred-settle kb
-      (v/assert kb (list 'transitive partOf) 'CxUniverse)
-      (v/assert kb (list partOf Engine Car) 'CxUniverse)
-      (v/assert kb (list partOf Piston Engine) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArgInverse needs_maintenance 1 partOf) 'CxUniverse)
+      (v/assert kb (list 'transitive tangiblePartOf) 'CxUniverse)
+      (v/assert kb (list tangiblePartOf Engine Car) 'CxUniverse)
+      (v/assert kb (list tangiblePartOf Piston Engine) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArgInverse needs_maintenance 1 tangiblePartOf) 'CxUniverse)
       (v/assert kb (list needs_maintenance Car) 'CxUniverse))
     (testing "one hop and two, through the transitive relation that was named"
       (is (v/ask? kb (list needs_maintenance Engine) 'CxUniverse))
@@ -169,12 +169,12 @@
   ;; The direction and the relation are independent axes: `transitiveInArg` along
   ;; a declared-transitive predicate reads its stored facts along their arrow, so a claim about
   ;; a part reaches the assemblies it sits in.
-  (tu/with-terms [partOf dirty Car Engine Piston]
+  (tu/with-terms [tangiblePartOf dirty Car Engine Piston]
     (v/with-deferred-settle kb
-      (v/assert kb (list 'transitive partOf) 'CxUniverse)
-      (v/assert kb (list partOf Engine Car) 'CxUniverse)
-      (v/assert kb (list partOf Piston Engine) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArg dirty 1 partOf) 'CxUniverse)
+      (v/assert kb (list 'transitive tangiblePartOf) 'CxUniverse)
+      (v/assert kb (list tangiblePartOf Engine Car) 'CxUniverse)
+      (v/assert kb (list tangiblePartOf Piston Engine) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArg dirty 1 tangiblePartOf) 'CxUniverse)
       (v/assert kb (list dirty Piston) 'CxUniverse))
     (is (v/ask? kb (list dirty Engine) 'CxUniverse) "one hop up the part chain")
     (is (v/ask? kb (list dirty Car) 'CxUniverse) "and two")
@@ -204,13 +204,13 @@
       (is (v/ask? kb (list appliesIn TheDecree CxSide) 'CxUniverse)
           "a branch the denial says nothing about still inherits")))
   (testing "along a declared fact-relation"
-    (tu/with-terms [partOf needs_maintenance Car Engine Piston Wheel]
+    (tu/with-terms [tangiblePartOf needs_maintenance Car Engine Piston Wheel]
       (v/with-deferred-settle kb
-        (v/assert kb (list 'transitive partOf) 'CxUniverse)
-        (v/assert kb (list partOf Engine Car) 'CxUniverse)
-        (v/assert kb (list partOf Piston Engine) 'CxUniverse)
-        (v/assert kb (list partOf Wheel Car) 'CxUniverse)
-        (v/assert kb (list 'transitiveInArgInverse needs_maintenance 1 partOf) 'CxUniverse)
+        (v/assert kb (list 'transitive tangiblePartOf) 'CxUniverse)
+        (v/assert kb (list tangiblePartOf Engine Car) 'CxUniverse)
+        (v/assert kb (list tangiblePartOf Piston Engine) 'CxUniverse)
+        (v/assert kb (list tangiblePartOf Wheel Car) 'CxUniverse)
+        (v/assert kb (list 'transitiveInArgInverse needs_maintenance 1 tangiblePartOf) 'CxUniverse)
         (v/assert kb (list needs_maintenance Car) 'CxUniverse))
       (is (v/ask? kb (list needs_maintenance Piston) 'CxUniverse))
       (v/assert kb (list 'not (list needs_maintenance Engine)) 'CxUniverse)
@@ -241,12 +241,12 @@
   ;; "A :monotonic claim is never undercut" is stated of the strength, not of the
   ;; relation: along a fact-relation the contrary specific claim leaves a dilemma
   ;; standing rather than silently overriding the fixed background.
-  (tu/with-terms [partOf needs_maintenance Car Engine Piston]
+  (tu/with-terms [tangiblePartOf needs_maintenance Car Engine Piston]
     (v/with-deferred-settle kb
-      (v/assert kb (list 'transitive partOf) 'CxUniverse)
-      (v/assert kb (list partOf Engine Car) 'CxUniverse)
-      (v/assert kb (list partOf Piston Engine) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArgInverse needs_maintenance 1 partOf) 'CxUniverse))
+      (v/assert kb (list 'transitive tangiblePartOf) 'CxUniverse)
+      (v/assert kb (list tangiblePartOf Engine Car) 'CxUniverse)
+      (v/assert kb (list tangiblePartOf Piston Engine) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArgInverse needs_maintenance 1 tangiblePartOf) 'CxUniverse))
     (v/assert kb (list needs_maintenance Car) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list 'not (list needs_maintenance Engine)) 'CxUniverse)
     (is (= :ambiguous (inherit/verdict kb (list needs_maintenance Piston) 'CxUniverse))
@@ -278,13 +278,13 @@
   ;; A claim reachable only through the symmetric mirror *and* an argument hop along
   ;; the relation's arrow: stored `(adjacentTo Garden Piston)`, mirrored to put the piston at the
   ;; preserved position, then walked up the part chain.
-  (tu/with-terms [partOf adjacentTo Garden Car Engine Piston]
+  (tu/with-terms [tangiblePartOf adjacentTo Garden Car Engine Piston]
     (v/with-deferred-settle kb
-      (v/assert kb (list 'transitive partOf) 'CxUniverse)
-      (v/assert kb (list partOf Engine Car) 'CxUniverse)
-      (v/assert kb (list partOf Piston Engine) 'CxUniverse)
+      (v/assert kb (list 'transitive tangiblePartOf) 'CxUniverse)
+      (v/assert kb (list tangiblePartOf Engine Car) 'CxUniverse)
+      (v/assert kb (list tangiblePartOf Piston Engine) 'CxUniverse)
       (v/assert kb (list 'symmetric adjacentTo) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArg adjacentTo 1 partOf) 'CxUniverse))
+      (v/assert kb (list 'transitiveInArg adjacentTo 1 tangiblePartOf) 'CxUniverse))
     (v/assert kb (list adjacentTo Garden Piston) 'CxUniverse)
     (is (v/ask? kb (list adjacentTo Engine Garden) 'CxUniverse) "one hop, mirrored")
     (is (v/ask? kb (list adjacentTo Car Garden) 'CxUniverse) "and two")
@@ -315,38 +315,38 @@
   ;; ground goal, and an open one is left to the fact and rule provers — so a query
   ;; enumerates the stored extent while `ask?` answers each licensed tuple.  A future
   ;; enumerator changes this test deliberately or not at all.
-  (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t largerThan]
+  (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t typeLargerThan]
     (v/with-deferred-settle kb
       (v/assert kb (list 'genl golden_retriever_t dog_t) 'CxUniverse)
       (v/assert kb (list 'genl maine_coon_t cat_t) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 2 'genl) 'CxUniverse)
-      (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse))
-    (is (v/ask? kb (list largerThan golden_retriever_t maine_coon_t) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 2 'genl) 'CxUniverse)
+      (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse))
+    (is (v/ask? kb (list typeLargerThan golden_retriever_t maine_coon_t) 'CxUniverse)
         "each licensed ground tuple answers")
     (is (= [{'?x dog_t '?y cat_t}]
-           (vec (v/ask kb (list largerThan '?x '?y) 'CxUniverse)))
+           (vec (v/ask kb (list typeLargerThan '?x '?y) 'CxUniverse)))
         "the open goal enumerates the stored extent and no licensed tuple")
-    (is (empty? (v/ask kb (list largerThan '?x maine_coon_t) 'CxUniverse))
+    (is (empty? (v/ask kb (list typeLargerThan '?x maine_coon_t) 'CxUniverse))
         "a half-open goal pinned off the stored extent enumerates nothing")))
 
 (tu/deftest-kb the-licence-stays-with-the-predicate-it-names
   ;; Subsumption makes a sub-predicate's *facts* serve the super-predicate's goals; the
-  ;; licence itself does not travel the other way.  `(transitiveInArgInverse largerThan 1 genl)`
-  ;; is a claim about how *largerThan* distributes over subkinds, and it no more
+  ;; licence itself does not travel the other way.  `(transitiveInArgInverse typeLargerThan 1 genl)`
+  ;; is a claim about how *typeLargerThan* distributes over subkinds, and it no more
   ;; descends to `muchLargerThan` than `transitive` or `symmetric` does: dogs may be
   ;; larger than cats without every subkind being *much* larger.  A relation property
   ;; is stated of the relation that has it, and a sub-predicate goal inherits nothing
   ;; until someone declares that predicate preserving.
   (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t chihuahua_t siamese_t
-                  largerThan muchLargerThan]
+                  typeLargerThan muchLargerThan]
     (kinds! kb {:dog dog_t :cat cat_t :gr golden_retriever_t
                 :chi chihuahua_t :mc maine_coon_t :sia siamese_t})
-    (preserving! kb largerThan)
+    (preserving! kb typeLargerThan)
     (v/with-deferred-settle kb
-      (v/assert kb (list 'genl muchLargerThan largerThan) 'CxUniverse)
+      (v/assert kb (list 'genl muchLargerThan typeLargerThan) 'CxUniverse)
       (v/assert kb (list muchLargerThan dog_t cat_t) 'CxUniverse))
-    (is (v/ask? kb (list largerThan golden_retriever_t maine_coon_t) 'CxUniverse)
+    (is (v/ask? kb (list typeLargerThan golden_retriever_t maine_coon_t) 'CxUniverse)
         "the super-predicate's goal inherits, reading the sub-predicate's fact")
     (is (not (v/ask? kb (list muchLargerThan golden_retriever_t maine_coon_t)
                      'CxUniverse))
@@ -516,7 +516,7 @@
   ;; `predicate_subsumption_test` — and this is the intersection, where the fact reach
   ;; has to fan to the sub-predicate *as seen from the asking context* for a tuple the
   ;; argument walk proposed.
-  (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t largerThan muchLargerThan
+  (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t typeLargerThan muchLargerThan
                   CxTop CxAsk]
     (v/with-deferred-settle kb
       (v/assert kb (list 'genlCx CxTop 'CxUniverse) 'CxUniverse)
@@ -526,21 +526,21 @@
       (v/assert kb (list 'genl maine_coon_t cat_t) 'CxUniverse)
       (v/assert kb (list muchLargerThan dog_t cat_t) 'CxUniverse)
       ;; the licence partway up the ancestor set, the predicate edge at its bottom
-      (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) CxTop)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 2 'genl) CxTop)
-      (v/assert kb (list 'genl muchLargerThan largerThan) CxAsk))
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) CxTop)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 2 'genl) CxTop)
+      (v/assert kb (list 'genl muchLargerThan typeLargerThan) CxAsk))
     (testing "where every piece is visible, the goal needing all three answers"
-      (is (v/ask? kb (list largerThan dog_t cat_t) CxAsk)
+      (is (v/ask? kb (list typeLargerThan dog_t cat_t) CxAsk)
           "subsumption alone: the kinds-level goal under the super-predicate")
-      (is (v/ask? kb (list largerThan golden_retriever_t maine_coon_t) CxAsk)
+      (is (v/ask? kb (list typeLargerThan golden_retriever_t maine_coon_t) CxAsk)
           "subsumption and preservation together: the subkinds under the super-predicate"))
     (testing "one level up, exactly the predicate edge is out of sight"
       (is (v/ask? kb (list muchLargerThan dog_t cat_t) CxTop)
           "the stored claim itself is visible")
-      (is (not (v/ask? kb (list largerThan golden_retriever_t maine_coon_t) CxTop))
+      (is (not (v/ask? kb (list typeLargerThan golden_retriever_t maine_coon_t) CxTop))
           "but no visible edge puts it under the goal's predicate"))
     (testing "at the root the licence is out of sight too, and nothing walks"
-      (is (not (v/ask? kb (list largerThan golden_retriever_t maine_coon_t)
+      (is (not (v/ask? kb (list typeLargerThan golden_retriever_t maine_coon_t)
                        'CxUniverse))))))
 
 (tu/deftest-kb withdrawing-the-transitivity-withdraws-the-inheritance
@@ -563,7 +563,7 @@
 ;; ---- the scope: kinds, and not their members -----------------------------
 
 (tu/deftest-kb preservation-along-genl-stays-at-the-level-of-kinds
-  ;; `genl` relates types, so `(largerThan dog cat)` reaches the subkinds and stops.
+  ;; `genl` relates types, so `(typeLargerThan dog cat)` reaches the subkinds and stops.
   ;; It says nothing about Rex and Whiskers, and that silence is the semantics rather
   ;; than a gap: `relation_kind` is a disjoint_metatype over `type_relation_predicate` and
   ;; `instance_relation_predicate`, so one predicate symbol relates kinds *or* instances
@@ -572,38 +572,38 @@
   ;; predicates and has a quantifier reading to pin down — `typeToInstancePred`, which
   ;; the engine does not act on.
   (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t chihuahua_t siamese_t
-                  largerThan Rex Whiskers]
+                  typeLargerThan Rex Whiskers]
     (kinds! kb {:dog dog_t :cat cat_t :gr golden_retriever_t
                 :chi chihuahua_t :mc maine_coon_t :sia siamese_t})
     (v/with-deferred-settle kb
       (v/assert kb (list golden_retriever_t Rex) 'CxUniverse)
       (v/assert kb (list maine_coon_t Whiskers) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 2 'genl) 'CxUniverse)
-      (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse))
-    (is (v/ask? kb (list largerThan golden_retriever_t maine_coon_t) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 2 'genl) 'CxUniverse)
+      (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse))
+    (is (v/ask? kb (list typeLargerThan golden_retriever_t maine_coon_t) 'CxUniverse)
         "the subkinds")
-    (is (not (v/ask? kb (list largerThan Rex Whiskers) 'CxUniverse))
+    (is (not (v/ask? kb (list typeLargerThan Rex Whiskers) 'CxUniverse))
         "and not their members")
-    (is (nil? (inherit/verdict kb (list largerThan Rex Whiskers) 'CxUniverse))
+    (is (nil? (inherit/verdict kb (list typeLargerThan Rex Whiskers) 'CxUniverse))
         "nothing bears on the pair at all — it is not an ambiguity, it is silence")))
 
 (tu/deftest-kb two-declarations-at-one-position-union-their-reaches
   ;; Each declaration independently licenses the claim, so a position declared twice
   ;; reaches what either reaches — rather than the second one filed silently replacing
   ;; the first.
-  (tu/with-terms [partOf locatedIn needsAttention Car Engine Garage Bike]
+  (tu/with-terms [tangiblePartOf locatedIn needsAttention Car Engine Garage Bike]
     (v/with-deferred-settle kb
-      (v/assert kb (list 'transitive partOf) 'CxUniverse)
+      (v/assert kb (list 'transitive tangiblePartOf) 'CxUniverse)
       (v/assert kb (list 'transitive locatedIn) 'CxUniverse)
-      (v/assert kb (list partOf Engine Car) 'CxUniverse)
+      (v/assert kb (list tangiblePartOf Engine Car) 'CxUniverse)
       (v/assert kb (list locatedIn Bike Garage) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArgInverse needsAttention 1 partOf) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArgInverse needsAttention 1 tangiblePartOf) 'CxUniverse)
       (v/assert kb (list 'transitiveInArgInverse needsAttention 1 locatedIn) 'CxUniverse)
       (v/assert kb (list needsAttention Car) 'CxUniverse)
       (v/assert kb (list needsAttention Garage) 'CxUniverse))
     (is (v/ask? kb (list needsAttention Engine) 'CxUniverse)
-        "the first declaration reaches, down partOf")
+        "the first declaration reaches, down tangiblePartOf")
     (is (v/ask? kb (list needsAttention Bike) 'CxUniverse)
         "and so does the second, along locatedIn — from the same argument position")))
 
@@ -634,16 +634,16 @@
 
 (tu/deftest-kb a-position-unions-a-genl-reach-and-a-declared-relation-reach
   ;; The two declarations at one position need not name the same *kind* of relation:
-  ;; `genl` reads the engine's cached type closure, `partOf` is walked over stored facts,
+  ;; `genl` reads the engine's cached type closure, `tangiblePartOf` is walked over stored facts,
   ;; and the position's reach is their union — the same argument descending a type chain
   ;; and a part chain at once.
-  (tu/with-terms [equipment_t lathe_t Chuck partOf hazard]
+  (tu/with-terms [equipment_t lathe_t Chuck tangiblePartOf hazard]
     (v/with-deferred-settle kb
-      (v/assert kb (list 'transitive partOf) 'CxUniverse)
+      (v/assert kb (list 'transitive tangiblePartOf) 'CxUniverse)
       (v/assert kb (list 'genl lathe_t equipment_t) 'CxUniverse)
-      (v/assert kb (list partOf Chuck equipment_t) 'CxUniverse)
+      (v/assert kb (list tangiblePartOf Chuck equipment_t) 'CxUniverse)
       (v/assert kb (list 'transitiveInArgInverse hazard 1 'genl) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArgInverse hazard 1 partOf) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArgInverse hazard 1 tangiblePartOf) 'CxUniverse)
       (v/assert kb (list hazard equipment_t) 'CxUniverse))
     (is (v/ask? kb (list hazard lathe_t) 'CxUniverse)
         "down the cached type closure: a kind of equipment")
@@ -768,53 +768,53 @@
 (tu/deftest-kb a-contrary-claim-against-known-true-content-is-stored-and-loses
   ;; known-true content here is the claim and the reading: the edges and the declarations
   ;; are `:monotonic` too
-  (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t chihuahua_t siamese_t largerThan]
+  (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t chihuahua_t siamese_t typeLargerThan]
     (kinds! kb {:dog dog_t :cat cat_t :gr golden_retriever_t
                 :chi chihuahua_t :mc maine_coon_t :sia siamese_t}
             {:strength :monotonic})
-    (preserving! kb largerThan {:strength :monotonic})
-    (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse {:strength :monotonic})
+    (preserving! kb typeLargerThan {:strength :monotonic})
+    (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse {:strength :monotonic})
     (testing "the inherited claim is as binding as the one that was written"
-      (is (tu/stored-in-clash? kb (list largerThan maine_coon_t chihuahua_t) 'CxUniverse)))
+      (is (tu/stored-in-clash? kb (list typeLargerThan maine_coon_t chihuahua_t) 'CxUniverse)))
     (testing "and so is the plain converse of a directly-stated one"
-      (is (tu/stored-in-clash? kb (list largerThan cat_t dog_t) 'CxUniverse)))
+      (is (tu/stored-in-clash? kb (list typeLargerThan cat_t dog_t) 'CxUniverse)))
     (testing "neither contrary claim is believed, and the known-true reading stands"
-      (is (not (v/ask? kb (list largerThan maine_coon_t chihuahua_t) 'CxUniverse)))
-      (is (not (v/ask? kb (list largerThan cat_t dog_t) 'CxUniverse)))
-      (is (v/ask? kb (list largerThan chihuahua_t maine_coon_t) 'CxUniverse)))))
+      (is (not (v/ask? kb (list typeLargerThan maine_coon_t chihuahua_t) 'CxUniverse)))
+      (is (not (v/ask? kb (list typeLargerThan cat_t dog_t) 'CxUniverse)))
+      (is (v/ask? kb (list typeLargerThan chihuahua_t maine_coon_t) 'CxUniverse)))))
 
 (tu/deftest-kb a-contrary-claim-against-a-default-reading-is-believed-and-reports-nothing
   ;; the claim known-true and the edges and declarations `:default`: the reading is capped
   ;; at `:default`, so it is undercut, the converse is believed, and no clash forms
-  (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t chihuahua_t siamese_t largerThan]
+  (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t chihuahua_t siamese_t typeLargerThan]
     (kinds! kb {:dog dog_t :cat cat_t :gr golden_retriever_t
                 :chi chihuahua_t :mc maine_coon_t :sia siamese_t})
-    (preserving! kb largerThan)
-    (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse {:strength :monotonic})
-    (is (integer? (v/assert kb (list largerThan maine_coon_t chihuahua_t) 'CxUniverse)))
-    (is (v/ask? kb (list largerThan maine_coon_t chihuahua_t) 'CxUniverse))
+    (preserving! kb typeLargerThan)
+    (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse {:strength :monotonic})
+    (is (integer? (v/assert kb (list typeLargerThan maine_coon_t chihuahua_t) 'CxUniverse)))
+    (is (v/ask? kb (list typeLargerThan maine_coon_t chihuahua_t) 'CxUniverse))
     (is (empty? (v/contradictions kb)))
     (is (empty? (v/conflicts kb)))))
 
 (tu/deftest-kb asymmetry-alone-catches-a-converse-with-no-inheritance
   ;; The check does not need a preserved position: an asymmetric predicate's converse
   ;; contradicts it wherever both are known true.
-  (tu/with-terms [dog_t cat_t largerThan]
-    (v/assert kb (list 'asymmetric largerThan) 'CxUniverse)
-    (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse {:strength :monotonic})
-    (is (tu/stored-in-clash? kb (list largerThan cat_t dog_t) 'CxUniverse))
-    (is (not (v/ask? kb (list largerThan cat_t dog_t) 'CxUniverse)))))
+  (tu/with-terms [dog_t cat_t typeLargerThan]
+    (v/assert kb (list 'asymmetric typeLargerThan) 'CxUniverse)
+    (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse {:strength :monotonic})
+    (is (tu/stored-in-clash? kb (list typeLargerThan cat_t dog_t) 'CxUniverse))
+    (is (not (v/ask? kb (list typeLargerThan cat_t dog_t) 'CxUniverse)))))
 
 (tu/deftest-kb a-default-general-claim-leaves-the-contrary-claim-believed
   ;; The whole strict/typical difference, isolated: same vocabulary, same declarations,
   ;; only the strength of the general claim differs.
-  (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t chihuahua_t siamese_t largerThan]
+  (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t chihuahua_t siamese_t typeLargerThan]
     (kinds! kb {:dog dog_t :cat cat_t :gr golden_retriever_t
                 :chi chihuahua_t :mc maine_coon_t :sia siamese_t})
-    (preserving! kb largerThan)
-    (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse)     ; :default, not monotonic
-    (is (integer? (v/assert kb (list largerThan maine_coon_t chihuahua_t) 'CxUniverse)))
-    (is (v/ask? kb (list largerThan maine_coon_t chihuahua_t) 'CxUniverse)
+    (preserving! kb typeLargerThan)
+    (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse)     ; :default, not monotonic
+    (is (integer? (v/assert kb (list typeLargerThan maine_coon_t chihuahua_t) 'CxUniverse)))
+    (is (v/ask? kb (list typeLargerThan maine_coon_t chihuahua_t) 'CxUniverse)
         "believed, where the monotonic version defeats it")))
 
 ;; ---- order independence ---------------------------------------------------
@@ -847,14 +847,14 @@
   ;; that is known true anywhere the asking context can see is a fixed background.
   (doseq [[i strong] (map-indexed vector [:super :sub])
           [j first-where] (map-indexed vector [:super :sub])]
-    (tu/with-terms [dog_t cat_t largerThan CxSuper CxSub]
+    (tu/with-terms [dog_t cat_t typeLargerThan CxSuper CxSub]
       (v/assert kb (list 'genl dog_t 'thing) 'CxUniverse)
       (v/assert kb (list 'genl cat_t 'thing) 'CxUniverse)
       (let [strength (fn [w] (if (= w strong) :monotonic :default))
             order    (if (= first-where :super)
                        [[:super (strength :super)] [:sub (strength :sub)]]
                        [[:sub (strength :sub)] [:super (strength :super)]])]
-        (is (false? (believes-converse? kb {:pred largerThan :a dog_t :b cat_t
+        (is (false? (believes-converse? kb {:pred typeLargerThan :a dog_t :b cat_t
                                             :super CxSuper :sub CxSub
                                             :order order}))
             (str "monotonic in " (name strong) ", " (name first-where) " asserted first ["
@@ -871,9 +871,9 @@
   ;; withdraws — and it has to be a function of the content rather than of which of the
   ;; three the retrieval happened to enumerate first.
   (doseq [flip [false true]]
-    (tu/with-terms [partOf needs_maintenance Car Engine alphaTransitive betaTransitive]
-      (let [subs  [(list alphaTransitive partOf) (list betaTransitive partOf)]
-            fan   (cons (list 'transitive partOf) subs)
+    (tu/with-terms [tangiblePartOf needs_maintenance Car Engine alphaTransitive betaTransitive]
+      (let [subs  [(list alphaTransitive tangiblePartOf) (list betaTransitive tangiblePartOf)]
+            fan   (cons (list 'transitive tangiblePartOf) subs)
             least (first (sort-by pr-str fan))
             what  (str "the " (if flip "beta" "alpha") " sub-predicate asserted first")]
         (v/with-deferred-settle kb
@@ -881,14 +881,14 @@
           (v/assert kb (list 'genl betaTransitive 'transitive) 'CxUniverse)
           ;; the plain declaration too: `transitiveInArg` refuses a relation nobody has
           ;; said composes, and a sub-predicate's sentex does not mark the property
-          (v/assert kb (list 'transitive partOf) 'CxUniverse)
+          (v/assert kb (list 'transitive tangiblePartOf) 'CxUniverse)
           (doseq [s (if flip (reverse subs) subs)] (v/assert kb s 'CxUniverse))
-          (v/assert kb (list partOf Engine Car) 'CxUniverse)
-          (v/assert kb (list 'transitiveInArgInverse needs_maintenance 1 partOf) 'CxUniverse)
+          (v/assert kb (list tangiblePartOf Engine Car) 'CxUniverse)
+          (v/assert kb (list 'transitiveInArgInverse needs_maintenance 1 tangiblePartOf) 'CxUniverse)
           (v/assert kb (list needs_maintenance Car) 'CxUniverse))
         (is (v/ask? kb (list needs_maintenance Engine) 'CxUniverse)
             (str what ": the claim reaches down the part chain"))
-        (is (= 3 (count (res/matches-visible kb (list 'transitive partOf) 'CxUniverse)))
+        (is (= 3 (count (res/matches-visible kb (list 'transitive tangiblePartOf) 'CxUniverse)))
             (str what ": the licence query is answered by a fan, or this proves nothing"))
         (let [named (into #{} (map #(:sentence (v/sentex kb %)))
                           (:handles (first (inherit/supports-for kb (list needs_maintenance Engine)
@@ -905,14 +905,14 @@
   ;; predicate neither type appears in.  The predicate-keyed re-check cannot see that;
   ;; without the argument-side trigger the firings that predate the edge keep a
   ;; conclusion the firings after it correctly drop.
-  (tu/with-terms [dog_t cat_t maine_coon_t chihuahua_t largerThan fitsIn Tiny Other]
+  (tu/with-terms [dog_t cat_t maine_coon_t chihuahua_t typeLargerThan fitsIn Tiny Other]
     (v/with-deferred-settle kb
       (v/assert kb (list 'genl maine_coon_t cat_t) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 2 'genl) 'CxUniverse)
-      (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse))
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 2 'genl) 'CxUniverse)
+      (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse))
     ;; a chihuahua fits in the box, unless a chihuahua is larger than a maine coon
-    (v/assert kb (list 'exceptWhen (list largerThan chihuahua_t maine_coon_t)
+    (v/assert kb (list 'exceptWhen (list typeLargerThan chihuahua_t maine_coon_t)
                        (list 'set/defaultRule
                              (list 'set/forwardRule (list 'implies (list 'and (list chihuahua_t '?x))
                                                           (list fitsIn '?x)))))
@@ -921,9 +921,9 @@
     (is (seq (v/sentexes-matching kb (list fitsIn Tiny) 'CxUniverse))
         "baseline: the exception does not hold, so the rule fires")
 
-    ;; the edge makes the exception hold, by inheritance from (largerThan dog cat)
+    ;; the edge makes the exception hold, by inheritance from (typeLargerThan dog cat)
     (v/assert kb (list 'genl chihuahua_t dog_t) 'CxUniverse)
-    (is (v/ask? kb (list largerThan chihuahua_t maine_coon_t) 'CxUniverse)
+    (is (v/ask? kb (list typeLargerThan chihuahua_t maine_coon_t) 'CxUniverse)
         "the exception's query is now answered by argument preservation")
     (is (empty? (v/sentexes-matching kb (list fitsIn Tiny) 'CxUniverse))
         "so the conclusion that predates the edge is withdrawn")
@@ -1021,11 +1021,11 @@
   term — each size gets its own relation, predicate and term, so the three do not share a
   reach."
   [kb n]
-  (tu/with-terms [partOf needsWork]
+  (tu/with-terms [tangiblePartOf needsWork]
     (let [base   (tu/tmp-ind "Part")
           owners (into [] (repeatedly n #(tu/tmp-ind "Whole")))
           drain  #(doall (inherit/surviving kb (list needsWork base) 'CxUniverse))]
-      (preserved-fan! kb partOf needsWork base owners)
+      (preserved-fan! kb tangiblePartOf needsWork base owners)
       (drain)                                  ; warm whatever caches persist between asks
       (is (= n (count (drain))) "one surviving claim per owner, none comparable")
       (visible-reads drain))))
@@ -1048,23 +1048,23 @@
       (fn [] (run) @n))))
 
 (tu/deftest-kb the-extent-estimate-counts-the-sub-predicates-the-probe-fans-over
-  ;; `largerThan` stores nothing and its sub-predicate stores n facts about terms outside
-  ;; the goal's four-tuple product.  The open probe of `largerThan` walks those n facts
+  ;; `typeLargerThan` stores nothing and its sub-predicate stores n facts about terms outside
+  ;; the goal's four-tuple product.  The open probe of `typeLargerThan` walks those n facts
   ;; through the sub-predicate fan, so the product's four ground probes are the cheaper
   ;; path at every n.
   (let [rows (fn [n]
-               (tu/with-terms [dog_t animal_t cat_t feline_t largerThan muchLargerThan]
+               (tu/with-terms [dog_t animal_t cat_t feline_t typeLargerThan muchLargerThan]
                  (v/with-deferred-settle kb
                    (v/assert kb (list 'genl dog_t animal_t) 'CxUniverse)
                    (v/assert kb (list 'genl cat_t feline_t) 'CxUniverse)
-                   (v/assert kb (list 'genl muchLargerThan largerThan) 'CxUniverse)
-                   (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse)
-                   (v/assert kb (list 'transitiveInArgInverse largerThan 2 'genl) 'CxUniverse)
+                   (v/assert kb (list 'genl muchLargerThan typeLargerThan) 'CxUniverse)
+                   (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse)
+                   (v/assert kb (list 'transitiveInArgInverse typeLargerThan 2 'genl) 'CxUniverse)
                    (dotimes [_ n]
                      (v/assert kb (list muchLargerThan (tu/tmp-ind "A") (tu/tmp-ind "B"))
                                'CxUniverse)))
                  (visible-rows
-                  #(is (empty? (inherit/claims kb (list largerThan dog_t cat_t) 'CxUniverse))))))]
+                  #(is (empty? (inherit/claims kb (list typeLargerThan dog_t cat_t) 'CxUniverse))))))]
     (is (= (rows 8) (rows 64)))))
 
 (defn- walked-rows
@@ -1094,18 +1094,18 @@
   ;; later row is read with the deadline passed.  A sleep sets a floor on the clock and no
   ;; ceiling, so the row counts hold on a loaded box.
   (doseq [n [16 128]]
-    (tu/with-terms [dog_t cat_t gr_t mc_t largerThan]
+    (tu/with-terms [dog_t cat_t gr_t mc_t typeLargerThan]
       (v/with-deferred-settle kb
         (v/assert kb (list 'genl gr_t dog_t) 'CxUniverse)
         (v/assert kb (list 'genl mc_t cat_t) 'CxUniverse)
-        (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse)
-        (v/assert kb (list 'transitiveInArgInverse largerThan 2 'genl) 'CxUniverse)
-        (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse)
+        (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse)
+        (v/assert kb (list 'transitiveInArgInverse typeLargerThan 2 'genl) 'CxUniverse)
+        (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse)
         (dotimes [_ n]
-          (v/assert kb (list largerThan (tu/tmp-ind "A") (tu/tmp-ind "B")) 'CxUniverse)))
+          (v/assert kb (list typeLargerThan (tu/tmp-ind "A") (tu/tmp-ind "B")) 'CxUniverse)))
       (binding [inherit/*retrieval* :extent]
-        (let [goal (list largerThan gr_t mc_t)
-              walk (fn [run] (walked-rows largerThan 20 run))]
+        (let [goal (list typeLargerThan gr_t mc_t)
+              walk (fn [run] (walked-rows typeLargerThan 20 run))]
           (testing (str "at an extent of " n)
             (is (= [true (inc n)] (walk #(v/ask? kb goal 'CxUniverse)))
                 "with no deadline the walk reads the whole extent and finds the claim")
@@ -1129,19 +1129,19 @@
   ;; The ask witness's fixture, answered as a `prove` leaf on both engines: the extent arm
   ;; is forced and its first row sleeps past a 10 ms deadline.
   (doseq [n [16 128], engine [:dfs :inference]]
-    (tu/with-terms [dog_t cat_t gr_t mc_t largerThan]
+    (tu/with-terms [dog_t cat_t gr_t mc_t typeLargerThan]
       (v/with-deferred-settle kb
         (v/assert kb (list 'genl gr_t dog_t) 'CxUniverse)
         (v/assert kb (list 'genl mc_t cat_t) 'CxUniverse)
-        (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse)
-        (v/assert kb (list 'transitiveInArgInverse largerThan 2 'genl) 'CxUniverse)
-        (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse)
+        (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse)
+        (v/assert kb (list 'transitiveInArgInverse typeLargerThan 2 'genl) 'CxUniverse)
+        (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse)
         (dotimes [_ n]
-          (v/assert kb (list largerThan (tu/tmp-ind "A") (tu/tmp-ind "B")) 'CxUniverse)))
+          (v/assert kb (list typeLargerThan (tu/tmp-ind "A") (tu/tmp-ind "B")) 'CxUniverse)))
       (binding [inherit/*retrieval* :extent
                 v/*query-engine*    engine]
-        (let [goal   (list largerThan gr_t mc_t)
-              walk   (fn [run] (walked-rows largerThan 20 run))
+        (let [goal   (list typeLargerThan gr_t mc_t)
+              walk   (fn [run] (walked-rows typeLargerThan 20 run))
               budget {:max-ms 10 :max-depth 2}]
           (testing (str "at an extent of " n " on the " engine " engine")
             (is (= [[{}] (inc n)] (walk #(v/prove kb goal 'CxUniverse {:max-depth 2})))
@@ -1168,16 +1168,16 @@
 (tu/deftest-kb a-claims-reader-other-than-the-ask-prover-walks-past-the-deadline
   ;; `claims` is also read by the asymmetry check at assert, settle and forward chaining,
   ;; and those walk the whole extent under a deadline already passed.
-  (tu/with-terms [dog_t cat_t largerThan]
+  (tu/with-terms [dog_t cat_t typeLargerThan]
     (v/with-deferred-settle kb
-      (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 2 'genl) 'CxUniverse)
-      (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 2 'genl) 'CxUniverse)
+      (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse)
       (dotimes [_ 16]
-        (v/assert kb (list largerThan (tu/tmp-ind "A") (tu/tmp-ind "B")) 'CxUniverse)))
+        (v/assert kb (list typeLargerThan (tu/tmp-ind "A") (tu/tmp-ind "B")) 'CxUniverse)))
     (binding [inherit/*retrieval* :extent]
       (is (= [1 17]
-             (walked-rows largerThan 0
+             (walked-rows typeLargerThan 0
                           #(binding [budget/*deadline* (System/nanoTime)]
-                             (count (inherit/claims kb (list largerThan dog_t cat_t)
+                             (count (inherit/claims kb (list typeLargerThan dog_t cat_t)
                                                     'CxUniverse)))))))))

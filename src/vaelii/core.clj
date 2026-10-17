@@ -5675,7 +5675,8 @@
   `candidate-terms` is a finite set of ground terms (`:bad-args` otherwise).  Answers
   `{:status :audited :candidate-count n}` when no pass finds anything, `:status :gap` with
   the non-empty categories among `:definition-inconsistencies`,
-  `:all-specified-violations`, `:genl-arg-widening`, `:not-under-thing`, `:implicit-genl`,
+  `:all-specified-violations`, `:type-specified-violations`, `:rigidity-correspondence`,
+  `:genl-arg-widening`, `:not-under-thing`, `:implicit-genl`,
   `:orthogonal-over-separation`, `:rule-macro`, `:undeclared-arity`,
   `:twin-genls`, `:derivable-stated-edge`,
   `:disjoint-could-be-partition` and `:missing-arg`, or `:status :truncated` with its

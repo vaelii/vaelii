@@ -49,8 +49,8 @@
 
 (tu/deftest-kb a-sentence-refused-for-what-has-not-arrived-yet-is-retried
   ;; The blocks of a KB file run in natural sort order, so it cannot also be
-  ;; dependency-ordered: `(transitiveInArgInverse largerThan 1 partOf)` is filed under
-  ;; `largerThan` and `(transitive partOf)` under `partOf`, and `l` sorts before `p`.
+  ;; dependency-ordered: `(transitiveInArgInverse typeLargerThan 1 tangiblePartOf)` is filed under
+  ;; `typeLargerThan` and `(transitive tangiblePartOf)` under `tangiblePartOf`, and `l` sorts before `t`.
   ;; The preservation's transitivity check reads the store, so in file order it is
   ;; refused — for where its author filed a sentence, which is not a property of the
   ;; knowledge.

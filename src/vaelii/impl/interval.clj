@@ -352,13 +352,18 @@
   through — and `:contexts` the ones that put an interval *into* a network, which is what
   makes a context worth reading one at.  A `conversionFactor` is in the first and not the
   second: it changes what a bound comes to, and a context holding one and no interval has
-  nothing to narrow."
+  nothing to narrow.
+
+  `subintervalOf` and `properSubintervalOf` are the **typed** predicates: they take time
+  intervals, and every other interval predicate takes any temporal thing.  So the network
+  answers the two only over arguments their declared types admit (`qcn-kb/solve-goal`)."
   (qkb/calculus :allen allen-algebra interval-denotation
                 {:fn       both-narrowings
                  :sources  (into stp/allen-narrowing-sources (keys pt/instant-denotation))
                  :contexts (-> stp/stp-predicates
                                (into stp/endpoint-predicates)
-                               (into (keys pt/instant-denotation)))}))
+                               (into (keys pt/instant-denotation)))}
+                '#{subintervalOf properSubintervalOf}))
 
 (defn possible-allen-relations
   "The Allen base relations still possible between intervals `i1` and `i2` given

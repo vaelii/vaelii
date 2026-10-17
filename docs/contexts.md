@@ -75,12 +75,12 @@ Data hangs below CxWell.
   file under `resources/kb/upper/` into it as one batch. `core.txt` is the
   code-supported vocabulary (every special predicate the engine interprets) and the top
   of the ontology: the parts of the three partitions of `thing`
-  ([taxonomy.md](taxonomy.md#the-three-partitions-of-thing)), `spatiotemporal`,
-  `nowhere_never`, `linguistic`, `biological`, `organism` and `measure`. Each other file
-  is one domain:
+  ([taxonomy.md](taxonomy.md#the-three-partitions-of-thing)), `physical`, `spatiotemporal`,
+  `nowhere_never`, `logical`, `linguistic`, `quantitative`, `biological`, `organism`
+  and `measure`. Each other file is one domain:
   - `abstract.txt` — the kinds below the skeleton `core.txt` holds (`made`, `food`,
     `substance`, `body_part`, `context`, …), the structural relations
-    `partOf`/`locatedIn`, and the `travelling` and `flying` event kinds.
+    `tangiblePartOf`/`locatedIn`, and the `travelling` and `flying` event kinds.
   - `organism.txt` — the biological taxonomy and its disjointness.
   - `life.txt` — the organism relations (`parentOf`, `siblingOf`, `flies`, `mortal`,
     `birthYearOf`, `olderThan`, …) with their arg and metadata.
@@ -126,7 +126,7 @@ Data hangs below CxWell.
   - `CxAnatomy` — what kinds of thing have what kinds of part, entirely in
     `partType` claims. Nothing here concludes anything about an individual, which is
     deliberate: "birds have wings" to "Pingu has a wing" needs a quantifier reading.
-  - `CxSize` — comparative size said the two ways it can be said: `largerThan`
+  - `CxSize` — comparative size said the two ways it can be said: `typeLargerThan`
     among kinds, and a comparison computed between two objects' measures. The worked
     example of `transitiveInArgInverse` ([inherit.md](inherit.md)).
   - `CxSocial` — what acquaintance follows from, how employment relates to
@@ -406,12 +406,12 @@ contexts closes immediately**, which is every KB that has not divided the knowle
 question between contexts: there is nothing for a second to meet.
 
 The starter's owns-parts rule shows both outcomes. The rule `(implies (and (owns ?p
-?whole) (partOf ?part ?whole)) (owns ?p ?part))` is a middle theory (`CxMereology`,
+?whole) (tangiblePartOf ?part ?whole)) (owns ?p ?part))` is a middle theory (`CxMereology`,
 seen by every data context below Well), and the test-world cast supplies the facts. It
-derives `(owns Tom Roof1)`: both `(owns Tom House1)` and `(partOf Roof1 House1)` sit in
+derives `(owns Tom Roof1)`: both `(owns Tom House1)` and `(tangiblePartOf Roof1 House1)` sit in
 CxSocialWorld, so the intersection is non-empty and the conclusion lands there.
 But `(owns Tom Engine1)` is **not** derived — `(owns Tom Car1)` is in CxSocialWorld
-while `(partOf Engine1 Car1)` is in CxNaturalWorld (sibling data contexts with no
+while `(tangiblePartOf Engine1 Car1)` is in CxNaturalWorld (sibling data contexts with no
 common view), so the placement intersection is empty and no justification is made.
 
 ## except: removing visibility down a context subtree
@@ -813,7 +813,7 @@ every definitional read follows (`has-prop?` with a context, the provers, the ch
 supporter a firing names). The shipped ontology makes every one of them visible from
 every context by declaring it a `decontextualized_predicate`, and that is the reading the
 engine holds to: a relation's algebra is a claim about the relation and not about a
-subject matter. Two theories that disagree about whether `partOf` composes are not
+subject matter. Two theories that disagree about whether `tangiblePartOf` composes are not
 something a mark can represent, since canonicalization, the property tables and the
 definitional checks all key on the predicate; such a KB states the closure as a rule in
 the theory that holds it, or uses two predicates. Whichever path reads a property, it

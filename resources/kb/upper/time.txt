@@ -28,11 +28,11 @@
 ;;
 ;; Seven DERIVED relations each name a disjunction of them: precedes (before or meets) and
 ;; its converse precededBy, for an ordering that does not care whether the intervals
-;; touch; subintervalOf (during, starts, finishes or intervalEqual), properSubintervalOf
-;; (the same without intervalEqual) and hasSubinterval (its converse), for temporal
-;; containment; and the complementary pair sharesTimeWith (the nine relations under which
-;; two intervals share some time) and temporallyDisjoint (the four under which they do
-;; not).
+;; touch; subintervalOf (during, starts, finishes or intervalEqual) and properSubintervalOf
+;; (the same without intervalEqual) between time intervals, and hasSubinterval (the
+;; converse of subintervalOf) between any temporal things, for temporal containment; and
+;; the complementary pair sharesTimeWith (the nine relations under which two intervals
+;; share some time) and temporallyDisjoint (the four under which they do not).
 ;;
 ;; intervalEqual is a claim about extent in time, not about the identity of two terms, so
 ;; it is not the equality closure's equals: two distinct meetings can run start to finish
@@ -128,6 +128,7 @@
          "(contains ?interval1 ?interval2) means that ?interval1 begins strictly before ?interval2 and ends strictly after it. So ?interval2 falls wholly inside ?interval1 with room either side. The converse of during.")
 (binary_predicate contains)
 (set/monotonic (instance_relation_predicate contains))
+(set/monotonic (time_invariant_relation contains))
 (arg contains 1 temporal)
 (arg contains 2 temporal)
 
@@ -233,7 +234,7 @@
 (arg happens 2 time_point)
 
 (comment hasSubinterval
-         "(hasSubinterval ?interval1 ?interval2) means that ?interval2 falls within ?interval1, sharing an end, a start, or neither. Any of contains, startedBy, finishedBy or intervalEqual. The converse of subintervalOf.")
+         "(hasSubinterval ?interval1 ?interval2) means that ?interval2 falls within ?interval1, sharing an end, a start, or neither. Any of contains, startedBy, finishedBy or intervalEqual. Over two time intervals it is the converse of subintervalOf. It takes any two temporal things, as contains does.")
 (binary_predicate hasSubinterval)
 (set/monotonic (instance_relation_predicate hasSubinterval))
 (arg hasSubinterval 1 temporal)
@@ -269,6 +270,7 @@
 (comment functional_at_instant
          "(functional_at_instant ?function) means that ?function, whose value is carried as a fluent, has at most one value for one subject at any single instant. A fluent (?function ?subject ?value) states a value that holds over a stretch of time; two fluents of ?function for one subject holding at one instant with different values is a per-instant clash, the fluent-lane counterpart of functional over a bare literal. It is read on demand by vaelii.core/functional-at-instant-violations rather than enforced at assert, because whether two fluents overlap at an instant follows from initiates, terminates and the clipping closure and is not known when a fluent is asserted; the audit mirrors functional's split, reporting two symbol values as a merge and two non-symbols as a contradiction. Values holding at different instants do not clash, which is what the fluent representation buys over a bare functional mark. See docs/time.md and docs/equality.md.")
 (unary_predicate functional_at_instant)
+(set/monotonic (time_invariant_relation functional_at_instant))
 (genl functional_at_instant function)
 
 (comment instantAfter
@@ -377,9 +379,10 @@
 (arg latestStartOf 2 time_point)
 
 (comment length
-         "(length ?interval ?measure) means that ?interval lasts ?measure. Exact as (QuantityFn 2 Hour), and bounded as (QuantityIntervalFn 1 2 Hour) when only bounds are known. An interval's one primitive duration and the only quantitative fact stated about it, since totalDuration and overlapDuration are both computed from these. A duration, not a spatial extent.")
+         "(length ?interval ?measure) means that ?interval lasts ?measure. Exact as (QuantityFn 2 Hour), and bounded as (QuantityIntervalFn 1 2 Hour) when only bounds are known. An interval's one primitive duration and the only quantitative fact stated about it, since totalDuration and overlapDuration are both computed from these. A duration, not a spatial extent. The length of a temporal thing is its whole temporal extent, viewed from outside time, so it does not grow while the thing goes on and length is time-invariant.")
 (binary_predicate length)
 (set/monotonic (instance_relation_predicate length))
+(set/monotonic (time_invariant_relation length))
 (arg length 1 temporal)
 (arg length 2 measure)
 
@@ -414,6 +417,7 @@
 (comment overlapDuration
          "(overlapDuration ?interval1 ?interval2 ?duration) means that ?duration is how long ?interval1 and ?interval2 overlap. Computed from their lengths and the Allen relations still possible between them: zero when they are temporallyDisjoint, the contained length when one is a subintervalOf the other, and the bounded (QuantityIntervalFn 0 shorter unit) otherwise, so an over-approximation renders as an interval and says as much. Computed by a prover, never stored.")
 (ternary_predicate overlapDuration)
+(set/monotonic (time_invariant_relation overlapDuration))
 (arg overlapDuration 1 temporal)
 (arg overlapDuration 2 temporal)
 (arg overlapDuration 3 measure)
@@ -447,11 +451,16 @@
 (arg precedes 2 temporal)
 
 (comment properSubintervalOf
-         "(properSubintervalOf ?interval1 ?interval2) means that ?interval1 falls within ?interval2 and is not the whole of it. Any of during, starts or finishes. Irreflexive, unlike subintervalOf.")
+         "(properSubintervalOf ?interval1 ?interval2) means that ?interval1 falls within ?interval2 and is not the whole of it. Any of during, starts or finishes.")
 (binary_predicate properSubintervalOf)
 (set/monotonic (instance_relation_predicate properSubintervalOf))
-(arg properSubintervalOf 1 temporal)
-(arg properSubintervalOf 2 temporal)
+(arg properSubintervalOf 1 time_interval)
+(arg properSubintervalOf 2 time_interval)
+(set/monotonic (irreflexive properSubintervalOf))
+(set/monotonic (transitive properSubintervalOf))
+(set/inert (genl properSubintervalOf subintervalOf))
+(genl properSubintervalOf properPartOf)
+(set/inert (properCounterpart subintervalOf properSubintervalOf))
 
 (comment sharesTimeWith
          "(sharesTimeWith ?interval1 ?interval2) means that ?interval1 and ?interval2 have some time in common. Any relation but before, after, meets and metBy, so it is the complement of temporallyDisjoint.")
@@ -490,11 +499,13 @@
 (arg starts 2 temporal)
 
 (comment subintervalOf
-         "(subintervalOf ?interval1 ?interval2) means that ?interval1 falls within ?interval2, sharing an end, a start, or neither. Any of during, starts, finishes or intervalEqual, so it is derived rather than base. Reflexive: every interval is a subinterval of itself.")
+         "(subintervalOf ?interval1 ?interval2) means that ?interval1 falls within ?interval2, sharing an end, a start, or neither. Any of during, starts, finishes or intervalEqual, so it is derived rather than base.")
 (binary_predicate subintervalOf)
 (set/monotonic (instance_relation_predicate subintervalOf))
-(arg subintervalOf 1 temporal)
-(arg subintervalOf 2 temporal)
+(arg subintervalOf 1 time_interval)
+(arg subintervalOf 2 time_interval)
+(set/monotonic (reflexive subintervalOf))
+(genl subintervalOf partOf)
 
 (comment temporalDistance
          "(temporalDistance ?instant1 ?instant2 ?measure) means that ?instant2 falls ?measure later than ?instant1. So a negative measure says ?instant2 comes first. Exact as (QuantityFn N Unit) and bounded as (QuantityIntervalFn Lo Hi Unit). A stated one is an ordinary fact; a prover closes every such constraint visible in a context by all-pairs shortest paths and answers the tightest separation they entail between any two instants, binding the measure when it is open and checking containment when it is ground.")
@@ -541,6 +552,7 @@
          "(totalDuration (list ?interval1 ?interval2 …) ?duration) means that ?duration is the sum of the listed intervals' lengths, which must all be of one dimension. Binary rather than ternary: the (list …) of components is one argument, which is also why the signature is read as a description instead of substituted into. Computed by a prover, never stored.")
 (binary_predicate totalDuration)
 (set/monotonic (instance_relation_predicate totalDuration))
+(set/monotonic (time_invariant_relation totalDuration))
 (arg totalDuration 1 temporal)
 (arg totalDuration 2 measure)
 
