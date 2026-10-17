@@ -142,6 +142,14 @@ It looks like a natural kind and is far slipperier. Temporal and spatial slices 
 **genlPrinciple:** no OE calligraphy
 List the members, then the near-misses: things under the same parent that aren't members. A property is the differentia only if every member has it and no near-miss does. If none survives, the type has no differentia and isn't worth reifying. The near-miss list is often a list of sibling types waiting to be named.
 
+**Refinement audit:** before accepting a proposed classifier:
+1. State what membership means under its parent, not just a list of familiar members. Fix the intended reading and context where a word has episodic, habitual or modal uses.
+2. Give positive controls and close non-members under that parent, with a reason each belongs or does not. Challenge the proposed differentia with cases sharing its arity, argument types or temporal variation; those features need not capture its meaning.
+3. Separate essential meaning from accidental association. A relation may be asserted, learned or changed in a happening without that relation itself describing a happening. For a proposed happening classifier, contrast an occurrence with a held state, not merely a changing truth value with a fixed one.
+4. Ask what each classification would let the KB conclude or rule out (**does it have rules?**). Examples test a proposed definition; a finite list does not establish its necessity or sufficiency. Revise the definition when a real counterexample defeats it.
+5. State the defining facts or rules where possible (**represent the definition**). For two encodings, make their argument/role mapping and context or temporal correspondence explicit; do not substitute an unrelated existential witness or assume a unique occurrence from the same participants.
+6. Distinguish the semantic criterion from what the current engine can check (**truth, not provability**). Record which expected conclusions are derivable, which exclusions have explicit support, and which cases remain open. Failure to derive membership is not a negative control's proof of non-membership.
+
 ## no naked terms
 *Hypothesized vocabulary comes with its definitional assertions*
 Every proposed term, even in a thought experiment, ships as a block: its metatype(s), `genl`, every `arg`, its `disjoint`/`separating`/`orthogonal` relations to siblings, and its `comment`. Where they apply, also relation properties (`transitive`, `functional`, …) and `termsRelated`/`seeAlso`. A term without its definitional block can't be evaluated yet.
