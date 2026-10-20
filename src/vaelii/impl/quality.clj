@@ -745,7 +745,8 @@
 
 (defn- rule-clashes
   "Rule pairs whose consequents would clash if both fired: `integrity/clash-pairs` over
-  every rule the census enumerated, counted and capped."
+  every rule the census enumerated, counted and capped — the pairing kb-integrity's
+  `:rule-clash` and `:rule-clash-review` categories split by who acts on a pair."
   [kb rows limit progress!]
   (let [found (with-open [r (progress/start ::clashes "quality: find the rule clashes"
                                             (count rows))]

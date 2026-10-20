@@ -1792,6 +1792,41 @@
   [kb rows progress!]
   (map peek (clash-units kb rows progress!)))
 
+(defn- inert-row?
+  "Does `v` run in neither engine — a `set/inertRule`, documentation?"
+  [v]
+  (empty? (:engines v)))
+
+(defn- rule-clash-findings
+  "The clashing pairs among the stored rules `context` sees, in content order: the live
+  pairs no `exceptWhen` handles under `:rule-clash`, and under `:rule-clash-review` (when
+  `review?`) the pairs either rule of which is a `set/inertRule`, marked `:inert true`, and
+  the `:excepted` ones.  An inert rule chains in neither engine, so its pair is a clash the
+  rules would admit if the rule were switched on, a suggestion rather than a violation; an
+  excepted pair is one the author already handled.
+
+  The rules are read off the rule extent in every context (`reads/as-stored-rules-in-global`),
+  the census `rule-macro-findings` takes, and kept when `context` sees the rule's context:
+  the pairing needs every rule's row before it can ask where a pair is seen, so the read
+  is the whole extent and the visibility a filter over it.  A pair's
+  `:context` is where its nogood could form, a common descendant of the two rules'
+  contexts, which need not be `context` itself."
+  [kb context remaining review?]
+  (let [taxo  (reasoning/taxonomy kb)
+        rows  (filterv #(tax/sees? taxo context (:context %))
+                       (rule-rows kb
+                                  (into (sorted-set)
+                                        (reads/as-stored-rules-in-global (:index kb) :rule))
+                                  (fn [_] nil)))]
+    (bounded-findings
+     (if review? :rule-clash-review :rule-clash)
+     (keep (fn [[a b e]]
+             (let [inert? (or (inert-row? a) (inert-row? b))]
+               (when (= review? (boolean (or inert? (:excepted e))))
+                 (cond-> e inert? (assoc :inert true)))))
+           (clash-units kb rows (fn [_] nil)))
+     remaining)))
+
 (def ^:private passes
   "The passes in run order, `[category audit]`: `audit` takes `kb candidate-terms context
   remaining` and answers `{:status :complete|:truncated :findings …}`.  `:max-results`
@@ -1812,6 +1847,8 @@
                         (undeclared-arity-findings kb context remaining))]
    [:uncorresponded-function (fn [kb _ context remaining]
                                (uncorresponded-function-findings kb context remaining))]
+   [:rule-clash (fn [kb _ context remaining]
+                  (rule-clash-findings kb context remaining false))]
    [:twin-genls (fn [kb _ context remaining]
                   (twin-genls-findings kb context remaining))]
    [:derivable-stated-edge (fn [kb _ context remaining]
@@ -1819,12 +1856,15 @@
    [:disjoint-could-be-partition (fn [kb _ context remaining]
                                    (disjoint-could-be-partition-findings kb context remaining))]
    [:missing-arg (fn [kb _ context remaining]
-                   (missing-arg-findings kb context remaining))]])
+                   (missing-arg-findings kb context remaining))]
+   [:rule-clash-review (fn [kb _ context remaining]
+                         (rule-clash-findings kb context remaining true))]])
 
 (def ^:private review-categories
   "The review-only categories: a sweep runs their passes only when `:categories` names
   them, so a finding of one never turns an otherwise clean default sweep into `:gap`."
-  #{:twin-genls :derivable-stated-edge :disjoint-could-be-partition :missing-arg})
+  #{:twin-genls :derivable-stated-edge :disjoint-could-be-partition :missing-arg
+    :rule-clash-review})
 
 (defn- check-args!
   "Refuse a `candidate-terms` that is not a set of ground terms (`:bad-args`), and a

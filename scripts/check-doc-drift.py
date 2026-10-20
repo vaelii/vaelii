@@ -1336,6 +1336,7 @@ E16_GLOBAL_ALLOW = {
     ("src/vaelii/impl/nat.clj", "corresponded-rules"),
     ("src/vaelii/impl/nat.clj", "held-application-rules"),
     ("src/vaelii/impl/nat.clj", "formula-position-rules"),
+    ("src/vaelii/impl/integrity.clj", "rule-clash-findings"),
     # The planner's lead choice under a variable context, which has no ancestor set yet:
     # the argument's census over every context bounds what the lead can cost.
     ("src/vaelii/impl/resolution.clj", "arg-lead"),

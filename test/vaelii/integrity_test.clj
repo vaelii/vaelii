@@ -1654,3 +1654,117 @@
           (is (some? needed))
           (is (every? #(= [:truncated :max-work] ((juxt :status :reason) (run {:max-work %})))
                       (range 0 (or needed 0)))))))))
+
+;; ---- rule-clash -------------------------------------------------------------
+
+(defn- clash-sweep
+  "A sweep of `categories` alone, from `context`."
+  ([kb categories] (clash-sweep kb categories 'CxUniverse))
+  ([kb categories context] (v/kb-integrity kb #{} context {:categories categories})))
+
+(defn- about
+  "The rule-clash findings among `findings` whose sentences name a term of `terms`, so a
+  test reads its own rules' pairs beside whatever the starter's rules pair."
+  [terms findings]
+  (filterv #(some (set terms) (flatten (:sentences %))) findings))
+
+(tu/deftest-kb a-live-rule-clash-is-a-violation-the-default-sweep-reports
+  (tu/with-terms [bird_kind penguin_kind flies]
+    (let [yes    (v/assert-rule kb [(list bird_kind '?x)] (list flies '?x) 'CxUniverse
+                                {:direction :forward})
+          no     (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x))
+                                'CxUniverse {:direction :forward})
+          before (state-snapshot kb)
+          report (v/kb-integrity kb #{} 'CxUniverse)
+          mine   (about [flies] (:rule-clash report))
+          e      (first mine)]
+      (is (= :gap (:status report)))
+      (is (= 1 (count mine)))
+      (is (= :negation (:kind e)))
+      (is (= #{yes no} (set (:rules e))))
+      (is (= 'CxUniverse (:context e)))
+      (is (false? (:excepted e)))
+      (is (not (contains? e :inert)))
+      (is (nil? (:rule-clash-review report)) "the review category runs only when named")
+      (is (= before (state-snapshot kb)) "the audit stores, believes and files nothing"))))
+
+(tu/deftest-kb an-inert-rule-clash-is-review-only
+  (tu/with-terms [bird_kind penguin_kind flies]
+    (v/assert-rule kb [(list bird_kind '?x)] (list flies '?x) 'CxUniverse {:direction :forward})
+    (let [doc (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x))
+                             'CxUniverse {:direction :inert})]
+      (is (empty? (about [flies] (:rule-clash (v/kb-integrity kb #{} 'CxUniverse))))
+          "a pair with a set/inertRule is no violation")
+      (is (empty? (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash})))))
+      (let [e (first (about [flies] (:rule-clash-review (clash-sweep kb #{:rule-clash-review}))))]
+        (is (= :negation (:kind e)))
+        (is (contains? (set (:rules e)) doc))
+        (is (true? (:inert e)))))))
+
+(tu/deftest-kb an-excepted-rule-clash-is-review-only
+  (tu/with-terms [bird_kind penguin_kind flies]
+    (v/assert kb (list 'exceptWhen (list penguin_kind '?x)
+                       (list 'set/defaultRule
+                             (list 'set/forwardRule
+                                   (list 'implies (list bird_kind '?x) (list flies '?x)))))
+              'CxUniverse)
+    (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x)) 'CxUniverse
+                   {:direction :forward})
+    (is (empty? (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash}))))
+        "the exception names the other rule's case, so the clash is handled")
+    (let [e (first (about [flies] (:rule-clash-review (clash-sweep kb #{:rule-clash-review}))))]
+      (is (= :negation (:kind e)))
+      (is (true? (:excepted e)))
+      (is (not (contains? e :inert))))))
+
+(tu/deftest-kb a-rule-clash-is-read-from-a-context-that-sees-both-rules
+  (tu/with-terms [bird_kind penguin_kind flies CxLeft CxRight CxBoth]
+    (v/assert kb (list 'genlCx CxLeft 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxRight 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxBoth CxLeft) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxBoth CxRight) 'CxUniverse)
+    (v/assert-rule kb [(list bird_kind '?x)] (list flies '?x) CxLeft {:direction :forward})
+    (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x)) CxRight
+                   {:direction :forward})
+    (is (empty? (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash}))))
+        "CxUniverse sees neither rule")
+    (is (empty? (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash} CxLeft))))
+        "CxLeft sees one")
+    (let [e (first (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash} CxBoth))))]
+      (is (= :negation (:kind e)))
+      (is (= CxBoth (:context e)) "where the nogood could form"))))
+
+(tu/deftest-kb the-census-clashes-are-the-two-rule-clash-categories
+  (tu/with-terms [bird_kind penguin_kind flies dog_kind barks]
+    (v/assert-rule kb [(list bird_kind '?x)] (list flies '?x) 'CxUniverse {:direction :forward})
+    (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x)) 'CxUniverse
+                   {:direction :forward})
+    (v/assert-rule kb [(list dog_kind '?x)] (list barks '?x) 'CxUniverse {:direction :forward})
+    (v/assert-rule kb [(list bird_kind '?x)] (list 'not (list barks '?x)) 'CxUniverse
+                   {:direction :inert})
+    (let [census (about [flies barks] (:pairs (:clashes (v/kb-quality kb {:limit 1000}))))
+          sweep  (clash-sweep kb #{:rule-clash :rule-clash-review})
+          found  (about [flies barks] (concat (:rule-clash sweep) (:rule-clash-review sweep)))]
+      (is (= 2 (count census)))
+      (is (= (set census) (set (map #(dissoc % :inert) found)))
+          "kb-quality's :clashes reading is the same pairing, unsplit"))))
+
+(tu/deftest-kb rule-clash-findings-truncate-under-every-bound
+  (tu/with-terms [bird_kind penguin_kind flies swims]
+    (doseq [f [flies swims]]
+      (v/assert-rule kb [(list bird_kind '?x)] (list f '?x) 'CxUniverse {:direction :forward})
+      (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list f '?x)) 'CxUniverse
+                     {:direction :forward}))
+    (let [run      #(v/kb-integrity kb #{} 'CxUniverse (assoc % :categories #{:rule-clash}))
+          in-order (mapv :rules (:rule-clash (run {})))]
+      (is (= 2 (count (about [flies swims] (:rule-clash (run {}))))))
+      (testing "a result cap below the finding count keeps the completed prefix"
+        (let [report (run {:max-results 1})]
+          (is (= [:truncated :max-results] ((juxt :status :reason) report)))
+          (is (= (subvec in-order 0 1) (mapv :rules (:rule-clash report))))))
+      (testing "work exhaustion is truncated, never audited"
+        (let [needed (first (filter #(= :gap (:status (run {:max-work %})))
+                                    (range 0 1000000 50)))]
+          (is (some? needed))
+          (is (every? #(= [:truncated :max-work] ((juxt :status :reason) (run {:max-work %})))
+                      (range 0 (or needed 0) 50))))))))
