@@ -9,7 +9,12 @@
   Each reuses its singular twin's per-argument reading — `args` the instance one,
   `argsGenl` the subtype one — and composes conjunctively with a position-specific
   declaration.  A covering constraint mints nothing and convicts only, and it walks the
-  positions a sentence actually has rather than a re-counted tail."
+  positions a sentence actually has rather than a re-counted tail.
+
+  The engine reads `args` only through the `(argAndRest P 1 T)` core.txt's forward rule
+  stores, and this KB loads no core.txt: a test about the `args` spelling asserts that
+  rule first (`args-sugar`), and one that only needs a tail typed from 1 states
+  `argAndRest`."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.provers :as provers]
@@ -46,11 +51,18 @@
     (v/assert kb (list 'arityMin rel 2) 'CxUniverse)
     [rel animal dog other]))
 
+(defn- args-sugar
+  "Assert core.txt's `args` forward rule (`tu/args-sugar-rule`), so an `args` declaration
+  stores the `argAndRest` twin the entry point reads."
+  [kb]
+  (v/assert kb tu/args-sugar-rule 'CxUniverse))
+
 ;; ---- args: every position is an instance -----------------------------------
 
 (tu/deftest-kb args-types-every-position-at-two-three-and-high-arity
   (let [[rel animal dog] (variable-relation kb)
         a (tu/tmp-ind) b (tu/tmp-ind) c (tu/tmp-ind) d (tu/tmp-ind) e (tu/tmp-ind)]
+    (args-sugar kb)
     (v/assert kb (list 'args rel animal) 'CxUniverse)
     (doseq [x [a b c d e]] (v/assert kb (list dog x) 'CxUniverse))
     (testing "two, three and a high arity all store when every member is an instance"
@@ -61,19 +73,22 @@
 (tu/deftest-kb a-bad-value-only-in-the-unbounded-tail-is-convicted
   (let [[rel animal dog] (variable-relation kb)
         a (tu/tmp-ind) b (tu/tmp-ind)]
+    (args-sugar kb)
     (v/assert kb (list 'args rel animal) 'CxUniverse)
     (v/assert kb (list dog a) 'CxUniverse)
     (v/assert kb (list dog b) 'CxUniverse)
     (testing "a literal whose kind is not the type, sitting past the declared minimum"
       (is (= :arg-type (ex-type #(v/assert kb (list rel a b "notAnAnimal") 'CxUniverse))))
-      (is (re-find #"args" (check-message kb (list rel a b "notAnAnimal") 'CxUniverse))
-          "the refusal names the covering form, not arg"))
+      (is (re-find #"\(argAndRest from 1, position 3 of "
+                   (check-message kb (list rel a b "notAnAnimal") 'CxUniverse))
+          "the refusal names the covering form, not arg: the twin args stores"))
     (testing "the same members with no bad tail value store"
       (is (v/assert kb (list rel a b) 'CxUniverse)))))
 
 (tu/deftest-kb args-is-open-world-about-a-symbol
   (let [[rel animal] (variable-relation kb)
         a (tu/tmp-ind) b (tu/tmp-ind)]
+    (args-sugar kb)
     (v/assert kb (list 'args rel animal) 'CxUniverse)
     (testing "an untyped symbol in the tail cannot violate — the same open world arg keeps"
       (is (v/assert kb (list rel a b) 'CxUniverse)))))
@@ -141,7 +156,7 @@
     (v/assert kb (list 'binary_predicate rel) 'CxUniverse)
     (v/assert kb (list 'variable_arity rel) 'CxUniverse)
     (v/assert kb (list 'arg rel 1 red) 'CxUniverse)       ; position 1 must be red
-    (v/assert kb (list 'args rel animal) 'CxUniverse)     ; every position an animal
+    (v/assert kb (list 'argAndRest rel 1 animal) 'CxUniverse) ; every position an animal
     (v/assert kb (list red RedDog) 'CxUniverse)
     (v/assert kb (list animal RedDog) 'CxUniverse)        ; both
     (v/assert kb (list dog PlainDog) 'CxUniverse)         ; a dog, disjoint from red
@@ -157,7 +172,7 @@
            "a dog, disjoint from red — the singular arg convicts"))
      (testing "and the covering across the whole tail"
        (is (= :arg-type (ex-type #(v/assert kb (list rel RedDog PlainRed) 'CxUniverse)))
-           "a stone, disjoint from animal, at position 2 — the covering args convicts")))))
+           "a stone, disjoint from animal, at position 2 — the covering argAndRest convicts")))))
 
 (tu/deftest-kb the-entailing-reading-derives-every-tail-membership-in-either-order
   ;; `args` derives `animal` of every symbol in the tail, and `argsGenl` the edge, whether
@@ -169,6 +184,7 @@
             a (tu/tmp-ind) b (tu/tmp-ind) c (tu/tmp-ind)
             gr (tu/tmp-pred) k1 (tu/tmp-type) k2 (tu/tmp-type)]
         (tu/with-entailing
+          (args-sugar kb)
           (v/assert kb (list other c) 'CxUniverse)
           (v/assert kb (list 'binary_predicate gr) 'CxUniverse)
           (v/assert kb (list 'variable_arity gr) 'CxUniverse)
@@ -187,7 +203,7 @@
 (tu/deftest-kb a-covering-constraint-on-a-super-predicate-binds-a-sub
   (let [[super animal dog] (variable-relation kb)
         sub (tu/tmp-pred) a (tu/tmp-ind) other-ind (tu/tmp-ind)]
-    (v/assert kb (list 'args super animal) 'CxUniverse)
+    (v/assert kb (list 'argAndRest super 1 animal) 'CxUniverse)
     (v/assert kb (list 'binary_predicate sub) 'CxUniverse)
     (v/assert kb (list 'genl sub super) 'CxUniverse)
     (v/assert kb (list 'variable_arity sub) 'CxUniverse)
@@ -205,7 +221,7 @@
     (v/assert kb (list 'genl animal 'thing) 'CxUniverse)
     (v/assert kb (list 'genl dog animal) 'CxUniverse)
     (v/assert kb (list 'binary_predicate rel) 'CxUniverse)   ; fixed arity 2
-    (v/assert kb (list 'args rel animal) 'CxUniverse)
+    (v/assert kb (list 'argAndRest rel 1 animal) 'CxUniverse)
     (v/assert kb (list dog A) 'CxUniverse)
     (v/assert kb (list dog B) 'CxUniverse)
     (testing "the declared arity still binds — a third argument is stored and read OUT"
@@ -248,7 +264,7 @@
 (tu/deftest-kb a-derived-covering-violation-is-recorded-not-thrown
   (let [[rel animal dog] (variable-relation kb)
         trigger (tu/tmp-pred) bad (tu/tmp-ind)]
-    (v/assert kb (list 'args rel animal) 'CxUniverse)
+    (v/assert kb (list 'argAndRest rel 1 animal) 'CxUniverse)
     (v/assert kb (list 'binary_predicate trigger) 'CxUniverse)
     (v/assert kb (list 'variable_arity trigger) 'CxUniverse)
     (v/assert kb (list dog bad) 'CxUniverse)
@@ -267,6 +283,7 @@
   (let [[rel animal dog] (variable-relation kb)
         a (tu/tmp-ind)]
     (v/assert kb (list dog a) 'CxUniverse)
+    (args-sugar kb)
     (let [h (v/assert kb (list 'args rel animal) 'CxUniverse)]
       (is (= :arg-type (ex-type #(v/assert kb (list rel a "bad") 'CxUniverse)))
           "convicted while the declaration stands")
@@ -274,6 +291,8 @@
         (v/retract! kb h)
         (is (false? (v/has-prop? kb :declares-args-isa rel))
             "the subject mark went with the declaration")
+        (is (false? (v/has-prop? kb :declares-arg-and-rest-isa rel))
+            "and the twin's mark with the twin its forward rule stored")
         (is (v/assert kb (list rel a "bad") 'CxUniverse)
             "with nothing declared the tail is untyped, not inverted")))))
 
@@ -285,7 +304,7 @@
   (let [[rel animal dog] (variable-relation kb)
         good (tu/tmp-ind)]
     (v/assert kb (list dog good) 'CxUniverse)
-    (v/assert kb (list 'args rel animal) 'CxUniverse)
+    (v/assert kb (list 'argAndRest rel 1 animal) 'CxUniverse)
     (is (v/assert kb (list rel good good) 'CxUniverse))
     (let [n (v/sentex-count kb)]
       (is (= n (v/sentex-count kb)) "a well-typed tail stores and stays stored"))))
