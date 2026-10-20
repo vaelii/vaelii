@@ -2966,10 +2966,10 @@
 
 ;; ---- the argument-constraint chokepoint ---------------------------------
 ;; What a predicate's argument positions are declared to hold, read once and in one
-;; shape.  Two instance-level constraints are read: `arg`, one position, and `argAndRest`,
-;; a position and every later one.  The other instance spellings are sugar over those two
-;; and are read as them: `(args P T)` is `(argAndRest P 1 T)`, and `arg1`..`arg5` are
-;; projections whose forward rules store the `arg` they stand for.  The type-level
+;; shape.  Two instance-level constraints are looked up: `arg`, one position, and
+;; `argAndRest`, a position and every later one.  The other instance spellings are sugar
+;; whose forward rules (core.txt) store the declaration they stand for: `(args P T)` stores
+;; `(argAndRest P 1 T)`, and `arg1`..`arg5` store the `arg` they project.  The type-level
 ;; (`genlArg`, `argsGenl`, `argAndRestGenl`) and quoted (`quotedArg`) twins come back on the
 ;; same entries under their own `:kind`, so a caller asking whether a position is typed
 ;; at all reads one list.
@@ -2980,7 +2980,6 @@
   types every position, `(K P T)`, read as `:rest` from 1."
   '{arg            [:instance :at]
     argAndRest     [:instance :rest]
-    args           [:instance :every]
     genlArg        [:type :at]
     argAndRestGenl [:type :rest]
     argsGenl       [:type :every]
@@ -3010,9 +3009,10 @@
   `{:from n :to m :type T :kind K :via P}` in the order of the declarations' sentences:
 
   * `:from`/`:to` — the positions typed, `:to` nil for a tail running to the last
-    argument.  `(arg P n T)` is `{:from n :to n}`, `(argAndRest P n T)` is
-    `{:from n :to nil}`, and `(args P T)` is read as `(argAndRest P 1 T)`.
-  * `:kind` — `:instance` (`arg`, `argAndRest`, `args`): the filler is a `T`; `:type`
+    argument.  `(arg P n T)` is `{:from n :to n}` and `(argAndRest P n T)` is
+    `{:from n :to nil}`; `(args P T)` arrives as the `(argAndRest P 1 T)` its forward
+    rule stores, and `arg1`..`arg5` as the `arg` theirs store.
+  * `:kind` — `:instance` (`arg`, `argAndRest`): the filler is a `T`; `:type`
     (`genlArg`, `argAndRestGenl`, `argsGenl`): the filler is a subtype of `T`; `:quoted`
     (`quotedArg`): the filler, taken as written, is a `T`.
   * `:via` — the predicate the declaration is written on: `pred`, or a super-predicate

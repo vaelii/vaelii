@@ -189,11 +189,10 @@
 (arg argAndRest 1 relation)
 (arg argAndRest 2 positive_integer)
 (genlArg argAndRest 3 thing)
-;; args is argAndRest at 1, so a query for the tail form of a relation declared through
-;; the every-position form is answered.  Backward only, so nothing is stored: the engine
-;; reads the two spellings through one reader that takes args as argAndRest from 1, and a
-;; stored twin would be the same constraint read twice.
-(set/backwardRule (implies (args ?relation ?type) (argAndRest ?relation 1 ?type)))
+;; args is argAndRest at 1.  Forward, so the argAndRest twin is stored beside every args
+;; declaration: the readers of what a position is declared to hold (res/arg-constraints)
+;; look up arg and argAndRest alone, and reach an args declaration through its twin.
+(set/forwardRule (implies (args ?relation ?type) (argAndRest ?relation 1 ?type)))
 
 (comment argAndRestGenl
          "(argAndRestGenl ?relation ?position ?type) means that argument ?position of ?relation and every later position names a subtype of ?type. The suffix form of argsGenl, and the genl twin of argAndRest.")

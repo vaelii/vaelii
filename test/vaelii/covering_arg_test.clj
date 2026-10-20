@@ -293,9 +293,10 @@
 ;; ---- the chokepoint: one reading of every spelling ---------------------------
 
 (tu/deftest-kb the-chokepoint-reads-every-spelling-as-arg-or-argAndRest
-  ;; `res/arg-constraints` is the one read of what a position is declared to hold.
-  ;; `args` comes back as `argAndRest` from 1, and the type-level and quoted twins come
-  ;; back under their own `:kind`.
+  ;; `res/arg-constraints` is the one read of what a position is declared to hold: `arg`
+  ;; and `argAndRest` at the instance level, and the type-level twins under their own
+  ;; `:kind`.  An `args` declaration reaches it through the `argAndRest` its core.txt
+  ;; forward rule stores (arg_constraints_test), a rule this KB does not load.
   (let [[rel animal dog other] (variable-relation kb)
         super (tu/tmp-pred)]
     (v/assert kb (list 'binary_predicate super) 'CxUniverse)
@@ -303,7 +304,7 @@
     (v/assert kb (list 'genl rel super) 'CxUniverse)
     (v/assert kb (list 'arg rel 1 dog) 'CxUniverse)
     (v/assert kb (list 'argAndRest rel 3 animal) 'CxUniverse)
-    (v/assert kb (list 'args super other) 'CxUniverse)
+    (v/assert kb (list 'argAndRest super 1 other) 'CxUniverse)
     (v/assert kb (list 'argAndRestGenl rel 4 animal) 'CxUniverse)
     (let [entries (set (res/arg-constraints kb rel 'CxUniverse))]
       (testing "each spelling, read as the instance or type form it amounts to"
@@ -332,7 +333,7 @@
 
 (tu/deftest-kb the-argument-type-prover-reads-a-tail-declaration
   ;; `ArgTypeProver` reads `arg` the other way, as an inference from a usage; it reads
-  ;; the positions `argAndRest` and `args` type as it reads the one `arg` types
+  ;; the positions `argAndRest` types as it reads the one `arg` types
   (let [[rel animal] (variable-relation kb)
         sub (tu/tmp-pred) a (tu/tmp-ind) b (tu/tmp-ind) c (tu/tmp-ind) d (tu/tmp-ind)
         solve #(prover-types/solve (provers/->ArgTypeProver) kb % 'CxUniverse)]
@@ -344,9 +345,9 @@
       (is (some #{animal} (map #(get % '?t) (solve (list '?t c))))))
     (testing "a usage below the start does not"
       (is (empty? (solve (list animal a)))))
-    (testing "args, on a super-predicate, types every position of a sub's tuple"
+    (testing "a tail from 1, on a super-predicate, types every position of a sub's tuple"
       (v/assert kb (list 'binary_predicate sub) 'CxUniverse)
       (v/assert kb (list 'genl sub rel) 'CxUniverse)
-      (v/assert kb (list 'args rel animal) 'CxUniverse)
+      (v/assert kb (list 'argAndRest rel 1 animal) 'CxUniverse)
       (v/assert kb (list sub d a) 'CxUniverse)
       (is (= [{}] (solve (list animal d)))))))

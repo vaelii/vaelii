@@ -128,7 +128,8 @@ admitted tail instead: every accepted position of `R` is an instance of `T`. `(a
 T)` is the subtype reading — `argsGenl` to `genlArg` what `args` is to `arg`. `(argAndRest
 R n T)` and `(argAndRestGenl R n T)` type position `n` and every later one, so a relation
 whose head positions carry their own `arg` declarations and whose tail repeats one role is
-typed exactly. `(args R T)` states what `(argAndRest R 1 T)` states.
+typed exactly. `(args R T)` states what `(argAndRest R 1 T)` states, and a forward rule
+in `core.txt` stores that `argAndRest` beside it.
 
 A valid unbounded tail: a `variable_arity` `herd` with `(arityMin herd 2)` and `(args herd
 animal)` accepts `(herd Rex Bossy)` and `(herd Rex Bossy Clarabelle)` and derives

@@ -3301,21 +3301,18 @@
 
 (defn- constraint-declarations
   "The declarations `context` sees that state the `res/arg-constraints` entry `c`, as
-  `[spelling handle]` pairs: `(arg P n T)` for one position, `(argAndRest P n T)` for a
-  tail, and `(args P T)` too for a tail from 1."
+  `[spelling handle]` pairs: `(arg P n T)` for one position and `(argAndRest P n T)` for a
+  tail, the twin an `(args P T)` declaration's forward rule stores among them."
   [kb {:keys [from to type via]} context]
-  (let [hs (fn [k form] (map (fn [[h]] [k h]) (res/matches-visible kb form context)))]
-    (if (= from to)
-      (hs 'arg (list 'arg via from type))
-      (concat (hs 'argAndRest (list 'argAndRest via from type))
-              (when (= 1 from) (hs 'args (list 'args via type)))))))
+  (let [k (if (= from to) 'arg 'argAndRest)]
+    (map (fn [[h]] [k h]) (res/matches-visible kb (list k via from type) context))))
 
 (defn- derivation-supports
   "The handle sets a `type-derivations` entry rests on, one per declaration stating its
   constraint and combination of routes: the usage and the declaration, with a route
   (`subsumption-routes`) from the usage's predicate to the declared one, from the declared
-  type to the derived one, and from a spec of the declaration's spelling (`arg`,
-  `argAndRest` or `args`) it is stored on to that spelling."
+  type to the derived one, and from a spec of the declaration's spelling (`arg` or
+  `argAndRest`) it is stored on to that spelling."
   [kb [super s c declared t'] context]
   (let [routes #(subsumption-routes kb %1 %2)]
     (for [[k h] (constraint-declarations kb c context)

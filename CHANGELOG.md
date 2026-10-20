@@ -13,6 +13,18 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Additive
+
+- **`(args R T)` derives `(argAndRest R 1 T)`.** A `set/forwardRule` in `core.txt` states
+  the entailment the two spellings' comments describe and stores the `argAndRest` twin, so
+  `query (argAndRest R ?n ?t)` answers `[{?n 1 ?t T}]` of a relation declared only
+  through `args`, and the readers of what a position holds (`res/arg-constraints`) look up
+  `arg` and `argAndRest` alone. Retracting the `args` declaration retracts the twin.
+  [argtypes.md](docs/argtypes.md).
+
+  *Class:* **Additive** (shipped ontology content).
+  *Migration:* none.
+
 ### Fix: answers
 
 - **A goal keeps a never-minted `Quote` or `Quasiquote` application as written** under a

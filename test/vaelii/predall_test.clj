@@ -410,10 +410,10 @@
       (is (= [] (mapv :type (v/check kb (list 'interArg kindOf 1 dog 2 dog) 'CxUniverse)))
           "and so is an interArg over the same relation"))))
 
-(tu/deftest-kb args-entails-argAndRest-from-the-first-position
+(tu/deftest-kb args-derives-argAndRest-from-the-first-position
   ;; `(args P T)` states what `(argAndRest P 1 T)` states, so asking the tail form of a
-  ;; relation declared through the every-position form is answered — proved at query time,
-  ;; so the store keeps the one declaration that was written.
+  ;; relation declared through the every-position form is answered — by the twin a
+  ;; forward rule stores, which is the one the chokepoint (`res/arg-constraints`) reads.
   (tu/with-terms [tally animal]
     (v/assert kb (list 'variable_arity_predicate tally) 'CxUniverse)
     (v/assert kb (list 'genl animal 'thing) 'CxUniverse)
@@ -421,8 +421,9 @@
     (is (= [{'?n 1 '?t animal}]
            (v/query kb (list 'argAndRest tally '?n '?t) 'CxUniverse {:max-depth 3}))
         "args entails argAndRest at 1, and only at 1")
-    (is (empty? (v/sentexes-matching kb (list 'argAndRest tally '?n '?t) 'CxUniverse))
-        "and nothing is stored, so the covering check reads the declaration once")))
+    (is (= [(list 'argAndRest tally 1 animal)]
+           (map :sentence (v/sentexes-matching kb (list 'argAndRest tally '?n '?t) 'CxUniverse)))
+        "and the twin is stored")))
 
 (tu/deftest-kb a-declaration-without-slot-typing-is-a-reported-gap
   ;; missing slot typing is an explicit declaration-contract diagnostic, never a silent
@@ -687,10 +688,10 @@
   ;; moves back inside the loop — the same violations come out — and the growth stays
   ;; linear in the members either way, so neither the suite nor a perf ratio would see
   ;; it.  The count is the instrument that does: one reach per declaration functor the
-  ;; chokepoint reads (`res/arg-constraints`, seven), whatever the collection's size.
+  ;; chokepoint reads (`res/arg-constraints`, six), whatever the collection's size.
   (let [small (contract-derivations 10)
         large (contract-derivations 200)]
-    (is (= 7 small) "one reach per constraining declaration functor, and no more")
+    (is (= 6 small) "one reach per constraining declaration functor, and no more")
     (is (= small large)
         (str "20x the audited members derives the contract the same number of times — "
              small " against " large))))

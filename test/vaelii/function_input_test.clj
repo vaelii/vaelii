@@ -105,7 +105,7 @@
                (list 'binary_predicate wantsDog) (list 'args wantsDog dog)
                (list 'binary_predicate wantsKind) (list 'argsGenl wantsKind dog)]]
       (v/assert kb s 'CxUniverse))
-    (doseq [[pred type words] [[wantsDog :arg-type (re-pattern (str "results in a " cat " \\(args, position 1"))]
+    (doseq [[pred type words] [[wantsDog :arg-type (re-pattern (str "results in a " cat " \\(argAndRest from 1, position 1"))]
                                [wantsKind :arg-genl (re-pattern (str "results in a subtype of " cat " \\(argsGenl, position 1"))]]]
       (let [p (problem kb (list pred (list GapFn 5) (list GapFn 6)))]
         (is (= [type 1] [(:type p) (:position p)]))

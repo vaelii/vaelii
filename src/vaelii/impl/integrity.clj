@@ -606,9 +606,9 @@
   "`{:at #{n …} :from n-or-nil}` for `pred` as `context` reads its declarations, through
   `res/arg-constraints`: the positions a one-position declaration types, and the first
   position a tail declaration types onward.  Every kind counts — an instance, a type-level
-  or a quoted constraint all say what fills the position — and `args` / `argsGenl` arrive
-  as tails from 1, the `argN` projections (`sx/arg-projections`) as the `arg` their
-  forward rules store."
+  or a quoted constraint all say what fills the position — and `argsGenl` arrives as a
+  tail from 1, `args` and the `argN` projections (`sx/arg-projections`) as the
+  `argAndRest` and `arg` their forward rules store."
   [kb pred context]
   (let [es (res/arg-constraints kb pred context)]
     (doseq [_ es] (budget/spend!))
