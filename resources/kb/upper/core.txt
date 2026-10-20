@@ -1920,6 +1920,7 @@
          "(not ?sentence) means the negation of ?sentence, a first-class sentex. Believing a sentence and its negation at once is a soft contradiction resolved at settle time rather than a hard error: the weaker belief is defeated, and a defeasible tie is left standing as a represented dilemma. See docs/nmtms.md.")
 (logical_connective not)
 (unary not)
+(arg not 1 formula)   ;; open under a rule's antecedent, closed when stored
 
 (comment or
          "(or ?disjunct1 ?disjunct2 …) means the disjunction of the disjuncts inside an implies rule's antecedent. A syntactic connective rather than a predicate: it is never asserted on its own, and it never reaches a stored sentence — the rule is polycanonicalized into one rule per alternative, exactly as a conjunctive consequent is split into one rule per conjunct. A disjunctive conclusion is a choice rather than a derivation, and is written with set/assumptionRule instead. See docs/canonicalization.md.")
@@ -1977,14 +1978,17 @@
          "(forall ?var (implies ?antecedent ?consequent)) means the universal. Rule sugar: the engine desugars it to the nested NAF (unknown (thereExists ?var (and ?antecedent (unknown ?consequent)))) and hands that back to the registry, so the quantified goal and a rule antecedent on the same shape are answered by one mechanism. See docs/naf.md.")
 (quantifier forall)
 (binary forall)
+(arg forall 2 formula)
 (comment thereExists
          "(thereExists ?var ?sentence) means the existential: ?sentence holds for some value of ?var. A query operator answered by a prover and never stored, which is what lets (unknown (thereExists ?var ?sentence)) read as 'no value of ?var makes ?sentence hold'. See docs/naf.md.")
 (quantifier thereExists)
 (binary thereExists)
+(arg thereExists 2 formula)
 (comment exists
          "(exists ?var ?consequent) means a head existential: ?var occurs in a rule's consequent and no antecedent binds it. Forward firing skolemizes it, minting a fresh witness per firing. See docs/skolem.md.")
 (quantifier exists)
 (binary exists)
+(arg exists 2 formula)
 (implementationNote logical_constant "A covering whose parts are all closed is closed, but stating that rule needs list membership (vaelii/vaelii#79), so the closed extent of logical_constant is stated by hand beside those of its parts.")
 (closed_extent_predicate logical_connective)
 (closed_extent_predicate quantifier)
