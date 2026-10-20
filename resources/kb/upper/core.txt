@@ -89,22 +89,37 @@
 (comment agg/avg
          "(agg/avg ?mean ?value ?body) means that ?mean is the mean of the distinct numeric ?value satisfying ?body. No answer at all over an empty ?body, an average over nothing being a division by zero however it is dressed up. A query operator, never stored.")
 (ternary_predicate agg/avg)
+(arg agg/avg 1 thing)   ;; a number or a measure of one dimension, which no shipped type unions
+(arg agg/avg 2 thing)
+(arg agg/avg 3 formula)
 
 (comment agg/count
          "(agg/count ?count ?value ?body) means that ?count is how many distinct ?value satisfy ?body. Distinct by the equality closure, so two names for one thing count once, and 0 over an empty ?body. ?value is projected out and ?count is the only binding produced, so in a rule body the aggregate runs once per grouping the generators bind and yields one ?count each — which is where GROUP BY comes from, with no GROUP BY construct to design. A query operator answered by a prover, never stored: a count is a function of what is believed now, and storing one would put a computed value under truth maintenance with no way to invalidate it.")
 (ternary_predicate agg/count)
+(arg agg/count 1 non_negative_integer)   ;; how many, 0 over an empty ?body
+(arg agg/count 2 thing)   ;; a counted value: a term of any kind
+(arg agg/count 3 formula)
 
 (comment agg/max
          "(agg/max ?max ?value ?body) means that ?max is the greatest of the distinct numeric ?value satisfying ?body. No answer at all over an empty ?body, a maximum of nothing being a claim about a group with no members. A query operator, never stored.")
 (ternary_predicate agg/max)
+(arg agg/max 1 thing)   ;; a number or a measure of one dimension, which no shipped type unions
+(arg agg/max 2 thing)
+(arg agg/max 3 formula)
 
 (comment agg/min
          "(agg/min ?min ?value ?body) means that ?min is the least of the distinct numeric ?value satisfying ?body. No answer at all over an empty ?body, a minimum of nothing being a claim about a group with no members. A query operator, never stored.")
 (ternary_predicate agg/min)
+(arg agg/min 1 thing)   ;; a number or a measure of one dimension, which no shipped type unions
+(arg agg/min 2 thing)
+(arg agg/min 3 formula)
 
 (comment agg/sum
          "(agg/sum ?sum ?value ?body) means that ?sum is the total of the distinct numeric ?value satisfying ?body. Measures of one dimension work too: they are normalized, added in base units and rendered back, so a mixed-dimension extent is refused rather than quietly added. 0 over an empty ?body, that being the identity of the reduction. A query operator, never stored.")
 (ternary_predicate agg/sum)
+(arg agg/sum 1 thing)   ;; a number or a measure of one dimension, which no shipped type unions
+(arg agg/sum 2 thing)
+(arg agg/sum 3 formula)
 
 (comment and
          "(and ?antecedent1 ?antecedent2 …) means the conjunction of the antecedents inside an implies rule. A syntactic connective rather than a predicate: it is never asserted on its own, and a rule with a single antecedent needs no and at all.")
