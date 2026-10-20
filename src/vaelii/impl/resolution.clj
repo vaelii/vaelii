@@ -2964,6 +2964,82 @@
                 base
                 (into base (sort (disj (set/intersection declaring supers) pred))))))))
 
+;; ---- the argument-constraint chokepoint ---------------------------------
+;; What a predicate's argument positions are declared to hold, read once and in one
+;; shape.  Two instance-level constraints are read: `arg`, one position, and `argAndRest`,
+;; a position and every later one.  The other instance spellings are sugar over those two
+;; and are read as them: `(args P T)` is `(argAndRest P 1 T)`, and `arg1`..`arg5` are
+;; projections whose forward rules store the `arg` they stand for.  The type-level
+;; (`genlArg`, `argsGenl`, `argAndRestGenl`) and quoted (`quotedArg`) twins come back on the
+;; same entries under their own `:kind`, so a caller asking whether a position is typed
+;; at all reads one list.
+
+(def ^:private arg-constraint-kinds
+  "Per declaration functor, the `:kind` its entries carry and its shape: `:at` types
+  position n, `(K P n T)`; `:rest` types n and every later one, `(K P n T)`; `:every`
+  types every position, `(K P T)`, read as `:rest` from 1."
+  '{arg            [:instance :at]
+    argAndRest     [:instance :rest]
+    args           [:instance :every]
+    genlArg        [:type :at]
+    argAndRestGenl [:type :rest]
+    argsGenl       [:type :every]
+    quotedArg      [:quoted :at]})
+
+(defn- read-arg-constraints
+  "`arg-constraints`, read from the store: every visible declaration of each
+  `arg-constraint-kinds` functor on `pred` or a super-predicate whose declarations bind its
+  tuples (`constraining-predicates`), ordered by the declaration's own sentence."
+  [kb pred context]
+  (let [type? #(and (symbol? %) (not (sx/variable? %)))
+        rows  (for [[k [kind shape]] arg-constraint-kinds
+                    q                (constraining-predicates kb k pred context)
+                    [_ b s]          (matches-visible kb (if (= :every shape)
+                                                           (list k q '?t)
+                                                           (list k q '?n '?t))
+                                                      context)
+                    :let             [n (if (= :every shape) 1 (get b '?n))
+                                      t (get b '?t)]
+                    :when            (and (integer? n) (pos? n) (type? t))]
+                [(:sentence s) {:from n :to (when (= :at shape) n) :type t :kind kind :via q}])]
+    (into [] (comp (map second) (distinct))
+          (nm/sort-by-content-key first nm/compare-form rows))))
+
+(defn arg-constraints
+  "The argument constraints binding `pred`'s tuples as `context` sees them, as entries
+  `{:from n :to m :type T :kind K :via P}` in the order of the declarations' sentences:
+
+  * `:from`/`:to` — the positions typed, `:to` nil for a tail running to the last
+    argument.  `(arg P n T)` is `{:from n :to n}`, `(argAndRest P n T)` is
+    `{:from n :to nil}`, and `(args P T)` is read as `(argAndRest P 1 T)`.
+  * `:kind` — `:instance` (`arg`, `argAndRest`, `args`): the filler is a `T`; `:type`
+    (`genlArg`, `argAndRestGenl`, `argsGenl`): the filler is a subtype of `T`; `:quoted`
+    (`quotedArg`): the filler, taken as written, is a `T`.
+  * `:via` — the predicate the declaration is written on: `pred`, or a super-predicate
+    whose declaration binds `pred`'s tuples (`constraining-predicates`).
+
+  The one read of what a position is declared to hold, so a caller asking it is answered
+  for every spelling and cannot honor one while missing another.  `arg-constraints-at`
+  answers for one position.  A declaration whose type is not a ground symbol or whose
+  position is not a positive integer is dropped: its own declaration refuses it at the
+  entry point, so a stored one is a torn record.
+
+  Held in the taxonomy's closure memo for one stretch of the change clock
+  (`tax/clock-held`), so a read-only caller asking per argument or per fact reads the
+  store once per predicate and context between writes."
+  [kb pred context]
+  (when (and (symbol? pred) (not (sx/variable? pred)))
+    (tax/clock-held (reasoning/taxonomy kb) ::arg-constraints [pred context]
+                    #(read-arg-constraints kb pred context))))
+
+(defn arg-constraints-at
+  "The `arg-constraints` entries that type position `n` of `pred`'s tuples from
+  `context`: each `:at` entry for `n`, and each tail entry starting at or before it."
+  [kb pred context n]
+  (when (and (integer? n) (pos? n))
+    (filterv (fn [{:keys [from to]}] (and (<= from n) (or (nil? to) (<= n to))))
+             (arg-constraints kb pred context))))
+
 ;; ---- backward chaining --------------------------------------------------
 ;; The pieces below — goal-key, planned-antecedents — are the
 ;; rule-expansion core every backward executor shares.  The goal-stack machine here

@@ -12,6 +12,7 @@
   positions a sentence actually has rather than a re-counted tail."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.resolution :as res]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -286,3 +287,43 @@
     (is (v/assert kb (list rel good good) 'CxUniverse))
     (let [n (v/sentex-count kb)]
       (is (= n (v/sentex-count kb)) "a well-typed tail stores and stays stored"))))
+
+;; ---- the chokepoint: one reading of every spelling ---------------------------
+
+(tu/deftest-kb the-chokepoint-reads-every-spelling-as-arg-or-argAndRest
+  ;; `res/arg-constraints` is the one read of what a position is declared to hold.
+  ;; `args` comes back as `argAndRest` from 1, and the type-level and quoted twins come
+  ;; back under their own `:kind`.
+  (let [[rel animal dog other] (variable-relation kb)
+        super (tu/tmp-pred)]
+    (v/assert kb (list 'binary_predicate super) 'CxUniverse)
+    (v/assert kb (list 'variable_arity super) 'CxUniverse)
+    (v/assert kb (list 'genl rel super) 'CxUniverse)
+    (v/assert kb (list 'arg rel 1 dog) 'CxUniverse)
+    (v/assert kb (list 'argAndRest rel 3 animal) 'CxUniverse)
+    (v/assert kb (list 'args super other) 'CxUniverse)
+    (v/assert kb (list 'argAndRestGenl rel 4 animal) 'CxUniverse)
+    (let [entries (set (res/arg-constraints kb rel 'CxUniverse))]
+      (testing "each spelling, read as the instance or type form it amounts to"
+        (is (= #{{:from 1 :to 1 :type dog :kind :instance :via rel}
+                 {:from 3 :to nil :type animal :kind :instance :via rel}
+                 {:from 1 :to nil :type other :kind :instance :via super}
+                 {:from 4 :to nil :type animal :kind :type :via rel}}
+               entries))))
+    (testing "the argnum chokepoint answers the entries covering one position"
+      (is (= #{other dog} (set (map :type (res/arg-constraints-at kb rel 'CxUniverse 1)))))
+      (is (= #{other} (set (map :type (res/arg-constraints-at kb rel 'CxUniverse 2)))))
+      (is (= #{[other :instance] [animal :instance]}
+             (set (map (juxt :type :kind) (res/arg-constraints-at kb rel 'CxUniverse 3)))))
+      (is (= #{[other :instance] [animal :instance] [animal :type]}
+             (set (map (juxt :type :kind) (res/arg-constraints-at kb rel 'CxUniverse 9))))))))
+
+(tu/deftest-kb the-chokepoint-sees-a-declaration-asserted-after-a-read
+  ;; held for one stretch of the change clock, so a write retires what it held
+  (let [[rel animal dog] (variable-relation kb)]
+    (v/assert kb (list 'arg rel 1 animal) 'CxUniverse)
+    (is (= [animal] (map :type (res/arg-constraints kb rel 'CxUniverse))))
+    (let [h (v/assert kb (list 'argAndRest rel 2 dog) 'CxUniverse)]
+      (is (= #{animal dog} (set (map :type (res/arg-constraints kb rel 'CxUniverse)))))
+      (v/retract! kb h))
+    (is (= [animal] (map :type (res/arg-constraints kb rel 'CxUniverse))))))

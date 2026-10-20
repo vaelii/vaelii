@@ -6708,7 +6708,10 @@
 (defn clock-held
   "`(read)`, held in the closure memo's `slot` under `k` for one stretch of the change
   clock: a new clock value drops the slot's entries of the old one.  Read afresh when the
-  taxonomy holds no memo."
+  taxonomy holds no memo.
+
+  Public so a reader above this namespace can hold a value it derives from the taxonomy
+  and the store for the same stretch, under a slot of its own (`res/arg-constraints`)."
   [tax slot k read]
   (if-let [memo (:closure-memo @tax)]
     (let [clock (observe/change-clock)
@@ -7022,7 +7025,7 @@
   :retired-by (assoc (caches/on-every :G*) :recover :W)
   :computed :read :imaged? false :at [[:taxonomy :closure-memo]]
   :value (fn [kb] (some-> (caches/value-at kb [:taxonomy :closure-memo]) deref))
-  :note "per relation, whether the supporter filter is active and the down-closure by context and reading, under the relation generation and keyed by the change clock; the signed closure (`::signed`) and the `:monotonic` one a negated pattern fans over (`::contrapositive`, `contrapositive-chain`), whether a defeat a context sees reaches a permuting mark (`except/mark-hazard?`), and whether a denial of a forced-monotonic literal is stored beside it (`except/yielding-reads?`), each held for one stretch of the change clock"})
+  :note "per relation, whether the supporter filter is active and the down-closure by context and reading, under the relation generation and keyed by the change clock; the signed closure (`::signed`) and the `:monotonic` one a negated pattern fans over (`::contrapositive`, `contrapositive-chain`), whether a defeat a context sees reaches a permuting mark (`except/mark-hazard?`), whether a denial of a forced-monotonic literal is stored beside it (`except/yielding-reads?`), and the argument constraints binding a predicate's tuples (`res/arg-constraints`), each held for one stretch of the change clock"})
 
 (caches/register-derived
  {:id :T10 :label "Taxonomy pass caches" :kind :pass :keyed-by :node :reads [:T1 :M1]
