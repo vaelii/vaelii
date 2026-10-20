@@ -3257,18 +3257,21 @@
 
 (defn- type-derivations
   "Every derivation of a type an individual `x` must have because it fills an
-  arg-constrained argument of a believed relation, as `[type usage handle P' T']`: the
-  type, the believed sentex `(P .. x@n ..)`, and the handle of the `(arg P' n T')`
-  declaration it rests on, where `P'` is `P` or a super-predicate and `type` is `T'` or a
-  supertype of it.  This is arg read the other way — as an inference,
-  not only a constraint (e.g. Muffet eats Bone1 and eat's 2nd argument is food, so Bone1
-  is food).
+  arg-constrained argument of a believed relation, as `[type usage c P' T']`: the type,
+  the believed sentex `(P .. x@n ..)`, and the `:instance` entry `c` of
+  `res/arg-constraints-at` covering position `n` — an `(arg P' n T')`, or an
+  `(argAndRest P' m T')` / `(args P' T')` reaching `n` — where `P'` is `P` or a
+  super-predicate and `type` is `T'` or a supertype of it.  This is arg read the other
+  way — as an inference, not only a constraint (e.g. Muffet eats Bone1 and eat's 2nd
+  argument is food, so Bone1 is food).
 
-  **Whose declarations count is the reader `assert` uses** (`res/constraining-predicates`):
-  `P`'s own, and those of the super-predicates the asking context can see, since a
-  `(genl fatherOf parentOf)` edge makes every `fatherOf` tuple a `parentOf` tuple.  The
-  two readings of one declaration must agree about that or a claim `assert` refuses for
-  being ill-typed is one `ask` cannot type at all.
+  **Whose declarations count is the reader `assert` uses**, read through the argnum
+  chokepoint (`res/arg-constraints-at`): `P`'s own, and those of the super-predicates the
+  asking context can see, since a `(genl fatherOf parentOf)` edge makes every `fatherOf`
+  tuple a `parentOf` tuple.  The two readings of one declaration must agree about that or
+  a claim `assert` refuses for being ill-typed is one `ask` cannot type at all.  The
+  chokepoint holds a predicate's constraints for one stretch of the change clock, so a
+  term used in many tuples of one predicate reads its declarations once.
 
   **And the usage counts only where it can be seen.**  Both sides of the inference are
   read from the asking context — the declaration through `matches-visible`, the tuple
@@ -3280,18 +3283,12 @@
   (for [s (believed-sentexes-with kb x context)
         :let [sen (:sentence s) pred (nm/functor sen) as (vec (nm/args sen))]
         :when (and (symbol? pred) (seq as))
-        ;; above `n`, since whose declarations bind a tuple is a fact about the
-        ;; predicate and not about which of its positions is being read — bound
-        ;; inside, the `genls` closure and its sort run once per argument position
-        :let [ps (res/constraining-predicates kb 'arg pred context)]
         n (range 1 (inc (count as)))
         :when (= x (nth as (dec n)))
-        p ps
-        [h b] (res/matches-visible kb (list 'arg p n '?t) context)
-        :let [t' (get b '?t)]
-        :when (symbol? t')
-        super (tax/genls (reasoning/taxonomy kb) t' context)]
-    [super s h p t']))
+        {:keys [type kind via] :as c} (res/arg-constraints-at kb pred context n)
+        :when (= :instance kind)
+        super (tax/genls (reasoning/taxonomy kb) type context)]
+    [super s c via type]))
 
 (defn- inferred-types
   "The types `type-derivations` gives `x`, lazy and deduped: `distinct` over the lazy
@@ -3302,18 +3299,30 @@
   [kb x context]
   (distinct (map first (type-derivations kb x context))))
 
+(defn- constraint-declarations
+  "The declarations `context` sees that state the `res/arg-constraints` entry `c`, as
+  `[spelling handle]` pairs: `(arg P n T)` for one position, `(argAndRest P n T)` for a
+  tail, and `(args P T)` too for a tail from 1."
+  [kb {:keys [from to type via]} context]
+  (let [hs (fn [k form] (map (fn [[h]] [k h]) (res/matches-visible kb form context)))]
+    (if (= from to)
+      (hs 'arg (list 'arg via from type))
+      (concat (hs 'argAndRest (list 'argAndRest via from type))
+              (when (= 1 from) (hs 'args (list 'args via type)))))))
+
 (defn- derivation-supports
-  "The handle sets a `type-derivations` entry rests on, one per combination of routes: the
-  usage and the declaration, with a route (`subsumption-routes`) from the usage's
-  predicate to the declared one, from the declared type to the derived one, and from a
-  spec of `arg` a declaration is stored on to `arg`."
-  [kb [super s h declared t']]
-  (let [routes #(subsumption-routes kb %1 %2)
-        base   #{(:id s) h}]
-    (for [r1 (routes declared (nm/functor (:sentence s)))
+  "The handle sets a `type-derivations` entry rests on, one per declaration stating its
+  constraint and combination of routes: the usage and the declaration, with a route
+  (`subsumption-routes`) from the usage's predicate to the declared one, from the declared
+  type to the derived one, and from a spec of the declaration's spelling (`arg`,
+  `argAndRest` or `args`) it is stored on to that spelling."
+  [kb [super s c declared t'] context]
+  (let [routes #(subsumption-routes kb %1 %2)]
+    (for [[k h] (constraint-declarations kb c context)
+          r1 (routes declared (nm/functor (:sentence s)))
           r2 (routes super t')
-          r3 (routes 'arg (nm/functor (:sentence (p/get-sentex (:records kb) h))))]
-      (into base (map first) (concat r1 r2 r3)))))
+          r3 (routes k (nm/functor (:sentence (p/get-sentex (:records kb) h))))]
+      (into #{(:id s) h} (map first) (concat r1 r2 r3)))))
 
 (defn- uncovered-declarations
   "The `(arg P n T')` declarations `context` sees whose `T'` is `t` or a spec of it and
@@ -3399,7 +3408,7 @@
        (for [a   (if (pvar? x) (open-candidates kb t context) [x])
              d   (type-derivations kb a context)
              :when (or (pvar? t) (= t (first d)))
-             sup (derivation-supports kb d)]
+             sup (derivation-supports kb d context)]
          [(cond (pvar? t) {t (first d)} (pvar? x) {x a} :else {}) sup])))))
 
 ;; ---- the argument-type meta-predicates, answered up genl ----------------

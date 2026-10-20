@@ -12,7 +12,9 @@
   positions a sentence actually has rather than a re-counted tail."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.provers :as provers]
             [vaelii.impl.resolution :as res]
+            [vaelii.impl.types.prover :as prover-types]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -327,3 +329,24 @@
       (is (= #{animal dog} (set (map :type (res/arg-constraints kb rel 'CxUniverse)))))
       (v/retract! kb h))
     (is (= [animal] (map :type (res/arg-constraints kb rel 'CxUniverse))))))
+
+(tu/deftest-kb the-argument-type-prover-reads-a-tail-declaration
+  ;; `ArgTypeProver` reads `arg` the other way, as an inference from a usage; it reads
+  ;; the positions `argAndRest` and `args` type as it reads the one `arg` types
+  (let [[rel animal] (variable-relation kb)
+        sub (tu/tmp-pred) a (tu/tmp-ind) b (tu/tmp-ind) c (tu/tmp-ind) d (tu/tmp-ind)
+        solve #(prover-types/solve (provers/->ArgTypeProver) kb % 'CxUniverse)]
+    (v/assert kb (list 'argAndRest rel 2 animal) 'CxUniverse)
+    (v/assert kb (list rel a b c) 'CxUniverse)
+    (testing "a usage at or past the start types the term"
+      (is (= [{}] (solve (list animal b))))
+      (is (= [{}] (solve (list animal c))))
+      (is (some #{animal} (map #(get % '?t) (solve (list '?t c))))))
+    (testing "a usage below the start does not"
+      (is (empty? (solve (list animal a)))))
+    (testing "args, on a super-predicate, types every position of a sub's tuple"
+      (v/assert kb (list 'binary_predicate sub) 'CxUniverse)
+      (v/assert kb (list 'genl sub rel) 'CxUniverse)
+      (v/assert kb (list 'args rel animal) 'CxUniverse)
+      (v/assert kb (list sub d a) 'CxUniverse)
+      (is (= [{}] (solve (list animal d)))))))
