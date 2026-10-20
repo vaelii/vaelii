@@ -243,3 +243,22 @@
                  :when (= tagAll (:predicate f))]
              [tagAll (:missing f)]))
         "the tail is typed, the position below the start is not")))
+
+(tu/deftest-kb a-meta-sentex-names-the-sentex-it-is-about-by-its-handle
+  ;; except, exceptWhen and contradicts each name a stored sentex as (sentexHandle N), a
+  ;; sentex_handle_term taken as written, so a bare integer or a symbol there is refused.
+  (tu/with-terms [dog cat Rex]
+    (v/assert kb (list 'unary_predicate dog) 'CxUniverse)
+    (let [f (v/assert kb (list dog Rex) 'CxUniverse)
+          r (v/assert kb (list 'implies (list dog '?x) (list cat '?x)) 'CxUniverse)]
+      (testing "except"
+        (is (= :quoted-arg-type (refusal kb (list 'except 212))))
+        (is (= :quoted-arg-type (refusal kb (list 'except Rex))))
+        (is (nil? (refusal kb (list 'except (list 'sentexHandle f))))))
+      (testing "exceptWhen's rule"
+        (is (some? (refusal kb (list 'exceptWhen (list dog '?x) 212))))
+        (is (nil? (refusal kb (list 'exceptWhen (list dog '?x) (list 'sentexHandle r))))))
+      (testing "contradicts, at its first member and every later one"
+        (is (= :quoted-arg-type (refusal kb (list 'contradicts 212))))
+        (is (= :quoted-arg-type (refusal kb (list 'contradicts (list 'sentexHandle f) 212))))
+        (is (nil? (refusal kb (list 'contradicts (list 'sentexHandle f) (list 'sentexHandle r)))))))))

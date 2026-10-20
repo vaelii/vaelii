@@ -613,8 +613,8 @@ The starter's `(arg parentOf 1 organism)` lives in CxUniverse (`life.txt`) while
 `CxNaturalWorld`. A toggle-on starter load derives a membership per declared position,
 less the ones pruning withholds (the table under [Cost](#cost)). Each argument position
 of arity 2 and up in the shipped ontology is declared, except the ones `ontology_test`'s
-`undeclared-positions` names: the two `genl` positions, the example predicates' quoted
-sentence and `exceptWhen`'s two. `core.txt` says why beside `genl`: `thing`
+`undeclared-positions` names: the two `genl` positions and the example predicates' quoted
+sentence. `core.txt` says why beside `genl`: `thing`
 cannot be a proper subtype of itself, so the constraint the root would fail is the wrong
 constraint rather than a missing one.
 

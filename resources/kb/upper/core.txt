@@ -1040,6 +1040,7 @@
 (variable_arity_predicate contradicts)
 (unbounded_arity_predicate contradicts)
 (arityMin contradicts 1)
+(quotedArgAndRest contradicts 1 sentex_handle_term)   ;; one sentexHandle per nogood member
 
 (comment defeat
          "(defeat (sentexHandle ?h)) removes ?h from belief at its own context and every context that sees it, read at read time; it sweeps nothing. Only the engine derives one: a placed nogood stores one for its unique weakest member, beside its contradicts, and a guard that holds below a firing's placement stores one for the firing's conclusion, which removes that one firing and not the sentence. assert refuses defeat in any literal, a negation and a rule included; matching and asking (defeat ?h) are reads. A nogood's defeat is in force at a reader while the nogood's verdict there names ?h, so ?h is :default there, while no except in force hides the defeat, and while what it rests on is believed there, ?h itself exempt. Contrast except, which removes ?h from visibility and sweeps the firings resting on ?h placed at or below it. See docs/glossary.md.")
@@ -1608,10 +1609,13 @@
 (forced_monotonic_predicate except)
 ;; except takes one argument, the sentexHandle of the sentence it hides.
 (unary_predicate except)
+(quotedArg except 1 sentex_handle_term)
 (forced_monotonic_predicate exceptWhen)
 ;; exceptWhen takes two arguments as stored, the query and the sentexHandle of the rule it
 ;; qualifies.
 (binary_predicate exceptWhen)
+(arg exceptWhen 1 formula)
+(quotedArg exceptWhen 2 sentex_handle_term)
 (forced_monotonic_predicate rewriteOf)
 (forced_monotonic_predicate sameAs)
 (forced_monotonic_predicate equals)
