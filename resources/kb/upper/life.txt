@@ -60,6 +60,7 @@
 (reifiable_function FatherFn)
 (unary_function FatherFn)
 (functionCorrespondingPredicate FatherFn fatherOf)
+(arg FatherFn 1 animal)
 (result FatherFn animal)
 
 (comment fatherOf
@@ -121,6 +122,7 @@
 (reifiable_function MotherFn)
 (unary_function MotherFn)
 (functionCorrespondingPredicate MotherFn motherOf)
+(arg MotherFn 1 animal)
 (result MotherFn animal)
 
 (comment motherOf
