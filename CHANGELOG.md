@@ -37,6 +37,21 @@ it — `git show v0.16.0:CHANGELOG.md`.
   preamble stores them. [nat.md](docs/nat.md#read-path)
   *Migration:* none.
 
+- **The starter types the argument positions its terms' own definitions fix.**
+  `DayFn`, `MonthFn` and `YearFn` take their corresponding predicates' field types
+  (`integer`, then `positive_integer`), `QuantityFn` and `QuantityIntervalFn` take
+  `number` and `unit_of_measure`, and `FatherFn` and `MotherFn` take an `animal`.
+  The Exists cells' subject, filler and placeholder positions declare `thing`,
+  `greaterThan` and `lessThan` type their whole chain `number`, `not` and the bodies of
+  `forall`, `thereExists` and `exists` declare `formula`, and `partitionedByType` types
+  its whole and cells as kinds. Under assertive argument types, a symbol written in one of
+  these positions now derives the declared membership: `(QuantityFn 5 Furlong)` derives
+  `(unit_of_measure Furlong)`. A value of the wrong kind there is refused. `kb-integrity`'s
+  `:missing-arg` at CxUniverse reports 57 findings over the starter, where it reported 76.
+  [integrity.md](docs/integrity.md#what-a-missing-arg-finding-means)
+
+  *Migration:* none.
+
 - **`ArgTypeProver` types a term at a position an `argAndRest` declaration types.** A
   believed `(P … x …)` with `x` at position `n` or later beside `(argAndRest P n T)`
   answers `(T x)`, as `(arg P n T)` at `x`'s position does; `(args P T)` answers through
