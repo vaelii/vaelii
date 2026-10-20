@@ -2197,6 +2197,7 @@
 ;; thing holds individuals and types alike: a variable_order_type, which is a
 ;; unary_predicate.
 (set/monotonic (variable_order_type thing))
+(arg thing 1 thing)
 
 (comment transitive
          "(transitive ?predicate) means that ?predicate is transitive, so (?predicate a b) and (?predicate b c) imply (?predicate a c). Answered by a generic closure prover rather than materialized, since writing the closure out is quadratic in the extent and nobody asserted it. Also a type: (transitive P) classifies P as a binary_predicate, so a KB can be queried for the transitive predicates.")
