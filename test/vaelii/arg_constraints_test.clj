@@ -5,7 +5,9 @@
   the core vocabulary, whose forward rules store the declaration each sugar spelling
   stands for: `(args P T)` stores `(argAndRest P 1 T)`, so the chokepoint looks up `arg`
   and `argAndRest` alone at the instance level and still answers for `args`."
-  (:require [clojure.test :refer [is testing use-fixtures]]
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
+            [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.resolution :as res]
@@ -65,3 +67,52 @@
     (v/assert kb (list herdOf Herd1 Rex) 'CxUniverse)
     (is (= [{}] (prover-types/solve (provers/->ArgTypeProver) kb (list animal_k Rex)
                                     'CxUniverse)))))
+
+;; ---- the entry point: assert-time checks and entailments -------------------
+
+(defn- check-with-lookups
+  "`[violations looked-up]`: `v/check` of `sentence` (the memo bypassed), and the
+  instance-level declaration functors the entry point looked up while checking it."
+  [kb sentence]
+  (let [seen (atom #{})
+        orig res/constraining-predicates]
+    (with-redefs [tax/clock-held              (fn [_ _ _ read] (read))
+                  res/constraining-predicates (fn [kb kind & more]
+                                                (swap! seen conj kind)
+                                                (apply orig kb kind more))]
+      [(vec (v/check kb sentence 'CxUniverse))
+       (into #{} (filter instance-spellings) @seen)])))
+
+(tu/deftest-kb the-args-sugar-rule-is-the-one-core-txt-states
+  ;; tests on a KB without core.txt assert `tu/args-sugar-rule` to read the `args`
+  ;; spelling, so it has to be the rule core.txt ships
+  (is (str/includes? (slurp (io/resource "kb/upper/core.txt")) (pr-str tu/args-sugar-rule))))
+
+(tu/deftest-kb the-entry-point-reads-an-args-declaration-through-its-twin
+  ;; the assert-time checks look up `arg` and `argAndRest` alone, as the chokepoint does:
+  ;; an `args` declaration is refused and entails through its stored twin, so a KB
+  ;; stating only the twin gets the same refusals
+  (tu/with-terms [herdOf flockOf animal_k Herd1 Rex]
+    (v/assert kb (list 'genl animal_k 'thing) 'CxUniverse)
+    (doseq [p [herdOf flockOf]]
+      (v/assert kb (list 'variable_arity_predicate p) 'CxUniverse))
+    (v/assert kb (list 'args herdOf animal_k) 'CxUniverse)
+    (v/assert kb (list 'argAndRest flockOf 1 animal_k) 'CxUniverse)
+    (let [twin                (v/handle-of kb (list 'argAndRest herdOf 1 animal_k) 'CxUniverse)
+          [herd-vs looked-up] (check-with-lookups kb (list herdOf Herd1 "notAnAnimal"))
+          [flock-vs]          (check-with-lookups kb (list flockOf Herd1 "notAnAnimal"))]
+      (is (some? twin) "the forward rule stores the twin")
+      (testing "the refusal names the twin, and is the one a KB stating only argAndRest gets"
+        (is (= [:arg-type] (map :type herd-vs)))
+        (is (re-find #"\(argAndRest from 1, position 2 of " (:message (first herd-vs))))
+        (is (= (map #(dissoc % :sentence :message) herd-vs)
+               (map #(dissoc % :sentence :message) flock-vs)))
+        (is (= (:message (first flock-vs))
+               (str/replace (:message (first herd-vs)) (str herdOf) (str flockOf)))))
+      (testing "the instance-level lookups are arg and argAndRest alone"
+        (is (= '#{arg argAndRest} looked-up)))
+      (testing "the membership the declaration entails rests on the twin alone"
+        (v/assert kb (list herdOf Herd1 Rex) 'CxUniverse)
+        (let [sups (:support (v/why kb (v/handle-of kb (list animal_k Rex) 'CxUniverse)))]
+          (is (= ['argAndRest] (map :informant sups)))
+          (is (some #{twin} (map :handle (:because (first sups))))))))))

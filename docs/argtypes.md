@@ -140,6 +140,11 @@ theirs store. The type-level `genlArg`, `argAndRestGenl` and `argsGenl` and the 
 `predAllSpecified` audit, `kb-integrity`'s `:missing-arg` and `:genl-arg-widening` passes
 and the rule-pair quality report read through it. The list is held for one stretch of the
 change clock, so a read-only caller asking per fact reads the store once per predicate.
+The assert-time checks look up the same two at the instance level: `args` is refused,
+and derives memberships, through its stored `argAndRest` twin, whose handle is the support
+an entailment names. Retracting the `args` takes the twin, and everything resting on it,
+with it. A KB that does not load `core.txt` has no such rule, so there an `args`
+declaration types nothing; state `argAndRest` instead.
 
 A valid unbounded tail: a `variable_arity` `herd` with `(arityMin herd 2)` and `(args herd
 animal)` accepts `(herd Rex Bossy)` and `(herd Rex Bossy Clarabelle)` and derives
