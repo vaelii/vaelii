@@ -1297,6 +1297,7 @@
 (arg PredAllExistsFn 1 binary_predicate)
 (genlArg PredAllExistsFn 2 thing)
 (genlArg PredAllExistsFn 3 thing)
+(arg PredAllExistsFn 4 thing)   ;; the subject: a member of ?indep, a term of any kind
 (argArg PredAllExistsFn 4 2)
 (resultArg PredAllExistsFn 3)
 (functionCorrespondingPredicate PredAllExistsFn predAllExistsPlaceholder)
@@ -1308,6 +1309,8 @@
 (arg predAllExistsPlaceholder 1 binary_predicate)
 (genlArg predAllExistsPlaceholder 2 thing)
 (genlArg predAllExistsPlaceholder 3 thing)
+(arg predAllExistsPlaceholder 4 thing)   ;; the subject: a member of ?indep, a term of any kind
+(arg predAllExistsPlaceholder 5 thing)   ;; the placeholder: a member of ?dep, a term of any kind
 (argArg predAllExistsPlaceholder 4 2)
 (argArg predAllExistsPlaceholder 5 3)
 
@@ -1319,6 +1322,7 @@
 (arg PredExistsAllFn 1 binary_predicate)
 (genlArg PredExistsAllFn 2 thing)
 (genlArg PredExistsAllFn 3 thing)
+(arg PredExistsAllFn 4 thing)   ;; the subject: a member of ?indep, a term of any kind
 (argArg PredExistsAllFn 4 3)
 (resultArg PredExistsAllFn 2)
 (functionCorrespondingPredicate PredExistsAllFn predExistsAllPlaceholder)
@@ -1330,6 +1334,8 @@
 (arg predExistsAllPlaceholder 1 binary_predicate)
 (genlArg predExistsAllPlaceholder 2 thing)
 (genlArg predExistsAllPlaceholder 3 thing)
+(arg predExistsAllPlaceholder 4 thing)   ;; the subject: a member of ?indep, a term of any kind
+(arg predExistsAllPlaceholder 5 thing)   ;; the placeholder: a member of ?dep, a term of any kind
 (argArg predExistsAllPlaceholder 4 3)
 (argArg predExistsAllPlaceholder 5 2)
 
@@ -1339,6 +1345,7 @@
 (ternary_function PredExistsInstanceFn)
 (arg PredExistsInstanceFn 1 binary_predicate)
 (genlArg PredExistsInstanceFn 2 thing)
+(arg PredExistsInstanceFn 3 thing)   ;; the fixed filler: a term of any kind
 (resultArg PredExistsInstanceFn 2)
 (functionCorrespondingPredicate PredExistsInstanceFn predExistsInstancePlaceholder)
 
@@ -1349,6 +1356,7 @@
 (arg predExistsInstancePlaceholder 1 binary_predicate)
 (genlArg predExistsInstancePlaceholder 2 thing)
 (arg predExistsInstancePlaceholder 3 thing)   ;; the fixed filler: a term of any kind
+(arg predExistsInstancePlaceholder 4 thing)   ;; the placeholder: a member of ?indep, a term of any kind
 (argArg predExistsInstancePlaceholder 4 2)
 
 (comment PredInstanceExistsFn
@@ -1356,6 +1364,7 @@
 (unreifiable_function PredInstanceExistsFn)
 (ternary_function PredInstanceExistsFn)
 (arg PredInstanceExistsFn 1 binary_predicate)
+(arg PredInstanceExistsFn 2 thing)   ;; the fixed subject: a term of any kind
 (genlArg PredInstanceExistsFn 3 thing)
 (resultArg PredInstanceExistsFn 3)
 (functionCorrespondingPredicate PredInstanceExistsFn predInstanceExistsPlaceholder)
@@ -1367,6 +1376,7 @@
 (arg predInstanceExistsPlaceholder 1 binary_predicate)
 (genlArg predInstanceExistsPlaceholder 3 thing)
 (arg predInstanceExistsPlaceholder 2 thing)   ;; the fixed filler: a term of any kind
+(arg predInstanceExistsPlaceholder 4 thing)   ;; the placeholder: a member of ?dep, a term of any kind
 (argArg predInstanceExistsPlaceholder 4 3)
 
 (comment predAllExists
