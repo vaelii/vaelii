@@ -897,34 +897,6 @@
                  :when (and (integer? s) (pos? s))]
              [s (get b '?type) rk m]))))
 
-(defn instance-type-declarations
-  "The instance-type demands on `pred`'s argument positions visible from `context`, as
-  `{:from n :to m :type T}` — `:to` nil for a tail running to the last argument.  The
-  one reading of the three spellings that say a position holds an instance of a type,
-  so a caller asking what `arg` demands is answered for all three and cannot honor one
-  while missing another:
-
-  * `(arg P n T)` types position n, `{:from n :to n}`.
-  * `(argAndRest P n T)` types n and every later position, `{:from n :to nil}`.
-  * `(args P T)` is `(argAndRest P 1 T)` and is read as it, `{:from 1 :to nil}`.
-
-  Read through `declaration-reader`, so a super-predicate's declaration binds a
-  sub-predicate's tuples here as it does at the entry point.  A declaration with a
-  non-symbol or variable type, or a position that is not a positive integer, is dropped:
-  its own declaration refuses it at the entry point, so a stored one is a torn record."
-  [kb pred context]
-  (when (and (symbol? pred) (not (sx/variable? pred)))
-    (let [decls (declaration-reader kb pred context)
-          type? #(and (symbol? %) (not (sx/variable? %)))]
-      (concat
-       (for [[_ b] (decls 'arg)
-             :let  [n (get b '?n) t (get b '?type)]
-             :when (and (integer? n) (pos? n) (type? t))]
-         {:from n :to n :type t})
-       (for [[start t] (covering-triples decls 'args 'argAndRest)
-             :when (type? t)]
-         {:from start :to nil :type t})))))
-
 (defn- suffix-positions
   "The one-based positions from `start` to the last argument of the argument vector `as`
   — the walk every tail constraint makes, the covering forms and the homogeneity forms
