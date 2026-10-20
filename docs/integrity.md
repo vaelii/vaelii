@@ -685,6 +685,15 @@ types:
   the tail beyond them.
 - **Arity conflicts.** A predicate told two different arities is skipped, as
   `kb/relation-arity` reads it.
+- **Declarations below the audit context.** An arity mark can be visible where the
+  declarations typing the positions are not: the engine places an exact-arity class in
+  CxUniverse (`chain/place-arity-class!`), and the starter's unary batch writes
+  `unary_predicate` there for every type. So the pass also reads the declarations from each
+  context that sees the audit context and stores an `arg`-family declaration on `P` or a
+  `genl` edge out of it, and reports a position only if one of those contexts leaves it
+  untyped too. With no such context, the audit context's reading is the answer. A context
+  that does not see the audit context is not read, so from CxWell a relation declared only
+  in CxTra is still reported.
 
 The shipped contexts declare `thing` at each position that holds a term of any kind
 ([argtypes.md](argtypes.md#constraint-and-entailment-readings)). `:missing-arg` reports

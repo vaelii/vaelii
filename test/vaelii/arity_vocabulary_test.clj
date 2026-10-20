@@ -1556,15 +1556,14 @@
      [termsRelated [1 2 :rest]]})
 
 (tu/deftest-kb every-starter-position-is-typed-but-the-open-ones
-  ;; A middle context's relation and type carry their arity mark in CxUniverse, where the
-  ;; declarations typing them are not visible, so the audit from CxUniverse also reports
-  ;; those.  Read from CxTra and from CxSocialExtension, which between them see every
-  ;; middle context that declares one, each such finding clears; what both still report
-  ;; is a position no declaration types.
+  ;; A middle context's relation and type carry their arity mark in CxUniverse, while the
+  ;; declarations typing them stay in the context that states them.  The audit reads them
+  ;; from there, so CxUniverse reports what CxTra and CxSocialExtension, which between
+  ;; them see every middle context that declares one, both still report: the positions no
+  ;; declaration types.
   (let [universe (missing-args kb 'CxUniverse)
         open     (set/intersection (missing-args kb 'CxTra)
                                    (missing-args kb 'CxSocialExtension))]
     (is (= open-positions open))
-    (is (set/subset? open universe))
-    (is (= 41 (count (set/difference universe open)))
-        "the middle-context relations and types cleared from their own context")))
+    (is (= open-positions universe)
+        "no middle-context relation or type is reported from CxUniverse")))

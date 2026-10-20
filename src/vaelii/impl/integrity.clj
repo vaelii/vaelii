@@ -643,13 +643,12 @@
                seq (apply min))
       1))
 
-(defn- missing-positions
-  "The finding for one predicate of declared arity `arity`, or nil: each position 1..n
-  (1..`arityMin` for a variable arity, and `:rest` for its tail) no declaration types.
-  A unary predicate's one position is typed by any visible `genl` edge out of it, which
-  says of its members what `(arg P 1 T)` would."
+(defn- untyped-positions
+  "Each position 1..n of `pred` (1..`arityMin` for a variable arity, and `:rest` for its
+  tail) no declaration `context` sees types, as a vector.  A unary predicate's one
+  position is typed by any visible `genl` edge out of it, which says of its members what
+  `(arg P 1 T)` would."
   [kb tx pred arity context]
-  (budget/spend!)
   (let [{:keys [at from]} (typed-positions kb pred context)
         typed?  (fn [n] (or (contains? at n) (and from (>= n from))))
         n       (if (= :variable arity) (arity-min kb pred context) arity)
@@ -659,6 +658,39 @@
         missing (if (and (= 1 arity) (= [1] missing)
                          (seq (disj (set (tax/direct-genls tx pred context)) pred)))
                   []
+                  missing)]
+    missing))
+
+(defn- declaring-contexts
+  "The contexts other than `context` that see it and store a declaration typing a
+  position of `pred`: an `arg`-family declaration on `pred` (`res/arg-constraint-kinds`)
+  or a `genl` edge out of it, which types a unary predicate's position and imports a
+  super-predicate's declarations.  In name order."
+  [kb pred context]
+  (let [down (set (tax/context-down (reasoning/taxonomy kb) context))]
+    (->> (cons (list 'genl pred '?x)
+               (for [[k [_ shape]] res/arg-constraint-kinds]
+                 (if (= :every shape) (list k pred '?t) (list k pred '?n '?t))))
+         (mapcat #(res/matches-visible kb % '?ctx))
+         (keep (fn [[_ _ s]] (budget/spend!) (:context s)))
+         (filter #(and (not= context %) (contains? down %)))
+         distinct
+         (sort-by nm/print-key))))
+
+(defn- missing-positions
+  "The finding for one predicate of declared arity `arity`, or nil: each position
+  `untyped-positions` reports from `context` that some context declaring the predicate
+  (`declaring-contexts`) also leaves untyped.  A relation declared in a context below the
+  audit context has its arity class placed in CxUniverse (`chain/place-arity-class!`,
+  the starter's unary batch) while its declarations stay where they are written, so the
+  audit reads them from there; a position typed in every such context is not missing.
+  With no such context, what `context` sees is the whole answer."
+  [kb tx pred arity context]
+  (budget/spend!)
+  (let [missing (untyped-positions kb tx pred arity context)
+        missing (if-let [ds (seq (when (seq missing) (declaring-contexts kb pred context)))]
+                  (let [below (into #{} (mapcat #(untyped-positions kb tx pred arity %)) ds)]
+                    (filterv below missing))
                   missing)]
     (when (seq missing)
       {:predicate pred :arity arity :missing missing})))
