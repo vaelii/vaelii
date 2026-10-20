@@ -33,6 +33,24 @@ it — `git show v0.16.0:CHANGELOG.md`.
   preamble stores them. [nat.md](docs/nat.md#read-path)
   *Migration:* none.
 
+- **`ArgTypeProver` types a term at a position an `argAndRest` declaration types.** A
+  believed `(P … x …)` with `x` at position `n` or later beside `(argAndRest P n T)`
+  answers `(T x)`, as `(arg P n T)` at `x`'s position does; `(args P T)` answers through
+  the `argAndRest` twin its rule stores. The exception re-check that follows the inference
+  reads the same declarations, in both arrival orders. The prover reads a predicate's
+  declarations through `res/arg-constraints-at`, held for one stretch of the change clock.
+  [argtypes.md](docs/argtypes.md)
+
+  *Migration:* none. Under the constraint-only reading, `ask` answers such a membership
+  where it answered nothing.
+
+- **A `predAllSpecified` or `predSpecifiedAll` slot typed by a tail declaration is
+  audited.** A slot typed only by `argAndRest`, `args`, `argAndRestGenl` or `argsGenl`
+  reported `{:status :gap :gap :missing-slot-typing}`; the audit now derives its contract
+  from those declarations as from `arg` and `genlArg`. [predall.md](docs/predall.md)
+
+  *Migration:* none. A declaration that reported the gap reports `:audited`.
+
 ## 0.29.0 — 2026-10-23 — "Open applications read through `functionCorrespondingPredicate` and resolved under the reader's merges, `try-assert` refusing `:monotonic` complements and length clashes, query-only terms refused under `not`, closed-extent negatives re-checked in every arrival order"
 
 | Area | Change |
