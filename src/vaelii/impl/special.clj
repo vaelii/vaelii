@@ -7108,6 +7108,7 @@
     'argsGenl       (assoc (prop-entry 'argsGenl)       :wff wff/covering-constraint-problems)
     'argAndRest     (assoc (prop-entry 'argAndRest)     :wff wff/covering-constraint-problems)
     'argAndRestGenl (assoc (prop-entry 'argAndRestGenl) :wff wff/covering-constraint-problems)
+    'quotedArgAndRest (assoc (prop-entry 'quotedArgAndRest) :wff wff/covering-constraint-problems)
     ;; the homogeneity constraints share the covering forms' shape — a relation, an
     ;; optional start, a type — and so their wff arm
     'interArgs       (assoc (prop-entry 'interArgs)       :wff wff/covering-constraint-problems)

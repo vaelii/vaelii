@@ -104,6 +104,7 @@
              args :declares-args-isa, argsGenl :declares-args-genl,
              argAndRest :declares-arg-and-rest-isa,
              argAndRestGenl :declares-arg-and-rest-genl,
+             quotedArgAndRest :declares-quoted-arg-and-rest,
              interArgs :declares-inter-args-isa,
              interArgAndRest :declares-inter-arg-and-rest-isa}
            tax/arg-declaration-props))
@@ -205,7 +206,7 @@
         (is (= :family-list (:mismatch data)))
         (is (= 'provers/meta-constraint-functors (:list data)))
         (is (= '#{quotedArg arg argArg genlArg interArg interArgEqual args argsGenl argAndRest
-                  argAndRestGenl interArgs interArgAndRest}
+                  argAndRestGenl quotedArgAndRest interArgs interArgAndRest}
                (:declared data))
             "and the throw names both sets, so the reader sees which half is missing")))
     (testing "and the other direction — a list naming a spelling nothing declares"

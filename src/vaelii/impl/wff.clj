@@ -245,8 +245,8 @@
 
 (defn covering-constraint-problems
   "The covering argument constraints — `args` / `argsGenl` name a relation and a type,
-  `argAndRest` / `argAndRestGenl` a relation, a positive-integer start position, and a
-  type.  The same latitude on the constrained relation `arg-constraint-problems` argues
+  `argAndRest` / `argAndRestGenl` / `quotedArgAndRest` a relation, a positive-integer
+  start position, and a type.  The same latitude on the constrained relation `arg-constraint-problems` argues
   for, and the same position and type checks, differing only in whether a start position
   is present.  `args` is `argAndRest` at start 1, so one check reads both arities and
   takes the type from whichever position holds it.
@@ -254,7 +254,7 @@
   The homogeneity constraints `interArgs` / `interArgAndRest` have the same two shapes —
   a relation and a type, or a relation, a start and a type — and are read here too."
   [_ [f pred a b :as s] _context]
-  (let [tail? (contains? '#{argAndRest argAndRestGenl interArgAndRest} f)
+  (let [tail? (contains? '#{argAndRest argAndRestGenl quotedArgAndRest interArgAndRest} f)
         type  (if tail? b a)
         start a]
     (cond-> []

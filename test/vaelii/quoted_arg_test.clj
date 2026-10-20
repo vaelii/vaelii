@@ -225,3 +225,21 @@
       (is (= :quoted-arg-type (refusal kb (list handles 212))))
       (is (= :quoted-arg-type (refusal kb (list handles 'Muffet)))))
     (is (nil? (refusal kb (list handles (list FooFn 3)))) "a compound is exempt")))
+
+(tu/deftest-kb quotedargandrest-types-every-position-from-its-start
+  ;; The suffix form of quotedArg, as argAndRest is of arg: the start and every later
+  ;; position, taken as written, the prefix below the start left to its own declarations.
+  (tu/with-terms [tagAll]
+    (v/assert kb (list 'variable_arity_predicate tagAll) 'CxUniverse)
+    (v/assert kb (list 'arityMin tagAll 1) 'CxUniverse)
+    (v/assert kb (list 'quotedArgAndRest tagAll 2 'string) 'CxUniverse)
+    (testing "every position from the start is a string as a term"
+      (is (nil? (refusal kb (list tagAll 5 "a" "b"))))
+      (is (= :quoted-arg-type (refusal kb (list tagAll 5 "a" 7))))
+      (is (= :quoted-arg-type (refusal kb (list tagAll 5 'Muffet)))))
+    (is (= [[tagAll [1]]]
+           (for [f (:missing-arg (v/kb-integrity kb #{} 'CxUniverse {:categories #{:missing-arg}
+                                                                     :max-results 10000}))
+                 :when (= tagAll (:predicate f))]
+             [tagAll (:missing f)]))
+        "the tail is typed, the position below the start is not")))

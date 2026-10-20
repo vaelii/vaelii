@@ -1084,6 +1084,18 @@
                                                " and every later one, the prefix below the"
                                                " start excluded.  args is argAndRest at 1."))
                             "checks/covering-args-problem — position n onward typed as an instance")]
+     ['quotedArgAndRest (enforced (assoc (prop :declares-quoted-arg-and-rest :arg :relation
+                                               :facets #{:convicts :answers})
+                                         :shape  {:args [:relation :position :type]}
+                                         :family :argument-constraint
+                                         :stops-short
+                                         {:reach "the same as quotedArg, a tail from a start — see quotedArg."
+                                          :retriggers "the same as quotedArg — see quotedArg."}
+                                         :notes (str "the tail-from-a-start mention form: position"
+                                                     " and every later one taken as written, the"
+                                                     " prefix below the start excluded.  quotedArg"
+                                                     " at every position from the start."))
+                                  "checks/args-quoted-problem — position n onward typed as a term")]
      ['argAndRestGenl (enforced (assoc (prop :declares-arg-and-rest-genl :arg :relation
                                              :facets #{:convicts :answers})
                                        :shape  {:args [:relation :position :type]}

@@ -231,6 +231,13 @@
 (arg quotedArg 2 positive_integer)
 (genlArg quotedArg 3 thing)
 
+(comment quotedArgAndRest
+         "(quotedArgAndRest ?relation ?position ?type) means that argument ?position of ?relation and every later position, each taken AS A TERM, is of ?type. The suffix form of quotedArg, as argAndRest is of arg: a variable-arity relation whose tail repeats one mention is typed without naming a largest finite position. Checked position by position over the positions a sentence has, as quotedArg is, and never entailed.")
+(ternary_predicate quotedArgAndRest)
+(arg quotedArgAndRest 1 relation)
+(arg quotedArgAndRest 2 positive_integer)
+(genlArg quotedArgAndRest 3 thing)
+
 ;; The value kinds — the EDN kinds an argument written as a value can carry, placed in
 ;; the genl lattice so (quotedArg p n number) admits an integer and a bare type reaches
 ;; thing.  A

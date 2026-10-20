@@ -688,10 +688,10 @@
   ;; moves back inside the loop — the same violations come out — and the growth stays
   ;; linear in the members either way, so neither the suite nor a perf ratio would see
   ;; it.  The count is the instrument that does: one reach per declaration functor the
-  ;; chokepoint reads (`res/arg-constraints`, six), whatever the collection's size.
+  ;; chokepoint reads (`res/arg-constraints`, seven), whatever the collection's size.
   (let [small (contract-derivations 10)
         large (contract-derivations 200)]
-    (is (= 6 small) "one reach per constraining declaration functor, and no more")
+    (is (= 7 small) "one reach per constraining declaration functor, and no more")
     (is (= small large)
         (str "20x the audited members derives the contract the same number of times — "
              small " against " large))))

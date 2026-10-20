@@ -1144,7 +1144,9 @@ being nothing to mint about a term that already is what it is. A compound is jud
 kinds its spelling decides ([what a quoted form is](#what-a-quoted-form-is)). Open-world
 about a declared type outside the syntactic lattice and the expression lattice it sits in,
 so an imported constraint on a domain collection never convicts a value it cannot judge.
-`checks/args-quoted-problem`, behind the same O(1) presence check as `interArg`. Why the kind
+`(quotedArgAndRest P n T)` is its suffix form, as `argAndRest` is of `arg`: position `n`
+and every later one, each taken as written. `checks/args-quoted-problem`, behind the same
+O(1) presence check as `interArg`. Why the kind
 decides at all, rather than every non-symbol being exempt:
 [defenses.md](defenses.md#a-value-is-typed-by-its-kind-and-the-openness-moves-to-the-declared-type).
 

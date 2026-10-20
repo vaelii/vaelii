@@ -2983,7 +2983,8 @@
     genlArg        [:type :at]
     argAndRestGenl [:type :rest]
     argsGenl       [:type :every]
-    quotedArg      [:quoted :at]})
+    quotedArg      [:quoted :at]
+    quotedArgAndRest [:quoted :rest]})
 
 (defn- read-arg-constraints
   "`arg-constraints`, read from the store: every visible declaration of each

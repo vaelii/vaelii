@@ -1119,13 +1119,13 @@
   and `F`'s instance-type declarations type its arguments (`declared-arg-types`).  A
   formula is not an application: a connective's argument, and a compound whose head is a
   `predicate`, are not read.  An argument of a quoting predicate or quoting function, or at
-  a position a `quotedArg` declaration types (`checks/quoted-positions`), is a mention and
-  is not descended into."
+  a position a `quotedArg` or `quotedArgAndRest` declaration types
+  (`checks/quoted-positions`), is a mention and is not descended into."
   [kb pred as context]
   (letfn [(used [f xs]
             (if (some sequential? xs)
               (let [qs (checks/quoted-positions kb f context)]
-                (keep-indexed (fn [i x] (when-not (contains? qs (inc i)) x)) xs))
+                (keep-indexed (fn [i x] (when-not (qs (inc i)) x)) xs))
               xs))
           (walk [x]
             (let [f (when (sequential? x) (first x))]

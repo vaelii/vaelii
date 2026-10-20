@@ -674,7 +674,7 @@ exact-arity class such as `binary_predicate`, or `variable_arity_predicate`, and
 types:
 
 - **What types a position.** An `arg`, `genlArg` or `quotedArg` at that position, an
-  `argAndRest` or `argAndRestGenl` from that position or an earlier one, or an `args` or
+  `argAndRest`, `argAndRestGenl` or `quotedArgAndRest` from that position or an earlier one, or an `args` or
   `argsGenl`, each read on `P` and on every super-predicate
   `res/constraining-predicates` reads, plus the `arg1` through `arg5` projections stated on
   `P` itself. For a unary predicate, a visible `genl` edge out of it types its one position,

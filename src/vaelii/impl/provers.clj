@@ -3484,6 +3484,7 @@
     argsGenl        {:pred 1 :types-up [2]}
     argAndRest      {:pred 1 :fixed [2] :types-up [3]}
     argAndRestGenl  {:pred 1 :fixed [2] :types-up [3]}
+    quotedArgAndRest {:pred 1 :fixed [2] :types-up [3]}
     ;; the homogeneity constraints: the one type is trigger and target at once, so it is
     ;; covariant as a target and contravariant as a trigger and reaches neither way —
     ;; `(interArgs R animal)` convicts a reptile beside a plant that `(interArgs R
