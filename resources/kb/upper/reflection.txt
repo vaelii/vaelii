@@ -15,7 +15,8 @@
 ;; a predicate, a non_atomic_term when R is a function and (R a) is closed, and ill-formed
 ;; when R's length rules out its argument count. (Quote X) is answered through those
 ;; kinds (docs/argtypes.md, "What a quoted form is"), and a quotedArg declaration holds a
-;; compound inert where one of its spelling's kinds is separated from its type.
+;; compound inert where one of its spelling's kinds is separated from its type, and reads
+;; them of a value or a symbol.
 
 ;; The ladder is the standard one, and the docs are held to it (docs/naming.md's reserved
 ;; words).  A PREDICATION is a predicate applied to terms.  A CLOSED_PREDICATION is a

@@ -173,10 +173,15 @@
 
 (defn- syntactic-type?
   "Is `t` a type `quotedArg` can judge a value against — a syntactic root or a subtype
-  of one?  A declared type outside this lattice leaves the constraint open-world."
+  of one, or a kind of `expression` (reflection.txt), which every value kind and
+  `symbol` sit below?  `(quotedArg except 1 sentex_handle_term)` so refuses `(except
+  212)`, an integer being no `sentex_handle_term`, and `denotational_term` admits a
+  symbol or a value.  A declared type outside this lattice leaves the constraint
+  open-world."
   [tax t context]
   (or (contains? syntactic-roots t)
-      (some #(tax/genl? tax t % context) syntactic-roots)))
+      (some #(tax/genl? tax t % context) syntactic-roots)
+      (tax/genl? tax t 'expression context)))
 
 (def ^:private declaration-queries
   "Per declaration kind, the sentence `declaration-reader` queries: the functor, then the

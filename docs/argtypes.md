@@ -1142,8 +1142,8 @@ of `arg`: where `arg` reads the referent's type, `quotedArg` reads the argument'
 syntax, which is decidable from the value — so it is **checked, never entailed**, there
 being nothing to mint about a term that already is what it is. A compound is judged by the
 kinds its spelling decides ([what a quoted form is](#what-a-quoted-form-is)). Open-world
-about a declared type outside the syntactic lattice, so an imported constraint on a domain
-collection never convicts a value it cannot judge.
+about a declared type outside the syntactic lattice and the expression lattice it sits in,
+so an imported constraint on a domain collection never convicts a value it cannot judge.
 `checks/args-quoted-problem`, behind the same O(1) presence check as `interArg`. Why the kind
 decides at all, rather than every non-symbol being exempt:
 [defenses.md](defenses.md#a-value-is-typed-by-its-kind-and-the-openness-moves-to-the-declared-type).
@@ -1296,6 +1296,10 @@ which reaches neither `non_atomic_term` nor `formula`. Under `(quotedArg P 1 str
 `reflection.txt` separating `formula` from `non_atomic_term`. The verdict is the same in
 either arrival order of the declaration and the fact
 (`quoted_arg_test/a-compound-is-held-only-where-one-of-its-kinds-is-separated-from-the-type`).
+A declared kind of `expression` decides a value or a symbol too, every value kind and
+`symbol` sitting in the lattice (`checks/syntactic-type?`): `(quotedArg except 1
+sentex_handle_term)` convicts `(except 212)`, and `(quotedArg comment 1 denotational_term)`
+admits a symbol or a value.
 
 ## Scope
 

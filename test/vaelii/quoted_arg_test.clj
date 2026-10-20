@@ -206,3 +206,22 @@
   (is (not (v/ask? kb '(open_expression (Quote Muffet)) 'CxUniverse)) "a constant is not open")
   (is (true? (v/ask? kb '(closed_expression (Quote Muffet)) 'CxUniverse))
       "and is a closed_expression, disjoint from it"))
+
+(tu/deftest-kb quotedarg-judges-a-value-against-an-expression-kind
+  ;; The expression lattice (reflection.txt) holds every value kind and symbol, so a kind
+  ;; of expression decides a value or a symbol written in the position.  A compound stays
+  ;; exempt, as for every declared type.
+  (tu/with-terms [names handles FooFn]
+    (v/assert kb (list 'unary_predicate names) 'CxUniverse)
+    (v/assert kb (list 'quotedArg names 1 'denotational_term) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate handles) 'CxUniverse)
+    (v/assert kb (list 'quotedArg handles 1 'non_atomic_term) 'CxUniverse)
+    (v/assert kb (list 'unreifiable_function FooFn) 'CxUniverse)
+    (testing "a symbol and a value are denotational terms"
+      (is (nil? (refusal kb (list names 'Muffet))))
+      (is (nil? (refusal kb (list names 5))))
+      (is (nil? (refusal kb (list names "five")))))
+    (testing "and neither is a non_atomic_term"
+      (is (= :quoted-arg-type (refusal kb (list handles 212))))
+      (is (= :quoted-arg-type (refusal kb (list handles 'Muffet)))))
+    (is (nil? (refusal kb (list handles (list FooFn 3)))) "a compound is exempt")))
