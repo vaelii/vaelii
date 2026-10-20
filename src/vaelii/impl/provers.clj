@@ -1236,8 +1236,9 @@
 (defn shape-kinds
   "The most specific expression kinds of the form `x` that its spelling decides, as a
   set: `variable`, `symbol`, a value kind (`literal-value-kind`), or for a compound one
-  of `open_formula` / `sentence` under a `formula-heads` head, `non_atomic_expression`
-  beside `open_expression` / `closed_expression` under a symbol or variable head, and
+  of `open_formula` / `sentence` under a `formula-heads` head, `sentex_handle_term` for
+  `(sentexHandle N)` with N a positive integer, `non_atomic_expression` beside
+  `open_expression` / `closed_expression` under any other symbol or variable head, and
   `ill_formed_expression` beside the same under any other head.  A variable inside a
   nested `(Quote …)` or bound by a quantifier in `x` is not free (`sx/unquoted-free-vars`).
   `#{}` for nil."
@@ -1252,6 +1253,7 @@
         (cond
           (contains? formula-heads h)
           #{(if (= 'open_expression (openness)) 'open_formula 'sentence)}
+          (and (sx/sentex-handle? x) (pos? (long (second x)))) #{'sentex_handle_term}
           (symbol? h) #{'non_atomic_expression (openness)}
           :else       #{'ill_formed_expression (openness)}))
       :else #{})))
@@ -1264,7 +1266,7 @@
   so a kind a KB adds below `expression` is answered by a query and not by a firing."
   '#{expression atomic_expression non_atomic_expression atomic_term variable symbol
      unrepresented_term string number integer keyword boolean character
-     denotational_term non_atomic_term formula sentence open_formula
+     denotational_term non_atomic_term sentex_handle_term formula sentence open_formula
      predication closed_predication open_predication literal closed_literal open_literal
      wff_expression ill_formed_expression ill_formed ill_formed_sentence
      open_expression closed_expression})

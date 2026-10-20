@@ -1227,7 +1227,8 @@ expression lattice are read off how X is written (`provers/shape-kinds`):
 | a symbol | `symbol` |
 | a value | its value kind (`string`, `integer`, …) |
 | a compound under a connective or quantifier head (`not`, `and`, `implies`, `forall`, …) | `open_formula`, or `sentence` when no variable is free in it |
-| a compound under a symbol head | `non_atomic_expression`, beside `open_expression` or `closed_expression` |
+| `(sentexHandle N)`, N a positive integer | `sentex_handle_term`, a `non_atomic_term` |
+| a compound under any other symbol head | `non_atomic_expression`, beside `open_expression` or `closed_expression` |
 | a compound under any other head | `ill_formed_expression`, beside the same |
 
 A variable inside a nested `(Quote …)`, or bound by a quantifier in X, is not free in X

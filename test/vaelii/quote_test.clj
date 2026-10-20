@@ -102,7 +102,13 @@
               "a quantifier binds its variable"]
              ['sentence (list 'forAll 'Muffet (list dog 'Muffet)) false
               "forAll is a predicate's spelling, and forall is the quantifier"]
-             ['ill_formed_expression (list 3 4) true "a number in operator position"]]]
+             ['ill_formed_expression (list 3 4) true "a number in operator position"]
+             ['sentex_handle_term (list 'sentexHandle 212) true "a handle names a stored sentex"]
+             ['closed_expression (list 'sentexHandle 212) true "a handle is a closed non_atomic_term"]
+             ['sentex_handle_term 212 false "a bare integer names no sentex"]
+             ['sentex_handle_term (list 'sentexHandle 0) false "a handle's id is a positive integer"]
+             ['sentex_handle_term (list 'sentexHandle "212") false "and an integer"]
+             ['sentex_handle_term (list 'sentexHandle 212 213) false "a handle names one sentex"]]]
       (testing (str (list kind (list 'Quote x)) " " holds? ": " why)
         (is (= holds? (v/ask? kb (list kind (list Quote x)) 'CxUniverse)))))))
 
