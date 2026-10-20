@@ -51,30 +51,24 @@
 
 ;; ---- genl-arg-widening: a predicate genl edge that widens an argument type ----
 
+(defn- constraining-arg-types
+  "`[position type declaring-predicate]` for every `arg` declaration binding `pred`'s
+  tuples from `context`: `pred`'s own and every visible super-predicate's, the
+  one-position instance entries of `res/arg-constraints`.  A tail entry (`argAndRest`,
+  `args`) names no one position for an edge to be compared at, so it is not read here."
+  [kb pred context]
+  (for [{:keys [from to type kind via]} (res/arg-constraints kb pred context)
+        :when (do (budget/spend!) (and (= :instance kind) (= from to)))]
+    [from type via]))
+
 (defn- own-arg-types
   "`{position #{type …}}` from the `arg` declarations `context` sees written on `pred`
   itself — the domain its author declared, before any super-predicate's declaration is
   read into it."
   [kb pred context]
-  (reduce (fn [m [_ b]]
-            (budget/spend!)
-            (let [n (get b '?n) t (get b '?t)]
-              (if (and (integer? n) (symbol? t) (not (sx/variable? t)))
-                (update m n (fnil conj #{}) t)
-                m)))
+  (reduce (fn [m [n t via]] (if (= via pred) (update m n (fnil conj #{}) t) m))
           {}
-          (res/matches-visible kb (list 'arg pred '?n '?t) context)))
-
-(defn- constraining-arg-types
-  "`[position type declaring-predicate]` for every `arg` declaration binding `pred`'s
-  tuples from `context`: `pred`'s own and every visible super-predicate's, read through
-  `res/constraining-predicates`, the closure `assert`'s argument check reads."
-  [kb pred context]
-  (for [p     (res/constraining-predicates kb 'arg pred context)
-        [_ b] (res/matches-visible kb (list 'arg p '?n '?t) context)
-        :let  [n (get b '?n) t (get b '?t)]
-        :when (and (integer? n) (symbol? t) (not (sx/variable? t)))]
-    [n t p]))
+          (constraining-arg-types kb pred context)))
 
 (defn- declared-predicates
   "The predicates carrying a visible `arg` declaration of their own, in print order: the
@@ -608,45 +602,18 @@
 
 ;; ---- missing-arg: a declared argument position no declaration types ----
 
-(def ^:private positional-kinds
-  "The declarations that type one numbered position, `(K P n T)`."
-  '[arg genlArg quotedArg])
-
-(def ^:private rest-kinds
-  "The declarations that type position `n` and every later one, `(K P n T)`."
-  '[argAndRest argAndRestGenl])
-
-(def ^:private every-kinds
-  "The declarations that type every position, `(K P T)`."
-  '[args argsGenl])
-
-(defn- declared-rows
-  "The ground `[pos type]` rows of every `(kind q pos type)` (or `(kind q type)`, `pos`
-  nil, when `pos?` is false) visible from `context` over `pred` and each super-predicate
-  `res/constraining-predicates` reads for `kind`."
-  [kb kind pred pos? context]
-  (for [q     (distinct (cons pred (res/constraining-predicates kb kind pred context)))
-        [_ b] (res/matches-visible kb (if pos? (list kind q '?n '?t) (list kind q '?t))
-                                   context)
-        :let  [n (get b '?n) t (get b '?t)]
-        :when (and (some? t) (not (sx/variable? t))
-                   (or (not pos?) (integer? n)))]
-    (do (budget/spend!) [n t])))
-
 (defn- typed-positions
-  "`{:at #{n …} :from n-or-nil :every? bool}` for `pred` as `context` reads its
-  declarations: the positions one declaration types, the first position a rest form
-  types onward, and whether a form types them all.  The binary `arg1` through `arg5`
-  projections are read on `pred` itself."
+  "`{:at #{n …} :from n-or-nil}` for `pred` as `context` reads its declarations, through
+  `res/arg-constraints`: the positions a one-position declaration types, and the first
+  position a tail declaration types onward.  Every kind counts — an instance, a type-level
+  or a quoted constraint all say what fills the position — and `args` / `argsGenl` arrive
+  as tails from 1, the `argN` projections (`sx/arg-projections`) as the `arg` their
+  forward rules store."
   [kb pred context]
-  {:at     (into (set (for [k positional-kinds [n _] (declared-rows kb k pred true context)] n))
-                 (for [[k n] sx/arg-projections
-                       :when (do (budget/spend!)
-                                 (seq (res/matches-visible kb (list k pred '?t) context)))]
-                   n))
-   :from   (some->> (for [k rest-kinds [n _] (declared-rows kb k pred true context)] n)
-                    seq (apply min))
-   :every? (boolean (some #(seq (declared-rows kb % pred false context)) every-kinds))})
+  (let [es (res/arg-constraints kb pred context)]
+    (doseq [_ es] (budget/spend!))
+    {:at   (into #{} (keep #(when (:to %) (:from %))) es)
+     :from (some->> es (remove :to) (map :from) seq (apply min))}))
 
 (defn- arity-census
   "`{pred n-or-:variable}` over every predicate `context` sees declared an arity: an
@@ -683,11 +650,11 @@
   says of its members what `(arg P 1 T)` would."
   [kb tx pred arity context]
   (budget/spend!)
-  (let [{:keys [at from every?]} (typed-positions kb pred context)
-        typed?  (fn [n] (or every? (contains? at n) (and from (>= n from))))
+  (let [{:keys [at from]} (typed-positions kb pred context)
+        typed?  (fn [n] (or (contains? at n) (and from (>= n from))))
         n       (if (= :variable arity) (arity-min kb pred context) arity)
         missing (cond-> (vec (remove typed? (range 1 (inc n))))
-                  (and (= :variable arity) (not every?) (not (and from (<= from (inc n)))))
+                  (and (= :variable arity) (not (and from (<= from (inc n)))))
                   (conj :rest))
         missing (if (and (= 1 arity) (= [1] missing)
                          (seq (disj (set (tax/direct-genls tx pred context)) pred)))
