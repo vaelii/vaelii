@@ -2,7 +2,8 @@
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.arity-vocabulary-test
   "The relation-wide exact/variable arity partition and its documentary floor vocabulary."
-  (:require [clojure.test :refer [is testing use-fixtures]]
+  (:require [clojure.set :as set]
+            [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.host.seed :as seed]
             [vaelii.host.starter :as starter]
@@ -1538,3 +1539,38 @@
                  (some->> (v/check (assoc kb :naming :off) s 'CxUniverse) seq (mapv :type)))
               "the spelling half reads the naming policy"))))))
 
+(defn- missing-args
+  "The `:missing-arg` findings as `context` reads the starter, as a set of
+  `[predicate missing-positions]`."
+  [kb context]
+  (into #{} (map (juxt :predicate :missing))
+        (:missing-arg (v/kb-integrity kb #{} context {:categories #{:missing-arg}
+                                                      :max-results 10000}))))
+
+(def ^:private open-positions
+  "The starter's argument positions no declaration types yet, each awaiting a ruling on
+  its type: every slot of the five aggregation operators, the variable a quantifier binds,
+  the quoted example of the three example predicates, the sentexHandle mentions of
+  except, exceptWhen and contradicts with the exception's query, the classifier of
+  partitionedByType, and every position of termsRelated.  ontology_test's
+  undeclared-positions gives the reason the fixed-arity ones among them stay open."
+  '#{[agg/avg [1 2 3]] [agg/count [1 2 3]] [agg/max [1 2 3]] [agg/min [1 2 3]] [agg/sum [1 2 3]]
+     [exists [1]] [forall [1]] [thereExists [1]]
+     [positiveExample [2]] [negativeExample [2]] [borderlineExample [2]]
+     [except [1]] [exceptWhen [1 2]] [contradicts [1 :rest]]
+     [partitionedByType [2]]
+     [termsRelated [1 2 :rest]]})
+
+(tu/deftest-kb every-starter-position-is-typed-but-the-open-ones
+  ;; A middle context's relation and type carry their arity mark in CxUniverse, where the
+  ;; declarations typing them are not visible, so the audit from CxUniverse also reports
+  ;; those.  Read from CxTra and from CxSocialExtension, which between them see every
+  ;; middle context that declares one, each such finding clears; what both still report
+  ;; is a position no declaration types.
+  (let [universe (missing-args kb 'CxUniverse)
+        open     (set/intersection (missing-args kb 'CxTra)
+                                   (missing-args kb 'CxSocialExtension))]
+    (is (= open-positions open))
+    (is (set/subset? open universe))
+    (is (= 41 (count (set/difference universe open)))
+        "the middle-context relations and types cleared from their own context")))
