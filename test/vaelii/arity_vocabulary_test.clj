@@ -1549,13 +1549,11 @@
 
 (def ^:private open-positions
   "The starter's argument positions no declaration types yet, each awaiting a ruling on
-  its type: every slot of the five aggregation operators, the variable a quantifier binds,
-  the quoted example of the three example predicates, the sentexHandle mentions of
-  except, exceptWhen and contradicts with the exception's query, and every position of
-  termsRelated.  ontology_test's undeclared-positions gives the reason the fixed-arity
-  ones among them stay open."
+  its type: every slot of the five aggregation operators, the quoted example of the three
+  example predicates, the sentexHandle mentions of except, exceptWhen and contradicts with
+  the exception's query, and every position of termsRelated.  ontology_test's
+  undeclared-positions gives the reason the fixed-arity ones among them stay open."
   '#{[agg/avg [1 2 3]] [agg/count [1 2 3]] [agg/max [1 2 3]] [agg/min [1 2 3]] [agg/sum [1 2 3]]
-     [exists [1]] [forall [1]] [thereExists [1]]
      [positiveExample [2]] [negativeExample [2]] [borderlineExample [2]]
      [except [1]] [exceptWhen [1 2]] [contradicts [1 :rest]]
      [termsRelated [1 2 :rest]]})

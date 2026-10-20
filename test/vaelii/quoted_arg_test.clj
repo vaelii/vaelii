@@ -187,3 +187,22 @@
       (v/retract! kb (nth hs 2))
       (is (v/believed? kb (nth hs 1) 'CxUniverse) "the declaration's retraction releases 5")
       (doseq [h (rseq (assoc hs 2 nil)) :when h] (v/retract! kb h)))))
+
+(tu/deftest-kb a-quantifier-binds-an-open-expression-taken-as-written
+  ;; Position 1 of a quantifier holds the variable it binds, or a sequence of them, as
+  ;; written.  A variable is open in itself and a sequence of variables has one free, so
+  ;; each is an open_expression; a constant is closed.  A quantifier is never stored, and
+  ;; a constant written as its binder is refused as not well-formed before any argument
+  ;; check runs, so the declaration is read here through the kinds it names.
+  (doseq [q '[forall thereExists exists]]
+    (is (true? (v/ask? kb (list 'quotedArg q 1 'open_expression) 'CxUniverse))
+        (str q " types its binder an open_expression"))
+    (is (empty? (filter #(= q (:predicate %))
+                        (:missing-arg (v/kb-integrity kb #{} 'CxUniverse {:categories #{:missing-arg}
+                                                                          :max-results 10000}))))
+        (str "kb-integrity reports no position of " q " untyped")))
+  (is (true? (v/ask? kb '(open_expression (Quote ?x)) 'CxUniverse)) "one variable")
+  (is (true? (v/ask? kb '(open_expression (Quote (?x ?y))) 'CxUniverse)) "a sequence of variables")
+  (is (not (v/ask? kb '(open_expression (Quote Muffet)) 'CxUniverse)) "a constant is not open")
+  (is (true? (v/ask? kb '(closed_expression (Quote Muffet)) 'CxUniverse))
+      "and is a closed_expression, disjoint from it"))
