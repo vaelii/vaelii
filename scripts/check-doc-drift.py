@@ -1688,7 +1688,7 @@ E17_ALLOW = {
     # of the two rules' contexts — a vantage belonging to neither — so fanning from
     # either would drop a pair the context that can see both would find, and the pair
     # itself is decided scoped.
-    ("src/vaelii/impl/quality.clj", "clash-partners"),
+    ("src/vaelii/impl/integrity.clj", "clash-partners"),
     # The context adjacency read where no reader exists: the settle's `genlCx` moves
     # (an active edge an except reaches, every reader's moves read from it), and the
     # candidate filter in front of a fact's declarations below it, each candidate then asked
