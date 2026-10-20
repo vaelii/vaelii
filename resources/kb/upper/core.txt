@@ -120,13 +120,13 @@
 (genlArg genlArg 3 thing)
 
 (comment arg
-         "(arg ?relation ?position ?type) means that argument ?position of ?relation is of ?type. Its domain includes predicates and functions. Under assertive argument types, the default, it derives that membership of a symbol argument, wherever the declaration is visible, and refuses only a value or an application whose type misses. Under the constraint-only reading it is checked through genl transitivity whenever a sentex is asserted, and open-world: an argument whose type is unknown cannot violate it.")
+         "(arg ?relation ?position ?type) means that argument ?position of ?relation is of ?type. Its domain includes predicates and functions. Under assertive argument types, the default, it derives that membership of a symbol argument, wherever the declaration is visible, and refuses only a value or an application whose type misses. Under the constraint-only reading it is checked through genl transitivity whenever a sentex is asserted, and open-world: an argument whose type is unknown cannot violate it. A KB invariant: every argument position of a relation with a declared arity is typed, by an arg at that position or by an argAndRest from it or an earlier one (args and the arg1 through arg5 projections being spellings of those two), or by a type-level or quoted twin; the kb-integrity :missing-arg category reports a position no declaration types.")
 (ternary_predicate arg)
 (arg arg 1 relation)
 (arg arg 2 positive_integer)
 (genlArg arg 3 thing)
 (comment arg1
-         "(arg1 ?relation ?type) means that argument 1 of ?relation must be of ?type — the binary projection of (arg ?relation 1 ?type), created so a positional argument constraint can itself stand in the subject position of a binary declaration such as (predAllSpecified arg1 relation). The projection and the ternary spelling derive each other, so asserting either keeps both believed and retracting the one that was actually asserted collapses the pair; both are held to the same declaration checks at assert, so neither spelling accepts a declaration the other refuses. The projection relates stored declarations only: a reading arg answers through genl generalization or super-predicate inheritance has no arg1 through arg5 twin, so a generalized or inherited question must be asked of arg itself. arg2, arg3, arg4 and arg5 project positions 2 through 5 the same way.")
+         "(arg1 ?relation ?type) means that argument 1 of ?relation must be of ?type — the binary projection of (arg ?relation 1 ?type), created so a positional argument constraint can itself be the subject of a binary declaration. The projection and the ternary spelling derive each other, so asserting either keeps both believed and retracting the one that was actually asserted collapses the pair; both are held to the same declaration checks at assert, so neither spelling accepts a declaration the other refuses. The projection relates stored declarations only: a reading arg answers through genl generalization or super-predicate inheritance has no arg1 through arg5 twin, so a generalized or inherited question must be asked of arg itself. arg2, arg3, arg4 and arg5 project positions 2 through 5 the same way.")
 (binary_predicate arg1)
 (arg arg1 1 relation)
 (genlArg arg1 2 thing)
@@ -184,7 +184,7 @@
 (genlArg argsGenl 2 thing)
 
 (comment argAndRest
-         "(argAndRest ?relation ?position ?type) means that argument ?position of ?relation and every later position is an instance of ?type. The suffix form of args: the tail from ?position onward, the prefix below it excluded, so a relation whose head positions carry their own arg declarations and whose tail repeats one role is typed exactly. (args P T) states what (argAndRest P 1 T) states. Read position by position, as arg is.")
+         "(argAndRest ?relation ?position ?type) means that argument ?position of ?relation and every later position is an instance of ?type. The suffix form of args: the tail from ?position onward, the prefix below it excluded, so a relation whose head positions carry their own arg declarations and whose tail repeats one role is typed exactly. (args P T) states what (argAndRest P 1 T) states. Read position by position, as arg is. With arg it carries the invariant stated on arg: every argument position of a relation with a declared arity is typed, and the kb-integrity :missing-arg category reports a position no declaration types.")
 (ternary_predicate argAndRest)
 (arg argAndRest 1 relation)
 (arg argAndRest 2 positive_integer)

@@ -876,8 +876,7 @@
                                         " that must recognize one spelling set, and two"
                                         " spellings a rule cycle keeps believed under one check"
                                         " are not that. Exists so a positional constraint can"
-                                        " be the subject of a binary declaration such as"
-                                        " (predAllSpecified arg1 predicate).")}
+                                        " be the subject of a binary declaration.")}
                            (str "checks/declaration-problem — arg's own declaration arms at the"
                                 " projected position, so both spellings of one declaration"
                                 " refuse identically; the bridge rules derive each other, as"
