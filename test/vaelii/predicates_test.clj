@@ -234,7 +234,7 @@
 
   A recorded exception rather than a suppression, as `:stops-short` is: the test below
   refuses an entry that has stopped being true, so one cannot outlive its reason.  Every
-  entry has the same reason: a list read off the declarations is the rule
+  derived entry has the same reason: a list read off the declarations is the rule
   already satisfied, and comparing a derivation with what it derives from checks the
   `=` operator."
   '{argument/declaration-functors
@@ -242,7 +242,9 @@
     taxonomy/arg-declaration-props
     "derived: `(pr/family :argument-constraint)`, keyed to each spelling's own storage"
     taxonomy/functional-family-marks
-    "derived: `(pr/by-family :functional)`, keyed to each spelling's written shape"})
+    "derived: `(pr/by-family :functional)`, keyed to each spelling's written shape"
+    resolution/arg-constraint-kinds
+    "the spellings that type a position, as stored: args and argN arrive as the argAndRest and arg their forward rules store, and interArg, argArg and the homogeneity forms relate positions rather than type one"})
 
 (deftest a-list-that-enumerates-a-family-is-named-here
   ;; What `check-facets`' `:family-list` rule cannot see: its own reach.  The rule
