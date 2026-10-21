@@ -933,7 +933,7 @@
 (tu/deftest-kb a-covering-declaration-prunes-as-arg-does
   ;; `args` and `argAndRest` are `arg` over a run of positions, so whatever reads `arg`
   ;; reads them too: `(argAndRest measures 2 gauge)` types position 2 and every later one,
-  ;; and `(args measures gauge)` is `(argAndRest measures 1 gauge)`.  A tail starting past
+  ;; and `(args measures gauge)` stores `(argAndRest measures 1 gauge)`.  A tail starting past
   ;; the shared term's position says nothing about it.
   (tu/with-terms [gauge record calibrated ledgered measures logged]
     (v/assert kb (list 'genl gauge 'thing) 'CxUniverse)
@@ -953,7 +953,10 @@
         (is (zero? (:pair-count (clashes kb)))
             "a gauge is not a record, read off argAndRest as off arg")
         (v/retract! kb h)))
-    (testing "and so does args, the tail from position 1"
+    (testing "and so does args, through the argAndRest from position 1 core.txt's forward
+              rule stores, restated here since this KB loads no core.txt"
+      (v/assert-rule kb ['(args ?relation ?type)] '(argAndRest ?relation 1 ?type) 'CxUniverse
+                     {:direction :forward})
       (v/assert kb (list 'args measures gauge) 'CxUniverse)
       (is (zero? (:pair-count (clashes kb)))
           "a gauge is not a record, read off args as off arg"))))

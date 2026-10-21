@@ -104,9 +104,10 @@ predicate in the KB. A declaration that stamps nothing has neither problem.
 ```
 
 Binary on purpose: the required filler type is never restated in the declaration — it is
-**derived from the predicate's own slot contract** (`(arg hasPet 2 pet)` here; a
-`genlArg`-typed slot derives a subtype constraint instead, and multiple constraints
-compose conjunctively). A declaration over a predicate with no visible slot typing is a
+**derived from the predicate's own slot contract** (`(arg hasPet 2 pet)` here, or an
+`argAndRest` / `args` reaching the slot; a `genlArg`-typed slot, or one an
+`argAndRestGenl` / `argsGenl` reaches, derives a subtype constraint instead, and
+multiple constraints compose conjunctively). A declaration over a predicate with no visible slot typing is a
 **declaration-contract gap** the audit reports explicitly, never a silently unconstrained
 audit.
 

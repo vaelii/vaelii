@@ -1049,14 +1049,15 @@
 (defn- declared-arg-types
   "The `[position type]` pairs the instance-type declarations bind a `pred` literal of
   `arity` arguments to: `arg`, and the covering `args` / `argAndRest` at every position
-  of the literal they reach.  Read through `checks/instance-type-declarations`, the one
-  reading of the three spellings, so a declaration the entry point honors is one this
-  honors; up the predicate hierarchy, so a super-predicate's declaration types a
+  of the literal they reach.  Read through `res/arg-constraints`, the one reading of
+  every spelling, so a declaration the entry point honors is one this honors; up the
+  predicate hierarchy, so a super-predicate's declaration types a
   sub-predicate's tuple.  A declaration read, not an inference: nothing is derived and no
   fact is consulted, the same standing `separated-antecedents?` and `arity-conflicted?`
   have beside it."
   [kb pred arity context]
-  (for [{:keys [from to type]} (checks/instance-type-declarations kb pred context)
+  (for [{:keys [from to type kind]} (res/arg-constraints kb pred context)
+        :when (= :instance kind)
         n (range from (inc (min (or to arity) arity)))]
     [n type]))
 

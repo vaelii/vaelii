@@ -407,6 +407,29 @@
       (is (seq (v/sentexes-matching kb '(aseen AM1) '?ctx))
           "nothing types AMuffet any more, so the conclusion is re-derived"))))
 
+(deftest a-tail-inferred-type-still-withdraws-the-conclusion
+  (testing "a fact typed by an argAndRest declaration satisfies an exception on the
+            declared type, in either arrival order"
+    ;; Under the constraint reading nothing mints the membership, so only the
+    ;; `ArgTypeProver` inference answers it, and only a re-check reaches the firing.
+    (doseq [[label decl-first?] [["the declaration first" true] ["the fact first" false]]]
+      (tu/without-entailing
+       (tu/with-cleared-kb [kb tu/isolated-fresh]
+         (let [decl! #(v/assert kb '(argAndRest aherdOf 2 amammal) ctx)]
+           (when decl-first? (decl!))
+           (v/assert kb '(exceptWhen (amammal ARex)
+                                     (set/defaultRule (set/forwardRule (implies (and (amark ?x)) (aseen ?x)))))
+                     ctx)
+           (v/assert kb '(amark AM1) ctx)
+           (is (seq (v/sentexes-matching kb '(aseen AM1) '?ctx))
+               (str label ": fires while nothing excepts it"))
+           (v/assert kb '(aherdOf AHerd AMuffet ARex) ctx)
+           (when-not decl-first? (decl!))
+           (is (v/ask? kb '(amammal ARex) ctx)
+               (str label ": the usage at a tail position types the individual"))
+           (is (empty? (v/sentexes-matching kb '(aseen AM1) '?ctx))
+               (str label ": so the exception holds and the conclusion is swept"))))))))
+
 ;; ---- the third channel: a declaration, not a fact -----------------------
 ;;
 ;; A declaration changes what may be concluded from facts already stored, and none of

@@ -139,22 +139,31 @@
     quotedArg   (quotedArg ?n ?type)
     interArg (interArg ?n ?type ?m ?utype)
     argArg   (argArg ?n ?m)
-    args           (args ?type)
     argsGenl        (argsGenl ?type)
     argAndRest      (argAndRest ?start ?type)
     argAndRestGenl  (argAndRestGenl ?start ?type)
     interArgs       (interArgs ?type)
     interArgAndRest (interArgAndRest ?start ?type)})
 
+(def ^:private sugar-spellings
+  "The argument-constraint spellings the entry point never queries, each with the
+  declaration its core.txt forward rule stores in its place: `(args P T)` stores
+  `(argAndRest P 1 T)`, and every instance-level read here is of `arg` and `argAndRest`.
+  The stored twin carries its own handle, justified by the sugar, so a refusal or an
+  entailment names the twin and retracting the sugar takes both with it.  A KB that does
+  not load core.txt has no such rule, and its sugar types nothing at the entry point."
+  '{args argAndRest})
+
 (def constraint-declaration-functors
-  "The argument constraints this namespace reads at the entry point, as a set — `declaration-
-  queries`' keys.
+  "The argument constraints this namespace answers for at the entry point, as a set —
+  `declaration-queries`' keys, which it queries, and the `sugar-spellings` it reads
+  through the declaration their forward rules store.
 
   Public because it is one of the rosters that reads the `:argument-constraint` family
   **as a family**, and `predicates/check-facets` holds those to enumerating exactly it.
   A spelling in the family and not here is one the entry point cannot query for and so never
   convicts; a spelling here and not in the family is one nothing declares."
-  (set (keys declaration-queries)))
+  (into (set (keys declaration-queries)) (keys sugar-spellings)))
 
 (defn- declaration-reader
   "A `kind -> [[handle bindings sentex] …]` reader for the argument constraints binding
@@ -765,13 +774,14 @@
                         (via-clause (declared-of d) pred) ")")})))))
 
 ;; ---- the covering argument constraints -----------------------------------
-;; `arg` and `genlArg` type one numbered position.  `args` / `argsGenl` type EVERY
-;; accepted position, and `argAndRest` / `argAndRestGenl` every position from a start
-;; onward — the tail of a variable-arity relation, where naming a largest finite `arg`
+;; `arg` and `genlArg` type one numbered position.  `argsGenl` types EVERY accepted
+;; position, and `argAndRest` / `argAndRestGenl` every position from a start onward
+;; (`args` is the instance every-position spelling, read as the `(argAndRest P 1 T)` its
+;; forward rule stores — `sugar-spellings`) — the tail of a variable-arity relation, where naming a largest finite `arg`
 ;; would make an unbounded relation look finite and leaving the later positions undeclared
 ;; would drop the contract silently.  Each covering form generalizes its singular twin and
-;; reuses its per-argument conviction: `args` asks the instance question `arg` asks,
-;; `argsGenl` the subtype question `genlArg` asks.
+;; reuses its per-argument conviction: `argAndRest` asks the instance question `arg`
+;; asks, `argsGenl` and `argAndRestGenl` the subtype question `genlArg` asks.
 ;;
 ;; **The walk is over the positions the sentence actually has, not a re-counted tail.**
 ;; every position the sentence has is walked, including one past a length its relation
@@ -793,7 +803,8 @@
     (boolean (some #(seq (tax/props tax %)) kinds))))
 
 (defn- covering-triples
-  "The covering declarations of the every-position kind `ek` and the tail kind `rk`,
+  "The covering declarations of the every-position kind `ek` (nil for none — the instance
+  level has no every-position kind it queries, `sugar-spellings`) and the tail kind `rk`,
   read through the shared `decls` reader and merged into `[start type kind match]`
   entries in content order — start 1 for `ek`, the declared start for `rk`.  A tail
   declaration whose start is not a positive integer is dropped here rather than convicting
@@ -803,39 +814,11 @@
   [decls ek rk]
   (nm/sort-by-content-key
    #(nm/print-key (:sentence (nth (nth % 3) 2))) compare
-   (concat (for [m (decls ek)] [1 (get (nth m 1) '?type) ek m])
+   (concat (when ek (for [m (decls ek)] [1 (get (nth m 1) '?type) ek m]))
            (for [m     (decls rk)
                  :let  [b (nth m 1) s (get b '?start)]
                  :when (and (integer? s) (pos? s))]
              [s (get b '?type) rk m]))))
-
-(defn instance-type-declarations
-  "The instance-type demands on `pred`'s argument positions visible from `context`, as
-  `{:from n :to m :type T}` — `:to` nil for a tail running to the last argument.  The
-  one reading of the three spellings that say a position holds an instance of a type,
-  so a caller asking what `arg` demands is answered for all three and cannot honor one
-  while missing another:
-
-  * `(arg P n T)` types position n, `{:from n :to n}`.
-  * `(argAndRest P n T)` types n and every later position, `{:from n :to nil}`.
-  * `(args P T)` is `(argAndRest P 1 T)` and is read as it, `{:from 1 :to nil}`.
-
-  Read through `declaration-reader`, so a super-predicate's declaration binds a
-  sub-predicate's tuples here as it does at the entry point.  A declaration with a
-  non-symbol or variable type, or a position that is not a positive integer, is dropped:
-  its own declaration refuses it at the entry point, so a stored one is a torn record."
-  [kb pred context]
-  (when (and (symbol? pred) (not (sx/variable? pred)))
-    (let [decls (declaration-reader kb pred context)
-          type? #(and (symbol? %) (not (sx/variable? %)))]
-      (concat
-       (for [[_ b] (decls 'arg)
-             :let  [n (get b '?n) t (get b '?type)]
-             :when (and (integer? n) (pos? n) (type? t))]
-         {:from n :to n :type t})
-       (for [[start t] (covering-triples decls 'args 'argAndRest)
-             :when (type? t)]
-         {:from start :to nil :type t})))))
 
 (defn- suffix-positions
   "The one-based positions from `start` to the last argument of the argument vector `as`
@@ -845,20 +828,22 @@
   (range start (inc (count as))))
 
 (defn- covering-clause
-  "How a covering refusal names the position it convicts: `args, position N` for an
-  every-position form, `argAndRest from M, position N` for a tail form."
+  "How a covering refusal names the position it convicts: `argsGenl, position N` for the
+  every-position form, `argAndRest from M, position N` for a tail form — an `args`
+  declaration's refusal among them, naming the twin its forward rule stores."
   [kind start pos]
-  (if (#{'args 'argsGenl} kind)
+  (if (= 'argsGenl kind)
     (str kind ", position " pos)
     (str kind " from " start ", position " pos)))
 
 (defn- covering-args-problem
-  "First `(args R T)` / `(argAndRest R n T)` violation for a sentence, or nil.  Types
-  every admitted position (or every one from `n` onward) as an **instance** of `T`,
+  "First `(argAndRest R n T)` violation for a sentence, or nil.  Types every position
+  from `n` onward as an **instance** of `T`,
   reusing `args-problem`'s per-argument conviction — `convicting-result-type` for an
   application, `outside-declared-type?` for a symbol or value, and yielding the symbol arm
   to the same entailment under the toggle.  Conjunctive with a singular `(arg R n T)`:
-  both are read, neither overrides.
+  both are read, neither overrides.  An `(args R T)` is read as the `(argAndRest R 1 T)`
+  its forward rule stores (`sugar-spellings`), and the refusal names that twin.
 
   Behind the O(1) gate `inter-args-problem` is, and for the same reason: nothing declares
   a covering constraint yet and this runs on every assert."
@@ -867,9 +852,9 @@
         as   (vec (nm/args sentence))
         tax  (reasoning/taxonomy kb)]
     (when (and (symbol? pred)
-               (covering-declared? kb [:declares-args-isa :declares-arg-and-rest-isa]))
+               (covering-declared? kb [:declares-arg-and-rest-isa]))
       (first
-       (for [[start t kind decl] (covering-triples decls 'args 'argAndRest)
+       (for [[start t kind decl] (covering-triples decls nil 'argAndRest)
              pos   (suffix-positions as start)
              :let  [arg (arg-at as pos)
                     r   (convicting-result-type kb nat/result-types pred arg t context)]
@@ -2421,10 +2406,11 @@
 
 (defn- covering-entailments
   "The entailments the covering declarations draw over `sentence`'s arguments in
-  `context`: `(args R T)` and `(argAndRest R n T)` derive `(T x)` of every symbol
-  argument from their start onward, and `(argsGenl R T)` and `(argAndRestGenl R n T)`
-  derive `(genl x T)`, as `arg` and `genlArg` derive them of one position.  An
-  individual is not given an edge and `(genl T T)` is not drawn, for `arg-entailments`'
+  `context`: `(argAndRest R n T)` derives `(T x)` of every symbol argument from its
+  start onward — an `(args R T)` through the `(argAndRest R 1 T)` its forward rule
+  stores, which is the support the derivation names — and `(argsGenl R T)` and
+  `(argAndRestGenl R n T)` derive `(genl x T)`, as `arg` and `genlArg` derive them of one
+  position.  An individual is not given an edge and `(genl T T)` is not drawn, for `arg-entailments`'
   reasons.  Behind the `:props` gate `covering-args-problem` stands behind."
   [kb sentence context decls]
   (let [pred (nm/functor sentence)
@@ -2440,7 +2426,7 @@
                    {:assert (mint x t) :because (entailment-support kb pred d context)
                     :position pos :kind kind})))]
     (when (and (symbol? pred) (some checkable-term? as))
-      (concat (draw 'args 'argAndRest [:declares-args-isa :declares-arg-and-rest-isa]
+      (concat (draw nil 'argAndRest [:declares-arg-and-rest-isa]
                     (fn [_ _] true) (fn [x t] (list t x)))
               (draw 'argsGenl 'argAndRestGenl [:declares-args-genl :declares-arg-and-rest-genl]
                     (fn [x t] (and (not (nm/individual? x)) (not= x t)))

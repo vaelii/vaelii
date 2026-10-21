@@ -2996,16 +2996,18 @@
 
 (defn- inferred-types
   "Types an individual `x` must have because it fills an arg-constrained argument
-  of a believed relation: for each believed `(P .. x@n ..)` with `(arg P n T')`,
-  `x` is a `T'` and, by genl, every supertype of `T'`.  This is arg read the
-  other way — as an inference, not only a constraint (e.g. Muffet eats Bone1 and eat's
-  2nd argument is food, so Bone1 is food).
+  of a believed relation: for each believed `(P .. x@n ..)` with `(arg P n T')`, or an
+  `(argAndRest P m T')` / `(args P T')` reaching `n`, `x` is a `T'` and, by genl, every
+  supertype of `T'`.  This is arg read the other way — as an inference, not only a
+  constraint (e.g. Muffet eats Bone1 and eat's 2nd argument is food, so Bone1 is food).
 
-  **Whose declarations count is the reader `assert` uses** (`res/constraining-predicates`):
-  `P`'s own, and those of the super-predicates the asking context can see, since a
-  `(genl fatherOf parentOf)` edge makes every `fatherOf` tuple a `parentOf` tuple.  The
-  two readings of one declaration must agree about that or a claim `assert` refuses for
-  being ill-typed is one `ask` cannot type at all.
+  **Whose declarations count is the reader `assert` uses**, read through the argnum
+  chokepoint (`res/arg-constraints-at`): `P`'s own, and those of the super-predicates the
+  asking context can see, since a `(genl fatherOf parentOf)` edge makes every `fatherOf`
+  tuple a `parentOf` tuple.  The two readings of one declaration must agree about that or
+  a claim `assert` refuses for being ill-typed is one `ask` cannot type at all.  The
+  chokepoint holds a predicate's constraints for one stretch of the change clock, so a
+  term used in many tuples of one predicate reads its declarations once.
 
   **And the usage counts only where it can be seen.**  Both sides of the inference are
   read from the asking context — the declaration through `matches-visible`, the tuple
@@ -3022,17 +3024,11 @@
    (for [s (believed-sentexes-with kb x context)
          :let [sen (:sentence s) pred (nm/functor sen) as (vec (nm/args sen))]
          :when (and (symbol? pred) (seq as))
-         ;; above `n`, since whose declarations bind a tuple is a fact about the
-         ;; predicate and not about which of its positions is being read — bound
-         ;; inside, the `genls` closure and its sort run once per argument position
-         :let [ps (res/constraining-predicates kb 'arg pred context)]
          n (range 1 (inc (count as)))
          :when (= x (nth as (dec n)))
-         p ps
-         [_ b] (res/matches-visible kb (list 'arg p n '?t) context)
-         :let [t' (get b '?t)]
-         :when (symbol? t')
-         super (tax/genls (reasoning/taxonomy kb) t' context)]
+         {:keys [type kind]} (res/arg-constraints-at kb pred context n)
+         :when (= :instance kind)
+         super (tax/genls (reasoning/taxonomy kb) type context)]
      super)))
 
 (defrecord ArgTypeProver []

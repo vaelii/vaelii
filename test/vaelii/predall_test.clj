@@ -368,10 +368,10 @@
       (is (= [] (mapv :type (v/check kb (list 'interArg kindOf 1 dog 2 dog) 'CxUniverse)))
           "and so is an interArg over the same relation"))))
 
-(tu/deftest-kb args-entails-argAndRest-from-the-first-position
+(tu/deftest-kb args-derives-argAndRest-from-the-first-position
   ;; `(args P T)` states what `(argAndRest P 1 T)` states, so asking the tail form of a
-  ;; relation declared through the every-position form is answered — proved at query time,
-  ;; so the store keeps the one declaration that was written.
+  ;; relation declared through the every-position form is answered — by the twin a
+  ;; forward rule stores, which is the one the chokepoint (`res/arg-constraints`) reads.
   (tu/with-terms [tally animal]
     (v/assert kb (list 'variable_arity_predicate tally) 'CxUniverse)
     (v/assert kb (list 'genl animal 'thing) 'CxUniverse)
@@ -379,8 +379,9 @@
     (is (= [{'?n 1 '?t animal}]
            (v/query kb (list 'argAndRest tally '?n '?t) 'CxUniverse {:max-depth 3}))
         "args entails argAndRest at 1, and only at 1")
-    (is (empty? (v/sentexes-matching kb (list 'argAndRest tally '?n '?t) 'CxUniverse))
-        "and nothing is stored, so the covering check reads the declaration once")))
+    (is (= [(list 'argAndRest tally 1 animal)]
+           (map :sentence (v/sentexes-matching kb (list 'argAndRest tally '?n '?t) 'CxUniverse)))
+        "and the twin is stored")))
 
 (tu/deftest-kb a-declaration-without-slot-typing-is-a-reported-gap
   ;; missing slot typing is an explicit declaration-contract diagnostic, never a silent
@@ -422,6 +423,27 @@
           "the inherited contract is visible — no spurious gap on a fully-typed sub")
       (is (not (contains? (:violations r) Bob)) "Bob's filler satisfies it")
       (is (contains? (:violations r) Alice) "and Alice, fathering nothing, violates"))))
+
+(tu/deftest-kb tail-slot-typing-reaches-the-audit
+  ;; the audit reads the slot's contract through `res/arg-constraints-at`, so a slot an
+  ;; `argAndRest` or `args` types is typed, as the assert-time checker reads it
+  (tu/with-terms [likes admires person Alice Bob Carol]
+    (v/assert kb (list 'unary_predicate person) 'CxUniverse)
+    (v/assert kb (list 'binary_predicate likes) 'CxUniverse)
+    (v/assert kb (list 'argAndRest likes 2 person) 'CxUniverse)
+    (v/assert kb (list 'binary_predicate admires) 'CxUniverse)
+    (v/assert kb (list 'args admires person) 'CxUniverse)
+    (doseq [x [Alice Bob Carol]] (v/assert kb (list person x) 'CxUniverse))
+    (v/assert kb (list likes Alice Bob) 'CxUniverse)
+    (v/assert kb (list admires Bob Carol) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified likes person) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified admires person) 'CxUniverse)
+    (let [r (predall/specified-violations kb likes person 'CxUniverse)]
+      (is (= :audited (:status r)) "argAndRest from 2 types the audited slot")
+      (is (= #{Bob Carol} (:violations r))))
+    (let [r (predall/specified-violations kb admires person 'CxUniverse)]
+      (is (= :audited (:status r)) "args types every slot, the audited one included")
+      (is (= #{Alice Carol} (:violations r))))))
 
 (tu/deftest-kb a-type-relation-slot-audits-the-type-position-arm
   ;; the type_relation_predicate arm in isolation, content and all: the checker has no
@@ -625,11 +647,11 @@
   ;; than the product of the two.  Nothing about the ANSWER changes if the derivation
   ;; moves back inside the loop — the same violations come out — and the growth stays
   ;; linear in the members either way, so neither the suite nor a perf ratio would see
-  ;; it.  The count is the instrument that does: two reaches, one for `arg` and one for
-  ;; `genlArg`, whatever the collection's size.
+  ;; it.  The count is the instrument that does: one reach per declaration functor the
+  ;; chokepoint reads (`res/arg-constraints`, six), whatever the collection's size.
   (let [small (contract-derivations 10)
         large (contract-derivations 200)]
-    (is (= 2 small) "one reach per constraining declaration functor, and no more")
+    (is (= 6 small) "one reach per constraining declaration functor, and no more")
     (is (= small large)
         (str "20x the audited members derives the contract the same number of times — "
              small " against " large))))

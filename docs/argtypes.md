@@ -129,7 +129,23 @@ admitted tail instead: every accepted position of `R` is an instance of `T`. `(a
 T)` is the subtype reading — `argsGenl` to `genlArg` what `args` is to `arg`. `(argAndRest
 R n T)` and `(argAndRestGenl R n T)` type position `n` and every later one, so a relation
 whose head positions carry their own `arg` declarations and whose tail repeats one role is
-typed exactly. `(args R T)` states what `(argAndRest R 1 T)` states.
+typed exactly. `(args R T)` states what `(argAndRest R 1 T)` states, and a forward rule
+in `core.txt` stores that `argAndRest` beside it.
+
+What a position is declared to hold is read through one chokepoint,
+`res/arg-constraints` (the whole list) and `res/arg-constraints-at` (the entries covering
+one position). At the instance level it looks up `arg` and `argAndRest` alone: `args`
+reaches it through the twin its rule stores, and the `argN` projections through the `arg`
+theirs store. The type-level `genlArg`, `argAndRestGenl` and `argsGenl` and the quoted
+`quotedArg` come back on the same entries under their own kind. `ArgTypeProver`, the
+`predAllSpecified` audit, `kb-integrity`'s `:missing-arg` and `:genl-arg-widening` passes
+and the rule-pair quality report read through it. The list is held for one stretch of the
+change clock, so a read-only caller asking per fact reads the store once per predicate.
+The assert-time checks look up the same two at the instance level: `args` is refused,
+and derives memberships, through its stored `argAndRest` twin, whose handle is the support
+an entailment names. Retracting the `args` takes the twin, and everything resting on it,
+with it. A KB that does not load `core.txt` has no such rule, so there an `args`
+declaration types nothing; state `argAndRest` instead.
 
 A valid unbounded tail: a `variable_arity` `herd` with `(arityMin herd 2)` and `(args herd
 animal)` accepts `(herd Rex Bossy)` and `(herd Rex Bossy Clarabelle)` and derives

@@ -735,6 +735,13 @@
   (v/import! kb (starter-dump) {:belief? true})
   kb)
 
+(def args-sugar-rule
+  "core.txt's forward rule storing the `(argAndRest P 1 T)` an `(args P T)` stands for.
+  The engine reads `args` only through that twin, so a test about the `args` spelling on
+  a KB that does not load core.txt asserts this first; a test that only needs a tail typed
+  from 1 states `argAndRest` instead."
+  '(set/forwardRule (implies (args ?relation ?type) (argAndRest ?relation 1 ?type))))
+
 ;; ---- the upper ontology, built once and copied --------------------------
 
 (def core-build-space

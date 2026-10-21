@@ -66,38 +66,26 @@
 
 (defn- slot-typings
   "The visible slot-`n` typing constraints binding `pred`'s tuples in `ctx`, as a set
-  of `{:check :membership|:subtype|:type-position :type t}` entries — one per believed
-  `(arg cp n t)` (membership) and `(genlArg cp n t)` (subtype) over **every predicate
-  `cp` whose declarations bind a `pred` tuple** (`res/constraining-predicates`: `pred`
-  itself plus the super-predicates its `genl` closure reaches, the same union
-  `checks/declaration-reader` realizes for the assert-time checker), plus one
+  of `{:check :membership|:subtype|:type-position :type t}` entries — one per instance
+  constraint (`arg`, or an `argAndRest` / `args` reaching `n`: membership) and per
+  type-level one (`genlArg`, `argAndRestGenl`, `argsGenl`: subtype) the argnum chokepoint
+  answers for slot `n` (`res/arg-constraints-at`), over `pred` and every super-predicate
+  whose declarations bind its tuples, the union the assert-time checker reads; plus one
   `:type-position` entry when `pred` is a believed `type_relation_predicate` — core.txt's
   note beside `genl`: \"the position is not thereby unconstrained: genl is a
   type_relation_predicate, which says of every one of its positions what genlArg says
-  of one.\"
-
-  The per-ancestor reads keep the variable ground where it matters: an open
-  `(arg pred n ?t)` is answered by `FactProver` alone (`MetaConstraintProver` is
-  ground-goal-only), so a single free-variable ask on the bare predicate would miss
-  every inherited declaration — the audit walks the closure itself and asks each
-  constraining predicate for its stored declarations, which is how it reads the same
-  union the checker reads.
+  of one.\"  A `quotedArg` constrains the filler as written, not what it denotes, and
+  is not read here.
 
   A set, because the constraints compose as an unordered conjunction and the same
   constraint reached through two ancestors is one question."
   [kb pred n ctx]
   (into #{}
         cat
-        [(for [cp (res/constraining-predicates kb 'arg pred ctx)
-               b  (quasiquote/ask-prepared kb (list 'arg cp n '?t) ctx)
-               :let [t (get b '?t)]
-               :when (some? t)]
-           {:check :membership :type t})
-         (for [cp (res/constraining-predicates kb 'genlArg pred ctx)
-               b  (quasiquote/ask-prepared kb (list 'genlArg cp n '?t) ctx)
-               :let [t (get b '?t)]
-               :when (some? t)]
-           {:check :subtype :type t})
+        [(for [{:keys [type kind]} (res/arg-constraints-at kb pred ctx n)
+               :let [check (case kind :instance :membership :type :subtype nil)]
+               :when check]
+           {:check check :type type})
          (when (ask? kb (list 'type_relation_predicate pred) ctx)
            [{:check :type-position :type 'thing}])]))
 

@@ -250,26 +250,37 @@
           (when (= 'transitive (nm/functor sentence))
             (recheck-preserving-along kb pred)))))))
 
+(def ^:private instance-type-shapes
+  "The declarations `ArgTypeProver` reads a membership from (`res/arg-constraints`'
+  `:instance` kind), each with the length of its sentence and the index its type sits at."
+  '{arg [4 3] argAndRest [4 3]})
+
+(defn- declared-instance-type
+  "The type `sentence` declares when it is one of the `instance-type-shapes`, else nil."
+  [sentence]
+  (when-let [[len at] (get instance-type-shapes (nm/functor sentence))]
+    (when (= len (count sentence))
+      (let [t (nth sentence at)] (when (symbol? t) t)))))
+
 (defn- arg-declared-types
-  "The types some `(arg pred n T)` declares of `pred`'s argument positions — read off
-  the roots rather than through `matches-visible`, and globally rather than per context,
-  because a trigger has to be conservative in the direction the answer is and a
-  declaration this context cannot see still qualifies a rule in one that can.
+  "The types some `(arg pred n T)` or `(argAndRest pred n T)` declares of `pred`'s
+  argument positions — read off the roots rather than through `matches-visible`,
+  and globally rather than per context, because a trigger has to be conservative in the
+  direction the answer is and a declaration this context cannot see still qualifies a
+  rule in one that can.
 
   `pred`'s **super-predicates** are read too, and globally for the same reason: a
   declaration on `parentOf` types the arguments of a `fatherOf` fact
   (`res/constraining-predicates`), so a trigger keyed on the exact functor would miss
   exactly the channel the descension opened."
   [kb pred]
-  (let [idx (:index kb)]
-    (when (pos? (reads/stored-count-with-functor idx 'arg))
+  (let [idx (:index kb)
+        fs  (filter #(pos? (reads/stored-count-with-functor idx %)) (keys instance-type-shapes))]
+    (when (seq fs)
       (into #{}
-            (comp (mapcat #(reads/as-stored-with-args idx 'arg {1 %}))
+            (comp (mapcat (fn [q] (mapcat #(reads/as-stored-with-args idx % {1 q}) fs)))
                   (keep #(p/get-sentex (:records kb) %))
-                  (map :sentence)
-                  (filter #(and (= 'arg (nm/functor %)) (= 4 (count %))))
-                  (map #(nth % 3))
-                  (filter symbol?))
+                  (keep #(declared-instance-type (:sentence %))))
             (tax/genls-global (reasoning/taxonomy kb) pred)))))
 
 (defn- recheck-arg-inferred
@@ -283,15 +294,16 @@
   it correctly drop, so which you get depends on when the fact arrived.
 
   Both arrival orders come here, and `sen` says which: a fact on `P`, whose declared
-  argument types are read; or the `(arg P n T)` declaration itself, which does the
-  same to every fact of `P` already stored.
+  argument types are read; or the `(arg P n T)` declaration itself (or an `argAndRest`
+  one, which the prover reads as it reads `arg`, and which an `args` declaration's
+  forward rule stores), which does the same to every fact of `P` already stored.
 
   `:all`, for `recheck-preserving-along`'s reason: what moved is a fact about `P` (or a
   declaration about `P`'s argument positions), and the exception is about `T`, so the
   sentence could not narrow the right firings anyway.
 
-  Free for a KB that declares no `arg` — one cardinality read, and
-  `arg-declared-types` stops there.  A KB that declares plenty pays before the roster
+  Free for a KB that declares no `arg` or `argAndRest` — a cardinality read per functor,
+  and `arg-declared-types` stops there.  A KB that declares plenty pays before the roster
   is probed at all: the seed walks `genls(pred)`, reads the `arg` postings on each and
   fetches a record per posting.  What a KB stating no exception over a declared type saves
   is only the tail — the probe per supertype answers empty and nothing is queued.
@@ -299,8 +311,8 @@
   The `genls` fan is unscoped, for `recheck-declaration`'s reason."
   [kb pred sen]
   (let [idx (:index kb)]
-    (when-let [ts (seq (if (= 'arg pred)
-                         (when (= 4 (count sen)) (filter symbol? [(nth sen 3)]))
+    (when-let [ts (seq (if (contains? instance-type-shapes pred)
+                         (some-> (declared-instance-type sen) vector)
                          (arg-declared-types kb pred)))]
       (doseq [t  ts
               t' (tax/genls-global (reasoning/taxonomy kb) t)]
@@ -1668,8 +1680,11 @@
   "The argument-constraint declarations that entail, with the arity each is written at —
   the roster `entail-existing` dispatches on, so another kind is one line rather than a
   widened `and`.  Every kind of the `:argument-constraint` family but `quotedArg`, which
-  types the term as written and has nothing to derive (docs/argtypes.md)."
-  '{arg 3, argArg 3, genlArg 3, interArg 5, args 2, argAndRest 3, argsGenl 2,
+  types the term as written and has nothing to derive (docs/argtypes.md), and `args`,
+  which entails through the `(argAndRest P 1 T)` its core.txt forward rule stores: that
+  twin's arrival sweeps the stored facts, and its handle is what each mint rests on
+  (`checks/covering-entailments`)."
+  '{arg 3, argArg 3, genlArg 3, interArg 5, argAndRest 3, argsGenl 2,
     argAndRestGenl 3, interArgs 2, interArgAndRest 3})
 
 (def ^:private mint-informants

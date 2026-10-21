@@ -229,6 +229,20 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `(partitionedByType W C A B …)`, and state each cell's membership `(C A)`.
   *Breaks:* `partitionedByType`
 
+- **`(args R T)` derives `(argAndRest R 1 T)`.** A `set/forwardRule` in `core.txt` states
+  the entailment the two spellings' comments describe and stores the `argAndRest` twin, so
+  `query (argAndRest R ?n ?t)` answers `[{?n 1 ?t T}]` of a relation declared only
+  through `args`, and the readers of what a position holds (`res/arg-constraints`) look up
+  `arg` and `argAndRest` alone. So do the assert-time checks: an `args` declaration is
+  refused, and derives memberships, through the twin, whose handle an entailment rests on
+  and whose `argAndRest from 1, position N` a refusal names. Retracting the `args`
+  declaration retracts the twin. [argtypes.md](docs/argtypes.md).
+
+  *Migration:* a KB that loads `core.txt` needs none. A KB that does not has no forward
+  rule, so its `args` declarations type nothing: state `(argAndRest R 1 T)` instead, or
+  assert the rule.
+  *Breaks:* `args`, `assert`, `check`
+
 ### Additive
 
 - **A quoted application is classified by what the KB states of its head.** Under a
@@ -252,15 +266,6 @@ it — `git show v0.16.0:CHANGELOG.md`.
   proves `(arity ?r 2)` from `(binary ?r)`; `kb-integrity`'s `:implicit-arity-class` pass
   applies it instead, and every predicate and function the starter ships states its class.
   [taxonomy.md](docs/taxonomy.md#relations-and-arity-policy).
-
-  *Class:* **Additive** (shipped ontology content).
-  *Migration:* none.
-
-- **`(args R T)` proves `(argAndRest R 1 T)`.** A `set/backwardRule` in `core.txt` states
-  the entailment the two spellings' comments describe, so `query (argAndRest R ?n ?t)` at
-  depth 3 answers `[{?n 1 ?t T}]` of a relation declared only through `args`. Nothing is
-  stored, and the engine reads both spellings through one reader that takes `args` as
-  `argAndRest` from 1. [argtypes.md](docs/argtypes.md).
 
   *Class:* **Additive** (shipped ontology content).
   *Migration:* none.
@@ -478,6 +483,24 @@ it — `git show v0.16.0:CHANGELOG.md`.
   *Class:* **Additive**.
 
 ### Fix: answers
+
+- **`ArgTypeProver` types a term at a position an `argAndRest` declaration types.** A
+  believed `(P … x …)` with `x` at position `n` or later beside `(argAndRest P n T)`
+  answers `(T x)`, as `(arg P n T)` at `x`'s position does; `(args P T)` answers through
+  the `argAndRest` twin its rule stores. The exception re-check that follows the inference
+  reads the same declarations, in both arrival orders. The prover reads a predicate's
+  declarations through `res/arg-constraints-at`, held for one stretch of the change clock.
+  [argtypes.md](docs/argtypes.md)
+
+  *Migration:* none. Under the constraint-only reading, `ask` answers such a membership
+  where it answered nothing.
+
+- **A `predAllSpecified` or `predSpecifiedAll` slot typed by a tail declaration is
+  audited.** A slot typed only by `argAndRest`, `args`, `argAndRestGenl` or `argsGenl`
+  reported `{:status :gap :gap :missing-slot-typing}`; the audit now derives its contract
+  from those declarations as from `arg` and `genlArg`. [predall.md](docs/predall.md)
+
+  *Migration:* none. A declaration that reported the gap reports `:audited`.
 
 - **A commutative binary function is not concluded `symmetric`.** `core.txt`'s rule
   `(commutative ?p) ∧ (arity ?p 2) → (symmetric ?p)` reads `(predicate ?p)` beside the

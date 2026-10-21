@@ -858,8 +858,7 @@
                                         " that must recognize one spelling set, and two"
                                         " spellings a rule cycle keeps believed under one check"
                                         " are not that. Exists so a positional constraint can"
-                                        " be the subject of a binary declaration such as"
-                                        " (predAllSpecified arg1 predicate).")}
+                                        " be the subject of a binary declaration.")}
                            (str "checks/declaration-problem — arg's own declaration arms at the"
                                 " projected position, so both spellings of one declaration"
                                 " refuse identically; the bridge rules derive each other, as"
@@ -1022,11 +1021,13 @@
                                    " special/declaration-subjects and posts no re-check —"
                                    " quotedArg's reason at the covering arity.")}
                              :notes (str "the every-position instance twin of arg: one"
-                                         " declaration types the whole admitted tail, read"
-                                         " through the shared declaration reader so a"
-                                         " super-predicate's covering constraint binds a"
-                                         " sub-predicate's tuples."))
-                      "checks/covering-args-problem — every accepted position typed as an instance")]
+                                         " declaration types the whole admitted tail.  Sugar"
+                                         " for (argAndRest P 1 T), which core.txt's forward"
+                                         " rule stores beside it; the entry point reads that"
+                                         " twin, never args, so a super-predicate's covering"
+                                         " constraint binds a sub-predicate's tuples as"
+                                         " argAndRest's does."))
+                      "checks/covering-args-problem — every accepted position typed as an instance, through the argAndRest twin")]
      ['argsGenl (enforced (assoc (prop :declares-args-genl :arg :relation
                                        :facets #{:convicts :answers})
                                  :shape  {:args [:relation :type]}
