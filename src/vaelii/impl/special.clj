@@ -1675,7 +1675,7 @@
 (def ^:private mint-informants
   "The informants an argument declaration's mint is justified under: the kinds
   `entailing-declarations` names, and `resultArg`, whose mint types a reified constant
-  off its `termOfUnit` fact (`checks/result-arg-rows`)."
+  off its `natFormula` fact (`checks/result-arg-rows`)."
   (conj (set (keys entailing-declarations)) 'resultArg))
 
 (defn mint-informant?
@@ -2076,7 +2076,7 @@
   no `genlCx` edge comes up to `context` (`tax/context-children-global`).  A posting whose
   count (one count read) exceeds `context`'s descendants is read narrowed to the contexts
   that share a descendant with `context`, so a declaration in a context no descendant
-  sees is not read.  A `termOfUnit` fact meets the `resultArg`s written of
+  sees is not read.  A `natFormula` fact meets the `resultArg`s written of
   its expression's function, read off their argument root."
   [kb sentence handle context]
   (let [tax  (reasoning/taxonomy kb)
@@ -2106,9 +2106,9 @@
                      :let  [pl (pair-placements kb fsx dsx)]
                      :when (and (seq pl) (not= [context] pl))]
                  [h pl])
-               ;; a `termOfUnit` fact meets the `resultArg`s written of its function
+               ;; a `natFormula` fact meets the `resultArg`s written of its function
                (let [e (nth sentence 2 nil)]
-                 (when (and (= 'termOfUnit pred) (sequential? e) (symbol? (first e)))
+                 (when (and (= 'natFormula pred) (sequential? e) (symbol? (first e)))
                    (for [h     (sort (reads/as-stored-with-args idx 'resultArg {1 (first e)}))
                          :let  [dsx (p/get-sentex recs h)]
                          :when (and dsx (= 2 (nm/arity (:sentence dsx))))
@@ -2119,7 +2119,7 @@
 (defn- note-unmintable-fact!
   "Keep the fact `sentence` stored at `h` waiting when an `argArg` declaration visible
   from one of `contexts` names, at the fact's own argument, a type `mintable-type?`
-  refuses, or a `resultArg` names one at the expression of a `termOfUnit` fact.  Neither
+  refuses, or a `resultArg` names one at the expression of a `natFormula` fact.  Neither
   names a type of its own (`declared-types`), so the wait is on the fact, and
   `release-mint!` draws the fact's mints once the type is mintable, which is what the
   other arrival order drew.  A no-op on a KB that stores no `argArg` or `resultArg`."
@@ -2297,14 +2297,14 @@
            (cond->> preds limit (sort-by nm/name-key))))))
 
 (defn- result-arg-extent
-  "The stored `termOfUnit` facts whose expression is an application of the function `f`,
+  "The stored `natFormula` facts whose expression is an application of the function `f`,
   read off the term index, which posts the terms of the expression: the extent a
   `(resultArg f n)` binds."
   [kb f]
   (let [recs (:records kb)]
     (into [] (comp (keep #(p/get-sentex recs %))
                    (filter #(let [s (:sentence %) e (nth s 2 nil)]
-                              (and (= 'termOfUnit (nm/functor s)) (sequential? e) (= f (first e))))))
+                              (and (= 'natFormula (nm/functor s)) (sequential? e) (= f (first e))))))
           (sort (reads/as-stored-with-term (:index kb) f)))))
 
 (defn- declared-types
@@ -2383,7 +2383,7 @@
   off `P` alone would mint over `(parentOf …)` and not over `(fatherOf …)` —
   a type the same three sentences produce in one arrival order and not the other.
   `subtree-sentexes` reads it, and snapshots it before the first mint.  A `(resultArg F
-  n)` binds the stored `termOfUnit` facts of `F`'s applications (`result-arg-extent`).
+  n)` binds the stored `natFormula` facts of `F`'s applications (`result-arg-extent`).
 
   A declaration whose type is not mintable reads no extent: every arm asks
   `checks/mintable-type?` of that type before it draws, so no fact would yield an

@@ -110,9 +110,9 @@
     (and (quasiquote-form? term) (sx/ground-term? term))
     (reify-fn (list quote-function (strip-unquotes (second term))))
     ;; a mention is opaque — a quoting function's application (`Quote`, or an open/nested
-    ;; `Quasiquote`) or a quoting-predicate payload (`termOfUnit` / `rewriteOf`, the reified
+    ;; `Quasiquote`) or a quoting-predicate payload (`natFormula` / `rewriteOf`, the reified
     ;; NAT's own bookkeeping): a `Quasiquote` nested inside is literal syntax, not reduced
-    ;; here.  Without this the `(termOfUnit K E)` re-assert `mint-nat!` makes would re-run
+    ;; here.  Without this the `(natFormula K E)` re-assert `mint-nat!` makes would re-run
     ;; over `E` and reduce a nested construction the write already fixed, leaving it stored
     ;; one way and queried (top level only) another.
     (and (seq? term)

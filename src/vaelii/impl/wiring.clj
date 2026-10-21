@@ -40,7 +40,7 @@
   un-reconciled for the caller to settle once, later.  Three callers bind it:
 
   - a rule firing minting a skolem NAT mid-fixpoint (`vaelii.impl.skolem`): the nested
-    `(termOfUnit K E)` assert is monotonic bookkeeping and the enclosing firing settles
+    `(natFormula K E)` assert is monotonic bookkeeping and the enclosing firing settles
     once when it finishes, so settling per mint would be redundant churn — and worse,
     would relabel belief inside the running chain (docs/skolem.md);
   - a placed conclusion minting the constants of its ground reifiable NATs
@@ -60,7 +60,7 @@
 
 ;; `assert-sentence` runs the full assertion path.  Three namespaces call it from inside
 ;; the chaining fixpoint `vaelii.core/assert` itself started: `vaelii.impl.nat` (a reified
-;; NAT stores its `(termOfUnit K E)` map and its materialized types), `vaelii.impl.skolem`
+;; NAT stores its `(natFormula K E)` map and its materialized types), `vaelii.impl.skolem`
 ;; (a firing mints its witness) and `vaelii.impl.quasiquote` (declaring the four marks
 ;; quasiquotation runs on).  Storing is a *whole* assert — naming, the definitional checks,
 ;; the index, chaining, settle — so the write path runs chaining, and chaining calls back

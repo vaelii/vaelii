@@ -17,16 +17,16 @@
                              and unit readable for a downstream prover; it is never
                              minted.
 
-  The constant↔expression map is itself an ordinary stored fact, `(termOfUnit K E)`
+  The constant↔expression map is itself an ordinary stored fact, `(natFormula K E)`
   in CxUniverse, so the inverted term index makes `E`'s constituents (and `K`)
   discoverable natively — no KV side tables.  `K` stays STABLE across renames: a
-  rename rewrites the expression inside the one `termOfUnit` sentex in place, and
+  rename rewrites the expression inside the one `natFormula` sentex in place, and
   nested NATs referencing `K` need no cascade.
 
   This namespace holds the detectors, the index-backed lookups, display expansion,
   and the reify — **both** modes: the read-mode (dedup, never mint) and the
   write-mode (mint a fresh constant, materialize its result types, merge rename
-  collisions).  The write-mode stores its `termOfUnit` and result-type facts through the
+  collisions).  The write-mode stores its `natFormula` and result-type facts through the
   full assert path, reached by `vaelii.impl.wiring` — which is where the reason that is
   not an ordinary require is written down.  So all NAT reification lives here.
 
@@ -59,7 +59,7 @@
   in a sentex's context slot mints one, whatever is declared about `F`
   (docs/context-nat.md).  A `cx/` constant classifies as a *context*, so it can be a
   sentex's context slot and a `genlCx` node, while its structural argument stays readable
-  in the `termOfUnit` map.  Distinct from `nat/` because role-reading is spelling-only
+  in the `natFormula` map.  Distinct from `nat/` because role-reading is spelling-only
   (docs/naming.md): the namespace, not a belief, carries the context role."
   "cx")
 
@@ -67,11 +67,11 @@
   "The two reserved namespaces a reified constant lives in — object (`nat/`) and
   context (`cx/`).  Everything that asks 'is this an opaque reified constant' — display,
   the `K → E` lookup, the orphan sweep — keys on membership here, since both kinds carry
-  a `termOfUnit` map and reify the same way; only the mint namespace and the role differ."
+  a `natFormula` map and reify the same way; only the mint namespace and the role differ."
   #{"nat" "cx"})
 
 (def universal-context
-  "Where every NAT bookkeeping fact lives — `(reifiable_function F)`, `(termOfUnit K
+  "Where every NAT bookkeeping fact lives — `(reifiable_function F)`, `(natFormula K
   E)`, `(result F T)`, and a minted reified NAT's materialized types — so it is visible
   from every context, matching the other universal vocabulary."
   sx/root-context)
@@ -86,14 +86,14 @@
 (def nat-quoting-predicates
   "Predicates whose NAT-bearing argument is a *quoted* expression and must NOT be
   reified or type-checked as a term: the arg holds the literal NAT being mapped
-  (`termOfUnit`) or reified-to-a-real-term (`rewriteOf`)."
-  '#{termOfUnit rewriteOf})
+  (`natFormula`) or reified-to-a-real-term (`rewriteOf`)."
+  '#{natFormula rewriteOf})
 
 (defn reified-nat-symbol?
   "True iff `term` is a reified constant — a symbol in one of the two reserved
   reified namespaces, object (`nat/`) or context (`cx/`).  Despite the object-case name it
   recognizes both kinds: every caller wants 'is this an opaque
-  reified constant', which both are — they share the `termOfUnit` map, the
+  reified constant', which both are — they share the `natFormula` map, the
   display expansion, and the orphan sweep."
   [term]
   (and (symbol? term) (contains? reified-namespaces (namespace term))))
@@ -200,12 +200,12 @@
 (defn any-reified-constants?
   "Gate for the maintenance a reified constant owes (the orphan sweep, the collision merge,
   the structural `genlCx` producer): does the KB declare a `reifiable_function`, or store
-  a `termOfUnit` map?  A context slot mints a `cx/` constant with no declaration
+  a `natFormula` map?  A context slot mints a `cx/` constant with no declaration
   (`maybe-reify-context`), so the in-memory read alone misses a KB whose only constants
   are contexts.  The in-memory read first, then one O(1) functor count."
   [kb]
   (or (any-reifiable-functions? kb)
-      (pos? (reads/stored-count-with-functor (:index kb) 'termOfUnit))))
+      (pos? (reads/stored-count-with-functor (:index kb) 'natFormula))))
 
 (def context-type
   "The type a `(result F context)` declaration names: `F`'s applications denote contexts,
@@ -214,7 +214,7 @@
 
 (defn context-function-believed?
   "True iff CxUniverse believes a `(result head context)` declaration it sees: what a read
-  of a context slot `(head a…)` requires.  The slot resolves through the `termOfUnit` map,
+  of a context slot `(head a…)` requires.  The slot resolves through the `natFormula` map,
   which every reader reads in CxUniverse (`dedup-constant`), so the declaration is read
   there too: stated in a context CxUniverse sees, and hidden by no `except` or `defeat` in
   force at CxUniverse (`res/supporter-visible?`)."
@@ -290,7 +290,7 @@
        (sx/ground-term? form)))
 
 ;; ---- index-backed lookups ------------------------------------------------
-;; `E → K` (dedup) and `K → E` (reverse) are both `(termOfUnit …)` queries — the
+;; `E → K` (dedup) and `K → E` (reverse) are both `(natFormula …)` queries — the
 ;; functor/argument roots answer them, so no new IndexStore method is needed.  Reads
 ;; are belief-filtered by `kb/sentexes-matching`, so a superseded spelling (a renamed reified NAT's old
 ;; expression) does not answer.
@@ -316,10 +316,10 @@
   (when (reified-nat-symbol? nat-sym)
     (authoritative-expression
      (keep #(nth (:sentence %) 2 nil)
-           (kb/sentexes-matching kb (list 'termOfUnit nat-sym '?e) universal-context)))))
+           (kb/sentexes-matching kb (list 'natFormula nat-sym '?e) universal-context)))))
 
 (defn- in-namespace?
-  "Does the term `k` a `termOfUnit` map names belong to reify namespace `ns`?  A context
+  "Does the term `k` a `natFormula` map names belong to reify namespace `ns`?  A context
   slot's constant is a context (`nm/context?`: a `cx/` constant, or the `Cx…` term a
   `rewriteOf` migrated it onto), and an argument's is any other term.  The two partition
   the map, so each is 1:1 on its own and one expression maps once per namespace."
@@ -337,7 +337,7 @@
   yielded first."
   ([kb E] (dedup-constant kb E nat-namespace))
   ([kb E ns]
-   (->> (kb/sentexes-matching kb (list 'termOfUnit '?k E) universal-context)
+   (->> (kb/sentexes-matching kb (list 'natFormula '?k E) universal-context)
         (map #(second (:sentence %)))
         (filter #(in-namespace? ns %))
         sort
@@ -562,13 +562,13 @@
 
 (defn- minted-applications
   "The `[expression constant]` pairs already minted for function `f` in argument
-  position — its `nat/` `termOfUnit` entries, reached through the **inverted term index**
+  position — its `nat/` `natFormula` entries, reached through the **inverted term index**
   (which descends into a ground compound, so the expression's head is one of its posted
   terms) rather than by reading the whole map."
   [kb f]
   (->> (kb/find-sentexes kb f)
        (filter #(and (= universal-context (:context %))
-                     (= 'termOfUnit (nm/functor (:sentence %)))
+                     (= 'natFormula (nm/functor (:sentence %)))
                      (jtms/in? (reasoning/tms kb) (:id %))))
        (keep (fn [{[_ k E] :sentence}]
                (when (and (seq? E) (= f (first E)) (in-namespace? nat-namespace k)) [E k])))
@@ -612,7 +612,7 @@
   "Reify every reifiable ground NAT subterm of literal/sentence `s`, calling
   `nat-fn` (a `(fn [kb form])`) at each one — it returns the NAT's constant, having
   reified any nested NAT args itself.  Quoting-predicate arguments
-  (`termOfUnit` / `rewriteOf`) are left opaque, as is every head predicate.
+  (`natFormula` / `rewriteOf`) are left opaque, as is every head predicate.
 
   **A vector is descended element by element, and every element of it.**  A vector in a
   sentence is a *list of forms* rather than a literal — an `exceptWhen`'s conjuncts, a
@@ -759,8 +759,8 @@
   "`[survivor [dup …]]` per expression that more than one constant names in one reify
   namespace, survivor lexicographically smallest so the choice is content-keyed.  An
   expression's `nat/` and `cx/` constants are no collision (`in-namespace?`)."
-  [termOfUnit-sentences]
-  (->> termOfUnit-sentences
+  [nat-formula-sentences]
+  (->> nat-formula-sentences
        ;; group by expression E and the namespace of its constant
        (group-by (juxt #(nm/context? (second %)) #(nth % 2)))
        (keep (fn [[_ sents]]
@@ -775,12 +775,12 @@
   Reads the whole map, so this is the answer *about the KB*; the maintenance after a
   rename asks the narrower question `collisions-touching` instead."
   [kb]
-  (group-collisions (map :sentence (kb/sentexes-matching kb '(termOfUnit ?k ?e) universal-context))))
+  (group-collisions (map :sentence (kb/sentexes-matching kb '(natFormula ?k ?e) universal-context))))
 
 (defn- collisions-touching
   "The collisions a merge of `terms` can have created.  A migration twin restates its
   expression under the class **representative**, so every constant in such a collision
-  has a `termOfUnit` sentex naming one of those terms — which the inverted term index
+  has a `natFormula` sentex naming one of those terms — which the inverted term index
   answers directly, in the size of the class rather than the size of the map.
 
   Complete for what a merge produces: the twin names the representative, and so does
@@ -791,7 +791,7 @@
     (->> (into #{} (mapcat #(kb/find-sentexes kb %))
                (into #{} (mapcat (fn [t] [t (rep t)])) terms))
          (filter (fn [sx] (and (= universal-context (:context sx))
-                               (= 'termOfUnit (nm/functor (:sentence sx)))
+                               (= 'natFormula (nm/functor (:sentence sx)))
                                (jtms/in? (reasoning/tms kb) (:id sx)))))
          (map :sentence)
          group-collisions)))
@@ -811,7 +811,7 @@
   constant.
 
   Empty for a **context** constant, mirroring the mint: `mint-nat!` writes a `cx/`
-  constant's `termOfUnit` and nothing else, result types and the correspondence being
+  constant's `natFormula` and nothing else, result types and the correspondence being
   object-denoting concerns a place is not (docs/context-nat.md).  Re-derived rather than
   assumed, so a `Cx*Fn` that does carry a `result` declaration does not make a reader's
   own `(T cx/g1)` look like a sentence the mint wrote."
@@ -837,7 +837,7 @@
   content, and content naming a context keeps it alive.
 
   This is what makes the computed containment *not* a liveness source: a month context
-  `genlCx`-ing its year is derived from the two `termOfUnit` maps, so counting it as a
+  `genlCx`-ing its year is derived from the two `natFormula` maps, so counting it as a
   use would make every context the producer ever ordered immortal, each holding the
   other up.  Belief is not read — the question is who wrote the edge, and a defeated
   declaration leaves a stored edge the producer still owns."
@@ -854,7 +854,7 @@
                         js))))))
 
 (defn- nat-bookkeeping-of?
-  "Is `sx` one of constant `k`'s own bookkeeping sentexes — its `termOfUnit` map, or one
+  "Is `sx` one of constant `k`'s own bookkeeping sentexes — its `natFormula` map, or one
   of the sentences `minted-for` says the mint wrote about it — as opposed to a real use
   `(p k …)` that keeps it alive?
 
@@ -865,18 +865,18 @@
   about `K` exactly as `(noted Author K)` is.
 
   `minted` is a **delay**, and the map clause is what makes that pay: the constant a
-  teardown collects has its `termOfUnit` and nothing else left, so the common answer is
+  teardown collects has its `natFormula` and nothing else left, so the common answer is
   reached without asking the declarations what the mint wrote."
   [k minted sx]
   (let [s (:sentence sx)]
-    (or (and (= 'termOfUnit (nm/functor s)) (= k (first (nm/args s))))
+    (or (and (= 'natFormula (nm/functor s)) (= k (first (nm/args s))))
         (and (= universal-context (:context sx)) (contains? @minted s)))))
 
 (defn- derived-from-map?
   "Is `sx` a record the argument-type entailment derives from `k`'s own map alone — not a
   premise, and every justification an argument declaration's
   (`tax/arg-declaration-props`) or a `resultArg`'s whose source fact is one of
-  `map-handles`?  An argument declaration on `termOfUnit`, and a `resultArg` of the
+  `map-handles`?  An argument declaration on `natFormula`, and a `resultArg` of the
   function, derives such a record about every constant it maps, and the record is gone
   when the map is, so it keeps the constant alive no more than the map does."
   [kb map-handles sx]
@@ -892,14 +892,14 @@
                  js))))
 
 (defn- mapped-expressions
-  "The expressions `k`'s own `termOfUnit` sentexes map it to, read off `sentexes` — the
+  "The expressions `k`'s own `natFormula` sentexes map it to, read off `sentexes` — the
   term-index answer for `k`, which holds its map beside its uses.  Normally one; a
   collision the 1:1 invariant has yet to be restored on has several."
   [k sentexes]
   (keep (fn [sx]
           (let [s (:sentence sx)]
             (when (and (= universal-context (:context sx))
-                       (= 'termOfUnit (nm/functor s))
+                       (= 'natFormula (nm/functor s))
                        (= k (second s)))
               (nth s 2 nil))))
         sentexes))
@@ -913,7 +913,7 @@
   [kb k E sentexes]
   (let [minted (delay (minted-for kb k E))
         maps   (into #{} (comp (filter #(let [s (:sentence %)]
-                                          (and (= 'termOfUnit (nm/functor s))
+                                          (and (= 'natFormula (nm/functor s))
                                                (= k (second s)))))
                                (map :id))
                      sentexes)
@@ -926,12 +926,12 @@
 (defn orphan?
   "Is the reified constant `k` orphaned — is every **stored** sentex naming it one of
   `k`'s own bookkeeping sentexes?  False when nothing maps it: a constant with no
-  believed `termOfUnit` names no expression, so there is no map left to dangle.
+  believed `natFormula` names no expression, so there is no map left to dangle.
 
   For a **context** constant the same question reaches one thing more, because a context
   is somewhere sentexes are as well as something sentences name: it is orphaned when its
   context slot holds nothing, no stored sentence names it, and no stored `genlCx` edge
-  does either — bar the edges the structural producer computed from its own `termOfUnit`
+  does either — bar the edges the structural producer computed from its own `natFormula`
   (`computed-genlCx-edge?`), which are the engine's wiring rather than anybody's claim.
   Its only bookkeeping is that map (`minted-for`).
 
@@ -974,17 +974,17 @@
 
 (defn orphaned-constants
   "Every reified constant in the KB that no live use references any more.  Removing the
-  fact that used a reified NAT leaves it an orphan — its `termOfUnit` and materialized
+  fact that used a reified NAT leaves it an orphan — its `natFormula` and materialized
   types would dangle a raw `nat/` symbol — so those are collected and removed.
 
   Reads the whole map, so this is the answer *about the KB*, and its cost is the KB's
-  whole `termOfUnit` population; the maintenance after a teardown asks the narrower
+  whole `natFormula` population; the maintenance after a teardown asks the narrower
   `orphaned-among` instead.
 
   Both kinds: an object constant nothing names, and a context constant nothing is stored
   in, names or wires (`orphan?`)."
   [kb]
-  (->> (kb/sentexes-matching kb '(termOfUnit ?k ?e) universal-context)
+  (->> (kb/sentexes-matching kb '(natFormula ?k ?e) universal-context)
        (map (fn [{[_ k _] :sentence}] k))
        distinct
        (filter reified-nat-symbol?)
@@ -1043,13 +1043,13 @@
   (orphaned-among kb (constants-named-by sentexes)))
 
 (defn bookkeeping-handles
-  "The bookkeeping sentex handles of constant `k` — its `termOfUnit` and materialized
+  "The bookkeeping sentex handles of constant `k` — its `natFormula` and materialized
   result-type premises, plus its correspondence projection — the ones to retract when
   `k` is orphaned.  Not belief-filtered: once `k` is orphaned everything it owns
   goes, and a bookkeeping sentex sitting OUT would otherwise stay stored, a map for
   a constant the sweep has already collected.
 
-  A **context** constant's is its `termOfUnit` alone, and the structural `genlCx` edges
+  A **context** constant's is its `natFormula` alone, and the structural `genlCx` edges
   the producer computed off it are deliberately not listed: they are *derived*, so
   retracting the map withdraws their one premise and the dependency-directed sweep
   deletes them (docs/nmtms.md).  Which is also what puts the far end of each edge in the
@@ -1057,7 +1057,7 @@
   collapsed the first.
 
   **Realized before it returns**, because the caller retracts what it hands back and
-  `minted` is a read of the very sentexes being retracted: it asks `k`'s `termOfUnit`
+  `minted` is a read of the very sentexes being retracted: it asks `k`'s `natFormula`
   which expression the mint wrote about, so a tail forced after the map's own
   retraction answers `#{}` and the materialized types and the projection stop looking
   like bookkeeping — left stored, naming a constant the sweep has collected.  Whether
@@ -1088,7 +1088,7 @@
   "Reify a ground NAT `form` to the term it denotes in reify namespace `ns` (default
   `nat/`): reify any nested NAT args first, then return the existing term for the
   expression (`existing-term`: a `rewriteOf` target, the value its corresponding predicate
-  already names, else a prior `termOfUnit` mint) or mint a fresh constant.
+  already names, else a prior `natFormula` mint) or mint a fresh constant.
 
   A **real term outranks a placeholder**, which is why the correspondence is consulted
   before the dedup probe: a constant minted while the value was unknown is folded onto
@@ -1115,24 +1115,24 @@
 (defn mint-nat!
   "Mint a fresh reified constant for the ground NAT expression `E`: allocate an opaque
   constant `K` in reify namespace `ns` (`cx/` for a context slot, `nat/` for an argument),
-  assert `(termOfUnit K E)` in CxUniverse, and — for an **object** NAT only —
+  assert `(natFormula K E)` in CxUniverse, and — for an **object** NAT only —
   materialize the function's result types (`(T K)` per `result`, `(genl K T)` per
   `genlResult`) and the correspondence projection.  Returns `K`.  The bookkeeping is
   `:monotonic` — a reified NAT's identity and result types are structural, not defeasible
   defaults.  `assert` stores synchronously, so a second occurrence of `E` in the same
   sentence dedups against this.  A `(resultArg F n)` is not materialized here: the
-  argument entailment draws its membership off the `termOfUnit` fact
+  argument entailment draws its membership off the `natFormula` fact
   (`checks/result-arg-rows`, docs/argtypes.md).
 
   A **context** NAT (`cx/`) skips the result-type and correspondence machinery: those are
   object-denoting concerns (a constant that *is an instance of* a type, or *is the value*
   a predicate names), and a context is neither — it is a place, wired into the `genlCx`
   lattice by the structural producer rather than typed (docs/context-nat.md).  Its only
-  bookkeeping is the `termOfUnit` map; a `(result F context)` is not materialized on it,
+  bookkeeping is the `natFormula` map; a `(result F context)` is not materialized on it,
   since the `cx/` spelling carries the role and a role is never read from belief.
 
   The result types and the correspondence projection take the chaining the caller
-  asked for; `(termOfUnit K E)` is asserted with chaining off unless a `resultArg` is
+  asked for; `(natFormula K E)` is asserted with chaining off unless a `resultArg` is
   written of `F` — the identity record is what the dedup probe reads, not content a rule
   fires on, and the `resultArg` membership it entails is.
   Minting is a step inside somebody else's assert, and a bulk load that turned
@@ -1148,7 +1148,7 @@
          opts {:strength :monotonic :chain? chain?}]
      ;; a `resultArg` of `head` types `k` off this fact (`checks/result-arg-rows`), so
      ;; the fact chains as the caller asked, and the type it mints is a seed
-     (wiring/assert-sentence kb (list 'termOfUnit k E) univ
+     (wiring/assert-sentence kb (list 'natFormula k E) univ
                              (assoc opts :chain? (and chain? (not ctx?)
                                                       (boolean (seq (result-arg-declared kb head))))))
      (when-not ctx?
@@ -1264,7 +1264,7 @@
   `rewriteOf` rather than `equals`, because the two sides are not interchangeable: `v`
   is a name somebody wrote and `k` is an opaque stand-in for not knowing it, so the
   class has a term that should win the election rather than whichever one sorts first.
-  Every use of `k` migrates onto `v`, its `termOfUnit` map included, so the expression
+  Every use of `k` migrates onto `v`, its `natFormula` map included, so the expression
   goes on resolving — to the real term now."
   [kb v k]
   (wiring/assert-sentence kb (list 'rewriteOf v k) universal-context {:strength :monotonic}))
@@ -1319,7 +1319,7 @@
   minted for `F`: each one gets the `(T K)` or `(genl K T)` the mint writes when the
   declaration comes first, at the mint's strength in CxUniverse.  A no-op for any other
   sentence, and for a function nothing has been minted for.  A late `resultArg` reaches
-  the `termOfUnit` facts through `special/entail-existing`."
+  the `natFormula` facts through `special/entail-existing`."
   [kb sentence]
   (when (and (contains? '#{result genlResult} (first sentence))
              (= 3 (count sentence)))
@@ -1387,7 +1387,7 @@
       (let [t    (peek todo)
             sxs  (vec (kb/find-sentexes kb t))
             maps (fn [sx] (let [s (:sentence sx)]
-                            (when (and (= 'termOfUnit (nm/functor s))
+                            (when (and (= 'natFormula (nm/functor s))
                                        (= universal-context (:context sx))
                                        (reified-object-symbol? (second s))
                                        (some #{t} (tree-seq sequential? seq (nth s 2 nil))))

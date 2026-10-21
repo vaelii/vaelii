@@ -930,7 +930,7 @@
 (defn term-expression
   "The functional expression a reified term denotes — `(FruitFn AppleTree)` for the
   constant minted from it — or nil for an ordinary term, and for a reified one whose
-  `(termOfUnit K E)` map is not believed."
+  `(natFormula K E)` map is not believed."
   [conn term]
   (call conn :term-expression [term]))
 

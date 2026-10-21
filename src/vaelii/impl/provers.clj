@@ -1238,7 +1238,7 @@
 
 (defn- quoted-form
   "`[F x handles]` when the term `q` is a quoted form: `(F x)` with `F` a quoting function
-  (`sx/quoting-functors`), handles empty, or a reified constant whose `termOfUnit`,
+  (`sx/quoting-functors`), handles empty, or a reified constant whose `natFormula`,
   visible from `context`, is one, handles that statement.  Else nil.  A reified constant
   is a symbol in the `nat` namespace (`nat/reified-nat-symbol?`, which this namespace sits
   below)."
@@ -1248,7 +1248,7 @@
     [(first q) (second q) []]
 
     (and (symbol? q) (= "nat" (namespace q)))
-    (some->> (res/matches-visible kb (list 'termOfUnit q '?e) context)
+    (some->> (res/matches-visible kb (list 'natFormula q '?e) context)
              (keep (fn [[h b]]
                      (let [e (get b '?e)]
                        (when (and (sequential? e) (= 2 (count e)) (sx/quoting-functor? (first e)))
@@ -1332,7 +1332,7 @@
 
 (defn- expression-kind-support
   "The handles `(k q)` rests on, as a vector, or nil when no kind of the form `q` quotes
-  reaches `k` from `context`: the `termOfUnit` statement when `q` is a reified constant,
+  reaches `k` from `context`: the `natFormula` statement when `q` is a reified constant,
   then one `genl` path from the first kind of the form that reaches `k`, the kinds its
   spelling decides (`shape-kinds`) in name order and then the kinds the KB decides
   (`stated-kinds`) in name order, each of these with the handles it rests on.  The
@@ -1442,7 +1442,7 @@
 ;; down which — so `(different indeterminate X)` is NOT provable against a determinate `X`
 ;; until a `rewriteOf`/merge pins it (at which point `rep` lifts the exemption).  Gated on
 ;; the extensible category, with the skolem constant its built-in first member: a skolem's
-;; membership is never a stored fact, so it is read off its `SkolemFn` `termOfUnit`
+;; membership is never a stored fact, so it is read off its `SkolemFn` `natFormula`
 ;; expression, while a further kind added with `(genl NewKind indeterminate_term)` is picked
 ;; up through ordinary membership.  `indeterminate-term?` below is public because the
 ;; `predAllSpecified` audit reads the same category and calls it: `vaelii.impl.predall`
@@ -1450,7 +1450,7 @@
 ;; by inspection.
 (defn- reified-nat-symbol? [term]
   ;; a reified constant — a symbol in a reserved reified namespace; the cheap gate before
-  ;; the skolem `termOfUnit` read.  Master: `nat/reified-namespaces` (#{"nat" "cx"}) —
+  ;; the skolem `natFormula` read.  Master: `nat/reified-namespaces` (#{"nat" "cx"}) —
   ;; copied because the provers layer cannot require nat without a cycle through kb; if
   ;; the reserved set ever grows, this copy must move with it.
   (and (symbol? term) (contains? #{"nat" "cx"} (namespace term))))
@@ -1461,7 +1461,7 @@
         ;; 'SkolemFn is skolem/skolem-function's value, copied for the same cycle reason
         (some (fn [[_ b]] (let [e (get b '?e)]
                             (and (sequential? e) (= 'SkolemFn (first e)))))
-              (res/matches-visible kb (list 'termOfUnit term '?e) context)))))
+              (res/matches-visible kb (list 'natFormula term '?e) context)))))
 
 (defn- category-indeterminate? [kb term context]
   ;; a believed member of `indeterminate_term` or of any collection that genl-reaches it,

@@ -1198,7 +1198,7 @@
   Every other check here times an assert or a query; this is the one that times a
   **retraction**, and the class it covers is the teardown sweep.  A retraction runs the
   reified-NAT orphan collection, because a constant whose last use has just gone would
-  otherwise leave its `termOfUnit` map and materialized types dangling a raw `nat/`
+  otherwise leave its `natFormula` map and materialized types dangling a raw `nat/`
   symbol (docs/nat.md).  What the sweep may cost is what the retraction *reached*; what
   it may not cost is what the KB *holds*, which is the claim measured here.
 

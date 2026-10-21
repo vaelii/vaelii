@@ -78,7 +78,7 @@
 ;; CxUniverse's `Quote` comment says Quote takes no result, arg or metatype declaration: what
 ;; kind of expression `(Quote X)` is follows from X's shape (`provers/shape-kinds`).
 ;; `Quote` is unreifiable here, so a ground quoted form reaches the prover as written; a
-;; reifiable one is read back through its constant's `termOfUnit` (the next test).
+;; reifiable one is read back through its constant's `natFormula` (the next test).
 (tu/deftest-kb quoted-forms-are-classified-by-shape
   (tu/with-terms [dog]
     (v/assert kb (list 'unreifiable_function Quote) 'CxUniverse)
@@ -103,7 +103,7 @@
       (testing (str (list kind (list 'Quote x)) " " holds? ": " why)
         (is (= holds? (v/ask? kb (list kind (list Quote x)) 'CxUniverse)))))))
 
-(tu/deftest-kb a-reified-quoted-form-is-classified-through-its-term-of-unit
+(tu/deftest-kb a-reified-quoted-form-is-classified-through-its-nat-formula
   (tu/with-terms [dog cycl_expression cycl_constant said Tom]
     (declare-quote! kb Quote cycl_expression cycl_constant)
     (v/assert kb (list 'unary_predicate dog) 'CxUniverse)

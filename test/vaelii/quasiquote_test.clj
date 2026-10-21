@@ -58,7 +58,7 @@
                    (list believes Tom (qq (list isa (unq '?x) Dog))) 'CxUniverse {:direction :forward})
     (v/assert kb (list dog Fido) 'CxUniverse)
     (v/assert kb (list friend Fido) 'CxUniverse)
-    (is (= 1 (count (v/sentexes-matching kb (list 'termOfUnit '?k (list 'Quote (list isa Fido Dog)))
+    (is (= 1 (count (v/sentexes-matching kb (list 'natFormula '?k (list 'Quote (list isa Fido Dog)))
                                          'CxUniverse)))
         "one expression, one constant, however many firings construct it")))
 
@@ -73,7 +73,7 @@
 
 (tu/deftest-kb a-nested-quasiquote-is-left-literal-and-round-trips
   ;; a Quasiquote nested inside a construction is its own mention level — left whole, not
-  ;; reduced.  The write path re-asserts (termOfUnit K E) through full assert, so without
+  ;; reduced.  The write path re-asserts (natFormula K E) through full assert, so without
   ;; holding the mention payload opaque the nested construction would be reduced a second
   ;; time and the exact form asserted would be unretrievable.
   (tu/with-terms [Tom foo bar Fido believes]

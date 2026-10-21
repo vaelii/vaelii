@@ -49,9 +49,9 @@
 (defn- rule-digest
   "The hex SHA-1 of the rule's canonical antecedents, consequent and context: the
   content key a skolem constant carries in place of a handle, which would put assertion
-  order into stored `termOfUnit` content."
+  order into stored `natFormula` content."
   [rule]
-  ;; print vars bound off: the digest lands in stored `termOfUnit` content, and an
+  ;; print vars bound off: the digest lands in stored `natFormula` content, and an
   ;; ambient *print-length*/*print-level* (a REPL's, typically) would elide the rule
   ;; out of its own identity — two rules digesting alike merge their witnesses
   (let [s (binding [*print-length* nil *print-level* nil *print-meta* false]

@@ -168,7 +168,7 @@
       (is (nil? (problem kb (list inputGapObserver (list 'Quote (list InputGapFn "x")))))))
     (testing "and so is a quoting predicate's"
       (tu/with-terms [K]
-        (is (nil? (problem kb (list 'termOfUnit K (list InputGapFn "x")))))))))
+        (is (nil? (problem kb (list 'natFormula K (list InputGapFn "x")))))))))
 
 (tu/deftest-kb the-inputs-are-read-from-the-asking-contexts-vantage
   (tu/with-terms [InputGapFn inputGapObserver CxSeen CxBelow CxSibling]
@@ -224,7 +224,7 @@
                (list 'unary_predicate inputGapObserver) (list 'arg inputGapObserver 1 'thing)
                (list 'genlCx CxSeen 'CxUniverse)]]
       (v/assert kb s 'CxUniverse))
-    (let [minted (fn [e] (seq (v/sentexes-matching kb (list 'termOfUnit '?k e) 'CxUniverse)))
+    (let [minted (fn [e] (seq (v/sentexes-matching kb (list 'natFormula '?k e) 'CxUniverse)))
           bad    (list inputGapObserver (list ReifGapFn "x"))]
       (testing "check predicts the refusal"
         (is (= :arg-type (refusal kb bad))))

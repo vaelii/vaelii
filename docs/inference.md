@@ -2331,7 +2331,7 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   is the extension point for arithmetic / CLP / any calculated relation.
 - **ExpressionKindProver** — `(k (Quote X))`, `k` an expression kind, answered from X's
   spelling and, under a symbol head R, from R's stored membership in `predicate` or
-  `function` and R's length, cited to the `termOfUnit` statement, those statements and the
+  `function` and R's length, cited to the `natFormula` statement, those statements and the
   `genl` path it read ([argtypes.md](argtypes.md#what-a-quoted-form-is)). Not complete
   (50): a stored membership answers beside it.
 - **AggregateProver** — the five reductions over a query's solutions:

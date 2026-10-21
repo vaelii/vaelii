@@ -1730,10 +1730,10 @@ anybody wrote and says nothing to a reader, so **no page shows one**. Every term
 
 The **bold parens are the whole of the notation**, and they are required rather than
 decorative. A reified term is a *term* that happens to have structure, and it sits in
-sentences beside ordinary compounds — on the constant's own page `(termOfUnit K E)`
+sentences beside ordinary compounds — on the constant's own page `(natFormula K E)`
 renders K and E identically otherwise, so the constant and the literal expression it is
 mapped to would read as the same thing said twice. Weight is what separates them. The
-**opening paren links to the constant's page**, the one place its `termOfUnit` map, its
+**opening paren links to the constant's page**, the one place its `natFormula` map, its
 materialized result types and its uses are listed — so the reified term stays reachable
 without ever being spelled out. Nesting works the same way at every level, and each
 level's paren links to its own constant. A ground compound term left structural, headed
@@ -1749,12 +1749,12 @@ identity. The constant is held by what a machine reads back: the `href` of
 the link to its own page, and a hidden field a form posts back.
 
 Two things the display cannot assume, both tested by injecting at the access facade.
-A constant whose `termOfUnit` map is **not believed** renders `(…)` rather than falling
+A constant whose `natFormula` map is **not believed** renders `(…)` rather than falling
 back to the raw symbol — the map can be defeated while a use of the constant survives,
 and the page cannot say what it denotes. And the expansion
 **carries the constants already on its path**: the write path cannot build a term that
 reaches itself (inner NATs mint first), but a restored dump can, and an unguarded walk
-over `(termOfUnit K (F K))` is a stack overflow rather than a page.
+over `(natFormula K (F K))` is a stack overflow rather than a page.
 
 The cost is one `term-expression` read per **distinct** constant on the page, cached on
 the view — there is no batched read for the map, so the cache is the whole budget, and a

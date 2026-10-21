@@ -687,7 +687,7 @@ genl edges…]` — each slot filled by what that supporter *is* to the derivati
 no arrival to sort out; the tail of the third is `checks/edge-support`, a shortest
 **visible** path expanding in name order. `special/materialize-defn-rule` writes the one
 definition the rule rests on, and `context-nat/materialize-edge` writes `[sub NAT's
-termOfUnit, super NAT's termOfUnit, declaration]`, plus the relation fact when one is the
+natFormula, super NAT's natFormula, declaration]`, plus the relation fact when one is the
 evidence. `io.import/import-justifications!` remaps a dumped vector handle for handle,
 carrying the exporting KB's order across. `integrate/fold-dependents!` and
 `integrate/fold-supports!` copy a stored vector onto the surviving row of a fold, the first

@@ -297,7 +297,7 @@
 
 (tu/deftest-kb a-reified-quoted-sentence-is-read-back-through-its-constant
   ;; Where Quote is declared reifiable, the stored example holds a constant whose
-  ;; termOfUnit is the (Quote S) form, and the check reads S from it.
+  ;; natFormula is the (Quote S) form, and the check reads S from it.
   (let [ctx (scratch kb)]
     (tu/with-terms [parentOf Abe Homer]
       (v/assert kb '(reifiable_function Quote) 'CxUniverse)

@@ -538,7 +538,7 @@
 (arg argArg 3 positive_integer)
 
 (comment resultArg
-         "(resultArg ?function ?position) means that an application of ?function denotes an instance of the type the application's argument ?position names. result with the type read off each application: (resultArg SomeMemberFn 1) says (SomeMemberFn dog) denotes a dog. Derived as a membership of the constant a reifiable function's application mints, off its termOfUnit fact, while argument types entail, and read at check time for an unreifiable function's application, which is never minted. See docs/argtypes.md.")
+         "(resultArg ?function ?position) means that an application of ?function denotes an instance of the type the application's argument ?position names. result with the type read off each application: (resultArg SomeMemberFn 1) says (SomeMemberFn dog) denotes a dog. Derived as a membership of the constant a reifiable function's application mints, off its natFormula fact, while argument types entail, and read at check time for an unreifiable function's application, which is never minted. See docs/argtypes.md.")
 (binary_predicate resultArg)
 (arg resultArg 1 function)
 (arg resultArg 2 positive_integer)
@@ -1757,12 +1757,12 @@
 (arg contextArgSubrelation 2 positive_integer)
 (arg contextArgSubrelation 3 predicate)
 
-(comment termOfUnit
-         "(termOfUnit ?constant ?expression) means that the reified ?constant denotes the term expression ?expression. The constant-to-expression half of the reified-term map, expression-to-constant being the inverted term index. A quoting predicate: ?expression is a verbatim payload, not itself reified or type-checked as a term.")
-(binary_predicate termOfUnit)
-(set/monotonic (instance_relation_predicate termOfUnit))
-(arg termOfUnit 2 non_atomic_term)
-(arg termOfUnit 1 thing)   ;; the reified constant: a term of any kind
+(comment natFormula
+         "(natFormula ?constant ?expression) means that the reified constant ?constant stands for the non-atomic term ?expression. The engine stores one when it reifies an application and reads it to get the expression back from the constant; the inverted term index answers the other direction, from expression to constant. A quoting predicate: ?expression is stored as written, neither reified nor type-checked as a term.")
+(binary_predicate natFormula)
+(set/monotonic (instance_relation_predicate natFormula))
+(arg natFormula 2 non_atomic_term)
+(arg natFormula 1 thing)   ;; the reified constant: a term of any kind
 
 (comment rewriteOf
          "(rewriteOf ?term ?expression) means that the term expression ?expression reifies to the existing ?term rather than to a fresh constant. A quoting predicate in that reading. With a plain symbol in the second position it is instead the equality relation retiring that symbol in favour of the first: the retired spelling stays stored but stops being believed and stops matching, every sentex naming it gains a rewritten twin, and retracting the rewriteOf gives the original back.")

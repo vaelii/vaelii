@@ -1538,7 +1538,7 @@
                                 "the evaluable prover — a step-limited whole-string regex match")]
 
      ;; ---- the reified-term vocabulary -------------------------------------
-     ['termOfUnit (enforced {:shape {:args [:term :term]} :storage [:none] :checked false
+     ['natFormula (enforced {:shape {:args [:term :term]} :storage [:none] :checked false
                              :family nil :facets #{}
                              :notes "the constant-to-expression half of the reified-term map."}
                             "nat — the constant-to-expression half of the reified-term map")]
@@ -1550,11 +1550,11 @@
                             :family nil :facets #{}
                             :notes (str "derived as a membership of each minted constant,"
                                         " in the type the application's argument ?n names,"
-                                        " off its termOfUnit fact: checks/result-arg-rows"
+                                        " off its natFormula fact: checks/result-arg-rows"
                                         " reads each declaration as arg rows, so the"
                                         " entailment, entail-existing and the wait on an"
                                         " unmintable type are argArg's.")}
-                           "checks/constraint-entailments over checks/result-arg-rows — argArg on the constant a termOfUnit fact maps")]
+                           "checks/constraint-entailments over checks/result-arg-rows — argArg on the constant a natFormula fact maps")]
      ['genlResult (enforced {:shape {:args [:function :type]} :storage [:none] :checked false
                              :family nil :facets #{}
                              :notes "materialized as a genl edge on each minted constant."}

@@ -1650,7 +1650,7 @@
             (is (empty? (visible-nats (:body r))) (str uri " leaked a reified constant"))))))))
 
 (tu/deftest-kb one-read-per-reified-term-however-often-it-is-rendered
-  ;; The map is `(termOfUnit K ?e)`, one probe per constant — there is no batched read for
+  ;; The map is `(natFormula K ?e)`, one probe per constant — there is no batched read for
   ;; it — so the per-request cache is the whole budget.  A page listing a reified NAT in a dozen
   ;; rows must not be a dozen round-trips under `--attach`.
   (with-nat-kb kb
@@ -1682,7 +1682,7 @@
 (tu/deftest-kb a-self-referential-map-costs-the-expansion-and-not-the-page
   (with-nat-kb kb
     (fn [{:keys [k colorOf FruitFn]}]
-      ;; `(termOfUnit K (FruitFn K))` — the write path cannot build it (inner NATs mint
+      ;; `(natFormula K (FruitFn K))` — the write path cannot build it (inner NATs mint
       ;; first), a restored dump can, and an unguarded walk over it is a stack overflow
       (with-redefs [acc/term-expression (fn [_ t] (when (= t k) (list FruitFn k)))]
         (let [r (GET "/term" (str "q=" colorOf))]

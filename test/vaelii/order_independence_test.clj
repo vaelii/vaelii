@@ -856,7 +856,7 @@
   "What a KB told some of vaelii#100's forms holds and answers about `(SkillFn Rex)`."
   [kb]
   {:rows     (sort-by pr-str (map :sentence (v/sentexes-with-functor kb 'hasCapability)))
-   :minted   (count (v/sentexes-matching kb '(termOfUnit ?k (SkillFn Rex)) 'CxUniverse))
+   :minted   (count (v/sentexes-matching kb '(natFormula ?k (SkillFn Rex)) 'CxUniverse))
    :compound (v/ask? kb skill-use 'CxUniverse)
    :genl     (v/ask? kb '(genl (SkillFn Rex) capability) 'CxUniverse)})
 
@@ -883,13 +883,13 @@
   (let [ops    [(assert-op '(reifiable_function OuterFn))
                 (assert-op '(reifiable_function InnerFn))
                 (assert-op '(likes Rex (OuterFn (InnerFn Rex))))]
-        reading (fn [kb] {:maps  (sort-by pr-str (map :sentence (v/sentexes-with-functor kb 'termOfUnit)))
+        reading (fn [kb] {:maps  (sort-by pr-str (map :sentence (v/sentexes-with-functor kb 'natFormula)))
                           :likes (mapv :sentence (v/sentexes-with-functor kb 'likes))
                           :ask   (v/ask? kb '(likes Rex (OuterFn (InnerFn Rex))) 'CxUniverse)})
         inner  (nat/constant-for nat/nat-namespace '(InnerFn Rex))
         outer  (nat/constant-for nat/nat-namespace (list 'OuterFn inner))
         result (one-outcome! "a nested pair" ops reading)]
-    (is (= {:maps  [(list 'termOfUnit inner '(InnerFn Rex)) (list 'termOfUnit outer (list 'OuterFn inner))]
+    (is (= {:maps  [(list 'natFormula inner '(InnerFn Rex)) (list 'natFormula outer (list 'OuterFn inner))]
             :likes [(list 'likes 'Rex outer)]
             :ask   true}
            (update result :maps (partial sort-by #(str (nth % 2)))))))
@@ -948,7 +948,7 @@
   ;; told it reads, the mint and the result type included.
   (let [reading (fn [kb]
                   (into {} (for [r '[CxUniverse CxSkillD]]
-                             [r {:minted   (count (v/sentexes-matching kb '(termOfUnit ?k (SkillFn Rex)) r))
+                             [r {:minted   (count (v/sentexes-matching kb '(natFormula ?k (SkillFn Rex)) r))
                                  :compound (v/ask? kb skill-use r)
                                  :genl     (v/ask? kb '(genl (SkillFn Rex) capability) r)}])))
         result  (one-outcome! "a declaration denied below the use"

@@ -57,7 +57,7 @@ failed. The boundary of the inner reading:
 - **A mention is not descended into.** A position a `quotedArg` declaration types holds
   the term written there, so an application in it is syntax, and neither its result nor
   its inputs are read. The same holds for the argument of a quoting predicate
-  (`termOfUnit`, `rewriteOf`) and of a quoting function (`Quote`, `Quasiquote`). A
+  (`natFormula`, `rewriteOf`) and of a quoting function (`Quote`, `Quasiquote`). A
   quoting function's own declarations are still read over its application; only what it
   quotes is left alone.
   `quotedArg` itself stays open-world about a compound argument's kind: it does not read
@@ -825,13 +825,13 @@ visible from its context or placed below it, the two reads the assert path makes
 
 **`resultArg` types a reified constant through the same arm.** `(resultArg F n)` types
 the value of an application of `F` by the type the application's argument `n` names. Over
-a `(termOfUnit K E)` fact, `E` an application of `F`, `checks/result-arg-rows` reads each
-declaration as an `arg` row at position 1. `(resultArg MemberFn 1)` over `(termOfUnit K
-(MemberFn dog))` therefore derives `(dog K)`, justified by the `termOfUnit` fact and the
+a `(natFormula K E)` fact, `E` an application of `F`, `checks/result-arg-rows` reads each
+declaration as an `arg` row at position 1. `(resultArg MemberFn 1)` over `(natFormula K
+(MemberFn dog))` therefore derives `(dog K)`, justified by the `natFormula` fact and the
 declaration. The mint is placed, waits on an unmintable type and is released as an
 `argArg` mint is. A name the hierarchy does not hold mints nothing until it becomes a
 type, and retracting the declaration withdraws the mint. A declaration arriving after the
-mints reads the stored `termOfUnit` facts of `F`'s applications
+mints reads the stored `natFormula` facts of `F`'s applications
 (`special/entail-existing`). The membership is an entailment, so the constraint-only
 reading (`VAELII_ASSERTIVE_ARG_TYPES=0`) draws none, and a minted constant there holds its
 `result` types alone. `argtype_entail_test/a-result-arg-types-a-minted-constant-in-every-order`
@@ -965,15 +965,15 @@ closed (`sx/closed?`), which is a different expression.
 `ExpressionKindProver` answers `(k (F X))` for `k` below `expression` and `F` a quoting
 function — `Quote` or `Quasiquote`, which the engine fixes and no statement declares —
 true when one of X's kinds reaches `k` through `genl`. A reifiable quoting function's
-application arrives minted, and the prover reads the constant's `termOfUnit` back to the
+application arrives minted, and the prover reads the constant's `natFormula` back to the
 form; an application never minted names no stored term, so a query over it matches
-nothing, as for any NAT ([nat.md](nat.md)). The answer rests on the `termOfUnit`
+nothing, as for any NAT ([nat.md](nat.md)). The answer rests on the `natFormula`
 statement and one `genl` path, and a forward firing names them. A datum on an
 edge-installing functor re-joins the rules over an expression kind, so the lattice
 arriving after the rule and the fact fires it. Forward chaining discharges an antecedent
 through the prover only for the kinds `provers/expression-kind-predicates` names.
 `(sentence (Quote (not (dog Muffet))))` holds by the form's own shape, with no `genl` edge
-and no `termOfUnit` behind it, so its answer carries no handle. It joins beside the stored
+and no `natFormula` behind it, so its answer carries no handle. It joins beside the stored
 fact that bound the form, and that fact supports the firing; a firing whose combined
 handles are empty is dropped, so `(implies (sentence (Quote …)) …)` alone concludes nothing
 (`kind_antecedent_forward_test`).

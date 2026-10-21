@@ -6,7 +6,7 @@
   A ground reifiable NAT `(FruitFn AppleTree)` reifies to an opaque `nat/` constant
   before it reaches the index (Strategy A), so it autoindexes like an atomic symbol;
   an unreifiable structural NAT `(QuantityFn 5 Kilogram)` stays structural.  The constant↔
-  expression map is an ordinary `(termOfUnit K E)` fact, so rename rides the equality
+  expression map is an ordinary `(natFormula K E)` fact, so rename rides the equality
   migration and remove rides the retraction sweep."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
@@ -47,9 +47,9 @@
         (is (= (list 'color (list FruitFn AppleTree) 'Red)
                (nat/expand-expression kb (:sentence (v/sentex kb h))))))
       (testing "an unknown NAT resolves to no-match and mints nothing"
-        (let [before (count (v/sentexes-matching kb (list 'termOfUnit '?k '?e) 'CxUniverse))]
+        (let [before (count (v/sentexes-matching kb (list 'natFormula '?k '?e) 'CxUniverse))]
           (is (empty? (v/sentexes-matching kb (list 'color (list FruitFn 'PearTree) '?c) '?ctx)))
-          (is (= before (count (v/sentexes-matching kb (list 'termOfUnit '?k '?e) 'CxUniverse)))))))))
+          (is (= before (count (v/sentexes-matching kb (list 'natFormula '?k '?e) 'CxUniverse)))))))))
 
 (tu/deftest-kb handle-of-and-why-not-resolve-a-nat-to-its-stored-constant
   ;; `ist` stores the constant, so its non-creating counterpart has to ask for the
@@ -78,7 +78,7 @@
   ;; twin, and every belief-blind read finds it from the compound spelling.  Stored raw the
   ;; compound was a record `sentexes-matching`/`ask` reified past, `count-with-functor`
   ;; answered 2 for one proposition, and the reads split across two spellings.  A NAT this
-  ;; KB never minted is refused (`:unminted-nat`): minting a `termOfUnit` is the belief-
+  ;; KB never minted is refused (`:unminted-nat`): minting a `natFormula` is the belief-
   ;; carrying side effect this entry point never has.
   (tu/with-terms [FruitFn AppleTree PearTree Rex]
     (v/assert kb (list 'reifiable_function FruitFn) 'CxUniverse)
@@ -129,8 +129,8 @@
     (let [h1 (v/assert kb (list 'color (list FruitFn AppleTree) 'Red)   'CxUniverse)
           h2 (v/assert kb (list 'taste (list FruitFn AppleTree) 'Sweet) 'CxUniverse)]
       (is (= (k-of kb h1) (k-of kb h2)))
-      (testing "one termOfUnit maps the expression"
-        (is (= 1 (count (v/sentexes-matching kb (list 'termOfUnit '?k (list FruitFn AppleTree))
+      (testing "one natFormula maps the expression"
+        (is (= 1 (count (v/sentexes-matching kb (list 'natFormula '?k (list FruitFn AppleTree))
                                              'CxUniverse))))))))
 
 (tu/deftest-kb the-same-nat-yields-the-same-constant-in-independent-kbs
@@ -174,7 +174,7 @@
         (is (= ha hb) (str what ": one handle for one canonical sentence"))
         (is (nat/reified-nat-symbol? (nth (:sentence (v/sentex kb ha)) 2))
             (str what ": and it holds the constant rather than the compound"))
-        (is (= 1 (count (v/sentexes-matching kb (list 'termOfUnit '?k E) 'CxUniverse)))
+        (is (= 1 (count (v/sentexes-matching kb (list 'natFormula '?k E) 'CxUniverse)))
             (str what ": one map for one expression"))))))
 
 ;; ---- 3. nested -----------------------------------------------------------
@@ -187,7 +187,7 @@
                              'CxUniverse)
           inner-k  (nat/dedup-constant kb (list BestTreeIn Orchard1))
           outer-k  (k-of kb h)]
-      (testing "both the inner and outer NAT have a termOfUnit"
+      (testing "both the inner and outer NAT have a natFormula"
         (is (nat/reified-nat-symbol? inner-k))
         (is (nat/reified-nat-symbol? outer-k))
         (is (= (list FruitFn inner-k) (nat/nat-expression kb outer-k)))
@@ -207,7 +207,7 @@
       (testing "the constant is stable and its expression is rewritten"
         (is (= (list FruitFn MalusTree) (nat/nat-expression kb k)))
         (is (= k (nat/dedup-constant kb (list FruitFn MalusTree))))
-        (is (= 1 (count (v/sentexes-matching kb (list 'termOfUnit '?k (list FruitFn MalusTree))
+        (is (= 1 (count (v/sentexes-matching kb (list 'natFormula '?k (list FruitFn MalusTree))
                                              'CxUniverse)))))
       (testing "the retired spelling stays a usable question, resolving to the same K"
         ;; AppleTree is deprecated to MalusTree, so a goal naming the old term rewrites
@@ -224,7 +224,7 @@
         (v/assert kb (list 'rewriteOf MalusTree AppleTree) 'CxUniverse)
         (testing "the colliding constants merge to one"
           (is (empty? (nat/colliding-constant-groups kb)))
-          (is (= 1 (count (v/sentexes-matching kb (list 'termOfUnit '?k (list FruitFn MalusTree))
+          (is (= 1 (count (v/sentexes-matching kb (list 'natFormula '?k (list FruitFn MalusTree))
                                                'CxUniverse))))
           (is (= survivor (nat/dedup-constant kb (list FruitFn MalusTree)))
               "the lexicographically smallest constant survives"))))))
@@ -246,8 +246,8 @@
         ;; staged the way the mint writes one — the map is `:monotonic` bookkeeping,
         ;; and the second is the one no dedup probe stopped
         (doseq [k (if smallest-first? ks (rseq ks))]
-          (v/assert kb (list 'termOfUnit k E) 'CxUniverse {:strength :monotonic}))
-        (is (= 2 (count (v/sentexes-matching kb (list 'termOfUnit '?k E) 'CxUniverse)))
+          (v/assert kb (list 'natFormula k E) 'CxUniverse {:strength :monotonic}))
+        (is (= 2 (count (v/sentexes-matching kb (list 'natFormula '?k E) 'CxUniverse)))
             (str what ": both maps stand, so there is a collision to resolve"))
         (is (= (first ks) (nat/dedup-constant kb E)) what)
         (is (= [(first ks)]
@@ -283,7 +283,7 @@
             reading (fn [order]
                       (let [k (fresh-constant)]
                         (doseq [E order]
-                          (v/assert kb (list 'termOfUnit k E) 'CxUniverse {:strength :monotonic}))
+                          (v/assert kb (list 'natFormula k E) 'CxUniverse {:strength :monotonic}))
                         (v/assert kb (list (typ (if type-of-least? least (second Es))) k)
                                   'CxUniverse {:strength :monotonic})
                         (let [stored (set (map :id (kb/find-sentexes kb k)))]
@@ -447,7 +447,7 @@
 
 (tu/deftest-kb the-bookkeeping-set-is-an-answer-rather-than-a-plan
   ;; The caller retracts what `bookkeeping-handles` hands back, and the question
-  ;; "is this one of `k`'s own?" is itself read off `k`'s `termOfUnit` — so an answer
+  ;; "is this one of `k`'s own?" is itself read off `k`'s `natFormula` — so an answer
   ;; still being computed while the caller acts on it reads a KB the caller has already
   ;; torn the map out of, and everything after that point stops looking like
   ;; bookkeeping.  What survives is a materialized type naming a collected constant.
@@ -665,7 +665,7 @@
 ;; ---- recover: the reifiable gate + reified NAT data survive a rebuild -----------
 
 (tu/deftest-kb nat-data-survives-recover
-  ;; the reifiable prop and the termOfUnit / result-type facts are all durable, so a
+  ;; the reifiable prop and the natFormula / result-type facts are all durable, so a
   ;; rebuild from the records must reconstruct the gate, dedup, and expansion — else a
   ;; recovered KB would disagree with the running one about what a NAT reifies to.
   ;; `recover` rebuilds the taxonomy + JTMS in place from the store (it adds no
@@ -702,7 +702,7 @@
     (let [h (v/assert kb (list caresFor Bob (list MotherFn Muffet)) 'CxUniverse)]
       (testing "the application resolves to the value, and mints nothing beside it"
         (is (= (list caresFor Bob Mary) (:sentence (v/sentex kb h))))
-        (is (empty? (v/sentexes-matching kb (list 'termOfUnit '?k (list MotherFn Muffet))
+        (is (empty? (v/sentexes-matching kb (list 'natFormula '?k (list MotherFn Muffet))
                                          'CxUniverse))))
       (testing "a query written with the application still finds it"
         (is (= [{'?w Bob}] (v/ask kb (list caresFor '?w (list MotherFn Muffet)) 'CxUniverse)))))))

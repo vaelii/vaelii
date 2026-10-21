@@ -193,10 +193,10 @@
                 ds         (cond
                              (not (symbol? pred)) nil
                              ;; written of a function, a `resultArg` binds the
-                             ;; `termOfUnit` facts naming its applications
+                             ;; `natFormula` facts naming its applications
                              ;; (`result-arg-rows`)
                              (= 'resultArg kind)
-                             (when (and (= 'termOfUnit pred)
+                             (when (and (= 'natFormula pred)
                                         (pos? (reads/stored-count-with-functor (:index kb) 'resultArg)))
                                (into [] (res/matches-visible kb '(resultArg ?f ?n) context)))
                              :else
@@ -246,14 +246,14 @@
     [h {'?n (get b '?n) '?type t '?m m} sx]))
 
 (defn- result-arg-rows
-  "The `(resultArg F n)` declarations `decls` reads, as `arg` rows over the `termOfUnit`
-  fact `sentence`, `(termOfUnit K E)` with `E` an application of `F`: `[handle {?n 1
+  "The `(resultArg F n)` declarations `decls` reads, as `arg` rows over the `natFormula`
+  fact `sentence`, `(natFormula K E)` with `E` an application of `F`: `[handle {?n 1
   ?type t} sentex]`, `t` being `E`'s argument `n`, so the rows type the constant `K` as an
   `arg` at position 1 types it.  A position `E` lacks, or a non-symbol there, names no
   type and yields no row."
   [decls sentence]
   (let [e (nth sentence 2 nil)]
-    (when (and (= 'termOfUnit (nm/functor sentence)) (sequential? e) (symbol? (first e)))
+    (when (and (= 'natFormula (nm/functor sentence)) (sequential? e) (symbol? (first e)))
       (let [as (vec (rest e))]
         (for [[h b sx] (decls 'resultArg)
               :when (= (first e) (get b '?f))
@@ -478,12 +478,12 @@
   Content-least where a head declares several, so which of them a refusal names is keyed
   on what the KB says rather than on the order a retrieval enumerated them.
 
-  **A quoting predicate's argument is a mention and is left alone.** `(termOfUnit K
+  **A quoting predicate's argument is a mention and is left alone.** `(natFormula K
   (FruitFn AppleTree))` and a compound-argument `(rewriteOf T E)` carry the NAT
   expression as a verbatim payload rather than as a term used in that position
   (`nat/nat-quoting-predicates`, docs/nat.md), so typing it by what the function yields
   would type a quotation by its referent.  It is also the one place a mint would pay for
-  this: `mint-nat!` writes a `termOfUnit` per constant, and that write is where a KB
+  this: `mint-nat!` writes a `natFormula` per constant, and that write is where a KB
   declaring result types would otherwise buy a scoped retrieval it can never be convicted
   by.  A quoting function's argument (`sx/quoting-functors`) is the same mention one level
   in, reached when `nested-input-problem` reads the quoting function's own declarations.
@@ -2368,7 +2368,7 @@
 
 (defn- result-arg-entailments
   "The memberships the `(resultArg F n)` declarations visible from `context` draw over the
-  `termOfUnit` fact `sentence` (`result-arg-rows`): `(t K)` for the constant `K`, resting
+  `natFormula` fact `sentence` (`result-arg-rows`): `(t K)` for the constant `K`, resting
   on the declaration and the `genlCx` edges `context` sees it through."
   [kb sentence context decls]
   (let [k   (second sentence)
@@ -2503,7 +2503,7 @@
   `context` — a vec of `{:assert <sentence> :because [decl-handle edge-handle …]
   :position n :kind <the declaring functor>}`, empty when they entail nothing.  Every
   entailing kind is read: `arg`, `argArg`, `genlArg`, `interArg`, the covering forms,
-  the homogeneity forms and, over a `termOfUnit` fact, `resultArg`, from a declaration
+  the homogeneity forms and, over a `natFormula` fact, `resultArg`, from a declaration
   written in `context` or inherited by it.
 
   `(arg parentOf 1 animal)` over `(parentOf Fred Mary)` entails `(animal Fred)`, and
@@ -2555,11 +2555,11 @@
 
 (defn unmintable-named-types
   "The types the `argArg` declarations visible from `context` name over `sentence`, and the
-  `resultArg` ones over a `termOfUnit` fact, that `mintable?` refuses (`mintable-type?` by
+  `resultArg` ones over a `natFormula` fact, that `mintable?` refuses (`mintable-type?` by
   default), where the argument they type is one an entailment can be about: the mints a
   fact owes once those types are in the hierarchy (`special/note-unmintable-fact!`).
   Empty, with no index read, when no `argArg` is declared of `sentence`'s predicate or a
-  super-predicate of it and `sentence` is no `termOfUnit` fact: the taxonomy marks the
+  super-predicate of it and `sentence` is no `natFormula` fact: the taxonomy marks the
   subject of each `argArg` (`tax/arg-declaration-props`), and this runs on every new fact.
 
   The gate reads the marks unscoped, a superset; `declaration-reader` then reads the
@@ -2572,7 +2572,7 @@
          aa?  (and (symbol? pred)
                    (seq (tax/props-over (reasoning/taxonomy kb)
                                         (tax/arg-declaration-props 'argArg) pred)))
-         ra?  (= 'termOfUnit pred)]
+         ra?  (= 'natFormula pred)]
      (when (and *assertive-arg-types?* (or aa? ra?))
        (let [as    (vec (nm/args sentence))
              decls (declaration-reader kb pred context)]

@@ -143,7 +143,7 @@
   ;; a negative fact
   (v/assert kb (list 'not (list happy Rex)) ctx)
   ;; a reified NAT in argument position: the function is declared, so the application
-  ;; mints a constant and stores its termOfUnit map — all premises, all text
+  ;; mints a constant and stores its natFormula map — all premises, all text
   (v/assert kb (list 'reifiable_function 'QuantityFn) 'CxUniverse)
   (v/assert kb (list heightOf Nest1 (list 'QuantityFn 5 'Meter)) ctx))
 

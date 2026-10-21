@@ -759,7 +759,7 @@
 (defn term-expression
   "The functional expression a reified term denotes — `(FruitFn AppleTree)` for the
   constant minted from it — or nil for an ordinary term, and for a reified one whose
-  `(termOfUnit K E)` map is not believed.
+  `(natFormula K E)` map is not believed.
 
   **One hop.**  An argument that is itself a reified term comes back as its constant,
   so a caller rendering each term individually (linking it, colouring it) recurses and
@@ -3547,7 +3547,7 @@
   ground reifiable NAT is resolved to its stored constant first (dedup, never mint), as
   `handle-of` and `sentexes-matching` resolve one, so the inert record keys on the atomic
   form every read reifies to rather than the compound none of them do; a NAT with no
-  stored constant is refused (`:unminted-nat`), since minting a `termOfUnit` is a belief-
+  stored constant is refused (`:unminted-nat`), since minting a `natFormula` is a belief-
   carrying side effect this entry point never has.  A **rule** is refused
   (`:not-indexable`) — a labeling labels atoms, and the reason is below.  `assert-inert`
   is additive, so no `!`; drop it with `retract!` on the returned handle.
@@ -3622,7 +3622,7 @@
       ;; filtered read reifies to — invisible to `sentexes-matching` and `ask`, and beside
       ;; the twin a later `assert` mints, so `count-with-functor` answered 2 for one
       ;; proposition.  A NAT with no stored constant is refused (`:unminted-nat`): minting
-      ;; asserts a `termOfUnit` premise, the belief-carrying side effect this entry point
+      ;; asserts a `natFormula` premise, the belief-carrying side effect this entry point
       ;; never has, and a labeling materializes atoms that already exist so it never lands
       ;; here (`nat/resolve-for-read`).
       (if-let [reified (nat/resolve-for-read kb sentence)]
@@ -5882,7 +5882,7 @@
   * the **meta cascade** — a `target_following_predicate` sentex must not outlive the
     sentex it names, and what left the store is what `sink` recorded;
   * the **orphan sweep** — a reified constant no live use references any more, whose
-    `termOfUnit` map would otherwise dangle a raw `nat/` symbol;
+    `natFormula` map would otherwise dangle a raw `nat/` symbol;
   * the **structural-genlCx revival** — a teardown can put a `contextArgSubrelation`
     declaration or a stored R-evidence fact back IN (retracting a monotonic defeater
     above it), and the producer runs on assert only, so an edge never built while the

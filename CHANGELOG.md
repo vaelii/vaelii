@@ -15,6 +15,28 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Breaking
 
+- **`termOfUnit` is renamed `natFormula`.** The reified-term map, `(natFormula K E)`
+  in CxUniverse, is what a mint writes and what the engine reads to take a reified
+  constant back to its expression. `core.txt` declares and comments `natFormula`, and
+  every engine read, the browser and the docs name it. Nothing reads `termOfUnit` any
+  more: no alias maps the old name onto the new one. The `natFormula` comment in
+  `core.txt` is rewritten. [nat.md](docs/nat.md).
+
+  *Class:* **Breaking** (KB vocabulary renamed).
+  *Migration:* a store written before this change must be migrated, and cannot be
+  re-derived. Its `(termOfUnit K E)` maps are stored records that the engine reads by
+  predicate name, so after the upgrade no constant reads back to its expression, and a
+  re-asserted application mints a second constant beside the first. `sync!` does not
+  repair this: it asserts the `natFormula` declarations but leaves every premise naming
+  `termOfUnit` in place, since `termOfUnit` is no longer a term the engine ships. A map
+  cannot be re-derived from the store's other facts either, because those facts name the
+  minted constant `K`, not the application. To migrate, `export-text!` the store, rewrite
+  every `termOfUnit` token in the export to `natFormula`, and `load-text!` the result
+  into an empty store. A frame dump (`export!`/`import!`) keeps the old spelling, so it
+  is no route around the text export. A text KB, rule or query that names `termOfUnit`
+  names `natFormula` instead.
+  *Breaks:* `termOfUnit`
+
 - **A backward rule proves `(arity R n)` from a membership of an exact-arity class.**
   `query (arity R ?n)` of a relation stated only `(binary R)`, `(binary_predicate R)` or
   `(binary_function R)` answers `[{?n 2}]` at depth 3, where it answered nothing. No
@@ -601,7 +623,7 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `(unreifiable_function Quasiquote)` only, and `(unreifiable_function Quasiquote)` is the
   gate that turns the quasiquote reducer on. `ExpressionKindProver`'s support no longer
   cites a quoting statement, so a forward firing reads a quoted form's kind only when a
-  `genl` edge or a `termOfUnit` statement supports it.
+  `genl` edge or a `natFormula` statement supports it.
 
   *Class:* **Breaking** (shipped vocabulary).
   *Migration:* delete any `(quoting_function X)` assertions. A KB that declared another

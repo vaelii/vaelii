@@ -77,14 +77,14 @@
       (is (some? k))
       (v/retract! kb h)
       (is (empty? (v/sentexes-matching kb (list qQ A '?w) C)))
-      (is (nil? (nat/nat-expression kb k)) "the skolem's termOfUnit is swept"))))
+      (is (nil? (nat/nat-expression kb k)) "the skolem's natFormula is swept"))))
 
 (tu/deftest-kb the-witness-is-a-function-of-the-rule-content
   (tu/with-terms [pP qQ likes Tom A]
     (let [hr (exists-rule kb pP qQ)]
       (v/assert kb (list pP A) C {:strength :monotonic})
       (let [k1 (witness kb (list qQ A '?w) 2)]
-        ;; a premise about the witness keeps its termOfUnit alive across the retraction
+        ;; a premise about the witness keeps its natFormula alive across the retraction
         (v/assert kb (list likes Tom k1) C {:strength :monotonic})
         (v/retract! kb hr)
         (is (nil? (witness kb (list qQ A '?w) 2)) "the derived witness fell with its rule")

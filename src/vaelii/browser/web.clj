@@ -499,7 +499,7 @@
                                     (sandbox/live? kb c))))
    :belief    (atom {})
    ;; what each reified term on the page denotes.  There is no batched read for these
-   ;; — the map is `(termOfUnit K ?e)`, one probe per constant — so the cache is what
+   ;; — the map is `(natFormula K ?e)`, one probe per constant — so the cache is what
    ;; bounds it at one read per *distinct* constant rendered, however many times the
    ;; page renders it.  Empty and untouched on a KB that has minted none.
    :nat-exprs     (atom {})
@@ -844,7 +844,7 @@
 ;;
 ;; The parens are **bold**, which is the whole of the notation.  A reified NAT is a *term* that
 ;; happens to have structure, and it appears in sentences beside ordinary compounds —
-;; on the constant's own page `(termOfUnit K E)` renders K and E identically otherwise,
+;; on the constant's own page `(natFormula K E)` renders K and E identically otherwise,
 ;; the constant and the literal expression it is mapped to reading as the same thing.
 ;; Weight is what separates them, and the opening paren links to the constant's page, so
 ;; the reified term stays reachable without being spelled out.
@@ -852,7 +852,7 @@
 (defn- nat-expression
   "What reified term `k` denotes, from the per-request cache — one `v/term-expression`
   read per distinct constant on the page, however many times it is rendered.  nil when
-  the KB holds no believed `termOfUnit` map for it."
+  the KB holds no believed `natFormula` map for it."
   [{:keys [kb nat-exprs]} k]
   (if-let [e (find @nat-exprs k)]
     (val e)
@@ -863,7 +863,7 @@
 ;; Expansion recurses, so it carries the constants already on the path.  The write path
 ;; cannot build a reified term that reaches itself — inner NATs are minted first, so a
 ;; constant's expression predates it — but a *stored* one can say anything (docs/web.md,
-;; "The browser reads what is stored"), and an unguarded walk over `(termOfUnit K (F K))`
+;; "The browser reads what is stored"), and an unguarded walk over `(natFormula K (F K))`
 ;; is a stack overflow rather than a page.  A term already on the path renders as the
 ;; back-edge it is.
 
@@ -895,7 +895,7 @@
 
 (defn- nat-ref
   "A reified term, rendered as the expression it was minted from with **bold parens**.
-  The opening paren links to the constant's own page — the one place its `termOfUnit`
+  The opening paren links to the constant's own page — the one place its `natFormula`
   map, its materialized result types and its uses are listed — so the reified term is
   one click away and still never spelled out.
 

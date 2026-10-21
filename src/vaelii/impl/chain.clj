@@ -3385,9 +3385,9 @@
   violation that drops it.
 
   A NAT that already has a term resolves to it (`nat/reify-existing`: a `rewriteOf`
-  target, the value a corresponding predicate names, or the constant a `termOfUnit`
+  target, the value a corresponding predicate names, or the constant a `natFormula`
   maps), so a derived sentence and an asserted one naming the same application name one
-  constant.  A NAT with no term is minted, which writes premises: its `termOfUnit` map
+  constant.  A NAT with no term is minted, which writes premises: its `natFormula` map
   and materialized result types, in CxUniverse at `:monotonic`, exactly as `assert`'s
   mint writes them.  The derived conclusion is then one use of the constant, and the
   orphan sweep collects it when the last use goes.

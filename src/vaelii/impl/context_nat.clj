@@ -9,7 +9,7 @@
   the `genlCx` edges they entail: for two siblings whose `pos` arguments stand in `R`, the
   more specific one (its argument `R`-below the other's) is deduced to `genlCx` the more
   general, as a **justified** sentex in CxUniverse.  So the edge belief-follows for free —
-  retract a context (its `termOfUnit` map), the declaration, or the `R`-evidence, and the
+  retract a context (its `natFormula` map), the declaration, or the `R`-evidence, and the
   ordinary JTMS relabel withdraws it.  It is never a premise anyone asserted.
 
   `R` is resolved by a **bounded** oracle, because the producer runs on the assert
@@ -17,7 +17,7 @@
   a prover search is out (docs/naf.md): either a registered pure structural comparator
   (the datetime one, keyed on `subintervalOf` over `DatetimeFn` terms) answers it, or a
   believed stored `(R a b)` fact does.  A comparator answer is a pure function of the two
-  expressions, already carried by the `termOfUnit` antecedents, so it needs no extra
+  expressions, already carried by the `natFormula` antecedents, so it needs no extra
   supporter; a stored fact contributes its own handle so defeating it withdraws the edge.
 
   Materialization reuses the derived-sentex pattern `special/deduce-lift` uses:
@@ -58,7 +58,7 @@
 
 (defn- r-evidence
   "The belief the relationship `a` `R`-below `b` rests on: `::pure` when a comparator
-  answers it (a pure function of the two expressions, already carried by the `termOfUnit`
+  answers it (a pure function of the two expressions, already carried by the `natFormula`
   antecedents), the handle of a believed `(R a b)` fact when one does, or `nil` when the
   relationship does not hold and no edge should be made.
 
@@ -97,11 +97,11 @@
     [f pos r (:id sx)]))
 
 (defn- context-nats-of
-  "Every believed context NAT whose expression head is `f`, as `[k expr termOfUnit-handle]`.
+  "Every believed context NAT whose expression head is `f`, as `[k expr nat-formula-handle]`.
 
   Reached through the **inverted term index** on `f` — which descends into a ground
   compound, so an expression's head is one of the sentex's posted terms — rather than by
-  reading the whole `termOfUnit` population and keeping the few under `f`.  That
+  reading the whole `natFormula` population and keeping the few under `f`.  That
   distinction is the difference between a bounded read and a scan of every reified NAT in
   the KB, and this runs on the assert maintenance path (`reconcile-genlCx`), once per
   context minted.  `nat/minted-applications` reads the same map the
@@ -111,7 +111,7 @@
        (keep (fn [sx]
                (let [[_ k e] (:sentence sx)]
                  (when (and (= universal-context (:context sx))
-                            (= 'termOfUnit (nm/functor (:sentence sx)))
+                            (= 'natFormula (nm/functor (:sentence sx)))
                             (jtms/in? (reasoning/tms kb) (:id sx))
                             (nat/reified-context-symbol? k)
                             (sequential? e) (= f (first e)))
@@ -172,7 +172,7 @@
 (defn- order-group
   "Materialize the genlCx edges within one sibling group under declaration `[pos R declH]`:
   for each ordered pair of siblings that `pair?` admits and whose `pos` arguments stand in
-  `R`, the sub `genlCx` the super.  `nats` is `[k expr termOfUnit-handle]` for the group's
+  `R`, the sub `genlCx` the super.  `nats` is `[k expr nat-formula-handle]` for the group's
   members; `pair?` takes `[ksub asub ksup asup]`, the two contexts and their `pos`
   arguments, and is tested before the `R` oracle.
 
@@ -222,7 +222,7 @@
   sibling pairs it can have changed:
 
   - a `(contextArgSubrelation F …)` declaration reconciles every pair of `F`'s contexts;
-  - a `(termOfUnit K E)` map with `K` a `cx/` constant — the mint of a context —
+  - a `(natFormula K E)` map with `K` a `cx/` constant — the mint of a context —
     reconciles the pairs `K` is in, since a new context is what creates a sibling pair;
   - an `(R a b)` fact on a **declared sub-relation** reconciles the pairs whose ordered
     arguments are `a` below `b`, in the functions declared to order by `R`.  A comparator
@@ -241,7 +241,7 @@
         (= 'contextArgSubrelation head)
         (reconcile-function kb x)
 
-        (and (= 'termOfUnit head) (nat/reified-context-symbol? x) (sequential? y) (seq y))
+        (and (= 'natFormula head) (nat/reified-context-symbol? x) (sequential? y) (seq y))
         (reconcile-function kb (first y) (fn [ksub _ ksup _] (or (= x ksub) (= x ksup))))
 
         :else

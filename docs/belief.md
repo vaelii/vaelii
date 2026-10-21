@@ -169,7 +169,7 @@ outside one.
 
 NAT reification does not read the marker either. A ground reifiable NAT inside the
 proposition reifies to its constant before the congruence walk runs, and the constant is
-found through the `termOfUnit` map under the merges `CxUniverse` holds
+found through the `natFormula` map under the merges `CxUniverse` holds
 ([nat.md](nat.md#what-reification-does-not-cover)). With `(sameAs Apple Pomme)` in
 `CxUniverse` and `(likes Tom (FruitFn Apple))` in `CxAgentAnn`, `(believes Ann (likes Tom
 (FruitFn Pomme)))` is true, although `CxAgentAnn` does not see the merge. A stored `(believes

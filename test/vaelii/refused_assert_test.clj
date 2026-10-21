@@ -118,8 +118,8 @@
     (testing "an option refused after the mint"
       (refused-leaves-nothing kb (list hueOf (list FruitFn AppleTree) Red) 'CxUniverse
                               {:direction :backward} :unknown-option))
-    (testing "no termOfUnit names the application"
-      (is (empty? (v/sentexes-matching kb (list 'termOfUnit '?k (list FruitFn AppleTree))
+    (testing "no natFormula names the application"
+      (is (empty? (v/sentexes-matching kb (list 'natFormula '?k (list FruitFn AppleTree))
                                        'CxUniverse))))))
 
 (tu/deftest-kb a-context-nat-minted-for-a-refused-sentence-is-taken-back

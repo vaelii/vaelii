@@ -1475,7 +1475,7 @@
   "`(fn [sentence])` answering whether `view-context` reads stored `sentence` in another
   spelling under a `reifiable_function` mark some reader does not believe: it names a
   constant minted for a function the reader does not believe reifiable, or holds an
-  application of one it does, outside a `termOfUnit` or `rewriteOf` payload.  Nil when
+  application of one it does, outside a `natFormula` or `rewriteOf` payload.  Nil when
   every reader believes every such mark.
 
   The marks are read unscoped, a superset that the per-reader test narrows to
@@ -1490,7 +1490,7 @@
     (when (seq split)
       (let [minted (memoize (fn [k] (some (fn [[_ _ st]] (let [e (nth (:sentence st) 2 nil)]
                                                            (when (sequential? e) (first e))))
-                                          (raw-match kb (list 'termOfUnit k '?e) 'CxUniverse))))
+                                          (raw-match kb (list 'natFormula k '?e) 'CxUniverse))))
             other? (fn other? [form]
                      (cond
                        (symbol? form) (and (namespace form)
@@ -1498,7 +1498,7 @@
                        (sequential? form)
                        (let [f (first form)]
                          (or (and (true? (get split f)) (sx/ground-term? form))
-                             (and (not (contains? '#{termOfUnit rewriteOf} f))
+                             (and (not (contains? '#{natFormula rewriteOf} f))
                                   (boolean (some other? form)))))
                        :else false))]
         other?))))

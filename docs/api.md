@@ -908,7 +908,7 @@ path, so the KB it lands in need not be empty. `lein cli load` is this entry poi
 
 `assert` answers "would this store?" by *doing* it: the first failing check throws and
 nothing lands.  Some of what `assert` writes comes before a check that can still refuse
-it — the constant a ground reifiable NAT is minted to, with its `termOfUnit` and result
+it — the constant a ground reifiable NAT is minted to, with its `natFormula` and result
 types; the `SkolemFn` declaration a head existential makes; the sentence itself, stored
 and chained before an `exceptWhen` query evaluated as a rule fires raises
 `:pattern-too-costly`.  A throw out of `assert` therefore takes back what the call wrote,

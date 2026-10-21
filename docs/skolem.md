@@ -46,7 +46,7 @@ the **same constant per `(rule, antecedent-binding)`**. The skolem is the NAT
 ```
 
 reified through the ordinary NAT path (`reify-or-mint-nat`, [nat.md](nat.md)):
-`termOfUnit` dedups it, so the first firing mints a `nat/` constant and every re-firing
+`natFormula` dedups it, so the first firing mints a `nat/` constant and every re-firing
 on the same binding resolves to that one. The arguments key the witness:
 
 - **rule-digest**, the hex SHA-1 of the rule's canonical antecedents, consequent and
@@ -74,7 +74,7 @@ it. The witness's `nat/` symbol is `constant-for`'s digest of the NAT
 
 The witness `(Q a K)` is justified through the JTMS on `[antecedent-facts, rule]` like
 any derived fact, so retracting `(person Tom)` drops `(hasMother Tom K)`, which orphans
-`K`; the NAT orphan sweep (`remove-orphaned-nats!`) then removes its `termOfUnit`, so no
+`K`; the NAT orphan sweep (`remove-orphaned-nats!`) then removes its `natFormula`, so no
 raw `nat/` symbol dangles.
 
 ## Where it lives

@@ -225,7 +225,7 @@
     ;; descending into it would judge `+` and every structural NAT functor by naming rules that
     ;; were never about them
     (is (empty? (nm/problems '(evaluate Sum (+ 1 2)) 'CxWell)))
-    (is (empty? (nm/problems '(termOfUnit Rod1 (QuantityFn 5 Meter)) 'CxWell)))))
+    (is (empty? (nm/problems '(natFormula Rod1 (QuantityFn 5 Meter)) 'CxWell)))))
 
 (deftest ist-names-a-context
   (is (empty? (nm/problems '(ist CxUniverse (flies Tweety)) 'CxWell)))

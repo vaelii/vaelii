@@ -548,18 +548,18 @@
         "a declared result below the demanded kind is the demand met")))
 
 (tu/deftest-kb a-quoting-predicates-payload-is-a-mention-and-is-not-typed-by-its-function
-  ;; `(termOfUnit K E)` carries the NAT expression as a literal payload rather than as a
+  ;; `(natFormula K E)` carries the NAT expression as a literal payload rather than as a
   ;; term used in that position, so what `E`'s function yields says nothing about the
   ;; argument — typing it would type a quotation by its referent.  The declaration here
   ;; names a type the function's result does not reach, so the admission rests on the
-  ;; exemption and not on the shipped `(arg termOfUnit 2 non_atomic_term)`.
+  ;; exemption and not on the shipped `(arg natFormula 2 non_atomic_term)`.
   (let [msr (tu/tmp-type) dog (tu/tmp-type) f (tu/tmp-ind) K (tu/tmp-ind)]
     (v/assert kb (list 'genl msr 'thing) 'CxUniverse)
     (v/assert kb (list 'genl dog 'thing) 'CxUniverse)
     (v/assert kb (list 'unreifiable_function f) 'CxUniverse)
     (v/assert kb (list 'result f msr) 'CxUniverse)
-    (v/assert kb (list 'arg 'termOfUnit 2 dog) 'CxUniverse)
-    (is (v/assert kb (list 'termOfUnit K (list f 5)) 'CxUniverse))))
+    (v/assert kb (list 'arg 'natFormula 2 dog) 'CxUniverse)
+    (is (v/assert kb (list 'natFormula K (list f 5)) 'CxUniverse))))
 
 (tu/deftest-kb check-reads-a-reifiable-payload-of-a-quoting-predicate-as-a-mention
   ;; `check` reads a reifiable application as the constant `assert` would mint; in a
@@ -570,8 +570,8 @@
     (v/assert kb (list 'disjoint msr dog) 'CxUniverse)
     (v/assert kb (list 'reifiable_function f) 'CxUniverse)
     (v/assert kb (list 'result f msr) 'CxUniverse)
-    (v/assert kb (list 'arg 'termOfUnit 2 dog) 'CxUniverse)
-    (is (empty? (v/check kb (list 'termOfUnit K (list f 5)) 'CxUniverse)))))
+    (v/assert kb (list 'arg 'natFormula 2 dog) 'CxUniverse)
+    (is (empty? (v/check kb (list 'natFormula K (list f 5)) 'CxUniverse)))))
 
 (tu/deftest-kb a-result-declaration-a-context-cannot-see-does-not-refuse-it
   ;; the whole family judges from the asking context's vantage — a context is refused on

@@ -7,7 +7,7 @@
   *place* as well as a name, so it takes one more source of liveness: what is stored in it.
   It is collected at the same gate when all three are empty — nothing in its context slot,
   no stored sentence naming it, no stored `genlCx` edge mentioning it — and the structural
-  `genlCx` edges the producer computes off its own `termOfUnit` map are none of those,
+  `genlCx` edges the producer computes off its own `natFormula` map are none of those,
   since a pair of ordered contexts would otherwise hold each other up forever.
 
   What the namespace pins, beyond the gate itself: every arrival order of the three
@@ -52,9 +52,9 @@
 
 (defn- reified?
   "Does the KB still map `k` to an expression — is it still a context it knows?  The
-  `termOfUnit` is a context NAT's whole bookkeeping, so this is exactly \"not swept\"."
+  `natFormula` is a context NAT's whole bookkeeping, so this is exactly \"not swept\"."
   [kb k]
-  (boolean (seq (v/sentexes-matching kb (list 'termOfUnit k '?e) 'CxUniverse))))
+  (boolean (seq (v/sentexes-matching kb (list 'natFormula k '?e) 'CxUniverse))))
 
 (defn- context-in
   "Mint the reified context for `expr` by storing `sentence` in it, and answer
@@ -117,7 +117,7 @@
     (is (not (reified? kb k)))))
 
 (tu/deftest-kb a-computed-genlcx-edge-does-not-keep-a-context-alive
-  ;; The producer derives `(genlCx month year)` from the two `termOfUnit` maps, so the
+  ;; The producer derives `(genlCx month year)` from the two `natFormula` maps, so the
   ;; edge is a *reading* of the bookkeeping rather than a reference to it.  Counting it
   ;; would make every ordered pair immortal — each end held up by an edge computed from
   ;; the other end — which is the whole reason authorship decides this and shape does not.
@@ -157,7 +157,7 @@
         (is (= [{'?x 'NewYear}] (v/ask kb '(holiday ?x) month)))))))
 
 (tu/deftest-kb collecting-a-context-orphans-the-object-nat-in-its-expression
-  ;; The region grows with the fixpoint, across both kinds: the context's `termOfUnit` is
+  ;; The region grows with the fixpoint, across both kinds: the context's `natFormula` is
   ;; the last sentence naming the object constant standing inside its expression, so the
   ;; round that collects the context makes that constant the next round's candidate.  One
   ;; rule, one teardown, a `cx/` and a `nat/` collected by it.
@@ -170,7 +170,7 @@
       (is (nat/reified-object-symbol? inner) "the dimension argument reified to an object")
       (v/retract! kb h)
       (is (not (reified? kb k)))
-      (is (empty? (v/sentexes-matching kb (list 'termOfUnit inner '?e) 'CxUniverse))
+      (is (empty? (v/sentexes-matching kb (list 'natFormula inner '?e) 'CxUniverse))
           "and the object constant inside the expression went with it"))))
 
 (tu/deftest-kb a-computed-edges-authorship-survives-a-rebuild
@@ -235,7 +235,7 @@
       (let [[_ ky2] (context-in kb '(holiday NewYear) year)
             [_ km2] (context-in kb '(likes Bob Cid) month)]
         (is (= ky ky2) "the same content-named constant, as a deterministic re-mint always is")
-        (is (= 1 (count (v/sentexes-matching kb (list 'termOfUnit '?k year) 'CxUniverse)))
+        (is (= 1 (count (v/sentexes-matching kb (list 'natFormula '?k year) 'CxUniverse)))
             "one constant for the expression — the re-mint dedups, it does not double")
         (is (= km2 (:context (v/sentex kb (v/assert kb '(knows Bob Dee) month))))
             "and the write entry point resolves the compound to that one constant")
@@ -256,7 +256,7 @@
         [h k] (context-in kb '(likes Tom Ann) expr)]
     (is (= [false false false] (mapv nat/reified-context-symbol? (sort nm/query-contexts))))
     (is (= [0 0 0] (mapv #(v/count-in-context kb %) (sort nm/query-contexts))))
-    (is (empty? (mapcat #(v/sentexes-matching kb (list 'termOfUnit % '?e) 'CxUniverse)
+    (is (empty? (mapcat #(v/sentexes-matching kb (list 'natFormula % '?e) 'CxUniverse)
                         nm/query-contexts))
         "no query context is mapped, so none can be orphaned")
     (v/assert kb '(likes Bob Cid) 'CxStory)
@@ -350,7 +350,7 @@
                   k))]
         (disk-backend/close-dir! dir)
         (let [kb2 (v/open-kb {:backend :disk-log :dir dir :recover? false})]
-          (is (nil? (v/handle-of kb2 (list 'termOfUnit k '(CxTmpDurableFn CxMonad (DatetimeFn "2020")))
+          (is (nil? (v/handle-of kb2 (list 'natFormula k '(CxTmpDurableFn CxMonad (DatetimeFn "2020")))
                                  'CxUniverse))
               "the durable record is gone, not merely disbelieved")
           (v/recover kb2)

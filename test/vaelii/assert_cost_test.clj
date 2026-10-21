@@ -344,7 +344,7 @@
   none of them names.
 
   A teardown runs the reified-NAT orphan collection, since a constant whose last use has
-  just gone would leave its `termOfUnit` map dangling a raw `nat/` symbol
+  just gone would leave its `natFormula` map dangling a raw `nat/` symbol
   (docs/nat.md).  Here it has nothing to collect at any point: every constant is named by
   its own `(acNatUse …)` fact and no retraction touches one, so the population is the same
   after the workload as before it and every read the sweep takes is a read that changed
@@ -368,7 +368,7 @@
 
 (defn- nat-orphan-teardown
   "n facts retracted, each the **last use** of one reified NAT, so every teardown orphans
-  a constant and unindexes its `termOfUnit` bookkeeping alongside the fact.
+  a constant and unindexes its `natFormula` bookkeeping alongside the fact.
 
   The twin of `nat-bystander-teardown`, and the two fail for opposite reasons.  That one
   says the sweep must not read the population it is not about; this one says it must
@@ -469,7 +469,7 @@
 ;;
 ;; **One `:predicate-extent` read per assert, and one per teardown, is the reified-constant
 ;; gate.**  `nat/any-reified-constants?` answers from the in-memory `reifiable_function`
-;; marks, and in a KB declaring none it reads the `termOfUnit` count, since a context slot
+;; marks, and in a KB declaring none it reads the `natFormula` count, since a context slot
 ;; mints a `cx/` constant with no declaration (docs/context-nat.md).  The assert workloads
 ;; declare none, so each assert reads the count once.  A teardown reads it once, for the
 ;; removal record; a KB declaring a reifiable function reads the `contextArgSubrelation`
@@ -836,7 +836,7 @@
     :writes  {}
     :retracts {:levels 500 :terms 400 :roots 1003 :roster 102 :slots 102 :dead 301}}
 
-   ;; 200 unindexed for 100 retractions — the use, plus the `termOfUnit` its removal
+   ;; 200 unindexed for 100 retractions — the use, plus the `natFormula` its removal
    ;; orphaned.  **That count is the workload's point and is not a number to re-pin
    ;; downward**: a sweep that stops finding the orphan unindexes 100 here and leaves a raw
    ;; `nat/` symbol behind, so the narrowing is admissible only while this stays 200.  It
@@ -846,7 +846,7 @@
    ;; left is the region: 14 predicate-extent and 3 term-index per retraction, for a constant
    ;; the population no longer enters.
    ;;
-   ;; The orphan question itself settles on the `termOfUnit` clause here — a collected
+   ;; The orphan question itself settles on the `natFormula` clause here — a collected
    ;; constant has its map and nothing else left — so it reads neither the expression nor
    ;; the declarations to find out what the mint wrote about it (`nat/minted-for`, held
    ;; behind a delay).  That is the whole of the difference between this budget and one

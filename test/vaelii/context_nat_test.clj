@@ -6,7 +6,7 @@
   A ground application in a sentex's context slot reifies to an opaque `cx/` context
   constant, so `(CxTimeFn CxMonad (DatetimeFn \"2000\"))` is a context a sentex can be stored
   in and a `genlCx` node — while its unreifiable argument stays structural in the
-  `termOfUnit` map, readable to the producer.  A read names the context through the
+  `natFormula` map, readable to the producer.  A read names the context through the
   application while CxUniverse believes `(result CxTimeFn context)`.  `(contextArgSubrelation F pos R)` then orders
   sibling contexts structurally: `(CxTimeFn CxMonad (DatetimeFn \"2000-01\"))` is a spec of
   `(CxTimeFn CxMonad (DatetimeFn \"2000\"))` because January 2000 is inside 2000, with nobody
@@ -45,9 +45,9 @@
     (testing "the context slot is a reified cx/ constant that classifies as a context"
       (is (nat/reified-context-symbol? k))
       (is (= :context (v/term-role k))))
-    (testing "the unreifiable datetime argument stays structural in the termOfUnit map"
-      (is (= [(list 'termOfUnit k expr)]
-             (map :sentence (v/sentexes-matching kb (list 'termOfUnit k '?e) 'CxUniverse)))))
+    (testing "the unreifiable datetime argument stays structural in the natFormula map"
+      (is (= [(list 'natFormula k expr)]
+             (map :sentence (v/sentexes-matching kb (list 'natFormula k '?e) 'CxUniverse)))))
     (testing "the fact reads back from the compound context (read-side reify is symmetric)"
       (is (= [{'?x 'Ann}] (v/ask kb '(likes Tom ?x) expr))))
     (testing "the same compound dedups to one context constant"
@@ -160,7 +160,7 @@
         (is (re-find #"\(result CxBogusFn context\)" (str (:message err))))))))
 
 (tu/deftest-kb a-declaration-admits-the-slot-only-where-cxuniverse-sees-it
-  ;; The slot resolves through the `termOfUnit` map in CxUniverse, so the declaration is
+  ;; The slot resolves through the `natFormula` map in CxUniverse, so the declaration is
   ;; read there: stated in CxUniverse or in a context above it, it admits the slot; stated
   ;; in an unwired context or in a spec of CxUniverse, it does not.
   (doseq [where [:universe :above :unwired :below]]
@@ -341,7 +341,7 @@
             kcx  (:context (v/sentex kb (:slot hs)))
             knat (nth (:sentence (v/sentex kb (:arg hs))) 2)
             maps (set (map #(second (:sentence %))
-                           (v/sentexes-matching kb (list 'termOfUnit '?k E) 'CxUniverse)))]
+                           (v/sentexes-matching kb (list 'natFormula '?k E) 'CxUniverse)))]
         (testing (str order " the slot and the argument name two constants")
           (is (nat/reified-context-symbol? kcx))
           (is (nat/reified-object-symbol? knat))
@@ -417,7 +417,7 @@
   ;; `maybe-reify-context` mints on the write path and dedups on the read one, and the
   ;; two have to resolve an application to the same term or a fact stored under one
   ;; spelling is unreachable by the other.  A `(rewriteOf T E)` is the rank that shows it:
-  ;; the write path resolves the slot to `T` and mints no `termOfUnit`, so a read that
+  ;; the write path resolves the slot to `T` and mints no `natFormula`, so a read that
   ;; consulted the dedup probe alone would answer `no-match` for a context it had just
   ;; stored into.
   (tu/with-terms [CxAlias Slot likes Tom Ann]
@@ -581,7 +581,7 @@
 ;; ---- the computed edge's supporters, stated below the context it is stored in ----
 ;;
 ;; `materialize-edge` stores the computed `genlCx` in CxUniverse and justifies it by the two
-;; `termOfUnit` sentexes, the `contextArgSubrelation` declaration and, for a dimension
+;; `natFormula` sentexes, the `contextArgSubrelation` declaration and, for a dimension
 ;; resolved by stored facts, the `(R a b)` evidence.  Nothing requires the declaration or
 ;; the evidence to be stated where CxUniverse can see it, so the edge can rest on a
 ;; supporter in a context below its own.  These two tests pin that shape, and

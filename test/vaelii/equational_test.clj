@@ -29,7 +29,7 @@
   House rules: gensym'd temporaries via `tu/with-terms`; engine vocabulary
   (`equals`, `reifiable_function`, `QuantityFn`, `Kilogram`, contexts) literal; the
   neutral fixture asserts the KB is restored.  CxUniverse is loaded because the NAT
-  bookkeeping (`termOfUnit`, `result`) rides real vocabulary."
+  bookkeeping (`natFormula`, `result`) rides real vocabulary."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.nat :as nat]

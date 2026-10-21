@@ -694,7 +694,7 @@
           (is (believed? kb (list dog Rex) CxWorld) (str "entailed under " (vec order))))))))
 
 ;; `(resultArg MemberFn 1)` types the constant `(MemberFn x)` mints by the type `x` names,
-;; derived off the `termOfUnit` fact as an `argArg` mint is off its fact.  A row is the
+;; derived off the `natFormula` fact as an `argArg` mint is off its fact.  A row is the
 ;; steps in order, the name the application holds, and whether `(name K)` is believed
 ;; after them.  A name the hierarchy does not hold waits on the fact and mints nothing,
 ;; and the edge that makes it a type releases the mint, across a recover too.
@@ -722,7 +722,7 @@
                   :type        (a-type kb kind 'CxUniverse)
                   :recover     (v/recover kb)
                   :retract     (v/retract! kb @decl)))
-              (is (some? (v/handle-of kb (list 'termOfUnit @k app) 'CxUniverse))
+              (is (some? (v/handle-of kb (list 'natFormula @k app) 'CxUniverse))
                   (str "the write is stored whole under " (vec steps)))
               (is (= holds? (believed? kb (list t @k) 'CxUniverse))
                   (str (vec steps) " over the " (name named))))))))))

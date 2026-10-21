@@ -294,7 +294,7 @@ The first two are genuine mutual recursion — the cycle is in the *behaviour*, 
 motion removes it.
 
 - **`assert-sentence`** — the full assertion path, called from `impl/nat.clj` (a reified
-  NAT stores its `(termOfUnit K E)` map and its materialized types) and from
+  NAT stores its `(natFormula K E)` map and its materialized types) and from
   `impl/skolem.clj` (a firing mints its witness). Storing is a *whole* assert — naming,
   the definitional checks, the index, chaining, settle — so the write path runs chaining,
   and chaining calls back to mint a constant ([skolem.md](skolem.md)).
