@@ -384,44 +384,12 @@
 ;; ---- how much of the taxonomy is connected -------------------------------
 
 (defn- taxonomy-coverage
-  "Two numbers, not one: how many type names carry a `genl` edge at all, and how many
-  reach the root.  A type with an edge into a disconnected island is counted by the first
-  and not the second, and **the gap between them is the finding**.
-
-  The root is *found*, not assumed — `thing` is this engine's and a converted corpus
-  brings its own — so whatever type the most others reach is the one reported against, and
-  the reading means the same on a corpus that never heard of `thing`.
-
-  The denominator is every type-shaped name in the vocabulary, which by `docs/naming.md`
-  includes a bare lowercase word (`likes` is a legal predicate *and* a legal type name).
-  A `kb/relation?` name is excluded; a name with no stored arity remains a candidate
-  rather than hiding disconnected type islands.
-  That is why the gap is the finding rather than either fraction on its own.
-
-  Reachability is **reflexive**, as `genls` is: the root reaches itself, so `:rooted`
-  counts it and `:islands` is exactly the edged types outside the root's ancestor set.
-
-  The closures are unscoped: the report counts the whole taxonomy and has no reader."
+  "`integrity/taxonomy-coverage` over the vocabulary pass's type names: how many carry a
+  `genl` edge, how many reach the root, and the islands between — the nodes
+  kb-integrity's `:taxonomy-island` category lists."
   [kb pass progress!]
-  (let [taxo  (reasoning/taxonomy kb)
-        ;; Memoized: the reach walk below asks this once per node AND once per ancestor
-        ;; of every node, which on the 124k-type conversion above is a few million calls
-        ;; over a name set two orders of magnitude smaller.  Each call reads the
-        ;; taxonomy atom and allocates, and the answer cannot move inside one reading.
-        type-candidate? (memoize #(not (kb/relation? kb % nil)))
-        nodes (into #{} (filter type-candidate?) (tax/types taxo))
-        named (into #{} (filter type-candidate?) (:type-names pass))]
-    (progress! {:phase :taxonomy :done 0 :total (count nodes)})
-    (let [reach (with-open [r (progress/start ::taxonomy "quality: walk the type ancestor sets"
-                                              (count nodes))]
-                  (frequencies (mapcat #(filter type-candidate? (tax/genls-global taxo %))
-                                       (progress/each r nodes))))
-          [root rooted] (first (sort-by (juxt (comp - val) (comp nm/print-key key)) reach))]
-      {:names   (count (into named nodes))
-       :edged   (count nodes)
-       :root    root
-       :rooted  (or rooted 0)
-       :islands (max 0 (- (count nodes) (or rooted 0)))})))
+  (integrity/taxonomy-coverage kb (:type-names pass)
+                               #(progress! (assoc % :phase :taxonomy))))
 
 ;; ---- declarations that constrain nothing ---------------------------------
 ;;

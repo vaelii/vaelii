@@ -1768,3 +1768,42 @@
           (is (some? needed))
           (is (every? #(= [:truncated :max-work] ((juxt :status :reason) (run {:max-work %})))
                       (range 0 (or needed 0) 50))))))))
+
+;; ---- taxonomy-island ----------------------------------------------------------
+
+(defn- islands
+  "The `:taxonomy-island` findings over `terms` a sweep of that category alone reports in
+  `context`."
+  ([kb terms] (islands kb terms 'CxUniverse))
+  ([kb terms context]
+   (filterv #(contains? (set terms) (:term %))
+            (:taxonomy-island (v/kb-integrity kb #{} context
+                                              {:categories #{:taxonomy-island}})))))
+
+(tu/deftest-kb an-edged-type-that-misses-the-root-is-a-taxonomy-island
+  ;; The root is the type the most nodes reach, so the placed chain makes it `thing`.
+  (tu/with-terms [stray_kind loose_kind placed_kind below_kind]
+    (let [census #(:islands (:taxonomy (v/kb-quality kb)))
+          start  (census)]
+      (v/assert kb (list 'genl placed_kind 'thing) 'CxUniverse)
+      (v/assert kb (list 'genl below_kind placed_kind) 'CxUniverse)
+      (v/assert kb (list 'genl stray_kind loose_kind) 'CxUniverse)
+      (let [before (state-snapshot kb)]
+        (is (= (mapv (fn [t] {:term t :root 'thing}) (sort-by nm/print-key [loose_kind stray_kind]))
+               (islands kb [stray_kind loose_kind placed_kind below_kind]))
+            "both ends of the edge that reaches no root, and not the placed types")
+        (is (= (+ start 2) (census)) "kb-quality's :islands counts the same nodes")
+        (is (= before (state-snapshot kb)) "the audit stores, believes and files nothing")))))
+
+(tu/deftest-kb taxonomy-island-is-review-only-and-reads-the-edges-a-context-sees
+  (tu/with-terms [CxHidden hidden_kind loose_kind placed_kind below_kind]
+    (v/assert kb (list 'genlCx CxHidden 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genl placed_kind 'thing) 'CxUniverse)
+    (v/assert kb (list 'genl below_kind placed_kind) 'CxUniverse)
+    (v/assert kb (list 'genl hidden_kind loose_kind) CxHidden)
+    (is (nil? (:taxonomy-island (v/kb-integrity kb #{} CxHidden)))
+        "a sweep without :categories skips the review-only pass")
+    (is (= [] (islands kb [hidden_kind loose_kind])) "CxUniverse sees no edge of either")
+    (is (= (sort-by nm/print-key [hidden_kind loose_kind])
+           (mapv :term (islands kb [hidden_kind loose_kind] CxHidden))))))
+

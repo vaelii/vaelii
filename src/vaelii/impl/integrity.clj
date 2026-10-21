@@ -1124,6 +1124,82 @@
             (recur (conj findings finding) (rest units))))
       {:status :complete :findings findings})))
 
+;; ---- taxonomy-island: a type with a genl edge that does not reach the root ----
+
+(defn- taxonomy-reach
+  "The type nodes `context` sees, the root and how many nodes reach it, and the two readers
+  the counting used: `:candidate?`, which excludes a `kb/relation?` name, and `:reaches?`,
+  whether a node reaches a given type.  A nil `context` reads every node through the
+  unscoped closures, for `taxonomy-coverage`: a report on the whole taxonomy has no
+  vantage to read from.
+
+  The root is *found*, not assumed — `thing` is this engine's and a converted corpus
+  brings its own — so whatever type the most nodes reach is the root, ties broken by print
+  order.  Reachability is **reflexive**, as `genls` is: the root reaches itself, so
+  `:rooted` counts it.  A name with no stored arity stays a candidate rather than hiding a
+  disconnected type island.
+
+  Each node's up-closure is read to find the root, so a chain of V types costs Θ(V²)
+  where it has V−1 edges.  `progress!` is called with `{:done 0 :total n}` once the nodes
+  are known."
+  [kb context progress!]
+  (let [taxo       (reasoning/taxonomy kb)
+        ;; Memoized: the reach walk asks this once per node AND once per ancestor of every
+        ;; node, over a name set far smaller than that count, and the answer cannot move
+        ;; inside one reading.
+        candidate? (memoize #(not (kb/relation? kb % nil)))
+        nodes      (into #{} (filter candidate?)
+                         (if context (tax/types taxo context) (tax/types taxo)))
+        up         (fn [t]
+                     (budget/spend!)
+                     (filter candidate? (if context
+                                          (tax/genls taxo t context)
+                                          (tax/genls-global taxo t))))
+        _          (progress! {:done 0 :total (count nodes)})
+        reach      (with-open [r (progress/start ::taxonomy
+                                                 "integrity: walk the type ancestor sets"
+                                                 (count nodes))]
+                     (frequencies (mapcat up (progress/each r nodes))))
+        [root rooted] (first (sort-by (juxt (comp - val) (comp nm/print-key key)) reach))]
+    {:candidate? candidate?
+     :nodes      nodes
+     :root       root
+     :rooted     (or rooted 0)
+     :reaches?   (fn [t r]
+                   (budget/spend!)
+                   (if context (tax/genl? taxo t r context) (tax/genl?-global taxo t r)))}))
+
+(defn taxonomy-coverage
+  "Two numbers, not one: how many type names carry a `genl` edge at all, and how many
+  reach the root — `{:names :edged :root :rooted :islands}`, read from every context.
+  `:islands` is the edged types that do not reach the root, the `:taxonomy-island`
+  findings counted, and **the gap between the two numbers is the finding**.
+
+  `type-names` is the denominator's vocabulary: every type-shaped name, which by
+  `docs/naming.md` includes a bare lowercase word (`likes` is a legal predicate *and* a
+  legal type name), filtered as the nodes are.  `progress!` is `taxonomy-reach`'s."
+  [kb type-names progress!]
+  (let [{:keys [candidate? nodes root rooted]} (taxonomy-reach kb nil progress!)
+        named (into #{} (filter candidate?) type-names)]
+    {:names   (count (into named nodes))
+     :edged   (count nodes)
+     :root    root
+     :rooted  rooted
+     :islands (max 0 (- (count nodes) rooted))}))
+
+(defn- taxonomy-island-findings
+  "Every type node `context` sees that does not reach the root, as `{:term :root}` in
+  print order."
+  [kb context remaining]
+  (let [{:keys [nodes root reaches?]} (taxonomy-reach kb context (fn [_] nil))]
+    (bounded-findings
+     :taxonomy-island
+     (when root
+       (for [t     (sort-by nm/print-key nodes)
+             :when (not (reaches? t root))]
+         {:term t :root root}))
+     remaining)))
+
 ;; ---- rule-clash: two rules whose conclusions would contradict if both fired ----
 ;;
 ;; Static analysis of the rules: one record read per rule, and a unification per candidate
@@ -1857,6 +1933,8 @@
                                    (disjoint-could-be-partition-findings kb context remaining))]
    [:missing-arg (fn [kb _ context remaining]
                    (missing-arg-findings kb context remaining))]
+   [:taxonomy-island (fn [kb _ context remaining]
+                       (taxonomy-island-findings kb context remaining))]
    [:rule-clash-review (fn [kb _ context remaining]
                          (rule-clash-findings kb context remaining true))]])
 
@@ -1864,7 +1942,7 @@
   "The review-only categories: a sweep runs their passes only when `:categories` names
   them, so a finding of one never turns an otherwise clean default sweep into `:gap`."
   #{:twin-genls :derivable-stated-edge :disjoint-could-be-partition :missing-arg
-    :rule-clash-review})
+    :taxonomy-island :rule-clash-review})
 
 (defn- check-args!
   "Refuse a `candidate-terms` that is not a set of ground terms (`:bad-args`), and a
