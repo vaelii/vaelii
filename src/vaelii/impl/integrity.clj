@@ -663,16 +663,22 @@
 
 (defn- declaring-contexts
   "The contexts other than `context` that see it and store a declaration typing a
-  position of `pred`: an `arg`-family declaration on `pred` (`res/arg-constraint-kinds`)
-  or a `genl` edge out of it, which types a unary predicate's position and imports a
-  super-predicate's declarations.  In name order."
+  position of `pred`: an `arg`-family declaration on `pred` (`res/arg-constraint-kinds`),
+  or a supporter of a `genl` edge out of it, which types a unary predicate's position and
+  imports a super-predicate's declarations.  An edge's supporters are the engine's own
+  (`tax/genl-edge-supporters`): a stated `(genl pred super)`, and each `covering`,
+  `separating` or `partition` roster naming `pred` as a part (`tax/installed-edges`), so
+  a part whose one edge is a roster's is declared where the roster is.  In name order."
   [kb pred context]
-  (let [down (set (tax/context-down (reasoning/taxonomy kb) context))]
-    (->> (cons (list 'genl pred '?x)
-               (for [[k [_ shape]] res/arg-constraint-kinds]
-                 (if (= :every shape) (list k pred '?t) (list k pred '?n '?t))))
-         (mapcat #(res/matches-visible kb % '?ctx))
-         (keep (fn [[_ _ s]] (budget/spend!) (:context s)))
+  (let [tx     (reasoning/taxonomy kb)
+        down   (set (tax/context-down tx context))
+        stated (for [[k [_ shape]] res/arg-constraint-kinds]
+                 (if (= :every shape) (list k pred '?t) (list k pred '?n '?t)))
+        edges  (mapcat (fn [super] (budget/spend!) (tax/genl-edge-supporters tx pred super nil))
+                       (disj (set (tax/direct-genls-global tx pred)) pred))]
+    (->> (concat (keep (fn [[_ _ s]] (budget/spend!) (:context s))
+                       (mapcat #(res/matches-visible kb % '?ctx) stated))
+                 (map :context (handle-records kb edges)))
          (filter #(and (not= context %) (contains? down %)))
          distinct
          (sort-by nm/print-key))))
