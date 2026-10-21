@@ -9,6 +9,7 @@
             [vaelii.impl.budget :as budget]
             [vaelii.impl.checks :as checks]
             [vaelii.impl.decide.arity :as arity]
+            [vaelii.impl.except :as exc]
             [vaelii.impl.inherit :as inherit]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
@@ -1200,6 +1201,128 @@
          {:term t :root root}))
      remaining)))
 
+;; ---- stranded-declaration: an argument constraint past its predicate's arity ----
+;;
+;; `(arg parentOf 3 person)` is admitted while `parentOf` has no declared length —
+;; open-world, and the highest position a declaration names is a lower bound on the arity
+;; rather than a claim about it.  Then a length arrives, by any of the routes
+;; `arity/relation-length` reads, and the declaration is left constraining a position the
+;; predicate provably does not have.  It is not refused: refusing it would make the
+;; *binding's* arrival order decide what the KB holds.  It simply stops meaning anything,
+;; while the entry point refuses the identical sentence one line later.
+;;
+;; A `variable_arity` predicate is the case where the length is not the last word, and the
+;; entry point's arm releases it: such a predicate reads a tuple of any length from its
+;; declared arity upward, so a position past that length is one its tuples really do
+;; reach.  Nothing of its is a finding, however high the position, because nothing of its
+;; is stranded.
+;;
+;; **A sweep rather than a settle-ledger entry.**  A wrong-length *fact* is a claim each
+;; reader believes or withdraws (`vaelii.impl.decide`).  A stranded declaration is inert:
+;; it constrains nothing, refuses nothing and mints nothing, and it reads the same an hour
+;; later as at the moment it went stale.  There is no newly to report, so paying per write
+;; buys nothing a sweep does not give for free — and a per-declaration ledger entry would
+;; compete for the 1,000 slots `violations` keeps and log a `:warn` line each.
+
+(def ^:private declaration-functors
+  "The argument constraints, in the order this walks them.  A vector rather than the
+  set in `checks`, because this is a walk order and that is a membership test."
+  '[arg genlArg interArg interArgEqual])
+
+(defn- thing-typed
+  "The type a declaration's `sentence` mints in is `thing`: the last argument of `arg` and
+  `genlArg`, the fifth of `interArg` and `interArgEqual`."
+  [sentence]
+  (= 'thing (if (contains? '#{interArg interArgEqual} (nm/functor sentence))
+              (nth sentence 5 nil)
+              (last sentence))))
+
+(defn stranded-declarations
+  "Which argument constraints name a position their predicate does not have —
+  `{:total n :stranded [entry …] :typed-thing [entry …]}`, `:total` counting the
+  declarations walked and the `:stranded` entries
+  `{:handle :sentence :context :predicate :position :arity :via :message}` in content
+  order.  `:typed-thing` lists, in the same order, the declarations that type a position
+  `thing`, each `{:handle :sentence :context :facts}` with `:facts` its predicate's stored
+  extent: a declaration typing `thing` mints nothing (`arity/mintable-type?`), so the
+  remedy is a narrower type in the declaration.  With a `context`, only the declarations
+  it sees are walked; with nil, every stored one.
+
+  **Enumerated, not probed per predicate.**  Declarations are vocabulary and vocabulary is
+  small, so reading all of them and asking each about its own predicate is cheaper than
+  asking each predicate what declares it, and it does not grow with the spec subtree
+  underneath.  What it does grow with is the hierarchy *above*: `arity/relation-length` is
+  a binding read for a predicate carrying a length of its own and a walk of the supers for
+  one that inherits its length, so the walk is `O(declarations × super-predicates)`.
+
+  Belief-filtered: a stored, disbelieved declaration constrains nothing for a reason that
+  has nothing to do with its position, and listing it would name the wrong defect.
+
+  `:message` is the one `checks` wrote when it convicted, **carried rather than
+  re-derived**: a caller reading this map and a caller reading `check`'s answer are told
+  the same thing in the same words, and there is no second wording to drift from it.
+
+  One membership reader per context met: a reader memoizes for the life of one caller, so
+  building one per declaration pays the retrieval every time and throws the memo away
+  unread.  `progress!` is called with `{:done 0 :total n}` once the declarations are
+  known."
+  [kb context progress!]
+  (let [taxo   (reasoning/taxonomy kb)
+        reader (let [cache (volatile! {})]
+                 (fn [ctx]
+                   (or (get @cache ctx)
+                       (let [r (kb/membership-reader kb ctx)]
+                         (vswap! cache assoc ctx r)
+                         r))))
+        stored (into []
+                     (comp (mapcat #(reads/as-stored-with-functor (:index kb) %))
+                           (distinct)
+                           (keep #(p/get-sentex (:records kb) %))
+                           (filter #(not (sx/negative? %)))
+                           (filter #(or (nil? context) (tax/sees? taxo context (:context %))))
+                           (filter #(exc/believed-own? kb (:id %))))
+                     declaration-functors)]
+    (progress! {:done 0 :total (count stored)})
+    (let [found (with-open [r (progress/start ::declarations
+                                              "integrity: check the argument declarations"
+                                              (count stored))]
+                  (into []
+                        (keep (fn [sx]
+                                (budget/spend!)
+                                (progress/tick! r)
+                                (let [ctx (:context sx)]
+                                  (when-let [v (checks/arg-position-violation
+                                                kb (:sentence sx) ctx (reader ctx))]
+                                    {:handle    (:id sx)
+                                     :sentence  (:sentence sx)
+                                     :context   ctx
+                                     :predicate (:predicate v)
+                                     :position  (:position v)
+                                     :arity     (:arity v)
+                                     :via       (:via v)
+                                     :message   (:message v)}))))
+                        stored))
+          ;; content order, so the listed set is a function of the vocabulary rather than
+          ;; of the handle order the index walked
+          order #(nm/sort-by-content-key
+                  (juxt (comp nm/print-key :sentence) (comp nm/print-key :context))
+                  compare %)]
+      {:total       (count stored)
+       :stranded    (order found)
+       :typed-thing (order (for [sx stored :when (thing-typed (:sentence sx))]
+                             {:handle   (:id sx)
+                              :sentence (:sentence sx)
+                              :context  (:context sx)
+                              :facts    (reads/stored-count-with-functor
+                                         (:index kb) (second (:sentence sx)))}))})))
+
+(defn- stranded-declaration-findings
+  "Every stranded declaration `context` sees, in content order."
+  [kb context remaining]
+  (bounded-findings :stranded-declaration
+                    (:stranded (stranded-declarations kb context (fn [_] nil)))
+                    remaining))
+
 ;; ---- rule-clash: two rules whose conclusions would contradict if both fired ----
 ;;
 ;; Static analysis of the rules: one record read per rule, and a unification per candidate
@@ -1923,6 +2046,8 @@
                         (undeclared-arity-findings kb context remaining))]
    [:uncorresponded-function (fn [kb _ context remaining]
                                (uncorresponded-function-findings kb context remaining))]
+   [:stranded-declaration (fn [kb _ context remaining]
+                            (stranded-declaration-findings kb context remaining))]
    [:rule-clash (fn [kb _ context remaining]
                   (rule-clash-findings kb context remaining false))]
    [:twin-genls (fn [kb _ context remaining]

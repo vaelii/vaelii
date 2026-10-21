@@ -1807,3 +1807,44 @@
     (is (= (sort-by nm/print-key [hidden_kind loose_kind])
            (mapv :term (islands kb [hidden_kind loose_kind] CxHidden))))))
 
+;; ---- stranded-declaration -----------------------------------------------------
+
+(defn- stranded
+  "The `:stranded-declaration` findings naming one of `preds` a sweep of that category
+  alone reports in `context`."
+  ([kb preds] (stranded kb preds 'CxUniverse))
+  ([kb preds context]
+   (filterv #(contains? (set preds) (:predicate %))
+            (:stranded-declaration (v/kb-integrity kb #{} context
+                                                   {:categories #{:stranded-declaration}})))))
+
+(tu/deftest-kb a-declaration-past-its-predicate-s-arity-is-a-violation
+  (tu/with-terms [parentOf a_type]
+    (v/assert kb (list 'genl a_type 'thing) 'CxUniverse)
+    (v/assert kb (list 'arg parentOf 3 a_type) 'CxUniverse)
+    (is (= [] (stranded kb [parentOf]))
+        "nothing binds parentOf yet, so the position is a lower bound and not a mistake")
+    (v/assert kb (list 'arg parentOf 1 a_type) 'CxUniverse)
+    (v/assert kb (list 'binary_predicate parentOf) 'CxUniverse)
+    (let [before (state-snapshot kb)
+          report (v/kb-integrity kb #{} 'CxUniverse)
+          e      (first (filter #(= parentOf (:predicate %)) (:stranded-declaration report)))]
+      (is (= :gap (:status report)) "the default sweep runs the pass")
+      (is (= [(list 'arg parentOf 3 a_type)] (mapv :sentence (stranded kb [parentOf]))))
+      (is (= {:predicate parentOf :position 3 :arity 2 :via parentOf :context 'CxUniverse}
+             (select-keys e [:predicate :position :arity :via :context])))
+      (is (string? (:message e)) "the entry point's own wording")
+      (is (= (filterv #(= parentOf (:predicate %))
+                      (:stranded (:declarations (v/kb-quality kb {:limit 1000}))))
+             (stranded kb [parentOf]))
+          "kb-quality's :declarations lists the same entries")
+      (is (= before (state-snapshot kb)) "the audit stores, believes and files nothing"))))
+
+(tu/deftest-kb stranded-declaration-reads-the-declarations-a-context-sees
+  (tu/with-terms [CxHidden parentOf a_type]
+    (v/assert kb (list 'genlCx CxHidden 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genl a_type 'thing) 'CxUniverse)
+    (v/assert kb (list 'arg parentOf 3 a_type) CxHidden)
+    (v/assert kb (list 'binary_predicate parentOf) 'CxUniverse)
+    (is (= [] (stranded kb [parentOf])) "CxUniverse does not see the declaration")
+    (is (= [CxHidden] (mapv :context (stranded kb [parentOf] CxHidden))))))

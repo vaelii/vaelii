@@ -3835,9 +3835,10 @@
   `context`, or nil — a constraint on a position its predicate does not have.
 
   It re-asks an entry point check of a stored declaration through the arm the entry point
-  reads, so the two cannot drift.  The reader is `vaelii.impl.quality`: a declaration
-  stranded by an arity that arrived later constrains nothing, refuses nothing and mints
-  nothing, so it is a census question rather than a settle one (docs/taxonomy.md).
+  reads, so the two cannot drift.  The reader is `vaelii.impl.integrity`'s
+  `stranded-declarations`: a declaration stranded by an arity that arrived later
+  constrains nothing, refuses nothing and mints nothing, so it is a sweep question rather
+  than a settle one (docs/taxonomy.md).
 
   Only the position arm.  `declaration-problem` also convicts a declaration disagreeing
   with its predicate's `relation_kind`, and an arity arriving is not what makes that true,

@@ -67,11 +67,9 @@
   *declarations* they read, which `rules read against each other` below argues."
   (:require [clojure.set :as set]
             [clojure.string :as str]
-            [vaelii.impl.checks :as checks]
             [vaelii.impl.except :as exc]
             [vaelii.impl.integrity :as integrity]
             [vaelii.impl.jtms :as jtms]
-            [vaelii.impl.kb :as kb]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.progress :as progress]
             [vaelii.impl.protocols :as p]
@@ -392,118 +390,21 @@
                                #(progress! (assoc % :phase :taxonomy))))
 
 ;; ---- declarations that constrain nothing ---------------------------------
-;;
-;; `(arg parentOf 3 person)` is admitted while `parentOf` has no declared length —
-;; open-world, and the highest position a declaration names is a lower bound on the arity
-;; rather than a claim about it.  Then a length arrives, by any of the routes
-;; `arity/relation-length` reads, and the declaration is left constraining a position the
-;; predicate provably does not have.  It is not refused: refusing it would make the
-;; *binding's* arrival order decide what the KB holds.  It simply stops meaning anything,
-;; while the entry point refuses the identical sentence one line later.
-;;
-;; A `variable_arity` predicate is the case where the length is not the last word, and the
-;; entry point's arm releases it: such a predicate reads a tuple of any length from its declared
-;; arity upward, so a position past that length is one its tuples really do reach.  Nothing
-;; of its is listed here, however high the position, because nothing of its is stranded.
-;;
-;; **Here rather than in the settle ledger.**  A wrong-length *fact* is a claim each reader
-;; believes or withdraws (`vaelii.impl.decide`).  A stranded declaration is inert: it constrains nothing, refuses nothing and mints
-;; nothing, and it reads the same an hour later as at the moment it went stale.  There is
-;; no newly to report, so paying per write buys nothing a census does not give for free —
-;; and a per-declaration ledger entry would compete for the 1,000 slots `violations` keeps
-;; and log a `:warn` line each.  Measured: this walk is 0.008 ms at 32 declarations and
-;; 0.103 ms at 512, against 3.3 ms for the per-predicate probes a settle-side sweep over a
-;; 512-predicate subtree would have made.
-
-(def ^:private declaration-functors
-  "The argument constraints, in the order this walks them.  A vector rather than the
-  set in `checks`, because this is a walk order and that is a membership test."
-  '[arg genlArg interArg interArgEqual])
-
-(defn- thing-typed
-  "The type a declaration's `sentence` mints in is `thing`: the last argument of `arg` and
-  `genlArg`, the fifth of `interArg` and `interArgEqual`."
-  [sentence]
-  (= 'thing (if (contains? '#{interArg interArgEqual} (nm/functor sentence))
-              (nth sentence 5 nil)
-              (last sentence))))
 
 (defn- stranded-declarations
-  "Which argument constraints name a position their predicate does not have, and which
-  type a position `thing` (`:typed-thing`, each with `:facts`, its predicate's stored
-  extent).  A declaration typing `thing` mints nothing (`arity/mintable-type?`), so the
-  remedy is a narrower type in the declaration.
-
-  **Enumerated, not probed per predicate.**  Declarations are vocabulary and vocabulary is
-  small — the whole bundled ontology has 298 — so reading all of them and asking each
-  about its own predicate is cheaper than asking each predicate what declares it, and it
-  does not grow with the spec subtree underneath.  What it does grow with is the hierarchy
-  *above*: `arity/relation-length` is a binding read for a predicate carrying a length of
-  its own and a walk of the supers for one that inherits its length, so the reading is
-  `O(declarations × super-predicates)` — the term the namespace's bound carries for it.
-
-  Belief-filtered, unlike the extent counts beside it: a stored, disbelieved declaration
-  constrains nothing for a reason that has nothing to do with its position, and listing it
-  here would name the wrong defect.
-
-  `:message` is the one `checks` wrote when it convicted, **carried rather than
-  re-derived**: a caller reading this map and a caller reading `check`'s answer are told
-  the same thing in the same words, and there is no second wording to drift from it.
-
-  One membership reader per context met, for the reason `settle`'s sweep holds one — a
-  reader memoizes for the life of one caller, so building one per declaration pays the
-  retrieval every time and throws the memo away unread."
+  "`integrity/stranded-declarations` over every stored declaration, counted and capped:
+  the argument constraints naming a position their predicate does not have, the entries
+  kb-integrity's `:stranded-declaration` category lists, and the declarations typing a
+  position `thing` (`:typed-thing`, each with `:facts`, its predicate's stored extent)."
   [kb limit progress!]
-  (let [reader (let [cache (volatile! {})]
-                 (fn [ctx]
-                   (or (get @cache ctx)
-                       (let [r (kb/membership-reader kb ctx)]
-                         (vswap! cache assoc ctx r)
-                         r))))
-        stored (into []
-                     (comp (mapcat #(reads/as-stored-with-functor (:index kb) %))
-                           (distinct)
-                           (keep #(p/get-sentex (:records kb) %))
-                           (filter #(not (sx/negative? %)))
-                           (filter #(exc/believed-own? kb (:id %))))
-                     declaration-functors)]
-    (progress! {:phase :declarations :done 0 :total (count stored)})
-    (let [found   (with-open [r (progress/start ::declarations
-                                                "quality: check the argument declarations"
-                                                (count stored))]
-                    (into []
-                          (keep (fn [sx]
-                                  (progress/tick! r)
-                                  (let [ctx (:context sx)]
-                                    (when-let [v (checks/arg-position-violation
-                                                  kb (:sentence sx) ctx (reader ctx))]
-                                      {:handle    (:id sx)
-                                       :sentence  (:sentence sx)
-                                       :context   ctx
-                                       :predicate (:predicate v)
-                                       :position  (:position v)
-                                       :arity     (:arity v)
-                                       :via       (:via v)
-                                       :message   (:message v)}))))
-                          stored))
-          ;; content order, so the listed set is a function of the vocabulary rather than
-          ;; of the handle order the index walked
-          order   #(nm/sort-by-content-key
-                    (juxt (comp nm/print-key :sentence) (comp nm/print-key :context))
-                    compare %)
-          ordered (order found)
-          things  (order (for [sx stored :when (thing-typed (:sentence sx))]
-                           {:handle   (:id sx)
-                            :sentence (:sentence sx)
-                            :context  (:context sx)
-                            :facts    (reads/stored-count-with-functor
-                                       (:index kb) (second (:sentence sx)))}))]
-      {:total             (count stored)
-       :stranded          (vec (take limit ordered))
-       :stranded-count    (count found)
-       :truncated?        (> (count found) limit)
-       :typed-thing       (vec (take limit things))
-       :typed-thing-count (count things)})))
+  (let [{:keys [total stranded typed-thing]} (integrity/stranded-declarations
+                                              kb nil #(progress! (assoc % :phase :declarations)))]
+    {:total             total
+     :stranded          (vec (take limit stranded))
+     :stranded-count    (count stranded)
+     :truncated?        (> (count stranded) limit)
+     :typed-thing       (vec (take limit typed-thing))
+     :typed-thing-count (count typed-thing)}))
 
 ;; ---- rules read against each other ---------------------------------------
 ;;
