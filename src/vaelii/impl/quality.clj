@@ -7,6 +7,12 @@
   declarations name a position their predicate does not have, which rules another rule
   already covers, and which rule pairs would contradict each other if both fired.
 
+  Three of those readings count a check this namespace does not own: taxonomy coverage,
+  the stranded declarations and the rule clashes are `vaelii.impl.integrity`'s
+  `taxonomy-coverage`, `stranded-declarations` and `clash-pairs`, the code behind
+  kb-integrity's `:taxonomy-island`, `:stranded-declaration` and rule-clash categories,
+  called here over the whole KB.  The subsumption reading pairs integrity's `rule-rows`.
+
   `settle-stats` and `chain-stats` answer *how the engine ran*.  These answer *whether the
   knowledge is any good*, which is the question the author of a large KB has and the one
   nothing else here asks.  None of it is a required check: a threshold on somebody's ontology

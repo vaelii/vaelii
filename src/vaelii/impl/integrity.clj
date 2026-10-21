@@ -3,7 +3,10 @@
 (ns vaelii.impl.integrity
   "Bounded, read-only KB integrity reporting: the passes `kb-integrity` runs under a work
   meter (`vaelii.impl.budget`).  `vaelii.core` requires this namespace; it requires
-  `predall` and `provers`, which also sit below `vaelii.core`.  See docs/integrity.md."
+  `predall` and `provers`, which also sit below `vaelii.core`.  `vaelii.impl.quality`
+  requires it too: its taxonomy, declaration and clash readings are `taxonomy-coverage`,
+  `stranded-declarations` and `clash-pairs` here, read over the whole KB.  See
+  docs/integrity.md."
   (:require [clojure.set :as set]
             [clojure.string :as str]
             [vaelii.impl.budget :as budget]

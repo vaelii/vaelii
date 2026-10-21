@@ -569,8 +569,8 @@ E17 too. What is on it:
 | settle's candidate discovery, and the nogood candidates the settle places (`membership/term-nogoods`, the `decide/tuple` rows) | an over-approximated candidate merely checks and yields nothing; the placement that follows reads the contexts that see a route |
 | a candidate filter in front of a scoped read (`special/offered-mark-over?`, `inherit/stated-claims`) | the filter answers a superset, and the read behind it takes the reader's context |
 | `except`'s exception index and `except-hidden-fn`, and the read walk (`exc/defeat-hidden-fn`) | the visibility filter cannot be scoped by the filter it is itself derived from |
-| `quality/taxonomy-coverage` | a report on the whole taxonomy has no vantage to read from |
-| `quality/clash-partners` | a rule pair is decided from a common descendant of the two rules' contexts, a vantage belonging to neither, so the candidate fan cannot be scoped by either |
+| `integrity/taxonomy-reach` | a report on the whole taxonomy has no vantage to read from: `kb-quality`'s census reads it with a nil context, and a `kb-integrity` sweep passes its audit context and reads scoped |
+| `integrity/clash-partners` | a rule pair is decided from a common descendant of the two rules' contexts, a vantage belonging to neither, so the candidate fan cannot be scoped by either |
 
 A visibility `except` (docs/contexts.md) can hide a *supporter* from a reader, and then
 the context-only filter is not enough: the scoped walk asks the KB, per supporter, whether

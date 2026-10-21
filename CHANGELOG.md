@@ -44,6 +44,31 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `{:believed? true}` to filter, and the daemon serves it.
   [web.md](docs/web.md), [api.md](docs/api.md)
   *Migration:* none.
+### Breaking
+
+- **`kb-integrity`'s default sweep reports stranded declarations and live rule
+  clashes.** Two new categories run without `:categories`: `:stranded-declaration`, each
+  believed `arg`, `genlArg`, `interArg` or `interArgEqual` declaration the audit context
+  sees that names a position its predicate does not have, and `:rule-clash`, each pair of
+  rules the audit context sees whose conclusions would contradict if both fired, where
+  both rules chain and no `exceptWhen` handles the clash. A KB holding either now sweeps
+  `:gap` where it swept `:audited`. [integrity.md](docs/integrity.md#what-a-rule-clash-finding-means).
+
+  *Migration:* fix the finding, or pass `:categories` naming the categories to run.
+  *Breaks:* `kb-integrity`
+
+### Additive
+
+- **Taxonomy coverage, stranded declarations and rule clashes are `kb-integrity`
+  categories, implemented once.** The three checks move out of `vaelii.impl.quality` into
+  `vaelii.impl.integrity`, which reports them as `:stranded-declaration`, `:rule-clash`,
+  and two review-only categories: `:taxonomy-island`, each edged type node the audit
+  context sees that does not reach the found root, and `:rule-clash-review`, each clash
+  pair with a `set/inertRule` (marked `:inert true`) or one a stated exception handles
+  (`:excepted true`). `kb-quality`'s `:taxonomy`, `:declarations` and `:clashes` keys,
+  `quality-report`, the `:kb-quality` and `:quality-report` daemon ops and `lein cli
+  quality` answer as before, computed by the same code over the whole KB.
+  [integrity.md](docs/integrity.md), [quality.md](docs/quality.md).
 
 ### Fix: answers
 

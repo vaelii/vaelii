@@ -5,7 +5,9 @@
   which argument declarations constrain nothing, which rules another rule already covers,
   which rule pairs would contradict each other if both fired — what each reading costs,
   and what each one does *not* mean.
-- **Not here:** how a run went (iterations, derived conclusions, dropped ones) →
+- **Not here:** how the taxonomy-coverage, stranded-declaration and rule-clash checks
+  decide, which are `kb-integrity` categories this census counts →
+  [integrity.md](integrity.md); how a run went (iterations, derived conclusions, dropped ones) →
   [api.md](api.md)'s instrumentation block and [inference.md](inference.md); whether the
   engine's own grammar is read by anything → [predicates.md](predicates.md); the naming
   rules a type name obeys → [naming.md](naming.md).
@@ -39,6 +41,13 @@ postings cannot give.
 `lein perf` checks the engine, and this reports on the content. The report's own cost is
 checked: `lein perf`'s `quality-report-scaling` holds it to the vocabulary rather than to
 the KB.
+
+Three readings count findings a check owns elsewhere. Taxonomy coverage, the stranded
+declarations and the rule clashes are `kb-integrity` categories (`:taxonomy-island`,
+`:stranded-declaration`, `:rule-clash` with `:rule-clash-review`), implemented once in
+`vaelii.impl.integrity`; this census calls that code over the whole KB and reports what it
+finds as counts and capped lists. `:stranded-declaration` and `:rule-clash` run in
+`kb-integrity`'s default sweep, which is where a caller wanting a verdict reads them.
 
 ## One pass, and nothing new indexed
 
@@ -164,18 +173,17 @@ the root, reflexively, so the root counts itself. **The gap between them is the 
 a type with an edge into a disconnected island is counted by the first and not the second,
 and `:islands` is exactly that difference.
 
-The root is **found, not assumed**. `thing` is this engine's root and a converted corpus
-brings its own, so whatever type the most others reach is the one reported against, and
-the reading means the same on a corpus that never heard of `thing`.
+The check is `kb-integrity`'s review-only `:taxonomy-island` category
+([integrity.md](integrity.md#what-a-taxonomy-island-finding-means)), which lists each
+island as `{:term :root}` and says how the root is found and which names are type nodes.
+This reading is `vaelii.impl.integrity/taxonomy-coverage` over every context: the same
+nodes, the same root, counted rather than listed.
 
 The denominator (`:names`) is every type-shaped name in the vocabulary, and by
 [naming.md](naming.md) that includes a bare lowercase word: `likes` is a legal predicate
-*and* a legal type name. A name `relation?` answers true for, by a stored arity of two
-or more or a `variable_arity` membership, is excluded from both names and edges, so a
-sub-relation edge such as `core.txt`'s `(genl partition covering)` is not an island. A name
-with no stored arity remains a candidate, so an untyped root or disconnected unary
-island is not silently dropped.
-This is why the gap is the finding rather than either fraction on its own.
+*and* a legal type name. A name `relation?` answers true for is excluded from both names
+and edges, as it is from the category. This is why the gap is the finding rather than
+either fraction on its own.
 
 The measured shape on the same OpenCyc conversion as the Gini above, and all three
 counts are that one run's own denominator: of roughly 124k types, about 71% carry a
@@ -186,47 +194,26 @@ than [kbs.md](kbs.md)'s.
 
 ## Argument constraints that constrain nothing
 
-`(arg parentOf 3 person)` is admitted while `parentOf` has no declared length, because
-the highest position a declaration names is a lower bound on the arity rather than a claim
-about it. When a length does arrive — declared of the predicate, or inherited through a
-`genl` edge from a super-predicate — the declaration is left constraining a position the
-predicate provably does not have, and the entry point refuses the identical sentence one line
-later. `:declarations` is what names those, and without it a declaration that is enforced
-and one that enforces nothing look exactly alike.
+`(arg parentOf 3 person)` is admitted while `parentOf` has no declared length; when a
+length arrives, the declaration is left constraining a position the predicate provably
+does not have. `:declarations` counts those.
 
-It is the **entry point's own arm, re-asked** of content already stored, so what the census lists
-and what an `assert` refuses cannot drift apart: whatever binds a predicate's length for
-the entry point binds it here, and a predicate the KB has bound to no length strands nothing.
-`interArg` names two positions and each is asked, since both are the same mistake.
+The check is `kb-integrity`'s `:stranded-declaration` category
+([integrity.md](integrity.md#what-a-stranded-declaration-finding-means)), which says what
+strands a declaration, why a `variable_arity` predicate strands nothing, and why it is a
+sweep finding rather than a `violations` entry. This reading is
+`vaelii.impl.integrity/stranded-declarations` over every stored declaration, in every
+context, where the category reads the ones its audit context sees.
 
-A **`variable_arity`** predicate strands nothing either, however high the position: it reads
-a tuple of any length from its declared arity upward, so a position past that length is one
-its tuples really do reach, and the constraint fires on the tuples long enough to have it.
-`lessThan`, `greaterThan` and `functionCorrespondingPredicate` are the shipped ontology's.
-
-Belief-filtered, unlike the extent counts: a stored declaration nobody believes constrains
-nothing for a reason that has nothing to do with the position it names, and listing it here
-would report the wrong defect.
-
-An entry is `{:handle :sentence :context :predicate :position :arity :via :message}`.
-`:via` is the predicate the length was read off — the declaration's own where it carries
-one, the super it inherits from otherwise, so an author is not sent looking for a
-declaration nobody wrote. `:message` is the sentence the check itself wrote, carried rather
-than re-derived, so this map and `check`'s answer say it in the same words. `:total` counts
-the declarations walked, `:stranded-count` the ones convicted, and the list is capped by
-`:limit` with `:truncated?` saying so.
+An entry is `{:handle :sentence :context :predicate :position :arity :via :message}`, the
+category's finding. `:total` counts the declarations walked, `:stranded-count` the ones
+convicted, and the list is capped by `:limit` with `:truncated?` saying so.
 
 `:typed-thing` lists the believed declarations that type a position `thing`, each as
 `{:handle :sentence :context :facts}`, under the same `:limit`, and `:typed-thing-count`
 counts them. Such a declaration mints nothing ([argtypes.md](argtypes.md#where-it-does-not-mint)),
 and `:facts` is the number of facts of its predicate stored, the ones a narrower type
 would type.
-
-**A finding rather than an error**, and the reason it is a census question and not a
-`violations` one: a stranded declaration constrains nothing, refuses nothing and mints
-nothing, so there is no *newly* for a settle to report and it reads the same an hour later.
-[taxonomy.md](taxonomy.md) has that argument in full, against the wrong-length **fact**,
-which is a ledger entry.
 
 ## Rules another rule already covers
 
@@ -283,109 +270,19 @@ a report that names redundancies.
 ## Contradictions in waiting
 
 Rule pairs whose consequents would clash if both fired, and whose antecedents could hold
-at once. Four kinds, asked of a pair in this order so one answering to two lands under one
-of them:
+at once. The check is `kb-integrity`'s rule-clash pairing
+([integrity.md](integrity.md#what-a-rule-clash-finding-means)), which says what the four
+clash kinds are, what the five shallow rule-outs drop, and where a pair's nogood could
+form. `kb-integrity` splits it by who acts on a pair: a live pair no exception handles is
+a `:rule-clash` violation, and a pair with a `set/inertRule` or a stated exception is a
+review-only `:rule-clash-review` suggestion.
 
-| kind | the clash |
-|---|---|
-| `:negation` | one concludes `S` and the other `(not T)` where `S` entails `T` — `(dog X)` against `(not (animal X))`, and never `(animal X)` against `(not (dog X))` |
-| `:disjoint` | two unary type conclusions about one term whose types a `disjoint`, `sibling_disjoint` or `disjoint_metatype` declaration separates ([taxonomy.md](taxonomy.md)) |
-| `:functional` | two conclusions filling one `functional` slot for one subject with values that are not the same term. Both spellings of the mark count — `(functionalInArg P 2)` says the same thing about the same slot as `(functional P)`, and at position 2 only, this reading being arity-2 |
-| `:asymmetric` | one tuple concluded both ways round under a predicate declared `asymmetric`. A self tuple `(P a a)` is not one — the ontology admits it |
-
-The two property marks are read **up** the predicate hierarchy, as every constraint is
-convicted against them: two `fatherOf` conclusions clash against `(functional parentOf)`.
-A mark's reach is asked at three points — whether the KB declares any, which group a
-conclusion joins, and whether two conclusions share one — and all three go through one
-reader, so a spelling reaches the detector through every read or through none.
-
-"Jointly satisfiable" is **shallow**, and five things rule it out: a literal appearing
-under σ together with its own negation or with the negation of a predicate its own is a
-spec of — `(properPartOf ?x ?y)` beside `(not (partOf ?x ?y))`, a spec's tuple being the
-predicate's — one term claimed to be of two separated types, one
-term bound to two arities — `(arity ?p 1)` beside `(arity ?p 2)`, and `(arity ?p 1)` beside
-`(equivalence_relation ?p)`, which claims 2 by reaching `binary_predicate` up `genl` — one
-term bounded above the exact arity it is claimed to have — `(arity ?p ?n)` with
-`(greaterThan ?n 2)` beside `(symmetric ?p)`, or `(arityMin ?p ?n)` with the same bound —
-and one term an `arg` declaration demands be of a type disjoint from one the two rules
-place it in — `arg` read with its covering forms, `(args P T)` and `(argAndRest P n T)`
-typing every position they reach, `(genl a P)` typing `a` by `P`'s arity, and an
-application written at any depth typed by its function's `result` and typing its own
-arguments by its function's `arg` declarations. Each of the five is a **declaration read**: **no inference is run and no fact is
-consulted.** This is what the rules say about each other, so a pair here is a clash that
-*could* form rather than one that has — a clash already formed is in
-`(contradictions kb)`, which is the other question and the other reader.
-
-The fifth rule-out reads the two consequents beside the antecedents, because the type an
-`arg` declaration demands of one rule's variable is disjoint from the type the **other**
-rule *concludes* about the unified term. `(arity ?r ?a) => (fixed_arity ?r)` demands `?r`
-be a `relation` through `(arg arity 1 relation)`, and CxCriedWolf's
-`(lied_before ?x) => (liar ?x)` places the unified term under `person`. No ground term is
-both a relation and a person, so the two rules never both fire for one term and the pair is
-dropped. The demand is read where a membership cannot state it, on either side: the test
-world declares `(arg lied_before 1 person)`, so the same reading drops the pairs whose other
-rule concludes a type no person has, such as a signed refinement of `integer`. A declared
-domain the other conclusion does not exclude, and an undeclared one, both stay candidates
-— two stated types clashing is the clash the pair reports, so at least one side of the
-disjoint pair must be a declared arg type.
-
-`genl` declares no type on its first position, and a spec of `P` has `P`'s length, so
-`(genl ?r P)` demands `?r` the relation-wide exact-arity class of `(relation-arity kb P)`:
-`binary` for a binary `P`, `unary` for a type. A rule over the specs of a binary predicate
-then pairs with no rule concluding a type disjoint from `binary`, such as `person`, and
-still pairs with one concluding a class of binary relations.
-
-The unifier can bind one rule's variable to an application in the other:
-`(metal_stuff ?x) => (solid ?x)` against a rule `(uninterrupted ?y) => (uninterrupted_time
-(TimeOfFn ?y))` binds `?x` to `(TimeOfFn ?y)`. `(result TimeOfFn time)` types every
-application of `TimeOfFn` a `time`, which is `acausal` where `solid` is `causal`, so the
-pair is dropped; `(arg TimeOfFn 1 temporal)` types `?y` a `temporal` in the same way. A compound
-whose head is a connective or a `predicate` is a formula and is not read. An argument of
-a quoting predicate or quoting function, or at a position a `quotedArg` declaration types,
-is a mention and is not descended into, as in the argument checks
-([argtypes.md](argtypes.md)). `genlArg` and `genlResult` are not read:
-each bounds a subtype, one level above the memberships `disjoint` is asked of.
-
-Scoped to a context that can see **both** rules. That is a common descendant of the two
-contexts and not a `sees?` between them, for [nmtms.md](nmtms.md)'s reason: asking only
-whether one sees the other exempts every sibling pair, while two incomparable contexts can
-share a descendant from which both halves are visible. A pair no context sees together is
-not reported, and the reported `:context` is where the nogood could form — which is
-frequently neither rule's own.
-
-**A pair whose antecedents cannot both hold is dropped, not flagged**, and the difference
-from `:excepted` below is the whole reason. Such a pair is not a clash anybody has to sort:
-the two rules cannot both fire for one term, so nothing is in wait and a flag would be a
-finding with no reader. An `:excepted` pair is the opposite — both rules fire, the clash
-does form, and what handles it is the `exceptWhen`, which is a thing the author wrote and
-may have written wrong, so it is listed and flagged. Unreachable is the engine's answer;
-handled is the author's.
-
-The shipped ontology's own case is the **arity cycle**, and it is dropped from both
-directions. `(unary_predicate ?p) => (arity ?p 1)` beside `(binary_predicate ?p) =>
-(arity ?p 2)` would be a `:functional` clash on the `arity` table, and the antecedents are
-two types `core.txt` declares `disjoint` ([taxonomy.md](taxonomy.md)), so the pair never enters
-the reading. Read the other way round, `(arity ?p 1) => (unary_predicate ?p)` beside
-`(arity ?p 2) => (binary_predicate ?p)` is a `:disjoint` clash on the *conclusions*, and
-what drops it is the third rule-out above: one `?p` bound to two arities. The same rule-out
-drops the pairs against `(equivalence_relation ?p) => (symmetric ?p)` and its two siblings,
-whose conclusions are `binary_predicate` specializations and so separated from the unary and
-ternary classes.
-
-**A pair one of the two already states as an exception is reported, marked `:excepted`.**
-"Birds fly, unless penguins" beside "penguins do not fly" is the intended shape, not a
-defect: one rule's `exceptWhen` names a predicate the other rule is about, and the clash is
-handled. Hiding it would tell an author there was nothing to see, where what there is to
-see is that the pair is handled — so it is listed with the flag and the reader sorts them.
-
-An entry is
+This reading is the same pairing, `vaelii.impl.integrity/clash-pairs`, over every rule the
+census enumerated and unsplit: an entry is
 `{:rules [h1 h2] :kind :negation|:disjoint|:functional|:asymmetric :unifier σ :context C
-:excepted b :sentences [s1 s2]}`. In σ the **second** rule's variables carry a trailing
-`'`, because both authors are free to write `?x` and a map holding two of them says
-nothing. `:total` counts the rules paired, `:pair-count` the pairs found, and the list is
-capped by `:limit`.
-
-A rule is never paired with itself: the reading is about two rules disagreeing.
+:excepted b :sentences [s1 s2]}`, the category's finding without `:inert`. `:total`
+counts the rules paired, `:pair-count` the pairs found, and the list is capped by
+`:limit`.
 
 ## Reading it
 
