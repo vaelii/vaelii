@@ -262,3 +262,20 @@
         (is (= :quoted-arg-type (refusal kb (list 'contradicts 212))))
         (is (= :quoted-arg-type (refusal kb (list 'contradicts (list 'sentexHandle f) 212))))
         (is (nil? (refusal kb (list 'contradicts (list 'sentexHandle f) (list 'sentexHandle r)))))))))
+
+(tu/deftest-kb termsrelated-clusters-vocabulary-names-taken-as-written
+  ;; A curation grouping, read like seeAlso's cross-reference (both quotedArg a
+  ;; denotational_term): the named terms are mentioned, not used, so a bare symbol is
+  ;; accepted at every position whatever else the KB does or does not say about it.  The
+  ;; whole tail is one quotedArgAndRest from position 1, so an arbitrarily long cluster is
+  ;; typed without naming a largest finite position.
+  (tu/with-terms [Foo Bar Baz Qux]
+    (testing "two members, and a longer cluster through the variable-arity tail"
+      (is (nil? (refusal kb (list 'termsRelated Foo Bar))))
+      (is (nil? (refusal kb (list 'termsRelated Foo Bar Baz Qux)))))
+    (testing "an undeclared symbol is still a denotational_term, taken as written"
+      (is (nil? (refusal kb (list 'termsRelated Foo 'notDeclaredAsAnythingAtAll)))))
+    (is (empty? (filter #(= 'termsRelated (:predicate %))
+                        (:missing-arg (v/kb-integrity kb #{} 'CxUniverse {:categories #{:missing-arg}
+                                                                          :max-results 10000}))))
+        "kb-integrity reports no position of termsRelated untyped")))

@@ -1549,11 +1549,9 @@
 
 (def ^:private open-positions
   "The starter's argument positions no declaration types yet, each awaiting a ruling on
-  its type: the quoted example of the three example predicates and every position of
-  termsRelated.  ontology_test's undeclared-positions gives the reason the fixed-arity
-  ones among them stay open."
-  '#{[positiveExample [2]] [negativeExample [2]] [borderlineExample [2]]
-     [termsRelated [1 2 :rest]]})
+  its type: the quoted example of the three example predicates.  ontology_test's
+  undeclared-positions gives the reason they stay open."
+  '#{[positiveExample [2]] [negativeExample [2]] [borderlineExample [2]]})
 
 (tu/deftest-kb every-starter-position-is-typed-but-the-open-ones
   ;; A middle context's relation and type carry their arity mark in CxUniverse, while the

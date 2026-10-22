@@ -2381,6 +2381,7 @@
 (variable_arity_predicate termsRelated)
 (unbounded_arity_predicate termsRelated)
 (arityMin termsRelated 2)
+(quotedArgAndRest termsRelated 1 denotational_term)   ;; every clustered term, taken as written
 
 (comment seeAlso
          "(seeAlso ?term1 ?term2) means that ?term1 and ?term2 are worth reading together — an editorial 'see also' cross-reference between two terms. Directional: (seeAlso a b) points a reader from a to b, and the reverse is a separate assertion, not implied. Documentation only, like comment: nothing in the engine reads it and it draws no inference.")

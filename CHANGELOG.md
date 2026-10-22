@@ -73,6 +73,16 @@ it — `git show v0.16.0:CHANGELOG.md`.
   *Migration:* a value or a symbol stored where a `quotedArg` names a kind of expression
   it is not of is now refused at assert.
 
+- **`termsRelated` clusters vocabulary names by mention, as `seeAlso` cross-references
+  them.** `(quotedArgAndRest termsRelated 1 denotational_term)` types the start of its
+  variable-arity tail and every later position the same way, the suffix form of the
+  `(quotedArg seeAlso 1 denotational_term)` / `(quotedArg seeAlso 2 denotational_term)`
+  pair. The named terms can be of any kind — the grouping is for a reader, not an
+  inference — so a symbol the KB says nothing else about is still accepted, taken as
+  written. [argtypes.md](docs/argtypes.md#what-a-quoted-form-is)
+
+  *Migration:* none.
+
 - **`kb-integrity`'s `:missing-arg` reads a relation's declarations from the contexts that
   state them.** The engine places an exact-arity class in CxUniverse, and the starter's
   unary batch writes `unary_predicate` there, while a middle context's declarations stay in
@@ -80,8 +90,7 @@ it — `git show v0.16.0:CHANGELOG.md`.
   missing. It now also reads each context that sees the audit context and stores an
   `arg`-family declaration on the relation or a `genl` edge out of it, and reports a
   position only if one of those leaves it untyped too. At CxUniverse over the starter it
-  reports 4 findings, where it reported 76: the example predicates' quoted sentence and
-  `termsRelated`'s positions.
+  reports 3 findings, where it reported 76: the example predicates' quoted sentence.
   [integrity.md](docs/integrity.md#what-a-missing-arg-finding-means)
 
   *Migration:* none.
