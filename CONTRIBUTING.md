@@ -646,6 +646,7 @@ lein test :slow                  # only the marked ones
 lein test-multi-jvm              # the cross-process tests — opt-in, in neither of the above
 lein test-fuzz                   # the exhaustive truncation sweep — likewise opt-in
 lein test-full-kb [KB-DIR]       # the probes of a full-size KB on disk — likewise opt-in
+lein test :red                   # the specified-but-not-built tests — opt-in, expected red
 lein test-backends               # the whole suite once per backend (all nine)
 lein test-sweeps                 # ...and once per sweep (all seven)
 lein test-matrix                 # both at once, concurrently — ~13 min, not ~55.
@@ -772,6 +773,12 @@ mocks — the in-memory stores by default, with no external dependency.
   settle, or anything whose cost could scale with the KB rather than the write.
   The unmarked twin runs the same probes on the starter plus a few facts without the
   ceilings, so the harness runs on every commit.
+- **`^:red` marks a test that specifies behaviour the engine does not have yet**, and
+  it is the fourth mark `:all` passes over: such a test fails today by design, so no
+  selector but `:red` runs it and the gate stays green while it waits. `lein test :red
+  <namespace>` runs the marked tests, and a red test whose behaviour has landed drops
+  the mark in the change that makes it pass. A test pinning a limit the engine has *on
+  purpose* is an ordinary test, not a red one.
 - **The suite logs at `:error` and no lower.** Trove's default backend prints from
   `:info` up, and the suite provokes `:warn` on purpose — `::dropped-conclusion`,
   `:no-placement` and the aggregate refusals are what the assertions are *checking

@@ -1,6 +1,7 @@
 ;; CxTra — vocabulary that is generally useful but specific to one domain, outside the
 ;; starter contexts CxWell sees: software tools, their invocations and receipts, media
-;; resources and network names, and perception relations. Sees the shared upper
+;; resources and network names, information content, its carriers, and the sentences an
+;; agent claims about it, and perception relations. Sees the shared upper
 ;; ontology via CxUniverse. CxWell does not see it, so the everyday contexts below CxWell
 ;; read none of this vocabulary. A context opts in by placing itself under CxTra.
 
@@ -66,19 +67,19 @@
 (genl write_capable_software_tool software_tool)
 (genl write_capable_software_tool causal)
 
-(comment information_bearing_thing "Information as carried, apart from the medium that holds it. A reading of the information can be a cause where the information is not.")
-(positiveExampleComment information_bearing_thing "the text of a document")
-(positiveExampleComment information_bearing_thing "a recording")
-(positiveExampleComment information_bearing_thing "the content of a file")
-(negativeExampleComment information_bearing_thing "the paper or the disk that holds the information, which is a separate thing")
-(genl information_bearing_thing intangible)
-(genl information_bearing_thing acausal)
+(comment information "Information as carried, apart from the medium that holds it. A reading of the information can be a cause where the information is not.")
+(positiveExampleComment information "the text of a document")
+(positiveExampleComment information "a recording")
+(positiveExampleComment information "the content of a file")
+(negativeExampleComment information "the paper or the disk that holds the information, which is a separate thing")
+(genl information intangible)
+(genl information acausal)
 
-(comment digital_artifact "An information-bearing thing encoded as bits.")
+(comment digital_artifact "Information encoded as bits, apart from the storage medium that carries it.")
 (positiveExampleComment digital_artifact "a file")
 (positiveExampleComment digital_artifact "a byte stream")
 (positiveExampleComment digital_artifact "a web page")
-(genl digital_artifact information_bearing_thing)
+(genl digital_artifact information)
 
 (comment media_resource "A digital artifact retrievable over a network at a URL.")
 (positiveExampleComment media_resource "a hosted photograph")
@@ -187,6 +188,69 @@
 (set/monotonic (instance_relation_predicate dnsResolvesTo))
 (quotedArg dnsResolvesTo 1 string)
 (quotedArg dnsResolvesTo 2 string)
+
+;; ==== content and carriers =================================================
+;; information, among the computing kinds above, is the content: what a document says,
+;; apart from the paper or the disk that holds it.  carries relates a temporal carrier to
+;; the information it holds in its medium: a paper copy and the molecules of a cell's DNA
+;; are tangible carriers, and a bird's chirp is an event, an intangible carrier.  A
+;; digital artifact can be a carrier and content at once: a web page is information, and
+;; the web page carries the article it shows.
+
+(comment conceptual_work "Information composed as one work, which stays the same work in each copy and each encoding of it. A copy of a work is a carrier of the work and is not the work.")
+(positiveExampleComment conceptual_work "the novel Moby-Dick")
+(positiveExampleComment conceptual_work "the information content of a newspaper article")
+(negativeExampleComment conceptual_work "a physical copy of a newspaper article, which carries the work")
+(negativeExampleComment conceptual_work "the information content of a cell's DNA, which is information that nobody composed")
+(genl conceptual_work information)
+
+(comment carries "(carries ?carrier ?info) means that the temporal ?carrier holds ?info in its medium: reading the medium in the right way gives ?info. A carrier and the information it holds are two things, so destroying a carrier destroys the carrier and not, by that alone, the information. Not functional in position 2: one carrier holds more than one piece of information, e.g. a tree's rings hold the tree's age and each year's rainfall.")
+(binary_predicate carries)
+(set/monotonic (instance_relation_predicate carries))
+(arg carries 1 temporal)
+(arg carries 2 information)
+
+(comment encodes "(encodes ?info1 ?info2) means that ?info1, read under its code, gives ?info2, e.g. a ciphertext encodes its plaintext, a JPEG's data encodes the image it shows, and a translation encodes the work it translates. Both positions are information: encodes relates one piece of information to another and never a carrier to its content.")
+(binary_predicate encodes)
+(set/monotonic (instance_relation_predicate encodes))
+(arg encodes 1 information)
+(arg encodes 2 information)
+
+(comment subInformationOf "(subInformationOf ?part ?whole) means that the information ?part is a component of the information ?whole, e.g. a chapter in a book or a frame in a video. A spec of intangiblePartOf, since information has no mass. Declared transitive, so a part of a part is a part.")
+(set/monotonic (instance_relation_predicate subInformationOf))
+(arg subInformationOf 1 information)
+(arg subInformationOf 2 information)
+(set/monotonic (transitive subInformationOf))
+(set/monotonic (reflexive subInformationOf))
+(genl subInformationOf intangiblePartOf)
+
+;; Position 1 names the presenting agent; the upper ontology ships no type for one
+;; (core.txt's believes states the same of its believer position), so it declares thing.
+;; Position 2 holds a sentex handle (sentexHandle H), which the engine mints with no
+;; result type, so it declares thing too, as koinii's endorses does (CxSpeechActs).
+(comment agentClaims "(agentClaims ?agent (sentexHandle H)) means that ?agent presents the sentex named by the handle in position 2 as true. A claim is not a belief: the KB believes the sentex only where a context the reader sees asserts it. Declared target_following_predicate, so retracting the sentex retracts each claim that names it. No rule concludes agentClaims from carries: a carrier that holds a sentex by quoting, denying or mocking it is not thereby concluded to present it as true.")
+(binary_predicate agentClaims)
+(set/monotonic (instance_relation_predicate agentClaims))
+(arg agentClaims 1 thing)
+(arg agentClaims 2 thing)
+(target_following_predicate agentClaims)
+
+;; dataContent and propositionalContent are both stated, never derived: no rule here
+;; computes either one from an information's author, its encoding or its context. A
+;; translation of the same text, or a message with a different author, states its own
+;; propositionalContent independently of another information's data content.
+(comment dataContent "(dataContent ?info ?string) means that ?string, taken as written, is what ?info holds: the exact sequence of symbols, independent of any byte encoding that stores it. Functional: one piece of information has one data content.")
+(binary_predicate dataContent)
+(set/monotonic (instance_relation_predicate dataContent))
+(arg dataContent 1 information)
+(quotedArg dataContent 2 string)
+(set/monotonic (functional dataContent))
+
+(comment propositionalContent "(propositionalContent ?info ?proposition) means that ?info says ?proposition. Not functional: one piece of information can say more than one proposition, and two pieces of information with equal data content can say different propositions, e.g. the same words from two different speakers.")
+(binary_predicate propositionalContent)
+(set/monotonic (instance_relation_predicate propositionalContent))
+(arg propositionalContent 1 information)
+(arg propositionalContent 2 proposition)
 
 ;; ==== perception ==========================================================
 ;; Arg 1 of every perception relation names the perceiver and declares `thing`: vaelii's

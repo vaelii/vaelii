@@ -28,7 +28,7 @@
 
 (def ^:private kinds
   '[computational_system software_tool command_line_tool mcp_tool read_only_software_tool
-    write_capable_software_tool information_bearing_thing digital_artifact media_resource
+    write_capable_software_tool information digital_artifact media_resource
     image video tool_invocation tool_receipt ip_address ipv4_address ipv6_address])
 
 ;; Each reader answers a boolean, so a failing `is` prints the question and not the KB.
@@ -120,7 +120,7 @@
       (is (v/isa? kb Slip 'acausal CxDesk)))
     (testing "the first argument of resourceUrl is derived a media_resource"
       (is (v/isa? kb Clip 'media_resource CxDesk))
-      (is (v/isa? kb Clip 'information_bearing_thing CxDesk)))
+      (is (v/isa? kb Clip 'information CxDesk)))
     ;; Two rewrites reach a rule concluding either side from a tool.  Unbounded, the node
     ;; engine expands every CxWell rule concluding a spec of `causal`, about 30x per level.
     (testing "no rule of the theory concludes either side of an invocation from its tool"

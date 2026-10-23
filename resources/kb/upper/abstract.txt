@@ -1,6 +1,7 @@
 ;; abstract.txt — non-biological upper-ontology types (intangible, physical
 ;; objects, substances, made things, body parts, events and their kinds), the
-;; physical-structure relations tangiblePartOf/locatedIn/madeOf, the event relations
+;; physical-structure relations tangiblePartOf/locatedIn/madeOf, tangiblePartOf's twin
+;; intangiblePartOf for things without mass, the event relations
 ;; doneBy/performedBy and input/output, and the two type-level relations
 ;; largerThan/partType. Loaded into CxUniverse with the rest of kb/upper/.
 
@@ -252,6 +253,19 @@
 (set/monotonic (transitive tangiblePartOf))
 (set/monotonic (reflexive tangiblePartOf))
 (genl tangiblePartOf partOf)
+
+;; intangiblePartOf is tangiblePartOf's twin for things without mass.  The two specs never
+;; overlap, because their arg types already separate them, and a mixed pair (a mind as part
+;; of a person, a person as part of an organization) stays plain partOf and neither spec:
+;; partOf is not partitioned into the two.
+(comment intangiblePartOf
+         "(intangiblePartOf ?part ?whole) means that the intangible ?part is a component of the intangible ?whole. Declared transitive, so a part of a part is a part, and the chain is answered by the closure prover rather than stored. Structural parthood between things without mass, as tangiblePartOf states between tangible things. A tangible part of an intangible whole, or an intangible part of a tangible whole, stays plain partOf and neither spec.")
+(set/monotonic (instance_relation_predicate intangiblePartOf))
+(arg intangiblePartOf 1 intangible)
+(arg intangiblePartOf 2 intangible)
+(set/monotonic (transitive intangiblePartOf))
+(set/monotonic (reflexive intangiblePartOf))
+(genl intangiblePartOf partOf)
 
 (comment properTangiblePartOf
          "(properTangiblePartOf ?part ?whole) means that the tangible ?part is a component of the tangible ?whole and ?whole is not a component of ?part.")

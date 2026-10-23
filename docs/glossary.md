@@ -654,6 +654,8 @@ the `arg` declarations, audited on demand. See [taxonomy.md](taxonomy.md).
 
 **`intangible`** ![kb](../.github/badges/cat-kb.svg): An entity with no mass — a region, a shadow, a number, a relation, a time. The complement of `tangible`, the two partitioning `thing`. An intangible entity may have a location: a region of space is `spatiotemporal` and intangible both. `aspatial` and `atemporal` are below it. See [taxonomy.md](taxonomy.md#the-three-partitions-of-thing).
 
+**`intangiblePartOf`** ![kb](../.github/badges/cat-kb.svg): `(intangiblePartOf ?part ?whole)` says that one intangible is a component of another, e.g. a chapter of a book's text. `intangiblePartOf` is transitive, reflexive and below `partOf`, the twin of `tangiblePartOf` for things without mass; a part and whole of mixed kinds stay plain `partOf`.
+
 **`ist`** ![kb](../.github/badges/cat-kb.svg): "Is true in" — `(ist Ctx S)`
 finds-or-creates `S` in `Ctx` and returns its handle, and given to a read it asks `S`
 in `Ctx`. Not stored as data. A rule is refused it in every position. See
