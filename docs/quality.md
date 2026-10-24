@@ -274,8 +274,8 @@ at once. The check is `kb-integrity`'s rule-clash pairing
 ([integrity.md](integrity.md#what-a-rule-clash-finding-means)), which says what the four
 clash kinds are, what the five shallow rule-outs drop, and where a pair's nogood could
 form. `kb-integrity` splits it by who acts on a pair: a live pair no exception handles is
-a `:rule-clash` violation, and a pair with a `set/inertRule` or a stated exception is a
-review-only `:rule-clash-review` suggestion.
+a `:rule-clash` violation, and a pair with a `set/inertRule`, a stated exception or an
+`acknowledgedFinding` is a review-only `:rule-clash-review` suggestion.
 
 This reading is the same pairing, `vaelii.impl.integrity/clash-pairs`, over every rule the
 census enumerated and unsplit: an entry is

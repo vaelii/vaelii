@@ -215,9 +215,10 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; :uncorresponded-function, :stranded-declaration,
                                                 ; :rule-clash, :twin-genls, :derivable-stated-edge,
                                                 ; :disjoint-could-be-partition, :missing-arg,
-                                                ; :taxonomy-island and :rule-clash-review. opts may bound :max-work,
+                                                ; :taxonomy-island, :rule-clash-review and
+                                                ; :rule-macro-review. opts may bound :max-work,
                                                 ; :max-ms and :max-results, and :categories names the
-                                                ; passes to run. The six review-only passes run only
+                                                ; passes to run. The seven review-only passes run only
                                                 ; when :categories names them; exhaustion is :truncated,
                                                 ; never :audited. Work/time check between opaque callbacks
                                                 ; and result pulls (one callback/chunk may overrun);

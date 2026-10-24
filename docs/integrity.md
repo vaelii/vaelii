@@ -14,8 +14,9 @@
   would contradict each other if both fired, and for review: three ontology-engineering
   smells (sibling types with one direct `genl` set, stated edges that derive without
   themselves, and `disjoint` pairs a known cover exhausts), every declared argument
-  position no declaration types, the edged types that miss the taxonomy's root, and the
-  rule clashes an inert rule or a stated exception accounts for.
+  position no declaration types, the edged types that miss the taxonomy's root, the
+  rule clashes an inert rule, a stated exception or an acknowledgment accounts for, and
+  the acknowledged rule-macro suggestions.
 - **Not here:** repairing findings, enumerating a domain, vocabulary completeness,
   generic constraint auditing, or the represented settled dilemmas returned by
   `contradictions`; how definitions infer membership → [defns.md](defns.md); what a
@@ -89,9 +90,9 @@ cooperative checkpoints and partial-result preservation sit.
 
 `:categories`, a set of category keys, runs the passes of those categories alone and
 reads nothing for the others. Without `:categories`, the sweep runs every pass except
-the six review-only ones: `:twin-genls`, `:derivable-stated-edge`,
-`:disjoint-could-be-partition`, `:missing-arg`, `:taxonomy-island` and
-`:rule-clash-review`. A caller names a review-only category
+the seven review-only ones: `:twin-genls`, `:derivable-stated-edge`,
+`:disjoint-could-be-partition`, `:missing-arg`, `:taxonomy-island`,
+`:rule-clash-review` and `:rule-macro-review`. A caller names a review-only category
 in `:categories` to run its pass, so a review finding never makes a default sweep `:gap`. On a large KB the census passes (the specified and widening
 categories) can spend the daemon's `:max-work` ceiling before a candidate pass starts; a
 caller names the candidate categories to reach them.
@@ -468,16 +469,22 @@ and the KB states no marker that tells the two apart. The sweep reads one sign i
 The heuristic is a sign, not a proof. A default may be deliberate before anything
 overrides it, and a contrary claim may override a default that was written by accident.
 
-A reviewer records a decision on any suggestion with `declined_rule_macro`, a `core.txt`
-predicate over the suggested declaration:
+A reviewer records a decision on any suggestion with an
+[acknowledgment](#acknowledged-findings) over the suggested declaration, or with
+`declined_rule_macro`, `core.txt` sugar for one that carries no reason:
 
 ```clojure
 ;; (set/defaultRule (set/forwardRule (implies (livesIn ?a ?p) (locatedIn ?a ?p))))
+(acknowledgedFinding :rule-macro (genl livesIn locatedIn) "livesIn is meant as a default")
 (declined_rule_macro (genl livesIn locatedIn))
 ```
 
-The pass does not report a suggestion that the rule's context sees declined. The record
-quotes the suggestion rather than naming the rule by `(sentexHandle H)`: a handle belongs
+A suggestion the rule's context sees acknowledged moves from `:rule-macro` to the
+review-only `:rule-macro-review`, marked with the reason as `:acknowledged`. A forward
+rule in `core.txt` concludes `(acknowledgedFinding :rule-macro D "Acknowledged via
+declined_rule_macro; no reason supplied.")` from a `(declined_rule_macro D)` record, and
+the pass reads only the acknowledgment. The record quotes the suggestion rather than
+naming the rule by `(sentexHandle H)`: a handle belongs
 to one store, and `export-text!` skips a sentence that names one, so a handle-based record
 would not survive a reload. The suggestion is a function of the rule's sentence, so the
 record names the rule, and an edit to the rule that changes its shape changes the
@@ -701,8 +708,8 @@ are free to write `?x` and a map holding two of them says nothing. `:context` is
 nogood could form, below.
 
 **Two categories, by who acts on the pair.** `:rule-clash` holds the live pairs: both
-rules chain, and no `exceptWhen` handles the clash. `:rule-clash-review` is review-only,
-and holds the rest:
+rules chain, no `exceptWhen` handles the clash, and no acknowledgment names the pair.
+`:rule-clash-review` is review-only, and holds the rest:
 
 - **A pair with a `set/inertRule`**, marked `:inert true`. An inert rule chains in neither
   engine, so the clash forms only if the rule is switched on: a suggestion about the rule
@@ -712,6 +719,14 @@ and holds the rest:
   `exceptWhen` names a predicate the other rule is about, and the clash is handled.
   Hiding it would tell an author there was nothing to see, where what there is to see is
   that the pair is handled — which is a thing the author wrote and may have written wrong.
+- **A pair an [acknowledgment](#acknowledged-findings) names**, marked with its reason as
+  `:acknowledged`. The subject quotes the pair as one conjunction of the two rule
+  sentences, `(Quote (and R1 R2))`, in either order and under any variable names, and the
+  record is read from the pair's `:context`. The shipped ontology acknowledges two pairs
+  in `abstract.txt`: the root denial `(properPartOf ?part ?whole) → (not (partOf ?whole
+  ?part))` against the definitions `properCounterpart` generates for the tangible and the
+  situation proper readings, both strict, which fire together only where the facts
+  already contradict the root rule.
 
 The two property marks are read **up** the predicate hierarchy, as every constraint is
 convicted against them: two `fatherOf` conclusions clash against `(functional parentOf)`.
@@ -932,4 +947,38 @@ findings after `:missing-arg`. `kb-quality`'s `:taxonomy`
 reading counts the same nodes over every context ([quality.md](quality.md#taxonomy-coverage-is-two-numbers)).
 
 `:rule-clash-review`, described under the rule-clash finding above, counts against
-`:max-results` last, after `:taxonomy-island`.
+`:max-results` after `:taxonomy-island`, and `:rule-macro-review`, described under the
+rule-macro finding, last.
+
+## Acknowledged findings
+
+`(acknowledgedFinding category subject "reason")`, a `core.txt` predicate, records that a
+check flagged a finding, someone looked, and why it stays. The sweep moves an
+acknowledged finding to its category's review-only bucket instead of dropping it, so it
+stays visible with the reason beside it and no longer makes a default sweep `:gap`:
+
+| category | subject | review bucket | read from |
+|---|---|---|---|
+| `:rule-macro` | the suggested declaration, `(genl livesIn locatedIn)` | `:rule-macro-review` | the rule's context |
+| `:rule-clash` | the pair, `(Quote (and R1 R2))` | `:rule-clash-review` | the pair's `:context` |
+
+```clojure
+;; (acknowledgedFinding :rule-clash
+;;   (Quote (and (implies (penguin ?x) (not (flies ?x))) (implies (bird ?x) (flies ?x))))
+;;   "penguins are birds that do not fly")
+{:status :gap
+ :candidate-count 0
+ :rule-clash-review
+ [{:rules [812 813] :kind :negation :unifier {?x ?x'} :context CxUniverse
+   :sentences [(implies (bird ?x) (flies ?x)) (implies (penguin ?x) (not (flies ?x)))]
+   :excepted false :acknowledged "penguins are birds that do not fly"}]}
+```
+
+The subject names the finding by content, as `declined_rule_macro` always has, so the
+record survives a text export, and an edit that changes the finding's content brings the
+finding back. A rule pair is matched by each rule's canonical sentence, so the spelling of
+its variables and the order of its antecedents do not matter. Where several records
+acknowledge one finding, the first in print order supplies the reason. The sweep reads
+`acknowledgedFinding` and nothing else: other spellings of an acknowledgment, such as
+`declined_rule_macro`, are rules in the KB concluding one. Every other category ignores
+the record.
