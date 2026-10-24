@@ -314,6 +314,16 @@ A calendar term's **endpoints** are computed rather than stated: `(YearFn 2000)`
 clock](#the-calendar-clock)). An ordinary interval such as `Breakfast` has no fields to
 read, so its endpoints are the facts somebody states.
 
+A **range** that no calendar unit names, such as January through June 2000, is
+`(DatetimeRangeFn "2000-01" "2000-06")`: two reduced-precision ISO strings, beginning when
+the first one's interval begins and ending when the second one's ends. Calendar units nest
+or are disjoint, so a range is how two stretches that partially overlap are written as
+terms. It is `unreifiable_function` like `DatetimeFn`, and two backward rules in `time.txt`
+give it its endpoints from the two `DatetimeFn` intervals, so `startOf` and `endOf` answer
+for a range wherever the calendar clock answers for a `DatetimeFn` term. Nothing yet reads
+a range's strings as fields, so the interval relations and the context ordering do not see
+it the way they see a calendar term.
+
 ## Change over time: events, fluents, and inertia
 
 `CxChange` is a simple event calculus, shipped as a **middle theory**: rules over vocabulary

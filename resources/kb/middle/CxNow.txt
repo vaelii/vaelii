@@ -1,0 +1,12 @@
+;; CxNow — what is true now: a moving, indexical present. A sentence stated here holds
+;; at the time the KB is asked, and need not hold timelessly or at any other time, so
+;; no context above CxNow sees what it states. Sees CxUniverse, so it inherits the shared
+;; ontology. It is the present of no particular world: it sees neither CxWell nor
+;; CxRealWorld, and CxRealWorldNow is the real world's present. CxWell does not see it:
+;; a context opts in by placing itself under CxNow.
+;;
+;; The present is reached through lower bounds. A clock reading states that now is no
+;; earlier than a moment, which stays true for ever after; a sentence here states no
+;; exact present ("it is 3:41") and no dated present-tense fact ("today is Saturday").
+
+(genlCx CxNow CxUniverse)

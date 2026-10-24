@@ -57,6 +57,34 @@
 (arg datetimeOf 1 string)
 (arg datetimeOf 2 time_interval)
 
+(comment DatetimeRangeFn
+         "(DatetimeRangeFn ?from ?to) means the interval that begins when (DatetimeFn ?from) begins and ends when (DatetimeFn ?to) ends, so (DatetimeRangeFn \"2000-01\" \"2000-06\") is January through June 2000 and (DatetimeRangeFn \"2000-01-10\" \"2000-01-19\") the ten days from the tenth. Each argument is a reduced-precision ISO 8601 string, as DatetimeFn takes, and the two need not share a precision. A time_interval that no calendar unit names: calendar units nest or are disjoint, and two ranges can partially overlap. An unreifiable_function application like DatetimeFn: it stays structural, so both strings are readable inside the term. Its startOf and endOf follow from the two DatetimeFn intervals by the rules beside it, so they answer wherever the calendar clock answers for a DatetimeFn term. See docs/time.md.")
+(unreifiable_function DatetimeRangeFn)
+(binary_function DatetimeRangeFn)
+(functionCorrespondingPredicate DatetimeRangeFn datetimeRangeOf)
+(arg DatetimeRangeFn 1 string)
+(arg DatetimeRangeFn 2 string)
+(result DatetimeRangeFn time_interval)
+
+;; A range begins where the interval its first string names begins, and ends where the
+;; interval its second string names ends.  Each rule also reads the other string's bound,
+;; so a range has an endpoint only when both of its strings name an interval, and every
+;; variable of the conclusion is bound by an antecedent.
+(set/backwardRule
+ (implies (and (startOf (DatetimeFn ?from) ?instant) (endOf (DatetimeFn ?to) ?end))
+          (startOf (DatetimeRangeFn ?from ?to) ?instant)))
+(set/backwardRule
+ (implies (and (startOf (DatetimeFn ?from) ?start) (endOf (DatetimeFn ?to) ?instant))
+          (endOf (DatetimeRangeFn ?from ?to) ?instant)))
+
+(comment datetimeRangeOf
+         "(datetimeRangeOf ?from ?to ?interval) means that ?interval is the interval from the start of the one the reduced-precision ISO 8601 string ?from names to the end of the one ?to names, so (datetimeRangeOf \"2000-01\" \"2000-06\" ?interval) holds of January through June 2000. DatetimeRangeFn is the corresponding function, and its value is the last argument. Nothing reads this predicate: the rules beside DatetimeRangeFn read the term. See docs/time.md.")
+(ternary_predicate datetimeRangeOf)
+(arity datetimeRangeOf 3)
+(arg datetimeRangeOf 1 string)
+(arg datetimeRangeOf 2 string)
+(arg datetimeRangeOf 3 time_interval)
+
 (comment DayFn
          "(DayFn ?year ?month ?day) means the calendar day, as an interval — so (DayFn 2000 1 15) is the fifteenth of January 2000. An unreifiable_function application like YearFn and MonthFn: it stays structural, so the three fields are readable inside the term and a reader can see that the day sits inside its month. One field per argument, coarsest first, so the arity is the precision. See docs/context-nat.md.")
 (unreifiable_function DayFn)

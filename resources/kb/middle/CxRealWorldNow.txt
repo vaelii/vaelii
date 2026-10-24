@@ -1,0 +1,7 @@
+;; CxRealWorldNow — the real world at the present time: the product of CxRealWorld,
+;; which world, and CxNow, which time. Sees both, so it holds what is true of the real
+;; world and what is true now, and excludes every fiction. CxWell does not see it: a
+;; context opts in by placing itself under CxRealWorldNow.
+
+(genlCx CxRealWorldNow CxRealWorld)
+(genlCx CxRealWorldNow CxNow)

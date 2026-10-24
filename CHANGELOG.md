@@ -66,6 +66,35 @@ it — `git show v0.16.0:CHANGELOG.md`.
   preamble stores them. [nat.md](docs/nat.md#read-path)
   *Migration:* none.
 
+### Additive: vocabulary and reasoning
+
+- **`time.txt` ships `DatetimeRangeFn`, a range between two reduced-precision ISO
+  strings, with its corresponding predicate `datetimeRangeOf`.** `(DatetimeRangeFn
+  "2000-01" "2000-06")` is January through June 2000: it begins when `(DatetimeFn
+  "2000-01")` begins and ends when `(DatetimeFn "2000-06")` ends. It is an
+  `unreifiable_function` and a `time_interval`, like `DatetimeFn`, and two
+  `set/backwardRule`s give it its endpoints from the two `DatetimeFn` intervals, so with
+  `:calendar` registered a depth-3 `query (startOf (DatetimeRangeFn "2000-01" "2000-06")
+  ?i)` answers `(InstantFn 2000 1 1 0 0 0)` and `endOf` answers `(InstantFn 2000 7 1 0 0
+  0)`. Calendar units nest or are disjoint, so this is the first term that names two
+  stretches that partially overlap. Nothing reads its strings as fields yet, so neither
+  the interval relations nor the context ordering compare a range the way they compare a
+  calendar term. [time.md](docs/time.md#naming-an-interval-the-calendar-constructors).
+
+  *Class:* **Additive** (shipped ontology content).
+  *Migration:* none.
+
+- **CxNow and CxRealWorldNow ship as middle contexts.** CxNow is what is true now, a
+  moving indexical present of no particular world: it sees CxUniverse, and what it
+  states need not hold timelessly or at any other time. The present is reached through
+  lower bounds, a clock reading stating that now is no earlier than a moment, and never
+  through an exact present or a dated present-tense fact. CxRealWorldNow is the real
+  world at the present time and sees both CxRealWorld and CxNow. CxWell sees neither, so
+  a context opts in by placing itself under one.
+
+  *Class:* **Additive** (shipped ontology content).
+  *Migration:* none.
+
 ## 0.29.0 — 2026-10-23 — "Open applications read through `functionCorrespondingPredicate` and resolved under the reader's merges, `try-assert` refusing `:monotonic` complements and length clashes, query-only terms refused under `not`, closed-extent negatives re-checked in every arrival order"
 
 | Area | Change |

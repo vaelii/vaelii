@@ -33,8 +33,8 @@
     (is (= "core.txt" (first (core-context/upper-files)))))
   (testing "middle holds the theory contexts"
     (is (= '[CxAnatomy CxBiology CxChange CxKinship CxMereology
-             CxNormalPhysicalConditions CxRealWorld CxSize CxSocial CxSocialExtension
-             CxTra]
+             CxNormalPhysicalConditions CxNow CxRealWorld CxRealWorldNow CxSize
+             CxSocial CxSocialExtension CxTra]
            (seed/layer-contexts "middle"))))
   (testing "an absent layer is nil, not a crash"
     (is (nil? (seed/layer-contexts "no-such-layer")))))

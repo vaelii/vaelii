@@ -53,6 +53,13 @@
                                  mercury is liquid, metal_stuff is solid by default.
                                  Opt-in: it sees CxUniverse and CxWell does not
                                  see it.
+        - CxNow.txt       — what is true now, a moving indexical present of no
+                                 particular world, reached through lower bounds.
+                                 Opt-in: it sees CxUniverse and CxWell does not
+                                 see it.
+        - CxRealWorldNow.txt — the real world at the present time. Opt-in: it
+                                 sees CxRealWorld and CxNow, and CxWell does not
+                                 see it.
         - CxSize.txt      — comparative size: stated between kinds, computed
                                  between objects from their measures.
         - CxSocial.txt    — what acquaintance follows from; employment as one way
