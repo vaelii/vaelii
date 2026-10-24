@@ -2161,7 +2161,7 @@
 (defn rejoin-rules
   "The forward rules to re-join in full because `sen` moved what a preserved predicate
   licenses (every rule with an antecedent on a `moved-predicates` member), or nil.  Keyed
-  on the antecedent index, since `(genl chihuahua dog)` moves a `largerThan` antecedent
+  on the antecedent index, since `(genl chihuahua dog)` moves a `typeLargerThan` antecedent
   whose predicate no walk from `genl` reaches."
   [kb sen]
   (let [idx      (:index kb)

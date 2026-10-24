@@ -1030,45 +1030,105 @@
           (some (fn [[t n]] (when (contains? supers t) n))
                 (sort-by key tax/exact-arity-classes)))))))
 
-(defn- arity-conflicted?
-  "Do two of these literals bind one term to two arities?  A predicate takes one number of
-  arguments — `(functional arity)` says so of the table, and the relation-wide classes are
-  pairwise `disjoint`, which their kind specializations inherit (docs/taxonomy.md) — so no
-  term satisfies both, whichever of the two spellings each literal used.  `(arity ?p 1)` beside `(arity ?p 2)`, and `(arity ?p 1)`
-  beside `(equivalence_relation ?p)`, are the same finding read two ways.
-
-  A declaration read, not an inference: nothing is derived and no fact is consulted, the
-  same standing `separated-antecedents?` has beside it."
-  [kb lits context]
-  (let [tax     (reasoning/taxonomy kb)
-        by-term (reduce (fn [m l]
-                          (if-let [n (literal-arity-claim tax l context)]
-                            (update m (second l) (fnil conj #{}) n)
-                            m))
-                        {} lits)]
-    (boolean (some (fn [[_ ns]] (> (count ns) 1)) by-term))))
-
 (defn- lower-bounds
-  "The integers `k` the literals `lits` state `v` exceeds: `(lessThan k v)` and
+  "The numbers `k` the literals `lits` state `v` exceeds: `(lessThan k v)` and
   `(greaterThan v k)`."
   [lits v]
   (keep (fn [l]
           (let [[f x y] l]
             (when (= 3 (count l))
-              (cond (and (= 'lessThan f) (= v y) (integer? x))    x
-                    (and (= 'greaterThan f) (= v x) (integer? y)) y))))
+              (cond (and (= 'lessThan f) (= v y) (number? x))    x
+                    (and (= 'greaterThan f) (= v x) (number? y)) y))))
         lits))
 
-(defn- arity-floor-conflicted?
-  "Does a literal bound a term's length above the exact arity another literal claims?
-  `(arity ?p ?n)` beside `(lessThan k ?n)` says ?p takes more than k places, and
-  `(arityMin ?p ?n)` beside it says ?p requires more than k.  A term `literal-arity-claim`
-  binds to exactly n places, with n at most k, satisfies neither: the arity table is
-  functional, and a minimum above the exact length admits no application.  The floor
-  rules core.txt states over `arity` and `arityMin` read that way beside every rule that
-  concludes an exact class.
+(defn- upper-bounds
+  "The numbers `k` the literals `lits` state `v` falls short of: `(lessThan v k)` and
+  `(greaterThan k v)`."
+  [lits v]
+  (keep (fn [l]
+          (let [[f x y] l]
+            (when (= 3 (count l))
+              (cond (and (= 'lessThan f) (= v x) (number? y))    y
+                    (and (= 'greaterThan f) (= v y) (number? x)) x))))
+        lits))
 
-  A declaration read, as `arity-conflicted?` is beside it."
+(defn- unmergeable?
+  "Is `v` a ground filler no merge can make another — a number, a string or another
+  non-symbol atom?  Two distinct symbols may name one thing, and a functional mark merges
+  them rather than refusing, so only these fill one slot two ways for certain."
+  [v]
+  (and (some? v) (not (symbol? v)) (not (coll? v))))
+
+(defn- slot-fillers
+  "`{[q n determinant] #{filler …}}` — what the literals put in each functional slot.
+
+  A slot is position `n` of a tuple under a `(functionalInArg q n)` mark, read up the
+  predicate hierarchy from each literal's functor (`tax/functional-in-arg-over`), so two
+  literals under one marked super-predicate fill one slot.  The determinant is the rest
+  of the tuple, compared as written under σ: two literals agreeing on it name one filler.
+  `(functional q)` reaches here as `(functionalInArg q 2)`, the mark core.txt's rule
+  concludes from it, so nothing names `functional` or any marked predicate.
+
+  A unary literal whose type reaches an exact-arity class claims its term's arity, and
+  is read as the `(arity ?p n)` the engine reads that membership as
+  (`literal-arity-claim`): whether the arity table is functional is the KB's own
+  `functionalInArg` mark on `arity`, here as for any predicate."
+  [tax lits context]
+  (let [as-arity (keep (fn [l] (when (= 1 (nm/arity l))
+                                 (when-let [n (literal-arity-claim tax l context)]
+                                   (list 'arity (second l) n))))
+                       lits)]
+    (reduce (fn [m l]
+              (let [f    (nm/functor l)
+                    args (vec (nm/args l))]
+                (if (and (symbol? f) (not (sx/variable? f)))
+                  (reduce (fn [m [q n]]
+                            (if (<= 1 n (count args))
+                              (let [det (into (subvec args 0 (dec n)) (subvec args n))]
+                                (update m [q n det] (fnil conj #{}) (nth args (dec n))))
+                              m))
+                          m (tax/functional-in-arg-over tax f context))
+                  m)))
+            {} (concat lits as-arity))))
+
+(defn- functional-slot-conflicted?
+  "Do two of these literals fill one functional slot in ways no single filler meets?
+  Two distinct unmergeable fillers — `(arity ?p 1)` beside `(arity ?p 2)` — or one beside
+  a variable the literals bound away from it — `(arity ?p 1)` beside `(arity ?p ?n)` with
+  `(lessThan 1 ?n)` — or two variables whose bounds leave nothing between them.  A
+  functional slot holds one filler, so every variable in it is that filler and each
+  bound on one bounds them all.  `(arity ?p 2)` beside `(lessThan 1 ?n)` is a filler the
+  bound admits, and stays a candidate.
+
+  The marks are the KB's (`slot-fillers`), so a KB that does not declare a slot
+  functional pairs its fillers as two facts that can both hold.  A declaration read, not
+  an inference: nothing is derived and no fact is consulted, the same standing
+  `separated-antecedents?` has beside it."
+  [kb lits context]
+  (let [tax (reasoning/taxonomy kb)]
+    (boolean
+     (some (fn [[_ vs]]
+             (let [grounds (into #{} (filter unmergeable?) vs)
+                   vars    (filter sx/variable? vs)
+                   lows    (mapcat #(lower-bounds lits %) vars)
+                   highs   (mapcat #(upper-bounds lits %) vars)
+                   g       (first grounds)]
+               (cond
+                 (> (count grounds) 1) true
+                 (number? g)           (or (some #(<= g %) lows) (some #(>= g %) highs))
+                 (and (empty? grounds) (seq lows) (seq highs))
+                 (>= (apply max lows) (apply min highs)))))
+           (slot-fillers tax lits context)))))
+
+(defn- arity-min-conflicted?
+  "Does a literal bound a term's minimum length above the exact arity another literal
+  claims?  `(arityMin ?p ?n)` beside `(lessThan k ?n)` says ?p requires more than k
+  places, and a term `literal-arity-claim` binds to exactly n places, with n at most k,
+  admits no application of that length.  The floor rules core.txt states over `arityMin`
+  read that way beside every rule that concludes an exact class.  The floor rules over
+  `arity` itself are `functional-slot-conflicted?`'s, the arity table being functional.
+
+  A declaration read, as `functional-slot-conflicted?` is beside it."
   [kb lits context]
   (let [tax   (reasoning/taxonomy kb)
         exact (reduce (fn [m l]
@@ -1079,7 +1139,7 @@
     (boolean
      (some (fn [l]
              (let [[f p v] l]
-               (when (and (#{'arity 'arityMin} f) (= 3 (count l)) (sx/variable? v))
+               (when (and (= 'arityMin f) (= 3 (count l)) (sx/variable? v))
                  (some (fn [n] (some #(>= % n) (lower-bounds lits v)))
                        (get exact p)))))
            lits))))
@@ -1091,7 +1151,7 @@
   reading of the three spellings, so a declaration the entry point honors is one this
   honors; up the predicate hierarchy, so a super-predicate's declaration types a
   sub-predicate's tuple.  A declaration read, not an inference: nothing is derived and no
-  fact is consulted, the same standing `separated-antecedents?` and `arity-conflicted?`
+  fact is consulted, the same standing `separated-antecedents?` and `functional-slot-conflicted?`
   have beside it."
   [kb pred arity context]
   (for [{:keys [from to type]} (checks/instance-type-declarations kb pred context)
@@ -1216,8 +1276,10 @@
 
   Five things rule it out and nothing else does: a literal appearing under σ together with
   its own negation, or with the negation of a predicate it is a spec of; one term claimed to
-  be of two separated types; one term bound to two arities; one term bounded above the
-  exact arity it is claimed to have; and one term a declaration demands be of a type
+  be of two separated types; one functional slot filled two ways no single filler meets,
+  such as one term bound to two arities, or to an arity a bound on the other excludes;
+  one term whose minimum length is bounded above the exact arity it is claimed to have;
+  and one term a declaration demands be of a type
   disjoint from one the two rules place it in: an `arg` declaration, a `genl` literal's
   second argument by its arity, or an application's function.  **No
   inference is run and no fact is consulted** — each of the five is a declaration read.  This is what the rules say about each other, and a pair it admits
@@ -1236,8 +1298,8 @@
     (and (empty? (set/intersection pos neg))
          (not (negation-met-by-a-spec? kb pos neg context))
          (not (separated-antecedents? kb pos context))
-         (not (arity-conflicted? kb pos context))
-         (not (arity-floor-conflicted? kb pos context))
+         (not (functional-slot-conflicted? kb pos context))
+         (not (arity-min-conflicted? kb pos context))
          (not (arg-type-conflicted? kb heads context)))))
 
 (defn- rule-functors

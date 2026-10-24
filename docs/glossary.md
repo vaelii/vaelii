@@ -544,7 +544,8 @@ per-instant counterpart of `functional` for a value carried as a fluent.
 taken together, fixes the filler at `n`. Same merge-or-nogood rule and same four arrival
 directions; what it adds is a **composite determinant**, as in
 `(functionalInArg namesObject 3)` for "one namespace and one path name one object".
-`(functionalInArg P 2)` on a binary predicate is `(functional P)`. See
+`(functionalInArg P 2)` on a binary predicate is `(functional P)`, and a core.txt
+forward rule concludes it from `(functional P)`. See
 [taxonomy.md](taxonomy.md) and [equality.md](equality.md).
 
 ## G
@@ -853,7 +854,7 @@ stored exception answers `(orthogonal a b)` and is read as one. See
 
 **`partitionedByType`** ![kb](../.github/badges/cat-kb.svg): `(partitionedByType ?whole ?classifier)` says that the members of a classifier partition a whole, e.g. `(partitionedByType tangible origin_type)` for `made` and `natural`. core.txt rules place each member under the whole and separate every two members. No rule draws the coverage half, so a `partition` stated beside the fact carries it. See [taxonomy.md](taxonomy.md).
 
-**`partOf`** ![kb](../.github/badges/cat-kb.svg): `(partOf ?part ?whole)` says that one thing is a part of another, of any kind. `partOf` is transitive and reflexive, both its positions declare `thing`, and the KB states that it is not antisymmetric. `tangiblePartOf`, `partOfRegion`, `subSituationOf` and `subintervalOf` are below it by `genl`, so a fact of any of the four answers `partOf`. A `partOfRegion` or `subintervalOf` tuple the RCC-8 or interval network entails answers `partOf` too, and a proper one answers `properPartOf`. Its proper reading is `properPartOf`. Every spec of `partOf` is reflexive or below `properPartOf`. See [taxonomy.md](taxonomy.md).
+**`partOf`** ![kb](../.github/badges/cat-kb.svg): `(partOf ?part ?whole)` says that one thing is a part of another, of any kind. `partOf` is transitive and reflexive, both its positions declare `thing`, and the KB states that it is not antisymmetric. `tangiblePartOf`, `permanentPartOf`, `partOfRegion`, `subSituationOf` and `subintervalOf` are below it by `genl`, so a fact of any of the five answers `partOf`. A `partOfRegion` or `subintervalOf` tuple the RCC-8 or interval network entails answers `partOf` too, and a proper one answers `properPartOf`. Its proper reading is `properPartOf`. Every spec of `partOf` is reflexive or below `properPartOf`. See [taxonomy.md](taxonomy.md).
 
 **Path consistency** ![qr](../.github/badges/cat-qr.svg): The fixpoint that
 tightens a constraint network: for every triple, intersect the constraint on a
@@ -865,6 +866,8 @@ and it is order-independent. See [qcn.md](qcn.md).
 variables, are read as a *pattern to match* rather than as a claim. Never stored as a non-rule
 sentence — `checks/check-ground` refuses that — so a pattern reaches the engine only as a
 goal or inside a rule. See [inference.md](inference.md).
+
+**`permanentPartOf`** ![kb](../.github/badges/cat-kb.svg): `(permanentPartOf ?part ?whole)` says that one thing is a part of another that could not stop being one while both exist, e.g. a region inside a region. `permanentPartOf` is time-invariant, transitive and reflexive, both its positions declare `thing`, and it is below `partOf`. `partOfRegion` and `subSituationOf` are below it, and `tangiblePartOf` is not, since a wheel can come off a car. See [taxonomy.md](taxonomy.md).
 
 **`physical`** ![kb](../.github/badges/cat-kb.svg): An entity with a location in the physical space of our universe. A region of physical space is physical; the line y=x, located only in the Cartesian plane, is not. Below `spatial`; `spatiotemporal` is below it. See [taxonomy.md](taxonomy.md#the-three-partitions-of-thing).
 
@@ -917,7 +920,10 @@ placeholder functor, audited on demand for the members with no filler. The *Spec
 pair (`predAllSpecified` / `predSpecifiedAll`) is an on-demand integrity audit reporting
 the instances with no determinate filler — binary, the filler's required type derived
 from the predicate's own slot contract rather than restated, and a predicate with no
-visible slot typing reported as an explicit declaration-contract gap. See
+visible slot typing reported as an explicit declaration-contract gap. `typeAllSpecified`
+is the Specified pair's counterpart for a classification: every instance must be believed
+a member of some member of a classifier
+([integrity.md](integrity.md#what-a-type-specified-finding-means)). See
 [predall.md](predall.md).
 
 **Predicate extent** ![backend](../.github/badges/cat-backend.svg): The count trie
@@ -1238,7 +1244,7 @@ premise / the class a justification confers — exactly two, `:monotonic` >
 `:default`. It propagates from the antecedents: a conclusion is never stronger
 than what it rests on. See [nmtms.md](nmtms.md).
 
-**`subSituationOf`** ![kb](../.github/badges/cat-kb.svg): `(subSituationOf ?part ?whole)` says that one situation is a part of another. `subSituationOf` is transitive, reflexive and below `partOf`, and its proper reading is `properSubSituationOf`. A part's time is within its whole's time, and two situations sharing a time are not thereby parts of one another.
+**`subSituationOf`** ![kb](../.github/badges/cat-kb.svg): `(subSituationOf ?part ?whole)` says that one situation is a part of another. `subSituationOf` is transitive, reflexive and below `permanentPartOf`, and its proper reading is `properSubSituationOf`. A part's time is within its whole's time, and two situations sharing a time are not thereby parts of one another.
 
 **Subsumption (rules)** ![inference](../.github/badges/cat-inference.svg): One rule
 covering another — a substitution σ making the covering rule's antecedents a subset of the

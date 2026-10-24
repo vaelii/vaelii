@@ -657,7 +657,7 @@
 
 (deftest a-reader-that-disbelieves-a-genl-edge-stops-reaching-over-it
   ;;   CxUniverse    (genl chi thing) (genl dog thing) (chi Rex)
-  ;;                 (transitiveInArgInverse largerThan 1 genl)  (largerThan dog cat)
+  ;;                 (transitiveInArgInverse typeLargerThan 1 genl)  (typeLargerThan dog cat)
   ;;     └─ CxA      (genl chi dog)                 :default
   ;;          └─ CxB (not (genl chi dog))           :monotonic  ← the vantage
   ;;     └─ CxC      a sibling of CxB, which sees neither the denial nor the vantage
@@ -667,13 +667,13 @@
   (doseq [edge-first? [true false]]
     (testing (if edge-first? "the edge arrives first" "the denial arrives first")
       (tu/with-neutral-kb [kb tu/fresh]
-        (tu/with-terms [CxA CxB CxC chi_t dog_t cat_t largerThan Rex]
+        (tu/with-terms [CxA CxB CxC chi_t dog_t cat_t typeLargerThan Rex]
           (types! kb chi_t dog_t cat_t)
           (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
           (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
           (v/assert kb (list 'genlCx CxC CxA) 'CxUniverse)
-          (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse)
-          (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse)
+          (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse)
+          (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse)
           (v/assert kb (list chi_t Rex) 'CxUniverse)
           (let [edge!   #(v/assert kb (list 'genl chi_t dog_t) CxA)
                 denial! #(v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB
@@ -685,7 +685,7 @@
                            (v/ask? kb (list 'genl chi_t dog_t) rdr)
                            (v/genl? kb chi_t dog_t rdr)
                            (v/isa? kb Rex dog_t rdr)
-                           (v/ask? kb (list largerThan chi_t cat_t) rdr)])]
+                           (v/ask? kb (list typeLargerThan chi_t cat_t) rdr)])]
             (testing "the vantage disbelieves the edge and every read over it"
               (is (= [false false false false false] (reads CxB))))
             (testing "the context that states the edge reads all five as true"
@@ -702,12 +702,12 @@
   ;;   empties the scoped-defeat entries retires every closure memoized while the defeat
   ;;   stood.
   (tu/with-neutral-kb [kb tu/fresh]
-    (tu/with-terms [CxA CxB chi_t dog_t cat_t largerThan Rex]
+    (tu/with-terms [CxA CxB chi_t dog_t cat_t typeLargerThan Rex]
       (types! kb chi_t dog_t cat_t)
       (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
       (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse)
-      (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse)
+      (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse)
       (v/assert kb (list chi_t Rex) 'CxUniverse)
       (v/assert kb (list 'genl chi_t dog_t) CxA)
       (let [d     (v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB {:strength :monotonic})
@@ -716,7 +716,7 @@
                     [(v/believed? kb h rdr)
                      (v/genl? kb chi_t dog_t rdr)
                      (v/isa? kb Rex dog_t rdr)
-                     (v/ask? kb (list largerThan chi_t cat_t) rdr)])]
+                     (v/ask? kb (list typeLargerThan chi_t cat_t) rdr)])]
         ;; read from CxB while the defeat stands, so a stale memo would have something
         ;; to be stale from
         (is (= [false false false false] (reads CxB)))

@@ -343,8 +343,9 @@ The three written spellings reduce to one runtime descriptor, and
 - **A `:rest` group is closed by the literal's own arity.** So `(covering W A B)` and
   `(covering W A B C)` are two claims, and no permutation moves an argument between them.
 - **A component of one position is dropped.** A mark whose positions fall past the
-  literal's arity leaves it alone, and a unary predicate marked `commutative` is
-  identity-only without a special case.
+  literal's arity leaves it alone without a special case. No unary predicate is marked
+  `commutative`: `commutative` is below `at_least_binary`, since one position is no
+  permutation.
 
 Sorting is the same rule as `symmetric`'s: ground literals only, within each component,
 other positions fixed. Repeats keep their multiplicity — commutativity changes order,

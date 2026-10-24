@@ -81,16 +81,16 @@
        :below   #{CxA CxB}})
 
     :preserve
-    (let [{:syms [dog_t mid_t chi_t cat_t largerThan noted CxA CxB]}
-          (terms '[dog_t mid_t chi_t cat_t largerThan noted CxA CxB])]
+    (let [{:syms [dog_t mid_t chi_t cat_t typeLargerThan noted CxA CxB]}
+          (terms '[dog_t mid_t chi_t cat_t typeLargerThan noted CxA CxB])]
       {:base    [[(list 'genlCx CxA 'CxUniverse) 'CxUniverse]
                  [(list 'genlCx CxB CxA) 'CxUniverse]
-                 [(list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse]
-                 [(list 'set/forwardRule (list 'implies (list largerThan '?x '?y) (list noted '?x '?y)))
+                 [(list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse]
+                 [(list 'set/forwardRule (list 'implies (list typeLargerThan '?x '?y) (list noted '?x '?y)))
                   'CxUniverse]]
        :named   [[(list 'genl mid_t dog_t) 'CxUniverse] [(list 'genl chi_t mid_t) 'CxUniverse]]
        :other   [[(list 'genl chi_t dog_t) CxA]]
-       :claim   [[(list largerThan dog_t cat_t) 'CxUniverse]]
+       :claim   [[(list typeLargerThan dog_t cat_t) 'CxUniverse]]
        :knock   [(list 'genl chi_t mid_t) 'CxUniverse]
        :at      CxA
        :goal    (list noted chi_t cat_t)
@@ -100,16 +100,16 @@
     ;; Both routes in CxA, so they tie on generality and the shorter one is named; the
     ;; knock lands in CxB below them (docs/nmtms.md, "Where the layer stops").
     :tie
-    (let [{:syms [dog_t mid_t chi_t cat_t largerThan noted CxA CxB]}
-          (terms '[dog_t mid_t chi_t cat_t largerThan noted CxA CxB])]
+    (let [{:syms [dog_t mid_t chi_t cat_t typeLargerThan noted CxA CxB]}
+          (terms '[dog_t mid_t chi_t cat_t typeLargerThan noted CxA CxB])]
       {:base    [[(list 'genlCx CxA 'CxUniverse) 'CxUniverse]
                  [(list 'genlCx CxB CxA) 'CxUniverse]
-                 [(list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse]
-                 [(list 'set/forwardRule (list 'implies (list largerThan '?x '?y) (list noted '?x '?y)))
+                 [(list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse]
+                 [(list 'set/forwardRule (list 'implies (list typeLargerThan '?x '?y) (list noted '?x '?y)))
                   'CxUniverse]]
        :named   [[(list 'genl chi_t dog_t) CxA]]
        :other   [[(list 'genl chi_t mid_t) CxA] [(list 'genl mid_t dog_t) CxA]]
-       :claim   [[(list largerThan dog_t cat_t) 'CxUniverse]]
+       :claim   [[(list typeLargerThan dog_t cat_t) 'CxUniverse]]
        :knock   [(list 'genl chi_t dog_t) CxA]
        :at      CxB
        :goal    (list noted chi_t cat_t)

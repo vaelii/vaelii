@@ -1310,7 +1310,15 @@
            [type_type_by_order "ontology, not grammar: the disjoint_metatype partitioning fixed_order_type by order. No engine check names it."]
            [spatiality_type "ontology, not grammar: the at_least_metatype holding spatial and aspatial. The orthogonalMetatypes and partitionedByType rules read its memberships as any membership is; no engine check names it."]
            [temporality_type "ontology, not grammar: the at_least_metatype holding temporal and atemporal. The orthogonalMetatypes and partitionedByType rules read its memberships as any membership is; no engine check names it."]
-           [arity_type "ontology, not grammar: the at_least_metatype of the relation-level arity types, e.g. binary and variable_arity. The typeOrthogonal rule reads its memberships as any membership is; no engine check names it."]])
+           [arity_type "ontology, not grammar: the at_least_metatype of the relation-level arity types, e.g. binary and variable_arity. The typeOrthogonal rule reads its memberships as any membership is; no engine check names it."]
+           [time_invariant_relation "ontology, not grammar: a relation no instance of which could lose it and still exist (OntoClean +R), one part of the rigidity partition of relation. No engine check names it."]
+           [time_agnostic_relation "ontology, not grammar: a relation some instances of which could lose it and still exist and some not (OntoClean -R), one part of the rigidity partition of relation. No engine check names it."]
+           [time_varying_relation "ontology, not grammar: a relation every instance of which could lose it and still exist (OntoClean ~R), preserved down genl by transitiveInArgInverse. No engine check names it."]
+           [possibly_time_invariant_relation "ontology, not grammar: time_invariant_relation and time_agnostic_relation together, preserved up genl by transitiveInArg. No engine check names it."]
+           [rigidity_kind "ontology, not grammar: the at_least_metatype holding the three rigidity kinds of relation. No engine check names it."]
+           [time_indexed_relation "ontology, not grammar: a relation one argument of which names the time a tuple holds at, below time_invariant_relation. A core.txt rule concludes membership from temporalIndexArg; no engine check names it."]
+           [stable_once_true "ontology, not grammar: a time-varying relation that, once it holds at a time, holds at every later time. No engine check names it."]
+           [stable_once_false "ontology, not grammar: a time-varying relation that, once it fails at a time, fails at every later time. No engine check names it."]])
 
     ;; ---- the two halves of unary_predicate ---------------------------------
     ;; `empty` and `nonempty` partition `unary_predicate`.  The disjointness audit reads
@@ -1704,6 +1712,13 @@
                 (str "generic rule generators (docs/generators.md): a fact of two or three"
                      " metatypes generates rules making every member of each orthogonal to every"
                      " member of the others; four or more pends variable-arity rule support"))]
+     ['temporalIndexArg
+      (enforced {:shape {:args [:relation :position]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "enforced by the generic chain, not by name: a core.txt forward rule"
+                             " concludes (time_indexed_relation ?relation) from each fact.")}
+                (str "a core.txt rule: a relation with a temporal index argument is a"
+                     " time_indexed_relation, and so time-invariant"))]
      ['partitionedByType
       (enforced {:shape {:args [:type :type]} :storage [:none] :checked false
                  :family nil :facets #{}
@@ -1889,6 +1904,18 @@
                              " binary, filler type derived from ?pred's slot-1 contract.")}
                 (str "vaelii.core/specified-violations with :first — audits ?pred's"
                      " first position, the argument-swapped twin"))]
+     ['typeAllSpecified
+      (enforced {:shape {:args [:type :type]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "an on-demand audit, not a stored constraint: nothing fires on"
+                             " assert, and kb-integrity's :type-specified-violations pass reads"
+                             " it. Every ?indep instance needs a believed membership in some"
+                             " ?classifier member; a classifier with no member is a gap the"
+                             " audit reports explicitly.")}
+                (str "vaelii.impl.predall/type-specified-violations — kb-integrity's"
+                     " :type-specified-violations pass reads the declaration and returns the"
+                     " instances of ?indep no member of ?classifier is believed to hold;"
+                     " generates no rule"))]
      ['PredAllExistsFn
       (enforced (collection :notes (str "a function constant, never a sentence functor; its"
                                         " unreifiable_function mark keeps a ground"

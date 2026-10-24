@@ -808,11 +808,11 @@ three, and a read runs the last at its reader:
    `discover-inherited!` records each inherited nogood whose members the network believes,
    with its vantages (`inherited/install-inherited!`). The inherited family is:
    - a stored claim against a **known-true claim reached by argument preservation**
-     (`preserving-nogoods`), whose second side was never stored. `(largerThan dog cat)`
-     asserted `{:strength :monotonic}` reaches `(largerThan chihuahua maine_coon)`, and a
-     stored `(not (largerThan chihuahua maine_coon))` denies a claim with no handle, as a
-     stored `(largerThan maine_coon chihuahua)` does under an `asymmetric` mark on
-     `largerThan` or a super-predicate of it (`inherit/converse-claim`), and as a stored
+     (`preserving-nogoods`), whose second side was never stored. `(typeLargerThan dog cat)`
+     asserted `{:strength :monotonic}` reaches `(typeLargerThan chihuahua maine_coon)`, and a
+     stored `(not (typeLargerThan chihuahua maine_coon))` denies a claim with no handle, as a
+     stored `(typeLargerThan maine_coon chihuahua)` does under an `asymmetric` mark on
+     `typeLargerThan` or a super-predicate of it (`inherit/converse-claim`), and as a stored
      membership `(S x)` does when a separation holds `S` apart from a preserved `P`
      whose claim reaches `(P x)` (`inherit/separated-claims`). The
      members are the stored claim and everything the reading rests on: the general claim,
@@ -3058,8 +3058,8 @@ holds the vocabulary and the page that owns each keyword.
 
   ```
   CxUniverse   (genl mid dog) (genl chi mid)   the long route, named
-               (largerThan dog cat)  (transitiveInArgInverse largerThan 1 genl)
-               forward rule (largerThan ?x ?y) ⇒ (noted ?x ?y)
+               (typeLargerThan dog cat)  (transitiveInArgInverse typeLargerThan 1 genl)
+               forward rule (typeLargerThan ?x ?y) ⇒ (noted ?x ?y)
    └─ CxA      (genl chi dog)                  the short route
                (not (genl chi mid))  :monotonic
   ```
@@ -3071,8 +3071,8 @@ holds the vocabulary and the page that owns each keyword.
   named:
 
   ```
-  CxUniverse   (largerThan dog cat)  (transitiveInArgInverse largerThan 1 genl)
-               forward rule (largerThan ?x ?y) ⇒ (noted ?x ?y)
+  CxUniverse   (typeLargerThan dog cat)  (transitiveInArgInverse typeLargerThan 1 genl)
+               forward rule (typeLargerThan ?x ?y) ⇒ (noted ?x ?y)
    └─ CxA      (genl chi dog)  and  (genl chi mid) (genl mid dog)   both routes
         └─ CxB (not (genl chi dog))  :monotonic
   ```

@@ -17,6 +17,7 @@
             [vaelii.impl.progress :as progress]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.provers :as provers]
+            [vaelii.impl.quasiquote :as quasiquote]
             [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rules :as rules]
@@ -30,24 +31,42 @@
   "The options `kb-integrity` reads: three cooperative bounds and the categories to run."
   #{:max-work :max-ms :max-results :categories})
 
+(defn- declaration-findings
+  "Fold a lazy stream of `[declaration result]` audits under `category`, one declaration
+  at a time, ticking `tick!` per declaration, keeping each gap or non-empty violation set
+  and stopping after the first finding beyond `remaining` proves that the result bound
+  truncated the sweep."
+  [category audits remaining tick!]
+  (loop [audits   audits
+         findings {}]
+    (if-let [[declaration result] (first audits)]
+      (do
+        (tick!)
+        (if (or (= :gap (:status result)) (seq (:violations result)))
+          (if (and remaining (>= (count findings) remaining))
+            {:status :truncated :reason :max-results :findings findings}
+            (do
+              (budget/record! category [declaration result])
+              (recur (rest audits) (assoc findings declaration result))))
+          (recur (rest audits) findings)))
+      {:status :complete :findings findings})))
+
 (defn- specified-findings
-  "Audit one declared predicate at a time, stopping after the first finding beyond
-  `remaining` proves that the result bound truncated the sweep."
+  "Audit one declared predicate at a time (`declaration-findings`)."
   [kb context remaining]
   (with-open [r (progress/start ::specified "integrity: audit the specified declarations" nil)]
-    (loop [audits (predall/specified-declaration-audits kb context)
-           findings {}]
-      (if-let [[declaration result] (first audits)]
-        (do
-          (progress/tick! r)
-          (if (or (= :gap (:status result)) (seq (:violations result)))
-            (if (and remaining (>= (count findings) remaining))
-              {:status :truncated :reason :max-results :findings findings}
-              (do
-                (budget/record! :all-specified-violations [declaration result])
-                (recur (rest audits) (assoc findings declaration result))))
-            (recur (rest audits) findings)))
-        {:status :complete :findings findings}))))
+    (declaration-findings :all-specified-violations
+                          (predall/specified-declaration-audits kb context) remaining
+                          #(progress/tick! r))))
+
+(defn- type-specified-findings
+  "Audit one `typeAllSpecified` declaration at a time (`declaration-findings`)."
+  [kb context remaining]
+  (with-open [r (progress/start ::type-specified
+                                "integrity: audit the typeAllSpecified declarations" nil)]
+    (declaration-findings :type-specified-violations
+                          (predall/type-specified-declaration-audits kb context) remaining
+                          #(progress/tick! r))))
 
 ;; ---- genl-arg-widening: a predicate genl edge that widens an argument type ----
 
@@ -410,6 +429,50 @@
           (budget/record! category finding)
           (recur (conj findings finding) (rest units))))
       {:status :complete :findings findings})))
+
+;; ---- rigidity-correspondence: a function and its predicate of different kinds ----
+
+(defn- bindings-of
+  "The `?f` `?p` pairs of `goal` answerable in `context`."
+  [kb goal context]
+  (budget/spend!)
+  (for [b (quasiquote/ask-prepared kb goal context)]
+    [(get b '?f) (get b '?p)]))
+
+(defn- correspondences
+  "Every visible `(functionCorrespondingPredicate f p)` pair, the value position stated
+  or not, distinct and in content order."
+  [kb context]
+  (sort-by #(apply list %) nm/compare-form
+           (distinct (concat (bindings-of kb '(functionCorrespondingPredicate ?f ?p) context)
+                             (bindings-of kb '(functionCorrespondingPredicate ?f ?p ?n) context)))))
+
+(defn- kinds-held
+  "The members of `kinds` `term` is believed to be a member of in `context`."
+  [kb kinds term context]
+  (into #{}
+        (filter (fn [k]
+                  (budget/spend!)
+                  (seq (quasiquote/ask-prepared kb (list k term) context))))
+        kinds))
+
+(defn- rigidity-correspondence-findings
+  "Report each visible `functionCorrespondingPredicate` pair whose function and predicate
+  are both believed of some `rigidity_kind` member and not of the same ones.  A pair with
+  an unclassified side is not reported: `(typeAllSpecified rigidity_kind relation)`
+  reports the unclassified relation itself."
+  [kb context remaining]
+  (let [kinds (do (budget/spend!)
+                  (into [] (comp (keep #(get % '?k)) (distinct))
+                        (quasiquote/ask-prepared kb '(rigidity_kind ?k) context)))]
+    (bounded-findings
+     :rigidity-correspondence
+     (for [[f p] (when (seq kinds) (correspondences kb context))
+           :let  [fk (kinds-held kb kinds f context)
+                  pk (when (seq fk) (kinds-held kb kinds p context))]
+           :when (and (seq fk) (seq pk) (not= fk pk))]
+       {:function f :predicate p :function-kinds fk :predicate-kinds pk})
+     remaining)))
 
 (defn- handle-records
   "The believed sentexes among `handles`, as `{:handle :sentence :context}` maps in
@@ -1129,6 +1192,10 @@
   [[:definition-inconsistencies provers/definition-inconsistencies]
    [:all-specified-violations (fn [kb _ context remaining]
                                 (specified-findings kb context remaining))]
+   [:type-specified-violations (fn [kb _ context remaining]
+                                 (type-specified-findings kb context remaining))]
+   [:rigidity-correspondence (fn [kb _ context remaining]
+                               (rigidity-correspondence-findings kb context remaining))]
    [:genl-arg-widening (fn [kb _ context remaining]
                          (widening-findings kb context remaining))]
    [:not-under-thing not-under-thing-findings]
@@ -1193,12 +1260,14 @@
               (recur more (some-> remaining (- (count (:findings result))))))))))))
 
 (defn- report-categories
-  "The non-empty categories of a meter's findings, the specified category as a map."
+  "The non-empty categories of a meter's findings, the two specified categories as maps."
   [found]
   (into {}
         (keep (fn [[k xs]]
                 (when (seq xs)
-                  [k (if (= :all-specified-violations k) (into {} xs) xs)])))
+                  [k (if (#{:all-specified-violations :type-specified-violations} k)
+                       (into {} xs)
+                       xs)])))
         found))
 
 (defn kb-integrity

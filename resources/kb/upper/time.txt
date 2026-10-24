@@ -15,18 +15,21 @@
 (comment after
          "(after ?interval1 ?interval2) means that ?interval1 begins strictly after ?interval2 ends. They share no time and do not touch, so some gap separates them. The converse of before.")
 (set/monotonic (instance_relation_predicate after))
+(set/monotonic (time_invariant_relation after))
 (arg after 1 temporal)
 (arg after 2 temporal)
 
 (comment before
          "(before ?interval1 ?interval2) means that ?interval1 ends strictly before ?interval2 begins. They share no time and do not touch, so some gap separates them. One of Allen's thirteen base relations, with after as its converse.")
 (set/monotonic (instance_relation_predicate before))
+(set/monotonic (time_invariant_relation before))
 (arg before 1 temporal)
 (arg before 2 temporal)
 
 (comment clipped
          "(clipped ?instant1 ?fluent ?instant2) means that some event terminating ?fluent happens strictly between ?instant1 and ?instant2. What breaks inertia: a fluent an event started at ?instant1 still holds at ?instant2 exactly while nothing clipped it in between. Derived by CxChange and never stated — an event and its terminates fact are what a KB says, and the interval this covers is what follows from them. See docs/time.md.")
 (ternary_predicate clipped)
+(set/monotonic (time_invariant_relation clipped))
 (arg clipped 1 time_point)
 (arg clipped 2 fluent)
 (arg clipped 3 time_point)
@@ -34,12 +37,14 @@
 (comment clippedBefore
          "(clippedBefore ?fluent ?instant) means that some event terminating ?fluent happens before ?instant, with no lower bound on when. The half-open reading of clipped, and what an initially-true fluent needs: nothing named the moment such a fluent began, so there is no first instant to bound the interval with. Derived by CxChange and never stated. See docs/time.md.")
 (set/monotonic (instance_relation_predicate clippedBefore))
+(set/monotonic (time_invariant_relation clippedBefore))
 (arg clippedBefore 1 fluent)
 (arg clippedBefore 2 time_point)
 
 (comment contains
          "(contains ?interval1 ?interval2) means that ?interval1 begins strictly before ?interval2 and ends strictly after it. So ?interval2 falls wholly inside ?interval1 with room either side. The converse of during.")
 (set/monotonic (instance_relation_predicate contains))
+(set/monotonic (time_invariant_relation contains))
 (arg contains 1 temporal)
 (arg contains 2 temporal)
 
@@ -54,6 +59,7 @@
 (comment datetimeOf
          "(datetimeOf ?iso ?interval) means that ?interval is the interval the reduced-precision ISO 8601 string ?iso names, so (datetimeOf \"2000-01\" ?interval) holds of January 2000. DatetimeFn is the corresponding function, and its value is the last argument. The calendar prover reads the DatetimeFn term and does not answer this predicate. See docs/time.md.")
 (set/monotonic (instance_relation_predicate datetimeOf))
+(set/monotonic (time_invariant_relation datetimeOf))
 (arg datetimeOf 1 string)
 (arg datetimeOf 2 time_interval)
 
@@ -67,6 +73,7 @@
 (comment calendarDay
          "(calendarDay ?year ?month ?day ?interval) means that ?interval is day ?day of month ?month of calendar year ?year, so (calendarDay 2000 1 15 ?interval) holds of the fifteenth of January 2000. DayFn is the corresponding function, and its value is the last argument. The calendar prover reads the DayFn term and does not answer this predicate. See docs/time.md.")
 (quaternary_predicate calendarDay)
+(set/monotonic (time_invariant_relation calendarDay))
 (arity calendarDay 4)
 (arg calendarDay 1 integer)
 (arg calendarDay 2 positive_integer)
@@ -76,6 +83,7 @@
 (comment during
          "(during ?interval1 ?interval2) means that ?interval1 falls wholly inside ?interval2, beginning strictly after it and ending strictly before it. The converse of contains.")
 (set/monotonic (instance_relation_predicate during))
+(set/monotonic (time_invariant_relation during))
 (arg during 1 temporal)
 (arg during 2 temporal)
 
@@ -90,6 +98,7 @@
 (comment earliestEndOf
          "(earliestEndOf ?thing ?instant) means that ?instant is the earliest moment ?thing can have ended, the moment (EarliestEndFn ?thing) names. EarliestEndFn is the corresponding function, and its value is the last argument. The instant network reads the EarliestEndFn term and not this predicate, so a stated earliestEndOf fact orders nothing. See docs/time.md.")
 (set/monotonic (instance_relation_predicate earliestEndOf))
+(set/monotonic (time_invariant_relation earliestEndOf))
 (arg earliestEndOf 1 temporal)
 (arg earliestEndOf 2 time_point)
 
@@ -104,6 +113,7 @@
 (comment earliestStartOf
          "(earliestStartOf ?thing ?instant) means that ?instant is the earliest moment ?thing can have begun, the moment (EarliestStartFn ?thing) names. EarliestStartFn is the corresponding function, and its value is the last argument. The instant network reads the EarliestStartFn term and not this predicate, so a stated earliestStartOf fact orders nothing. See docs/time.md.")
 (set/monotonic (instance_relation_predicate earliestStartOf))
+(set/monotonic (time_invariant_relation earliestStartOf))
 (arg earliestStartOf 1 temporal)
 (arg earliestStartOf 2 time_point)
 
@@ -118,42 +128,49 @@
 (comment endOf
          "(endOf ?interval ?instant) means that ?instant is the moment ?interval ends. One of the interval's two bounding instants, the other being its startOf. What joins the interval algebra to the point algebra and to the metric constraints stated over instants: one interval before another is exactly its end instant before the other's start. Stated of an ordinary interval; computed for a calendar term, where it is the first moment of the next term at the same precision — the end of (YearFn 2000) is (InstantFn 2001 1 1 0 0 0). See docs/time.md.")
 (set/monotonic (instance_relation_predicate endOf))
+(set/monotonic (time_invariant_relation endOf))
 (arg endOf 1 temporal)
 (arg endOf 2 time_point)
 
 (comment finishedBy
          "(finishedBy ?interval1 ?interval2) means that ?interval1 and ?interval2 end together, and ?interval1 began first. So ?interval2 is a closing part of ?interval1. The converse of finishes.")
 (set/monotonic (instance_relation_predicate finishedBy))
+(set/monotonic (time_invariant_relation finishedBy))
 (arg finishedBy 1 temporal)
 (arg finishedBy 2 temporal)
 
 (comment finishes
          "(finishes ?interval1 ?interval2) means that ?interval1 and ?interval2 end together, and ?interval1 began later. So ?interval1 is a closing part of ?interval2. The converse of finishedBy.")
 (set/monotonic (instance_relation_predicate finishes))
+(set/monotonic (time_invariant_relation finishes))
 (arg finishes 1 temporal)
 (arg finishes 2 temporal)
 
 (comment happens
          "(happens ?event ?instant) means that ?event occurs at ?instant. The one thing a narrative states about an event's place in time; whether the event changes anything is initiates and terminates, said separately, so an event nobody has said anything else about still has a time. See docs/time.md.")
 (set/monotonic (instance_relation_predicate happens))
+(set/monotonic (time_invariant_relation happens))
 (arg happens 1 temporal)
 (arg happens 2 time_point)
 
 (comment hasSubinterval
          "(hasSubinterval ?interval1 ?interval2) means that ?interval2 falls within ?interval1, sharing an end, a start, or neither. Any of contains, startedBy, finishedBy or intervalEqual. Over two time intervals it is the converse of subintervalOf. It takes any two temporal things, as contains does.")
 (set/monotonic (instance_relation_predicate hasSubinterval))
+(set/monotonic (time_invariant_relation hasSubinterval))
 (arg hasSubinterval 1 temporal)
 (arg hasSubinterval 2 temporal)
 
 (comment holdsAt
          "(holdsAt ?fluent ?instant) means that ?fluent is the case at ?instant. Derived by CxChange and never stated: it follows from an event that initiated the fluent earlier and nothing having terminated it since, which is inertia — a state persists until something ends it. Backward-only, because a fluent holds at every moment between its start and its end and materializing one fact per moment would store an unbounded extent for a question anybody can ask directly. See docs/time.md.")
 (set/monotonic (instance_relation_predicate holdsAt))
+(set/monotonic (time_invariant_relation holdsAt))
 (arg holdsAt 1 fluent)
 (arg holdsAt 2 time_point)
 
 (comment includesInstant
          "(includesInstant ?thing ?instant) means that ?instant falls within ?thing: at or after (StartFn ?thing) and before (EndFn ?thing), the half-open convention of the calendar terms. Answered from the instant network, and from a stored fact where one states it. A point outside the thing's bounds refutes it, and a point inside a range where a bound is uncertain leaves it unknown either way. See docs/time.md.")
 (set/monotonic (instance_relation_predicate includesInstant))
+(set/monotonic (time_invariant_relation includesInstant))
 (arg includesInstant 1 temporal)
 (arg includesInstant 2 time_point)
 
@@ -166,6 +183,7 @@
 (comment initiates
          "(initiates ?event ?fluent ?instant) means that ?fluent is the case from ?instant onwards because ?event happened then. Stated of the event and the fluent together, since the same event can start one state and end another — waking starts being awake and ends being asleep. Says nothing on its own about whether the event occurred: that is happens, and both are needed. See docs/time.md.")
 (ternary_predicate initiates)
+(set/monotonic (time_invariant_relation initiates))
 (arg initiates 1 causal)
 (arg initiates 2 fluent)
 (arg initiates 3 time_point)
@@ -173,12 +191,14 @@
 (comment functional_at_instant
          "(functional_at_instant ?function) means that ?function, whose value is carried as a fluent, has at most one value for one subject at any single instant. A fluent (?function ?subject ?value) states a value that holds over a stretch of time; two fluents of ?function for one subject holding at one instant with different values is a per-instant clash, the fluent-lane counterpart of functional over a bare literal. It is read on demand by vaelii.core/functional-at-instant-violations rather than enforced at assert, because whether two fluents overlap at an instant follows from initiates, terminates and the clipping closure and is not known when a fluent is asserted; the audit mirrors functional's split, reporting two symbol values as a merge and two non-symbols as a contradiction. Values holding at different instants do not clash, which is what the fluent representation buys over a bare functional mark. See docs/time.md and docs/equality.md.")
 (unary_predicate functional_at_instant)
+(set/monotonic (time_invariant_relation functional_at_instant))
 (genl functional_at_instant function)
 
 (comment instantAfter
          "(instantAfter ?instant1 ?instant2) means that ?instant1 falls strictly later in time than ?instant2. A claim about moments rather than about intervals, which is why it is spelled apart from Allen's after. The converse of instantBefore.")
 (set/monotonic (instance_relation_predicate instantAfter))
 (set/monotonic (transitive instantAfter))
+(set/monotonic (time_invariant_relation instantAfter))
 (arg instantAfter 1 time_point)
 (arg instantAfter 2 time_point)
 
@@ -186,12 +206,14 @@
          "(instantBefore ?instant1 ?instant2) means that ?instant1 falls strictly earlier in time than ?instant2. A claim about moments rather than about intervals, which is why it is spelled apart from Allen's before. The converse of instantAfter.")
 (set/monotonic (instance_relation_predicate instantBefore))
 (set/monotonic (transitive instantBefore))
+(set/monotonic (time_invariant_relation instantBefore))
 (arg instantBefore 1 time_point)
 (arg instantBefore 2 time_point)
 
 (comment instantEqual
          "(instantEqual ?instant1 ?instant2) means that ?instant1 and ?instant2 are the same moment. The identity of the point algebra, and a claim about time rather than about the identity of the two terms, so it is not the equality closure's equals.")
 (set/monotonic (instance_relation_predicate instantEqual))
+(set/monotonic (time_invariant_relation instantEqual))
 (arg instantEqual 1 time_point)
 (arg instantEqual 2 time_point)
 
@@ -212,6 +234,7 @@
 (comment calendarInstant
          "(calendarInstant ?year ?month ?day ?hour ?minute ?second ?instant) means that ?instant is the moment those six calendar fields name, so (calendarInstant 2000 1 1 0 0 0 ?instant) holds of midnight at the start of 2000. InstantFn is the corresponding function, and its value is the last argument. The calendar prover reads the InstantFn term and does not answer this predicate. See docs/time.md.")
 (fixed_arity_predicate calendarInstant)
+(set/monotonic (time_invariant_relation calendarInstant))
 (arity calendarInstant 7)
 (arg calendarInstant 1 integer)
 (arg calendarInstant 2 positive_integer)
@@ -224,24 +247,28 @@
 (comment instantNotAfter
          "(instantNotAfter ?instant1 ?instant2) means that ?instant1 falls at or before ?instant2. Either instantBefore or instantEqual, the ≤ of time. The complement of instantAfter, which over three jointly exhaustive relations is exactly its negation.")
 (set/monotonic (instance_relation_predicate instantNotAfter))
+(set/monotonic (time_invariant_relation instantNotAfter))
 (arg instantNotAfter 1 time_point)
 (arg instantNotAfter 2 time_point)
 
 (comment instantNotBefore
          "(instantNotBefore ?instant1 ?instant2) means that ?instant1 falls at or after ?instant2. Either instantAfter or instantEqual, the ≥ of time. The complement of instantBefore, which over three jointly exhaustive relations is exactly its negation.")
 (set/monotonic (instance_relation_predicate instantNotBefore))
+(set/monotonic (time_invariant_relation instantNotBefore))
 (arg instantNotBefore 1 time_point)
 (arg instantNotBefore 2 time_point)
 
 (comment instantNotEqual
          "(instantNotEqual ?instant1 ?instant2) means that ?instant1 and ?instant2 are different moments, one before the other. Either instantBefore or instantAfter, and the complement of instantEqual.")
 (set/monotonic (instance_relation_predicate instantNotEqual))
+(set/monotonic (time_invariant_relation instantNotEqual))
 (arg instantNotEqual 1 time_point)
 (arg instantNotEqual 2 time_point)
 
 (comment intervalEqual
          "(intervalEqual ?interval1 ?interval2) means that ?interval1 and ?interval2 begin together and end together. The identity of the interval algebra, and a claim about extent in time rather than about the identity of the two terms, so it is not the equality closure's equals.")
 (set/monotonic (instance_relation_predicate intervalEqual))
+(set/monotonic (time_invariant_relation intervalEqual))
 (arg intervalEqual 1 temporal)
 (arg intervalEqual 2 temporal)
 
@@ -256,6 +283,7 @@
 (comment latestEndOf
          "(latestEndOf ?thing ?instant) means that ?instant is the latest moment ?thing can have ended, the moment (LatestEndFn ?thing) names. LatestEndFn is the corresponding function, and its value is the last argument. The instant network reads the LatestEndFn term and not this predicate, so a stated latestEndOf fact orders nothing. See docs/time.md.")
 (set/monotonic (instance_relation_predicate latestEndOf))
+(set/monotonic (time_invariant_relation latestEndOf))
 (arg latestEndOf 1 temporal)
 (arg latestEndOf 2 time_point)
 
@@ -270,24 +298,28 @@
 (comment latestStartOf
          "(latestStartOf ?thing ?instant) means that ?instant is the latest moment ?thing can have begun, the moment (LatestStartFn ?thing) names. LatestStartFn is the corresponding function, and its value is the last argument. The instant network reads the LatestStartFn term and not this predicate, so a stated latestStartOf fact orders nothing. See docs/time.md.")
 (set/monotonic (instance_relation_predicate latestStartOf))
+(set/monotonic (time_invariant_relation latestStartOf))
 (arg latestStartOf 1 temporal)
 (arg latestStartOf 2 time_point)
 
 (comment length
-         "(length ?interval ?measure) means that ?interval lasts ?measure. Exact as (QuantityFn 2 Hour), and bounded as (QuantityIntervalFn 1 2 Hour) when only bounds are known. An interval's one primitive duration and the only quantitative fact stated about it, since totalDuration and overlapDuration are both computed from these. A duration, not a spatial extent.")
+         "(length ?interval ?measure) means that ?interval lasts ?measure. Exact as (QuantityFn 2 Hour), and bounded as (QuantityIntervalFn 1 2 Hour) when only bounds are known. An interval's one primitive duration and the only quantitative fact stated about it, since totalDuration and overlapDuration are both computed from these. A duration, not a spatial extent. The length of a temporal thing is its whole temporal extent, viewed from outside time, so it does not grow while the thing goes on and length is time-invariant.")
 (set/monotonic (instance_relation_predicate length))
+(set/monotonic (time_invariant_relation length))
 (arg length 1 temporal)
 (arg length 2 measure)
 
 (comment meets
          "(meets ?interval1 ?interval2) means that ?interval1 ends exactly where ?interval2 begins. No gap and no overlap, which is what separates it from before. The converse of metBy.")
 (set/monotonic (instance_relation_predicate meets))
+(set/monotonic (time_invariant_relation meets))
 (arg meets 1 temporal)
 (arg meets 2 temporal)
 
 (comment metBy
          "(metBy ?interval1 ?interval2) means that ?interval1 begins exactly where ?interval2 ends. The converse of meets.")
 (set/monotonic (instance_relation_predicate metBy))
+(set/monotonic (time_invariant_relation metBy))
 (arg metBy 1 temporal)
 (arg metBy 2 temporal)
 
@@ -301,6 +333,7 @@
 (comment calendarMonth
          "(calendarMonth ?year ?month ?interval) means that ?interval is month ?month, 1 through 12, of calendar year ?year, so (calendarMonth 2000 1 ?interval) holds of January 2000. MonthFn is the corresponding function, and its value is the last argument. The calendar prover reads the MonthFn term and does not answer this predicate. See docs/time.md.")
 (ternary_predicate calendarMonth)
+(set/monotonic (time_invariant_relation calendarMonth))
 (arg calendarMonth 1 integer)
 (arg calendarMonth 2 positive_integer)
 (arg calendarMonth 3 time_interval)
@@ -308,6 +341,7 @@
 (comment overlapDuration
          "(overlapDuration ?interval1 ?interval2 ?duration) means that ?duration is how long ?interval1 and ?interval2 overlap. Computed from their lengths and the Allen relations still possible between them: zero when they are temporallyDisjoint, the contained length when one is a subintervalOf the other, and the bounded (QuantityIntervalFn 0 shorter unit) otherwise, so an over-approximation renders as an interval and says as much. Computed by a prover, never stored.")
 (ternary_predicate overlapDuration)
+(set/monotonic (time_invariant_relation overlapDuration))
 (arg overlapDuration 1 temporal)
 (arg overlapDuration 2 temporal)
 (arg overlapDuration 3 measure)
@@ -315,30 +349,35 @@
 (comment overlappedBy
          "(overlappedBy ?interval1 ?interval2) means that ?interval2 begins first, and ?interval1 begins before ?interval2 ends and ends after it. So they share a middle stretch and each has time the other does not. The converse of overlaps.")
 (set/monotonic (instance_relation_predicate overlappedBy))
+(set/monotonic (time_invariant_relation overlappedBy))
 (arg overlappedBy 1 temporal)
 (arg overlappedBy 2 temporal)
 
 (comment overlaps
          "(overlaps ?interval1 ?interval2) means that ?interval1 begins first, and ?interval2 begins before ?interval1 ends and ends after it. So they share a middle stretch and each has time the other does not. The converse of overlappedBy.")
 (set/monotonic (instance_relation_predicate overlaps))
+(set/monotonic (time_invariant_relation overlaps))
 (arg overlaps 1 temporal)
 (arg overlaps 2 temporal)
 
 (comment precededBy
          "(precededBy ?interval1 ?interval2) means that ?interval1 begins at or after the moment ?interval2 ends. Either after or metBy. The converse of precedes.")
 (set/monotonic (instance_relation_predicate precededBy))
+(set/monotonic (time_invariant_relation precededBy))
 (arg precededBy 1 temporal)
 (arg precededBy 2 temporal)
 
 (comment precedes
          "(precedes ?interval1 ?interval2) means that ?interval1 ends at or before the moment ?interval2 begins. Either before or meets, so it is the ordering that does not care whether the two touch. Derived rather than base, and the converse of precededBy.")
 (set/monotonic (instance_relation_predicate precedes))
+(set/monotonic (time_invariant_relation precedes))
 (arg precedes 1 temporal)
 (arg precedes 2 temporal)
 
 (comment properSubintervalOf
          "(properSubintervalOf ?interval1 ?interval2) means that ?interval1 falls within ?interval2 and is not the whole of it. Any of during, starts or finishes.")
 (set/monotonic (instance_relation_predicate properSubintervalOf))
+(set/monotonic (time_invariant_relation properSubintervalOf))
 (arg properSubintervalOf 1 time_interval)
 (arg properSubintervalOf 2 time_interval)
 (set/monotonic (irreflexive properSubintervalOf))
@@ -350,12 +389,14 @@
 (comment sharesTimeWith
          "(sharesTimeWith ?interval1 ?interval2) means that ?interval1 and ?interval2 have some time in common. Any relation but before, after, meets and metBy, so it is the complement of temporallyDisjoint.")
 (set/monotonic (instance_relation_predicate sharesTimeWith))
+(set/monotonic (time_invariant_relation sharesTimeWith))
 (arg sharesTimeWith 1 temporal)
 (arg sharesTimeWith 2 temporal)
 
 (comment startedBy
          "(startedBy ?interval1 ?interval2) means that ?interval1 and ?interval2 begin together, and ?interval1 ends later. So ?interval2 is an opening part of ?interval1. The converse of starts.")
 (set/monotonic (instance_relation_predicate startedBy))
+(set/monotonic (time_invariant_relation startedBy))
 (arg startedBy 1 temporal)
 (arg startedBy 2 temporal)
 
@@ -370,18 +411,21 @@
 (comment startOf
          "(startOf ?interval ?instant) means that ?instant is the moment ?interval begins. One of the interval's two bounding instants, the other being its endOf. What joins the interval algebra to the point algebra and to the metric constraints stated over instants. Stated of an ordinary interval; computed for a calendar term, where it is that term's first moment — the start of (YearFn 2000) is (InstantFn 2000 1 1 0 0 0). See docs/time.md.")
 (set/monotonic (instance_relation_predicate startOf))
+(set/monotonic (time_invariant_relation startOf))
 (arg startOf 1 temporal)
 (arg startOf 2 time_point)
 
 (comment starts
          "(starts ?interval1 ?interval2) means that ?interval1 and ?interval2 begin together, and ?interval1 ends earlier. So ?interval1 is an opening part of ?interval2. The converse of startedBy.")
 (set/monotonic (instance_relation_predicate starts))
+(set/monotonic (time_invariant_relation starts))
 (arg starts 1 temporal)
 (arg starts 2 temporal)
 
 (comment subintervalOf
          "(subintervalOf ?interval1 ?interval2) means that ?interval1 falls within ?interval2, sharing an end, a start, or neither. Any of during, starts, finishes or intervalEqual, so it is derived rather than base.")
 (set/monotonic (instance_relation_predicate subintervalOf))
+(set/monotonic (time_invariant_relation subintervalOf))
 (arg subintervalOf 1 time_interval)
 (arg subintervalOf 2 time_interval)
 (set/monotonic (reflexive subintervalOf))
@@ -390,6 +434,7 @@
 (comment temporalDistance
          "(temporalDistance ?instant1 ?instant2 ?measure) means that ?instant2 falls ?measure later than ?instant1. So a negative measure says ?instant2 comes first. Exact as (QuantityFn N Unit) and bounded as (QuantityIntervalFn Lo Hi Unit). A stated one is an ordinary fact; a prover closes every such constraint visible in a context by all-pairs shortest paths and answers the tightest separation they entail between any two instants, binding the measure when it is open and checking containment when it is ground.")
 (ternary_predicate temporalDistance)
+(set/monotonic (time_invariant_relation temporalDistance))
 (arg temporalDistance 1 time_point)
 (arg temporalDistance 2 time_point)
 (arg temporalDistance 3 measure)
@@ -397,12 +442,14 @@
 (comment temporallyDisjoint
          "(temporallyDisjoint ?interval1 ?interval2) means that ?interval1 and ?interval2 have no time in common. Any of before, after, meets or metBy, so it is the complement of sharesTimeWith.")
 (set/monotonic (instance_relation_predicate temporallyDisjoint))
+(set/monotonic (time_invariant_relation temporallyDisjoint))
 (arg temporallyDisjoint 1 temporal)
 (arg temporallyDisjoint 2 temporal)
 
 (comment terminates
          "(terminates ?event ?fluent ?instant) means that ?fluent stops being the case at ?instant because ?event happened then. The converse half of initiates, and what a later-arriving event uses to withdraw a conclusion inertia had already drawn — retract the event and the conclusion comes back. See docs/time.md.")
 (ternary_predicate terminates)
+(set/monotonic (time_invariant_relation terminates))
 (arg terminates 1 causal)
 (arg terminates 2 fluent)
 (arg terminates 3 time_point)
@@ -419,6 +466,7 @@
          "(timeOf ?thing ?time) means that ?time is the time ?thing occupies, the time (TimeOfFn ?thing) names. TimeOfFn is the corresponding function, and its value is the last argument. See docs/time.md.")
 (binary_predicate timeOf)
 (instance_relation_predicate timeOf)
+(set/monotonic (time_invariant_relation timeOf))
 (arg timeOf 1 temporal)
 (arg timeOf 2 time)
 
@@ -430,6 +478,7 @@
 (comment totalDuration
          "(totalDuration (list ?interval1 ?interval2 …) ?duration) means that ?duration is the sum of the listed intervals' lengths, which must all be of one dimension. Binary rather than ternary: the (list …) of components is one argument, which is also why the signature is read as a description instead of substituted into. Computed by a prover, never stored.")
 (set/monotonic (instance_relation_predicate totalDuration))
+(set/monotonic (time_invariant_relation totalDuration))
 (arg totalDuration 1 temporal)
 (arg totalDuration 2 measure)
 
@@ -443,5 +492,6 @@
 (comment calendarYear
          "(calendarYear ?year ?interval) means that ?interval is the calendar year numbered ?year, so (calendarYear 2000 ?interval) holds of the whole of 2000. YearFn is the corresponding function, and its value is the last argument; calendarMonth and calendarDay are the finer two. The calendar prover reads the YearFn term and does not answer this predicate. See docs/time.md.")
 (set/monotonic (instance_relation_predicate calendarYear))
+(set/monotonic (time_invariant_relation calendarYear))
 (arg calendarYear 1 integer)
 (arg calendarYear 2 time_interval)

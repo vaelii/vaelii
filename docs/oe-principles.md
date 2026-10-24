@@ -8,7 +8,7 @@ Working rules for adding vocabulary and knowledge to a vaelii KB, collected from
 
 ## strongest form
 *State knowledge in its strongest form*
-**specPrinciple:** tightest parent, partition over disjoint, classify before you constrain
+**specPrinciple:** tightest parent, partition over disjoint, classify before you constrain, room for theory revision
 If you're about to assert P, but Q is also true and Q implies P, assert Q instead. The weaker fact stays derivable, so nothing is lost, and the stronger one carries more.
 
 This applies to instance facts, argument types and disjointness alike:
@@ -17,6 +17,22 @@ This applies to instance facts, argument types and disjointness alike:
 - **Disjointness:** state it at the highest level that is true. If `(disjoint A B)` holds and A′ ⊂ A, don't also state `(disjoint A′ B)`.
 
 **Audit:** for every line, ask whether a more specific true fact entails it.
+
+## room for theory revision
+*Don't weaken a fact for a counterexample nobody has found*
+**genlPrinciple:** strongest form · **specPrinciple:** consistent at each commit
+There's always room for theory revision. Don't let a hypothetical future counterexample stop you from stating a fact in its strongest, most useful form today. If one turns up, revise the theory then. A fact weakened in advance gives up inference now for a refutation that may never come.
+
+**Example:** `hollow` is time-varying: a hollow box crushed flat is no longer hollow and is still a box. Nobody could name a thing that is essentially hollow, but that rests on a search, not a proof. State `(set/monotonic (time_varying_relation hollow))` anyway, not a default kept weak against an essentially hollow thing someone might name later.
+
+**Audit:** for every fact written weaker than its author believes it, ask whether a real counterexample is known. If none is, state it at full strength.
+
+## consistent at each commit
+*Assume the KB is consistent; revise a theory in one atomic commit*
+**genlPrinciple:** room for theory revision
+Write as if the KB is consistent. A theory revision is a single atomic, transactional commit: every fact, rule and test it changes lands together. Consistency and soundness must hold at each commit, and need not hold partway through one. vaelii does not enforce this. A KB's authors and the tools they use hold to it.
+
+**Audit:** for a PR that revises a theory, check that the KB is consistent at every commit, and that no commit leaves half a revision behind.
 
 ## look before you mint
 *Search everywhere before minting a term*

@@ -63,48 +63,56 @@
 (comment atSomeDistanceFrom
          "(atSomeDistanceFrom ?thing1 ?thing2) means that ?thing1 and ?thing2 are some distance apart. Any class of the distance chain but the zero one, so it is the complement of coLocatedWith and holds of nothing and itself.")
 (set/monotonic (instance_relation_predicate atSomeDistanceFrom))
+(set/monotonic (time_agnostic_relation atSomeDistanceFrom))
 (arg atSomeDistanceFrom 1 spatial)
 (arg atSomeDistanceFrom 2 spatial)
 
 (comment behind
          "(behind ?object ?reference) means that ?object lies directly behind ?reference. To the rear on the front-back axis and level on the left-right one, in the frame of reference the context is.")
 (set/monotonic (instance_relation_predicate behind))
+(set/monotonic (time_agnostic_relation behind))
 (arg behind 1 spatial)
 (arg behind 2 spatial)
 
 (comment behindLeftOf
          "(behindLeftOf ?object ?reference) means that ?object lies behind ?reference and to its left. Both axes at once.")
 (set/monotonic (instance_relation_predicate behindLeftOf))
+(set/monotonic (time_agnostic_relation behindLeftOf))
 (arg behindLeftOf 1 spatial)
 (arg behindLeftOf 2 spatial)
 
 (comment behindRightOf
          "(behindRightOf ?object ?reference) means that ?object lies behind ?reference and to its right. Both axes at once.")
 (set/monotonic (instance_relation_predicate behindRightOf))
+(set/monotonic (time_agnostic_relation behindRightOf))
 (arg behindRightOf 1 spatial)
 (arg behindRightOf 2 spatial)
 
 (comment beyondFarDistanceFrom
          "(beyondFarDistanceFrom ?thing1 ?thing2) means that ?thing1 and ?thing2 are at least far apart. Far or very far: the upper end of the distance chain.")
 (set/monotonic (instance_relation_predicate beyondFarDistanceFrom))
+(set/monotonic (time_agnostic_relation beyondFarDistanceFrom))
 (arg beyondFarDistanceFrom 1 spatial)
 (arg beyondFarDistanceFrom 2 spatial)
 
 (comment closeTo
          "(closeTo ?thing1 ?thing2) means that ?thing1 and ?thing2 are close together. The third class of the distance chain, one step further out than veryCloseTo and one step in from nearTo.")
 (set/monotonic (instance_relation_predicate closeTo))
+(set/monotonic (time_agnostic_relation closeTo))
 (arg closeTo 1 spatial)
 (arg closeTo 2 spatial)
 
 (comment coLocatedWith
          "(coLocatedWith ?thing1 ?thing2) means that ?thing1 and ?thing2 are no distance apart at all. The zero class of the distance chain and the identity of its algebra. A claim about how far apart two things are, so it is neither the compass's sameLocationAs nor the equality closure's sameAs: two co-located things are still two things.")
 (set/monotonic (instance_relation_predicate coLocatedWith))
+(set/monotonic (time_agnostic_relation coLocatedWith))
 (arg coLocatedWith 1 spatial)
 (arg coLocatedWith 2 spatial)
 
 (comment eastOf
          "(eastOf ?place1 ?place2) means that ?place1 lies due east of ?place2. East on the east-west axis and level on the north-south one.")
 (set/monotonic (instance_relation_predicate eastOf))
+(set/monotonic (time_agnostic_relation eastOf))
 (arg eastOf 1 spatial)
 (arg eastOf 2 spatial)
 (set/inert (inverse eastOf westOf))
@@ -112,6 +120,7 @@
 (comment eastwardOf
          "(eastwardOf ?place1 ?place2) means that ?place1 lies somewhere east of ?place2. East, northeast or southeast: it constrains the east-west axis alone and leaves the north-south one open.")
 (set/monotonic (instance_relation_predicate eastwardOf))
+(set/monotonic (time_agnostic_relation eastwardOf))
 (arg eastwardOf 1 spatial)
 (arg eastwardOf 2 spatial)
 (set/inert (inverse eastwardOf westwardOf))
@@ -119,18 +128,21 @@
 (comment externallyConnected
          "(externallyConnected ?region1 ?region2) means that ?region1 and ?region2 touch but share no interior. RCC-8's EC, a base relation and its own converse. What two countries either side of a border stand in.")
 (set/monotonic (instance_relation_predicate externallyConnected))
+(set/monotonic (time_agnostic_relation externallyConnected))
 (arg externallyConnected 1 spatial)
 (arg externallyConnected 2 spatial)
 
 (comment farFrom
          "(farFrom ?thing1 ?thing2) means that ?thing1 and ?thing2 are far apart. The sixth class of the distance chain, one step in from veryFarFrom.")
 (set/monotonic (instance_relation_predicate farFrom))
+(set/monotonic (time_agnostic_relation farFrom))
 (arg farFrom 1 spatial)
 (arg farFrom 2 spatial)
 
 (comment frontLeftOf
          "(frontLeftOf ?object ?reference) means that ?object lies in front of ?reference and to its left. Both axes at once, so it is the strongest thing a single relative-direction fact can say.")
 (set/monotonic (instance_relation_predicate frontLeftOf))
+(set/monotonic (time_agnostic_relation frontLeftOf))
 (arg frontLeftOf 1 spatial)
 (arg frontLeftOf 2 spatial)
 (set/inert (inverse frontLeftOf behindRightOf))
@@ -138,6 +150,7 @@
 (comment frontRightOf
          "(frontRightOf ?object ?reference) means that ?object lies in front of ?reference and to its right. Both axes at once.")
 (set/monotonic (instance_relation_predicate frontRightOf))
+(set/monotonic (time_agnostic_relation frontRightOf))
 (arg frontRightOf 1 spatial)
 (arg frontRightOf 2 spatial)
 (set/inert (inverse frontRightOf behindLeftOf))
@@ -145,6 +158,7 @@
 (comment frontwardOf
          "(frontwardOf ?object ?reference) means that ?object lies somewhere in front of ?reference. In front, front-left or front-right: it constrains the front-back axis alone and leaves the left-right one open.")
 (set/monotonic (instance_relation_predicate frontwardOf))
+(set/monotonic (time_agnostic_relation frontwardOf))
 (arg frontwardOf 1 spatial)
 (arg frontwardOf 2 spatial)
 (set/inert (inverse frontwardOf rearwardOf))
@@ -152,6 +166,7 @@
 (comment hasRegionPart
          "(hasRegionPart ?region1 ?region2) means that ?region2 is part of ?region1. RCC-8's Pi, denoting TPPi, NTPPi or EQ. Derived, so asserting it says only that one contains the other and not how.")
 (set/monotonic (instance_relation_predicate hasRegionPart))
+(set/monotonic (time_agnostic_relation hasRegionPart))
 (arg hasRegionPart 1 spatial)
 (arg hasRegionPart 2 spatial)
 (set/inert (genlInverse hasRegionPart partOf))
@@ -159,6 +174,7 @@
 (comment inFrontOf
          "(inFrontOf ?object ?reference) means that ?object lies directly in front of ?reference. Forward on the front-back axis and level on the left-right one, in the frame of reference the context is.")
 (set/monotonic (instance_relation_predicate inFrontOf))
+(set/monotonic (time_agnostic_relation inFrontOf))
 (arg inFrontOf 1 spatial)
 (arg inFrontOf 2 spatial)
 (set/inert (inverse inFrontOf behind))
@@ -166,6 +182,7 @@
 (comment leftOf
          "(leftOf ?object ?reference) means that ?object lies directly to the left of ?reference. Left on the left-right axis and level on the front-back one, as seen from the frame of reference the context is: a relative direction is read from a viewpoint, and here the context is that viewpoint.")
 (set/monotonic (instance_relation_predicate leftOf))
+(set/monotonic (time_agnostic_relation leftOf))
 (arg leftOf 1 spatial)
 (arg leftOf 2 spatial)
 (set/inert (inverse leftOf rightOf))
@@ -173,6 +190,7 @@
 (comment leftwardOf
          "(leftwardOf ?object ?reference) means that ?object lies somewhere to the left of ?reference. Left, front-left or behind-left: it constrains the left-right axis alone and leaves the front-back one open.")
 (set/monotonic (instance_relation_predicate leftwardOf))
+(set/monotonic (time_agnostic_relation leftwardOf))
 (arg leftwardOf 1 spatial)
 (arg leftwardOf 2 spatial)
 (set/inert (inverse leftwardOf rightwardOf))
@@ -180,18 +198,21 @@
 (comment moderatelyFarFrom
          "(moderatelyFarFrom ?thing1 ?thing2) means that ?thing1 and ?thing2 are moderately far apart. The middle of the distance chain, between nearTo and farFrom.")
 (set/monotonic (instance_relation_predicate moderatelyFarFrom))
+(set/monotonic (time_agnostic_relation moderatelyFarFrom))
 (arg moderatelyFarFrom 1 spatial)
 (arg moderatelyFarFrom 2 spatial)
 
 (comment nearTo
          "(nearTo ?thing1 ?thing2) means that ?thing1 and ?thing2 are near each other. The fourth class of the distance chain, one step further out than closeTo.")
 (set/monotonic (instance_relation_predicate nearTo))
+(set/monotonic (time_agnostic_relation nearTo))
 (arg nearTo 1 spatial)
 (arg nearTo 2 spatial)
 
 (comment nonTangentialProperPart
          "(nonTangentialProperPart ?region1 ?region2) means that ?region1 lies strictly inside ?region2, touching no part of its boundary. RCC-8's NTPP, a base relation.")
 (set/monotonic (instance_relation_predicate nonTangentialProperPart))
+(set/monotonic (time_agnostic_relation nonTangentialProperPart))
 (arg nonTangentialProperPart 1 spatial)
 (arg nonTangentialProperPart 2 spatial)
 (set/inert (genl nonTangentialProperPart properPartOfRegion))
@@ -200,6 +221,7 @@
 (comment nonTangentialProperPartInverse
          "(nonTangentialProperPartInverse ?region1 ?region2) means that ?region2 lies strictly inside ?region1, touching no part of its boundary. RCC-8's NTPPi, a base relation.")
 (set/monotonic (instance_relation_predicate nonTangentialProperPartInverse))
+(set/monotonic (time_agnostic_relation nonTangentialProperPartInverse))
 (arg nonTangentialProperPartInverse 1 spatial)
 (arg nonTangentialProperPartInverse 2 spatial)
 (set/inert (genlInverse nonTangentialProperPartInverse partOf))
@@ -207,6 +229,7 @@
 (comment northeastOf
          "(northeastOf ?place1 ?place2) means that ?place1 lies north and east of ?place2. Both axes at once, so it is the strongest thing a single direction fact can say.")
 (set/monotonic (instance_relation_predicate northeastOf))
+(set/monotonic (time_agnostic_relation northeastOf))
 (arg northeastOf 1 spatial)
 (arg northeastOf 2 spatial)
 (set/inert (inverse northeastOf southwestOf))
@@ -214,6 +237,7 @@
 (comment northOf
          "(northOf ?place1 ?place2) means that ?place1 lies due north of ?place2. North on the north-south axis and level on the east-west one, so it is one of the nine base directions rather than a disjunction of them.")
 (set/monotonic (instance_relation_predicate northOf))
+(set/monotonic (time_agnostic_relation northOf))
 (arg northOf 1 spatial)
 (arg northOf 2 spatial)
 (set/inert (inverse northOf southOf))
@@ -221,6 +245,7 @@
 (comment northwardOf
          "(northwardOf ?place1 ?place2) means that ?place1 lies somewhere north of ?place2. North, northeast or northwest: it constrains the north-south axis alone and leaves the east-west one open. Derived, so it is entailed by any of the three and asserts none of them.")
 (set/monotonic (instance_relation_predicate northwardOf))
+(set/monotonic (time_agnostic_relation northwardOf))
 (arg northwardOf 1 spatial)
 (arg northwardOf 2 spatial)
 (set/inert (inverse northwardOf southwardOf))
@@ -228,6 +253,7 @@
 (comment northwestOf
          "(northwestOf ?place1 ?place2) means that ?place1 lies north and west of ?place2. Both axes at once.")
 (set/monotonic (instance_relation_predicate northwestOf))
+(set/monotonic (time_agnostic_relation northwestOf))
 (arg northwestOf 1 spatial)
 (arg northwestOf 2 spatial)
 (set/inert (inverse northwestOf southeastOf))
@@ -235,21 +261,24 @@
 (comment partiallyOverlapping
          "(partiallyOverlapping ?region1 ?region2) means that ?region1 and ?region2 share a part, and each also has a part outside the other. RCC-8's PO, a base relation and its own converse.")
 (set/monotonic (instance_relation_predicate partiallyOverlapping))
+(set/monotonic (time_agnostic_relation partiallyOverlapping))
 (arg partiallyOverlapping 1 spatial)
 (arg partiallyOverlapping 2 spatial)
 
 (comment partOfRegion
          "(partOfRegion ?region1 ?region2) means that ?region1 is part of ?region2. RCC-8's P, which denotes TPP, NTPP or EQ. A derived relation: it is entailed by any of those three and asserts none of them in particular.")
 (set/monotonic (instance_relation_predicate partOfRegion))
+(set/monotonic (time_invariant_relation partOfRegion))
 (arg partOfRegion 1 spatial)
 (arg partOfRegion 2 spatial)
 (set/inert (inverse partOfRegion hasRegionPart))
 (set/monotonic (reflexive partOfRegion))
-(genl partOfRegion partOf)
+(genl partOfRegion permanentPartOf)
 
 (comment properPartOfRegion
          "(properPartOfRegion ?region1 ?region2) means that ?region1 is part of ?region2 and not the whole of it. RCC-8's PP, denoting TPP or NTPP.")
 (set/monotonic (instance_relation_predicate properPartOfRegion))
+(set/monotonic (time_agnostic_relation properPartOfRegion))
 (arg properPartOfRegion 1 spatial)
 (arg properPartOfRegion 2 spatial)
 (set/monotonic (irreflexive properPartOfRegion))
@@ -261,84 +290,98 @@
 (comment rearwardOf
          "(rearwardOf ?object ?reference) means that ?object lies somewhere behind ?reference. Behind, behind-left or behind-right: it constrains the front-back axis alone and leaves the left-right one open.")
 (set/monotonic (instance_relation_predicate rearwardOf))
+(set/monotonic (time_agnostic_relation rearwardOf))
 (arg rearwardOf 1 spatial)
 (arg rearwardOf 2 spatial)
 
 (comment regionConnectedTo
          "(regionConnectedTo ?region1 ?region2) means that ?region1 and ?region2 are connected. Anything but disconnected, so it is RCC-8's C, the primitive the eight base relations are defined from, and the weakest claim that says anything at all.")
 (set/monotonic (instance_relation_predicate regionConnectedTo))
+(set/monotonic (time_agnostic_relation regionConnectedTo))
 (arg regionConnectedTo 1 spatial)
 (arg regionConnectedTo 2 spatial)
 
 (comment regionDiscreteFrom
          "(regionDiscreteFrom ?region1 ?region2) means that ?region1 and ?region2 share no part. Disconnected or externally connected, so it is RCC-8's DR, and the complement of regionOverlaps.")
 (set/monotonic (instance_relation_predicate regionDiscreteFrom))
+(set/monotonic (time_agnostic_relation regionDiscreteFrom))
 (arg regionDiscreteFrom 1 spatial)
 (arg regionDiscreteFrom 2 spatial)
 
 (comment regionOverlaps
          "(regionOverlaps ?region1 ?region2) means that ?region1 and ?region2 share a part. Anything but disconnected or merely touching, so it is RCC-8's O, and the complement of regionDiscreteFrom.")
 (set/monotonic (instance_relation_predicate regionOverlaps))
+(set/monotonic (time_agnostic_relation regionOverlaps))
 (arg regionOverlaps 1 spatial)
 (arg regionOverlaps 2 spatial)
 
 (comment rightOf
          "(rightOf ?object ?reference) means that ?object lies directly to the right of ?reference. Right on the left-right axis and level on the front-back one, in the frame of reference the context is.")
 (set/monotonic (instance_relation_predicate rightOf))
+(set/monotonic (time_agnostic_relation rightOf))
 (arg rightOf 1 spatial)
 (arg rightOf 2 spatial)
 
 (comment rightwardOf
          "(rightwardOf ?object ?reference) means that ?object lies somewhere to the right of ?reference. Right, front-right or behind-right: it constrains the left-right axis alone and leaves the front-back one open.")
 (set/monotonic (instance_relation_predicate rightwardOf))
+(set/monotonic (time_agnostic_relation rightwardOf))
 (arg rightwardOf 1 spatial)
 (arg rightwardOf 2 spatial)
 
 (comment sameLocationAs
          "(sameLocationAs ?place1 ?place2) means that ?place1 and ?place2 coincide. Level on both compass axes, and the identity of the direction algebra. A claim about position rather than about the identity of the two terms, so it is not the equality closure's sameAs.")
 (set/monotonic (instance_relation_predicate sameLocationAs))
+(set/monotonic (time_agnostic_relation sameLocationAs))
 (arg sameLocationAs 1 spatial)
 (arg sameLocationAs 2 spatial)
 
 (comment sameRelativePositionAs
          "(sameRelativePositionAs ?object ?reference) means that ?object and ?reference stand in the same place in the frame the context is. Level on both of that frame's axes, and the identity of the relative-direction algebra. A claim about a frame's own axes, so it is neither the compass's sameLocationAs nor the equality closure's sameAs.")
 (set/monotonic (instance_relation_predicate sameRelativePositionAs))
+(set/monotonic (time_agnostic_relation sameRelativePositionAs))
 (arg sameRelativePositionAs 1 spatial)
 (arg sameRelativePositionAs 2 spatial)
 
 (comment southeastOf
          "(southeastOf ?place1 ?place2) means that ?place1 lies south and east of ?place2. Both axes at once.")
 (set/monotonic (instance_relation_predicate southeastOf))
+(set/monotonic (time_agnostic_relation southeastOf))
 (arg southeastOf 1 spatial)
 (arg southeastOf 2 spatial)
 
 (comment southOf
          "(southOf ?place1 ?place2) means that ?place1 lies due south of ?place2. South on the north-south axis and level on the east-west one.")
 (set/monotonic (instance_relation_predicate southOf))
+(set/monotonic (time_agnostic_relation southOf))
 (arg southOf 1 spatial)
 (arg southOf 2 spatial)
 
 (comment southwardOf
          "(southwardOf ?place1 ?place2) means that ?place1 lies somewhere south of ?place2. South, southeast or southwest: it constrains the north-south axis alone and leaves the east-west one open.")
 (set/monotonic (instance_relation_predicate southwardOf))
+(set/monotonic (time_agnostic_relation southwardOf))
 (arg southwardOf 1 spatial)
 (arg southwardOf 2 spatial)
 
 (comment southwestOf
          "(southwestOf ?place1 ?place2) means that ?place1 lies south and west of ?place2. Both axes at once.")
 (set/monotonic (instance_relation_predicate southwestOf))
+(set/monotonic (time_agnostic_relation southwestOf))
 (arg southwestOf 1 spatial)
 (arg southwestOf 2 spatial)
 
 (comment spatiallyDisconnected
          "(spatiallyDisconnected ?region1 ?region2) means that ?region1 and ?region2 share no point at all. RCC-8's DC, a base relation, its own converse, and the weakest thing two regions can stand in.")
 (set/monotonic (instance_relation_predicate spatiallyDisconnected))
+(set/monotonic (time_agnostic_relation spatiallyDisconnected))
 (arg spatiallyDisconnected 1 spatial)
 (arg spatiallyDisconnected 2 spatial)
 
 (comment spatiallyEqual
          "(spatiallyEqual ?region1 ?region2) means that ?region1 and ?region2 occupy exactly the same extent. RCC-8's EQ, and the identity of the algebra. A claim about extent rather than about the identity of the two terms, so it is not the equality closure's sameAs: two coextensive regions are still two regions.")
 (set/monotonic (instance_relation_predicate spatiallyEqual))
+(set/monotonic (time_agnostic_relation spatiallyEqual))
 (arg spatiallyEqual 1 spatial)
 (arg spatiallyEqual 2 spatial)
 (set/inert (genl spatiallyEqual partOfRegion))
@@ -346,6 +389,7 @@
 (comment tangentialProperPart
          "(tangentialProperPart ?region1 ?region2) means that ?region1 lies inside ?region2 and touches its boundary. RCC-8's TPP, a base relation.")
 (set/monotonic (instance_relation_predicate tangentialProperPart))
+(set/monotonic (time_agnostic_relation tangentialProperPart))
 (arg tangentialProperPart 1 spatial)
 (arg tangentialProperPart 2 spatial)
 (set/inert (genl tangentialProperPart properPartOfRegion))
@@ -354,6 +398,7 @@
 (comment tangentialProperPartInverse
          "(tangentialProperPartInverse ?region1 ?region2) means that ?region2 lies inside ?region1 and touches its boundary. RCC-8's TPPi, a base relation.")
 (set/monotonic (instance_relation_predicate tangentialProperPartInverse))
+(set/monotonic (time_agnostic_relation tangentialProperPartInverse))
 (arg tangentialProperPartInverse 1 spatial)
 (arg tangentialProperPartInverse 2 spatial)
 (set/inert (genlInverse tangentialProperPartInverse partOf))
@@ -361,29 +406,34 @@
 (comment veryCloseTo
          "(veryCloseTo ?thing1 ?thing2) means that ?thing1 and ?thing2 are very close together. The nearest class of the distance chain above zero. The seven classes tile the whole range without overlapping, so exactly one of them holds of any pair.")
 (set/monotonic (instance_relation_predicate veryCloseTo))
+(set/monotonic (time_agnostic_relation veryCloseTo))
 (arg veryCloseTo 1 spatial)
 (arg veryCloseTo 2 spatial)
 
 (comment veryFarFrom
          "(veryFarFrom ?thing1 ?thing2) means that ?thing1 and ?thing2 are very far apart. The last class of the distance chain, unbounded above.")
 (set/monotonic (instance_relation_predicate veryFarFrom))
+(set/monotonic (time_agnostic_relation veryFarFrom))
 (arg veryFarFrom 1 spatial)
 (arg veryFarFrom 2 spatial)
 
 (comment westOf
          "(westOf ?place1 ?place2) means that ?place1 lies due west of ?place2. West on the east-west axis and level on the north-south one.")
 (set/monotonic (instance_relation_predicate westOf))
+(set/monotonic (time_agnostic_relation westOf))
 (arg westOf 1 spatial)
 (arg westOf 2 spatial)
 
 (comment westwardOf
          "(westwardOf ?place1 ?place2) means that ?place1 lies somewhere west of ?place2. West, northwest or southwest: it constrains the east-west axis alone and leaves the north-south one open.")
 (set/monotonic (instance_relation_predicate westwardOf))
+(set/monotonic (time_agnostic_relation westwardOf))
 (arg westwardOf 1 spatial)
 (arg westwardOf 2 spatial)
 
 (comment withinNearDistanceOf
          "(withinNearDistanceOf ?thing1 ?thing2) means that ?thing1 and ?thing2 are no further apart than near. Co-located, very close, close or near: the lower end of the distance chain.")
 (set/monotonic (instance_relation_predicate withinNearDistanceOf))
+(set/monotonic (time_agnostic_relation withinNearDistanceOf))
 (arg withinNearDistanceOf 1 spatial)
 (arg withinNearDistanceOf 2 spatial)

@@ -1,9 +1,12 @@
 # Bounded KB integrity
 
 - **Covers:** `kb-integrity` — one read-only checkpoint report for the complete visible
-  `predAllSpecified` / `predSpecifiedAll` and *Exists* declaration population, query-only
-  definition clashes over a caller-owned finite set of ground candidate terms, the
-  predicate `genl` edges that widen a declared argument type, the candidate types with no `genl`
+  `predAllSpecified` / `predSpecifiedAll` and *Exists* declaration population, every
+  visible `typeAllSpecified` classification requirement, the
+  `functionCorrespondingPredicate` pairs whose two sides are of different rigidity kinds,
+  query-only definition clashes over a caller-owned finite set of ground candidate terms,
+  the predicate `genl` edges that widen a declared argument type, the candidate types with
+  no `genl`
   path to `thing`, the `genl` edges a cover forces on a candidate type that the
   closure does not hold, the exact-arity class a candidate predicate or function's kind
   and arity force that it is not an instance of, the orthogonal declarations (`orthogonal` and
@@ -65,7 +68,9 @@ The definition pass performs one unavoidable open census of visible `defnSuffici
 declarations because callers intentionally supply terms, not collection names. It then
 validates one collection and one ground candidate at a time. The specified pass likewise
 uses small declaration censuses only to identify its finite worklist, then audits each
-declared predicate independently. The widening pass does the same: one census of visible
+declared predicate independently, and the type-specified pass does the same for each
+`typeAllSpecified` declaration. The rigidity-correspondence pass reads one census of the
+visible `functionCorrespondingPredicate` pairs, then one pair at a time. The widening pass does the same: one census of visible
 `arg` declarations, then one direct `genl` edge at a time. The `thing` pass reads no
 census: it checks one candidate term at a time. The implicit-`genl` pass reads none
 either: one candidate term, then one visible cover over it, at a time. The
@@ -109,7 +114,7 @@ A finding changes the top-level status and adds only the populated categories:
   {:status :audited :violations #{Bob}}}}
 ```
 
-`:status :audited` means all thirteen passes ran and none found a gap. `:status :gap` cannot
+`:status :audited` means all fourteen passes ran and none found a gap. `:status :gap` cannot
 be confused with that clean shape even when only one sparse category is present. The
 specified category is exactly `all-specified-violations`, including its typed declaration
 gaps; it is composed, not reimplemented.
@@ -133,6 +138,90 @@ The sweep stores and files nothing. Aggregate diagnostics raised only because a
 definition condition was evaluated are redirected to an audit-local sink, preserving
 the condition's truth without changing the live violations ledger or logs. It identifies
 gaps; remediation remains a separate, explicit write.
+
+## What a type-specified finding means
+
+`(typeAllSpecified ?classifier ?indep)` is an integrity requirement on what the KB knows:
+every instance of `?indep` must have a believed membership in some member of the
+metatype `?classifier`. It is `predAllSpecified`'s counterpart for a classification
+rather than a filler ([predall.md](predall.md#specified-an-integrity-audit-a-caller-runs)).
+core.txt states one:
+
+```clojure
+;; (partition relation time_invariant_relation time_agnostic_relation time_varying_relation)
+;; (rigidity_kind time_invariant_relation) … (rigidity_kind time_varying_relation)
+;; (typeAllSpecified rigidity_kind relation)
+;; (binary_predicate ownsPet)
+;; (time_varying_relation ownsPet)
+;; (binary_predicate admiresPet)
+{:status :gap
+ :candidate-count 0
+ :type-specified-violations
+ {[typeAllSpecified rigidity_kind relation]
+  {:status :audited :violations #{admiresPet …}}}}
+```
+
+`ownsPet` is classified and `admiresPet` is not, so `admiresPet` is reported. A partition
+of `?indep` into the classifier's members does not satisfy the requirement. The partition
+constrains the world: every relation *is* of one rigidity kind. The requirement constrains
+the KB: it must *believe* which. So the partition above leaves every relation nobody
+classified in the violation set.
+
+A membership counts when `ask` answers it, so one reached through `genl` or through
+argument preservation counts as a stored one does. A time-varying type's specs, which
+`(transitiveInArgInverse time_varying_relation 1 genl)` classifies, are not reported.
+A finding has the specified pass's shape, keyed by `[typeAllSpecified classifier indep]`:
+`{:status :audited :violations #{…}}`, or `{:status :gap :gap :empty-classifier
+:classifier c}` when the classifier has no visible member, so no violation set pretends
+the audit ran. A declaration that holds is omitted.
+
+The pass has these limits:
+
+- **Declaration census, not candidate terms.** Like the specified pass, it reads every
+  visible `typeAllSpecified` declaration once, then audits each one: the instances of
+  `?indep`, against the members of `?classifier`. The caller's candidate set does not bound
+  it.
+- **Members of the classifier only.** A membership in a union of members, such as
+  `possibly_time_invariant_relation`, does not classify: the requirement names the
+  classifier, and the union is not one of its members.
+- **Visible from the audit context.** A declaration, classifier member or membership the
+  audit context cannot see contributes nothing.
+
+Each instance and membership question is metered as the specified pass's are, and each
+declaration with a finding counts once against `:max-results`, after the specified
+category.
+
+## What a rigidity-correspondence finding means
+
+`(functionCorrespondingPredicate ?function ?predicate)` says the function and the predicate
+state one relationship, so an instance could lose the one exactly when it could lose the
+other. Each pair must therefore share a rigidity kind (`time_invariant_relation`,
+`time_agnostic_relation` or `time_varying_relation`, the members of `rigidity_kind`):
+
+```clojure
+;; (functionCorrespondingPredicate HiveQueenFn hiveQueenOf)
+;; (time_invariant_relation HiveQueenFn)
+;; (time_varying_relation hiveQueenOf)
+{:status :gap
+ :candidate-count 0
+ :rigidity-correspondence
+ [{:function HiveQueenFn :predicate hiveQueenOf
+   :function-kinds #{time_invariant_relation}
+   :predicate-kinds #{time_varying_relation}}]}
+```
+
+A pair is reported when both sides are believed of at least one kind and the two sets of
+kinds differ. A pair with an unclassified side is not reported: `(typeAllSpecified
+rigidity_kind relation)` already reports the unclassified relation in the
+`:type-specified-violations` category, and a second finding about it would say nothing
+new. Once that side is classified, a mismatch is reported here.
+
+The pass reads both shapes of the declaration, with the value position stated and
+without. A membership counts when `ask` answers it, so a kind inherited through `genl`
+counts as a stated one does. A pair, a kind or a membership the audit context cannot see
+contributes nothing. The pass reads nothing when `rigidity_kind` has no visible member.
+Each census, membership question and pair spends one work unit, and each finding counts
+against `:max-results` after the type-specified category.
 
 ## What a widening finding means
 
@@ -185,8 +274,8 @@ The pass has these limits:
   audit context cannot see contributes nothing, as for every other read.
 
 Each declaration row, edge and position comparison spends one work unit, and
-`:max-results` counts these findings after the definition and specified categories, in
-that order.
+`:max-results` counts these findings after the definition, specified, type-specified and
+rigidity-correspondence categories, in that order.
 
 ## What a not-under-thing finding means
 

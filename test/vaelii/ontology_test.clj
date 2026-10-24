@@ -645,8 +645,9 @@
   ;; with `(lessThan k ?n)` and concludes `(at_least_… ?r)`, which is disjoint from every
   ;; exact class of k places or fewer, and a rule concluding that class or claiming that
   ;; arity binds the same `?r` to exactly k places or fewer.  The arity table is
-  ;; functional, so no `?r` satisfies both antecedents, and `arity-floor-conflicted?` drops
-  ;; every such pair as unreachable.
+  ;; functional, `(functional arity)` concluding `(functionalInArg arity 2)`, so no `?r`
+  ;; satisfies both antecedents, and `functional-slot-conflicted?` drops every such pair
+  ;; as unreachable.
   ;;
   ;; No `:disjoint` pair is left.  CxCriedWolf's `lied_before → liar` concludes a person,
   ;; and two kinds of rule conclude a type disjoint from one: the signed refinements of
@@ -663,12 +664,25 @@
   ;; where the facts already contradict the root rule: a part whose whole is stated a proper
   ;; part of it.  Both rules are strict definitions, so that clash is the one the facts owe,
   ;; and an exception would hide it.
+  ;;
+  ;; Five `:disjoint` pairs are left on purpose too.  The rigidity-correspondence rules give
+  ;; a function its corresponding predicate's kind, one rule per kind, and the
+  ;; temporalIndexArg rule makes a relation time-indexed, so time-invariant.  A function
+  ;; corresponding to two predicates of two kinds, or a time-indexed function whose
+  ;; predicate is not time-invariant, is a clash the facts owe, and an exception would
+  ;; hide it.  CxNormalPhysicalConditions' default rules make a metal solid and mercury
+  ;; liquid, and the metal rule states mercury as its exception.
   (let [pairs       (:pairs (:clashes (v/kb-quality kb {:limit 100})))
         kinds       (frequencies (map :kind pairs))
         root-denial '(implies (properPartOf ?part ?whole) (not (partOf ?whole ?part)))
-        definition? #(some #{root-denial} (:sentences %))]
-    (is (= {:negation 6} kinds)
+        definition? #(some #{root-denial} (:sentences %))
+        rigidity    '#{time_invariant_relation time_agnostic_relation time_varying_relation
+                       time_indexed_relation}
+        rigidity?   (fn [pair] (every? #(contains? rigidity (first (nth % 2))) (:sentences pair)))]
+    (is (= {:negation 6 :disjoint 6} kinds)
         (str "clashes: " (pr-str (mapv (juxt :kind :sentences) pairs))))
+    (is (every? :excepted (remove rigidity? (filter #(= :disjoint (:kind %)) pairs)))
+        "the one other disjoint pair, a metal solid and mercury liquid, is excepted")
     (is (every? :excepted (remove definition? (filter #(= :negation (:kind %)) pairs)))
         "negation clashes are excepted")
     (is (= 2 (count (filter definition? pairs)))
@@ -706,7 +720,7 @@
   ;; variable a `relation`, disjoint from the `person` the paired rule concludes, so
   ;; `arg-type-conflicted?` drops the pair as unreachable (vaelii#95).  The arity table
   ;; therefore pairs with nothing.  An arity floor beside an exact class binds one relation
-  ;; above and at or below one length, and `arity-floor-conflicted?` drops that pair, so
+  ;; above and at or below one length, and `functional-slot-conflicted?` drops that pair, so
   ;; the floors pair with nothing either.
   (let [pairs   (:pairs (:clashes (v/kb-quality kb {:limit 100})))
         about   (fn [f] (filter (fn [p] (some #(some #{f} (flatten %)) (:sentences p)))
@@ -1187,8 +1201,14 @@
   ;; and each position of the six grants is declared.
   (let [terms '#{closedExtentForArg closedExtentForArg1 closedExtentForArg2 closedExtentForArg3
                  closedExtentForArg4 closedExtentForArg5}]
-    (is (= :audited (:status (v/kb-integrity kb terms 'CxUniverse)))
-        "the default passes find nothing")
+    ;; Beside the rigidity classification still open for every relation, which the
+    ;; type-specified pass reports whatever the candidates are.
+    (let [report (v/kb-integrity kb terms 'CxUniverse)]
+      (is (= {:status :gap :candidate-count (count terms)}
+             (dissoc report :type-specified-violations))
+          "the default passes find nothing")
+      (is (= ['[typeAllSpecified rigidity_kind relation]]
+             (keys (:type-specified-violations report)))))
     (let [missing (:missing-arg (v/kb-integrity kb terms 'CxUniverse {:categories #{:missing-arg}}))]
       (is (empty? (for [{:keys [predicate missing]} missing
                         :when (contains? terms predicate)
@@ -1266,7 +1286,8 @@
 
 ;; ---- hollow: what a thing is shaped like, not what it is for ---------------
 ;; `hollow` holds of a thing while it has an interior space that other things can occupy.
-;; It says nothing about what the thing is used for.  A container is made and hollow.
+;; It says nothing about what the thing is used for.  A container is made, and made to
+;; be hollow: hollow by default.
 
 (tu/deftest-kb hollow-is-a-shape-located-in-space-and-time
   (is (true? (v/genl? kb 'hollow 'spatiotemporal 'CxUniverse)))
@@ -1307,11 +1328,17 @@
     (is (not (tu/stored-in-clash? kb (list 'hollow LabBladder1) 'CxUniverse)))
     (is (true? (v/ask? kb (list 'hollow LabBladder1) 'CxUniverse)))))
 
-(tu/deftest-kb a-container-is-made-and-hollow
-  (doseq [t '[made hollow]]
-    (is (some #(v/premise? kb (:id %)) (v/sentexes-matching kb (list 'genl 'container t) 'CxUniverse))
-        (str "(genl container " t ") is stated"))
-    (is (true? (v/genl? kb 'building t 'CxUniverse)) (str "building genl " t " through container")))
+(tu/deftest-kb a-container-is-made-and-hollow-by-default
+  (is (some #(v/premise? kb (:id %)) (v/sentexes-matching kb '(genl container made) 'CxUniverse))
+      "(genl container made) is stated")
+  (is (true? (v/genl? kb 'building 'made 'CxUniverse)) "building genl made through container")
+  (testing "a container is made to be hollow: hollow by a default rule, not a genl edge"
+    (is (not (true? (v/genl? kb 'container 'hollow 'CxUniverse))))
+    (is (true? (v/ask? kb '(declined_rule_macro (genl container hollow)) 'CxUniverse)))
+    (tu/with-terms [Cup1]
+      (v/assert kb (list 'container Cup1) 'CxUniverse)
+      (is (true? (v/ask? kb (list 'hollow Cup1) 'CxUniverse)))
+      (is (= :default (v/defeat-class kb (v/handle-of kb (list 'hollow Cup1) 'CxUniverse))))))
   (testing "a container stays clear of organism, person and substance"
     (doseq [t '[organism person substance]]
       (is (true? (v/disjoint? kb 'container t)) (str "container and " t))))
@@ -1440,7 +1467,6 @@
     [genl boolean intangible CxUniverse "boolean genl unrepresented_term genl linguistic genl nowhere_never genl intangible"]
     [genl character intangible CxUniverse "character genl unrepresented_term genl linguistic genl nowhere_never genl intangible"]
     [genl building made CxUniverse "building genl container genl made"]
-    [genl building hollow CxUniverse "building genl container genl hollow"]
     [genl made tangible CxUniverse "partition tangible made natural"]
     [genl natural tangible CxUniverse "partition tangible made natural"]
     [genl formation tangible CxUniverse "formation genl natural genl tangible"]

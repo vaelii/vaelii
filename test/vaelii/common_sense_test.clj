@@ -64,17 +64,17 @@
     (is (not (v/isa? kb 'Muffet 'food)))))
 
 (tu/deftest-kb a-size-claim-about-two-kinds-reaches-the-kinds-beneath-them
-  ;; (largerThan mammal insect) is stated; nothing is stated about dogs or ants.  The
+  ;; (typeLargerThan mammal insect) is stated; nothing is stated about dogs or ants.  The
   ;; reach is licensed by `transitiveInArgInverse` on both positions along genl, which is a
-  ;; claim about largerThan and not about the world — declared, so it can be wrong,
+  ;; claim about typeLargerThan and not about the world — declared, so it can be wrong,
   ;; rather than assumed, where it could not be.
   (testing "the stated claim, and one nobody stated"
-    (is (v/ask? kb '(largerThan mammal insect)))
-    (is (v/ask? kb '(largerThan dog ant))))
+    (is (v/ask? kb '(typeLargerThan mammal insect)))
+    (is (v/ask? kb '(typeLargerThan dog ant))))
   (testing "the inherited one is answered and not stored"
-    (is (empty? (v/sentexes-matching kb '(largerThan dog ant) '?ctx))))
+    (is (empty? (v/sentexes-matching kb '(typeLargerThan dog ant) '?ctx))))
   (testing "and the relation stays asymmetric under inheritance"
-    (is (not (v/ask? kb '(largerThan ant dog))))))
+    (is (not (v/ask? kb '(typeLargerThan ant dog))))))
 
 (tu/deftest-kb what-a-kind-has-is-inherited-downward-and-not-upward
   ;; partType preserves its FIRST position along genl and not its second, and the

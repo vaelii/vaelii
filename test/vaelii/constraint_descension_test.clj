@@ -510,10 +510,10 @@
 (tu/deftest-kb an-asymmetric-super-convicts-a-sub-predicate-in-both-orders
   (doseq [order [:general-first :specialized-first]]
     (tu/with-neutral-kb [kb tu/isolated-fresh]
-      (tu/with-terms [largerThan muchLargerThan A B]
-        (v/assert kb (list 'asymmetric largerThan) 'CxUniverse)
-        (v/assert kb (list 'genl muchLargerThan largerThan) 'CxUniverse)
-        (let [general #(v/assert kb (list largerThan A B) 'CxUniverse {:strength :monotonic})
+      (tu/with-terms [typeLargerThan muchLargerThan A B]
+        (v/assert kb (list 'asymmetric typeLargerThan) 'CxUniverse)
+        (v/assert kb (list 'genl muchLargerThan typeLargerThan) 'CxUniverse)
+        (let [general #(v/assert kb (list typeLargerThan A B) 'CxUniverse {:strength :monotonic})
               special #(v/assert kb (list muchLargerThan B A) 'CxUniverse {:strength :monotonic})]
           (if (= order :general-first) (general) (special))
           ((if (= order :general-first) special general))
@@ -522,11 +522,11 @@
                    (name order))))))))
 
 (tu/deftest-kb the-asymmetry-violation-names-the-predicate-the-mark-is-on
-  (tu/with-terms [largerThan muchLargerThan A B]
-    (v/assert kb (list 'asymmetric largerThan) 'CxUniverse)
-    (v/assert kb (list 'genl muchLargerThan largerThan) 'CxUniverse)
+  (tu/with-terms [typeLargerThan muchLargerThan A B]
+    (v/assert kb (list 'asymmetric typeLargerThan) 'CxUniverse)
+    (v/assert kb (list 'genl muchLargerThan typeLargerThan) 'CxUniverse)
     (v/assert kb (list muchLargerThan A B) 'CxUniverse {:strength :monotonic})
-    (is (re-find (re-pattern (str "asymmetric: " largerThan " cannot hold both ways"))
+    (is (re-find (re-pattern (str "asymmetric: " typeLargerThan " cannot hold both ways"))
                  (:message (first (#'checks/asymmetry-problems
                                    kb (list muchLargerThan B A) 'CxUniverse)))))))
 

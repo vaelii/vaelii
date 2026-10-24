@@ -55,11 +55,14 @@
     (is (not (v/ask? kb (list 'spatial Clip) 'CxUniverse)))
     (is (not (v/ask? kb (list 'tangible Clip) 'CxUniverse)))))
 
-(tu/deftest-kb a-held-state-is-not-a-happening-role-subject
+(tu/deftest-kb a-held-state-has-participants-but-is-not-perceived-or-done
   (tu/without-entailing
    (tu/with-terms [Calm Observer]
      (v/assert kb (list 'fluent Calm) 'CxUniverse)
-     (doseq [p '[actor thingPerceived]]
+     (is (not (some #(and (= :arg-type (:type %)) (= 1 (:position %)))
+                    (v/check kb (list 'actor Calm Observer) 'CxUniverse)))
+         "actor takes any situation, a held state included")
+     (doseq [p '[thingPerceived doneBy]]
        (is (some #(and (= :arg-type (:type %)) (= 1 (:position %)))
                  (tu/check-or-conviction kb (list p Calm Observer) 'CxUniverse))
            (str p " keeps the happening-versus-state boundary"))))))

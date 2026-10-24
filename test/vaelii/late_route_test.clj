@@ -51,7 +51,7 @@
   "`[label base late goal]` over fresh terms: `late` is the shorter route."
   []
   (tu/with-terms [animal parentOf fatherOf midParent Ann Mary dog mammal noted Rex kindUnder Zoo
-                  chi mid cat largerThan pet]
+                  chi mid cat typeLargerThan pet]
     (let [chain [(list 'genl dog mammal) (list 'genl mammal animal) (list 'genl animal 'thing)
                  (list dog Rex)
                  (list 'set/forwardRule (list 'implies (list animal '?x) (list noted '?x)))]]
@@ -76,8 +76,8 @@
        [:minted chain [(list 'genlArg kindUnder 1 animal) (list kindUnder dog Zoo)] (list noted Rex)]
        [:preservation
         [(list 'genl chi mid) (list 'genl mid dog) (list 'genl dog 'thing)
-         (list largerThan dog cat) (list 'transitiveInArgInverse largerThan 1 'genl)
-         (list 'set/forwardRule (list 'implies (list largerThan '?x '?y) (list noted '?x '?y)))]
+         (list typeLargerThan dog cat) (list 'transitiveInArgInverse typeLargerThan 1 'genl)
+         (list 'set/forwardRule (list 'implies (list typeLargerThan '?x '?y) (list noted '?x '?y)))]
         [(list 'genl chi dog)]
         (list noted chi cat)]])))
 

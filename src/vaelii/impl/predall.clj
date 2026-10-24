@@ -23,6 +23,10 @@
   stored rule and concludes nothing — it reads the declaration and the beliefs and hands
   back the violations, the way a solve-time report does.
 
+  `typeAllSpecified` is the counterpart for a classification: `type-specified-violations`
+  reports the instances of a collection no member of a classifier is believed to hold,
+  and `kb-integrity` folds its declaration stream as its own category (docs/integrity.md).
+
   **Indeterminate = the `indeterminate_term` category.**  A filler counts as determinate
   unless it is a member of the extensible `indeterminate_term` collection (core.txt).
   Skolem constants are its built-in first member — a reified NAT whose expression is a
@@ -314,6 +318,45 @@
          (list [declaration (exists-violations kb (apply list declaration) ctx)]))
        (exists-declarations kb functor ctx)))
     '[predAllExists predExistsAll predExistsInstance predInstanceExists])))
+
+;; ---- typeAllSpecified: a membership requirement over a classifier ------------
+
+(defn type-specified-violations
+  "Audit one `(typeAllSpecified classifier indep)` declaration in `ctx`: every instance
+  of `indep` must have a **believed** membership in some member of `classifier`.
+  Answers `{:status :audited :violations #{x …}}` (empty set = the requirement holds), or
+  `{:status :gap :gap :empty-classifier :classifier classifier}` when `classifier` has no
+  visible member, so no instance could be classified and no violation set pretends the
+  audit ran — the shape `specified-violations` answers in, discriminated on `:status`.
+
+  Membership is what `ask` answers, so one reached through `genl` or argument
+  preservation counts as a stored one does.  A partition of `indep` into the classifier's
+  members does not satisfy the requirement: it says each instance IS in some member, and
+  the requirement is that the KB believes which."
+  [kb classifier indep ctx]
+  (let [members (into [] (comp (map #(get % '?k)) (filter some?) (distinct))
+                      (quasiquote/ask-prepared kb (list classifier '?k) ctx))]
+    (if (empty? members)
+      {:status :gap :gap :empty-classifier :classifier classifier}
+      {:status :audited
+       :violations
+       (into #{}
+             (comp (map #(get % '?x))
+                   (filter some?)
+                   (remove (fn [x] (some #(ask? kb (list % x) ctx) members))))
+             (quasiquote/ask-prepared kb (list indep '?x) ctx))})))
+
+(defn type-specified-declaration-audits
+  "Every `typeAllSpecified` declaration visible in `ctx`, audited, as a lazy stream of
+  `[[typeAllSpecified classifier indep] result]` entries in content order — one
+  declaration census, then one focused audit per pull, as
+  `specified-declaration-audits` streams the `predAllSpecified` family."
+  [kb ctx]
+  (res/lazy-mapcat
+   (fn [[classifier indep]]
+     (list [['typeAllSpecified classifier indep]
+            (type-specified-violations kb classifier indep ctx)]))
+   (declaration-args kb 'typeAllSpecified ctx)))
 
 (defn all-specified-violations
   "Audit every `predAllSpecified` and `predSpecifiedAll` declaration visible in `ctx`,

@@ -5887,8 +5887,9 @@
   `candidate-terms` is a finite set of ground terms (`:bad-args` otherwise).  Answers
   `{:status :audited :candidate-count n}` when no pass finds anything, `:status :gap` with
   the non-empty categories among `:definition-inconsistencies`,
-  `:all-specified-violations`, `:genl-arg-widening`, `:not-under-thing`, `:implicit-genl`,
-  `:implicit-arity-class`, `:orthogonal-over-separation`, `:rule-macro`, `:undeclared-arity`,
+  `:all-specified-violations`, `:type-specified-violations`, `:rigidity-correspondence`,
+  `:genl-arg-widening`, `:not-under-thing`, `:implicit-genl`, `:implicit-arity-class`,
+  `:orthogonal-over-separation`, `:rule-macro`, `:undeclared-arity`,
   `:uncorresponded-function`, `:twin-genls`, `:derivable-stated-edge`,
   `:disjoint-could-be-partition` and `:missing-arg`, or `:status :truncated` with its
   `:reason` and the findings kept when a bound runs out.  `options` takes `:max-work`,

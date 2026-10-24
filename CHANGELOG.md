@@ -13,6 +13,122 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Breaking: renamed identifiers
+
+- **`largerThan` is `typeLargerThan`.** The relation compares two kinds, as a
+  `type_relation_predicate`, and the new name keeps it from reading as a sibling of
+  `tallerThan` and `heavierThan`, which compare two individuals. Its declarations, its
+  facts in CxSize and its comment are unchanged apart from the name.
+
+  *Class:* **Breaking** (KB vocabulary renamed).
+  *Migration:* write `typeLargerThan` for `largerThan` in every fact, rule and query.
+  *Breaks:* `largerThan`
+
+### Additive: vocabulary and reasoning
+
+- **The rigidity kinds of relation.** core.txt partitions `relation` into
+  `time_invariant_relation`, `time_agnostic_relation` and `time_varying_relation`
+  (OntoClean's +R, -R and ~R, read modally), with `possibly_time_invariant_relation` the
+  first two together. Possible invariance is preserved up `genl` and time variance down
+  it, so a time-varying genl of a time-invariant type is an inherited clash `conflicts`
+  reports. `rigidity_kind` names the three kinds.
+
+  *Class:* **Additive**.
+
+- **`typeAllSpecified`, a classification requirement `kb-integrity` audits.**
+  `(typeAllSpecified ?classifier ?indep)` requires every instance of `?indep` to have a
+  believed membership in some member of `?classifier`; a partition does not satisfy it.
+  The sweep reports it in a new default category, `:type-specified-violations`. core.txt
+  states `(typeAllSpecified rigidity_kind relation)`, and not every shipped relation is
+  classified yet, so a default sweep over CxUniverse now answers `:gap` with that one
+  requirement.
+  [integrity.md](docs/integrity.md#what-a-type-specified-finding-means).
+
+  *Class:* **Additive**.
+
+- **The shipped relations' rigidity kinds.** 388 of the starter's 575 relations now
+  have a rigidity kind visible from CxUniverse: 302 time-invariant, 57 time-agnostic
+  and 29 time-varying. Types over numbers, expressions, relations and types, every
+  metatype, the folk kinds, the meta, logical and type-relation predicates, kinship,
+  `madeOf`, `contains`, `length`, `totalDuration`, `overlapDuration`, the integrity
+  requirements and the predall placeholders are time-invariant.
+  `(genl folk_species time_invariant_relation)`,
+  `(genl folk_biological_class time_invariant_relation)` and
+  `(genl arity_type time_invariant_relation)` classify those families with one edge
+  each. The social relations, `knows`, `livesIn`, `locatedIn`, `eats`,
+  `hasCapability`, `asleep`, `awake`, `breathes_air`, `preysOn`, a quantity's sign,
+  trend and derivative, `greaterInMagnitudeThan` and the qualitative arithmetic are
+  time-varying, and `(genl stuff_type_by_state_of_matter time_varying_relation)` makes
+  every phase of matter time-varying. The fifty spatial relations, the six predall
+  world-statement cells and `contradicts` are time-agnostic. CxSocial,
+  CxSocialExtension and CxTra classify their own relations, which CxUniverse does
+  not see.
+
+  *Class:* **Additive**.
+
+- **A function and its corresponding predicate must share a rigidity kind.** A default
+  `kb-integrity` pass, `:rigidity-correspondence`, reports each
+  `functionCorrespondingPredicate` pair whose function and predicate are both classified
+  and of different kinds. A pair with an unclassified side is left to
+  `:type-specified-violations`.
+  [integrity.md](docs/integrity.md#what-a-rigidity-correspondence-finding-means).
+
+  *Class:* **Additive**.
+
+- **Every spec of `time` and every spec of `situation` is time-invariant.** Two
+  core.txt forward rules classify `time`, `situation` and each type below either, a
+  type stated later included.
+
+  *Class:* **Additive**.
+
+- **`temporalIndexArg` and `time_indexed_relation`.** `(temporalIndexArg ?relation
+  ?position)` names the argument that carries the time a tuple holds at. A forward rule
+  concludes `(time_indexed_relation ?relation)` from it, and
+  `(genl time_indexed_relation time_invariant_relation)` makes each such relation
+  time-invariant.
+
+  *Class:* **Additive**.
+
+- **A function takes the rigidity kind of its corresponding predicate.** A generator over
+  `rigidity_kind` generates one forward rule per kind, concluding `(?kind ?function)` from
+  `(functionCorrespondingPredicate ?function ?predicate)` and `(?kind ?predicate)`, a kind
+  the predicate inherits down `genl` included. Each `Pred…Fn` takes its placeholder's
+  kind this way. A function believed of a second kind is reported by
+  `:rigidity-correspondence`.
+
+  *Class:* **Additive**.
+
+- **`permanentPartOf`, a time-invariant spec of `partOf`.** `partOfRegion` and
+  `subSituationOf` are below it, and `tangiblePartOf` is not, since a wheel can come off
+  a car. It is transitive and reflexive, and both its positions declare `thing`, as
+  `partOf`'s do.
+  [glossary.md](docs/glossary.md).
+
+  *Class:* **Additive**.
+
+- **`stable_once_true` and `stable_once_false`, two kinds of time-varying relation.** A
+  `stable_once_true` relation that holds at a time holds at every later time, and a
+  `stable_once_false` relation that fails at a time fails at every later time. Both are
+  below `time_varying_relation`, so no time-invariant relation is either. `dead` is
+  `stable_once_true` and `alive` is `stable_once_false`. No rule states either
+  definition, since the KB has no sentence for a relation holding at a time.
+
+  *Class:* **Additive**.
+
+- **A new OE principle, "consistent at each commit".** Assume the KB is consistent, and
+  revise a theory in one atomic commit, so consistency and soundness hold at each commit.
+  [oe-principles.md](docs/oe-principles.md).
+
+  *Class:* **Additive**.
+
+- **`(functional P)` concludes `(functionalInArg P 2)`.** A core.txt forward rule states
+  the definition: `functional` is `functionalInArg` read at position 2, its binary
+  spelling. A functional predicate now answers `(functionalInArg P 2)`, and an injection,
+  functional through its own rule, is functional in both arguments.
+  [glossary.md](docs/glossary.md).
+
+  *Class:* **Additive**.
+
 ### Fix: answers
 
 - **A goal keeps a never-minted `Quote` or `Quasiquote` application as written** under a
@@ -20,6 +136,36 @@ it — `git show v0.16.0:CHANGELOG.md`.
   quotations stored only as a `modal_predicate`'s proposition, as the plugin's Cyc
   preamble stores them. [nat.md](docs/nat.md#read-path)
   *Migration:* none.
+
+- **`knows` follows from `relativeOf` by a default rule, not a `genl` edge.** Two
+  relatives need not have met. A stated `(not (knows ?x ?y))` now overrides the default,
+  where the edge made every relative an acquaintance.
+  `(declined_rule_macro (genl relativeOf knows))` records the declined suggestion.
+
+  *Class:* **Fix** (shipped ontology content).
+  *Migration:* none for a KB that only reads `knows`. A query for the `genl` edge from
+  `relativeOf` to `knows` answers no.
+
+- **CxNormalPhysicalConditions states each room-temperature phase as a default rule.** A
+  phase is a state a portion of stuff is in, not a kind it is. Four default rules replace
+  `(genl stone solid)`, `(genl wood solid)`, `(genl glass_stuff solid)` and
+  `(genl mercury liquid)`, and each suggestion is recorded with `declined_rule_macro`.
+
+  *Class:* **Fix** (shipped ontology content).
+  *Migration:* none for a KB that reads a portion's phase. A query for one of the four
+  `genl` edges answers no.
+
+- **`kb-quality`'s clash reading reads a functional slot off the KB's `functionalInArg`
+  marks, for any predicate.** Two antecedents filling one marked slot for one tuple with
+  two distinct numbers or other non-symbol atoms, with a number a `lessThan` or
+  `greaterThan` bound on the other filler excludes, or with two variables whose bounds
+  leave nothing between them, cannot both hold, and the pair is dropped. The arity table
+  reaches the reading through `(functional arity)`, where the reading named `arity`
+  before, and an upper bound now counts beside a lower one. A KB that does not mark
+  `arity` functional now pairs `(arity ?p 1)` with `(arity ?p 2)`.
+  [quality.md](docs/quality.md).
+
+  *Class:* **Fix**.
 
 ## 0.29.0 — 2026-10-23 — "Open applications read through `functionCorrespondingPredicate` and resolved under the reader's merges, `try-assert` refusing `:monotonic` complements and length clashes, query-only terms refused under `not`, closed-extent negatives re-checked in every arrival order"
 

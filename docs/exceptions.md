@@ -593,7 +593,7 @@ another.
 
 - **Argument preservation, from the relation's side.** `TransitiveInArgProver` answers by
   walking the arguments' reach, so `(genl chihuahua dog)` flips an exception on
-  `largerThan`. `special/recheck-preserving-along` and
+  `typeLargerThan`. `special/recheck-preserving-along` and
   `special/recheck-separated-exceptions` queue the rules it reaches
   ([inherit.md](inherit.md#four-things-that-follow-from-reading-claims-out-of-belief)).
   From `P`'s own side the index already keys the fact, and the argument-agreement filter

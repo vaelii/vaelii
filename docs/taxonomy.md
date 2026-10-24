@@ -1477,7 +1477,7 @@ forced-monotonic and is weighed as a member of an inherited nogood.
 
   A declared-transitive `P` is **metadata only** — it is not a cached relation. Nothing
   about `P` enters the adjacency, so there is no closure to maintain, no depth potential
-  to repair, and nothing an arrival order could make expensive; asserting `(largerThan A
+  to repair, and nothing an arrival order could make expensive; asserting `(typeLargerThan A
   B)` is an ordinary fact assert. The cost is entirely at query time, where
   `TransitivePredicateProver` walks the believed facts (memoized per search step,
   `observe/*reach-memo*`, and the answer held per KB — "What is cached", below). A
@@ -1626,7 +1626,7 @@ forced-monotonic and is weighed as a member of an inherited nogood.
   `(P b a)` are contradictory, so a claim whose converse is believed forms a nogood with
   it, which the settle decides; a converse read by preservation opposes at the weakest
   class of the claim and its reading ([inherit.md](inherit.md)). A strict order like
-  `largerThan` is the usual case. The conviction needs a believed **opposing** sentex, and a self tuple has
+  `typeLargerThan` is the usual case. The conviction needs a believed **opposing** sentex, and a self tuple has
   none — its converse is the sentence itself — so `(P a a)` is admitted with no clash,
   which asymmetry alone would not license. `inherit/claims` skips the converse probe
   there for the same reason, and says so.

@@ -121,7 +121,7 @@ Data hangs below CxWell.
   - `CxAnatomy` — what kinds of thing have what kinds of part, entirely in
     `partType` claims. Nothing here concludes anything about an individual, which is
     deliberate: "birds have wings" to "Pingu has a wing" needs a quantifier reading.
-  - `CxSize` — comparative size said the two ways it can be said: `largerThan`
+  - `CxSize` — comparative size said the two ways it can be said: `typeLargerThan`
     among kinds, and a comparison computed between two objects' measures. The worked
     example of `transitiveInArgInverse` ([inherit.md](inherit.md)).
   - `CxSocial` — what acquaintance follows from, how employment relates to

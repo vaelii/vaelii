@@ -24,6 +24,7 @@
 ;; A software_tool is software that performs one bounded operation per invocation. It
 ;; has no mass, so it is placed under computational_system, which is intangible.
 (comment computational_system "Software that computes when it runs.")
+(set/monotonic (time_invariant_relation computational_system))
 (positiveExampleComment computational_system "a running Python interpreter")
 (positiveExampleComment computational_system "a running database server process")
 (positiveExampleComment computational_system "a running web service")
@@ -39,13 +40,16 @@
 (positiveExampleComment software_tool "a Model Context Protocol tool")
 (positiveExampleComment software_tool "a web API endpoint")
 (genl software_tool computational_system)
+(set/monotonic (time_invariant_relation software_tool))
 
 (comment command_line_tool "A software tool invoked by a command line that a shell runs.")
+(set/monotonic (time_invariant_relation command_line_tool))
 (positiveExampleComment command_line_tool "a text-search program")
 (positiveExampleComment command_line_tool "a file-copy program")
 (genl command_line_tool software_tool)
 
 (comment mcp_tool "A software tool that a Model Context Protocol server lists and runs on request.")
+(set/monotonic (time_invariant_relation mcp_tool))
 (positiveExampleComment mcp_tool "a file-reading MCP tool")
 (positiveExampleComment mcp_tool "a calendar-lookup MCP tool")
 (genl mcp_tool software_tool)
@@ -53,6 +57,7 @@
 ;; The edges to acausal and causal separate the two kinds below, through core.txt's
 ;; (partition thing causal acausal), so no disjoint is stated between them.
 (comment read_only_software_tool "A software tool whose invocation reads state and changes none.")
+(set/monotonic (time_varying_relation read_only_software_tool))
 (positiveExampleComment read_only_software_tool "a text-search tool")
 (positiveExampleComment read_only_software_tool "a directory-listing tool")
 (positiveExampleComment read_only_software_tool "a DNS-lookup tool")
@@ -60,6 +65,7 @@
 (genl read_only_software_tool acausal)
 
 (comment write_capable_software_tool "A software tool whose invocation can change state outside the invocation.")
+(set/monotonic (time_varying_relation write_capable_software_tool))
 (positiveExampleComment write_capable_software_tool "a file-deletion tool")
 (positiveExampleComment write_capable_software_tool "a message-sending tool")
 (positiveExampleComment write_capable_software_tool "a database-update tool")
@@ -67,6 +73,7 @@
 (genl write_capable_software_tool causal)
 
 (comment information_bearing_thing "Information as carried, apart from the medium that holds it. A reading of the information can be a cause where the information is not.")
+(set/monotonic (time_invariant_relation information_bearing_thing))
 (positiveExampleComment information_bearing_thing "the text of a document")
 (positiveExampleComment information_bearing_thing "a recording")
 (positiveExampleComment information_bearing_thing "the content of a file")
@@ -75,24 +82,28 @@
 (genl information_bearing_thing acausal)
 
 (comment digital_artifact "An information-bearing thing encoded as bits.")
+(set/monotonic (time_invariant_relation digital_artifact))
 (positiveExampleComment digital_artifact "a file")
 (positiveExampleComment digital_artifact "a byte stream")
 (positiveExampleComment digital_artifact "a web page")
 (genl digital_artifact information_bearing_thing)
 
 (comment media_resource "A digital artifact retrievable over a network at a URL.")
+(set/monotonic (time_invariant_relation media_resource))
 (positiveExampleComment media_resource "a hosted photograph")
 (positiveExampleComment media_resource "a streamed film")
 (positiveExampleComment media_resource "the audio file of a podcast episode")
 (genl media_resource digital_artifact)
 
 (comment image "A media resource holding a static visual representation.")
+(set/monotonic (time_invariant_relation image))
 (positiveExampleComment image "a photograph")
 (positiveExampleComment image "a diagram")
 (positiveExampleComment image "a scanned page")
 (genl image media_resource)
 
 (comment video "A media resource holding moving images, with or without audio.")
+(set/monotonic (time_invariant_relation video))
 (positiveExampleComment video "a film clip")
 (positiveExampleComment video "a screen recording")
 (genl video media_resource)
@@ -116,6 +127,7 @@
 (positiveExampleComment ip_address "2001:db8::1")
 (negativeExample ip_address (Quote (ip_address "example.org")))
 (genl ip_address string)
+(set/monotonic (time_invariant_relation ip_address))
 
 (comment ipv4_address "A string denoting a 32-bit Internet Protocol version 4 address.")
 (positiveExampleComment ipv4_address "192.0.2.1")
@@ -124,6 +136,8 @@
 ;; Every IP address is of one version or the other. The partition installs both genl
 ;; edges to ip_address and separates the two parts.
 (partition ip_address ipv4_address ipv6_address)
+(set/monotonic (time_invariant_relation ipv4_address))
+(set/monotonic (time_invariant_relation ipv6_address))
 ;; Each value kind below string is a term kind, forced-monotonic as string is (core.txt).
 (forced_monotonic_predicate ip_address)
 (forced_monotonic_predicate ipv4_address)
@@ -132,41 +146,48 @@
 ;; ---- a media resource's address ------------------------------------------
 (comment resourceUrl "(resourceUrl ?resource ?url) means that ?resource is retrievable at ?url, e.g. an https address.")
 (set/monotonic (instance_relation_predicate resourceUrl))
+(set/monotonic (time_varying_relation resourceUrl))
 (arg resourceUrl 1 media_resource)
 (quotedArg resourceUrl 2 string)
 
 ;; ---- a tool's name, its declared arguments and its availability ----------
 (comment toolName "(toolName ?tool ?name) means that ?name is the identifier ?tool is invoked by, e.g. the program name of a command-line tool, the tool name a Model Context Protocol server lists.")
 (set/monotonic (instance_relation_predicate toolName))
+(set/monotonic (time_varying_relation toolName))
 (arg toolName 1 software_tool)
 (quotedArg toolName 2 string)
 (set/monotonic (functional toolName))
 
 (comment toolArgType "(toolArgType ?tool ?key ?type) means that ?tool accepts an argument named ?key whose values belong to ?type, e.g. a key named pattern whose values are strings.")
 (ternary_predicate toolArgType)
+(set/monotonic (time_invariant_relation toolArgType))
 (arg toolArgType 1 software_tool)
 (quotedArg toolArgType 2 string)
 (genlArg toolArgType 3 thing)
 
 (comment toolArgComment "(toolArgComment ?tool ?key ?comment) means that ?comment documents the argument of ?tool named ?key, e.g. a sentence saying what a pattern argument matches.")
 (ternary_predicate toolArgComment)
+(set/monotonic (time_invariant_relation toolArgComment))
 (arg toolArgComment 1 software_tool)
 (quotedArg toolArgComment 2 string)
 (quotedArg toolArgComment 3 string)
 
 (comment agentHasTool "(agentHasTool ?agent ?tool) means that ?tool is available to ?agent: ?agent can invoke ?tool.")
 (set/monotonic (instance_relation_predicate agentHasTool))
+(set/monotonic (time_varying_relation agentHasTool))
 (arg agentHasTool 1 thing)
 (arg agentHasTool 2 software_tool)
 
 (comment probesPredicate "(probesPredicate ?tool ?predicate) means that an invocation of ?tool can return evidence about a sentence whose predicate is ?predicate.")
 (set/monotonic (instance_relation_predicate probesPredicate))
+(set/monotonic (time_invariant_relation probesPredicate))
 (arg probesPredicate 1 software_tool)
 (arg probesPredicate 2 predicate)
 
 ;; ---- invocations and receipts --------------------------------------------
 (comment toolInvoked "(toolInvoked ?invocation ?tool) means that ?invocation is a call of ?tool.")
 (set/monotonic (instance_relation_predicate toolInvoked))
+(set/monotonic (time_invariant_relation toolInvoked))
 (arg toolInvoked 1 tool_invocation)
 (arg toolInvoked 2 software_tool)
 
@@ -178,6 +199,7 @@
 
 (comment receipt "(receipt ?invocation ?receipt) means that ?invocation produced ?receipt as the record of its output.")
 (set/monotonic (instance_relation_predicate receipt))
+(set/monotonic (time_invariant_relation receipt))
 (arg receipt 1 tool_invocation)
 (arg receipt 2 tool_receipt)
 
@@ -185,6 +207,7 @@
 (comment dnsResolvesTo "(dnsResolvesTo ?name ?address) means that DNS resolves the host name ?name to the address ?address, under the resolver in effect where the fact is stated. One name can resolve to several addresses.")
 (positiveExampleComment dnsResolvesTo "example.org resolved to 192.0.2.1")
 (set/monotonic (instance_relation_predicate dnsResolvesTo))
+(set/monotonic (time_varying_relation dnsResolvesTo))
 (quotedArg dnsResolvesTo 1 string)
 (quotedArg dnsResolvesTo 2 string)
 
@@ -205,12 +228,14 @@
 (comment perceives
          "(perceives ?perceiver ?perceived) means ?perceiver takes in ?perceived through some sense. The most general perception relation; sees specializes it, and seeImage and watchVideo reach it through sees for a spatial second argument.")
 (set/monotonic (instance_relation_predicate perceives))
+(set/monotonic (time_varying_relation perceives))
 (arg perceives 1 thing)
 (arg perceives 2 spatial)
 
 (comment sees
          "(sees ?seer ?seen) means ?seer takes in ?seen through sight. Spec of perceives.")
 (set/monotonic (instance_relation_predicate sees))
+(set/monotonic (time_varying_relation sees))
 (arg sees 1 thing)
 (arg sees 2 spatial)
 (genl sees perceives)
@@ -218,6 +243,7 @@
 (comment seeImage
          "(seeImage ?seer ?image) means ?seer takes in a static image through sight and perceives what it shows. Its second argument is the image itself, which need not be located, so it concludes sees only of a spatial image (the rule below).")
 (set/monotonic (instance_relation_predicate seeImage))
+(set/monotonic (time_invariant_relation seeImage))
 (arg seeImage 1 thing)
 (arg seeImage 2 thing)
 (set/forwardRule
@@ -227,6 +253,7 @@
 (comment watchVideo
          "(watchVideo ?watcher ?video) means ?watcher takes in a video, a temporal sequence of images, through sight. The video need not be located, so it concludes sees only of a spatial video (the rule below).")
 (set/monotonic (instance_relation_predicate watchVideo))
+(set/monotonic (time_invariant_relation watchVideo))
 (arg watchVideo 1 thing)
 (arg watchVideo 2 thing)
 (set/forwardRule

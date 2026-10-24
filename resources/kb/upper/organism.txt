@@ -31,6 +31,7 @@
 (vertebrate_class amphibian)
 
 (comment animal "An organism that moves and senses; disjoint from plant.")
+(set/monotonic (time_invariant_relation animal))
 (set/monotonic (separating organism animal plant))
 ;; Every animal has a backbone or lacks one.  The partition installs both genl edges to
 ;; animal.
@@ -59,6 +60,7 @@
 (comment butterfly "A winged insect: the adult stage of a lepidopteran, which was a caterpillar first.")
 (genl butterfly lepidopteran)
 (adultFormOf butterfly lepidopteran)
+(set/monotonic (life_stage_type butterfly))
 
 (comment cat "A domesticated feline mammal; disjoint from dog.")
 (genl cat mammal)
@@ -67,6 +69,7 @@
 (comment caterpillar "The larval stage of a lepidopteran: a soft, many-legged crawler that will become a butterfly or a moth. Not a species of its own, so not a folk_species, and diachronicallyDisjoint from butterfly rather than disjoint: the same organism is a caterpillar and later a butterfly.")
 (genl caterpillar lepidopteran)
 (larvalFormOf caterpillar lepidopteran)
+(set/monotonic (life_stage_type caterpillar))
 (diachronicallyDisjoint caterpillar butterfly)
 
 (comment cow "A large domesticated mammal kept for milk and meat.")
@@ -107,11 +110,15 @@
 (unary_predicate folk_biological_class)
 (genlArg folk_biological_class 1 organism)
 (metatype folk_biological_class)
+(set/monotonic (time_invariant_relation folk_biological_class))
 ;; typeGenl requires its target to be a first-order type: (interArg typeGenl 1 metatype 2 type).
 (type organism)
 (typeGenl folk_biological_class organism)
 ;; Every member is a first-order type, whose instances are individual organisms.
 (genl folk_biological_class type)
+;; A mammal or a tree is one for as long as it exists, so every folk biological class is
+;; time-invariant.
+(set/monotonic (genl folk_biological_class time_invariant_relation))
 ;; The separating declaration installs each part's genl edge to folk_biological_class.
 (set/monotonic (separating folk_biological_class vertebrate_class invertebrate_class plant_class))
 
@@ -126,6 +133,8 @@
 (typeGenl folk_species organism)
 ;; Every member is a first-order type, whose instances are individual organisms.
 (genl folk_species type)
+;; A mouse is a mouse for as long as it exists, so every folk species is time-invariant.
+(set/monotonic (genl folk_species time_invariant_relation))
 (set/monotonic (disjoint_metatype folk_species))
 (set/monotonic (disjoint folk_biological_class folk_species))
 ;; A species membership is definitional, so each is written :monotonic and folk_species
@@ -134,6 +143,7 @@
 ;; from (folk_species ?s) alone is a forced-monotonic rule whose firings are believed
 ;; (docs/nmtms.md).
 (forced_monotonic_predicate folk_species)
+(set/monotonic (time_invariant_relation folk_species))
 
 (comment fox "A wild canine mammal — the flatterer of the Fox and the Crow.")
 (genl fox mammal)
@@ -169,6 +179,7 @@
 (invertebrate_class insect)
 
 (comment invertebrate "An animal without a backbone.")
+(set/monotonic (time_invariant_relation invertebrate))
 (positiveExampleComment invertebrate "an insect")
 (positiveExampleComment invertebrate "a spider")
 (positiveExampleComment invertebrate "a snail")
@@ -180,6 +191,7 @@
 (genlArg invertebrate_class 1 invertebrate)
 (metatype invertebrate_class)
 (set/monotonic (disjoint_metatype invertebrate_class))
+(set/monotonic (time_invariant_relation invertebrate_class))
 (typeGenl invertebrate_class invertebrate)
 
 (comment larvalFormOf
@@ -191,6 +203,19 @@
 (comment lepidopteran "An insect that goes through metamorphosis from caterpillar to winged adult: the butterflies and the moths. The lineage-wide kind, so an organism stays a lepidopteran through every stage. It is the species-level kind here because butterfly and caterpillar name stages of it rather than kinds beside it.")
 (genl lepidopteran insect)
 (set/monotonic (folk_species lepidopteran))
+
+(comment life_stage_type
+         "(life_stage_type ?type) means that ?type is a stage of an organism's life that the same organism passes into and out of: caterpillar, butterfly.")
+(unary_predicate life_stage_type)
+(genlArg life_stage_type 1 organism)
+(metatype life_stage_type)
+(set/monotonic (time_invariant_relation life_stage_type))
+(typeGenl life_stage_type organism)
+;; Every member is a first-order type, whose instances are individual organisms.
+(genl life_stage_type type)
+;; A caterpillar stops being a caterpillar and goes on existing as a butterfly, so every
+;; life stage is time-varying.
+(set/monotonic (genl life_stage_type time_varying_relation))
 
 (comment lion "A large wild feline — the strong animal of the Lion-and-Mouse fable.")
 (genl lion mammal)
@@ -217,8 +242,10 @@
 (set/monotonic (folk_species penguin))
 
 (comment person "An entity with social agency — a human, or any other agent that stands in social relations. Broader than human: a non-biological agent (a sentient construct) can be a person without being a mammal or an animal, which is what lets the social predicates (friendOf, knows, marriedTo, …) constrain their arguments to person and still admit it. A physical entity — an agent has a location and can act — but not, by itself, a living thing.")
+(set/monotonic (time_invariant_relation person))
 
 (comment plant "An organism that photosynthesizes; disjoint from animal.")
+(set/monotonic (time_invariant_relation plant))
 ;; typeGenl requires its target to be a first-order type: (interArg typeGenl 1 metatype 2 type).
 (type plant)
 
@@ -230,6 +257,7 @@
 (genlArg plant_class 1 plant)
 (metatype plant_class)
 (set/monotonic (disjoint_metatype plant_class))
+(set/monotonic (time_invariant_relation plant_class))
 (typeGenl plant_class plant)
 
 (comment rabbit "A small burrowing mammal with long ears.")
@@ -270,12 +298,14 @@
 
 (comment vertebrate "An animal with a backbone: a mammal, a bird, a fish, a reptile or an amphibian.")
 (type vertebrate)
+(set/monotonic (time_invariant_relation vertebrate))
 
 (comment vertebrate_class
          "(vertebrate_class ?type) means that ?type is one of the classes of animal with a backbone. A disjoint_metatype, so its members are pairwise disjoint and nothing has to say so pair by pair: five members separate ten pairs, and the separation is inherited by every subtype — which is what makes a penguin and a dog disjoint without a word being written about either.")
 (genlArg vertebrate_class 1 vertebrate)
 (metatype vertebrate_class)
 (set/monotonic (disjoint_metatype vertebrate_class))
+(set/monotonic (time_invariant_relation vertebrate_class))
 (typeGenl vertebrate_class vertebrate)
 
 (comment wolf "A wild canine predator — the danger the boy falsely cries about.")
