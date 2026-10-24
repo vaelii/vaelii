@@ -630,8 +630,20 @@
       (is (some #(= pair [(:by %) (:subsumed %)]) (:subsumed q))
           "the narrower generated rule is reported as covered"))))
 
+(defn- rule-clashes-everywhere
+  "Every finding of the kb-integrity rule-clash `categories` over the whole KB: the union
+  of the sweeps from each leaf context, since a pair a context sees is seen by every
+  context below it."
+  [kb categories]
+  (into #{}
+        (comp (filter #(= #{%} (set (v/context-down kb %))))
+              (mapcat #(mapcat (v/kb-integrity kb #{} % {:categories categories})
+                               [:rule-clash :rule-clash-review])))
+        (v/contexts kb)))
+
 (tu/deftest-kb every-negated-conclusion-the-ontology-can-clash-with-is-stated-as-an-exception
-  ;; The other rule-hygiene reading, and the structure of what it finds here is the finding.
+  ;; kb-integrity's rule-clash pairing, and the structure of what it finds here is the
+  ;; finding.
   ;; Every pair whose conclusions contradict outright — a bird's flight against a
   ;; penguin's, wakefulness against sleep, life against death, and the shepherd boy's
   ;; credibility against his lying — is one of the two rules **stating** the other as an
@@ -639,7 +651,7 @@
   ;; would be `:functional` pairs, each two of the classification rules concluding a
   ;; different `(arity ?p n)` for one `?p`, and the five exact classes are separated, so no
   ;; `?p` satisfies two antecedents and the pairs are unreachable rather than unstated
-  ;; (docs/quality.md).
+  ;; (docs/integrity.md).
   ;;
   ;; The arity floors would be 82 `:disjoint` pairs.  A floor rule reads `(arity ?r ?n)`
   ;; with `(lessThan k ?n)` and concludes `(at_least_… ?r)`, which is disjoint from every
@@ -662,17 +674,25 @@
   ;; `(properPartOf x y) → (not (partOf y x))` denies one.  Both fire for one tuple only
   ;; where the facts already contradict the root rule: a part whose whole is stated a proper
   ;; part of it.  Both rules are strict definitions, so that clash is the one the facts owe,
-  ;; and an exception would hide it.
-  (let [pairs       (:pairs (:clashes (v/kb-quality kb {:limit 100})))
-        kinds       (frequencies (map :kind pairs))
+  ;; and an exception would hide it.  abstract.txt acknowledges both with
+  ;; `acknowledgedFinding`, so they are `:rule-clash-review` findings carrying that reason
+  ;; and no live `:rule-clash` finding is left.
+  (let [live        (rule-clashes-everywhere kb #{:rule-clash})
+        pairs       (rule-clashes-everywhere kb #{:rule-clash-review})
+        kinds       (frequencies (map :kind (concat live pairs)))
         root-denial '(implies (properPartOf ?part ?whole) (not (partOf ?whole ?part)))
-        definition? #(some #{root-denial} (:sentences %))]
+        definition? #(some #{root-denial} (:sentences %))
+        acked       (filter :acknowledged pairs)]
+    (is (empty? live)
+        (str "live clashes: " (pr-str (mapv (juxt :kind :sentences) live))))
     (is (= {:negation 6} kinds)
-        (str "clashes: " (pr-str (mapv (juxt :kind :sentences) pairs))))
-    (is (every? :excepted (remove definition? (filter #(= :negation (:kind %)) pairs)))
-        "negation clashes are excepted")
-    (is (= 2 (count (filter definition? pairs)))
-        "and the root denial meets the two proper readings' definitions, unexcepted")))
+        (str "clashes: " (pr-str (mapv (juxt :kind :sentences) (concat live pairs)))))
+    (is (every? #(or (:excepted %) (:acknowledged %)) (filter #(= :negation (:kind %)) pairs))
+        "negation clashes are excepted or acknowledged")
+    (is (= 2 (count acked))
+        "the root denial meets the two proper readings' definitions, unexcepted")
+    (is (every? definition? acked) "and those are the two acknowledged pairs")
+    (is (every? #(not (:excepted %)) acked))))
 
 (tu/deftest-kb a-type-relation-predicate-relates-predicates
   ;; Every argument of a type_relation_predicate is a predicate: the kinds it relates are
@@ -693,11 +713,11 @@
           (str "the emptiness rule pairs with nothing: " (pr-str (mapv :sentences pairs)))))))
 
 (tu/deftest-kb the-arity-rules-clash-with-each-other-in-neither-direction
-  ;; The reading's own half of the arity separation.  The generator generates one rule per
+  ;; The rule-clash pairing's own half of the arity separation.  The generator generates one rule per
   ;; exact class, and two of them conclude two arities for one relation only where the
   ;; relation holds both classes — which `(disjoint unary binary)` and its two peers
   ;; refuse on the antecedents.  No `?relation` satisfies two of them, so the pair is
-  ;; unreachable rather than unstated (docs/quality.md).
+  ;; unreachable rather than unstated (docs/integrity.md).
   ;;
   ;; `(partition thing tangible intangible)` makes a relation-classification conclusion and a
   ;; story-predicate conclusion disjoint, so the arity rules would pair with CxCriedWolf's
@@ -708,7 +728,7 @@
   ;; therefore pairs with nothing.  An arity floor beside an exact class binds one relation
   ;; above and at or below one length, and `arity-floor-conflicted?` drops that pair, so
   ;; the floors pair with nothing either.
-  (let [pairs   (:pairs (:clashes (v/kb-quality kb {:limit 100})))
+  (let [pairs   (rule-clashes-everywhere kb #{:rule-clash :rule-clash-review})
         about   (fn [f] (filter (fn [p] (some #(some #{f} (flatten %)) (:sentences p)))
                                 pairs))]
     (is (empty? (about 'arity))

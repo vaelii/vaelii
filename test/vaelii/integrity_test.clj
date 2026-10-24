@@ -1416,26 +1416,78 @@
               'CxUniverse)
     (is (= [] (shaped-of kb)))))
 
-(tu/deftest-kb a-declined-suggestion-is-not-reported-until-the-record-goes
+(defn- acknowledged-macros
+  "`[declaration reason]` of each `:rule-macro-review` finding in `context`."
+  ([kb] (acknowledged-macros kb 'CxUniverse))
+  ([kb context]
+   (mapv (juxt :declaration :acknowledged)
+         (:rule-macro-review (v/kb-integrity kb #{} context
+                                             {:categories #{:rule-macro-review}})))))
+
+(def ^:private sugar-reason
+  "The reason core.txt's forward rule writes for a `declined_rule_macro` record."
+  "Acknowledged via declined_rule_macro; no reason supplied.")
+
+(defn- own
+  "The `[declaration …]` rows of `rows` about `decl`, so a test on the upper ontology reads
+  its own rule's suggestion beside whatever core.txt's rules suggest."
+  [decl rows]
+  (filterv #(= decl (first %)) rows))
+
+(defn- core-kb
+  "A KB holding the upper ontology, whose core.txt states the forward rule that makes
+  `declined_rule_macro` sugar for `acknowledgedFinding`."
+  []
+  (doto (tu/fresh) (tu/load-core!)))
+
+(tu/deftest-kb a-declined-suggestion-moves-to-review-until-the-record-goes
+  (tu/with-cleared-kb [kb core-kb]
+    (tu/with-terms [livesInX locatedInX]
+      (doseq [p [livesInX locatedInX]]
+        (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+      (v/assert kb (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p)) 'CxUniverse)
+      (let [decl (list 'genl livesInX locatedInX)]
+        (is (= [[decl true]] (own decl (shaped-of kb))))
+        (is (= [] (own decl (acknowledged-macros kb))))
+        (let [h (v/assert kb (list 'declined_rule_macro decl) 'CxUniverse)]
+          (is (= [] (own decl (shaped-of kb))) "a declined suggestion is not a :rule-macro finding")
+          (is (= [[decl sugar-reason]] (own decl (acknowledged-macros kb)))
+              "it is a :rule-macro-review finding, with the sugar's reason")
+          (is (nil? (:rule-macro-review (v/kb-integrity kb #{} 'CxUniverse)))
+              "the review category runs only when named")
+          (v/retract! kb h)
+          (is (= [[decl true]] (own decl (shaped-of kb)))
+              "retracting the record brings the finding back")
+          (is (= [] (own decl (acknowledged-macros kb)))))))))
+
+(tu/deftest-kb an-acknowledged-suggestion-carries-its-reason-into-review
   (tu/with-terms [livesInX locatedInX]
     (doseq [p [livesInX locatedInX]]
       (v/assert kb (list 'binary_predicate p) 'CxUniverse))
     (v/assert kb (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p)) 'CxUniverse)
-    (let [decl (list 'genl livesInX locatedInX)]
-      (is (= [[decl true]] (shaped-of kb)))
-      (let [h (v/assert kb (list 'declined_rule_macro decl) 'CxUniverse)]
-        (is (= [] (shaped-of kb)) "a declined suggestion is not reported")
+    (let [decl   (list 'genl livesInX locatedInX)
+          reason "living somewhere is usually being there, and the default is meant"
+          h      (v/assert kb (list 'acknowledgedFinding :rule-macro decl reason) 'CxUniverse)]
+      (is (= [] (shaped-of kb)))
+      (is (= [[decl reason]] (acknowledged-macros kb)))
+      (testing "an acknowledgment under another category acknowledges nothing here"
         (v/retract! kb h)
-        (is (= [[decl true]] (shaped-of kb)) "retracting the record brings the finding back")))))
+        (v/assert kb (list 'acknowledgedFinding :rule-clash decl reason) 'CxUniverse)
+        (is (= [[decl true]] (shaped-of kb)))
+        (is (= [] (acknowledged-macros kb)))))))
 
 (tu/deftest-kb a-declined-suggestion-is-read-from-the-rule-s-context
-  (tu/with-terms [livesInX locatedInX CxTheory]
-    (doseq [p [livesInX locatedInX]]
-      (v/assert kb (list 'binary_predicate p) 'CxUniverse))
-    (v/assert kb (list 'genlCx CxTheory 'CxUniverse) 'CxUniverse)
-    (v/assert kb (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p)) 'CxUniverse)
-    (v/assert kb (list 'declined_rule_macro (list 'genl livesInX locatedInX)) CxTheory)
-    (is (= 1 (count (shaped-of kb))) "a record below the rule's context does not decline it")))
+  (tu/with-cleared-kb [kb core-kb]
+    (tu/with-terms [livesInX locatedInX CxTheory]
+      (doseq [p [livesInX locatedInX]]
+        (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+      (v/assert kb (list 'genlCx CxTheory 'CxUniverse) 'CxUniverse)
+      (v/assert kb (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p)) 'CxUniverse)
+      (let [decl (list 'genl livesInX locatedInX)]
+        (v/assert kb (list 'declined_rule_macro decl) CxTheory)
+        (is (= 1 (count (own decl (shaped-of kb))))
+            "a record below the rule's context does not decline it")
+        (is (= [] (own decl (acknowledged-macros kb))))))))
 
 (defn- with-temp-dirs
   "`(f dir-a dir-b)` on two new temp directory paths, removed afterwards."
@@ -1453,20 +1505,21 @@
   (tu/with-terms [livesInX locatedInX]
     (with-temp-dirs
       (fn [dir _]
-        (tu/with-cleared-kb [src tu/fresh]
+        (tu/with-cleared-kb [src core-kb]
           (doseq [p [livesInX locatedInX]]
             (v/assert src (list 'binary_predicate p) 'CxUniverse))
           (v/assert src (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p))
                     'CxUniverse)
           (v/assert src (list 'declined_rule_macro (list 'genl livesInX locatedInX)) 'CxUniverse)
           (is (zero? (:skipped (v/export-text! src dir)))))
-        (tu/with-cleared-kb [reloaded tu/fresh]
+        (tu/with-cleared-kb [reloaded core-kb]
           (v/load-text! reloaded dir)
           (let [record (list 'declined_rule_macro (list 'genl livesInX locatedInX))]
             (is (seq (v/sentexes-matching reloaded record 'CxUniverse)))
-            (is (= [] (shaped-of reloaded)) "the reloaded record still declines the suggestion")
+            (is (= [] (own (second record) (shaped-of reloaded)))
+                "the reloaded record still declines the suggestion")
             (v/retract! reloaded (v/handle-of reloaded record 'CxUniverse))
-            (is (= 1 (count (shaped-of reloaded)))
+            (is (= 1 (count (own (second record) (shaped-of reloaded))))
                 "the reloaded rule is the one the record named")))))))
 
 (tu/deftest-kb a-monotonic-generator-shape-is-not-reported
@@ -1654,3 +1707,228 @@
           (is (some? needed))
           (is (every? #(= [:truncated :max-work] ((juxt :status :reason) (run {:max-work %})))
                       (range 0 (or needed 0)))))))))
+
+;; ---- rule-clash -------------------------------------------------------------
+
+(defn- clash-sweep
+  "A sweep of `categories` alone, from `context`."
+  ([kb categories] (clash-sweep kb categories 'CxUniverse))
+  ([kb categories context] (v/kb-integrity kb #{} context {:categories categories})))
+
+(defn- about
+  "The rule-clash findings among `findings` whose sentences name a term of `terms`, so a
+  test reads its own rules' pairs beside whatever the starter's rules pair."
+  [terms findings]
+  (filterv #(some (set terms) (flatten (:sentences %))) findings))
+
+(tu/deftest-kb a-live-rule-clash-is-a-violation-the-default-sweep-reports
+  (tu/with-terms [bird_kind penguin_kind flies]
+    (let [yes    (v/assert-rule kb [(list bird_kind '?x)] (list flies '?x) 'CxUniverse
+                                {:direction :forward})
+          no     (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x))
+                                'CxUniverse {:direction :forward})
+          before (state-snapshot kb)
+          report (v/kb-integrity kb #{} 'CxUniverse)
+          mine   (about [flies] (:rule-clash report))
+          e      (first mine)]
+      (is (= :gap (:status report)))
+      (is (= 1 (count mine)))
+      (is (= :negation (:kind e)))
+      (is (= #{yes no} (set (:rules e))))
+      (is (= 'CxUniverse (:context e)))
+      (is (false? (:excepted e)))
+      (is (not (contains? e :inert)))
+      (is (nil? (:rule-clash-review report)) "the review category runs only when named")
+      (is (= before (state-snapshot kb)) "the audit stores, believes and files nothing"))))
+
+(tu/deftest-kb an-inert-rule-clash-is-review-only
+  (tu/with-terms [bird_kind penguin_kind flies]
+    (v/assert-rule kb [(list bird_kind '?x)] (list flies '?x) 'CxUniverse {:direction :forward})
+    (let [doc (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x))
+                             'CxUniverse {:direction :inert})]
+      (is (empty? (about [flies] (:rule-clash (v/kb-integrity kb #{} 'CxUniverse))))
+          "a pair with a set/inertRule is no violation")
+      (is (empty? (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash})))))
+      (let [e (first (about [flies] (:rule-clash-review (clash-sweep kb #{:rule-clash-review}))))]
+        (is (= :negation (:kind e)))
+        (is (contains? (set (:rules e)) doc))
+        (is (true? (:inert e)))))))
+
+(tu/deftest-kb an-excepted-rule-clash-is-review-only
+  (tu/with-terms [bird_kind penguin_kind flies]
+    (v/assert kb (list 'exceptWhen (list penguin_kind '?x)
+                       (list 'set/defaultRule
+                             (list 'set/forwardRule
+                                   (list 'implies (list bird_kind '?x) (list flies '?x)))))
+              'CxUniverse)
+    (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x)) 'CxUniverse
+                   {:direction :forward})
+    (is (empty? (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash}))))
+        "the exception names the other rule's case, so the clash is handled")
+    (let [e (first (about [flies] (:rule-clash-review (clash-sweep kb #{:rule-clash-review}))))]
+      (is (= :negation (:kind e)))
+      (is (true? (:excepted e)))
+      (is (not (contains? e :inert))))))
+
+(tu/deftest-kb an-acknowledged-rule-clash-is-review-only
+  ;; The subject quotes the pair as one conjunction of the two rule sentences, in either
+  ;; order and under any variable names: the pair is matched by the rules' canonical form.
+  (tu/with-terms [bird_kind penguin_kind flies swims]
+    (v/assert-rule kb [(list bird_kind '?x)] (list flies '?x) 'CxUniverse {:direction :forward})
+    (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x)) 'CxUniverse
+                   {:direction :forward})
+    (let [reason "penguins are birds that do not fly, and the clash is the facts' to settle"
+          pair   (list 'Quote (list 'and
+                                    (list 'implies (list penguin_kind '?p) (list 'not (list flies '?p)))
+                                    (list 'implies (list bird_kind '?b) (list flies '?b))))]
+      (is (= 1 (count (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash}))))))
+      (testing "an acknowledgment of another pair acknowledges nothing here"
+        (let [other (list 'Quote (list 'and
+                                       (list 'implies (list penguin_kind '?p) (list 'not (list swims '?p)))
+                                       (list 'implies (list bird_kind '?b) (list flies '?b))))
+              h     (v/assert kb (list 'acknowledgedFinding :rule-clash other reason) 'CxUniverse)]
+          (is (= 1 (count (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash}))))))
+          (v/retract! kb h)))
+      (let [h (v/assert kb (list 'acknowledgedFinding :rule-clash pair reason) 'CxUniverse)]
+        (is (empty? (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash}))))
+            "an acknowledged pair is no violation")
+        (let [e (first (about [flies] (:rule-clash-review (clash-sweep kb #{:rule-clash-review}))))]
+          (is (= :negation (:kind e)))
+          (is (= reason (:acknowledged e)) "the reason stays visible beside the pair")
+          (is (false? (:excepted e)))
+          (is (not (contains? e :inert))))
+        (v/retract! kb h)
+        (is (= 1 (count (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash})))))
+            "retracting the acknowledgment brings the violation back")))))
+
+(tu/deftest-kb a-rule-clash-is-read-from-a-context-that-sees-both-rules
+  (tu/with-terms [bird_kind penguin_kind flies CxLeft CxRight CxBoth]
+    (v/assert kb (list 'genlCx CxLeft 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxRight 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxBoth CxLeft) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxBoth CxRight) 'CxUniverse)
+    (v/assert-rule kb [(list bird_kind '?x)] (list flies '?x) CxLeft {:direction :forward})
+    (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x)) CxRight
+                   {:direction :forward})
+    (is (empty? (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash}))))
+        "CxUniverse sees neither rule")
+    (is (empty? (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash} CxLeft))))
+        "CxLeft sees one")
+    (let [e (first (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash} CxBoth))))]
+      (is (= :negation (:kind e)))
+      (is (= CxBoth (:context e)) "where the nogood could form"))))
+
+(tu/deftest-kb the-census-clashes-are-the-two-rule-clash-categories
+  (tu/with-terms [bird_kind penguin_kind flies dog_kind barks]
+    (v/assert-rule kb [(list bird_kind '?x)] (list flies '?x) 'CxUniverse {:direction :forward})
+    (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x)) 'CxUniverse
+                   {:direction :forward})
+    (v/assert-rule kb [(list dog_kind '?x)] (list barks '?x) 'CxUniverse {:direction :forward})
+    (v/assert-rule kb [(list bird_kind '?x)] (list 'not (list barks '?x)) 'CxUniverse
+                   {:direction :inert})
+    (let [census (about [flies barks] (:pairs (:clashes (v/kb-quality kb {:limit 1000}))))
+          sweep  (clash-sweep kb #{:rule-clash :rule-clash-review})
+          found  (about [flies barks] (concat (:rule-clash sweep) (:rule-clash-review sweep)))]
+      (is (= 2 (count census)))
+      (is (= (set census) (set (map #(dissoc % :inert) found)))
+          "kb-quality's :clashes reading is the same pairing, unsplit"))))
+
+(tu/deftest-kb rule-clash-findings-truncate-under-every-bound
+  (tu/with-terms [bird_kind penguin_kind flies swims]
+    (doseq [f [flies swims]]
+      (v/assert-rule kb [(list bird_kind '?x)] (list f '?x) 'CxUniverse {:direction :forward})
+      (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list f '?x)) 'CxUniverse
+                     {:direction :forward}))
+    (let [run      #(v/kb-integrity kb #{} 'CxUniverse (assoc % :categories #{:rule-clash}))
+          in-order (mapv :rules (:rule-clash (run {})))]
+      (is (= 2 (count (about [flies swims] (:rule-clash (run {}))))))
+      (testing "a result cap below the finding count keeps the completed prefix"
+        (let [report (run {:max-results 1})]
+          (is (= [:truncated :max-results] ((juxt :status :reason) report)))
+          (is (= (subvec in-order 0 1) (mapv :rules (:rule-clash report))))))
+      (testing "work exhaustion is truncated, never audited"
+        (let [needed (first (filter #(= :gap (:status (run {:max-work %})))
+                                    (range 0 1000000 50)))]
+          (is (some? needed))
+          (is (every? #(= [:truncated :max-work] ((juxt :status :reason) (run {:max-work %})))
+                      (range 0 (or needed 0) 50))))))))
+
+;; ---- taxonomy-island ----------------------------------------------------------
+
+(defn- islands
+  "The `:taxonomy-island` findings over `terms` a sweep of that category alone reports in
+  `context`."
+  ([kb terms] (islands kb terms 'CxUniverse))
+  ([kb terms context]
+   (filterv #(contains? (set terms) (:term %))
+            (:taxonomy-island (v/kb-integrity kb #{} context
+                                              {:categories #{:taxonomy-island}})))))
+
+(tu/deftest-kb an-edged-type-that-misses-the-root-is-a-taxonomy-island
+  ;; The root is the type the most nodes reach, so the placed chain makes it `thing`.
+  (tu/with-terms [stray_kind loose_kind placed_kind below_kind]
+    (let [census #(:islands (:taxonomy (v/kb-quality kb)))
+          start  (census)]
+      (v/assert kb (list 'genl placed_kind 'thing) 'CxUniverse)
+      (v/assert kb (list 'genl below_kind placed_kind) 'CxUniverse)
+      (v/assert kb (list 'genl stray_kind loose_kind) 'CxUniverse)
+      (let [before (state-snapshot kb)]
+        (is (= (mapv (fn [t] {:term t :root 'thing}) (sort-by nm/print-key [loose_kind stray_kind]))
+               (islands kb [stray_kind loose_kind placed_kind below_kind]))
+            "both ends of the edge that reaches no root, and not the placed types")
+        (is (= (+ start 2) (census)) "kb-quality's :islands counts the same nodes")
+        (is (= before (state-snapshot kb)) "the audit stores, believes and files nothing")))))
+
+(tu/deftest-kb taxonomy-island-is-review-only-and-reads-the-edges-a-context-sees
+  (tu/with-terms [CxHidden hidden_kind loose_kind placed_kind below_kind]
+    (v/assert kb (list 'genlCx CxHidden 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genl placed_kind 'thing) 'CxUniverse)
+    (v/assert kb (list 'genl below_kind placed_kind) 'CxUniverse)
+    (v/assert kb (list 'genl hidden_kind loose_kind) CxHidden)
+    (is (nil? (:taxonomy-island (v/kb-integrity kb #{} CxHidden)))
+        "a sweep without :categories skips the review-only pass")
+    (is (= [] (islands kb [hidden_kind loose_kind])) "CxUniverse sees no edge of either")
+    (is (= (sort-by nm/print-key [hidden_kind loose_kind])
+           (mapv :term (islands kb [hidden_kind loose_kind] CxHidden))))))
+
+;; ---- stranded-declaration -----------------------------------------------------
+
+(defn- stranded
+  "The `:stranded-declaration` findings naming one of `preds` a sweep of that category
+  alone reports in `context`."
+  ([kb preds] (stranded kb preds 'CxUniverse))
+  ([kb preds context]
+   (filterv #(contains? (set preds) (:predicate %))
+            (:stranded-declaration (v/kb-integrity kb #{} context
+                                                   {:categories #{:stranded-declaration}})))))
+
+(tu/deftest-kb a-declaration-past-its-predicate-s-arity-is-a-violation
+  (tu/with-terms [parentOf a_type]
+    (v/assert kb (list 'genl a_type 'thing) 'CxUniverse)
+    (v/assert kb (list 'arg parentOf 3 a_type) 'CxUniverse)
+    (is (= [] (stranded kb [parentOf]))
+        "nothing binds parentOf yet, so the position is a lower bound and not a mistake")
+    (v/assert kb (list 'arg parentOf 1 a_type) 'CxUniverse)
+    (v/assert kb (list 'binary_predicate parentOf) 'CxUniverse)
+    (let [before (state-snapshot kb)
+          report (v/kb-integrity kb #{} 'CxUniverse)
+          e      (first (filter #(= parentOf (:predicate %)) (:stranded-declaration report)))]
+      (is (= :gap (:status report)) "the default sweep runs the pass")
+      (is (= [(list 'arg parentOf 3 a_type)] (mapv :sentence (stranded kb [parentOf]))))
+      (is (= {:predicate parentOf :position 3 :arity 2 :via parentOf :context 'CxUniverse}
+             (select-keys e [:predicate :position :arity :via :context])))
+      (is (string? (:message e)) "the entry point's own wording")
+      (is (= (filterv #(= parentOf (:predicate %))
+                      (:stranded (:declarations (v/kb-quality kb {:limit 1000}))))
+             (stranded kb [parentOf]))
+          "kb-quality's :declarations lists the same entries")
+      (is (= before (state-snapshot kb)) "the audit stores, believes and files nothing"))))
+
+(tu/deftest-kb stranded-declaration-reads-the-declarations-a-context-sees
+  (tu/with-terms [CxHidden parentOf a_type]
+    (v/assert kb (list 'genlCx CxHidden 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genl a_type 'thing) 'CxUniverse)
+    (v/assert kb (list 'arg parentOf 3 a_type) CxHidden)
+    (v/assert kb (list 'binary_predicate parentOf) 'CxUniverse)
+    (is (= [] (stranded kb [parentOf])) "CxUniverse does not see the declaration")
+    (is (= [CxHidden] (mapv :context (stranded kb [parentOf] CxHidden))))))

@@ -130,7 +130,10 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; :on-progress (which may throw to cancel).
                                                 ; :subsumption names the rules another rule already
                                                 ; covers, :clashes the rule pairs that would
-                                                ; contradict each other if both fired
+                                                ; contradict each other if both fired. :taxonomy,
+                                                ; :declarations and :clashes count kb-integrity's
+                                                ; :taxonomy-island, :stranded-declaration and
+                                                ; rule-clash findings over the whole KB
 (quality-report quality)                        ; that map as Markdown; takes the map, not the KB
 (caches kb)                                     ; what the *process* holds beside the stores: one row per
                                                 ; cache — :entries :limit :unit :hits :misses :hit-rate,
@@ -190,12 +193,17 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; over a pair a stated separation divides, the suggested
                                                 ; declaration for every stored rule that a declaration the
                                                 ; engine implements states, every genl node with no
-                                                ; declared arity, plus three
+                                                ; declared arity, every argument declaration naming a
+                                                ; position its predicate lacks, and every live rule pair
+                                                ; whose conclusions would contradict if both fired, plus three
                                                 ; review-only smells: sibling types sharing one direct
                                                 ; genl set, stated genl/disjoint edges that derive
                                                 ; without themselves, and disjoint pairs a known cover
-                                                ; exhausts (a candidate partition), and every declared
-                                                ; argument position no arg-type declaration types. Returns
+                                                ; exhausts (a candidate partition), and for review every
+                                                ; declared argument position no arg-type declaration
+                                                ; types, every edged type off the taxonomy's root, and
+                                                ; every rule clash an inert rule or an exception
+                                                ; accounts for. Returns
                                                 ; {:status :audited :candidate-count n}
                                                 ; when clean, or :status :gap plus any of the sparse
                                                 ; categories :all-specified-violations,
@@ -204,11 +212,13 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; :implicit-arity-class,
                                                 ; :orthogonal-over-separation, :rule-macro,
                                                 ; :undeclared-arity,
-                                                ; :uncorresponded-function, :twin-genls,
-                                                ; :derivable-stated-edge,
-                                                ; :disjoint-could-be-partition and :missing-arg. opts may bound :max-work,
+                                                ; :uncorresponded-function, :stranded-declaration,
+                                                ; :rule-clash, :twin-genls, :derivable-stated-edge,
+                                                ; :disjoint-could-be-partition, :missing-arg,
+                                                ; :taxonomy-island, :rule-clash-review and
+                                                ; :rule-macro-review. opts may bound :max-work,
                                                 ; :max-ms and :max-results, and :categories names the
-                                                ; passes to run. The four review-only passes run only
+                                                ; passes to run. The seven review-only passes run only
                                                 ; when :categories names them; exhaustion is :truncated,
                                                 ; never :audited. Work/time check between opaque callbacks
                                                 ; and result pulls (one callback/chunk may overrun);

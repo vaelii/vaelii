@@ -44,6 +44,45 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `{:believed? true}` to filter, and the daemon serves it.
   [web.md](docs/web.md), [api.md](docs/api.md)
   *Migration:* none.
+### Breaking
+
+- **`kb-integrity`'s default sweep reports stranded declarations and live rule
+  clashes.** Two new categories run without `:categories`: `:stranded-declaration`, each
+  believed `arg`, `genlArg`, `interArg` or `interArgEqual` declaration the audit context
+  sees that names a position its predicate does not have, and `:rule-clash`, each pair of
+  rules the audit context sees whose conclusions would contradict if both fired, where
+  both rules chain and no `exceptWhen` handles the clash. A KB holding either now sweeps
+  `:gap` where it swept `:audited`. [integrity.md](docs/integrity.md#what-a-rule-clash-finding-means).
+
+  *Migration:* fix the finding, or pass `:categories` naming the categories to run.
+  *Breaks:* `kb-integrity`
+
+### Additive
+
+- **Taxonomy coverage, stranded declarations and rule clashes are `kb-integrity`
+  categories, implemented once.** The three checks move out of `vaelii.impl.quality` into
+  `vaelii.impl.integrity`, which reports them as `:stranded-declaration`, `:rule-clash`,
+  and two review-only categories: `:taxonomy-island`, each edged type node the audit
+  context sees that does not reach the found root, and `:rule-clash-review`, each clash
+  pair with a `set/inertRule` (marked `:inert true`) or one a stated exception handles
+  (`:excepted true`). `kb-quality`'s `:taxonomy`, `:declarations` and `:clashes` keys,
+  `quality-report`, the `:kb-quality` and `:quality-report` daemon ops and `lein cli
+  quality` answer as before, computed by the same code over the whole KB.
+  [integrity.md](docs/integrity.md), [quality.md](docs/quality.md).
+
+- **`(acknowledgedFinding category subject "reason")` records that a `kb-integrity`
+  finding was looked at, and why it stays.** The sweep moves an acknowledged finding to a
+  review-only bucket instead of dropping it, carrying the reason as `:acknowledged`: a
+  rule pair `(Quote (and R1 R2))` from `:rule-clash` to `:rule-clash-review`, and a
+  suggested declaration from `:rule-macro` to the new review-only `:rule-macro-review`.
+  `declined_rule_macro` is now sugar: a `core.txt` forward rule concludes
+  `(acknowledgedFinding :rule-macro D "Acknowledged via declined_rule_macro; no reason
+  supplied.")` from it, and the sweep reads only the acknowledgment. `abstract.txt`
+  acknowledges the two clashes it leaves unexcepted on purpose, the root denial against
+  the tangible and the situation proper readings' definitions, so the shipped ontology
+  sweeps `:audited`. [integrity.md](docs/integrity.md#acknowledged-findings)
+  *Migration:* none; a declined suggestion is still absent from `:rule-macro`, and is
+  listed under `:rule-macro-review` when `:categories` names it.
 
 ### Fix: answers
 

@@ -1336,6 +1336,7 @@ E16_GLOBAL_ALLOW = {
     ("src/vaelii/impl/nat.clj", "corresponded-rules"),
     ("src/vaelii/impl/nat.clj", "held-application-rules"),
     ("src/vaelii/impl/nat.clj", "formula-position-rules"),
+    ("src/vaelii/impl/integrity.clj", "rule-clash-findings"),
     # The planner's lead choice under a variable context, which has no ancestor set yet:
     # the argument's census over every context bounds what the lead can cost.
     ("src/vaelii/impl/resolution.clj", "arg-lead"),
@@ -1682,13 +1683,14 @@ E17_ALLOW = {
     # A write report's exemption seeds: the memberships of every type under a symbol a
     # moved sentence names, a superset over every reader the report then reads scoped.
     ("src/vaelii/impl/settle.clj", "sentence-seeds"),
-    # A report on the whole taxonomy, which has no vantage to read from.
-    ("src/vaelii/impl/quality.clj", "taxonomy-coverage"),
+    # A report on the whole taxonomy, which has no vantage to read from: the census's
+    # nil context; a kb-integrity sweep passes its audit context and reads scoped.
+    ("src/vaelii/impl/integrity.clj", "taxonomy-reach"),
     # The clash reading's candidate fan. A rule pair is decided from a common descendant
     # of the two rules' contexts — a vantage belonging to neither — so fanning from
     # either would drop a pair the context that can see both would find, and the pair
     # itself is decided scoped.
-    ("src/vaelii/impl/quality.clj", "clash-partners"),
+    ("src/vaelii/impl/integrity.clj", "clash-partners"),
     # The context adjacency read where no reader exists: the settle's `genlCx` moves
     # (an active edge an except reaches, every reader's moves read from it), and the
     # candidate filter in front of a fact's declarations below it, each candidate then asked

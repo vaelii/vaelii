@@ -1151,14 +1151,14 @@
   figure the data does not hold.  **This is not a required check either**: a threshold
   on somebody's ontology is not a build failure.
 
-  **`:declarations` is why this reader and not `violations`.**  `(arg parentOf 3 t)` is
-  admitted while `parentOf` has no declared length — the highest position a declaration
-  names is a lower bound on the arity, not a claim about it — and goes inert when a length
-  arrives, whether declared of the predicate or inherited from a super.  It is not
-  refused, because refusing it would make the *binding's* arrival order decide what the KB
-  holds. A wrong-length **fact** is a nogood the settle places (docs/taxonomy.md). A
-  stranded declaration constrains nothing, refuses nothing and mints nothing, and reads
-  the same an hour later — a census question, not a settle one.
+  **Three keys count `kb-integrity` findings.**  `:taxonomy`, `:declarations` and
+  `:clashes` are `vaelii.impl.integrity`'s `taxonomy-coverage`, `stranded-declarations` and
+  `clash-pairs` read over the whole KB — the checks behind kb-integrity's
+  `:taxonomy-island`, `:stranded-declaration`, `:rule-clash` and `:rule-clash-review`
+  categories, which are where a caller wanting a verdict reads them (docs/integrity.md).
+  A stranded declaration constrains nothing, refuses nothing and mints nothing, and reads
+  the same an hour later, which is why it is a sweep question and not a `violations`
+  entry; a wrong-length **fact** is a nogood the settle places (docs/taxonomy.md).
 
   `opts`: `:limit` caps each listed set (default 25 — the counts are the headline, and a
   30,000-entry list is not one); `:on-progress` is called with `{:phase :done :total}` as
@@ -1195,7 +1195,7 @@
   never the KB.  Two terms are not flat — a declaration whose predicate inherits its
   length costs a read per predicate above it, where one carrying its own costs a map read,
   and the two rule-hygiene readings cost a record read per rule and a unification per
-  candidate pair — and `vaelii.impl.quality` says how.
+  candidate pair — and `vaelii.impl.quality` and `vaelii.impl.integrity` say how.
 
   **Read without a snapshot**, like every other reader here: a write landing mid-report can
   leave a count and a list disagreeing by one (a rule enumerated and then retracted is
@@ -5903,13 +5903,17 @@
   the non-empty categories among `:definition-inconsistencies`,
   `:all-specified-violations`, `:genl-arg-widening`, `:not-under-thing`, `:implicit-genl`,
   `:implicit-arity-class`, `:orthogonal-over-separation`, `:rule-macro`, `:undeclared-arity`,
-  `:uncorresponded-function`, `:twin-genls`, `:derivable-stated-edge`,
-  `:disjoint-could-be-partition` and `:missing-arg`, or `:status :truncated` with its
-  `:reason` and the findings kept when a bound runs out.  `options` takes `:max-work`,
-  `:max-ms` and `:max-results`, and `:categories`, a set of category keys to run.  The four
-  review-only categories `:twin-genls`, `:derivable-stated-edge`,
-  `:disjoint-could-be-partition` and `:missing-arg` run only when `:categories` names them.
-  Stores and files nothing.  See docs/integrity.md."
+  `:uncorresponded-function`, `:stranded-declaration`, `:rule-clash`, `:twin-genls`,
+  `:derivable-stated-edge`, `:disjoint-could-be-partition`, `:missing-arg`,
+  `:taxonomy-island`, `:rule-clash-review` and `:rule-macro-review`, or `:status
+  :truncated` with its `:reason`
+  and the findings kept when a bound runs out.  `options` takes `:max-work`, `:max-ms` and
+  `:max-results`, and `:categories`, a set of category keys to run.  The seven review-only
+  categories `:twin-genls`, `:derivable-stated-edge`, `:disjoint-could-be-partition`,
+  `:missing-arg`, `:taxonomy-island`, `:rule-clash-review` and `:rule-macro-review` run
+  only when `:categories` names them; a rule-macro or rule-clash finding an
+  `acknowledgedFinding` names is reported under its review category with the reason.  `kb-quality`'s `:taxonomy`, `:declarations` and `:clashes` count the same
+  checks over the whole KB.  Stores and files nothing.  See docs/integrity.md."
   ([kb candidate-terms context]
    (integrity/kb-integrity kb candidate-terms context nil))
   ([kb candidate-terms context options]

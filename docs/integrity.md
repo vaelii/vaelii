@@ -9,10 +9,14 @@
   and arity force that it is not an instance of, the orthogonal declarations (`orthogonal` and
   `siblingDisjointException`) over a pair a stated separation divides, the stored rules a
   declaration the engine implements states, the `genl` nodes with no declared arity, the
-  functions a held rule applies with no single correspondence, and three
-  ontology-engineering smells for review: sibling types with one direct `genl` set,
-  stated edges that derive without themselves, and `disjoint` pairs a known cover
-  exhausts, plus every declared argument position no declaration types.
+  functions a held rule applies with no single correspondence, the argument declarations
+  that name a position their predicate does not have, the rule pairs whose conclusions
+  would contradict each other if both fired, and for review: three ontology-engineering
+  smells (sibling types with one direct `genl` set, stated edges that derive without
+  themselves, and `disjoint` pairs a known cover exhausts), every declared argument
+  position no declaration types, the edged types that miss the taxonomy's root, the
+  rule clashes an inert rule, a stated exception or an acknowledgment accounts for, and
+  the acknowledged rule-macro suggestions.
 - **Not here:** repairing findings, enumerating a domain, vocabulary completeness,
   generic constraint auditing, or the represented settled dilemmas returned by
   `contradictions`; how definitions infer membership → [defns.md](defns.md); what a
@@ -21,7 +25,8 @@
   declares → [taxonomy.md](taxonomy.md#covering-a-whole-and-the-parts-named-against-it); what an
   `siblingDisjointException` exempts → [taxonomy.md](taxonomy.md#disjointness); what
   `transitiveInArg` licenses → [inherit.md](inherit.md); a rule another rule already
-  covers, and other general knowledge-quality census readings → [quality.md](quality.md).
+  covers, the census counts over these findings, and the other knowledge-quality
+  readings → [quality.md](quality.md).
 - **Assumes:** sentex, context, ground term, `genl` → [glossary.md](glossary.md).
 
 ## The call
@@ -75,15 +80,19 @@ implicit-arity-class pass reads one census of the visible `predicateTypeByArity`
 declaration at a time. The rule-macro pass reads one census of the stored rules, then
 one rule at a time. The undeclared-arity pass reads one census of the visible `genl`
 edges, then one node at a time. The uncorresponded-function pass reads one census of the
-stored rules, then one rule at a time. The three ontology-engineering passes read the taxonomy's types
+stored rules, then one rule at a time. The stranded-declaration pass reads one census of the
+argument declarations, then one declaration at a time. The two rule-clash passes read one
+census of the stored rules, then one candidate pair at a time. The taxonomy-island pass
+reads the visible `genl` nodes, then one node's closure at a time. The three ontology-engineering passes read the taxonomy's types
 once, or one census of stated `genl` and `disjoint` declarations, then one type or one
 declaration at a time. These focused units are where
 cooperative checkpoints and partial-result preservation sit.
 
 `:categories`, a set of category keys, runs the passes of those categories alone and
 reads nothing for the others. Without `:categories`, the sweep runs every pass except
-the four review-only ones: `:twin-genls`, `:derivable-stated-edge`,
-`:disjoint-could-be-partition` and `:missing-arg`. A caller names a review-only category
+the seven review-only ones: `:twin-genls`, `:derivable-stated-edge`,
+`:disjoint-could-be-partition`, `:missing-arg`, `:taxonomy-island`,
+`:rule-clash-review` and `:rule-macro-review`. A caller names a review-only category
 in `:categories` to run its pass, so a review finding never makes a default sweep `:gap`. On a large KB the census passes (the specified and widening
 categories) can spend the daemon's `:max-work` ceiling before a candidate pass starts; a
 caller names the candidate categories to reach them.
@@ -109,7 +118,7 @@ A finding changes the top-level status and adds only the populated categories:
   {:status :audited :violations #{Bob}}}}
 ```
 
-`:status :audited` means all thirteen passes ran and none found a gap. `:status :gap` cannot
+`:status :audited` means every pass the sweep ran completed and none found a gap. `:status :gap` cannot
 be confused with that clean shape even when only one sparse category is present. The
 specified category is exactly `all-specified-violations`, including its typed declaration
 gaps; it is composed, not reimplemented.
@@ -460,16 +469,22 @@ and the KB states no marker that tells the two apart. The sweep reads one sign i
 The heuristic is a sign, not a proof. A default may be deliberate before anything
 overrides it, and a contrary claim may override a default that was written by accident.
 
-A reviewer records a decision on any suggestion with `declined_rule_macro`, a `core.txt`
-predicate over the suggested declaration:
+A reviewer records a decision on any suggestion with an
+[acknowledgment](#acknowledged-findings) over the suggested declaration, or with
+`declined_rule_macro`, `core.txt` sugar for one that carries no reason:
 
 ```clojure
 ;; (set/defaultRule (set/forwardRule (implies (livesIn ?a ?p) (locatedIn ?a ?p))))
+(acknowledgedFinding :rule-macro (genl livesIn locatedIn) "livesIn is meant as a default")
 (declined_rule_macro (genl livesIn locatedIn))
 ```
 
-The pass does not report a suggestion that the rule's context sees declined. The record
-quotes the suggestion rather than naming the rule by `(sentexHandle H)`: a handle belongs
+A suggestion the rule's context sees acknowledged moves from `:rule-macro` to the
+review-only `:rule-macro-review`, marked with the reason as `:acknowledged`. A forward
+rule in `core.txt` concludes `(acknowledgedFinding :rule-macro D "Acknowledged via
+declined_rule_macro; no reason supplied.")` from a `(declined_rule_macro D)` record, and
+the pass reads only the acknowledgment. The record quotes the suggestion rather than
+naming the rule by `(sentexHandle H)`: a handle belongs
 to one store, and `export-text!` skips a sentence that names one, so a handle-based record
 would not survive a reload. The suggestion is a function of the rule's sentence, so the
 record names the rule, and an edit to the rule that changes its shape changes the
@@ -609,6 +624,198 @@ The pass has these limits:
 Reading each rule spends one work unit, and `:max-results` counts these findings after
 the undeclared-arity category.
 
+## What a stranded-declaration finding means
+
+`(arg parentOf 3 person)` is admitted while `parentOf` has no declared length, because
+the highest position a declaration names is a lower bound on the arity rather than a claim
+about it. When a length does arrive — declared of the predicate, or inherited through a
+`genl` edge from a super-predicate — the declaration is left constraining a position the
+predicate provably does not have, and the entry point refuses the identical sentence one
+line later. A declaration that is enforced and one that enforces nothing look exactly
+alike, so the sweep names the second:
+
+```clojure
+;; (arg parentOf 3 person), then (binary_predicate parentOf)
+{:status :gap
+ :candidate-count 0
+ :stranded-declaration
+ [{:handle 914 :sentence (arg parentOf 3 person) :context CxUniverse
+   :predicate parentOf :position 3 :arity 2 :via parentOf
+   :message "..."}]}
+```
+
+It is the **entry point's own arm, re-asked** of content already stored
+(`checks/arg-position-violation`), so what the sweep lists and what an `assert` refuses
+cannot drift apart: whatever binds a predicate's length for the entry point binds it
+here, and a predicate the KB has bound to no length strands nothing. `interArg` names two
+positions and each is asked. `:via` is the predicate the length was read off — the
+declaration's own where it carries one, the super it inherits from otherwise. `:message`
+is the sentence the check itself wrote, carried rather than re-derived.
+
+A **`variable_arity`** predicate strands nothing, however high the position: it reads a
+tuple of any length from its declared arity upward, so a position past that length is one
+its tuples really do reach.
+
+A stranded declaration constrains nothing, refuses nothing and mints nothing, so there is
+no *newly* for a settle to report and it reads the same an hour later; that is why it is
+a sweep finding and not a `violations` entry ([taxonomy.md](taxonomy.md) has the argument
+against the wrong-length **fact**, which is a ledger entry). The fix is to correct the
+position, to declare the arity the author meant, or to mark the predicate `variable_arity`
+where its tuples really do reach that far.
+
+The pass has these limits:
+
+- **Declaration census, not candidate terms.** The pass reads every stored `arg`,
+  `genlArg`, `interArg` and `interArgEqual` declaration once (377 in the bundled
+  ontology), then asks each about its own predicate: a map read where the predicate
+  carries a length and one read per super-predicate where it inherits one.
+- **Believed declarations only.** A stored declaration nobody believes constrains nothing
+  for a reason that has nothing to do with the position it names.
+- **Visible from the audit context.** A declaration asserted in a context the audit
+  context cannot see is not read; the length is read as the entry point reads it in the
+  declaration's own context.
+
+Each declaration spends one work unit, and `:max-results` counts these findings after the
+uncorresponded-function category.
+
+## What a rule-clash finding means
+
+A rule pair whose consequents would clash if both fired, and whose antecedents could hold
+at once, is a contradiction in waiting: nothing is wrong yet, and the first content that
+satisfies both antecedents forms a nogood. Four kinds, asked of a pair in this order so one
+answering to two lands under one of them:
+
+| kind | the clash |
+|---|---|
+| `:negation` | one concludes `S` and the other `(not T)` where `S` entails `T` — `(dog X)` against `(not (animal X))`, and never `(animal X)` against `(not (dog X))` |
+| `:disjoint` | two unary type conclusions about one term whose types a `disjoint`, `sibling_disjoint` or `disjoint_metatype` declaration separates ([taxonomy.md](taxonomy.md)) |
+| `:functional` | two conclusions filling one `functional` slot for one subject with values that are not the same term. Both spellings of the mark count — `(functionalInArg P 2)` says the same thing about the same slot as `(functional P)` — and both positions of a binary tuple, `(functionalInArg P 1)` read in the mirror |
+| `:asymmetric` | one tuple concluded both ways round under a predicate declared `asymmetric`. A self tuple `(P a a)` is not one — the ontology admits it |
+
+```clojure
+;; (set/forwardRule (implies (bird ?x) (flies ?x)))
+;; (set/forwardRule (implies (penguin ?x) (not (flies ?x))))
+{:status :gap
+ :candidate-count 0
+ :rule-clash
+ [{:rules [812 813] :kind :negation :unifier {?x ?x'} :context CxUniverse
+   :sentences [(implies (bird ?x) (flies ?x)) (implies (penguin ?x) (not (flies ?x)))]
+   :excepted false}]}
+```
+
+In `:unifier` the **second** rule's variables carry a trailing `'`, because both authors
+are free to write `?x` and a map holding two of them says nothing. `:context` is where the
+nogood could form, below.
+
+**Two categories, by who acts on the pair.** `:rule-clash` holds the live pairs: both
+rules chain, no `exceptWhen` handles the clash, and no acknowledgment names the pair.
+`:rule-clash-review` is review-only, and holds the rest:
+
+- **A pair with a `set/inertRule`**, marked `:inert true`. An inert rule chains in neither
+  engine, so the clash forms only if the rule is switched on: a suggestion about the rule
+  as written, not a violation of the KB as it runs.
+- **A pair one rule already states as an exception**, marked `:excepted true`. "Birds
+  fly, unless penguins" beside "penguins do not fly" is the intended shape: one rule's
+  `exceptWhen` names a predicate the other rule is about, and the clash is handled.
+  Hiding it would tell an author there was nothing to see, where what there is to see is
+  that the pair is handled — which is a thing the author wrote and may have written wrong.
+- **A pair an [acknowledgment](#acknowledged-findings) names**, marked with its reason as
+  `:acknowledged`. The subject quotes the pair as one conjunction of the two rule
+  sentences, `(Quote (and R1 R2))`, in either order and under any variable names, and the
+  record is read from the pair's `:context`. The shipped ontology acknowledges two pairs
+  in `abstract.txt`: the root denial `(properPartOf ?part ?whole) → (not (partOf ?whole
+  ?part))` against the definitions `properCounterpart` generates for the tangible and the
+  situation proper readings, both strict, which fire together only where the facts
+  already contradict the root rule.
+
+The two property marks are read **up** the predicate hierarchy, as every constraint is
+convicted against them: two `fatherOf` conclusions clash against `(functional parentOf)`.
+A mark's reach is asked at three points — whether the KB declares any, which group a
+conclusion joins, and whether two conclusions share one — and all three go through one
+reader, so a spelling reaches the detector through every read or through none.
+
+"Could hold at once" is **shallow**, and five things rule it out: a literal appearing
+under σ together with its own negation or with the negation of a predicate its own is a
+spec of — `(properPartOf ?x ?y)` beside `(not (partOf ?x ?y))`, a spec's tuple being the
+predicate's — one term claimed to be of two separated types, one
+term bound to two arities — `(arity ?p 1)` beside `(arity ?p 2)`, and `(arity ?p 1)` beside
+`(equivalence_relation ?p)`, which claims 2 by reaching `binary_predicate` up `genl` — one
+term bounded above the exact arity it is claimed to have — `(arity ?p ?n)` with
+`(greaterThan ?n 2)` beside `(symmetric ?p)`, or `(arityMin ?p ?n)` with the same bound —
+and one term an `arg` declaration demands be of a type disjoint from one the two rules
+place it in — `arg` read with its covering forms, `(args P T)` and `(argAndRest P n T)`
+typing every position they reach, `(genl a P)` typing `a` by `P`'s arity, and an
+application written at any depth typed by its function's `result` and typing its own
+arguments by its function's `arg` declarations. Each of the five is a **declaration read**: **no inference is run and no fact
+is consulted.** A pair here is a clash that *could* form rather than one that has — a
+clash already formed is in `(contradictions kb)`, which is the other question and the
+other reader.
+
+The fifth rule-out reads the two consequents beside the antecedents, because the type an
+`arg` declaration demands of one rule's variable is disjoint from the type the **other**
+rule *concludes* about the unified term. `(arity ?r ?a) => (fixed_arity ?r)` demands `?r`
+be a `relation` through `(arg arity 1 relation)`, and a rule `(lied_before ?x) => (liar
+?x)` places the unified term under `person`. No ground term is both a relation and a
+person, so the two rules never both fire for one term and the pair is dropped. A declared
+domain the other conclusion does not exclude, and an undeclared one, both stay candidates
+— two stated types clashing is the clash the pair reports, so at least one side of the
+disjoint pair must be a declared arg type.
+
+`genl` declares no type on its first position, and a spec of `P` has `P`'s length, so
+`(genl ?r P)` demands `?r` the relation-wide exact-arity class of `(relation-arity kb P)`:
+`binary` for a binary `P`, `unary` for a type. A rule over the specs of a binary predicate
+then pairs with no rule concluding a type disjoint from `binary`, such as `person`, and
+still pairs with one concluding a class of binary relations.
+
+The unifier can bind one rule's variable to an application in the other:
+`(metal_stuff ?x) => (solid ?x)` against a rule `(uninterrupted ?y) => (uninterrupted_time
+(TimeOfFn ?y))` binds `?x` to `(TimeOfFn ?y)`. `(result TimeOfFn time)` types every
+application of `TimeOfFn` a `time`, which is `acausal` where `solid` is `causal`, so the
+pair is dropped; `(arg TimeOfFn 1 temporal)` types `?y` a `temporal` in the same way. A compound
+whose head is a connective or a `predicate` is a formula and is not read. An argument of
+a quoting predicate or quoting function, or at a position a `quotedArg` declaration types,
+is a mention and is not descended into, as in the argument checks
+([argtypes.md](argtypes.md)). `genlArg` and `genlResult` are not read:
+each bounds a subtype, one level above the memberships `disjoint` is asked of.
+
+**A pair whose antecedents cannot both hold is dropped, not flagged**, and the difference
+from `:excepted` is the whole reason. Such a pair is not a clash anybody has to sort: the
+two rules cannot both fire for one term, so nothing is in wait. Unreachable is the
+engine's answer; handled is the author's. The shipped ontology's own case is the **arity
+cycle**: `(unary_predicate ?p) => (arity ?p 1)` beside `(binary_predicate ?p) => (arity ?p
+2)` would be a `:functional` clash on the `arity` table, and the antecedents are two types
+`core.txt` declares `disjoint`; read the other way round, `(arity ?p 1) =>
+(unary_predicate ?p)` beside `(arity ?p 2) => (binary_predicate ?p)` is a `:disjoint`
+clash on the conclusions, and the third rule-out drops it.
+
+A rule is never paired with itself, a pair is taken once, and the findings are in content
+order of the first rule and then the second.
+
+The pass has these limits:
+
+- **Rule census, not candidate terms.** The pass reads every stored rule off the rule
+  extent once, then pairs only the rules the consequent index brings together: a negated
+  conclusion with the conclusions on its predicate's specs, two unary conclusions a
+  separation divides, two binary conclusions under one shared mark. A pair is one
+  unification and the five shallow rule-outs.
+- **As stored.** A rule the KB currently disbelieves is still a rule somebody wrote. The
+  declarations the pairing consults — `genl`, `disjoint`, `functional`, `asymmetric`,
+  `genlCx` — follow belief, because a separation nobody believes separates nothing.
+- **Visible from the audit context.** A rule the audit context cannot see is not paired,
+  so a clash between two theories' rules is reported from a context that sees both. Two
+  rules are a clash only where some context sees both halves: the reported `:context` is
+  a common descendant of the two rules' contexts, and not a `sees?` between them, for
+  [nmtms.md](nmtms.md)'s reason — asking only whether one sees the other exempts every
+  sibling pair. It is frequently neither rule's own, and need not be the audit context.
+- **A variable consequent functor is not paired.** Such a rule concludes whatever binds,
+  so it would clash with every other rule.
+
+Each rule read and each candidate pair spend one work unit. `:max-results` counts
+`:rule-clash` findings after the stranded-declaration category.
+
+`kb-quality`'s `:clashes` reading is this pairing over every stored rule, without the
+split ([quality.md](quality.md#contradictions-in-waiting)).
+
 ## The ontology-engineering smells
 
 Three census passes flag how the `genl` and `disjoint` declarations arrange the taxonomy's
@@ -663,7 +870,7 @@ How each pass decides, and its limits:
 All three read from the audit context, so a declaration or edge it cannot see contributes
 nothing, and an edge stated for a narrower reader that cannot see the other path is
 still reported from a context that sees both. Their findings count against `:max-results`
-last, in the order above, after the uncorresponded-function category.
+in the order above, after the rule-clash category.
 
 ## What a missing-arg finding means
 
@@ -694,3 +901,84 @@ gives the reason for each fixed-arity one.
 `:missing-arg` is review-only: a sweep without `:categories` skips it, and `:categories`
 names it to run it. The pass reads one census of arity declarations, then each
 predicate's declarations in print order. It counts against `:max-results` after `:disjoint-could-be-partition`.
+
+## What a taxonomy-island finding means
+
+A type with a `genl` edge into a disconnected island answers nothing the closure reads
+from the rest of the taxonomy: it is a type in spelling only. `:taxonomy-island` is
+review-only, and reports each type node that does not reach the root:
+
+```clojure
+;; (genl stray_kind loose_kind)
+{:status :gap
+ :candidate-count 0
+ :taxonomy-island
+ [{:term loose_kind :root thing} {:term stray_kind :root thing}]}
+```
+
+The root is **found, not assumed**. `thing` is this engine's root and a converted corpus
+brings its own, so whatever type the most nodes reach is the root reported against, ties
+broken by print order, and the reading means the same on a corpus that never heard of
+`thing`. Reachability is reflexive, as `genls` is, so the root is never a finding.
+
+A name `relation?` answers true for, by a stored arity of two or more or a `variable_arity`
+membership, is not a type node, so a sub-relation edge such as `core.txt`'s `(genl
+partition covering)` is not an island. A name with no stored arity remains a candidate, so
+an untyped root or a disconnected unary island is not silently dropped.
+
+`:not-under-thing` reads a different population for a related defect: the caller's
+candidate terms declared `unary_predicate`, against `thing` by name, whether or not they
+carry any edge. A type with no `genl` edge is never an island, and an island the caller
+did not name is never a `:not-under-thing` finding, so neither pass answers for the
+other.
+
+The pass has these limits:
+
+- **Edge census, not candidate terms.** The pass reads the type nodes of every visible
+  `genl` edge and each node's whole up-closure to find the root, so a chain of V types
+  costs Θ(V²) where it has V−1 edges.
+- **Review-only.** The root is found, so on a KB under construction an island may be a
+  fragment awaiting its placement; a sweep without `:categories` skips the pass.
+- **Visible from the audit context.** The nodes and the closures are those of the edges
+  the audit context sees.
+
+Each node's closure and reach test spend one work unit, and `:max-results` counts these
+findings after `:missing-arg`. `kb-quality`'s `:taxonomy`
+reading counts the same nodes over every context ([quality.md](quality.md#taxonomy-coverage-is-two-numbers)).
+
+`:rule-clash-review`, described under the rule-clash finding above, counts against
+`:max-results` after `:taxonomy-island`, and `:rule-macro-review`, described under the
+rule-macro finding, last.
+
+## Acknowledged findings
+
+`(acknowledgedFinding category subject "reason")`, a `core.txt` predicate, records that a
+check flagged a finding, someone looked, and why it stays. The sweep moves an
+acknowledged finding to its category's review-only bucket instead of dropping it, so it
+stays visible with the reason beside it and no longer makes a default sweep `:gap`:
+
+| category | subject | review bucket | read from |
+|---|---|---|---|
+| `:rule-macro` | the suggested declaration, `(genl livesIn locatedIn)` | `:rule-macro-review` | the rule's context |
+| `:rule-clash` | the pair, `(Quote (and R1 R2))` | `:rule-clash-review` | the pair's `:context` |
+
+```clojure
+;; (acknowledgedFinding :rule-clash
+;;   (Quote (and (implies (penguin ?x) (not (flies ?x))) (implies (bird ?x) (flies ?x))))
+;;   "penguins are birds that do not fly")
+{:status :gap
+ :candidate-count 0
+ :rule-clash-review
+ [{:rules [812 813] :kind :negation :unifier {?x ?x'} :context CxUniverse
+   :sentences [(implies (bird ?x) (flies ?x)) (implies (penguin ?x) (not (flies ?x)))]
+   :excepted false :acknowledged "penguins are birds that do not fly"}]}
+```
+
+The subject names the finding by content, as `declined_rule_macro` always has, so the
+record survives a text export, and an edit that changes the finding's content brings the
+finding back. A rule pair is matched by each rule's canonical sentence, so the spelling of
+its variables and the order of its antecedents do not matter. Where several records
+acknowledge one finding, the first in print order supplies the reason. The sweep reads
+`acknowledgedFinding` and nothing else: other spellings of an acknowledgment, such as
+`declined_rule_macro`, are rules in the KB concluding one. Every other category ignores
+the record.

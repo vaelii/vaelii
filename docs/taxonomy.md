@@ -579,8 +579,8 @@ E17 too. What is on it:
 | settle's candidate discovery, and the nogood candidates the settle places (`membership/term-nogoods`, the `decide/tuple` rows) | an over-approximated candidate merely checks and yields nothing; the placement that follows reads the contexts that see a route |
 | a candidate filter in front of a scoped read (`special/offered-mark-over?`, `inherit/stated-claims`) | the filter answers a superset, and the read behind it takes the reader's context |
 | `except`'s exception index and `except-hidden-fn`, and the read walk (`exc/defeat-hidden-fn`) | the visibility filter cannot be scoped by the filter it is itself derived from |
-| `quality/taxonomy-coverage` | a report on the whole taxonomy has no vantage to read from |
-| `quality/clash-partners` | a rule pair is decided from a common descendant of the two rules' contexts, a vantage belonging to neither, so the candidate fan cannot be scoped by either |
+| `integrity/taxonomy-reach` | a report on the whole taxonomy has no vantage to read from: `kb-quality`'s census reads it with a nil context, and a `kb-integrity` sweep passes its audit context and reads scoped |
+| `integrity/clash-partners` | a rule pair is decided from a common descendant of the two rules' contexts, a vantage belonging to neither, so the candidate fan cannot be scoped by either |
 
 A visibility `except` (docs/contexts.md) can hide a *supporter* from a reader, and then
 the context-only filter is not enough: the scoped walk asks the KB, per supporter, whether
@@ -2342,7 +2342,7 @@ so it has to exist in every arrival order or belief would depend on which. Where
 disjoint from `person`, the entailment's `(person TheRock1)` is placed and forms a nogood
 with that membership, as a rule's conclusion does.
 
-**A declaration the arity strands is a census finding, not a ledger one.** `(arg
+**A declaration the arity strands is a sweep finding, not a ledger one.** `(arg
 parentOf 3 person)` is admitted while `parentOf` has no declared length, because the
 highest position a declaration names is a lower bound on the arity rather than a claim
 about it. When a length arrives — declared of the predicate, or inherited through a
@@ -2355,7 +2355,9 @@ however high the position. It is not refused
 retroactively: that would make the binding's arrival order decide. Nor is it a nogood: a wrong-length *fact* is a claim a
 reader believes or withdraws, while a stranded declaration is inert — it constrains
 nothing, refuses nothing, mints nothing — and reads the same an hour later, so it belongs
-to `kb-quality`, whose `:declarations` reading names them.
+to `kb-integrity`, whose `:stranded-declaration` category names them
+([integrity.md](integrity.md)); `kb-quality`'s `:declarations` reading counts the same
+entries.
 
 A conditional constraint has **three** ingredients, not two — the fact, the declaration,
 and the trigger argument's type. With `(eats Rex Chunk)` and `(interArg eats 1 carnivore 2
