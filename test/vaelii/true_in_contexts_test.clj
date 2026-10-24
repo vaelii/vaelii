@@ -17,13 +17,16 @@
   2001.  Merging adjacent times, along one monad only, is what the `^:red` tests here ask
   for.  The helper specifications are in the PR, not in this tree.
 
-  OPEN QUESTION FOR IRIS — symbolic region or list of existing contexts.  These tests
-  pick the **symbolic region**: an answer is a context term, `(CxTimeFn monad time)` or a
-  monad context, and a `cx/` witness is spelled back as the term it was minted from
-  (`natFormula`).  A merged answer such as 2000 through 2001 is a term no write has
-  minted, `(CxTimeFn CxMonad (DatetimeRangeFn \"2000\" \"2001\"))`, so a list of existing
-  context objects could not hold it.  If Iris rules for the list, the merging tests change
-  shape and the rest stand.
+  An answer is a **symbolic region**, not a list of existing contexts (Iris, ruled
+  2026-10-24): a context term, `(CxTimeFn monad time)` or a monad context, and a `cx/`
+  witness is spelled back as the term it was minted from (`natFormula`).  A merged answer
+  such as 2000 through 2001 is a term no write has minted,
+  `(CxTimeFn CxMonad (DatetimeRangeFn \"2000\" \"2001\"))`, which a list of existing
+  context objects could not hold.
+
+  Where more than one set of bindings describes the same region, a test accepts each of
+  them.  The bindings need not be disjoint, but none may be entirely redundant with
+  respect to another: no binding's region lies inside another's (Iris, 2026-10-24).
 
   The conventions are temporal_capability_test.clj's: the same fixture, the same
   helpers, the shipped vocabulary, and `^:red` on a test that ought to pass and does not
@@ -112,6 +115,38 @@
   [answer]
   (let [region (when (= 1 (count answer)) (first answer))]
     (when (and (seq? region) (= 'CxTimeFn (first region))) (nth region 2))))
+
+;; ---- redundancy between bindings ---------------------------------------------
+
+(defn- year-span
+  "The years `[from to]` a slice's time spans, for a `DatetimeFn` year or a
+  `DatetimeRangeFn` over two years; nil for any other time."
+  [time]
+  (when (seq? time)
+    (case (first time)
+      DatetimeFn      [(parse-long (second time)) (parse-long (second time))]
+      DatetimeRangeFn [(parse-long (second time)) (parse-long (nth time 2))]
+      nil)))
+
+(defn- inside?
+  "Does binding `a`'s region lie inside binding `b`'s: is `a`'s monad `b`'s or below it
+  (`below`, a map from a monad to the set of monads above it) and `a`'s year span inside
+  `b`'s?  Only slices over years are compared; anything else is not inside."
+  [below a b]
+  (let [[_ ma ta] (when (seq? a) a)
+        [_ mb tb] (when (seq? b) b)
+        [a0 a1]   (year-span ta)
+        [b0 b1]   (year-span tb)]
+    (boolean (and a0 b0
+                  (or (= ma mb) (contains? (get below ma #{}) mb))
+                  (<= b0 a0 a1 b1)))))
+
+(defn- none-redundant?
+  "Is no binding in `answer` entirely redundant with respect to another: does no
+  binding's region lie inside another's (`inside?`)?"
+  [below answer]
+  (not-any? (fn [[a b]] (and (not= a b) (inside? below a b)))
+            (for [a answer b answer] [a b])))
 
 ;; =========================================================================
 ;; Monad, time, both, and a partially open time — Iris, 2026-10-24 09:08
@@ -421,34 +456,80 @@
 (tu/deftest-kb ^:red asserted-across-monads-and-times-merges-time-only-where-the-monad-agrees
   ;; Monad and time combined.  CxSub is genlMonad-below CxSuper.  Along CxSuper the fact is
   ;; written in 2000 and in 2001, which merge; along CxSub in January 2000, which the
-  ;; super-monad's 2000 absorbs, and in 2005, which is its own answer.  max-cxs keeps the
-  ;; maximal (monad, time) pairs in the product order, and max-times merges only along one
-  ;; monad.
+  ;; super-monad's 2000 absorbs, and in 2002, adjacent to the super-monad's 2001.
   ;;
-  ;; OPEN QUESTION FOR IRIS: had the CxSub write been 2002, adjacent to the super-monad's
-  ;; 2001, then (CxSub, 2000 through 2002) is also a maximal region where the fact holds
-  ;; (CxSub sees CxSuper's 2000 and 2001).  Merging only where the monad agrees answers
-  ;; (CxSuper, 2000–2001) and (CxSub, 2002) instead.  This fixture uses 2005 so that both
-  ;; readings agree.
+  ;; Iris ruled this case on 2026-10-24: the answer is two bindings, (CxSuper, 2000
+  ;; through 2001) and either (CxSub, 2002) or (CxSub, 2000 through 2002), since CxSub
+  ;; sees CxSuper's 2000 and 2001.  Either form is accepted.  Merging times only within
+  ;; one monad, which gives (CxSub, 2002), is the suggested cheaper implementation.  The
+  ;; bindings may overlap, but neither may lie entirely inside the other.
   (declare-cxtimefn! kb)
   (v/add-reasoner kb :calendar)
   (tu/with-terms [p CxSuper CxSub]
     (monads! kb CxSuper CxSub)
     (v/assert kb (list 'genlMonad CxSub CxSuper) U)
-    (let [s (list p)]
+    (let [s     (list p)
+          below {CxSub #{CxSuper}}
+          super (slice CxSuper '(DatetimeRangeFn "2000" "2001"))]
       (v/assert kb s (slice CxSuper (year 2000)))
       (v/assert kb s (slice CxSuper (year 2001)))
       (v/assert kb s (slice CxSub (month "2000-01")))
-      (v/assert kb s (slice CxSub (year 2005)))
-      (mint! kb (slice CxSuper (year 2005)) (slice CxSub (year 2003)))
-      (testing "the inverse names (CxSuper, 2000 through 2001) and (CxSub, 2005)"
-        (is (= #{(slice CxSuper '(DatetimeRangeFn "2000" "2001")) (slice CxSub (year 2005))}
-               (true-in kb s))))
+      (v/assert kb s (slice CxSub (year 2002)))
+      (mint! kb (slice CxSuper (year 2002)) (slice CxSub (year 2003)))
+      (let [answer (true-in kb s)]
+        (testing "the inverse names (CxSuper, 2000 through 2001) and (CxSub, 2002 or 2000 through 2002)"
+          (is (contains? #{#{super (slice CxSub (year 2002))}
+                           #{super (slice CxSub '(DatetimeRangeFn "2000" "2002"))}}
+                         answer)))
+        (testing "and no binding is entirely redundant with respect to the other"
+          (is (none-redundant? below answer))))
       (testing "and the forward question agrees, and is false at the pairs outside both"
         (is (agrees? kb s))
         (is (true-here? kb s (slice CxSub (month "2000-01"))))
-        (is (not (true-here? kb s (slice CxSuper (year 2005)))))
+        (is (true-here? kb s (slice CxSub (year 2002))))
+        (is (not (true-here? kb s (slice CxSuper (year 2002)))))
         (is (not (true-here? kb s (slice CxSub (year 2003)))))))))
+
+(tu/deftest-kb asserted-around-a-genlcx-diamond-is-one-binding-per-monad
+  ;; Iris's follow-up to the case above, 2026-10-24.  Four monads in a diamond ordered by
+  ;; genlCx: CxBottom under CxLeft and CxRight, each of those under CxTop.  The fact is
+  ;; written along CxTop in 1999, CxLeft in 2000, CxRight in 2001 and CxBottom in 2002.
+  ;; No write's slice lies inside another's, so the answer is the four bindings as
+  ;; written.  CxLeft sees CxTop, so (CxLeft, 1999 through 2000) is also accepted in place
+  ;; of (CxLeft, 2000), and CxBottom sees all three monads above it, so (CxBottom, 1999
+  ;; through 2002) is also accepted in place of (CxBottom, 2002) (Iris, 2026-10-24).
+  ;; CxRight has no merged form: it sees CxTop's 1999 but not CxLeft's 2000, so its 1999
+  ;; and 2001 do not meet.  Either way no binding lies entirely inside another.
+  (declare-cxtimefn! kb)
+  (v/add-reasoner kb :calendar)
+  (tu/with-terms [p CxTop CxLeft CxRight CxBottom]
+    (monads! kb CxTop CxLeft CxRight CxBottom)
+    (v/assert kb (list 'genlCx CxBottom CxLeft) U)
+    (v/assert kb (list 'genlCx CxBottom CxRight) U)
+    (v/assert kb (list 'genlCx CxLeft CxTop) U)
+    (v/assert kb (list 'genlCx CxRight CxTop) U)
+    (let [s       (list p)
+          below   {CxBottom #{CxLeft CxRight CxTop} CxLeft #{CxTop} CxRight #{CxTop}}
+          written [(slice CxTop (year 1999)) (slice CxLeft (year 2000))
+                   (slice CxRight (year 2001)) (slice CxBottom (year 2002))]
+          lefts   [(slice CxLeft (year 2000)) (slice CxLeft '(DatetimeRangeFn "1999" "2000"))]
+          bottoms [(slice CxBottom (year 2002)) (slice CxBottom '(DatetimeRangeFn "1999" "2002"))]
+          accepted (set (for [l lefts b bottoms]
+                          #{(slice CxTop (year 1999)) l (slice CxRight (year 2001)) b}))]
+      (doseq [c written] (v/assert kb s c))
+      (mint! kb (slice CxLeft (year 2001)) (slice CxTop (year 2000)))
+      (let [answer (true-in kb s)]
+        (testing "the inverse names the four writes, CxLeft's and CxBottom's merged or not"
+          (is (contains? accepted answer)))
+        (testing "and no binding is entirely redundant with respect to another"
+          (is (none-redundant? below answer))))
+      (testing "and the forward question agrees at each write"
+        (is (agrees? kb s))
+        (doseq [c written]
+          (is (true-here? kb s c))))
+      (testing "and is false along CxLeft in 2001 and along CxTop in 2000"
+        (is (not (true-here? kb s (slice CxLeft (year 2001)))))
+        (is (not (true-here? kb s (slice CxTop (year 2000)))))))))
 
 ;; =========================================================================
 ;; Joint fixture — normalise (monad, time) pairs together
