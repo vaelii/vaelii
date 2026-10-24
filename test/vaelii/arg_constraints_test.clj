@@ -71,8 +71,10 @@
 ;; ---- the entry point: assert-time checks and entailments -------------------
 
 (defn- check-with-lookups
-  "`[violations looked-up]`: `v/check` of `sentence` (the memo bypassed), and the
-  instance-level declaration functors the entry point looked up while checking it."
+  "`[violations looked-up]`: `v/check` of `sentence` (the memo bypassed), or where it
+  reports nothing the argument conviction `assert` holds the fact inert under
+  (`tu/write-conviction`), and the instance-level declaration functors the entry point
+  looked up while checking it."
   [kb sentence]
   (let [seen (atom #{})
         orig res/constraining-predicates]
@@ -80,7 +82,8 @@
                   res/constraining-predicates (fn [kb kind & more]
                                                 (swap! seen conj kind)
                                                 (apply orig kb kind more))]
-      [(vec (v/check kb sentence 'CxUniverse))
+      [(vec (or (seq (v/check kb sentence 'CxUniverse))
+                (some-> (tu/write-conviction kb sentence 'CxUniverse) vector)))
        (into #{} (filter instance-spellings) @seen)])))
 
 (tu/deftest-kb the-args-sugar-rule-is-the-one-core-txt-states
