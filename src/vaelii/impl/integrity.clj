@@ -667,8 +667,13 @@
   or a supporter of a `genl` edge out of it, which types a unary predicate's position and
   imports a super-predicate's declarations.  An edge's supporters are the engine's own
   (`tax/genl-edge-supporters`): a stated `(genl pred super)`, and each `covering`,
-  `separating` or `partition` roster naming `pred` as a part (`tax/installed-edges`), so
-  a part whose one edge is a roster's is declared where the roster is.  In name order."
+  `separating` or `partition` declaration naming `pred` as a part
+  (`tax/installed-edges`), so a part whose one edge is such a declaration's is declared
+  where that declaration is stated.  In name order.
+
+  The edges out of `pred` are read globally (`tax/direct-genls-global`) because the
+  contexts this looks for sit below `context` and state what `context` does not see; the
+  supporters' contexts are then narrowed to the ones that see `context`."
   [kb pred context]
   (let [tx     (reasoning/taxonomy kb)
         down   (set (tax/context-down tx context))

@@ -1291,10 +1291,11 @@
       (is (= #{[lowRel [1 2]] [halfRel [1 2]] [low_kind [1]]} (found CxSide))
           "a context that does not see the declarations reads none of them"))))
 
-(tu/deftest-kb a-part-of-a-roster-is-declared-where-the-roster-is
-  ;; A roster installs a `genl` edge out of each part it names (`tax/installed-edges`),
-  ;; which types the part's one position as a stated edge would.  A part whose only edge
-  ;; is that roster's, stated in a context below the audit context, is declared there.
+(tu/deftest-kb a-part-of-a-partition-is-declared-where-the-partition-is-stated
+  ;; A `partition`, `covering` or `separating` declaration installs a `genl` edge out of
+  ;; each part it names (`tax/installed-edges`), which types the part's one position as a
+  ;; stated edge would.  A part whose only edge is that declaration's, stated in a context
+  ;; below the audit context, is declared there.
   (doseq [functor '[partition covering separating]]
     (tu/with-terms [CxLow CxSide whole_kind left_kind right_kind]
       (v/assert kb (list 'genlCx CxLow 'CxUniverse) 'CxUniverse)
@@ -1307,7 +1308,7 @@
                                  (shown-missing (v/kb-integrity kb #{} context
                                                                 {:categories #{:missing-arg}})))))]
         (is (= #{} (found 'CxUniverse))
-            (str "a " functor " part is read where the roster is stated"))
+            (str "a " functor " part is read where the " functor " is stated"))
         (is (= #{} (found CxLow)) (str "as from the context stating the " functor))
         (is (= #{[left_kind [1]] [right_kind [1]]} (found CxSide))
             (str "a context that does not see the " functor " reads no edge"))))))
