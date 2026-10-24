@@ -674,20 +674,25 @@
   ;; `(properPartOf x y) → (not (partOf y x))` denies one.  Both fire for one tuple only
   ;; where the facts already contradict the root rule: a part whose whole is stated a proper
   ;; part of it.  Both rules are strict definitions, so that clash is the one the facts owe,
-  ;; and an exception would hide it.  Those two are the live `:rule-clash` findings.
+  ;; and an exception would hide it.  abstract.txt acknowledges both with
+  ;; `acknowledgedFinding`, so they are `:rule-clash-review` findings carrying that reason
+  ;; and no live `:rule-clash` finding is left.
   (let [live        (rule-clashes-everywhere kb #{:rule-clash})
         pairs       (rule-clashes-everywhere kb #{:rule-clash-review})
         kinds       (frequencies (map :kind (concat live pairs)))
         root-denial '(implies (properPartOf ?part ?whole) (not (partOf ?whole ?part)))
-        definition? #(some #{root-denial} (:sentences %))]
-    (is (every? definition? live)
+        definition? #(some #{root-denial} (:sentences %))
+        acked       (filter :acknowledged pairs)]
+    (is (empty? live)
         (str "live clashes: " (pr-str (mapv (juxt :kind :sentences) live))))
     (is (= {:negation 6} kinds)
         (str "clashes: " (pr-str (mapv (juxt :kind :sentences) (concat live pairs)))))
-    (is (every? :excepted (filter #(= :negation (:kind %)) pairs))
-        "negation clashes are excepted")
-    (is (= 2 (count live))
-        "and the root denial meets the two proper readings' definitions, unexcepted")))
+    (is (every? #(or (:excepted %) (:acknowledged %)) (filter #(= :negation (:kind %)) pairs))
+        "negation clashes are excepted or acknowledged")
+    (is (= 2 (count acked))
+        "the root denial meets the two proper readings' definitions, unexcepted")
+    (is (every? definition? acked) "and those are the two acknowledged pairs")
+    (is (every? #(not (:excepted %)) acked))))
 
 (tu/deftest-kb a-type-relation-predicate-relates-predicates
   ;; Every argument of a type_relation_predicate is a predicate: the kinds it relates are

@@ -77,8 +77,10 @@ it — `git show v0.16.0:CHANGELOG.md`.
   suggested declaration from `:rule-macro` to the new review-only `:rule-macro-review`.
   `declined_rule_macro` is now sugar: a `core.txt` forward rule concludes
   `(acknowledgedFinding :rule-macro D "Acknowledged via declined_rule_macro; no reason
-  supplied.")` from it, and the sweep reads only the acknowledgment.
-  [integrity.md](docs/integrity.md#acknowledged-findings)
+  supplied.")` from it, and the sweep reads only the acknowledgment. `abstract.txt`
+  acknowledges the two clashes it leaves unexcepted on purpose, the root denial against
+  the tangible and the situation proper readings' definitions, so the shipped ontology
+  sweeps `:audited`. [integrity.md](docs/integrity.md#acknowledged-findings)
   *Migration:* none; a declined suggestion is still absent from `:rule-macro`, and is
   listed under `:rule-macro-review` when `:categories` names it.
 

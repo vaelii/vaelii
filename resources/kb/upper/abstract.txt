@@ -243,6 +243,19 @@
 ;; A proper part's whole is not a part of it.  Stated once here, at the root: every proper
 ;; parthood relation is below properPartOf, and a denial of partOf denies each spec's tuple.
 (set/forwardRule (implies (properPartOf ?part ?whole) (not (partOf ?whole ?part))))
+;; kb-integrity pairs the root denial with the definition properCounterpart generates
+;; (core.txt) for the tangible and the situation proper readings below, as two rule
+;; clashes.  Both are acknowledged rather than excepted, for the reason each record gives.
+(acknowledgedFinding :rule-clash
+  (Quote (and (implies (properPartOf ?part ?whole) (not (partOf ?whole ?part)))
+              (implies (and (tangiblePartOf ?x ?y) (not (tangiblePartOf ?y ?x)))
+                       (properTangiblePartOf ?x ?y))))
+  "Left unexcepted on purpose. A proper reading's definition concludes a proper tangible part, so a part, and the root rule denies one. Both fire for one tuple only where the facts already contradict the root rule: a part whose whole is stated a proper part of it. Both rules are strict definitions, so that clash is the one the facts owe, and an exception would hide it.")
+(acknowledgedFinding :rule-clash
+  (Quote (and (implies (properPartOf ?part ?whole) (not (partOf ?whole ?part)))
+              (implies (and (subSituationOf ?x ?y) (not (subSituationOf ?y ?x)))
+                       (properSubSituationOf ?x ?y))))
+  "Left unexcepted on purpose. A proper reading's definition concludes a proper sub-situation, so a part, and the root rule denies one. Both fire for one tuple only where the facts already contradict the root rule: a part whose whole is stated a proper part of it. Both rules are strict definitions, so that clash is the one the facts owe, and an exception would hide it.")
 
 (comment tangiblePartOf
          "(tangiblePartOf ?part ?whole) means that the tangible ?part is a component of the tangible ?whole. Declared transitive, so a part of a part is a part and the chain is answered by the closure prover rather than stored. Structural parthood between physical objects — not membership in a collection, and not the spatial containment partOfRegion states of regions.")
