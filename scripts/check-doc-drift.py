@@ -1798,6 +1798,7 @@ E17_ALLOW = {
     ("src/vaelii/impl/resolution.clj", "reified-reading"),
     ("src/vaelii/impl/resolution.clj", "constraining-predicates"),
     ("src/vaelii/impl/special.clj", "declaring-predicates"),
+    ("src/vaelii/impl/integrity.clj", "declaring-contexts"),
     ("src/vaelii/impl/special.clj", "marked-roots"),
     # The re-join reads every context, so an edge's upper end is read through every edge.
     ("src/vaelii/impl/provers.clj", "support-answers-reading"),

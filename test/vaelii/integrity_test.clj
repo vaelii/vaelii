@@ -1266,6 +1266,53 @@
         "arg, genlArg, an inherited declaration, argAndRest and a type's own genl edge
          each type their positions")))
 
+(tu/deftest-kb a-position-typed-where-the-relation-is-declared-is-not-reported
+  ;; An arity mark can sit in CxUniverse while the declarations typing the positions sit
+  ;; in a context below it, as an engine-placed arity class does.  The audit reads those
+  ;; declarations from the context that states them, and still reports a position that
+  ;; context leaves untyped, or one a context that cannot see them reads.
+  (tu/with-terms [CxLow CxSide lowRel halfRel low_kind]
+    (v/assert kb (list 'genlCx CxLow 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxSide 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'binary_predicate lowRel) 'CxUniverse)
+    (v/assert kb (list 'arg lowRel 1 'thing) CxLow)
+    (v/assert kb (list 'arg lowRel 2 'thing) CxLow)
+    (v/assert kb (list 'binary_predicate halfRel) 'CxUniverse)
+    (v/assert kb (list 'arg halfRel 1 'thing) CxLow)
+    (v/assert kb (list 'unary_predicate low_kind) 'CxUniverse)
+    (v/assert kb (list 'genl low_kind 'thing) CxLow)
+    (let [found (fn [context]
+                  (set (filter (comp #{lowRel halfRel low_kind} first)
+                               (shown-missing (v/kb-integrity kb #{} context
+                                                              {:categories #{:missing-arg}})))))]
+      (is (= #{[halfRel [2]]} (found 'CxUniverse))
+          "the declarations below are read, and the position they leave open is reported")
+      (is (= #{[halfRel [2]]} (found CxLow)) "as from the context stating them")
+      (is (= #{[lowRel [1 2]] [halfRel [1 2]] [low_kind [1]]} (found CxSide))
+          "a context that does not see the declarations reads none of them"))))
+
+(tu/deftest-kb a-part-of-a-partition-is-declared-where-the-partition-is-stated
+  ;; A `partition`, `covering` or `separating` declaration installs a `genl` edge out of
+  ;; each part it names (`tax/installed-edges`), which types the part's one position as a
+  ;; stated edge would.  A part whose only edge is that declaration's, stated in a context
+  ;; below the audit context, is declared there.
+  (doseq [functor '[partition covering separating]]
+    (tu/with-terms [CxLow CxSide whole_kind left_kind right_kind]
+      (v/assert kb (list 'genlCx CxLow 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxSide 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'unary_predicate left_kind) 'CxUniverse)
+      (v/assert kb (list 'unary_predicate right_kind) 'CxUniverse)
+      (v/assert kb (list functor whole_kind left_kind right_kind) CxLow)
+      (let [found (fn [context]
+                    (set (filter (comp #{left_kind right_kind} first)
+                                 (shown-missing (v/kb-integrity kb #{} context
+                                                                {:categories #{:missing-arg}})))))]
+        (is (= #{} (found 'CxUniverse))
+            (str "a " functor " part is read where the " functor " is stated"))
+        (is (= #{} (found CxLow)) (str "as from the context stating the " functor))
+        (is (= #{[left_kind [1]] [right_kind [1]]} (found CxSide))
+            (str "a context that does not see the " functor " reads no edge"))))))
+
 ;; ---- rule-macro -----------------------------------------------------------
 
 (defn- macro-of

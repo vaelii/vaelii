@@ -89,22 +89,37 @@
 (comment agg/avg
          "(agg/avg ?mean ?value ?body) means that ?mean is the mean of the distinct numeric ?value satisfying ?body. No answer at all over an empty ?body, an average over nothing being a division by zero however it is dressed up. A query operator, never stored.")
 (ternary_predicate agg/avg)
+(arg agg/avg 1 thing)   ;; a number or a measure of one dimension, which no shipped type unions
+(arg agg/avg 2 thing)
+(arg agg/avg 3 formula)
 
 (comment agg/count
          "(agg/count ?count ?value ?body) means that ?count is how many distinct ?value satisfy ?body. Distinct by the equality closure, so two names for one thing count once, and 0 over an empty ?body. ?value is projected out and ?count is the only binding produced, so in a rule body the aggregate runs once per grouping the generators bind and yields one ?count each — which is where GROUP BY comes from, with no GROUP BY construct to design. A query operator answered by a prover, never stored: a count is a function of what is believed now, and storing one would put a computed value under truth maintenance with no way to invalidate it.")
 (ternary_predicate agg/count)
+(arg agg/count 1 non_negative_integer)   ;; how many, 0 over an empty ?body
+(arg agg/count 2 thing)   ;; a counted value: a term of any kind
+(arg agg/count 3 formula)
 
 (comment agg/max
          "(agg/max ?max ?value ?body) means that ?max is the greatest of the distinct numeric ?value satisfying ?body. No answer at all over an empty ?body, a maximum of nothing being a claim about a group with no members. A query operator, never stored.")
 (ternary_predicate agg/max)
+(arg agg/max 1 thing)   ;; a number or a measure of one dimension, which no shipped type unions
+(arg agg/max 2 thing)
+(arg agg/max 3 formula)
 
 (comment agg/min
          "(agg/min ?min ?value ?body) means that ?min is the least of the distinct numeric ?value satisfying ?body. No answer at all over an empty ?body, a minimum of nothing being a claim about a group with no members. A query operator, never stored.")
 (ternary_predicate agg/min)
+(arg agg/min 1 thing)   ;; a number or a measure of one dimension, which no shipped type unions
+(arg agg/min 2 thing)
+(arg agg/min 3 formula)
 
 (comment agg/sum
          "(agg/sum ?sum ?value ?body) means that ?sum is the total of the distinct numeric ?value satisfying ?body. Measures of one dimension work too: they are normalized, added in base units and rendered back, so a mixed-dimension extent is refused rather than quietly added. 0 over an empty ?body, that being the identity of the reduction. A query operator, never stored.")
 (ternary_predicate agg/sum)
+(arg agg/sum 1 thing)   ;; a number or a measure of one dimension, which no shipped type unions
+(arg agg/sum 2 thing)
+(arg agg/sum 3 formula)
 
 (comment and
          "(and ?antecedent1 ?antecedent2 …) means the conjunction of the antecedents inside an implies rule. A syntactic connective rather than a predicate: it is never asserted on its own, and a rule with a single antecedent needs no and at all.")
@@ -120,13 +135,13 @@
 (genlArg genlArg 3 thing)
 
 (comment arg
-         "(arg ?relation ?position ?type) means that argument ?position of ?relation is of ?type. Its domain includes predicates and functions. Under assertive argument types, the default, it derives that membership of a symbol argument, wherever the declaration is visible, and refuses only a value or an application whose type misses. Under the constraint-only reading it is checked through genl transitivity whenever a sentex is asserted, and open-world: an argument whose type is unknown cannot violate it.")
+         "(arg ?relation ?position ?type) means that argument ?position of ?relation is of ?type. Its domain includes predicates and functions. Under assertive argument types, the default, it derives that membership of a symbol argument, wherever the declaration is visible, and refuses only a value or an application whose type misses. Under the constraint-only reading it is checked through genl transitivity whenever a sentex is asserted, and open-world: an argument whose type is unknown cannot violate it. A KB invariant: every argument position of a relation with a declared arity is typed, by an arg at that position or by an argAndRest from it or an earlier one (args and the arg1 through arg5 projections being spellings of those two), or by a type-level or quoted twin; the kb-integrity :missing-arg category reports a position no declaration types.")
 (ternary_predicate arg)
 (arg arg 1 relation)
 (arg arg 2 positive_integer)
 (genlArg arg 3 thing)
 (comment arg1
-         "(arg1 ?relation ?type) means that argument 1 of ?relation must be of ?type — the binary projection of (arg ?relation 1 ?type), created so a positional argument constraint can itself stand in the subject position of a binary declaration such as (predAllSpecified arg1 relation). The projection and the ternary spelling derive each other, so asserting either keeps both believed and retracting the one that was actually asserted collapses the pair; both are held to the same declaration checks at assert, so neither spelling accepts a declaration the other refuses. The projection relates stored declarations only: a reading arg answers through genl generalization or super-predicate inheritance has no arg1 through arg5 twin, so a generalized or inherited question must be asked of arg itself. arg2, arg3, arg4 and arg5 project positions 2 through 5 the same way.")
+         "(arg1 ?relation ?type) means that argument 1 of ?relation must be of ?type — the binary projection of (arg ?relation 1 ?type), created so a positional argument constraint can itself be the subject of a binary declaration. The projection and the ternary spelling derive each other, so asserting either keeps both believed and retracting the one that was actually asserted collapses the pair; both are held to the same declaration checks at assert, so neither spelling accepts a declaration the other refuses. The projection relates stored declarations only: a reading arg answers through genl generalization or super-predicate inheritance has no arg1 through arg5 twin, so a generalized or inherited question must be asked of arg itself. arg2, arg3, arg4 and arg5 project positions 2 through 5 the same way.")
 (binary_predicate arg1)
 (arg arg1 1 relation)
 (genlArg arg1 2 thing)
@@ -184,16 +199,15 @@
 (genlArg argsGenl 2 thing)
 
 (comment argAndRest
-         "(argAndRest ?relation ?position ?type) means that argument ?position of ?relation and every later position is an instance of ?type. The suffix form of args: the tail from ?position onward, the prefix below it excluded, so a relation whose head positions carry their own arg declarations and whose tail repeats one role is typed exactly. (args P T) states what (argAndRest P 1 T) states. Read position by position, as arg is.")
+         "(argAndRest ?relation ?position ?type) means that argument ?position of ?relation and every later position is an instance of ?type. The suffix form of args: the tail from ?position onward, the prefix below it excluded, so a relation whose head positions carry their own arg declarations and whose tail repeats one role is typed exactly. (args P T) states what (argAndRest P 1 T) states. Read position by position, as arg is. With arg it carries the invariant stated on arg: every argument position of a relation with a declared arity is typed, and the kb-integrity :missing-arg category reports a position no declaration types.")
 (ternary_predicate argAndRest)
 (arg argAndRest 1 relation)
 (arg argAndRest 2 positive_integer)
 (genlArg argAndRest 3 thing)
-;; args is argAndRest at 1, so a query for the tail form of a relation declared through
-;; the every-position form is answered.  Backward only, so nothing is stored: the engine
-;; reads the two spellings through one reader that takes args as argAndRest from 1, and a
-;; stored twin would be the same constraint read twice.
-(set/backwardRule (implies (args ?relation ?type) (argAndRest ?relation 1 ?type)))
+;; args is argAndRest at 1.  Forward, so the argAndRest twin is stored beside every args
+;; declaration: the readers of what a position is declared to hold (res/arg-constraints)
+;; look up arg and argAndRest alone, and reach an args declaration through its twin.
+(set/forwardRule (implies (args ?relation ?type) (argAndRest ?relation 1 ?type)))
 
 (comment argAndRestGenl
          "(argAndRestGenl ?relation ?position ?type) means that argument ?position of ?relation and every later position names a subtype of ?type. The suffix form of argsGenl, and the genl twin of argAndRest.")
@@ -216,6 +230,13 @@
 (arg quotedArg 1 relation)
 (arg quotedArg 2 positive_integer)
 (genlArg quotedArg 3 thing)
+
+(comment quotedArgAndRest
+         "(quotedArgAndRest ?relation ?position ?type) means that argument ?position of ?relation and every later position, each taken AS A TERM, is of ?type. The suffix form of quotedArg, as argAndRest is of arg: a variable-arity relation whose tail repeats one mention is typed without naming a largest finite position. Checked position by position over the positions a sentence has, as quotedArg is, and never entailed.")
+(ternary_predicate quotedArgAndRest)
+(arg quotedArgAndRest 1 relation)
+(arg quotedArgAndRest 2 positive_integer)
+(genlArg quotedArgAndRest 3 thing)
 
 ;; The value kinds — the EDN kinds an argument written as a value can carry, placed in
 ;; the genl lattice so (quotedArg p n number) admits an integer and a bare type reaches
@@ -1019,6 +1040,7 @@
 (variable_arity_predicate contradicts)
 (unbounded_arity_predicate contradicts)
 (arityMin contradicts 1)
+(quotedArgAndRest contradicts 1 sentex_handle_term)   ;; one sentexHandle per nogood member
 
 (comment defeat
          "(defeat (sentexHandle ?h)) removes ?h from belief at its own context and every context that sees it, read at read time; it sweeps nothing. Only the engine derives one: a placed nogood stores one for its unique weakest member, beside its contradicts, and a guard that holds below a firing's placement stores one for the firing's conclusion, which removes that one firing and not the sentence. assert refuses defeat in any literal, a negation and a rule included; matching and asking (defeat ?h) are reads. A nogood's defeat is in force at a reader while the nogood's verdict there names ?h, so ?h is :default there, while no except in force hides the defeat, and while what it rests on is believed there, ?h itself exempt. Contrast except, which removes ?h from visibility and sweeps the firings resting on ?h placed at or below it. See docs/glossary.md.")
@@ -1298,6 +1320,7 @@
 (arg PredAllExistsFn 1 binary_predicate)
 (genlArg PredAllExistsFn 2 thing)
 (genlArg PredAllExistsFn 3 thing)
+(arg PredAllExistsFn 4 thing)   ;; the subject: a member of ?indep, a term of any kind
 (argArg PredAllExistsFn 4 2)
 (resultArg PredAllExistsFn 3)
 (functionCorrespondingPredicate PredAllExistsFn predAllExistsPlaceholder)
@@ -1309,6 +1332,8 @@
 (arg predAllExistsPlaceholder 1 binary_predicate)
 (genlArg predAllExistsPlaceholder 2 thing)
 (genlArg predAllExistsPlaceholder 3 thing)
+(arg predAllExistsPlaceholder 4 thing)   ;; the subject: a member of ?indep, a term of any kind
+(arg predAllExistsPlaceholder 5 thing)   ;; the placeholder: a member of ?dep, a term of any kind
 (argArg predAllExistsPlaceholder 4 2)
 (argArg predAllExistsPlaceholder 5 3)
 
@@ -1320,6 +1345,7 @@
 (arg PredExistsAllFn 1 binary_predicate)
 (genlArg PredExistsAllFn 2 thing)
 (genlArg PredExistsAllFn 3 thing)
+(arg PredExistsAllFn 4 thing)   ;; the subject: a member of ?indep, a term of any kind
 (argArg PredExistsAllFn 4 3)
 (resultArg PredExistsAllFn 2)
 (functionCorrespondingPredicate PredExistsAllFn predExistsAllPlaceholder)
@@ -1331,6 +1357,8 @@
 (arg predExistsAllPlaceholder 1 binary_predicate)
 (genlArg predExistsAllPlaceholder 2 thing)
 (genlArg predExistsAllPlaceholder 3 thing)
+(arg predExistsAllPlaceholder 4 thing)   ;; the subject: a member of ?indep, a term of any kind
+(arg predExistsAllPlaceholder 5 thing)   ;; the placeholder: a member of ?dep, a term of any kind
 (argArg predExistsAllPlaceholder 4 3)
 (argArg predExistsAllPlaceholder 5 2)
 
@@ -1340,6 +1368,7 @@
 (ternary_function PredExistsInstanceFn)
 (arg PredExistsInstanceFn 1 binary_predicate)
 (genlArg PredExistsInstanceFn 2 thing)
+(arg PredExistsInstanceFn 3 thing)   ;; the fixed filler: a term of any kind
 (resultArg PredExistsInstanceFn 2)
 (functionCorrespondingPredicate PredExistsInstanceFn predExistsInstancePlaceholder)
 
@@ -1350,6 +1379,7 @@
 (arg predExistsInstancePlaceholder 1 binary_predicate)
 (genlArg predExistsInstancePlaceholder 2 thing)
 (arg predExistsInstancePlaceholder 3 thing)   ;; the fixed filler: a term of any kind
+(arg predExistsInstancePlaceholder 4 thing)   ;; the placeholder: a member of ?indep, a term of any kind
 (argArg predExistsInstancePlaceholder 4 2)
 
 (comment PredInstanceExistsFn
@@ -1357,6 +1387,7 @@
 (unreifiable_function PredInstanceExistsFn)
 (ternary_function PredInstanceExistsFn)
 (arg PredInstanceExistsFn 1 binary_predicate)
+(arg PredInstanceExistsFn 2 thing)   ;; the fixed subject: a term of any kind
 (genlArg PredInstanceExistsFn 3 thing)
 (resultArg PredInstanceExistsFn 3)
 (functionCorrespondingPredicate PredInstanceExistsFn predInstanceExistsPlaceholder)
@@ -1368,6 +1399,7 @@
 (arg predInstanceExistsPlaceholder 1 binary_predicate)
 (genlArg predInstanceExistsPlaceholder 3 thing)
 (arg predInstanceExistsPlaceholder 2 thing)   ;; the fixed filler: a term of any kind
+(arg predInstanceExistsPlaceholder 4 thing)   ;; the placeholder: a member of ?dep, a term of any kind
 (argArg predInstanceExistsPlaceholder 4 3)
 
 (comment predAllExists
@@ -1577,10 +1609,13 @@
 (forced_monotonic_predicate except)
 ;; except takes one argument, the sentexHandle of the sentence it hides.
 (unary_predicate except)
+(quotedArg except 1 sentex_handle_term)
 (forced_monotonic_predicate exceptWhen)
 ;; exceptWhen takes two arguments as stored, the query and the sentexHandle of the rule it
 ;; qualifies.
 (binary_predicate exceptWhen)
+(arg exceptWhen 1 formula)
+(quotedArg exceptWhen 2 sentex_handle_term)
 (forced_monotonic_predicate rewriteOf)
 (forced_monotonic_predicate sameAs)
 (forced_monotonic_predicate equals)
@@ -1843,6 +1878,7 @@
          "(greaterThan ?number1 ?number2 …) means that the numbers descend. Variable arity, so (greaterThan 3 2 1) states the chain 3 > 2 > 1. Evaluable: computed on demand from ground numbers, never stored. Canonicalizes to lessThan with the arguments reversed, so only the < direction is ever stored and a greaterThan goal is still answerable.")
 (arg greaterThan 1 number)
 (arg greaterThan 2 number)
+(argAndRest greaterThan 3 number)
 (variable_arity_predicate greaterThan)
 (unbounded_arity_predicate greaterThan)
 (arityMin greaterThan 2)
@@ -1890,6 +1926,7 @@
          "(lessThan ?number1 ?number2 …) means that the numbers ascend. Variable arity, so (lessThan 1 2 3) states the chain 1 < 2 < 3. Evaluable: computed on demand from ground arguments, never stored and never forward-chained. Chained comparisons in a rule collapse into one literal, so (lessThan ?a ?b) beside (lessThan ?b ?c) becomes (lessThan ?a ?b ?c).")
 (arg lessThan 1 number)
 (arg lessThan 2 number)
+(argAndRest lessThan 3 number)
 (variable_arity_predicate lessThan)
 (unbounded_arity_predicate lessThan)
 (arityMin lessThan 2)
@@ -1909,6 +1946,7 @@
          "(not ?sentence) means the negation of ?sentence, a first-class sentex. Believing a sentence and its negation at once is a soft contradiction resolved at settle time rather than a hard error: the weaker belief is defeated, and a defeasible tie is left standing as a represented dilemma. See docs/nmtms.md.")
 (logical_connective not)
 (unary not)
+(arg not 1 formula)   ;; open under a rule's antecedent, closed when stored
 
 (comment or
          "(or ?disjunct1 ?disjunct2 …) means the disjunction of the disjuncts inside an implies rule's antecedent. A syntactic connective rather than a predicate: it is never asserted on its own, and it never reaches a stored sentence — the rule is polycanonicalized into one rule per alternative, exactly as a conjunctive consequent is split into one rule per conjunct. A disjunctive conclusion is a choice rather than a derivation, and is written with set/assumptionRule instead. See docs/canonicalization.md.")
@@ -1966,14 +2004,20 @@
          "(forall ?var (implies ?antecedent ?consequent)) means the universal. Rule sugar: the engine desugars it to the nested NAF (unknown (thereExists ?var (and ?antecedent (unknown ?consequent)))) and hands that back to the registry, so the quantified goal and a rule antecedent on the same shape are answered by one mechanism. See docs/naf.md.")
 (quantifier forall)
 (binary forall)
+(quotedArg forall 1 open_expression)   ;; the variable bound, or a sequence of them, taken as written
+(arg forall 2 formula)
 (comment thereExists
          "(thereExists ?var ?sentence) means the existential: ?sentence holds for some value of ?var. A query operator answered by a prover and never stored, which is what lets (unknown (thereExists ?var ?sentence)) read as 'no value of ?var makes ?sentence hold'. See docs/naf.md.")
 (quantifier thereExists)
 (binary thereExists)
+(quotedArg thereExists 1 open_expression)   ;; the variable bound, or a sequence of them, taken as written
+(arg thereExists 2 formula)
 (comment exists
          "(exists ?var ?consequent) means a head existential: ?var occurs in a rule's consequent and no antecedent binds it. Forward firing skolemizes it, minting a fresh witness per firing. See docs/skolem.md.")
 (quantifier exists)
 (binary exists)
+(quotedArg exists 1 open_expression)   ;; the variable bound, or a sequence of them, taken as written
+(arg exists 2 formula)
 (implementationNote logical_constant "A covering whose parts are all closed is closed, but stating that rule needs list membership (vaelii/vaelii#79), so the closed extent of logical_constant is stated by hand beside those of its parts.")
 (closed_extent_predicate logical_connective)
 (closed_extent_predicate quantifier)
@@ -2182,6 +2226,7 @@
 ;; thing holds individuals and types alike: a variable_order_type, which is a
 ;; unary_predicate.
 (set/monotonic (variable_order_type thing))
+(arg thing 1 thing)
 
 (comment transitive
          "(transitive ?predicate) means that ?predicate is transitive, so (?predicate a b) and (?predicate b c) imply (?predicate a c). Answered by a generic closure prover rather than materialized, since writing the closure out is quadratic in the extent and nobody asserted it. Also a type: (transitive P) classifies P as a binary_predicate, so a KB can be queried for the transitive predicates.")
@@ -2336,6 +2381,7 @@
 (variable_arity_predicate termsRelated)
 (unbounded_arity_predicate termsRelated)
 (arityMin termsRelated 2)
+(quotedArgAndRest termsRelated 1 denotational_term)   ;; every clustered term, taken as written
 
 (comment seeAlso
          "(seeAlso ?term1 ?term2) means that ?term1 and ?term2 are worth reading together — an editorial 'see also' cross-reference between two terms. Directional: (seeAlso a b) points a reader from a to b, and the reverse is a separate assertion, not implied. Documentation only, like comment: nothing in the engine reads it and it draws no inference.")

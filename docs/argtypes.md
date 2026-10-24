@@ -128,7 +128,23 @@ admitted tail instead: every accepted position of `R` is an instance of `T`. `(a
 T)` is the subtype reading — `argsGenl` to `genlArg` what `args` is to `arg`. `(argAndRest
 R n T)` and `(argAndRestGenl R n T)` type position `n` and every later one, so a relation
 whose head positions carry their own `arg` declarations and whose tail repeats one role is
-typed exactly. `(args R T)` states what `(argAndRest R 1 T)` states.
+typed exactly. `(args R T)` states what `(argAndRest R 1 T)` states, and a forward rule
+in `core.txt` stores that `argAndRest` beside it.
+
+What a position is declared to hold is read through one chokepoint,
+`res/arg-constraints` (the whole list) and `res/arg-constraints-at` (the entries covering
+one position). At the instance level it looks up `arg` and `argAndRest` alone: `args`
+reaches it through the twin its rule stores, and the `argN` projections through the `arg`
+theirs store. The type-level `genlArg`, `argAndRestGenl` and `argsGenl` and the quoted
+`quotedArg` come back on the same entries under their own kind. `ArgTypeProver`, the
+`predAllSpecified` audit, `kb-integrity`'s `:missing-arg` and `:genl-arg-widening` passes
+and the rule-pair quality report read through it. The list is held for one stretch of the
+change clock, so a read-only caller asking per fact reads the store once per predicate.
+The assert-time checks look up the same two at the instance level: `args` is refused,
+and derives memberships, through its stored `argAndRest` twin, whose handle is the support
+an entailment names. Retracting the `args` takes the twin, and everything resting on it,
+with it. A KB that does not load `core.txt` has no such rule, so there an `args`
+declaration types nothing; state `argAndRest` instead.
 
 A valid unbounded tail: a `variable_arity` `herd` with `(arityMin herd 2)` and `(args herd
 animal)` accepts `(herd Rex Bossy)` and `(herd Rex Bossy Clarabelle)` and derives
@@ -597,8 +613,8 @@ The starter's `(arg parentOf 1 organism)` lives in CxUniverse (`life.txt`) while
 `CxNaturalWorld`. A toggle-on starter load derives a membership per declared position,
 less the ones pruning withholds (the table under [Cost](#cost)). Each argument position
 of arity 2 and up in the shipped ontology is declared, except the ones `ontology_test`'s
-`undeclared-positions` names: the two `genl` positions, the example predicates' quoted
-sentence and the aggregation operators' slots. `core.txt` says why beside `genl`: `thing`
+`undeclared-positions` names: the two `genl` positions and the example predicates' quoted
+sentence. `core.txt` says why beside `genl`: `thing`
 cannot be a proper subtype of itself, so the constraint the root would fail is the wrong
 constraint rather than a missing one.
 
@@ -1126,9 +1142,11 @@ of `arg`: where `arg` reads the referent's type, `quotedArg` reads the argument'
 syntax, which is decidable from the value — so it is **checked, never entailed**, there
 being nothing to mint about a term that already is what it is. A compound is judged by the
 kinds its spelling decides ([what a quoted form is](#what-a-quoted-form-is)). Open-world
-about a declared type outside the syntactic lattice, so an imported constraint on a domain
-collection never convicts a value it cannot judge.
-`checks/args-quoted-problem`, behind the same O(1) presence check as `interArg`. Why the kind
+about a declared type outside the syntactic lattice and the expression lattice it sits in,
+so an imported constraint on a domain collection never convicts a value it cannot judge.
+`(quotedArgAndRest P n T)` is its suffix form, as `argAndRest` is of `arg`: position `n`
+and every later one, each taken as written. `checks/args-quoted-problem`, behind the same
+O(1) presence check as `interArg`. Why the kind
 decides at all, rather than every non-symbol being exempt:
 [defenses.md](defenses.md#a-value-is-typed-by-its-kind-and-the-openness-moves-to-the-declared-type).
 
@@ -1211,7 +1229,8 @@ expression lattice are read off how X is written (`provers/shape-kinds`):
 | a symbol | `symbol` |
 | a value | its value kind (`string`, `integer`, …) |
 | a compound under a connective or quantifier head (`not`, `and`, `implies`, `forall`, …) | `open_formula`, or `sentence` when no variable is free in it |
-| a compound under a symbol head | `non_atomic_expression`, beside `open_expression` or `closed_expression` |
+| `(sentexHandle N)`, N a positive integer | `sentex_handle_term`, a `non_atomic_term` |
+| a compound under any other symbol head | `non_atomic_expression`, beside `open_expression` or `closed_expression` |
 | a compound under any other head | `ill_formed_expression`, beside the same |
 
 A variable inside a nested `(Quote …)`, or bound by a quantifier in X, is not free in X
@@ -1279,6 +1298,10 @@ which reaches neither `non_atomic_term` nor `formula`. Under `(quotedArg P 1 str
 `reflection.txt` separating `formula` from `non_atomic_term`. The verdict is the same in
 either arrival order of the declaration and the fact
 (`quoted_arg_test/a-compound-is-held-only-where-one-of-its-kinds-is-separated-from-the-type`).
+A declared kind of `expression` decides a value or a symbol too, every value kind and
+`symbol` sitting in the lattice (`checks/syntactic-type?`): `(quotedArg except 1
+sentex_handle_term)` convicts `(except 212)`, and `(quotedArg comment 1 denotational_term)`
+admits a symbol or a value.
 
 ## Scope
 

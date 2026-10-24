@@ -104,6 +104,7 @@
              args :declares-args-isa, argsGenl :declares-args-genl,
              argAndRest :declares-arg-and-rest-isa,
              argAndRestGenl :declares-arg-and-rest-genl,
+             quotedArgAndRest :declares-quoted-arg-and-rest,
              interArgs :declares-inter-args-isa,
              interArgAndRest :declares-inter-arg-and-rest-isa}
            tax/arg-declaration-props))
@@ -205,7 +206,7 @@
         (is (= :family-list (:mismatch data)))
         (is (= 'provers/meta-constraint-functors (:list data)))
         (is (= '#{quotedArg arg argArg genlArg interArg interArgEqual args argsGenl argAndRest
-                  argAndRestGenl interArgs interArgAndRest}
+                  argAndRestGenl quotedArgAndRest interArgs interArgAndRest}
                (:declared data))
             "and the throw names both sets, so the reader sees which half is missing")))
     (testing "and the other direction — a list naming a spelling nothing declares"
@@ -233,7 +234,7 @@
 
   A recorded exception rather than a suppression, as `:stops-short` is: the test below
   refuses an entry that has stopped being true, so one cannot outlive its reason.  Every
-  entry has the same reason: a list read off the declarations is the rule
+  derived entry has the same reason: a list read off the declarations is the rule
   already satisfied, and comparing a derivation with what it derives from checks the
   `=` operator."
   '{argument/declaration-functors
@@ -241,7 +242,9 @@
     taxonomy/arg-declaration-props
     "derived: `(pr/family :argument-constraint)`, keyed to each spelling's own storage"
     taxonomy/functional-family-marks
-    "derived: `(pr/by-family :functional)`, keyed to each spelling's written shape"})
+    "derived: `(pr/by-family :functional)`, keyed to each spelling's written shape"
+    resolution/arg-constraint-kinds
+    "the spellings that type a position, as stored: args and argN arrive as the argAndRest and arg their forward rules store, and interArg, argArg and the homogeneity forms relate positions rather than type one"})
 
 (deftest a-list-that-enumerates-a-family-is-named-here
   ;; What `check-facets`' `:family-list` rule cannot see: its own reach.  The rule

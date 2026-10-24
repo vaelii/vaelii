@@ -1087,14 +1087,15 @@
 (defn- declared-arg-types
   "The `[position type]` pairs the instance-type declarations bind a `pred` literal of
   `arity` arguments to: `arg`, and the covering `args` / `argAndRest` at every position
-  of the literal they reach.  Read through `checks/instance-type-declarations`, the one
-  reading of the three spellings, so a declaration the entry point honors is one this
-  honors; up the predicate hierarchy, so a super-predicate's declaration types a
+  of the literal they reach.  Read through `res/arg-constraints`, the one reading of
+  every spelling, so a declaration the entry point honors is one this honors; up the
+  predicate hierarchy, so a super-predicate's declaration types a
   sub-predicate's tuple.  A declaration read, not an inference: nothing is derived and no
   fact is consulted, the same standing `separated-antecedents?` and `arity-conflicted?`
   have beside it."
   [kb pred arity context]
-  (for [{:keys [from to type]} (checks/instance-type-declarations kb pred context)
+  (for [{:keys [from to type kind]} (res/arg-constraints kb pred context)
+        :when (= :instance kind)
         n (range from (inc (min (or to arity) arity)))]
     [n type]))
 
@@ -1118,13 +1119,13 @@
   and `F`'s instance-type declarations type its arguments (`declared-arg-types`).  A
   formula is not an application: a connective's argument, and a compound whose head is a
   `predicate`, are not read.  An argument of a quoting predicate or quoting function, or at
-  a position a `quotedArg` declaration types (`checks/quoted-positions`), is a mention and
-  is not descended into."
+  a position a `quotedArg` or `quotedArgAndRest` declaration types
+  (`checks/quoted-positions`), is a mention and is not descended into."
   [kb pred as context]
   (letfn [(used [f xs]
             (if (some sequential? xs)
               (let [qs (checks/quoted-positions kb f context)]
-                (keep-indexed (fn [i x] (when-not (contains? qs (inc i)) x)) xs))
+                (keep-indexed (fn [i x] (when-not (qs (inc i)) x)) xs))
               xs))
           (walk [x]
             (let [f (when (sequential? x) (first x))]

@@ -158,6 +158,7 @@
     [args                             [:integrate :disintegrate :rebuild :wff]       :declares-args-isa         true]
     [argsGenl                         [:integrate :disintegrate :rebuild :wff]       :declares-args-genl        true]
     [argAndRest                       [:integrate :disintegrate :rebuild :wff]       :declares-arg-and-rest-isa true]
+    [quotedArgAndRest                 [:integrate :disintegrate :rebuild :wff]       :declares-quoted-arg-and-rest true]
     [argAndRestGenl                   [:integrate :disintegrate :rebuild :wff]       :declares-arg-and-rest-genl true]
     [transitiveInArgInverse           [:wff]                                         nil                        false]
     [transitiveInArg                  [:wff]                                         nil                        false]

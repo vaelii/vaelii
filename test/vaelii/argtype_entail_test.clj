@@ -223,7 +223,7 @@
       (let [dhs   (mapv #(v/assert kb % CxUp)
                         [(list 'arg rel 1 a_t) (list 'arg rel 2 u1_t) (list 'genlArg rel 3 g_t)
                          (list 'interArg rel 1 trig_t 2 tu_t) (list 'interArg rel 1 trig_t 2 u1_t)
-                         (list 'args rel all_t) (list 'args rel u0_t)
+                         (list 'argAndRest rel 1 all_t) (list 'argAndRest rel 1 u0_t)
                          (list 'argAndRest rel 2 rest_t) (list 'argAndRestGenl rel 3 arg_t)
                          (list 'interArgs rel hom_t) (list 'interArgAndRest rel 2 hom2_t)
                          (list 'argsGenl kinds ag_t) (list 'arg super 2 s_t)])
@@ -233,7 +233,9 @@
                    [(list rel A E kind_t) CxUp] [(list kinds kind_t kind2_t) CxDown]]]
         (doseq [[s c] facts] (v/assert kb s c))
         (let [all (mapv (fn [[s c]] (checks/constraint-entailments kb s c)) facts)]
-          (is (= '#{arg genlArg interArg args argAndRest argAndRestGenl interArgs
+          ;; `args` is no kind of its own: it entails through the `argAndRest` twin
+          ;; core.txt's forward rule stores (covering_arg_test)
+          (is (= '#{arg genlArg interArg argAndRest argAndRestGenl interArgs
                     interArgAndRest argsGenl}
                  (into #{} (comp cat (map :kind)) all))
               "every entailing kind draws over the facts")

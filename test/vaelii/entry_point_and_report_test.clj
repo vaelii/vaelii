@@ -312,8 +312,11 @@
              :type    :arg-type}
             ;; the covering forms type every position a sentence has, or every one from a
             ;; start, with `arg`'s per-argument conviction, so they take its reach
+            ;; `args` read through the `argAndRest` twin core.txt's forward rule stores,
+            ;; a rule this KB does not load
             {:row     "args, the declaration arriving last"
              :fact    (list parentOf Rock Mary)
+             :extra   [tu/args-sugar-rule]
              :closing (list 'args parentOf person_t)
              :next    (list parentOf Pebble Mary)
              :type    :arg-type}

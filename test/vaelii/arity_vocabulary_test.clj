@@ -2,7 +2,8 @@
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.arity-vocabulary-test
   "The relation-wide exact/variable arity partition and its documentary floor vocabulary."
-  (:require [clojure.test :refer [is testing use-fixtures]]
+  (:require [clojure.set :as set]
+            [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.host.seed :as seed]
             [vaelii.host.starter :as starter]
@@ -1538,3 +1539,29 @@
                  (some->> (v/check (assoc kb :naming :off) s 'CxUniverse) seq (mapv :type)))
               "the spelling half reads the naming policy"))))))
 
+(defn- missing-args
+  "The `:missing-arg` findings as `context` reads the starter, as a set of
+  `[predicate missing-positions]`."
+  [kb context]
+  (into #{} (map (juxt :predicate :missing))
+        (:missing-arg (v/kb-integrity kb #{} context {:categories #{:missing-arg}
+                                                      :max-results 10000}))))
+
+(def ^:private open-positions
+  "The starter's argument positions no declaration types yet, each awaiting a ruling on
+  its type: the quoted example of the three example predicates.  ontology_test's
+  undeclared-positions gives the reason they stay open."
+  '#{[positiveExample [2]] [negativeExample [2]] [borderlineExample [2]]})
+
+(tu/deftest-kb every-starter-position-is-typed-but-the-open-ones
+  ;; A middle context's relation and type carry their arity mark in CxUniverse, while the
+  ;; declarations typing them stay in the context that states them.  The audit reads them
+  ;; from there, so CxUniverse reports what CxTra and CxSocialExtension, which between
+  ;; them see every middle context that declares one, both still report: the positions no
+  ;; declaration types.
+  (let [universe (missing-args kb 'CxUniverse)
+        open     (set/intersection (missing-args kb 'CxTra)
+                                   (missing-args kb 'CxSocialExtension))]
+    (is (= open-positions open))
+    (is (= open-positions universe)
+        "no middle-context relation or type is reported from CxUniverse")))

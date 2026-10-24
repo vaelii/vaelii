@@ -13,6 +13,22 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Breaking
+
+- **`(args R T)` derives `(argAndRest R 1 T)`.** A `set/forwardRule` in `core.txt` states
+  the entailment the two spellings' comments describe and stores the `argAndRest` twin, so
+  `query (argAndRest R ?n ?t)` answers `[{?n 1 ?t T}]` of a relation declared only
+  through `args`, and the readers of what a position holds (`res/arg-constraints`) look up
+  `arg` and `argAndRest` alone. So do the assert-time checks: an `args` declaration is
+  refused, and derives memberships, through the twin, whose handle an entailment rests on
+  and whose `argAndRest from 1, position N` a refusal names. Retracting the `args`
+  declaration retracts the twin. [argtypes.md](docs/argtypes.md).
+
+  *Migration:* a KB that loads `core.txt` needs none. A KB that does not has no forward
+  rule, so its `args` declarations type nothing: state `(argAndRest R 1 T)` instead, or
+  assert the rule.
+  *Breaks:* `args`, `assert`, `check`
+
 ### Fix: answers
 
 - **A goal keeps a never-minted `Quote` or `Quasiquote` application as written** under a
@@ -20,6 +36,82 @@ it — `git show v0.16.0:CHANGELOG.md`.
   quotations stored only as a `modal_predicate`'s proposition, as the plugin's Cyc
   preamble stores them. [nat.md](docs/nat.md#read-path)
   *Migration:* none.
+
+- **The starter types the argument positions its terms' own definitions fix.**
+  `DayFn`, `MonthFn` and `YearFn` take their corresponding predicates' field types
+  (`integer`, then `positive_integer`), `QuantityFn` and `QuantityIntervalFn` take
+  `number` and `unit_of_measure`, and `FatherFn` and `MotherFn` take an `animal`. The
+  Exists cells' subject, filler and placeholder positions declare `thing`, `greaterThan`
+  and `lessThan` type their whole chain `number`, `not` and the bodies of `forall`,
+  `thereExists` and `exists` declare `formula`. Under assertive argument types, a symbol
+  written in one of these positions now derives the declared membership: `(QuantityFn 5
+  Furlong)` derives `(unit_of_measure Furlong)`. A value of the wrong kind there is
+  refused. The binder of `forall`, `thereExists` and `exists` is a `(quotedArg Q 1
+  open_expression)`. The five aggregation operators type their result, value and body:
+  `agg/count`'s result is a `non_negative_integer`, and the other four's result and every
+  value are a `thing`. `except`'s one position, `exceptWhen`'s rule and every member of
+  `contradicts` are a `sentex_handle_term` taken as written, and `exceptWhen`'s query is a
+  `formula`. [integrity.md](docs/integrity.md#what-a-missing-arg-finding-means)
+
+  *Migration:* an `(except 212)`, an `(except Muffet)` or a `(contradicts 212)` asserted by
+  hand is now refused; write `(except (sentexHandle 212))`.
+
+- **`sentex_handle_term` names the expression `(sentexHandle N)`, N a positive integer.**
+  `reflection.txt` places it below `non_atomic_term`, and `ExpressionKindProver` answers
+  `(sentex_handle_term (Quote (sentexHandle 212)))` by the form's shape.
+  [argtypes.md](docs/argtypes.md#what-a-quoted-form-is)
+
+  *Migration:* none.
+
+- **A `quotedArg` whose type is a kind of `expression` decides a value or a symbol.** Every
+  value kind and `symbol` sit in the expression lattice, so `(quotedArg P n
+  non_atomic_term)` refuses `(P 212)` and `(P Muffet)`, where it read the type
+  open-world and admitted both. A compound stays exempt, as for every declared type.
+  `(quotedArgAndRest P n T)` is the tail form of `quotedArg`, as `argAndRest` is of
+  `arg`. [argtypes.md](docs/argtypes.md#what-a-quoted-form-is)
+
+  *Migration:* a value or a symbol stored where a `quotedArg` names a kind of expression
+  it is not of is now refused at assert.
+
+- **`termsRelated` clusters vocabulary names by mention, as `seeAlso` cross-references
+  them.** `(quotedArgAndRest termsRelated 1 denotational_term)` types the start of its
+  variable-arity tail and every later position the same way, the suffix form of the
+  `(quotedArg seeAlso 1 denotational_term)` / `(quotedArg seeAlso 2 denotational_term)`
+  pair. The named terms can be of any kind — the grouping is for a reader, not an
+  inference — so a symbol the KB says nothing else about is still accepted, taken as
+  written. [argtypes.md](docs/argtypes.md#what-a-quoted-form-is)
+
+  *Migration:* none.
+
+- **`kb-integrity`'s `:missing-arg` reads a relation's declarations from the contexts that
+  state them.** The engine places an exact-arity class in CxUniverse, and the starter's
+  unary batch writes `unary_predicate` there, while a middle context's declarations stay in
+  that context. The audit from CxUniverse reported those relations' typed positions as
+  missing. It now also reads each context that sees the audit context and stores an
+  `arg`-family declaration on the relation or a `genl` edge out of it, and reports a
+  position only if one of those leaves it untyped too. At CxUniverse over the starter it
+  reports 3 findings, where it reported 76: the example predicates' quoted sentence.
+  [integrity.md](docs/integrity.md#what-a-missing-arg-finding-means)
+
+  *Migration:* none.
+
+- **`ArgTypeProver` types a term at a position an `argAndRest` declaration types.** A
+  believed `(P … x …)` with `x` at position `n` or later beside `(argAndRest P n T)`
+  answers `(T x)`, as `(arg P n T)` at `x`'s position does; `(args P T)` answers through
+  the `argAndRest` twin its rule stores. The exception re-check that follows the inference
+  reads the same declarations, in both arrival orders. The prover reads a predicate's
+  declarations through `res/arg-constraints-at`, held for one stretch of the change clock.
+  [argtypes.md](docs/argtypes.md)
+
+  *Migration:* none. Under the constraint-only reading, `ask` answers such a membership
+  where it answered nothing.
+
+- **A `predAllSpecified` or `predSpecifiedAll` slot typed by a tail declaration is
+  audited.** A slot typed only by `argAndRest`, `args`, `argAndRestGenl` or `argsGenl`
+  reported `{:status :gap :gap :missing-slot-typing}`; the audit now derives its contract
+  from those declarations as from `arg` and `genlArg`. [predall.md](docs/predall.md)
+
+  *Migration:* none. A declaration that reported the gap reports `:audited`.
 
 ## 0.29.0 — 2026-10-23 — "Open applications read through `functionCorrespondingPredicate` and resolved under the reader's merges, `try-assert` refusing `:monotonic` complements and length clashes, query-only terms refused under `not`, closed-extent negatives re-checked in every arrival order"
 

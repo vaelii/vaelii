@@ -187,3 +187,95 @@
       (v/retract! kb (nth hs 2))
       (is (v/believed? kb (nth hs 1) 'CxUniverse) "the declaration's retraction releases 5")
       (doseq [h (rseq (assoc hs 2 nil)) :when h] (v/retract! kb h)))))
+
+(tu/deftest-kb a-quantifier-binds-an-open-expression-taken-as-written
+  ;; Position 1 of a quantifier holds the variable it binds, or a sequence of them, as
+  ;; written.  A variable is open in itself and a sequence of variables has one free, so
+  ;; each is an open_expression; a constant is closed.  A quantifier is never stored, and
+  ;; a constant written as its binder is refused as not well-formed before any argument
+  ;; check runs, so the declaration is read here through the kinds it names.
+  (doseq [q '[forall thereExists exists]]
+    (is (true? (v/ask? kb (list 'quotedArg q 1 'open_expression) 'CxUniverse))
+        (str q " types its binder an open_expression"))
+    (is (empty? (filter #(= q (:predicate %))
+                        (:missing-arg (v/kb-integrity kb #{} 'CxUniverse {:categories #{:missing-arg}
+                                                                          :max-results 10000}))))
+        (str "kb-integrity reports no position of " q " untyped")))
+  (is (true? (v/ask? kb '(open_expression (Quote ?x)) 'CxUniverse)) "one variable")
+  (is (true? (v/ask? kb '(open_expression (Quote (?x ?y))) 'CxUniverse)) "a sequence of variables")
+  (is (not (v/ask? kb '(open_expression (Quote Muffet)) 'CxUniverse)) "a constant is not open")
+  (is (true? (v/ask? kb '(closed_expression (Quote Muffet)) 'CxUniverse))
+      "and is a closed_expression, disjoint from it"))
+
+(tu/deftest-kb quotedarg-judges-a-value-against-an-expression-kind
+  ;; The expression lattice (reflection.txt) holds every value kind and symbol, so a kind
+  ;; of expression decides a value or a symbol written in the position.  A compound stays
+  ;; exempt, as for every declared type.
+  (tu/with-terms [names handles FooFn]
+    (v/assert kb (list 'unary_predicate names) 'CxUniverse)
+    (v/assert kb (list 'quotedArg names 1 'denotational_term) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate handles) 'CxUniverse)
+    (v/assert kb (list 'quotedArg handles 1 'non_atomic_term) 'CxUniverse)
+    (v/assert kb (list 'unreifiable_function FooFn) 'CxUniverse)
+    (testing "a symbol and a value are denotational terms"
+      (is (nil? (refusal kb (list names 'Muffet))))
+      (is (nil? (refusal kb (list names 5))))
+      (is (nil? (refusal kb (list names "five")))))
+    (testing "and neither is a non_atomic_term"
+      (is (= :quoted-arg-type (refusal kb (list handles 212))))
+      (is (= :quoted-arg-type (refusal kb (list handles 'Muffet)))))
+    (is (nil? (refusal kb (list handles (list FooFn 3)))) "a compound is exempt")))
+
+(tu/deftest-kb quotedargandrest-types-every-position-from-its-start
+  ;; The suffix form of quotedArg, as argAndRest is of arg: the start and every later
+  ;; position, taken as written, the prefix below the start left to its own declarations.
+  (tu/with-terms [tagAll]
+    (v/assert kb (list 'variable_arity_predicate tagAll) 'CxUniverse)
+    (v/assert kb (list 'arityMin tagAll 1) 'CxUniverse)
+    (v/assert kb (list 'quotedArgAndRest tagAll 2 'string) 'CxUniverse)
+    (testing "every position from the start is a string as a term"
+      (is (nil? (refusal kb (list tagAll 5 "a" "b"))))
+      (is (= :quoted-arg-type (refusal kb (list tagAll 5 "a" 7))))
+      (is (= :quoted-arg-type (refusal kb (list tagAll 5 'Muffet)))))
+    (is (= [[tagAll [1]]]
+           (for [f (:missing-arg (v/kb-integrity kb #{} 'CxUniverse {:categories #{:missing-arg}
+                                                                     :max-results 10000}))
+                 :when (= tagAll (:predicate f))]
+             [tagAll (:missing f)]))
+        "the tail is typed, the position below the start is not")))
+
+(tu/deftest-kb a-meta-sentex-names-the-sentex-it-is-about-by-its-handle
+  ;; except, exceptWhen and contradicts each name a stored sentex as (sentexHandle N), a
+  ;; sentex_handle_term taken as written, so a bare integer or a symbol there is refused.
+  (tu/with-terms [dog cat Rex]
+    (v/assert kb (list 'unary_predicate dog) 'CxUniverse)
+    (let [f (v/assert kb (list dog Rex) 'CxUniverse)
+          r (v/assert kb (list 'implies (list dog '?x) (list cat '?x)) 'CxUniverse)]
+      (testing "except"
+        (is (= :quoted-arg-type (refusal kb (list 'except 212))))
+        (is (= :quoted-arg-type (refusal kb (list 'except Rex))))
+        (is (nil? (refusal kb (list 'except (list 'sentexHandle f))))))
+      (testing "exceptWhen's rule"
+        (is (some? (refusal kb (list 'exceptWhen (list dog '?x) 212))))
+        (is (nil? (refusal kb (list 'exceptWhen (list dog '?x) (list 'sentexHandle r))))))
+      (testing "contradicts, at its first member and every later one"
+        (is (= :quoted-arg-type (refusal kb (list 'contradicts 212))))
+        (is (= :quoted-arg-type (refusal kb (list 'contradicts (list 'sentexHandle f) 212))))
+        (is (nil? (refusal kb (list 'contradicts (list 'sentexHandle f) (list 'sentexHandle r)))))))))
+
+(tu/deftest-kb termsrelated-clusters-vocabulary-names-taken-as-written
+  ;; A curation grouping, read like seeAlso's cross-reference (both quotedArg a
+  ;; denotational_term): the named terms are mentioned, not used, so a bare symbol is
+  ;; accepted at every position whatever else the KB does or does not say about it.  The
+  ;; whole tail is one quotedArgAndRest from position 1, so an arbitrarily long cluster is
+  ;; typed without naming a largest finite position.
+  (tu/with-terms [Foo Bar Baz Qux]
+    (testing "two members, and a longer cluster through the variable-arity tail"
+      (is (nil? (refusal kb (list 'termsRelated Foo Bar))))
+      (is (nil? (refusal kb (list 'termsRelated Foo Bar Baz Qux)))))
+    (testing "an undeclared symbol is still a denotational_term, taken as written"
+      (is (nil? (refusal kb (list 'termsRelated Foo 'notDeclaredAsAnythingAtAll)))))
+    (is (empty? (filter #(= 'termsRelated (:predicate %))
+                        (:missing-arg (v/kb-integrity kb #{} 'CxUniverse {:categories #{:missing-arg}
+                                                                          :max-results 10000}))))
+        "kb-integrity reports no position of termsRelated untyped")))

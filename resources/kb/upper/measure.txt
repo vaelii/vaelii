@@ -157,6 +157,8 @@
 (unreifiable_function QuantityFn)
 (binary_function QuantityFn)
 (functionCorrespondingPredicate QuantityFn measureInUnit)
+(arg QuantityFn 1 number)
+(arg QuantityFn 2 unit_of_measure)
 (result QuantityFn measure)
 
 (comment measureInUnit
@@ -183,6 +185,9 @@
 (unreifiable_function QuantityIntervalFn)
 (ternary_function QuantityIntervalFn)
 (functionCorrespondingPredicate QuantityIntervalFn measureRangeInUnit)
+(arg QuantityIntervalFn 1 number)
+(arg QuantityIntervalFn 2 number)
+(arg QuantityIntervalFn 3 unit_of_measure)
 (result QuantityIntervalFn measure)
 
 (comment measureRangeInUnit
