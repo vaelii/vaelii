@@ -1760,6 +1760,12 @@
 ;; each genl edge to function.
 (set/monotonic (partition function reifiable_function unreifiable_function))
 
+;; Which of the two a function is does not admit exceptions: no context makes an evaluated
+;; function denote an object, so both marks are in the forced-monotonic set and two
+;; marks stated of one function are a conflict rather than a defeat.
+(forced_monotonic_predicate reifiable_function)
+(forced_monotonic_predicate unreifiable_function)
+
 (comment contextArgSubrelation
          "(contextArgSubrelation ?function ?position ?subrelation) means that two contexts denoted by ?function and identical except at argument ?position are ordered by ?subrelation on that argument: the context whose argument is ?subrelation-below the other's is a spec (sub)context of it, and the producer materializes the genlCx edge. So (contextArgSubrelation CxTimeFn 2 subintervalOf) makes (CxTimeFn CxMonad (DatetimeFn \"2000-01\")) a subcontext of (CxTimeFn CxMonad (DatetimeFn \"2000\")) because January 2000 is a subinterval of 2000 — with nobody asserting that genlCx edge. ?position is 1-based over ?function's arguments. See docs/context-nat.md.")
 (ternary_predicate contextArgSubrelation)

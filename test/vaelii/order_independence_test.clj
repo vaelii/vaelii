@@ -932,6 +932,7 @@
   ;; The mark retracted, or defeated by a known-true denial, leaves what a KB never told
   ;; it holds: the use spelled as written and no constant.  The denial retracted revives
   ;; the mark, and the KB reads as one told the declaration first.
+  ;; Tests what a bare KB does; `a-reifiable-declaration-retracted-on-a-core-kb-reads-as-one-never-made` is its core.txt/retraction twin.
   (let [decl     (assert-op '(reifiable_function SkillFn))
         h        (atom nil)
         never    (run-ops [(assert-op '(genlResult SkillFn capability)) (assert-op skill-use)]
@@ -952,10 +953,82 @@
                               #(v/retract! % @h)]))))
   (tu/clear-kb! (tu/test-kb)))
 
+;; ---- retraction twins of the SkillFn denial cases, on a KB that loads core.txt --------
+;;
+;; core.txt puts `reifiable_function` (and `unreifiable_function`) in the forced-monotonic
+;; set — `forced_monotonic_predicate`'s own comment in resources/kb/upper/core.txt says a
+;; denial of a predicate in that set is never believed there.  The two deftests naming this
+;; comment deny `(reifiable_function SkillFn)` on a bare `tu/fresh` KB, where the
+;; declaration putting it in that set is absent and the denial does its ordinary work.
+;; These are their twins: the same questions asked on a KB that loads core.txt, where the
+;; documented way to take a mark off is retraction, not denial — "asserting or retracting
+;; it recomputes belief over what ?predicate reaches, so a KB that retracted it believes
+;; what a KB that never held it believes."
+
+(defn- run-ops-on
+  "`run-ops`, against a KB `build` makes instead of always `tu/fresh`."
+  [build ops observe]
+  (let [kb (build)]
+    (doseq [op ops] (op kb))
+    (observe kb)))
+
+(defn- one-outcome-under-on!
+  "`one-outcome-under!`, against a KB `build` makes instead of always `tu/fresh`."
+  ([build label chains observe] (one-outcome-under-on! build label chains observe nil))
+  ([build label chains observe cap]
+   (let [all    (interleavings chains)
+         walked (cond->> all cap (sampled-orderings cap))
+         census (reduce (fn [acc ops]
+                          (update acc (run-ops-on build ops observe) (fnil inc 0)))
+                        {}
+                        walked)]
+     (is (= 1 (count census))
+         (str label ": " (count census) " distinct outcomes across " (count walked)
+              (when cap (str " sampled of " (count all))) " orderings — " (pr-str census)))
+     (key (first census)))))
+
+(def ^:private core-kb
+  "A KB that loads core.txt, for `run-ops-on`/`one-outcome-under-on!` above."
+  #(doto (tu/fresh) (tu/load-core!)))
+
+(defn- core-skill-reading
+  "`skill-reading`, for a KB that loads core.txt: `capability` was retired upstream
+  (v0.24), and `hasCapability`'s own arg 2 constraint (resources/kb/upper/life.txt) now
+  names a `happening` kind there, so the fixture's result type is `happening` instead."
+  [kb]
+  {:rows     (sort-by pr-str (map :sentence (v/sentexes-with-functor kb 'hasCapability)))
+   :minted   (count (v/sentexes-matching kb '(natFormula ?k (SkillFn Rex)) 'CxUniverse))
+   :compound (v/ask? kb skill-use 'CxUniverse)
+   :genl     (v/ask? kb '(genl (SkillFn Rex) happening) 'CxUniverse)})
+
+(deftest a-reifiable-declaration-retracted-on-a-core-kb-reads-as-one-never-made
+  ;; The core.txt/retraction twin of `a-reifiable-declaration-leaving-reads-as-one-never-made`'s
+  ;; "denied" and "denied, then the denial retracted" legs: on a KB that loads core.txt a
+  ;; denial of a mark in the forced-monotonic set is inert, so the same question is put to
+  ;; retraction instead.
+  (let [decl     (assert-op '(reifiable_function SkillFn))
+        h        (atom nil)
+        never    (run-ops-on core-kb
+                             [(assert-op '(genlResult SkillFn happening)) (assert-op skill-use)]
+                             core-skill-reading)
+        first-in (run-ops-on core-kb
+                             [decl (assert-op '(genlResult SkillFn happening)) (assert-op skill-use)]
+                             core-skill-reading)
+        rest-ops [[(assert-op '(genlResult SkillFn happening))] [(assert-op skill-use)]]
+        leaving  (fn [label ops]
+                   (one-outcome-under-on! core-kb label (into [ops] rest-ops) core-skill-reading))]
+    (is (= {:minted 0 :compound true :genl false} (dissoc never :rows)))
+    (is (= never (leaving "retracted"
+                          [#(reset! h (decl %)) #(v/retract! % @h)])))
+    (is (= first-in (leaving "retracted, then re-declared"
+                             [#(reset! h (decl %)) #(v/retract! % @h) decl]))))
+  (tu/clear-kb! (tu/test-kb)))
+
 (deftest a-reifiable-declaration-denied-below-the-use-is-read-per-reader
   ;; The declaration and the use in CxUniverse, a known-true denial in CxSkillD below it:
   ;; CxUniverse reads what a KB told the declaration reads, and CxSkillD what a KB never
   ;; told it reads, the mint and the result type included.
+  ;; Tests what a bare KB does; `a-reifiable-declaration-retracted-is-read-the-same-by-every-reader-on-a-core-kb` is its core.txt/retraction twin.
   (let [reading (fn [kb]
                   (into {} (for [r '[CxUniverse CxSkillD]]
                              [r {:minted   (count (v/sentexes-matching kb '(natFormula ?k (SkillFn Rex)) r))
@@ -970,6 +1043,35 @@
                                           {:strength :monotonic})]
                               reading ordering-sample)]
     (is (= {'CxUniverse {:minted 1 :compound true :genl true}
+            'CxSkillD   {:minted 0 :compound true :genl false}}
+           result)))
+  (tu/clear-kb! (tu/test-kb)))
+
+(deftest a-reifiable-declaration-retracted-is-read-the-same-by-every-reader-on-a-core-kb
+  ;; The core.txt/retraction twin of `a-reifiable-declaration-denied-below-the-use-is-read-per-reader`.
+  ;; A context-scoped denial cannot ask the same question on a KB that loads core.txt — the
+  ;; denial is never believed at all there, so CxSkillD would just inherit CxUniverse's
+  ;; declaration unopposed — so this asks what retraction, the forced-monotonic set's way off,
+  ;; reads instead: taking the mark off reaches every reader alike, not CxSkillD only.
+  ;; `capability` was retired upstream (v0.24); `hasCapability`'s own arg 2 constraint
+  ;; (resources/kb/upper/life.txt) now names a `happening` kind, so the fixture's result
+  ;; type is `happening` here, as in `core-skill-reading` above.
+  (let [h       (atom nil)
+        decl    (assert-op '(reifiable_function SkillFn))
+        reading (fn [kb]
+                  (into {} (for [r '[CxUniverse CxSkillD]]
+                             [r {:minted   (count (v/sentexes-matching kb '(natFormula ?k (SkillFn Rex)) r))
+                                 :compound (v/ask? kb skill-use r)
+                                 :genl     (v/ask? kb '(genl (SkillFn Rex) happening) r)}])))
+        result  (one-outcome-under-on!
+                 core-kb "retracted, read the same by every reader"
+                 [[#(reset! h (decl %)) #(v/retract! % @h)]
+                  [(assert-op '(genlCx CxSkillD CxUniverse) {:strength :monotonic})]
+                  [(assert-op '(genlResult SkillFn happening))]
+                  [(assert-op skill-use)]]
+                 reading
+                 ordering-sample)]
+    (is (= {'CxUniverse {:minted 0 :compound true :genl false}
             'CxSkillD   {:minted 0 :compound true :genl false}}
            result)))
   (tu/clear-kb! (tu/test-kb)))

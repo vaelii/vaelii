@@ -44,6 +44,20 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `{:believed? true}` to filter, and the daemon serves it.
   [web.md](docs/web.md), [api.md](docs/api.md)
   *Migration:* none.
+### Breaking
+
+- **The reification marks are in the forced-monotonic set.** `core.txt` declares
+  `(forced_monotonic_predicate reifiable_function)` and `(forced_monotonic_predicate
+  unreifiable_function)`, so each mark goes OUT only by retraction. A stored denial of a
+  mark is never believed, where a known-true `(not (reifiable_function F))` took the mark
+  OUT and left `F`'s applications structural. A `:default` `(reifiable_function F)` beside
+  a `:default` `(unreifiable_function F)` is an irreducible conflict: both stay believed
+  and `conflicts` reports the pair, where one of them was the loser.
+  [nmtms.md](docs/nmtms.md#the-forced-monotonic-set).
+
+  *Migration:* retract a mark rather than denying it, and retract one of two clashing
+  marks, since a defeat no longer picks one.
+  *Breaks:* `ask`, `query`, `conflicts`
 
 ### Fix: answers
 

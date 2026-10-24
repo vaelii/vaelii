@@ -1661,6 +1661,29 @@
   (is (true? (v/genl? kb 'reifiable_function 'function 'CxUniverse)))
   (is (true? (v/genl? kb 'unreifiable_function 'function 'CxUniverse))))
 
+;; Whether an application is minted is definitional of a function, so both marks are in
+;; the forced-monotonic set: a mark keeps the strength it was written at, and a denial
+;; of one is held OUT rather than defeating it.
+(tu/deftest-kb both-reification-marks-are-in-the-forced-monotonic-set
+  (doseq [mark '[reifiable_function unreifiable_function]]
+    (testing (str mark)
+      (is (some? (v/handle-of kb (list 'forced_monotonic_predicate mark) 'CxUniverse))
+          "core.txt declares the mark forced monotonic")
+      (tu/with-terms [MarkedFn]
+        (let [h (v/assert kb (list mark MarkedFn) 'CxUniverse)
+              d (v/assert kb (list 'not (list mark MarkedFn)) 'CxUniverse {:strength :monotonic})]
+          (is (true? (v/in? kb h)) "the mark stays believed")
+          (is (false? (v/in? kb d)) "a denial of the mark is held OUT")
+          (is (true? (v/ask? kb (list mark MarkedFn) 'CxUniverse)))))))
+  (testing "both marks stated of one function are a conflict rather than a defeat"
+    (tu/with-terms [TwiceMarkedFn]
+      (let [hr (v/assert kb (list 'reifiable_function TwiceMarkedFn) 'CxUniverse)
+            hu (v/assert kb (list 'unreifiable_function TwiceMarkedFn) 'CxUniverse)]
+        (is (true? (v/in? kb hr)))
+        (is (true? (v/in? kb hu)))
+        (is (some #(= #{hr hu} (set (:nogood %))) (v/conflicts kb))
+            "conflicts names the pair")))))
+
 (tu/deftest-kb fixed-and-variable-order-partition-unary-predicate
   (is (true? (v/disjoint? kb 'fixed_order_type 'variable_order_type 'CxUniverse)))
   (is (true? (v/genl? kb 'fixed_order_type 'unary_predicate 'CxUniverse)))

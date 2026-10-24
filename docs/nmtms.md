@@ -274,6 +274,12 @@ and every other, which adds belief elsewhere. Because `folk_species` is forced-m
 denial of `(folk_species S)` loses to a believed `(folk_species S)` at either strength, and a rule concluding a forced-monotonic literal
 from `(folk_species ?s)` alone is a forced-monotonic rule.
 
+`core.txt` declares `(forced_monotonic_predicate reifiable_function)` and
+`(forced_monotonic_predicate unreifiable_function)`. Whether a function's applications are
+minted is definitional of the function, so no context or exception makes a mark false: a
+denial of either mark is held OUT, and the two marks stated of one function are a conflict
+rather than a defeat ([nat.md](nat.md)).
+
 **Retracting a declaration is refused where its predicate has no unforced semantics.**
 `retract!` and `edit!` refuse the retraction of every declaration `core.txt` makes except those
 of `injection`, `surjection` and `bijection`, with `:type :uncleared-forcing`, the
