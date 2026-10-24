@@ -1750,15 +1750,26 @@
                   " the meaning, and this carries how the engine or the KB text implements it."
                   " Nothing infers from it."))]
 
-     ;; A reviewer's record that a rule-macro suggestion was read and declined.  It names
-     ;; the suggestion by content rather than the rule by handle, so a text export keeps it.
-     ['declined_rule_macro
-      (enforced {:shape {:args [:term]} :storage [:none] :checked false
+     ;; A reviewer's record that a kb-integrity finding was read and stays.  It names the
+     ;; finding by content rather than by handle, so a text export keeps it.
+     ['acknowledgedFinding
+      (enforced {:shape {:args [:term :term :term]} :storage [:none] :checked false
                  :family nil :facets #{}
-                 :notes (str "an ordinary fact over a quoted declaration, read by one pass of"
-                             " the integrity sweep and by no inference.")}
-                (str "integrity/rule-macro-findings — a rule-macro suggestion the rule's"
-                     " context declines is not reported"))]
+                 :notes (str "an ordinary fact over a category keyword, a quoted subject and"
+                             " a reason string, read by the rule-macro and rule-clash passes"
+                             " of the integrity sweep and by no inference.")}
+                (str "integrity/rule-macro-findings and integrity/rule-clash-findings — an"
+                     " acknowledged finding moves to its category's review-only bucket,"
+                     " carrying the reason"))]
+     ;; Sugar for acknowledgedFinding: core.txt's forward rule concludes the acknowledgment
+     ;; from the record, and no code path reads the record itself.
+     ['declined_rule_macro
+      (inert {:shape {:args [:term]} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes (str "an ordinary fact over a quoted declaration; a core.txt forward"
+                          " rule concludes (acknowledgedFinding :rule-macro ...) from it.")}
+             (str "sugar the engine does not read: core.txt's forward rule concludes"
+                  " acknowledgedFinding from it, and the integrity sweep reads that"))]
 
      ;; The three worked-example annotations quote their example sentence, (Quote S), and
      ;; name no sentex, so they carry no target_following_predicate mark and nothing tears

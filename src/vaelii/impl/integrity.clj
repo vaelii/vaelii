@@ -969,22 +969,37 @@
         (some #(contrary-rule? kb preds ctx %)
               (sort (reads/as-stored-rules-by-consequent-global (:index kb) sx/not-functor))))))
 
-(def ^:private declined-marker
-  "The predicate a reviewer states of a suggested declaration to record that the rule
-  it was suggested for stays as written."
-  'declined_rule_macro)
+(def ^:private acknowledgement
+  "The predicate a reviewer states of a finding to record that someone looked and why it
+  stays: `(acknowledgedFinding category subject reason)`.  The sweep reads this record
+  alone; `declined_rule_macro` is core.txt sugar a forward rule turns into one."
+  'acknowledgedFinding)
 
-(defn- declined?
-  "Does the rule's context see `(declined_rule_macro decl)`?"
-  [kb rsx decl]
+(defn- acknowledgements
+  "`[subject reason]` of every `(acknowledgedFinding category ?subject ?reason)` `context`
+  sees whose reason is a string, in print order, so a finding several records acknowledge
+  carries the same reason on every run."
+  [kb category context]
   (budget/spend!)
-  (seq (res/matches-visible kb (list declined-marker decl) (:context rsx))))
+  (->> (res/matches-visible kb (list acknowledgement category '?subject '?reason) context)
+       (keep (fn [[_ b]]
+               (let [r (get b '?reason)]
+                 (when (string? r) [(get b '?subject) r]))))
+       (sort-by (fn [[subject r]] [(nm/print-key subject) r]))))
+
+(defn- acknowledged-declaration
+  "The reason of the first acknowledgment of the rule-macro suggestion `decl` the rule's
+  context sees, or nil."
+  [kb rsx decl]
+  (some (fn [[subject r]] (when (= decl subject) r))
+        (acknowledgements kb :rule-macro (:context rsx))))
 
 (defn- rule-macro-units
   "The findings for one rule `rsx` at handle `h`: one per macro shape the rule is, with
   the conditions `macro-holds?` reads.  A shape matches a rule of its own class; a
   `set/defaultRule` matching a monotonic shape is a `:default-shaped` finding unless
-  `known-exception?` holds.  A suggestion the rule's context declines is not a finding."
+  `known-exception?` holds.  A suggestion the rule's context acknowledges carries the
+  reason as `:acknowledged`."
   [kb context h rsx]
   (let [m      (freezing (cons (:consequent rsx) (:antecedent rsx)))
         antes  (mapv #(freeze % m) (:antecedent rsx))
@@ -1003,8 +1018,8 @@
                              (converse-rule kb ok? h (b '?mP) (b '?mQ) dflt?))]
             :when (or partner (not= 'inverse (:macro shape)))
             :let  [decl ((:declaration shape) b)]
-            :when (not (declined? kb rsx decl))
-            :when (not (and shaped? @excused))]
+            :when (not (and shaped? @excused))
+            :let  [ack (acknowledged-declaration kb rsx decl)]]
         (cond-> {:rule h
                  :sentence (sx/authored-sentence rsx)
                  :context (:context rsx)
@@ -1013,14 +1028,17 @@
           shaped? (assoc :default-shaped true)
           partner (assoc :converse partner)
           (do (budget/spend!) (seq (res/matches-visible kb decl (:context rsx))))
-          (assoc :stated true))))))
+          (assoc :stated true)
+          ack     (assoc :acknowledged ack))))))
 
 (defn- rule-macro-findings
   "Audit every stored rule `macro-candidate?` accepts from `context`, in print order of
   its sentence, one rule at a time, stopping after the first finding beyond `remaining`
   proves that the result bound truncated the sweep.  The rules are read off the rule
-  extent (`reads/as-stored-rules-in`), the census `chain/rule-firing-report` takes."
-  [kb context remaining]
+  extent (`reads/as-stored-rules-in`), the census `chain/rule-firing-report` takes.
+  Without `review?` the findings no acknowledgment names, under `:rule-macro`; with it the
+  acknowledged ones, under the review-only `:rule-macro-review`."
+  [kb context remaining review?]
   (let [idx  (:index kb)
         recs (:records kb)
         hs   (into (sorted-set) (reads/as-stored-rules-in-global idx :rule))
@@ -1038,17 +1056,13 @@
                                 (nm/print-key (:context rsx)) h]))))]
     (with-open [r (progress/start ::rule-macro "integrity: match the rules against the macro shapes"
                                   (count rows))]
-      (loop [findings []
-             units    (for [[h rsx] (progress/each r rows)
-                            finding (rule-macro-units kb context h rsx)]
-                        finding)]
-        (if-let [finding (first units)]
-          (if (and remaining (>= (count findings) remaining))
-            {:status :truncated :reason :max-results :findings findings}
-            (do
-              (budget/record! :rule-macro finding)
-              (recur (conj findings finding) (rest units))))
-          {:status :complete :findings findings})))))
+      (bounded-findings
+       (if review? :rule-macro-review :rule-macro)
+       (for [[h rsx] (progress/each r rows)
+             finding (rule-macro-units kb context h rsx)
+             :when   (= review? (contains? finding :acknowledged))]
+         finding)
+       remaining))))
 
 ;; ---- undeclared-arity: a genl node no length binds ----
 
@@ -1999,22 +2013,56 @@
   [v]
   (empty? (:engines v)))
 
+(defn- rule-identity
+  "A rule sentence as one value per rule: its canonical sentence, read KB-free, so two
+  spellings that differ only in variable names or antecedent order are one value.  Nil
+  for a form that is not a rule."
+  [sentence]
+  (when (and (sequential? sentence) (= sx/rule-functor (first sentence)))
+    (try (sx/sentence-of (sx/sentex sentence))
+         (catch Exception _ nil))))
+
+(defn- acknowledged-pair
+  "The rule sentences of a `:rule-clash` acknowledgment's subject, `(Quote (and r1 r2))`,
+  as a bag of `rule-identity` values, or nil for a subject of any other shape."
+  [subject]
+  (when (sx/quote-form? subject)
+    (let [f (second subject)]
+      (when (and (sequential? f) (= sx/and-functor (first f)) (= 3 (count f)))
+        (let [ids (map rule-identity (rest f))]
+          (when (every? some? ids) (frequencies ids)))))))
+
+(defn- pair-acknowledgment
+  "The reason of the first acknowledgment `acks-in` holds for the clash entry `e` — read
+  from the pair's `:context`, where the nogood could form — or nil.  `acks-in` answers a
+  context's `[pair reason]` list."
+  [acks-in e]
+  (when-let [acks (seq (acks-in (:context e)))]
+    (let [mine (frequencies (map rule-identity (:sentences e)))]
+      (some (fn [[pair r]] (when (= mine pair) r)) acks))))
+
 (defn- rule-clash-findings
   "The clashing pairs among the stored rules `context` sees, in content order: the live
-  pairs no `exceptWhen` handles under `:rule-clash`, and under `:rule-clash-review` (when
-  `review?`) the pairs either rule of which is a `set/inertRule`, marked `:inert true`, and
-  the `:excepted` ones.  An inert rule chains in neither engine, so its pair is a clash the
-  rules would admit if the rule were switched on, a suggestion rather than a violation; an
-  excepted pair is one the author already handled.
+  pairs no `exceptWhen` handles and no `acknowledgedFinding` names under `:rule-clash`, and
+  under `:rule-clash-review` (when `review?`) the pairs either rule of which is a
+  `set/inertRule`, marked `:inert true`, the `:excepted` ones, and the acknowledged ones,
+  marked with the reason as `:acknowledged`.  An inert rule chains in neither engine, so
+  its pair is a clash the rules would admit if the rule were switched on, a suggestion
+  rather than a violation; an excepted pair is one the author already handled, and an
+  acknowledged one is a pair a reviewer looked at and keeps.
 
   The rules are read off the rule extent in every context (`reads/as-stored-rules-in-global`),
   the census `rule-macro-findings` takes, and kept when `context` sees the rule's context:
   the pairing needs every rule's row before it can ask where a pair is seen, so the read
   is the whole extent and the visibility a filter over it.  A pair's
   `:context` is where its nogood could form, a common descendant of the two rules'
-  contexts, which need not be `context` itself."
+  contexts, which need not be `context` itself, and an acknowledgment is read from there."
   [kb context remaining review?]
-  (let [taxo  (reasoning/taxonomy kb)
+  (let [acks-in (memoize (fn [ctx]
+                           (keep (fn [[subject r]]
+                                   (when-let [pair (acknowledged-pair subject)] [pair r]))
+                                 (acknowledgements kb :rule-clash ctx))))
+        taxo  (reasoning/taxonomy kb)
         rows  (filterv #(tax/sees? taxo context (:context %))
                        (rule-rows kb
                                   (into (sorted-set)
@@ -2023,9 +2071,12 @@
     (bounded-findings
      (if review? :rule-clash-review :rule-clash)
      (keep (fn [[a b e]]
-             (let [inert? (or (inert-row? a) (inert-row? b))]
-               (when (= review? (boolean (or inert? (:excepted e))))
-                 (cond-> e inert? (assoc :inert true)))))
+             (let [inert? (or (inert-row? a) (inert-row? b))
+                   ack    (pair-acknowledgment acks-in e)]
+               (when (= review? (boolean (or inert? (:excepted e) ack)))
+                 (cond-> e
+                   inert? (assoc :inert true)
+                   ack    (assoc :acknowledged ack)))))
            (clash-units kb rows (fn [_] nil)))
      remaining)))
 
@@ -2044,7 +2095,7 @@
    [:orthogonal-over-separation (fn [kb _ context remaining]
                                   (orthogonal-over-separation-findings kb context remaining))]
    [:rule-macro (fn [kb _ context remaining]
-                  (rule-macro-findings kb context remaining))]
+                  (rule-macro-findings kb context remaining false))]
    [:undeclared-arity (fn [kb _ context remaining]
                         (undeclared-arity-findings kb context remaining))]
    [:uncorresponded-function (fn [kb _ context remaining]
@@ -2064,13 +2115,15 @@
    [:taxonomy-island (fn [kb _ context remaining]
                        (taxonomy-island-findings kb context remaining))]
    [:rule-clash-review (fn [kb _ context remaining]
-                         (rule-clash-findings kb context remaining true))]])
+                         (rule-clash-findings kb context remaining true))]
+   [:rule-macro-review (fn [kb _ context remaining]
+                         (rule-macro-findings kb context remaining true))]])
 
 (def ^:private review-categories
   "The review-only categories: a sweep runs their passes only when `:categories` names
   them, so a finding of one never turns an otherwise clean default sweep into `:gap`."
   #{:twin-genls :derivable-stated-edge :disjoint-could-be-partition :missing-arg
-    :taxonomy-island :rule-clash-review})
+    :taxonomy-island :rule-clash-review :rule-macro-review})
 
 (defn- check-args!
   "Refuse a `candidate-terms` that is not a set of ground terms (`:bad-args`), and a

@@ -2402,16 +2402,33 @@
 (termsRelated borderlineExample borderlineExampleComment)
 (termsRelated positiveExampleComment negativeExampleComment borderlineExampleComment)
 
-;; A reviewer's record on a kb-integrity rule-macro suggestion.  It quotes the suggested
-;; declaration rather than naming the rule by (sentexHandle H): a handle is one store's,
-;; and a text export skips a sentence that names one, so the record would not survive a
-;; reload.  The suggestion is a function of the rule's sentence, so it names the rule.
+;; A reviewer's record on a kb-integrity finding: a check flagged it, someone looked, and
+;; here is why it stays.  The subject names the finding by content rather than by
+;; (sentexHandle H): a handle is one store's, and a text export skips a sentence that names
+;; one, so the record would not survive a reload.  This is the one record kb-integrity
+;; reads; any other spelling of an acknowledgment is a rule concluding this one.
+(comment acknowledgedFinding
+         "(acknowledgedFinding ?category ?subject ?reason) means that a kb-integrity check flagged ?subject under ?category, someone looked, and ?reason says why it stays. ?category is the sweep's category keyword. ?subject names the finding by its content, taken as written: for :rule-macro the suggested declaration as the sweep reports it, and for :rule-clash the pair of rules as (Quote (and ?rule1 ?rule2)), the two rule sentences in either order and under any variable names. The sweep reads the record from the context the finding is read in — the rule's for :rule-macro, the pair's for :rule-clash — and moves the finding to that category's review-only bucket with ?reason beside it, so it stays visible and no longer turns a default sweep :gap. Nothing else reads it and it draws no inference. See docs/integrity.md.")
+(positiveExampleComment acknowledgedFinding "(acknowledgedFinding :rule-macro (genl livesIn locatedIn) \"livesIn is meant as a default\")")
+(ternary_predicate acknowledgedFinding)
+(arg acknowledgedFinding 1 keyword)                    ;; the category, as the sweep keys it
+(quotedArg acknowledgedFinding 2 formula)              ;; the finding's content, taken as written
+(arg acknowledgedFinding 3 string)                     ;; why the finding stays
+
+;; A reviewer's record on a kb-integrity rule-macro suggestion, and sugar for
+;; acknowledgedFinding: the rule below concludes the acknowledgment kb-integrity reads,
+;; and no code reads this record.  It quotes the suggested declaration rather than naming
+;; the rule by handle, as acknowledgedFinding does, and carries no reason.
 (comment declined_rule_macro
-         "(declined_rule_macro ?declaration) means that a reviewer read the kb-integrity rule-macro suggestion ?declaration and keeps the rule it was suggested for as written — most often a set/defaultRule that is meant to be a default. ?declaration is the suggested declaration as the sweep reports it, written as a quoted argument. The rule-macro pass reads the record from the rule's context and does not report that suggestion; nothing else reads it and it draws no inference. See docs/integrity.md.")
+         "(declined_rule_macro ?declaration) means that a reviewer read the kb-integrity rule-macro suggestion ?declaration and keeps the rule it was suggested for as written — most often a set/defaultRule that is meant to be a default. ?declaration is the suggested declaration as the sweep reports it, written as a quoted argument. Sugar for acknowledgedFinding: a forward rule concludes (acknowledgedFinding :rule-macro ?declaration \"Acknowledged via declined_rule_macro; no reason supplied.\") in the record's context, and the rule-macro pass reads that. See docs/integrity.md.")
 (positiveExampleComment declined_rule_macro "(declined_rule_macro (genl livesIn locatedIn))")
 (unary_predicate declined_rule_macro)
 ;; What a record declines is a suggested declaration, a ground atomic sentence.
 (genl declined_rule_macro closed_predication)
+(set/forwardRule
+ (implies (declined_rule_macro ?declaration)
+          (acknowledgedFinding :rule-macro ?declaration "Acknowledged via declined_rule_macro; no reason supplied.")))
+(termsRelated declined_rule_macro acknowledgedFinding)
 
 ;; genlInverse is binary genl with arguments 1 and 2 swapped. The engine reads it in
 ;; the matching fan beside genl: a chain of genl and genlInverse edges swaps the

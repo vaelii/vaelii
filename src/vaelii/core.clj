@@ -5905,12 +5905,14 @@
   `:implicit-arity-class`, `:orthogonal-over-separation`, `:rule-macro`, `:undeclared-arity`,
   `:uncorresponded-function`, `:stranded-declaration`, `:rule-clash`, `:twin-genls`,
   `:derivable-stated-edge`, `:disjoint-could-be-partition`, `:missing-arg`,
-  `:taxonomy-island` and `:rule-clash-review`, or `:status :truncated` with its `:reason`
+  `:taxonomy-island`, `:rule-clash-review` and `:rule-macro-review`, or `:status
+  :truncated` with its `:reason`
   and the findings kept when a bound runs out.  `options` takes `:max-work`, `:max-ms` and
-  `:max-results`, and `:categories`, a set of category keys to run.  The six review-only
+  `:max-results`, and `:categories`, a set of category keys to run.  The seven review-only
   categories `:twin-genls`, `:derivable-stated-edge`, `:disjoint-could-be-partition`,
-  `:missing-arg`, `:taxonomy-island` and `:rule-clash-review` run only when `:categories`
-  names them.  `kb-quality`'s `:taxonomy`, `:declarations` and `:clashes` count the same
+  `:missing-arg`, `:taxonomy-island`, `:rule-clash-review` and `:rule-macro-review` run
+  only when `:categories` names them; a rule-macro or rule-clash finding an
+  `acknowledgedFinding` names is reported under its review category with the reason.  `kb-quality`'s `:taxonomy`, `:declarations` and `:clashes` count the same
   checks over the whole KB.  Stores and files nothing.  See docs/integrity.md."
   ([kb candidate-terms context]
    (integrity/kb-integrity kb candidate-terms context nil))

@@ -1416,26 +1416,78 @@
               'CxUniverse)
     (is (= [] (shaped-of kb)))))
 
-(tu/deftest-kb a-declined-suggestion-is-not-reported-until-the-record-goes
+(defn- acknowledged-macros
+  "`[declaration reason]` of each `:rule-macro-review` finding in `context`."
+  ([kb] (acknowledged-macros kb 'CxUniverse))
+  ([kb context]
+   (mapv (juxt :declaration :acknowledged)
+         (:rule-macro-review (v/kb-integrity kb #{} context
+                                             {:categories #{:rule-macro-review}})))))
+
+(def ^:private sugar-reason
+  "The reason core.txt's forward rule writes for a `declined_rule_macro` record."
+  "Acknowledged via declined_rule_macro; no reason supplied.")
+
+(defn- own
+  "The `[declaration …]` rows of `rows` about `decl`, so a test on the upper ontology reads
+  its own rule's suggestion beside whatever core.txt's rules suggest."
+  [decl rows]
+  (filterv #(= decl (first %)) rows))
+
+(defn- core-kb
+  "A KB holding the upper ontology, whose core.txt states the forward rule that makes
+  `declined_rule_macro` sugar for `acknowledgedFinding`."
+  []
+  (doto (tu/fresh) (tu/load-core!)))
+
+(tu/deftest-kb a-declined-suggestion-moves-to-review-until-the-record-goes
+  (tu/with-cleared-kb [kb core-kb]
+    (tu/with-terms [livesInX locatedInX]
+      (doseq [p [livesInX locatedInX]]
+        (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+      (v/assert kb (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p)) 'CxUniverse)
+      (let [decl (list 'genl livesInX locatedInX)]
+        (is (= [[decl true]] (own decl (shaped-of kb))))
+        (is (= [] (own decl (acknowledged-macros kb))))
+        (let [h (v/assert kb (list 'declined_rule_macro decl) 'CxUniverse)]
+          (is (= [] (own decl (shaped-of kb))) "a declined suggestion is not a :rule-macro finding")
+          (is (= [[decl sugar-reason]] (own decl (acknowledged-macros kb)))
+              "it is a :rule-macro-review finding, with the sugar's reason")
+          (is (nil? (:rule-macro-review (v/kb-integrity kb #{} 'CxUniverse)))
+              "the review category runs only when named")
+          (v/retract! kb h)
+          (is (= [[decl true]] (own decl (shaped-of kb)))
+              "retracting the record brings the finding back")
+          (is (= [] (own decl (acknowledged-macros kb)))))))))
+
+(tu/deftest-kb an-acknowledged-suggestion-carries-its-reason-into-review
   (tu/with-terms [livesInX locatedInX]
     (doseq [p [livesInX locatedInX]]
       (v/assert kb (list 'binary_predicate p) 'CxUniverse))
     (v/assert kb (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p)) 'CxUniverse)
-    (let [decl (list 'genl livesInX locatedInX)]
-      (is (= [[decl true]] (shaped-of kb)))
-      (let [h (v/assert kb (list 'declined_rule_macro decl) 'CxUniverse)]
-        (is (= [] (shaped-of kb)) "a declined suggestion is not reported")
+    (let [decl   (list 'genl livesInX locatedInX)
+          reason "living somewhere is usually being there, and the default is meant"
+          h      (v/assert kb (list 'acknowledgedFinding :rule-macro decl reason) 'CxUniverse)]
+      (is (= [] (shaped-of kb)))
+      (is (= [[decl reason]] (acknowledged-macros kb)))
+      (testing "an acknowledgment under another category acknowledges nothing here"
         (v/retract! kb h)
-        (is (= [[decl true]] (shaped-of kb)) "retracting the record brings the finding back")))))
+        (v/assert kb (list 'acknowledgedFinding :rule-clash decl reason) 'CxUniverse)
+        (is (= [[decl true]] (shaped-of kb)))
+        (is (= [] (acknowledged-macros kb)))))))
 
 (tu/deftest-kb a-declined-suggestion-is-read-from-the-rule-s-context
-  (tu/with-terms [livesInX locatedInX CxTheory]
-    (doseq [p [livesInX locatedInX]]
-      (v/assert kb (list 'binary_predicate p) 'CxUniverse))
-    (v/assert kb (list 'genlCx CxTheory 'CxUniverse) 'CxUniverse)
-    (v/assert kb (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p)) 'CxUniverse)
-    (v/assert kb (list 'declined_rule_macro (list 'genl livesInX locatedInX)) CxTheory)
-    (is (= 1 (count (shaped-of kb))) "a record below the rule's context does not decline it")))
+  (tu/with-cleared-kb [kb core-kb]
+    (tu/with-terms [livesInX locatedInX CxTheory]
+      (doseq [p [livesInX locatedInX]]
+        (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+      (v/assert kb (list 'genlCx CxTheory 'CxUniverse) 'CxUniverse)
+      (v/assert kb (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p)) 'CxUniverse)
+      (let [decl (list 'genl livesInX locatedInX)]
+        (v/assert kb (list 'declined_rule_macro decl) CxTheory)
+        (is (= 1 (count (own decl (shaped-of kb))))
+            "a record below the rule's context does not decline it")
+        (is (= [] (own decl (acknowledged-macros kb))))))))
 
 (defn- with-temp-dirs
   "`(f dir-a dir-b)` on two new temp directory paths, removed afterwards."
@@ -1453,20 +1505,21 @@
   (tu/with-terms [livesInX locatedInX]
     (with-temp-dirs
       (fn [dir _]
-        (tu/with-cleared-kb [src tu/fresh]
+        (tu/with-cleared-kb [src core-kb]
           (doseq [p [livesInX locatedInX]]
             (v/assert src (list 'binary_predicate p) 'CxUniverse))
           (v/assert src (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p))
                     'CxUniverse)
           (v/assert src (list 'declined_rule_macro (list 'genl livesInX locatedInX)) 'CxUniverse)
           (is (zero? (:skipped (v/export-text! src dir)))))
-        (tu/with-cleared-kb [reloaded tu/fresh]
+        (tu/with-cleared-kb [reloaded core-kb]
           (v/load-text! reloaded dir)
           (let [record (list 'declined_rule_macro (list 'genl livesInX locatedInX))]
             (is (seq (v/sentexes-matching reloaded record 'CxUniverse)))
-            (is (= [] (shaped-of reloaded)) "the reloaded record still declines the suggestion")
+            (is (= [] (own (second record) (shaped-of reloaded)))
+                "the reloaded record still declines the suggestion")
             (v/retract! reloaded (v/handle-of reloaded record 'CxUniverse))
-            (is (= 1 (count (shaped-of reloaded)))
+            (is (= 1 (count (own (second record) (shaped-of reloaded))))
                 "the reloaded rule is the one the record named")))))))
 
 (tu/deftest-kb a-monotonic-generator-shape-is-not-reported
@@ -1716,6 +1769,37 @@
       (is (= :negation (:kind e)))
       (is (true? (:excepted e)))
       (is (not (contains? e :inert))))))
+
+(tu/deftest-kb an-acknowledged-rule-clash-is-review-only
+  ;; The subject quotes the pair as one conjunction of the two rule sentences, in either
+  ;; order and under any variable names: the pair is matched by the rules' canonical form.
+  (tu/with-terms [bird_kind penguin_kind flies swims]
+    (v/assert-rule kb [(list bird_kind '?x)] (list flies '?x) 'CxUniverse {:direction :forward})
+    (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x)) 'CxUniverse
+                   {:direction :forward})
+    (let [reason "penguins are birds that do not fly, and the clash is the facts' to settle"
+          pair   (list 'Quote (list 'and
+                                    (list 'implies (list penguin_kind '?p) (list 'not (list flies '?p)))
+                                    (list 'implies (list bird_kind '?b) (list flies '?b))))]
+      (is (= 1 (count (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash}))))))
+      (testing "an acknowledgment of another pair acknowledges nothing here"
+        (let [other (list 'Quote (list 'and
+                                       (list 'implies (list penguin_kind '?p) (list 'not (list swims '?p)))
+                                       (list 'implies (list bird_kind '?b) (list flies '?b))))
+              h     (v/assert kb (list 'acknowledgedFinding :rule-clash other reason) 'CxUniverse)]
+          (is (= 1 (count (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash}))))))
+          (v/retract! kb h)))
+      (let [h (v/assert kb (list 'acknowledgedFinding :rule-clash pair reason) 'CxUniverse)]
+        (is (empty? (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash}))))
+            "an acknowledged pair is no violation")
+        (let [e (first (about [flies] (:rule-clash-review (clash-sweep kb #{:rule-clash-review}))))]
+          (is (= :negation (:kind e)))
+          (is (= reason (:acknowledged e)) "the reason stays visible beside the pair")
+          (is (false? (:excepted e)))
+          (is (not (contains? e :inert))))
+        (v/retract! kb h)
+        (is (= 1 (count (about [flies] (:rule-clash (clash-sweep kb #{:rule-clash})))))
+            "retracting the acknowledgment brings the violation back")))))
 
 (tu/deftest-kb a-rule-clash-is-read-from-a-context-that-sees-both-rules
   (tu/with-terms [bird_kind penguin_kind flies CxLeft CxRight CxBoth]
