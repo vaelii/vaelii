@@ -95,6 +95,22 @@
       (is (v/ask? kb (list 'functional pRel) U))
       (is (v/ask? kb (list 'functionalInArg pRel 1) U)))))
 
+(tu/deftest-kb functional-is-functional-in-arg-2
+  ;; `(functional P)` is `(functionalInArg P 2)` written the binary way, and a CxUniverse
+  ;; forward rule concludes the second from the first, so a reader of the tuple-mark
+  ;; family reads one spelling and `functional` is sugar for it.
+  (testing "a functional predicate is functional in argument 2"
+    (tu/with-terms [birthYearOf]
+      (v/assert kb (list 'functional birthYearOf) U)
+      (is (v/ask? kb (list 'functionalInArg birthYearOf 2) U))
+      (is (not (v/ask? kb (list 'functionalInArg birthYearOf 1) U))
+          "and says nothing about argument 1")))
+  (testing "an injection is functional in both arguments, argument 2 through functional"
+    (tu/with-terms [capitalCityOf]
+      (v/assert kb (list 'injection capitalCityOf) U)
+      (is (v/ask? kb (list 'functionalInArg capitalCityOf 1) U))
+      (is (v/ask? kb (list 'functionalInArg capitalCityOf 2) U)))))
+
 (tu/deftest-kb a-bijection-clashes-over-two-unmergeable-fillers-in-either-direction
   (tu/with-terms [pRel Ruritania]
     (v/assert kb (list 'bijection pRel) U)

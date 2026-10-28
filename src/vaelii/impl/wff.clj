@@ -500,14 +500,13 @@
   state the same relationship, `N` naming the argument of `P` that carries `F`'s value.
 
   `F` is a function name — a `MotherFn`-shaped constant, an individual by the naming
-  invariants — so the individual refusal falls on `P` alone.  `N` is optional and
-  1-based; omitted, the value takes `P`'s last argument, which is the shape nearly
-  every correspondence has.  Whether `N` is in range is not knowable here: it is
-  checked against the *application*'s arity, which no declaration states."
+  invariants — so the individual refusal falls on `P` alone.  `N` is 1-based and always
+  stated.  Whether `N` is in range is not knowable here: it is checked against the
+  *application*'s arity, which no declaration states."
   [_ [f fname pred pos :as s] _context]
   (cond-> []
-    (not (<= 3 (count s) 4))
-    (conj (str f " takes a function, a predicate, and optionally an argument position"))
+    (not= 4 (count s))
+    (conj (str f " takes a function, a predicate, and the argument position of the value"))
     (not (symbol? fname)) (conj (str f " expects a function name (a symbol)"))
     (not (symbol? pred))  (conj (str f " expects a predicate name (a symbol)"))
     (nm/individual? pred) (conj (str pred " is an individual; " f " names the predicate "

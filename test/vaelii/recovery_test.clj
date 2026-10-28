@@ -661,14 +661,14 @@
   ;; A firing that joined on an inherited claim rests on justifications like any
   ;; other, so the rebuild replays it — and its recorded reasons still carry
   ;; retraction afterwards, which is what makes the replay a belief and not a copy.
-  (tu/with-terms [dog_t cat_t chihuahua_t maine_coon_t largerThan outweighs]
+  (tu/with-terms [dog_t cat_t chihuahua_t maine_coon_t typeLargerThan outweighs]
     (v/with-deferred-settle kb
       (v/assert kb (list 'genl chihuahua_t dog_t) 'CxUniverse)
       (v/assert kb (list 'genl maine_coon_t cat_t) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 2 'genl) 'CxUniverse)
-      (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse))
-    (v/assert kb (list 'implies (list largerThan '?x '?y) (list outweighs '?x '?y))
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 2 'genl) 'CxUniverse)
+      (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse))
+    (v/assert kb (list 'implies (list typeLargerThan '?x '?y) (list outweighs '?x '?y))
               'CxUniverse {:direction :forward})
     (let [goal (list outweighs chihuahua_t maine_coon_t)
           h    (v/handle-of kb goal 'CxUniverse)]
@@ -679,9 +679,9 @@
         (let [reasons (into #{}
                             (comp (mapcat :because) (map :sentence))
                             (:support (tu/why-root kb2 h)))]
-          (is (contains? reasons (list largerThan dog_t cat_t)))
+          (is (contains? reasons (list typeLargerThan dog_t cat_t)))
           (is (contains? reasons (list 'genl chihuahua_t dog_t)))
-          (is (contains? reasons (list 'transitiveInArgInverse largerThan 1 'genl))))
+          (is (contains? reasons (list 'transitiveInArgInverse typeLargerThan 1 'genl))))
         (testing "a post-recover retraction of a reason still withdraws it"
           (v/retract! kb2 (v/handle-of kb2 (list 'genl chihuahua_t dog_t) 'CxUniverse))
           (is (not (v/in? kb2 h))))))))

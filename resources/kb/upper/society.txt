@@ -7,16 +7,19 @@
 (arg friendOf 1 person)
 (arg friendOf 2 person)
 (set/monotonic (symmetric friendOf))
+(set/monotonic (time_varying_relation friendOf))
 
 (comment knows
          "(knows ?person1 ?person2) means that ?person1 is acquainted with ?person2. Deliberately NOT symmetric: a great many people know someone who does not know them, and declaring the symmetry would make the KB assert that back. Derived from friendship, marriage and parenthood by rules, so most knows facts are consequences rather than claims anyone wrote.")
 (set/monotonic (instance_relation_predicate knows))
+(set/monotonic (time_varying_relation knows))
 (arg knows 1 person)
 (arg knows 2 person)
 
 (comment likes
          "(likes ?person ?thing) means that ?person is fond of ?thing. The first argument is a person; the second is anything at all, so its arg is thing — a person may like an object, a kind, or another person. An attitude, not a behaviour: nothing follows about what the person does.")
 (set/monotonic (instance_relation_predicate likes))
+(set/monotonic (time_varying_relation likes))
 (arg likes 1 person)
 (arg likes 2 thing)   ;; what a person likes: a thing of any kind
 
@@ -26,10 +29,12 @@
 (arg marriedTo 1 person)
 (arg marriedTo 2 person)
 (set/monotonic (symmetric marriedTo))
+(set/monotonic (time_varying_relation marriedTo))
 
 (comment memberOf
          "(memberOf ?person ?organization) means that ?person belongs to ?organization. Membership in a body of people, which is not parthood: a member is not a component of the organization the way a wheel is of a car, and no mereological rule reaches it.")
 (set/monotonic (instance_relation_predicate memberOf))
+(set/monotonic (time_varying_relation memberOf))
 (arg memberOf 1 person)
 (arg memberOf 2 organization)
 
@@ -37,17 +42,20 @@
          "(owns ?person ?object) means that ?person owns ?object. The second argument is a physical object, and CxMereology states that owning a whole is owning each of its parts. Legal ownership rather than possession: nothing here says who is holding the thing.")
 (implementationNote owns "CxMereology states (transitiveInArgInverse owns 2 tangiblePartOf), so a goal about who owns a part is answered at query time from the owner of its whole, and no owns fact about the part is stored.")
 (set/monotonic (instance_relation_predicate owns))
+(set/monotonic (time_varying_relation owns))
 (arg owns 1 person)
 (arg owns 2 tangible)
 
 (comment speaks
          "(speaks ?person ?language) means that ?person speaks ?language. Says nothing about fluency and nothing about which language they speak best, and a person may speak several.")
 (set/monotonic (instance_relation_predicate speaks))
+(set/monotonic (time_varying_relation speaks))
 (arg speaks 1 person)
 (arg speaks 2 language)
 
 (comment worksFor
          "(worksFor ?person ?organization) means that ?person is employed by ?organization. A rule concludes membership from it, employment being one way of belonging to a body of people; the converse does not follow, since a member of a club is not employed by it.")
 (set/monotonic (instance_relation_predicate worksFor))
+(set/monotonic (time_varying_relation worksFor))
 (arg worksFor 1 person)
 (arg worksFor 2 organization)

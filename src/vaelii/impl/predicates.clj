@@ -839,10 +839,17 @@
                                          (str "context-nat producer — sibling F-contexts differing at one arg are"
                                               " ordered by the sub-relation on that arg, materializing genlCx"))]
      ['functionCorrespondingPredicate
-      (enforced (wff-only [:function :predicate] :optional [:position]
+      (enforced (wff-only [:function :predicate :position]
                           :facets #{:answers})
                 (str "nat — reifies an application to the value the predicate already names,"
-                     " and projects a minted constant back onto it"))]]
+                     " and projects a minted constant back onto it"))]
+     ['functionCorrespondingBinaryPredicate
+      (enforced {:shape {:args [:function :predicate]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "enforced by the generic chain, not by name: the core.txt rule"
+                             " beside it concludes (functionCorrespondingPredicate F P 2).")}
+                (str "generic forward chaining: the core.txt rule concludes"
+                     " (functionCorrespondingPredicate F P 2), which the nat reify reads"))]]
 
     ;; ---- the equality relations ------------------------------------------
     ;; Sorted, so the table is a function of the set rather than of set iteration
@@ -1295,13 +1302,13 @@
     ;; ---- bounded and unbounded arity ---------------------------------------
     ;; The bounded/unbounded split of relation and arityMax are stated so the KB says
     ;; what the arity check enforces; the check itself reads fixed_arity, variable_arity
-    ;; and arityMin, and bounds functionCorrespondingPredicate by name.
+    ;; and arityMin.
     (map (fn [[t why]] [t (inert (collection :notes why) why)])
          '[[bounded_arity "documentary: a relation with an upper bound on its arguments; with unbounded_arity it partitions relation. Nothing reads it by name."]
            [unbounded_arity "documentary: a relation taking any number of arguments beyond its required ones. Nothing reads it by name."]
            [unbounded_arity_predicate "documentary: unbounded_arity intersected with predicate. Nothing reads it by name."]
            [unbounded_arity_function "documentary: unbounded_arity intersected with function. Nothing reads it by name."]
-           [arityMax "documentary: the upper bound of a bounded_arity relation; the arity check bounds functionCorrespondingPredicate by name, not through this."]])
+           [arityMax "documentary: the upper bound of a bounded_arity relation; the arity check does not read it."]])
 
     ;; ---- the top of the ontology -----------------------------------------
     ;; The collections core.txt states so that the domain files can place their own types
@@ -1348,7 +1355,15 @@
            [type_type_by_order "ontology, not grammar: the disjoint_metatype partitioning fixed_order_type by order. No engine check names it."]
            [spatiality_type "ontology, not grammar: the at_least_metatype holding spatial and aspatial. The orthogonalMetatypes and partitionedByType rules read its memberships as any membership is; no engine check names it."]
            [temporality_type "ontology, not grammar: the at_least_metatype holding temporal and atemporal. The orthogonalMetatypes and partitionedByType rules read its memberships as any membership is; no engine check names it."]
-           [arity_type "ontology, not grammar: the at_least_metatype of the relation-level arity types, e.g. binary and variable_arity. The typeOrthogonal rule reads its memberships as any membership is; no engine check names it."]])
+           [arity_type "ontology, not grammar: the at_least_metatype of the relation-level arity types, e.g. binary and variable_arity. The typeOrthogonal rule reads its memberships as any membership is; no engine check names it."]
+           [time_invariant_relation "ontology, not grammar: a relation no instance of which could lose it and still exist (OntoClean +R), one part of the rigidity partition of relation. No engine check names it."]
+           [time_agnostic_relation "ontology, not grammar: a relation some instances of which could lose it and still exist and some not (OntoClean -R), one part of the rigidity partition of relation. No engine check names it."]
+           [time_varying_relation "ontology, not grammar: a relation every instance of which could lose it and still exist (OntoClean ~R), preserved down genl by transitiveInArgInverse. No engine check names it."]
+           [possibly_time_invariant_relation "ontology, not grammar: time_invariant_relation and time_agnostic_relation together, preserved up genl by transitiveInArg. No engine check names it."]
+           [rigidity_kind "ontology, not grammar: the at_least_metatype holding the three rigidity kinds of relation. No engine check names it."]
+           [time_indexed_relation "ontology, not grammar: a relation one argument of which names the time a tuple holds at, below time_invariant_relation. temporalIndexArg's first argument is typed time_indexed_relation, so a fact of it makes the relation one; no engine check names it."]
+           [stable_once_true "ontology, not grammar: a time-varying relation that, once it holds at a time, holds at every later time. No engine check names it."]
+           [stable_once_false "ontology, not grammar: a time-varying relation that, once it fails at a time, fails at every later time. No engine check names it."]])
 
     ;; ---- the two halves of unary_predicate ---------------------------------
     ;; `empty` and `nonempty` partition `unary_predicate`.  The disjointness audit reads
@@ -1368,8 +1383,9 @@
                            "generic: the predicate specialization of relation")]
      ['function  (enforced (collection :notes "the arg target the function-valued positions name.")
                            (str "generic: the function specialization of relation and the arg"
-                                " target the function-valued positions of result, genlResult"
-                                " and functionCorrespondingPredicate name"))]
+                                " target the function-valued positions of result, genlResult,"
+                                " functionCorrespondingPredicate and"
+                                " functionCorrespondingBinaryPredicate name"))]
      ;; The other half of relation, and the three levels below it.  core.txt comments them
      ;; and `vocabulary/audit` answers for every term core.txt comments; no engine check names
      ;; any of the four.  The connectives are read by their own names (the `implies`, `and`,
@@ -1742,6 +1758,14 @@
                 (str "generic rule generators (docs/generators.md): a fact of two or three"
                      " metatypes generates rules making every member of each orthogonal to every"
                      " member of the others; four or more pends variable-arity rule support"))]
+     ['temporalIndexArg
+      (enforced {:shape {:args [:relation :position]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "enforced by argument typing, not by name: core.txt's"
+                             " (arg temporalIndexArg 1 time_indexed_relation) types each fact's"
+                             " relation a time_indexed_relation.")}
+                (str "a core.txt arg declaration: a relation with a temporal index argument"
+                     " is a time_indexed_relation, so at_least_binary and time-invariant"))]
      ['partitionedByType
       (enforced {:shape {:args [:type :type]} :storage [:none] :checked false
                  :family nil :facets #{}
@@ -1955,6 +1979,18 @@
                              " binary, filler type derived from ?pred's slot-1 contract.")}
                 (str "vaelii.core/specified-violations with :first — audits ?pred's"
                      " first position, the argument-swapped twin"))]
+     ['typeAllSpecified
+      (enforced {:shape {:args [:type :type]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "an on-demand audit, not a stored constraint: nothing fires on"
+                             " assert, and kb-integrity's :type-specified-violations pass reads"
+                             " it. Every ?indep instance needs a believed membership in some"
+                             " ?classifier member; a classifier with no member is a gap the"
+                             " audit reports explicitly.")}
+                (str "vaelii.impl.predall/type-specified-violations — kb-integrity's"
+                     " :type-specified-violations pass reads the declaration and returns the"
+                     " instances of ?indep no member of ?classifier is believed to hold;"
+                     " generates no rule"))]
      ['PredAllExistsFn
       (enforced (collection :notes (str "a function constant, never a sentence functor; its"
                                         " unreifiable_function mark keeps a ground"

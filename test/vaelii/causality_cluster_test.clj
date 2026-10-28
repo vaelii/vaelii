@@ -55,18 +55,32 @@
     (is (not (v/ask? kb (list 'spatial Clip) 'CxUniverse)))
     (is (not (v/ask? kb (list 'tangible Clip) 'CxUniverse)))))
 
-(tu/deftest-kb a-held-state-is-not-a-happening-role-subject
+(tu/deftest-kb a-held-state-has-participants-but-is-not-perceived-or-done
   (tu/without-entailing
    (tu/with-terms [Calm Observer]
      (v/assert kb (list 'fluent Calm) 'CxUniverse)
-     (doseq [p '[actor thingPerceived]]
+     (is (not (some #(and (= :arg-type (:type %)) (= 1 (:position %)))
+                    (v/check kb (list 'actor Calm Observer) 'CxUniverse)))
+         "actor takes any situation, a held state included")
+     (doseq [p '[thingPerceived doneBy]]
        (is (some #(and (= :arg-type (:type %)) (= 1 (:position %)))
                  (tu/check-or-conviction kb (list p Calm Observer) 'CxUniverse))
            (str p " keeps the happening-versus-state boundary"))))))
 
 (tu/deftest-kb new-happening-roles-pass-the-candidate-integrity-sweep
   (let [terms '#{actor thingPerceived}]
-    (is (= :audited (:status (v/kb-integrity kb terms 'CxUniverse))))
+    ;; Beside the rigidity classification still open for every relation, which the
+    ;; type-specified pass reports whatever the candidates are.
+    (let [report (v/kb-integrity kb terms 'CxUniverse)
+          open   (get (:type-specified-violations report)
+                      '[typeAllSpecified rigidity_kind relation])]
+      (is (= {:status :gap :candidate-count (count terms)}
+             (dissoc report :type-specified-violations :work :elapsed-ms))
+          "the default passes find nothing")
+      (is (= ['[typeAllSpecified rigidity_kind relation]]
+             (keys (:type-specified-violations report))))
+      (is (empty? (filter terms (:violations open)))
+          "each happening role is classified by rigidity kind"))
     ;; The review-only missing-arg pass audits the whole visible KB, not just the
     ;; candidate set; unrelated intentionally untyped positions are not this change.
     (let [audit (v/kb-integrity kb terms 'CxUniverse {:categories #{:missing-arg}})]

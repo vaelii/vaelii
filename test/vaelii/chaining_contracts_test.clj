@@ -253,7 +253,7 @@
   [kb n]
   (tu/with-terms [NextFn nextOf link tagged]
     (v/assert kb (list 'reifiable_function NextFn) 'CxUniverse)
-    (v/assert kb (list 'functionCorrespondingPredicate NextFn nextOf) 'CxUniverse)
+    (v/assert kb (list 'functionCorrespondingPredicate NextFn nextOf 2) 'CxUniverse)
     (v/assert kb (fwd [(list nextOf '?a '?k) (list link '?a '?b)] (list tagged (list NextFn '?b)))
               'CxUniverse {:chain? false})
     (let [nodes (vec (repeatedly (inc n) #(tu/tmp-ind "Node")))]
@@ -791,7 +791,7 @@
           fact (list stepOf Muffet Jane)]
       (v/assert kb (list 'reifiable_function MomFn) 'CxUniverse {:strength :monotonic})
       (v/assert kb (list 'genlCx CxStory 'CxUniverse) 'CxUniverse {:strength :monotonic})
-      (v/assert kb (list 'functionCorrespondingPredicate MomFn momOf) 'CxUniverse)
+      (v/assert kb (list 'functionCorrespondingPredicate MomFn momOf 2) 'CxUniverse)
       (v/assert kb (list momOf Muffet Mary) CxStory)
       (v/assert kb (list likes Tom app) 'CxUniverse)
       (v/assert kb (fwd [(list likes '?x app)] (list fond '?x)) 'CxUniverse)

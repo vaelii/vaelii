@@ -22,7 +22,7 @@ rather than a forward one](defenses.md#an-inert-rule-records-transitivity-not-a-
 
 `core.txt` states no rule for `genl`'s transitivity, inert or otherwise: `genl`
 carries its account in the `comment` on the predicate, where the closure is described,
-and `(transitive genl)` classifies it without handing it to the generic prover. The two
+and `(transitive genl)` classifies it without handing it to the generic prover. The three
 inert rules `core.txt` does state record the `commutative` / `commutativeInArgAndRest` bridge.
 
 ## genl: the type hierarchy
@@ -91,13 +91,8 @@ predicate and function the starter ships states its class. `bounded_arity` and
 `(arityMax R N)` states the upper bound of a `bounded_arity` relation. The three are
 documentary: the arity check reads `fixed_arity`, `variable_arity` and `arityMin`.
 `arityMin` states the lower bound of a variable-arity relation. Prefer
-variable arity for a repeatable, homogeneously typed argument role. A relation with a
-bounded optional tail declares variable arity too, with its `arityMin`, and its
-well-formedness check bounds the tail: `functionCorrespondingPredicate` is
-`variable_arity_predicate` with `arityMin 2`, and `wff/correspondence-problems` refuses
-it with other than two or three arguments, the third an optional argument position. It is
-also `bounded_arity` with `(arityMax functionCorrespondingPredicate 3)`, which states that
-bound in the KB.
+variable arity for a repeatable, homogeneously typed argument role. No shipped relation
+is both variable-arity and bounded, so `core.txt` states no `arityMax`.
 
 `at_least_binary`, `at_least_ternary`, `at_least_quaternary` and `at_least_quinary` are
 the generic derived classes of relations of arity 2, 3, 4 and 5 or greater, fixed or
@@ -237,6 +232,7 @@ walks the `:derived?` subset (`special/integrate-transitive`) plus what
 | `rewriteOf` `sameAs` `equals` | the equality partition, and migration | by name — the arm's return value is the twins and the violations, which `:derived?` would discard ([equality.md](equality.md)) |
 | `arg` `genlArg` `interArg` `interArgEqual` | the `:props` set of predicates some declaration of that kind names (`:declares-arg-isa` / `:declares-arg-genl` / `:declares-inter-arg-isa` / `:declares-inter-arg-equal`), and the declarations themselves read back through the index per query | `:derived?` — the `:props` set is what lets the descension ask *whose* declarations bind a tuple without an index probe per super-predicate |
 | `transitiveInArg` `transitiveInArgInverse` `functionCorrespondingPredicate` | none — read back through the index per query | nothing to reach |
+| `functionCorrespondingBinaryPredicate` | none — a `core.txt` rule concludes `(functionCorrespondingPredicate F P 2)` from it | nothing to reach |
 | `different` `unknown` `thereExists`, the five aggregates | none — never stored | nothing to reach: `wff` refuses the conclusion on the derivation path exactly as it refuses the assertion |
 
 A row naming a functor in the forced-monotonic set (`genlCx`, a relation mark,
@@ -1500,7 +1496,7 @@ forced-monotonic and is weighed as a member of an inherited nogood.
 
   A declared-transitive `P` is **metadata only** — it is not a cached relation. Nothing
   about `P` enters the adjacency, so there is no closure to maintain, no depth potential
-  to repair, and nothing an arrival order could make expensive; asserting `(largerThan A
+  to repair, and nothing an arrival order could make expensive; asserting `(typeLargerThan A
   B)` is an ordinary fact assert. The cost is entirely at query time, where
   `TransitivePredicateProver` walks the believed facts (memoized per search step,
   `observe/*reach-memo*`, and the answer held per KB — "What is cached", below). A
@@ -1649,7 +1645,7 @@ forced-monotonic and is weighed as a member of an inherited nogood.
   `(P b a)` are contradictory, so a claim whose converse is believed forms a nogood with
   it, which the settle decides; a converse read by preservation opposes at the weakest
   class of the claim and its reading ([inherit.md](inherit.md)). A strict order like
-  `largerThan` is the usual case. The conviction needs a believed **opposing** sentex, and a self tuple has
+  `typeLargerThan` is the usual case. The conviction needs a believed **opposing** sentex, and a self tuple has
   none — its converse is the sentence itself — so `(P a a)` is admitted with no clash,
   which asymmetry alone would not license. `inherit/claims` skips the converse probe
   there for the same reason, and says so.

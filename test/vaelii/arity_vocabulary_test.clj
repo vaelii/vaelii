@@ -235,8 +235,8 @@
   (testing "an exact declaration is fixed, not an overloaded floor"
     (is (v/ask? kb '(fixed_arity interArg) 'CxUniverse))
     (is (not (v/ask? kb '(arityMin interArg 5) 'CxUniverse))))
-  (testing "the four current variable-arity predicates state only their lower bounds"
-    (doseq [relation '[functionCorrespondingPredicate greaterThan lessThan termsRelated]]
+  (testing "the three current variable-arity predicates state only their lower bounds"
+    (doseq [relation '[greaterThan lessThan termsRelated]]
       (is (some? (v/handle-of kb (list 'arityMin relation 2) 'CxUniverse))
           (str relation " has an asserted minimum"))
       (is (not (v/isa? kb relation 'binary_predicate))
@@ -438,7 +438,7 @@
     (is (v/isa? kb 'interArg 'fixed_arity))
     (is (v/isa? kb 'interArg 'relation)))
   (testing "all current variable predicates carry the predicate specialization"
-    (doseq [relation '[functionCorrespondingPredicate greaterThan lessThan termsRelated]]
+    (doseq [relation '[greaterThan lessThan termsRelated]]
       (is (v/isa? kb relation 'variable_arity_predicate))
       (is (v/isa? kb relation 'variable_arity))
       (is (v/isa? kb relation 'relation))))
@@ -573,7 +573,7 @@
 (tu/deftest-kb admits-argnum-answers-are-justified-by-its-definition-rules
   ;; The prover answers a ground (admitsArgnum R n).  A goal with the relation or the
   ;; position open is answered by the definition rules, and each answer's proof cites the
-  ;; rule that derives it.  The six relations below differ in their arity signature.
+  ;; rule that derives it.  The five relations below differ in their arity signature.
   (let [[relation-rule binary-rule ternary-rule quaternary-rule quinary-rule unbounded-rule]
         (mapv #(v/handle-of kb (list 'set/backwardRule %) 'CxUniverse) admits-argnum-definition)
         cites? (fn [answers bindings rule] (contains? (get answers bindings #{}) rule))]
@@ -602,10 +602,6 @@
         (is (cites? answers '{?n 5} quinary-rule))
         (is (not (contains? answers '{?n 6}))))
       (is (not (v/ask? kb '(admitsArgnum interArg 6) 'CxUniverse))))
-    (testing "functionCorrespondingPredicate, bounded variable arity 2 to 3: 1 and 2"
-      (let [answers (admitted-with-proofs kb '(admitsArgnum functionCorrespondingPredicate ?n))]
-        (is (cites? answers '{?n 1} relation-rule))
-        (is (cites? answers '{?n 2} binary-rule))))
     (testing "different, unbounded variable arity: 2 through at_least_binary, 7 through unbounded_arity"
       (is (cites? (admitted-with-proofs kb '(admitsArgnum different ?n)) '{?n 2} binary-rule))
       (is (cites? (admitted-with-proofs kb '(admitsArgnum ?r 7)) '{?r different} unbounded-rule)))))

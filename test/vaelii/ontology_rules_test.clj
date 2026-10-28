@@ -103,8 +103,9 @@
   ;; with `(lessThan k ?n)` and concludes `(at_least_… ?r)`, which is disjoint from every
   ;; exact class of k places or fewer, and a rule concluding that class or claiming that
   ;; arity binds the same `?r` to exactly k places or fewer.  The arity table is
-  ;; functional, so no `?r` satisfies both antecedents, and `arity-floor-conflicted?` drops
-  ;; every such pair as unreachable.
+  ;; functional, `(functional arity)` concluding `(functionalInArg arity 2)`, so no `?r`
+  ;; satisfies both antecedents, and `functional-slot-conflicted?` drops every such pair
+  ;; as unreachable.
   ;;
   ;; No `:disjoint` pair is left.  CxCriedWolf's `lied_before → liar` concludes a person,
   ;; and two kinds of rule conclude a type disjoint from one: the signed refinements of
@@ -130,21 +131,33 @@
   ;; abstract.txt acknowledges the two proper readings' pairs and time.txt the other six
   ;; with `acknowledgedFinding`, so they are `:rule-clash-review` findings carrying that
   ;; reason and no live `:rule-clash` finding is left.
+  ;;
+  ;; Four `:disjoint` pairs are review findings too.  The rigidity-correspondence rules give
+  ;; a function its corresponding predicate's kind, one rule per kind, and the kinds
+  ;; partition relation, so two of them fire together only for a function corresponding
+  ;; to predicates of two kinds, which the rigidity-correspondence census reports.  core.txt
+  ;; acknowledges the three pairs.  CxNormalPhysicalConditions' default rules make a metal
+  ;; solid and mercury liquid, and the metal rule states mercury as its exception.
   (let [live        (rule-clashes-everywhere kb #{:rule-clash})
         pairs       (rule-clashes-everywhere kb #{:rule-clash-review})
         kinds       (frequencies (map :kind (concat live pairs)))
         root-denial '(implies (properPartOf ?part ?whole) (not (partOf ?whole ?part)))
         definition? #(some #{root-denial} (:sentences %))
+        rigidity    '#{time_invariant_relation time_agnostic_relation time_varying_relation}
+        rigidity?   (fn [pair] (every? #(contains? rigidity (first (nth % 2))) (:sentences pair)))
         acked       (filter :acknowledged pairs)]
     (is (empty? live)
         (str "live clashes: " (pr-str (mapv (juxt :kind :sentences) live))))
-    (is (= {:negation 12} kinds)
+    (is (= {:negation 12 :disjoint 4} kinds)
         (str "clashes: " (pr-str (mapv (juxt :kind :sentences) (concat live pairs)))))
     (is (every? #(or (:excepted %) (:acknowledged %)) (filter #(= :negation (:kind %)) pairs))
         "negation clashes are excepted or acknowledged")
-    (is (= 8 (count acked))
+    (is (every? :excepted (remove rigidity? (filter #(= :disjoint (:kind %)) pairs)))
+        "the one other disjoint pair, a metal solid and mercury liquid, is excepted")
+    (is (= 3 (count (filter rigidity? acked))) "the three rigidity-correspondence pairs are acknowledged")
+    (is (= 8 (count (remove rigidity? acked)))
         "the root denial meets the two proper readings', Forever's, TimeIntersectionFn's four and subtimeOf's definitions, unexcepted")
-    (is (every? definition? acked) "and those are the eight acknowledged pairs")
+    (is (every? definition? (remove rigidity? acked)) "and those are the eight other acknowledged pairs")
     (is (every? #(not (:excepted %)) acked))))
 
 (tu/deftest-kb a-type-relation-predicate-relates-predicates
@@ -179,7 +192,7 @@
   ;; variable a `relation`, disjoint from the `person` the paired rule concludes, so
   ;; `arg-type-conflicted?` drops the pair as unreachable (vaelii#95).  The arity table
   ;; therefore pairs with nothing.  An arity floor beside an exact class binds one relation
-  ;; above and at or below one length, and `arity-floor-conflicted?` drops that pair, so
+  ;; above and at or below one length, and `functional-slot-conflicted?` drops that pair, so
   ;; the floors pair with nothing either.
   (let [pairs   (rule-clashes-everywhere kb #{:rule-clash :rule-clash-review})
         about   (fn [f] (filter (fn [p] (some #(some #{f} (flatten %)) (:sentences p)))
@@ -188,9 +201,15 @@
         (str "the arity table pairs with nothing: " (pr-str (mapv :sentences (about 'arity)))))
     (is (empty? (about 'unary_predicate))
         (str "nor do the classes: " (pr-str (mapv :sentences (about 'unary_predicate)))))
-    (doseq [floor '[at_least_binary at_least_ternary at_least_quaternary at_least_quinary]]
-      (is (empty? (about floor))
-          (str "nor does " floor ": " (pr-str (mapv :sentences (about floor))))))))
+    ;; A floor read as a guard in an antecedent constrains which relations a rule reaches,
+    ;; and a pair over that rule's conclusion belongs to the conclusion's reading.  So the
+    ;; floors are checked where a rule concludes one.
+    (let [concludes (fn [f] (filter (fn [p] (some #(some #{f} (flatten (list (last %))))
+                                                  (:sentences p)))
+                                    pairs))]
+      (doseq [floor '[at_least_binary at_least_ternary at_least_quaternary at_least_quinary]]
+        (is (empty? (concludes floor))
+            (str "nor does " floor ": " (pr-str (mapv :sentences (concludes floor)))))))))
 
 (tu/deftest-kb a-predicate-is-at-most-one-of-the-three-arity-classifications
   ;; The declaration that empties the reading above.  A predicate takes one number of

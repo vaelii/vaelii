@@ -231,7 +231,7 @@
 
   A KB file's order is its *terms'*, not its dependencies' — blocks run in natural sort
   order, which is the whole point of grouping term-centrically — so a file cannot also
-  be dependency-ordered.  `(transitiveInArgInverse largerThan 1 tangiblePartOf)` sits under `largerThan`
+  be dependency-ordered.  `(transitiveInArgInverse typeLargerThan 1 tangiblePartOf)` sits under `typeLargerThan`
   and `(transitive tangiblePartOf)` under `tangiblePartOf`, and `l` sorts before `t`.  Several checks
   read the store (a preservation's transitivity, an `arg` clash, a disjointness), so
   without this a term-centric file is refused for where its author filed a sentence.

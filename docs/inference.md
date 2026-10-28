@@ -83,7 +83,7 @@ which chainer will *use* what the index already holds.
 believed like any other rule and posted under all of its predicates, so it is findable
 by its terms and readable in the browser; what it never does is fire. That is how a
 rule the engine does *not* execute is still written down where a reader looks for it —
-`core.txt`'s two rules equating `commutative` with `(commutativeInArgAndRest ?p 1)`, a
+`core.txt`'s rules equating `commutative` with `(commutativeInArgAndRest ?p 1)`, a
 relationship the taxonomy's commuting table implements in code
 ([taxonomy.md](taxonomy.md)). Two consequences follow: an inert rule is the one
 rule shape whose *antecedent* predicate may be a **variable**, exempt from the

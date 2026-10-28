@@ -278,7 +278,8 @@
 
 (deftest every-shipped-function-declares-its-corresponding-predicate
   ;; A function comes with the predicate relating its arguments to its value
-  ;; (`functionCorrespondingPredicate`, docs/nat.md), so a rule can be written over the
+  ;; (`functionCorrespondingPredicate` or `functionCorrespondingBinaryPredicate`,
+  ;; docs/nat.md), so a rule can be written over the
   ;; predicate without building the function's term.  Read off the engine's text
   ;; contexts, as the test below reads them; koinii's contexts are the app's vocabulary
   ;; and are not read.
@@ -288,7 +289,8 @@
         sents (filter seq? (mapcat text/read-forms files))
         fns   (set (for [s sents :when (#{'reifiable_function 'unreifiable_function} (first s))]
                      (second s)))
-        corr  (set (for [s sents :when (= 'functionCorrespondingPredicate (first s))]
+        corr  (set (for [s sents :when (#{'functionCorrespondingPredicate
+                                          'functionCorrespondingBinaryPredicate} (first s))]
                      (second s)))]
     (is (seq fns) "the text contexts were found and read")
     (is (empty? (remove corr fns))
@@ -767,7 +769,7 @@
 
 (tu/deftest-kb a-temporal-thing-has-a-time-and-a-time-is-its-own
   (testing "TimeOfFn ships with its corresponding predicate"
-    (is (true? (v/ask? kb '(functionCorrespondingPredicate TimeOfFn timeOf) 'CxUniverse)))
+    (is (true? (v/ask? kb '(functionCorrespondingPredicate TimeOfFn timeOf 2) 'CxUniverse)))
     (is (true? (v/ask? kb '(reifiable_function TimeOfFn) 'CxUniverse)))
     (is (true? (v/ask? kb '(arg TimeOfFn 1 temporal) 'CxUniverse)))
     (is (true? (v/ask? kb '(result TimeOfFn time) 'CxUniverse)))
@@ -1008,8 +1010,14 @@
   ;; and each position of the six grants is declared.
   (let [terms '#{closedExtentForArg closedExtentForArg1 closedExtentForArg2 closedExtentForArg3
                  closedExtentForArg4 closedExtentForArg5}]
-    (is (= :audited (:status (v/kb-integrity kb terms 'CxUniverse)))
-        "the default passes find nothing")
+    ;; Beside the rigidity classification still open for every relation, which the
+    ;; type-specified pass reports whatever the candidates are.
+    (let [report (v/kb-integrity kb terms 'CxUniverse)]
+      (is (= {:status :gap :candidate-count (count terms)}
+             (dissoc report :type-specified-violations :work :elapsed-ms))
+          "the default passes find nothing")
+      (is (= ['[typeAllSpecified rigidity_kind relation]]
+             (keys (:type-specified-violations report)))))
     (let [missing (:missing-arg (v/kb-integrity kb terms 'CxUniverse {:categories #{:missing-arg}}))]
       (is (empty? (for [{:keys [predicate missing]} missing
                         :when (contains? terms predicate)
@@ -1087,7 +1095,8 @@
 
 ;; ---- hollow: what a thing is shaped like, not what it is for ---------------
 ;; `hollow` holds of a thing while it has an interior space that other things can occupy.
-;; It says nothing about what the thing is used for.  A container is made and hollow.
+;; It says nothing about what the thing is used for.  A container is made, and made to
+;; be hollow: hollow by default.
 
 (tu/deftest-kb hollow-is-a-shape-located-in-space-and-time
   (is (true? (v/genl? kb 'hollow 'spatiotemporal 'CxUniverse)))
@@ -1128,11 +1137,17 @@
     (is (not (tu/stored-in-clash? kb (list 'hollow LabBladder1) 'CxUniverse)))
     (is (true? (v/ask? kb (list 'hollow LabBladder1) 'CxUniverse)))))
 
-(tu/deftest-kb a-container-is-made-and-hollow
-  (doseq [t '[made hollow]]
-    (is (some #(v/premise? kb (:id %)) (v/sentexes-matching kb (list 'genl 'container t) 'CxUniverse))
-        (str "(genl container " t ") is stated"))
-    (is (true? (v/genl? kb 'building t 'CxUniverse)) (str "building genl " t " through container")))
+(tu/deftest-kb a-container-is-made-and-hollow-by-default
+  (is (some #(v/premise? kb (:id %)) (v/sentexes-matching kb '(genl container made) 'CxUniverse))
+      "(genl container made) is stated")
+  (is (true? (v/genl? kb 'building 'made 'CxUniverse)) "building genl made through container")
+  (testing "a container is made to be hollow: hollow by a default rule, not a genl edge"
+    (is (not (true? (v/genl? kb 'container 'hollow 'CxUniverse))))
+    (is (true? (v/ask? kb '(declined_rule_macro (genl container hollow)) 'CxUniverse)))
+    (tu/with-terms [Cup1]
+      (v/assert kb (list 'container Cup1) 'CxUniverse)
+      (is (true? (v/ask? kb (list 'hollow Cup1) 'CxUniverse)))
+      (is (= :default (v/defeat-class kb (v/handle-of kb (list 'hollow Cup1) 'CxUniverse))))))
   (testing "a container stays clear of organism, person and substance"
     (doseq [t '[organism person substance]]
       (is (true? (v/disjoint? kb 'container t)) (str "container and " t))))
@@ -1261,7 +1276,6 @@
     [genl boolean intangible CxUniverse "boolean genl unrepresented_term genl linguistic genl nowhere_never genl intangible"]
     [genl character intangible CxUniverse "character genl unrepresented_term genl linguistic genl nowhere_never genl intangible"]
     [genl building made CxUniverse "building genl container genl made"]
-    [genl building hollow CxUniverse "building genl container genl hollow"]
     [genl made tangible CxUniverse "partition tangible made natural"]
     [genl natural tangible CxUniverse "partition tangible made natural"]
     [genl formation tangible CxUniverse "formation genl natural genl tangible"]

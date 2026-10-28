@@ -3,7 +3,7 @@
 (ns vaelii.social-test
   "CxSocial's general relationship and dwelling vocabulary: relativeOf,
   romanticPartnerOf, coworkerOf and roommateOf, each a spec of knows or
-  friendOf; originatorOf, read by a rule from parentOf guarded to two persons;
+  friendOf except relativeOf, which reads knows by default; originatorOf, read by a rule from parentOf guarded to two persons;
   relationshipLabel, a perspectival label; and dwelling/dwellsIn, whose
   co-dwelling rule derives roommateOf. CxSocial is a starter theory, so CxWell
   sees all of it with no opt-in step."
@@ -20,7 +20,8 @@
 (defn- holds-disjoint [a b ctx]       (boolean (v/disjoint? tu/*kb* a b ctx)))
 
 (tu/deftest-kb the-relationship-vocabulary-genls-into-knows-and-friendof
-  (is (holds-genl 'relativeOf 'knows 'CxWell))
+  (is (not (holds-genl 'relativeOf 'knows 'CxWell))
+      "no edge: a relative may never have met you, so a default rule reads knows instead")
   (is (holds-genl 'coworkerOf 'knows 'CxWell))
   (is (holds-genl 'roommateOf 'knows 'CxWell))
   (is (holds-genl 'originatorOf 'relativeOf 'CxWell))
@@ -66,3 +67,20 @@
     (v/assert kb (list 'person Named) 'CxWell)
     (v/assert kb (list 'relationshipLabel Namer Named "mentor") 'CxWell)
     (is (holds-ask (list 'relationshipLabel Namer Named "mentor") 'CxWell))))
+
+(tu/deftest-kb a-relative-is-known-by-default
+  ;; Kinship holds of two relatives who never met, so knows follows from relativeOf by
+  ;; a default rule a stated denial overrides, and the rule-macro suggestion to make it
+  ;; a genl edge is recorded declined.
+  (is (holds-ask '(declined_rule_macro (genl relativeOf knows)) 'CxSocial))
+  (is (seq (v/ask tu/*kb* '(implementationNote relativeOf ?note) 'CxSocial)))
+  (tu/with-terms [Aunt Niece Cousin1 Cousin2]
+    (doseq [p [Aunt Niece Cousin1 Cousin2]]
+      (v/assert kb (list 'human p) 'CxWell))
+    (v/assert kb (list 'relativeOf Aunt Niece) 'CxWell)
+    (is (holds-query (list 'knows Aunt Niece) 'CxWell) "a relative is known by default")
+    (v/assert kb (list 'relativeOf Cousin1 Cousin2) 'CxWell)
+    (v/assert kb (list 'not (list 'knows Cousin1 Cousin2)) 'CxWell {:strength :monotonic})
+    (is (not (holds-query (list 'knows Cousin1 Cousin2) 'CxWell))
+        "two relatives who never met stay relatives")
+    (is (holds-ask (list 'relativeOf Cousin1 Cousin2) 'CxWell))))

@@ -417,13 +417,13 @@
   ;; **not** enumerated, and the asymmetry with the one-bound-end arms is the point — a
   ;; closure is quadratic in a chain's length, so a fully-open ask that returned it would
   ;; offer half a trillion pairs on a 1M-node chain instead of coming back.
-  (tu/with-terms [largerThan hugelyLargerThan]
+  (tu/with-terms [typeLargerThan hugelyLargerThan]
     (let [r  (fn [i] (tu/fresh-term :individual (str "R" i)))
           rs (mapv r (range 4))]
-      (v/assert kb (list 'transitive largerThan) 'CxUniverse)
-      (v/assert kb (list 'genl hugelyLargerThan largerThan) 'CxUniverse)
+      (v/assert kb (list 'transitive typeLargerThan) 'CxUniverse)
+      (v/assert kb (list 'genl hugelyLargerThan typeLargerThan) 'CxUniverse)
       (doseq [i (range 1 4)]
-        (v/assert kb (list largerThan (rs (dec i)) (rs i)) 'CxUniverse))
+        (v/assert kb (list typeLargerThan (rs (dec i)) (rs i)) 'CxUniverse))
       ;; one fact of a sub-predicate, which the extent must reach and the chain must not
       (v/assert kb (list hugelyLargerThan (rs 0) (rs 3)) 'CxUniverse)
       (let [mine (fn [goal]
@@ -432,16 +432,16 @@
                         (filter (fn [[x y]] (and (some #{x} rs) (some #{y} rs))))
                         set))]
         (testing "the asserted links, plus the asserted sub-predicate's, and nothing derived"
-          (is (= #{[(rs 0) (rs 1)] [(rs 1) (rs 2)] [(rs 2) (rs 3)]   ; stored largerThan
+          (is (= #{[(rs 0) (rs 1)] [(rs 1) (rs 2)] [(rs 2) (rs 3)]   ; stored typeLargerThan
                    [(rs 0) (rs 3)]}                                  ; stored spec-pred
-                 (mine (list largerThan '?x '?y)))))
+                 (mine (list typeLargerThan '?x '?y)))))
         (testing "and the derived pairs are still there for a caller who binds an end"
           ;; the same knowledge, asked the bounded way: R0 reaches everything downstream
           (is (= #{(rs 1) (rs 2) (rs 3)}
                  (set (filter (set rs)
-                              (binds (v/ask kb (list largerThan (rs 0) '?y) 'CxUniverse)
+                              (binds (v/ask kb (list typeLargerThan (rs 0) '?y) 'CxUniverse)
                                      '?y)))))
-          (is (v/ask? kb (list largerThan (rs 0) (rs 2)) 'CxUniverse)
+          (is (v/ask? kb (list typeLargerThan (rs 0) (rs 2)) 'CxUniverse)
               "a two-hop pair no fact records"))
         (testing "a sub-predicate's own extent does not gain the parent's links"
           (is (= #{[(rs 0) (rs 3)]} (mine (list hugelyLargerThan '?x '?y)))))))))

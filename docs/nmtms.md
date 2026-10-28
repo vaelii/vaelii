@@ -111,7 +111,8 @@ not it loads the upper layer:
 | `exceptWhen` | taking one OUT unblocks the firings of the rule it names, so what a reader holds blocked would shrink ([exceptions.md](exceptions.md)) |
 | `rewriteOf`, `sameAs`, `equals` | taking one OUT un-merges two terms, so what a reader hides would shrink |
 | `injection`, `surjection`, `bijection` | premises of `core.txt`'s rules concluding `functional`, `functionalInArg`, `injection` and `surjection` (decision 17) |
-| `functionCorrespondingPredicate`, `result` | premises of `core.txt`'s rules concluding `(arg P n T)` from a function's `result`, since `arg` is forced-monotonic |
+| `functionCorrespondingPredicate`, `result` | premises of `core.txt`'s rule concluding `(arg P n T)` from a function's `result`, since `arg` is forced-monotonic |
+| `functionCorrespondingBinaryPredicate` | the premise of `core.txt`'s rule concluding `(functionCorrespondingPredicate F P 2)`, which is forced-monotonic |
 | `fixed_arity`, `fixed_arity_predicate`, `fixed_arity_function`, `bounded_arity`, `unbounded_arity`, `at_least_binary`, `at_least_ternary`, `at_least_quaternary`, `at_least_quinary`, `arityMax`, `admitsArgnum` | the arity policies, read beside the arity bindings, so a policy goes OUT only by retraction as a length does |
 | `relation`, `predicate`, `function`, `truth_valued_relation`, `logical_constant`, `logical_connective`, `quantifier`, `symbol`, `context`, `unrepresented_term` and its value kinds (`boolean`, `character`, `keyword`, `number`, `integer` and its four sign classes, `string`) | the term kinds: a clash between two of them is a conflict and never a defeat, so a `:default` `(predicate X)` beside a `:default` `(string X)` is reported in `conflicts` with both believed |
 | `greaterThan`, `lessThan` | the numeric comparators: each holds of numbers only, and `core.txt`'s rules concluding `at_least_binary` through `at_least_quinary` read `greaterThan` beside `arity` and `arityMin` |
@@ -844,11 +845,11 @@ three, and a read runs the last at its reader:
    `discover-inherited!` records each inherited nogood whose members the network believes,
    with its vantages (`inherited/install-inherited!`). The inherited family is:
    - a stored claim against a **known-true claim reached by argument preservation**
-     (`preserving-nogoods`), whose second side was never stored. `(largerThan dog cat)`
-     asserted `{:strength :monotonic}` reaches `(largerThan chihuahua maine_coon)`, and a
-     stored `(not (largerThan chihuahua maine_coon))` denies a claim with no handle, as a
-     stored `(largerThan maine_coon chihuahua)` does under an `asymmetric` mark on
-     `largerThan` or a super-predicate of it (`inherit/converse-claim`), and as a stored
+     (`preserving-nogoods`), whose second side was never stored. `(typeLargerThan dog cat)`
+     asserted `{:strength :monotonic}` reaches `(typeLargerThan chihuahua maine_coon)`, and a
+     stored `(not (typeLargerThan chihuahua maine_coon))` denies a claim with no handle, as a
+     stored `(typeLargerThan maine_coon chihuahua)` does under an `asymmetric` mark on
+     `typeLargerThan` or a super-predicate of it (`inherit/converse-claim`), and as a stored
      membership `(S x)` does when a separation holds `S` apart from a preserved `P`
      whose claim reaches `(P x)` (`inherit/separated-claims`). The
      members are the stored claim and everything the reading rests on: the general claim,
@@ -3131,8 +3132,8 @@ holds the vocabulary and the page that owns each keyword.
 
   ```
   CxUniverse   (genl mid dog) (genl chi mid)   the long route, named
-               (largerThan dog cat)  (transitiveInArgInverse largerThan 1 genl)
-               forward rule (largerThan ?x ?y) ⇒ (noted ?x ?y)
+               (typeLargerThan dog cat)  (transitiveInArgInverse typeLargerThan 1 genl)
+               forward rule (typeLargerThan ?x ?y) ⇒ (noted ?x ?y)
    └─ CxA      (genl chi dog)                  the short route
                (not (genl chi mid))  :monotonic
   ```
@@ -3144,8 +3145,8 @@ holds the vocabulary and the page that owns each keyword.
   named:
 
   ```
-  CxUniverse   (largerThan dog cat)  (transitiveInArgInverse largerThan 1 genl)
-               forward rule (largerThan ?x ?y) ⇒ (noted ?x ?y)
+  CxUniverse   (typeLargerThan dog cat)  (transitiveInArgInverse typeLargerThan 1 genl)
+               forward rule (typeLargerThan ?x ?y) ⇒ (noted ?x ?y)
    └─ CxA      (genl chi dog)  and  (genl chi mid) (genl mid dog)   both routes
         └─ CxB (not (genl chi dog))  :monotonic
   ```

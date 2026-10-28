@@ -90,7 +90,7 @@ his name, and states the relation the function corresponds to:
 
 ```clojure
 (reifiable_function FatherFn)
-(functionCorrespondingPredicate FatherFn fatherOf)
+(functionCorrespondingBinaryPredicate FatherFn fatherOf)
 (result FatherFn animal)
 ```
 

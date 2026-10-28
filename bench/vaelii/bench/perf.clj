@@ -4178,10 +4178,10 @@
 
   **The full-size store's arg-type commit, at its shape.**  There `record-arg-types!`
   minted `(genl lex/X fabric-textile)` off `madeOf` facts, `fabric-textile` holding 100,677
-  specs, and `largerThan` is declared so and fans to 39 predicates.  Each edge queues the
+  specs, and `typeLargerThan` is declared so and fans to 39 predicates.  Each edge queues the
   rule with a `{::preserving edge}` marker, and the re-check's `moved-goal-test` for it
-  reads the joint `genl` and `largerThan` reach of the type at each position: every spec,
-  and a `largerThan` literal of each.
+  reads the joint `genl` and `typeLargerThan` reach of the type at each position: every spec,
+  and a `typeLargerThan` literal of each.
 
   A fixed bound, not a share of `settle-hour`: an edge's share of the settle is its share
   of the type's reach, read once a pass, so it is the 64 specs an edge brings here and
@@ -5098,7 +5098,7 @@
     (doseq [c '[CxGcuSide CxGcuRule]]
       (v/assert kb (list 'genlCx c 'CxUniverse) 'CxUniverse m))
     (v/assert kb '(reifiable_function GcuFn) 'CxUniverse m)
-    (v/assert kb '(functionCorrespondingPredicate GcuFn gcuOf) 'CxGcuSide)
+    (v/assert kb '(functionCorrespondingPredicate GcuFn gcuOf 2) 'CxGcuSide)
     (v/assert kb '(set/forwardRule (implies (gcu_tagged (GcuFn ?t)) (gcu_ripe ?t))) 'CxGcuRule)
     (v/with-deferred-settle kb
       (doseq [i (range n)
@@ -5122,7 +5122,7 @@
         xs (mapv #(symbol (str "GdvX" %)) (range 8))]
     (v/assert kb '(genlCx CxGdvStory CxUniverse) 'CxUniverse m)
     (v/assert kb '(reifiable_function GdvFn) 'CxUniverse m)
-    (v/assert kb '(functionCorrespondingPredicate GdvFn gdvOf) 'CxUniverse m)
+    (v/assert kb '(functionCorrespondingPredicate GdvFn gdvOf 2) 'CxUniverse m)
     (v/with-deferred-settle kb
       (doseq [x xs, i (range n)]
         (v/assert kb (list 'gdvUse (symbol (str "GdvA" i)) (list 'GdvFn x)) 'CxUniverse)))

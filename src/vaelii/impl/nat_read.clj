@@ -429,9 +429,10 @@
           m    (dec (count args))]
       (into #{}
             (keep (fn [h]
-                    (let [[_ f _ n] (:sentence (p/get-sentex recs h))
-                          pos       (if (integer? n) n (inc m))]
-                      (when (and (symbol? f) (<= 0 m) (<= 1 pos (inc m)))
+                    (let [s   (:sentence (p/get-sentex recs h))
+                          f   (second s)
+                          pos (res/stated-position s)]
+                      (when (and pos (<= 0 m) (<= pos (inc m)))
                         (dedup-constant kb (apply list f (concat (subvec args 0 (dec pos)) (subvec args pos)))
                                         nat-namespace nil)))))
             (reads/as-stored-with-args (:index kb) res/correspondence-predicate {2 (first sentence)})))))

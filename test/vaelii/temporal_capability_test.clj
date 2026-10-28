@@ -779,16 +779,16 @@
     (is (true? (v/ask? kb '(not (arg CxTimeFn 1 monad_context)) U)))
     (is (not (v/ask? kb '(arg CxTimeFn 1 monad_context) U))))
   (testing "CxTimeOfFn and cxTimeOf, a context's temporal part, which is a time"
-    (is (true? (v/ask? kb '(functionCorrespondingPredicate CxTimeOfFn cxTimeOf) U)))
+    (is (true? (v/ask? kb '(functionCorrespondingPredicate CxTimeOfFn cxTimeOf 2) U)))
     (is (true? (v/ask? kb '(result CxTimeOfFn time) U))))
   (testing "CxMonadOfFn and cxMonadOf, a context's monadic part, which is a context"
-    (is (true? (v/ask? kb '(functionCorrespondingPredicate CxMonadOfFn cxMonadOf) U)))
+    (is (true? (v/ask? kb '(functionCorrespondingPredicate CxMonadOfFn cxMonadOf 2) U)))
     (is (true? (v/ask? kb '(result CxMonadOfFn context) U))))
   (testing "genlMonad orders two contexts"
     (is (true? (v/ask? kb '(arg genlMonad 1 context) U)))
     (is (true? (v/ask? kb '(arg genlMonad 2 context) U))))
   (testing "TimeIntersectionFn, the time two times have in common, which is a time"
-    (is (true? (v/ask? kb '(functionCorrespondingPredicate TimeIntersectionFn timeIntersectionOf) U)))
+    (is (true? (v/ask? kb '(functionCorrespondingPredicate TimeIntersectionFn timeIntersectionOf 3) U)))
     (is (true? (v/ask? kb '(arg TimeIntersectionFn 1 time) U)))
     (is (true? (v/ask? kb '(result TimeIntersectionFn time) U))))
   (testing "subtimeOf, one time within another, below partOf and above subintervalOf"

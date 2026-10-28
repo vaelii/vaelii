@@ -190,6 +190,13 @@ so the sweep above reports it with no extra entry point, and retracting the mark
 The cost is one read per member of the quantified collection, plus one membership read per
 candidate filler. This is a sweep to run at a checkpoint, not a check to run per write.
 
+**`typeAllSpecified` is the counterpart for a classification.** `(typeAllSpecified
+rigidity_kind relation)` requires every relation to have a believed membership in some
+member of `rigidity_kind`, where `predAllSpecified` requires a filler. A partition into the
+classifier's members does not satisfy it, since the partition says what each instance is
+and the requirement says the KB must know it. `kb-integrity` audits it in its own
+`:type-specified-violations` category ([integrity.md](integrity.md#what-a-type-specified-finding-means)).
+
 ## indeterminate_term: what makes a filler determinate
 
 A filler satisfies a *Specified* requirement only when it is **determinate**. A term is

@@ -1181,12 +1181,21 @@
   [kb]
   (pos? (reads/stored-count-with-functor (:index kb) correspondence-predicate)))
 
+(defn stated-position
+  "The value position correspondence declaration `sentence` states, `(functionCorrespondingPredicate
+  F P N)` with `F` and `P` symbols and `N` a positive integer, or nil when it states none."
+  [sentence]
+  (let [[_ f pr n] sentence]
+    (when (and (= 4 (count sentence)) (symbol? f) (symbol? pr) (integer? n) (pos? n))
+      n)))
+
 (defn- visible-declarations
-  "The believed correspondence declarations `context` sees, as sentexes: IN, and stated in
+  "The believed correspondence declarations `context` sees, as sentexes: IN, well formed
+  (`stated-position`), and stated in
   `context`'s `genlCx` ancestor set (docs/nat.md, The corresponding predicate).  Every
   believed one when `context` is nil or a variable.  Read off the predicate extent and
   filtered in memory: the declarations are few, while an argument root holds every fact
-  about the predicate.  `reads/believed-with-args` reads both arities in one probe."
+  about the predicate."
   [kb context]
   (when (any-corresponding-predicates? kb)
     (let [tax  (reasoning/taxonomy kb)
@@ -1195,31 +1204,29 @@
                  (constantly true))]
       (->> (reads/believed-with-args kb correspondence-predicate {})
            (keep #(p/get-sentex (:records kb) %))
+           (filter #(stated-position (:sentence %)))
            (filter sees)))))
 
 (defn believed-correspondences
   "The correspondence declarations `context` sees (`visible-declarations`) as `[function
-  predicate position-or-nil]` triples, kept where `match?` holds of the triple."
+  predicate position]` triples, kept where `match?` holds of the triple."
   [kb context match?]
   (when (any-corresponding-predicates? kb)
     (->> (visible-declarations kb context)
-         (map :sentence)
-         (filter #(<= 3 (count %) 4))
-         (map (fn [[_ f pr n]] [f pr (when (integer? n) n)]))
+         (map (fn [{[_ f pr n] :sentence}] [f pr n]))
          distinct
          (filter match?))))
 
 (defn correspondence-of
   "The `[predicate position]` declared for function `f` applied to `m` arguments among
-  the declarations `context` sees (`believed-correspondences`), or nil.  `position`
-  defaults to `m + 1`, the value last.  Nil when `context` sees more than one declaration
-  for `f` (docs/nat.md, The corresponding predicate)."
+  the declarations `context` sees (`believed-correspondences`), or nil.  Nil when the
+  position is past `m + 1`, and when `context` sees more than one declaration for `f`
+  (docs/nat.md, The corresponding predicate)."
   [kb f m context]
   (let [ds (believed-correspondences kb context #(= f (first %)))]
     (when (= 1 (count ds))
-      (let [[_ pr n] (first ds)
-            pos      (or n (inc m))]
-        (when (and (symbol? pr) (<= 1 pos (inc m)))
+      (let [[_ pr pos] (first ds)]
+        (when (<= pos (inc m))
           [pr pos])))))
 
 (defn insert-at
@@ -1235,13 +1242,11 @@
 
 (defn correspondence-declarations
   "The correspondence declarations `context` sees (`visible-declarations`) as `[function
-  predicate position-or-nil handle]` rows, in content order of the declaration."
+  predicate position handle]` rows, in content order of the declaration."
   [kb context]
   (when (any-corresponding-predicates? kb)
     (->> (visible-declarations kb context)
-         (filter #(<= 3 (count (:sentence %)) 4))
-         (map (fn [{[_ f pr n] :sentence h :id}] [f pr (when (integer? n) n) h]))
-         (filter #(symbol? (second %)))
+         (map (fn [{[_ f pr n] :sentence h :id}] [f pr n h]))
          (sort-by (fn [[f pr n h]] [(nm/print-key [f pr n]) h])))))
 
 (defn- application-of?
@@ -1409,8 +1414,7 @@
   "The value position declaration row `[f pr n h]` gives an application of `m` arguments,
   or nil when it is out of range."
   [[_ _ n _] m]
-  (let [pos (or n (inc m))]
-    (when (<= 1 pos (inc m)) pos)))
+  (when (<= n (inc m)) n))
 
 (defn- rule-readings
   "The readings of an application of `f` to `m` arguments in a rule, under declaration
@@ -1430,7 +1434,7 @@
 (defn- goal-readings
   "The readings of an application of `f` to `m` arguments in a goal: `rule-readings`'
   one where `f` has exactly one and the goal reads at one context (`scoped?`), and
-  otherwise one `{:functor :n :pos}` per distinct declaration shape among `f`'s
+  otherwise one `{:functor :pos}` per distinct declaration position among `f`'s
   declarations `decls` (every function's, for a variable `f`), read through a predicate
   variable, so each reader matches the declarations it sees."
   [decls scoped? f m]
@@ -1439,9 +1443,9 @@
       direct
       (->> decls
            (filter #(or (sx/variable? f) (= f (first %))))
-           (keep (fn [d] (when-let [pos (declared-position d m)] {:functor f :n (nth d 2) :pos pos})))
+           (keep (fn [d] (when-let [pos (declared-position d m)] {:functor f :pos pos})))
            distinct
-           (sort-by #(nm/print-key [(:n %) (:pos %)]))
+           (sort-by #(nm/print-key (:pos %)))
            vec))))
 
 (defn- reading-literals
@@ -1450,8 +1454,7 @@
   [reading args v pv]
   (if-let [pr (:pred reading)]
     [(apply list pr (insert-at args (:pos reading) v))]
-    [(apply list (cond-> [correspondence-predicate (:functor reading) pv]
-                   (:n reading) (conj (:n reading))))
+    [(list correspondence-predicate (:functor reading) pv (:pos reading))
      (apply list pv (insert-at args (:pos reading) v))]))
 
 (defn- take-reading!

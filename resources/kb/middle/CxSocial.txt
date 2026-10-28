@@ -23,8 +23,9 @@
 (genl worksFor memberOf)
 
 ;; ---- relationships: family, romance, work ---------------------------------
-;; relativeOf, coworkerOf and roommateOf each specialize knows, the way friendOf
-;; and marriedTo do above; romanticPartnerOf specializes friendOf. No edge
+;; coworkerOf and roommateOf each specialize knows, the way friendOf and marriedTo
+;; do above, and relativeOf reads knows by default; romanticPartnerOf specializes
+;; friendOf. No edge
 ;; relates marriedTo to romanticPartnerOf: friendOf and marriedTo reach knows
 ;; by separate genl edges above because this theory does not claim every
 ;; marriage is a friendship, and a marriedTo-under-romanticPartnerOf-under-friendOf
@@ -36,10 +37,17 @@
 (comment relativeOf
          "(relativeOf ?x ?y) means ?x and ?y are family: related by birth or by choice.")
 (set/monotonic (instance_relation_predicate relativeOf))
+(set/monotonic (time_invariant_relation relativeOf))
 (set/monotonic (symmetric relativeOf))
 (arg relativeOf 1 person)
 (arg relativeOf 2 person)
-(genl relativeOf knows)
+;; Two relatives need not have met: a great-aunt who died before a child was born is
+;; still the child's relative.  So knows follows from relativeOf by default, and a
+;; stated denial overrides it.  The rule-macro pass suggests the genl edge the rule
+;; would be if it were strict, and the suggestion is declined.
+(set/defaultRule (set/forwardRule (implies (and (relativeOf ?x ?y)) (knows ?x ?y))))
+(declined_rule_macro (genl relativeOf knows))
+(implementationNote relativeOf "knows follows from relativeOf by a default rule, not a genl edge, since two relatives need not have met. The rule-macro suggestion (genl relativeOf knows) is recorded declined.")
 
 (comment romanticPartnerOf
          "(romanticPartnerOf ?x ?y) means ?x and ?y are in a romantic relationship: dating, life partnership, or any other romantic connection.")
@@ -52,6 +60,7 @@
 (comment coworkerOf "(coworkerOf ?x ?y) means ?x and ?y work together.")
 (set/monotonic (instance_relation_predicate coworkerOf))
 (set/monotonic (symmetric coworkerOf))
+(set/monotonic (time_varying_relation coworkerOf))
 (arg coworkerOf 1 person)
 (arg coworkerOf 2 person)
 (genl coworkerOf knows)
@@ -60,6 +69,7 @@
          "(roommateOf ?x ?y) means ?x and ?y live together. Does not imply romantic involvement.")
 (set/monotonic (instance_relation_predicate roommateOf))
 (set/monotonic (symmetric roommateOf))
+(set/monotonic (time_varying_relation roommateOf))
 (arg roommateOf 1 person)
 (arg roommateOf 2 person)
 (genl roommateOf knows)
@@ -67,6 +77,7 @@
 (comment originatorOf
          "(originatorOf ?originator ?originated) means ?originator brought ?originated into being. Read by the rule below from parentOf when both are persons.")
 (set/monotonic (instance_relation_predicate originatorOf))
+(set/monotonic (time_invariant_relation originatorOf))
 (set/monotonic (asymmetric originatorOf))
 (arg originatorOf 1 person)
 (arg originatorOf 2 person)
@@ -81,6 +92,7 @@
 (comment relationshipLabel
          "(relationshipLabel ?namer ?named ?label) means ?namer calls their relationship with ?named by ?label. Perspectival: the label ?named would give the same relationship need not be the same string.")
 (ternary_predicate relationshipLabel)
+(set/monotonic (time_varying_relation relationshipLabel))
 (arg relationshipLabel 1 person)
 (arg relationshipLabel 2 person)
 (quotedArg relationshipLabel 3 string)
@@ -96,6 +108,7 @@
 
 (comment dwelling
          "A residential unit.")
+(set/monotonic (time_varying_relation dwelling))
 (positiveExampleComment dwelling "a house")
 (positiveExampleComment dwelling "an apartment")
 (positiveExampleComment dwelling "a room")

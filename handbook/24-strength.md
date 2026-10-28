@@ -20,11 +20,11 @@ hold: a definition, a classification fixed by the meaning of the terms, a relati
 State it `:default` when it holds typically and an exception is possible. In a text file,
 wrap a known-true sentence in `set/monotonic`; a sentence with no wrapper is `:default`.
 
-**Example.** `abstract.txt` states the marks of `largerThan` known-true, and `CxBiology.txt`
+**Example.** `abstract.txt` states the marks of `typeLargerThan` known-true, and `CxBiology.txt`
 states mortality as a default rule:
 
 ```clojure
-(set/monotonic (transitive largerThan))
+(set/monotonic (transitive typeLargerThan))
 (set/defaultRule (set/forwardRule (implies (and (organism ?x)) (mortal ?x))))
 ```
 

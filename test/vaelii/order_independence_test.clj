@@ -922,7 +922,7 @@
                 :compound true}
         bare   (one-outcome! "a firing with no correspondence" fire #(dissoc (skill-reading %) :genl))
         spelt  (one-outcome! "a firing with a correspondence"
-                             (conj fire (assert-op '(functionCorrespondingPredicate SkillFn skillOf)))
+                             (conj fire (assert-op '(functionCorrespondingPredicate SkillFn skillOf 2)))
                              #(dissoc (skill-reading %) :genl))]
     (is (true? joined))
     (is (= [minted minted] [bare spelt])))

@@ -75,10 +75,12 @@
       (doseq [ctx [CxStuff CxElsewhere 'CxWell 'CxUniverse]
               x   [Pebble Plank Pane]]
         (is (not (holds-isa x 'solid ctx)) (str x " is not concluded solid in " ctx))))
-    (testing "the three edges are the theory's, not the upper ontology's"
+    (testing "a phase is a state, not a kind: each is a default rule, not a genl edge"
       (doseq [t '[stone wood glass_stuff]]
-        (is (holds-genl t 'solid NPC))
-        (is (not (holds-genl t 'solid 'CxUniverse)))))))
+        (is (not (holds-genl t 'solid NPC)))
+        (is (holds-ask (list 'declined_rule_macro (list 'genl t 'solid)) NPC)))
+      (doseq [x [Pebble Plank Pane]]
+        (is (= :default (v/defeat-class kb (v/handle-of kb (list 'solid x) CxRoom))))))))
 
 (tu/deftest-kb metal-stuff-is-solid-by-default-and-mercury-is-the-exception
   (tu/with-terms [CxStuff CxRoom CxElsewhere Nail Droplet]
@@ -99,6 +101,8 @@
         (is (= :default (v/defeat-class kb h)))))
     (testing "mercury is liquid and is not concluded solid"
       (is (holds-isa Droplet 'liquid CxRoom))
+      (is (not (holds-genl 'mercury 'liquid NPC)) "liquid by a default rule, not a genl edge")
+      (is (holds-ask '(declined_rule_macro (genl mercury liquid)) NPC))
       (is (holds-isa Droplet 'metal_stuff CxRoom))
       (is (not (holds-ask (list 'solid Droplet) CxRoom)))
       (is (not (holds-isa Droplet 'solid CxRoom)))

@@ -1971,10 +1971,10 @@
 (defn- asymmetry-problems
   "Every `(asymmetric P)` violation a sentence commits in `context`.
 
-  `(asymmetric largerThan)` says `(P a b)` and `(P b a)` cannot both hold, so a claim
+  `(asymmetric typeLargerThan)` says `(P a b)` and `(P b a)` cannot both hold, so a claim
   whose **converse** is known-true is a contradiction rather than an addition.  The
   converse counts whether it was stated directly or reached by argument-position
-  preservation — `(largerThan dog cat)` reaches `(largerThan cat maine_coon)` and every
+  preservation — `(typeLargerThan dog cat)` reaches `(typeLargerThan cat maine_coon)` and every
   other pair below it, and a strict claim is exactly as binding there as where it was
   written (`vaelii.impl.inherit`).
 

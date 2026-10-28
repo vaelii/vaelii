@@ -550,6 +550,99 @@
              (get (:all-specified-violations report)
                   ['predAllSpecified likes person]))))))
 
+;; ---- type-specified: (typeAllSpecified classifier indep) ---------------------
+
+(def ^:private type-specified #{:type-specified-violations})
+
+(defn- classifier-world!
+  "`colour_kind` classifies by `red_kind` and `blue_kind`; three `gadget`s, the first red,
+  the third blue, the second classified by neither."
+  [kb {:keys [colour_kind red_kind blue_kind gadget GadgetOne GadgetTwo GadgetThree]}]
+  (doseq [t [colour_kind red_kind blue_kind gadget]]
+    (v/assert kb (list 'unary_predicate t) 'CxUniverse))
+  (v/assert kb (list colour_kind red_kind) 'CxUniverse)
+  (v/assert kb (list colour_kind blue_kind) 'CxUniverse)
+  (doseq [g [GadgetOne GadgetTwo GadgetThree]]
+    (v/assert kb (list gadget g) 'CxUniverse))
+  (v/assert kb (list red_kind GadgetOne) 'CxUniverse)
+  (v/assert kb (list blue_kind GadgetThree) 'CxUniverse))
+
+(tu/deftest-kb type-all-specified-reports-each-instance-no-classifier-member-holds
+  (tu/with-terms [colour_kind red_kind blue_kind gadget GadgetOne GadgetTwo GadgetThree]
+    (classifier-world! kb {:colour_kind colour_kind :red_kind red_kind :blue_kind blue_kind
+                           :gadget gadget :GadgetOne GadgetOne :GadgetTwo GadgetTwo
+                           :GadgetThree GadgetThree})
+    (is (= {:status :audited :candidate-count 0}
+           (sans-meter (v/kb-integrity kb #{} 'CxUniverse {:categories type-specified})))
+        "with no requirement stated, nothing is required")
+    (v/assert kb (list 'typeAllSpecified colour_kind gadget) 'CxUniverse)
+    (is (= {:status :gap :candidate-count 0
+            :type-specified-violations
+            {['typeAllSpecified colour_kind gadget] {:status :audited :violations #{GadgetTwo}}}}
+           (sans-meter (v/kb-integrity kb #{} 'CxUniverse {:categories type-specified}))))
+    (testing "the default sweep runs the pass"
+      (is (contains? (v/kb-integrity kb #{} 'CxUniverse) :type-specified-violations)))
+    (testing "a classification makes the requirement hold, and a clean declaration is omitted"
+      (v/assert kb (list blue_kind GadgetTwo) 'CxUniverse)
+      (is (= {:status :audited :candidate-count 0}
+             (sans-meter (v/kb-integrity kb #{} 'CxUniverse {:categories type-specified})))))))
+
+(tu/deftest-kb type-all-specified-is-not-implied-by-a-partition
+  ;; A partition constrains the world: every gadget IS red or blue.  typeAllSpecified
+  ;; constrains what the KB knows: every gadget must be believed red or believed blue.
+  (tu/with-terms [colour_kind red_kind blue_kind gadget GadgetOne GadgetTwo GadgetThree]
+    (classifier-world! kb {:colour_kind colour_kind :red_kind red_kind :blue_kind blue_kind
+                           :gadget gadget :GadgetOne GadgetOne :GadgetTwo GadgetTwo
+                           :GadgetThree GadgetThree})
+    (v/assert kb (list 'partition gadget red_kind blue_kind) 'CxUniverse)
+    (v/assert kb (list 'typeAllSpecified colour_kind gadget) 'CxUniverse)
+    (is (= {['typeAllSpecified colour_kind gadget] {:status :audited :violations #{GadgetTwo}}}
+           (:type-specified-violations
+            (v/kb-integrity kb #{} 'CxUniverse {:categories type-specified}))))))
+
+(tu/deftest-kb type-all-specified-reads-a-believed-membership-not-only-a-stored-one
+  (tu/with-terms [colour_kind red_kind blue_kind crimson_kind gadget GadgetOne GadgetTwo
+                  GadgetThree]
+    (classifier-world! kb {:colour_kind colour_kind :red_kind red_kind :blue_kind blue_kind
+                           :gadget gadget :GadgetOne GadgetOne :GadgetTwo GadgetTwo
+                           :GadgetThree GadgetThree})
+    (v/assert kb (list 'genl crimson_kind red_kind) 'CxUniverse)
+    (v/assert kb (list crimson_kind GadgetTwo) 'CxUniverse)
+    (v/assert kb (list 'typeAllSpecified colour_kind gadget) 'CxUniverse)
+    (is (= {:status :audited :candidate-count 0}
+           (sans-meter (v/kb-integrity kb #{} 'CxUniverse {:categories type-specified})))
+        "a crimson gadget is believed red through genl, so it is classified")))
+
+(tu/deftest-kb type-all-specified-over-an-empty-classifier-is-a-gap
+  (tu/with-terms [colour_kind gadget GadgetOne]
+    (v/assert kb (list 'unary_predicate colour_kind) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate gadget) 'CxUniverse)
+    (v/assert kb (list gadget GadgetOne) 'CxUniverse)
+    (v/assert kb (list 'typeAllSpecified colour_kind gadget) 'CxUniverse)
+    (is (= {['typeAllSpecified colour_kind gadget]
+            {:status :gap :gap :empty-classifier :classifier colour_kind}}
+           (:type-specified-violations
+            (v/kb-integrity kb #{} 'CxUniverse {:categories type-specified})))
+        "a classifier with no member could classify nothing, so the audit does not pretend to run")))
+
+(tu/deftest-kb type-all-specified-findings-count-against-the-result-cap
+  (tu/with-terms [colour_kind red_kind blue_kind gadget GadgetOne GadgetTwo GadgetThree
+                  widget]
+    (classifier-world! kb {:colour_kind colour_kind :red_kind red_kind :blue_kind blue_kind
+                           :gadget gadget :GadgetOne GadgetOne :GadgetTwo GadgetTwo
+                           :GadgetThree GadgetThree})
+    (v/assert kb (list 'unary_predicate widget) 'CxUniverse)
+    (v/assert kb (list widget GadgetTwo) 'CxUniverse)
+    (v/assert kb (list 'typeAllSpecified colour_kind gadget) 'CxUniverse)
+    (v/assert kb (list 'typeAllSpecified colour_kind widget) 'CxUniverse)
+    (let [[[c i]] (content-order [[colour_kind gadget] [colour_kind widget]])
+          report  (v/kb-integrity kb #{} 'CxUniverse {:categories type-specified :max-results 1})]
+      (is (= :truncated (:status report)))
+      (is (= :max-results (:reason report)))
+      (is (= {['typeAllSpecified c i] {:status :audited :violations #{GadgetTwo}}}
+             (:type-specified-violations report))
+          "the first declaration in content order is kept, the second cut"))))
+
 ;; ---- genl-arg-widening ----------------------------------------------------
 
 (defn- declare-types!
@@ -1679,6 +1772,44 @@
       (v/assert kb r 'CxUniverse))
     (is (= [] (rule-macros kb)))))
 
+(tu/deftest-kb an-arg-restating-rule-is-reported
+  (tu/with-terms [temporalIndexArg time_indexed_relation]
+    (v/assert kb (list 'binary_predicate temporalIndexArg) 'CxUniverse)
+    (v/assert kb (list 'implies (list temporalIndexArg '?relation '?position)
+                       (list time_indexed_relation '?relation))
+              'CxUniverse)
+    (is (= [(list 'arg temporalIndexArg 1 time_indexed_relation)]
+           (map #(nth % 2) (rule-macros kb))))))
+
+(tu/deftest-kb a-unary-premise-rule-is-never-reported-as-arg
+  ;; A unary predicate gives a type, so (P ?x) => (C ?x) is the genl shape: the arg row
+  ;; applies only to a P of two or more places.
+  (tu/with-terms [container hollow]
+    (v/assert kb (list 'unary_predicate container) 'CxUniverse)
+    (v/assert kb (list 'implies (list container '?x) (list hollow '?x)) 'CxUniverse)
+    (is (not-any? #(= 'arg (second %)) (rule-macros kb))
+        (pr-str (rule-macros kb)))))
+
+(tu/deftest-kb arg-near-miss-rules-are-not-reported
+  (tu/with-terms [temporalIndexArg time_indexed_relation temporalIndexArgVar other_kind Bob]
+    (v/assert kb (list 'binary_predicate temporalIndexArg) 'CxUniverse)
+    (v/assert kb (list 'variable_arity temporalIndexArgVar) 'CxUniverse)
+    (doseq [r [;; a constant in another argument position
+               (list 'implies (list temporalIndexArg '?relation Bob)
+                     (list time_indexed_relation '?relation))
+               ;; a repeated variable
+               (list 'implies (list temporalIndexArg '?relation '?relation)
+                     (list time_indexed_relation '?relation))
+               ;; an extra antecedent
+               (list 'implies (list 'and (list temporalIndexArg '?relation '?position)
+                                    (list other_kind '?relation))
+                     (list time_indexed_relation '?relation))
+               ;; a variable-arity P
+               (list 'implies (list temporalIndexArgVar '?relation '?position)
+                     (list time_indexed_relation '?relation))]]
+      (v/assert kb r 'CxUniverse))
+    (is (= [] (rule-macros kb)))))
+
 (tu/deftest-kb a-mark-rule-stated-in-one-theory-is-not-reported
   (tu/with-terms [CxTheory likesX empty_kind]
     (v/assert kb (list 'genlCx CxTheory 'CxUniverse) 'CxUniverse)
@@ -1742,9 +1873,9 @@
   (tu/with-terms [FruitFn SeedFn PitFn tagged ripe seedOf pitOf stoneOf]
     (doseq [f [FruitFn SeedFn PitFn]]
       (v/assert kb (list 'reifiable_function f) 'CxUniverse))
-    (v/assert kb (list 'functionCorrespondingPredicate SeedFn seedOf) 'CxUniverse)
-    (v/assert kb (list 'functionCorrespondingPredicate PitFn pitOf) 'CxUniverse)
-    (v/assert kb (list 'functionCorrespondingPredicate PitFn stoneOf) 'CxUniverse)
+    (v/assert kb (list 'functionCorrespondingPredicate SeedFn seedOf 2) 'CxUniverse)
+    (v/assert kb (list 'functionCorrespondingPredicate PitFn pitOf 2) 'CxUniverse)
+    (v/assert kb (list 'functionCorrespondingPredicate PitFn stoneOf 2) 'CxUniverse)
     (let [h1 (v/assert kb (list 'implies (list tagged (list FruitFn '?t)) (list ripe '?t)) 'CxUniverse)
           _  (v/assert kb (list 'implies (list tagged (list PitFn '?t)) (list ripe '?t)) 'CxUniverse)
           _  (v/assert kb (list 'implies (list tagged (list SeedFn '?t)) (list ripe '?t)) 'CxUniverse)

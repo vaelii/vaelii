@@ -102,7 +102,11 @@
         (v/assert kb (list 'implies (list 'sentence q) (list kinded Ann))
                   'CxUniverse {:direction :forward})
         (v/assert kb (list valueOf Ann q) 'CxUniverse)
-        (is (empty? (v/sentexes-matching kb (list kinded '?y) 'CxUniverse)))))))
+        ;; Asked of this test's own two terms: the KB holds other sentence-typed terms, a
+        ;; rule quoted in a `declined_rule_macro` fact among them, and those are not what
+        ;; this reads.
+        (is (empty? (v/sentexes-matching kb (list kinded q) 'CxUniverse)))
+        (is (empty? (v/sentexes-matching kb (list kinded Ann) 'CxUniverse)))))))
 
 (tu/deftest-kb a-firing-on-a-kind-antecedent-is-withdrawn-with-the-fact-that-bound-it
   (setup! kb)

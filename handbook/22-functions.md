@@ -1,8 +1,8 @@
 # 22. Functions
 
 - **Covers:** declaring a function beside the predicate that states the same relationship;
-  `functionCorrespondingPredicate`; choosing `reifiable_function` or
-  `unreifiable_function`; the result type of an application.
+  `functionCorrespondingPredicate` and `functionCorrespondingBinaryPredicate`; choosing
+  `reifiable_function` or `unreifiable_function`; the result type of an application.
 - **Not here:** spelling a function and telling it from an individual →
   [ch. 8](08-kind-of-term.md); constants a rule mints for an existential →
   [ch. 33](33-existentials.md); context terms built from a function →
@@ -20,7 +20,8 @@ both.
 *Don't skip the predicate*
 
 **Practice.** When you declare a function, also declare the predicate that relates its
-arguments to its value, state the correspondence with `functionCorrespondingPredicate`,
+arguments to its value, state the correspondence with `functionCorrespondingPredicate`
+or, for a binary predicate with the value second, `functionCorrespondingBinaryPredicate`,
 and write rules in terms of the predicate. Skipping the predicate is a decision, and the
 file says so in a `;;` note when it is made.
 
@@ -29,7 +30,7 @@ file says so in a `;;` note when it is made.
 ```clojure
 (reifiable_function MotherFn)
 (unary_function MotherFn)
-(functionCorrespondingPredicate MotherFn motherOf)
+(functionCorrespondingBinaryPredicate MotherFn motherOf)
 (result MotherFn animal)
 ```
 
@@ -40,10 +41,10 @@ file says so in a `;;` note when it is made.
 (set/monotonic (functional motherOf))
 ```
 
-The correspondence omits the value position, so the value takes the last argument of
+`functionCorrespondingBinaryPredicate` puts the value at the second argument of
 `motherOf`. The `comment` on `fatherOf` gives the reason the child comes first: "The
-child comes FIRST, which is what lets FatherFn read off it — a correspondence puts the
-value last." The kinship rules in `CxKinship.txt` are written over the predicate:
+child comes FIRST and the father second, the shape functionCorrespondingBinaryPredicate
+states, which is what lets FatherFn read off it." The kinship rules in `CxKinship.txt` are written over the predicate:
 
 ```clojure
 (set/forwardRule (implies (and (motherOf ?child ?mother)) (parentOf ?mother ?child)))
@@ -51,9 +52,11 @@ value last." The kinship rules in `CxKinship.txt` are written over the predicate
 
 **Why.**
 
-- *Logical.* `(functionCorrespondingPredicate F P)` says `(F a…)` is `V` exactly when
-  `(P a… V)` holds. The function and the predicate state one relationship, and the
-  declaration tells the KB so.
+- *Logical.* `(functionCorrespondingPredicate F P N)` says `(F a…)` is `V` exactly when
+  `P` holds of `a…` with `V` at argument `N`, and
+  `(functionCorrespondingBinaryPredicate F P)` is
+  `(functionCorrespondingPredicate F P 2)`. The function and the predicate state one
+  relationship, and the declaration tells the KB so.
 - *Engine.* The correspondence is read both ways. A believed `(motherOf Muffet Mary)`
   makes `(MotherFn Muffet)` written in a context that sees the fact resolve to `Mary`, so
   no second name is minted. When no value is known, the mint proceeds and the constant is

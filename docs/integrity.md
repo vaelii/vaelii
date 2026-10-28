@@ -1,9 +1,12 @@
 # Bounded KB integrity
 
 - **Covers:** `kb-integrity` — one read-only checkpoint report for the complete visible
-  `predAllSpecified` / `predSpecifiedAll` and *Exists* declaration population, query-only
-  definition clashes over a caller-owned finite set of ground candidate terms, the
-  predicate `genl` edges that widen a declared argument type, the candidate types with no `genl`
+  `predAllSpecified` / `predSpecifiedAll` and *Exists* declaration population, every
+  visible `typeAllSpecified` classification requirement, the
+  `functionCorrespondingPredicate` pairs whose two sides are of different rigidity kinds,
+  query-only definition clashes over a caller-owned finite set of ground candidate terms,
+  the predicate `genl` edges that widen a declared argument type, the candidate types with
+  no `genl`
   path to `thing`, the `genl` edges a cover forces on a candidate type that the
   closure does not hold, the exact-arity class a candidate predicate or function's kind
   and arity force that it is not an instance of, the orthogonal declarations (`orthogonal` and
@@ -74,7 +77,9 @@ The definition pass performs one unavoidable open census of visible `defnSuffici
 declarations because callers intentionally supply terms, not collection names. It then
 validates one collection and one ground candidate at a time. The specified pass likewise
 uses small declaration censuses only to identify its finite worklist, then audits each
-declared predicate independently. The widening pass does the same: one census of visible
+declared predicate independently, and the type-specified pass does the same for each
+`typeAllSpecified` declaration. The rigidity-correspondence pass reads one census of the
+visible `functionCorrespondingPredicate` pairs, then one pair at a time. The widening pass does the same: one census of visible
 `arg` declarations, then one direct `genl` edge at a time. The `thing` pass reads no
 census: it checks one candidate term at a time. The implicit-`genl` pass reads none
 either: one candidate term, then one visible cover over it, at a time. The
@@ -157,6 +162,90 @@ definition condition was evaluated are redirected to an audit-local sink, preser
 the condition's truth without changing the live violations ledger or logs. It identifies
 gaps; remediation remains a separate, explicit write.
 
+## What a type-specified finding means
+
+`(typeAllSpecified ?classifier ?indep)` is an integrity requirement on what the KB knows:
+every instance of `?indep` must have a believed membership in some member of the
+metatype `?classifier`. It is `predAllSpecified`'s counterpart for a classification
+rather than a filler ([predall.md](predall.md#specified-an-integrity-audit-a-caller-runs)).
+core.txt states one:
+
+```clojure
+;; (partition relation time_invariant_relation time_agnostic_relation time_varying_relation)
+;; (rigidity_kind time_invariant_relation) … (rigidity_kind time_varying_relation)
+;; (typeAllSpecified rigidity_kind relation)
+;; (binary_predicate ownsPet)
+;; (time_varying_relation ownsPet)
+;; (binary_predicate admiresPet)
+{:status :gap
+ :candidate-count 0
+ :type-specified-violations
+ {[typeAllSpecified rigidity_kind relation]
+  {:status :audited :violations #{admiresPet …}}}}
+```
+
+`ownsPet` is classified and `admiresPet` is not, so `admiresPet` is reported. A partition
+of `?indep` into the classifier's members does not satisfy the requirement. The partition
+constrains the world: every relation *is* of one rigidity kind. The requirement constrains
+the KB: it must *believe* which. So the partition above leaves every relation nobody
+classified in the violation set.
+
+A membership counts when `ask` answers it, so one reached through `genl` or through
+argument preservation counts as a stored one does. A time-varying type's specs, which
+`(transitiveInArgInverse time_varying_relation 1 genl)` classifies, are not reported.
+A finding has the specified pass's shape, keyed by `[typeAllSpecified classifier indep]`:
+`{:status :audited :violations #{…}}`, or `{:status :gap :gap :empty-classifier
+:classifier c}` when the classifier has no visible member, so no violation set pretends
+the audit ran. A declaration that holds is omitted.
+
+The pass has these limits:
+
+- **Declaration census, not candidate terms.** Like the specified pass, it reads every
+  visible `typeAllSpecified` declaration once, then audits each one: the instances of
+  `?indep`, against the members of `?classifier`. The caller's candidate set does not bound
+  it.
+- **Members of the classifier only.** A membership in a union of members, such as
+  `possibly_time_invariant_relation`, does not classify: the requirement names the
+  classifier, and the union is not one of its members.
+- **Visible from the audit context.** A declaration, classifier member or membership the
+  audit context cannot see contributes nothing.
+
+Each instance and membership question is metered as the specified pass's are, and each
+declaration with a finding counts once against `:max-results`, after the specified
+category.
+
+## What a rigidity-correspondence finding means
+
+`(functionCorrespondingPredicate ?function ?predicate ?position)` says the function and the predicate
+state one relationship, so an instance could lose the one exactly when it could lose the
+other. Each pair must therefore share a rigidity kind (`time_invariant_relation`,
+`time_agnostic_relation` or `time_varying_relation`, the members of `rigidity_kind`):
+
+```clojure
+;; (functionCorrespondingBinaryPredicate HiveQueenFn hiveQueenOf)
+;; (time_invariant_relation HiveQueenFn)
+;; (time_varying_relation hiveQueenOf)
+{:status :gap
+ :candidate-count 0
+ :rigidity-correspondence
+ [{:function HiveQueenFn :predicate hiveQueenOf
+   :function-kinds #{time_invariant_relation}
+   :predicate-kinds #{time_varying_relation}}]}
+```
+
+A pair is reported when both sides are believed of at least one kind and the two sets of
+kinds differ. A pair with an unclassified side is not reported: `(typeAllSpecified
+rigidity_kind relation)` already reports the unclassified relation in the
+`:type-specified-violations` category, and a second finding about it would say nothing
+new. Once that side is classified, a mismatch is reported here.
+
+The pass reads both shapes of the declaration, with the value position stated and
+without. A membership counts when `ask` answers it, so a kind inherited through `genl`
+counts as a stated one does. A pair, a kind or a membership the audit context cannot see
+contributes nothing. The pass reads nothing when `rigidity_kind` has no visible member.
+Each census, membership question and pair spends one work unit, and each finding counts
+against `:max-results` after the type-specified category.
+
 ## What a widening finding means
 
 `(genl P Q)` between predicates says every `P` tuple is a `Q` tuple, so `Q`'s `arg`
@@ -208,8 +297,8 @@ The pass has these limits:
   audit context cannot see contributes nothing, as for every other read.
 
 Each declaration row, edge and position comparison spends one work unit, and
-`:max-results` counts these findings after the definition and specified categories, in
-that order.
+`:max-results` counts these findings after the definition, specified, type-specified and
+rigidity-correspondence categories, in that order.
 
 ## What a not-under-thing finding means
 
@@ -460,6 +549,7 @@ shapes, with `?o…` standing for the free arguments of a predicate of arity `n`
 | `(commutativeInArgs P i j)` | `(P ?o1 … ?on)` ⇒ the same with positions `i` and `j` exchanged, `n` ≥ 3 | `P` declared with arity `n`; the rule is visible from CxUniverse |
 | `(inverse P Q)` | `(P ?a ?b)` ⇒ `(Q ?b ?a)`, and a second rule `(Q ?a ?b)` ⇒ `(P ?b ?a)` | `P` and `Q` declared with arity 2; both rules are visible from CxUniverse |
 | `(genl P Q)` | `(P ?o1 … ?on)` ⇒ `(Q ?o1 … ?on)` | `Q` is not a term the engine interprets; neither `P` nor `Q` is declared with another arity or with variable arity |
+| `(arg P i C)` | `(P ?o1 … ?on)` ⇒ `(C ?oi)` | `P` declared with arity `n ≥ 2` (a unary `P` gives a type, so `(P ?x)` ⇒ `(C ?x)` is the `genl` row); `C` is not a term the engine interprets; the rule is visible from CxUniverse |
 | `(predAllInstance P C K)` | `(C ?x)` ⇒ `(P ?x K)`, `K` ground | the rule is a `set/defaultRule`, and `P` is not declared with another arity |
 | `(predInstanceAll P K C)` | `(C ?y)` ⇒ `(P K ?y)`, `K` ground | as `predAllInstance` |
 
@@ -507,7 +597,7 @@ suggestion and brings the finding back. Retracting the record brings the finding
 The further conditions are where a declaration reads differently from a rule:
 
 - **A relation mark is read from every context.** `symmetric`, `transitive`,
-  `commutativeInArgs` and `inverse` are lifted into CxUniverse
+  `commutativeInArgs`, `inverse` and `arg` are lifted into CxUniverse
   ([contexts.md](contexts.md#where-a-relation-property-is-read-from)), so a rule one
   theory states is not the mark, and is reported only when CxUniverse sees it. `genl` and
   the two preservation declarations are read where they are stated, in the rule's own
@@ -519,12 +609,13 @@ The further conditions are where a declaration reads differently from a rule:
 - **A rule that concludes a term the engine interprets materializes it.** A stored
   `(symmetric P)` sets the property the canonical argument order reads, and a membership
   `genl` inherits does not, as the `equivalence_relation` comment in `core.txt` records. A
-  rule shaped as `genl` whose consequent predicate is in the engine's grammar
+  rule shaped as `genl` or `arg` whose consequent predicate is in the engine's grammar
   (`vaelii.impl.predicates`) is therefore not reported.
 - **A mark fixes an arity.** `symmetric` and `transitive` classify their predicate as a
   `binary_predicate`, and a rule covers one arity only, so the predicate's arity must
-  be the rule's. A `genl` edge holds at every arity a predicate takes, so a variable-arity
-  predicate is not reported under it.
+  be the rule's; `commutativeInArgs` and `arg` read the same way, against `P`'s own
+  arity, the rule's antecedent. A `genl` edge holds at every arity a predicate takes, so a
+  variable-arity predicate is not reported under it.
 - **One direction of an inverse is not `inverse`.** A single swapping rule states one
   direction, which is `genlInverse` rather than `inverse`, and the pass suggests no
   `genlInverse`, so such a rule is not reported.
@@ -752,10 +843,9 @@ reader, so a spelling reaches the detector through every read or through none.
 under σ together with its own negation or with the negation of a predicate its own is a
 spec of — `(properPartOf ?x ?y)` beside `(not (partOf ?x ?y))`, a spec's tuple being the
 predicate's — one term claimed to be of two separated types, one
-term bound to two arities — `(arity ?p 1)` beside `(arity ?p 2)`, and `(arity ?p 1)` beside
-`(equivalence_relation ?p)`, which claims 2 by reaching `binary_predicate` up `genl` — one
-term bounded above the exact arity it is claimed to have — `(arity ?p ?n)` with
-`(greaterThan ?n 2)` beside `(symmetric ?p)`, or `(arityMin ?p ?n)` with the same bound —
+functional slot filled two ways no single filler meets, one term whose minimum length is
+bounded above the exact arity it is claimed to have — `(arityMin ?p ?n)` with
+`(greaterThan ?n 2)` beside `(symmetric ?p)` —
 and one term an `arg` declaration demands be of a type disjoint from one the two rules
 place it in — `arg` read with its covering forms, `(args P T)` and `(argAndRest P n T)`
 typing every position they reach, `(genl a P)` typing `a` by `P`'s arity, and an
@@ -764,6 +854,22 @@ arguments by its function's `arg` declarations. Each of the five is a **declarat
 is consulted.** A pair here is a clash that *could* form rather than one that has — a
 clash already formed is in `(contradictions kb)`, which is the other question and the
 other reader.
+
+A **functional slot** is position *n* of a tuple under a `(functionalInArg P n)` mark,
+read up the predicate hierarchy, and it holds one filler for each value of the rest of the
+tuple. Two literals agreeing on the rest under σ fill it two ways no filler meets when they
+put two distinct numbers, strings or other non-symbol atoms there, or a number beside a
+variable the antecedents bound away from it with `lessThan` or `greaterThan`, or two
+variables whose bounds leave nothing between them; two distinct symbols may name one
+thing and stay a candidate. The reading names no predicate: it reads the KB's
+`functionalInArg` marks, and `(functional P)` reaches it as the `(functionalInArg P 2)`
+core.txt's forward rule concludes. The arity table is the shipped case, through
+`(functional arity)`: `(arity ?p 1)` beside `(arity ?p 2)`, `(arity ?p 1)` beside
+`(equivalence_relation ?p)`, which claims 2 by reaching `binary_predicate` up `genl` and
+is read as `(arity ?p 2)`, and `(arity ?p ?n)` with `(greaterThan ?n 2)` beside
+`(symmetric ?p)` each admit no `?p`, where `(arity ?p 2)` beside `(lessThan 1 ?n)` on the
+same slot stays a candidate. A KB that does not mark a slot functional pairs its fillers
+as two facts that can both hold.
 
 The fifth rule-out reads the two consequents beside the antecedents, because the type an
 `arg` declaration demands of one rule's variable is disjoint from the type the **other**
@@ -800,7 +906,8 @@ cycle**: `(unary_predicate ?p) => (arity ?p 1)` beside `(binary_predicate ?p) =>
 2)` would be a `:functional` clash on the `arity` table, and the antecedents are two types
 `core.txt` declares `disjoint`; read the other way round, `(arity ?p 1) =>
 (unary_predicate ?p)` beside `(arity ?p 2) => (binary_predicate ?p)` is a `:disjoint`
-clash on the conclusions, and the third rule-out drops it.
+clash on the conclusions, and the functional `arity` slot drops it: one `?p` bound to two
+arities.
 
 A rule is never paired with itself, a pair is taken once, and the findings are in content
 order of the first rule and then the second.

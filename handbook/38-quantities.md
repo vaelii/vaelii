@@ -42,7 +42,7 @@ for the unit it was first recorded in.
 ```clojure
 (unreifiable_function QuantityFn)
 (binary_function QuantityFn)
-(functionCorrespondingPredicate QuantityFn measureInUnit)
+(functionCorrespondingPredicate QuantityFn measureInUnit 3)
 (result QuantityFn measure)
 ```
 

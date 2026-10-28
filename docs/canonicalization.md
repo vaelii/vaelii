@@ -297,9 +297,12 @@ queried by. So no spelling is derived from another: the canonicalizer reads one 
 whichever one was written.
 
 The equivalence between `(commutative P)` and `(commutativeInArgAndRest P 1)` stays in
-`core.txt` as two `set/inertRule`s — believed, indexed and queryable, run by neither engine —
+`core.txt` as `set/inertRule`s — believed, indexed and queryable, run by neither engine —
 because the engine has no `iff` to state it with and neither mark has to derive the
-other any more.
+other any more. The direction back to `commutative` is two rules, one requiring
+`(arity ?p ?n)` and one `(arityMin ?p ?n)` with `(greaterThan ?n 1)`, as the
+`at_least_binary` floor rules read a length: `(commutativeInArgAndRest P 1)` holds vacuously
+of a unary `P`, and a commutative relation is `at_least_binary`.
 
 `(genl symmetric commutative)` classifies every symmetric predicate, and `(commutative P)`
 with `(arity P 2)` concludes `(symmetric P)` — commutativity at two arguments **is**
@@ -310,11 +313,11 @@ this vocabulary costs a backward search if they are written any other way.
 ### A bridge between two marks is a cycle backward
 
 `set/forwardRule` adds forward chaining **without taking the backward use away**
-(its engines are `#{:forward :backward}`), so a rule written with it answers goals too. Three
+(its engines are `#{:forward :backward}`), so a rule written with it answers goals too. Four
 rules here conclude a mark that another of them needs:
 
 - `(commutative ?p)` → `(commutativeInArgAndRest ?p 1)` and back, the two directions of
-  one equivalence.
+  one equivalence, the way back written once per length reading.
 - `(commutative ?p) ∧ (predicate ?p) ∧ (arity ?p 2)` → `(symmetric ?p)`, whose conclusion
   `(genl symmetric commutative)` makes a **spec** of `commutative` — and
   `provers/candidate-rules` offers a rule concluding a spec as a candidate for the
@@ -344,8 +347,9 @@ The three written spellings reduce to one runtime descriptor, and
 - **A `:rest` group is closed by the literal's own arity.** So `(covering W A B)` and
   `(covering W A B C)` are two claims, and no permutation moves an argument between them.
 - **A component of one position is dropped.** A mark whose positions fall past the
-  literal's arity leaves it alone, and a unary predicate marked `commutative` is
-  identity-only without a special case.
+  literal's arity leaves it alone without a special case. No unary predicate is marked
+  `commutative`: `commutative` is below `at_least_binary`, since one position is no
+  permutation.
 
 Sorting is the same rule as `symmetric`'s: ground literals only, within each component,
 other positions fixed. Repeats keep their multiplicity — commutativity changes order,

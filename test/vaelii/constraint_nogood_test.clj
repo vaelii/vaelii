@@ -720,7 +720,7 @@
               (str order ": both separations, and not the edge one is read over")))))))
 
 (tu/deftest-kb the-grounds-name-the-declaration-of-each-family
-  (tu/with-terms [biggerThan parentOf priceIn largerThan atOrAbove animal dog cat Ann Bob Cid Rex
+  (tu/with-terms [biggerThan parentOf priceIn typeLargerThan atOrAbove animal dog cat Ann Bob Cid Rex
                   Shop]
     (let [m {:strength :monotonic}]
       (doseq [[label decl members]
@@ -732,7 +732,7 @@
                 [(list 'not (list dog Rex)) (list 'not (list cat Rex)) (list animal Rex)]]
                ["functionalInArg" (list 'functionalInArg priceIn 3)
                 [(list priceIn Ann Shop 3) (list priceIn Ann Shop 4)]]
-               ["irreflexive" (list 'irreflexive largerThan) [(list largerThan Ann Ann)]]
+               ["irreflexive" (list 'irreflexive typeLargerThan) [(list typeLargerThan Ann Ann)]]
                ["anti_symmetric" (list 'anti_symmetric atOrAbove)
                 [(list atOrAbove 1 2) (list atOrAbove 2 1)]]]]
         (tu/with-kb [kb]
@@ -1082,12 +1082,12 @@
   ;; the same sweep for the other mark: the converse probe fans down the hierarchy and
   ;; the mark is read up it, so both halves of the question descend or neither does
   (tu/with-kb [kb]
-    (tu/with-terms [muchLargerThan largerThan Rex Pip]
+    (tu/with-terms [muchLargerThan typeLargerThan Rex Pip]
       (v/assert kb (list muchLargerThan Rex Pip) 'CxUniverse)
       (v/assert kb (list muchLargerThan Pip Rex) 'CxUniverse)
-      (v/assert kb (list 'genl muchLargerThan largerThan) 'CxUniverse)
+      (v/assert kb (list 'genl muchLargerThan typeLargerThan) 'CxUniverse)
       (is (empty? (v/contradictions kb)))
-      (v/assert kb (list 'asymmetric largerThan) 'CxUniverse)
+      (v/assert kb (list 'asymmetric typeLargerThan) 'CxUniverse)
       (is (= [:asymmetric] (mapv :kind (v/contradictions kb)))))))
 
 (tu/deftest-kb a-genl-edge-carrying-a-mark-down-is-arbitrated

@@ -5199,9 +5199,9 @@
     (into []
           (keep (fn [h]
                   (when-let [{s :sentence c :context} (p/get-sentex recs h)]
-                    (let [[_ f' pr n] s
-                          pos         (if (integer? n) n (inc m))]
-                      (when (and (= f f') (symbol? pr) (<= 3 (count s) 4) (<= 1 pos (inc m)))
+                    (let [[_ f' pr] s
+                          pos       (res/stated-position s)]
+                      (when (and (= f f') pos (<= pos (inc m)))
                         [h c pr pos])))))
           (sort (reads/as-stored-with-args (:index kb) res/correspondence-predicate {1 f})))))
 
@@ -6001,9 +6001,9 @@
 
   In full rather than at a trigger position, and the reason is the qualitative one: the
   arriving sentence need not unify with the antecedent it enabled.  `(genl chihuahua
-  dog)` licenses a `largerThan` antecedent, and no walk from `genl` reaches
-  `largerThan` — the predicate-keyed trigger index cannot connect the two.  Nor is a
-  claim on the predicate itself enough on its own: `(largerThan dog cat)` unifies with
+  dog)` licenses a `typeLargerThan` antecedent, and no walk from `genl` reaches
+  `typeLargerThan` — the predicate-keyed trigger index cannot connect the two.  Nor is a
+  claim on the predicate itself enough on its own: `(typeLargerThan dog cat)` unifies with
   the antecedent at the one tuple it is *stated* at, and the tuples it licenses are
   reached by joining rather than by matching.
 

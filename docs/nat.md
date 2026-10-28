@@ -45,6 +45,7 @@ inverted term index like any other fact.
 | `(result F T)` / `(genlResult F T)` | F's output types — materialized on mint as `(T K)` / `(genl K T)` |
 | `(resultArg F n)` | F's output is an instance of the type the application's argument `n` names — derived over each `natFormula` fact as `(a_n K)` ([argtypes.md](argtypes.md#a-type-another-argument-names-argarg)) |
 | `(functionCorrespondingPredicate F P N)` | F and P state one relationship: `(F a…) = V` exactly when P holds of `a…` with `V` at argument `N` |
+| `(functionCorrespondingBinaryPredicate F P)` | `(functionCorrespondingPredicate F P 2)`: P is binary, the argument first and the value second |
 
 `natFormula` and `rewriteOf` are **quoting predicates** (`nat/nat-quoting-predicates
 = #{natFormula rewriteOf}`): their expression argument is a verbatim NAT payload that
@@ -397,15 +398,27 @@ context, `(FruitFn Pomme)` resolves to the constant minted for `(FruitFn Apple)`
 An ontology that reifies `MotherFn` usually also has `motherOf`, and the two are one
 claim written twice. `(functionCorrespondingPredicate F P N)` says so: `F` maps
 `a₁ … a_M` to `V` exactly when `(P a₁ … a_{N-1} V a_N … a_M)` holds. `N` is 1-based
-over `P`'s arguments; **omit it and the value takes the last position**, which is what
-`(functionCorrespondingPredicate MotherFn motherOf)` means and the shape nearly every
-correspondence has. A value in any other position needs the explicit form —
-`(functionCorrespondingPredicate StreetCornerFn streetCornerOf 1)`, so
-`(StreetCornerFn Xing North)` is the `Lot` of `(streetCornerOf Lot Xing North)`.
+over `P`'s arguments and always stated, so `(functionCorrespondingPredicate StreetCornerFn
+streetCornerOf 1)` makes `(StreetCornerFn Xing North)` the `Lot` of
+`(streetCornerOf Lot Xing North)`.
 
-The example is the shipped one: `resources/kb/upper/life.txt` states `motherOf` and
-`fatherOf` with `MotherFn` and `FatherFn` beside them, so a KB that loads the starter can
-name somebody by their role before it knows their name.
+The common case is a binary predicate with the value second, and
+`(functionCorrespondingBinaryPredicate MotherFn motherOf)` states it. A `core.txt` rule
+concludes `(functionCorrespondingPredicate MotherFn motherOf 2)` from it, and the engine
+reads only the ternary. The example is the shipped one: `resources/kb/upper/life.txt`
+states `motherOf` and `fatherOf` with `MotherFn` and `FatherFn` beside them, so a KB that
+loads the starter can name somebody by their role before it knows their name.
+
+Two `functionalInArg` marks constrain the ternary. A function and predicate pair has one
+position (`functionalInArg` at 3), and a predicate and position have one function
+(`functionalInArg` at 1). Two positions for one pair are a `:functional` nogood, and
+`try-assert` refuses the second
+(`nat_test/two-positions-for-one-function-and-predicate-collide`). The declaration is
+forced-monotonic, so neither side of the nogood loses and both stay believed. Two
+functions for one predicate and position collide the same way
+(`nat_test/two-functions-for-one-predicate-and-position-collide`). One function may still
+correspond to several predicates, and the rest of this section says how each reader
+reads them.
 
 It is read in **both** directions, and that is the point: a KB told only one of the two
 spellings can otherwise reason with only that one.
@@ -679,13 +692,13 @@ each correspondence and merges the answers:
 ```clojure
 (favoriteFood Ann (FruitFn ?tree))
 ;; with fruitOf and producesFruit both declared, asks
-[(functionCorrespondingPredicate FruitFn ?fruitPredicate)
+[(functionCorrespondingPredicate FruitFn ?fruitPredicate 2)
  (?fruitPredicate ?tree ?fruit) (favoriteFood Ann ?fruit)]
 ```
 
 A variable-functor application reads every function's declarations the same way:
 `(favoriteFood Ann (?fn AppleTree))` asks `(functionCorrespondingPredicate ?fn
-?fnPredicate)`, `(?fnPredicate AppleTree ?fnValue)` and `(favoriteFood Ann ?fnValue)`,
+?fnPredicate 2)`, `(?fnPredicate AppleTree ?fnValue)` and `(favoriteFood Ann ?fnValue)`,
 and binds `?fn` to the function. Declarations putting the value at different positions
 are different literal shapes, so the goal runs one conjunction per distinct position and
 merges their answers, each projected onto the variables every conjunction binds:
@@ -968,9 +981,11 @@ comes first (`nat/reconcile-nats!`).
   is matched as written, and only a stored belief spelled the same way answers it.
 - **A rule moves between its spellings when a declaration is stored or torn down, or a
   `genlCx` edge moves.** A declaration derived by a rule, or hidden from a reader by an
-  `except`, moves no rule,
-  and the respell reads the reifiable mark unscoped, so a reader that does not believe the
-  mark reads the rule respelled.
+  `except`, moves no rule. The ternary a `functionCorrespondingBinaryPredicate` concludes
+  is derived, so a rule stored before the binary declaration keeps its written spelling
+  and fires nothing through it; a rule stored after it is respelled as usual. The
+  respell reads the reifiable mark unscoped, so a reader that does not believe the mark
+  reads the rule respelled.
 - **No rule reads a variable-functor application in an antecedent.** A rule whose
   antecedents hold `(?fn a…)` outside a sentence position is held inert and fires nothing;
   only a goal expands one.
