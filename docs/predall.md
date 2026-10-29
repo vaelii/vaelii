@@ -201,10 +201,13 @@ only the quantified side — the domain off `(arg P 1 D)` for totality, the rang
 so the sweep above reports it with no extra entry point, and retracting the mark or either
 `arg` declaration withdraws it.
 
-The cost is the contract derivation once per call (two declaration reads per constraining
-predicate, plus one membership read), then one read per member of the quantified collection
-and one read per derived constraint per candidate filler, the subtype arms walking the `genl`
-closure rather than probing membership. This is a sweep to run at a checkpoint, not a check to run per write.
+The cost in each eligible reader is the contract derivation once per call (two declaration
+reads per constraining predicate, plus one membership read), then one read per member of the
+quantified collection and one read per derived constraint per candidate filler, the subtype
+arms walking the `genl` closure rather than probing membership. For members lacking an
+admissible filler, defining evidence also walks stored mentions and usable support. Evidence
+and eligibility are memoized within a declaration audit, not across invocations. This is a
+sweep to run at a checkpoint, not a check to run per write.
 
 ## indeterminate_term: what makes a filler determinate
 
