@@ -226,9 +226,9 @@
   "Audit every binary `predAllSpecified` and `predSpecifiedAll` declaration visible in
   `context`, and every *Exists* declaration (`exists-violations`, keyed `[functor pred a
   b]`), and return `{[functor pred indep] result…}`, each result `{:status :audited
-  :violations #{…}}` or a `{:status :gap …}` diagnostic (`:missing-slot-typing`, or
-  `:legacy-ternary-declaration` for a stored pre-migration ternary sentex, keyed by its
-  whole argument tuple)."
+  :violations #{…}}` or a `{:status :gap …}` diagnostic (`:missing-slot-typing`,
+  `:incomplete-defining-contexts`, or `:legacy-ternary-declaration` for a stored
+  pre-migration ternary sentex, keyed by its whole argument tuple)."
   [conn context]
   (call conn :all-specified-violations [context]))
 
@@ -439,6 +439,11 @@
   OUT — the effective strength of the belief after settling."
   [conn handle]
   (call conn :defeat-class [handle]))
+
+(defn ^:daemon-op defining-contexts
+  "The maximal contexts of ordinary believed assertions about term."
+  [conn term]
+  (call conn :defining-contexts [term]))
 
 (defn ^:daemon-op dependent-justifications
   "Justifications that use `handle` as an antecedent, in content order as

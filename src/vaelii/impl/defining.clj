@@ -18,6 +18,7 @@
 (defn- mentions-term?
   [kb term sentence]
   (letfn [(visit [form root?]
+            (budget/spend!)
             (cond
               (and (sequential? form) (= 'Quote (first form))) false
               (and (sequential? form) (not root?)
@@ -42,19 +43,22 @@
               (budget/spend!)
               (let [handles (if-let [entry (find @owners owner)]
                               (val entry)
-                              (let [hs (set (nat/bookkeeping-handles kb owner))]
+                              (let [hs (into #{} (budget/checked-seq
+                                                  (budget/checked-call
+                                                   #(nat/bookkeeping-handles kb owner))))]
                                 (vswap! owners assoc owner hs)
                                 hs))]
                 (contains? handles (:id record))))
-            (nat/reified-nats-in (sx/sentence-of record))))))
+            (budget/checked-call #(nat/reified-nats-in (sx/sentence-of record)))))))
 
 (defn- support-role
   [kb candidates roles justification]
+  (budget/spend!)
   (let [informant (:informant justification)
-        antecedents (:antecedents justification)
+        antecedents (budget/checked-seq (:antecedents justification))
         source (first antecedents)
         content (filter candidates antecedents)
-        prerequisites (jtms/rests-on justification)]
+        prerequisites (budget/checked-seq (jtms/rests-on justification))]
     (cond
       (or (= 'decontextualized_predicate informant)
           (= chain/arity-class-informant informant)) :skeletal
@@ -69,18 +73,20 @@
 (defn- reachable-supports
   [kb initial valid?]
   (let [tms (reasoning/tms kb)]
-    (loop [todo (vec (keys initial)), seen #{}, records initial, supports {}]
+    (loop [todo (into [] (budget/checked-seq (keys initial))), seen #{}, records initial, supports {}]
+      (budget/spend!)
       (if-let [h (peek todo)]
         (if (contains? seen h)
           (recur (pop todo) seen records supports)
           (let [record (get records h)
-                verdicts (exc/justification-verdicts kb h (:context record))
+                verdicts (budget/checked-call #(exc/justification-verdicts kb h (:context record)))
                 js (into []
                          (comp (keep #(jtms/justification tms %))
-                               (filter #(and (valid? #{} %)
+                               (filter #(and (budget/checked-call (fn [] (valid? #{} %)))
                                              (= :supports (get verdicts (:id %))))))
-                         (jtms/supports tms h))
-                dependencies (into #{} (mapcat jtms/rests-on) js)
+                         (budget/checked-seq (jtms/supports tms h)))
+                dependencies (into #{} (mapcat #(budget/checked-seq (jtms/rests-on %)))
+                                   (budget/checked-seq js))
                 added (into {} (keep (fn [dependency]
                                        (budget/spend!)
                                        (when-not (contains? records dependency)
@@ -96,12 +102,12 @@
   [kb term]
   (let [term (sx/canon term)
         tms (reasoning/tms kb)
-        mentions (into {} (map (juxt :id identity)) (kb/find-sentexes kb term))
-        hidden? (or (exc/own-hidden-fn kb) (constantly false))
+        mentions (into {} (map (juxt :id identity)) (budget/checked-seq (kb/find-sentexes kb term)))
+        hidden? (or (budget/checked-call #(exc/own-hidden-fn kb)) (constantly false))
         live? #(and (jtms/in? tms %) (not (hidden? %)))
         candidates (into #{} (keep (fn [[h record]]
                                      (when (mentions-term? kb term (sx/sentence-of record)) h)))
-                         mentions)
+                         (budget/checked-seq mentions))
         valid? (jtms/region-valid-fn tms #{} nil #{})
         [records supports] (reachable-supports kb mentions valid?)
         bookkeeping? (bookkeeping-test kb)
@@ -124,23 +130,26 @@
                   (if (= roles next) roles (recur next))))
         relevant (into [] (filter (fn [[h record]]
                                     (and (live? h)
-                                         (mentions-term? kb term (sx/sentence-of record))))) mentions)
+                                         (mentions-term? kb term (sx/sentence-of record)))))
+                       (budget/checked-seq mentions))
         unresolved (into []
                          (keep (fn [[h _]]
                                  (when (and (not= :ordinary (get roles h))
                                             (or (nil? (get roles h))
                                                 (some #(nil? (support-role kb candidates roles %))
                                                       (get supports h))))
-                                   h))) relevant)]
+                                   h))) (budget/checked-seq relevant))]
     (when (seq unresolved)
       (throw (ex-info "Defining-context support is incomplete."
                       {:type :incomplete-defining-contexts :term term :handles unresolved})))
-    {:contexts (tax/maximal-contexts (reasoning/taxonomy kb)
-                                     (into #{} (keep (fn [[h record]]
-                                                       (when (= :ordinary (get roles h)) (:context record))))
-                                           relevant))
+    {:contexts (budget/checked-call
+                #(tax/maximal-contexts (reasoning/taxonomy kb)
+                                       (into #{} (keep (fn [[h record]]
+                                                         (when (= :ordinary (get roles h)) (:context record))))
+                                             (budget/checked-seq relevant))))
      :skeletal-only? (boolean (and (seq relevant)
-                                   (every? #(= :skeletal (get roles (first %))) relevant)))}))
+                                   (every? #(= :skeletal (get roles (first %)))
+                                           (budget/checked-seq relevant))))}))
 
 (defn defining-contexts
   "The maximal ordinary defining contexts. Unclassified support throws

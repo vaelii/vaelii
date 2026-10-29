@@ -53,6 +53,7 @@
   count-with-functor "[[conn pred]]",
   covers-of "[[conn whole]]",
   defeat-class "[[conn handle]]",
+  defining-contexts "[[conn term]]",
   dependent-justifications "[[conn handle]]",
   deprecated? "[[conn term] [conn term context]]",
   describe
@@ -456,6 +457,7 @@
    :count-with-functor
    :covers-of
    :defeat-class
+   :defining-contexts
    :dependent-justifications
    :deprecated?
    :describe
@@ -597,6 +599,7 @@
    :count-with-functor
    :covers-of
    :defeat-class
+   :defining-contexts
    :dependent-justifications
    :deprecated?
    :describe

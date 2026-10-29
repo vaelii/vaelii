@@ -3,6 +3,8 @@
 (ns vaelii.defining-test
   (:require [clojure.test :refer [is use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.budget :as budget]
+            [vaelii.impl.kb :as stored-kb]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh #(doto (tu/fresh) (tu/load-core!))))
@@ -10,6 +12,24 @@
 (defn- contexts [kb homes]
   (doseq [home homes]
     (v/assert kb (list 'genlCx home 'CxUniverse) 'CxUniverse)))
+
+(tu/deftest-kb a-bounded-defining-read-stops-before-realizing-the-term-posting
+  (tu/with-terms [Subject tagged]
+    (let [record (v/sentex kb (v/assert kb (list tagged Subject) 'CxUniverse))]
+      (doseq [max-work [0 4]]
+        (let [pulled (atom 0)]
+          (with-redefs [stored-kb/find-sentexes
+                        (fn [_ _]
+                          (repeatedly 256 #(do (swap! pulled inc) record)))]
+            (let [outcome (try
+                            (budget/metered (budget/meter {:max-work max-work})
+                                            #(v/defining-contexts kb Subject))
+                            :unexpected-completion
+                            (catch clojure.lang.ExceptionInfo e
+                              (budget/exhausted e)))]
+              (is (= :max-work outcome))
+              (is (<= @pulled max-work)
+                  "a small work bound cannot consume the whole lazy posting"))))))))
 
 (tu/deftest-kb literal-quote-and-nested-sentences-do-not-define-their-contents
   (tu/with-terms [CxDefined CxMention Subject JimboMcFallible carriesSyntax]
