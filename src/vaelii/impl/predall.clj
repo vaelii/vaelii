@@ -152,15 +152,21 @@
 (defn- member-selector
   [kb]
   (let [tax (reasoning/taxonomy kb)
-        evidence (memoize #(defining/definition-evidence kb %))
+        evidence (memoize #(budget/checked-call (fn [] (defining/definition-evidence kb %))))
         eligible (memoize
                   (fn [source subject]
                     (let [{:keys [contexts skeletal-only?]} (evidence subject)]
                       (cond
                         skeletal-only? #{}
                         (or (empty? contexts) (sx/variable? source)) ::actual-reader
-                        :else (into #{} (mapcat #(tax/common-descendants tax [source %])) contexts)))))]
+                        :else (into #{}
+                                    (mapcat (fn [home]
+                                              (budget/checked-seq
+                                               (budget/checked-call
+                                                #(tax/common-descendants tax [source home])))))
+                                    (budget/checked-seq contexts))))))]
     (fn [source reader subject]
+      (budget/spend!)
       (let [readers (eligible source subject)]
         (or (= ::actual-reader readers) (contains? readers reader))))))
 
@@ -292,16 +298,24 @@
 (defn- specified-context-audits
   "Emit cumulative results after each eligible reader, retaining completed findings."
   [kb functor arg-pos declarations]
-  (let [[pred indep] (first declarations)
+  (let [declarations (budget/checked-seq declarations)
+        [pred indep] (first declarations)
         declaration [functor pred indep]
         eligible? (member-selector kb)
         readers (for [[_ _ source handle] declarations
-                      reader (if handle
-                               (sort-by nm/name-key (tax/common-descendants (reasoning/taxonomy kb) [source]))
-                               [source])
+                      reader (budget/checked-seq
+                              (if handle
+                                (let [descendants
+                                      (budget/checked-call
+                                       #(tax/common-descendants (reasoning/taxonomy kb) [source]))]
+                                  (budget/checked-call
+                                   #(sort-by nm/name-key (budget/checked-seq descendants))))
+                                [source]))
                       :when (or (nil? handle)
                                 (some #(= handle (:id (nth % 2)))
-                                      (res/matches-visible kb (list functor pred indep) reader)))]
+                                      (budget/checked-seq
+                                       (budget/checked-call
+                                        #(res/matches-visible kb (list functor pred indep) reader)))))]
                   [source reader])]
     (map (fn [result] [declaration result])
          (rest (reductions

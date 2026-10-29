@@ -3,7 +3,12 @@
 (ns vaelii.specified-context-test
   (:require [clojure.test :refer [is use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.budget :as budget]
+            [vaelii.impl.defining :as defining]
+            [vaelii.impl.predall :as predall]
+            [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.taxonomy :as tax]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh #(doto (tu/fresh) (tu/load-core!))))
@@ -21,6 +26,61 @@
 (defn- result [kb functor pred kind context]
   (get (v/all-specified-violations kb context) [functor pred kind]
        {:status :audited :violations #{}}))
+
+(tu/deftest-kb hidden-readers-still-consume-the-audits-work-budget
+  (tu/with-terms [CxParent CxHidden notes item_kind]
+    (doseq [max-work [0 160]]
+      (let [checks (atom 0)]
+        (with-redefs [tax/common-descendants (fn [_ _] (repeat 64 CxHidden))
+                      res/matches-visible (fn [_ _ _] (swap! checks inc) [])]
+          (let [outcome (try
+                          (budget/metered
+                           (budget/meter {:max-work max-work})
+                           #(doall (#'predall/specified-context-audits
+                                    kb 'predAllSpecified :second [[notes item_kind CxParent 1]])))
+                          :unexpected-completion
+                          (catch clojure.lang.ExceptionInfo e (budget/exhausted e)))]
+            (is (= :max-work outcome))
+            (is (< @checks 64)
+                "readers hidden before emission cannot bypass the bound")
+            (when (pos? max-work)
+              (is (pos? @checks) "the positive-budget control reaches the visibility checks"))))))))
+
+(tu/deftest-kb visibility-record-pulls-consume-the-audits-work-budget
+  (tu/with-terms [CxParent notes item_kind]
+    (let [pulls (atom 0)]
+      (with-redefs [tax/common-descendants (fn [_ _] [CxParent])
+                    res/matches-visible (fn [_ _ _]
+                                          (repeatedly 256
+                                                      #(do (swap! pulls inc)
+                                                           [{} 2 {:id 2}])))]
+        (let [outcome (try
+                        (budget/metered
+                         (budget/meter {:max-work 64})
+                         #(doall (#'predall/specified-context-audits
+                                  kb 'predAllSpecified :second [[notes item_kind CxParent 1]])))
+                        :unexpected-completion
+                        (catch clojure.lang.ExceptionInfo e (budget/exhausted e)))]
+          (is (= :max-work outcome))
+          (is (<= @pulls 64)
+              "a single hidden reader cannot scan every returned visibility record")
+          (is (pos? @pulls) "the control reaches the visibility provider's lazy records"))))))
+
+(tu/deftest-kb defining-home-unions-consume-the-audits-work-budget
+  (tu/with-terms [CxParent CxReader Subject]
+    (let [checks (atom 0)
+          homes (set (map #(symbol (str "FictionalHome" %)) (range 256)))]
+      (with-redefs [defining/definition-evidence (fn [_ _] {:contexts homes :skeletal-only? false})
+                    tax/common-descendants (fn [_ _] (swap! checks inc) [])]
+        (let [outcome (try
+                        (budget/metered (budget/meter {:max-work 32})
+                                        #((#'predall/member-selector kb) CxParent CxReader Subject))
+                        :unexpected-completion
+                        (catch clojure.lang.ExceptionInfo e (budget/exhausted e)))]
+          (is (= :max-work outcome))
+          (is (<= @checks 32)
+              "an empty home-to-reader join cannot scan every home before checking the bound")
+          (is (pos? @checks) "the positive-budget control reaches the home joins"))))))
 
 (tu/deftest-kb global-type-bookkeeping-does-not-require-a-child-definition-at-the-root
   (tu/with-terms [CxHome relation_kind nearbyRel notes]
