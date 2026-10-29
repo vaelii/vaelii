@@ -114,6 +114,14 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [contexts.md](docs/contexts.md#the-lift-is-about-the-predicate-so-derived-content-is-lifted-too)
   *Migration:* none.
 
+- **A mint is withdrawn when its subsumer is also a premise or has a second derivation.**
+  With `(genl pType aType)` stated after `(pType Rex)` and `(arg pType 1 aType)`, the
+  minted `(aType Rex)` stayed stored when a rule concluded `(pType Rex)` again over it;
+  stated before them, the mint was withheld. Both orders now hold the same records
+  ([#241](https://github.com/vaelii/vaelii/issues/241)).
+  [argtypes.md](docs/argtypes.md#pruning-what-the-kb-says-more-specifically--vaelii_prune_subsumed_mints-on)
+  *Migration:* none.
+
 ### Fix: performance
 
 - **A KB that registers a shipped reasoner keeps a reasoning image and seals its log.**

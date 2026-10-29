@@ -808,7 +808,10 @@ justifications; `recover` and a fork read it and rebuild nothing for it
 
 Two conditions keep the withdrawal from eating what holds it up: the record has to be the
 entailment's own (no premise support, every justification an argument declaration's), and
-some subsuming record must not rest on the mint. Every subsumer is asked, so a minted
+some subsuming record must not rest on the mint: the subsumer stays IN with the mint
+forced OUT (`jtms/region-in` over its support), so a subsumer that is also a premise, or
+has a derivation that does not reach the mint, withdraws it
+(`arg_type_regression_test`). Every subsumer is asked, so a minted
 `(animal Muffet)` that `(awake Muffet)` subsumes while resting on it is withdrawn by
 `(dog Muffet)`, as the mint drawn after `(dog Muffet)` is withheld
 (`argtype_entail_test/a-subsumer-resting-on-the-mint-does-not-keep-it`).

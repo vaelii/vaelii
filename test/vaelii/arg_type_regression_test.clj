@@ -65,25 +65,45 @@
   ([a b] (both-orders a b false))
   ([a b recover?] [(load-in a recover?) (load-in b recover?)]))
 
-(deftest ^{:red true
-           :doc "rests-on? walks a premise subsumer's justifications, so withdrawable-mint keeps a mint the premise subsumes."}
-  a-premise-subsumer-withdraws-a-mint-made-before-its-edge
+(defn- edge-last-and-first
+  "`both-orders` over `setup` then `fact` then `edge`, and `setup` then `edge` then `fact`,
+  live and recovered."
+  [setup fact edge]
+  (both-orders (concat setup fact edge) (concat setup edge fact) true))
+
+(deftest a-premise-subsumer-withdraws-a-mint-made-before-its-edge
   ;; `(arg pType 1 aType)` mints `(aType Rex)` off the premise `(pType Rex)`, and the
   ;; rule (an intersection's membership rule, spelled out) concludes `(pType Rex)` again
   ;; over the mint.  `(genl pType aType)` makes the premise subsume the mint.
   (tu/with-terms [pType aType bType Rex]
-    (let [setup [[(list 'genl aType 'thing) U] [(list 'genl bType 'thing) U]
-                 [(list bType Rex) U]
-                 [(list 'set/forwardRule
-                        (list 'implies (list 'and (list aType '?x) (list bType '?x))
-                              (list pType '?x)))
-                  U]]
-          fact  [[(list pType Rex) U] [(list 'arg pType 1 aType) U]]
-          edge  [[(list 'genl pType aType) U]]
-          [edge-last edge-first] (both-orders (concat setup fact edge)
-                                              (concat setup edge fact))]
-      (is (= edge-first edge-last)
-          "the edge after the fact and declaration, and before them"))))
+    (let [[edge-last edge-first]
+          (edge-last-and-first
+           [[(list 'genl aType 'thing) U] [(list 'genl bType 'thing) U] [(list bType Rex) U]
+            [(list 'set/forwardRule
+                   (list 'implies (list 'and (list aType '?x) (list bType '?x)) (list pType '?x)))
+             U]]
+           [[(list pType Rex) U] [(list 'arg pType 1 aType) U]]
+           [[(list 'genl pType aType) U]])]
+      (is (= edge-first edge-last) "the edge after the fact and declaration, and before them")
+      (is (not-any? #(= (pr-str (list aType Rex)) (first %)) (keys (:held (first edge-last))))
+          "the mint is not stored"))))
+
+(deftest a-subsumer-with-a-second-derivation-withdraws-a-mint-made-before-its-edge
+  ;; `(pType Rex)` is concluded from `(cType Rex)`, and again over the mint `(aType Rex)`
+  ;; that `(arg pType 1 aType)` draws from it.
+  (tu/with-terms [pType aType bType cType Rex]
+    (let [rule (fn [antes] (list 'set/forwardRule (list 'implies antes (list pType '?x))))
+          [edge-last edge-first]
+          (edge-last-and-first
+           [[(list 'genl aType 'thing) U] [(list 'genl bType 'thing) U]
+            [(list 'genl cType 'thing) U] [(list bType Rex) U] [(list cType Rex) U]
+            [(rule (list 'and (list aType '?x) (list bType '?x))) U]
+            [(rule (list cType '?x)) U]]
+           [[(list 'arg pType 1 aType) U]]
+           [[(list 'genl pType aType) U]])]
+      (is (= edge-first edge-last) "the edge after the declaration, and before it")
+      (is (not-any? #(= (pr-str (list aType Rex)) (first %)) (keys (:held (first edge-last))))
+          "the mint is not stored"))))
 
 (deftest a-mint-made-after-a-decontextualized-declaration-is-lifted
   ;; `(arg pType 1 aType)` mints `(aType Rex)` in CxWorld off `(pType Rex)` there, and

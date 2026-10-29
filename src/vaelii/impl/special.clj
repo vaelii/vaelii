@@ -2407,25 +2407,18 @@
            (and (seq js) (every? #(mint-informants (:informant %)) js))))))
 
 (defn- rests-on?
-  "Does the support of `h` reach `mint` — is the membership that would make `mint`
-  redundant itself derived from it?
+  "Does `h` rest on `mint`: is `h` believed no longer once `mint` is forced OUT?
 
   The one shape a block cannot take: withdrawing the mint would take the membership with
-  it, which would release the mint, which would derive the membership again.  The walk is
-  the support closure, each node visited once; the shipped ontology has no such pair, and
-  a KB that writes one keeps both records."
+  it, which would release the mint, which would derive the membership again.  The read is
+  `jtms/region-in` over the support of `h` (`exc/support`, which stops at a premise), so a
+  premise, or a second derivation that does not reach the mint, keeps `h` IN.  The shipped
+  ontology has no such pair, and a KB that writes one keeps both records."
   [kb h mint]
-  (let [tms (reasoning/tms kb)]
-    (loop [seen #{} frontier [h]]
-      (if-let [x (peek frontier)]
-        (let [antes (into [] (comp (keep #(jtms/justification tms %))
-                                   (mapcat :antecedents)
-                                   (remove seen))
-                          (jtms/supports tms x))]
-          (if (some #(= mint %) antes)
-            true
-            (recur (into seen antes) (into (pop frontier) antes))))
-        false))))
+  (let [tms    (reasoning/tms kb)
+        region (exc/support tms h (constantly false))]
+    (and (contains? region mint)
+         (not (contains? (jtms/region-in tms region region #{} #{mint} nil #{}) h)))))
 
 (defn- says-more-than?
   "Does the record `by` say, in `context`, what `sentence` says and more precisely?
@@ -2461,8 +2454,8 @@
   Three conditions, cheapest first: the candidate is not `by` itself; it is the
   entailment's own record (`mint-only?`, network reads); and a believed record that does
   not rest on it says it more specifically in its own context (the taxonomy, or the index
-  behind `subsumed-mint`, then a support walk per subsumer, so a subsumer resting on the
-  mint does not hide one that does not; docs/argtypes.md)."
+  behind `subsumed-mint`, then `rests-on?` per subsumer, so a subsumer resting on the mint
+  does not hide one that does not; docs/argtypes.md)."
   [kb h by]
   (when (and (not= h (:id by)) (mint-only? kb h))
     (let [sx (p/get-sentex (:records kb) h)]
