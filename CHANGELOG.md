@@ -94,6 +94,18 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [aggregate.md](docs/aggregate.md#maintenance-when-the-aggregate-is-a-rule-antecedent)
   *Migration:* none.
 
+- **A rule binding a variable to a class of binary predicates and to an argument of
+  `genl` is believed.** Each position of a `type_relation_predicate` asks for what its
+  `args` declaration names, `predicate` for `genl`, where it asked for a
+  `unary_predicate`; such a rule was held inert as `:arg-variable` and listed as
+  `:inert-rule`, although `(genl performedBy doneBy)` relates two binary predicates. A
+  position no `args` declaration covers, as in a KB that does not load `core.txt`, carries
+  no relation-kind constraint. An
+  `:arg-variable` conviction at such a position names the `args` type in `:expected`
+  ([#244](https://github.com/vaelii/vaelii/issues/244)).
+  [taxonomy.md](docs/taxonomy.md#and-against-the-variables-of-a-rule)
+  *Migration:* none.
+
 ### Fix: performance
 
 - **A KB that registers a shipped reasoner keeps a reasoning image and seals its log.**

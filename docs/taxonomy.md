@@ -2206,22 +2206,27 @@ arrival order, and `try-assert` refuses it
 ```clojure
 (v/assert kb '(implies (comment ?x ?string) (genl ?x ?string)) 'CxUniverse)
 (:conviction (v/why-not kb '(implies (comment ?x ?string) (genl ?x ?string)) 'CxUniverse))
-;; {:type :arg-variable :variable ?string :expected [string unary_predicate]
+;; {:type :arg-variable :variable ?string :expected [string predicate]
 ;;  :message "arg constraint: ?string must be a string (arg 2 of comment)
-;;            and a type (arg 2 of genl, a type_relation_predicate), and the two types
-;;            are disjoint"}
+;;            and a predicate (arg 2 of genl, a type_relation_predicate), and the two
+;;            types are disjoint"}
 ```
 
 `(implies (arg ?pred ?n ?kind) (genl ?pred ?kind))` is the structure that must *pass*, and
 does: `?kind` is asked for a kind at both ends.
 
-**A type-level position asks for a `unary_predicate`**, which is what makes the two
+**A `genlArg` position asks for a `unary_predicate`**, which is what makes the two
 demands comparable at all — `disjoint` separates *memberships*, and a subtype demand is
-not one until it is read as the membership every type carries. A position is type-level
-when a `genlArg` names it **or** when its predicate is a `type_relation_predicate`, the
-mark saying that of every position at once; that second half is how `genl`'s second
-argument is constrained, since it deliberately carries no declaration of its own
-(`core.txt` says why).
+not one until it is read as the membership every type carries. **A position of a
+`type_relation_predicate` asks for what the predicate's `argAndRest` declarations name**:
+`predicate`, from `core.txt`'s `(args ?relation predicate)`. A position no such declaration
+covers carries no relation-kind constraint, so a KB that does not load `core.txt` types
+none. `genl` relates predicates of any arity, so a rule
+binding a variable to a class of binary predicates and to an argument of `genl` is
+believed (`rule_variable_arg_test/a-genl-over-a-binary-predicate-class-is-not-an-inert-rule`),
+and a rule over the shipped `(genl performedBy doneBy)` fires. That reading is how
+`genl`'s arguments are constrained at all, since they deliberately carry no position
+declaration of their own (`core.txt` says why).
 
 Four restrictions keep the arm to the convictions it can prove:
 

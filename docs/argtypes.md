@@ -394,7 +394,7 @@ and the separation
 (v/assert kb '(implies (comment ?x ?string) (genl ?x ?string)) 'CxUniverse)
 (v/why-not kb '(implies (comment ?x ?string) (genl ?x ?string)) 'CxUniverse)
 ;; {:reason :inert :conviction {:type :arg-variable :variable ?string
-;;                              :expected [string unary_predicate] …} …}
+;;                              :expected [string predicate] …} …}
 ```
 
 `violations` lists the rule as `:inert-rule`, with the conviction under `:detail`. `check`

@@ -113,9 +113,7 @@
       (is (= [:disjoint] (mapv :kind (:pairs (:clashes (v/kb-quality kb)))))
           "the two conclusions are one disjoint clash in waiting"))))
 
-(deftest ^{:red true
-           :doc "the type_relation_predicate arm types every variable position unary_predicate, so a genl over a binary predicate class reads as inert."}
-  a-genl-over-a-binary-predicate-class-is-not-an-inert-rule
+(deftest a-genl-over-a-binary-predicate-class-is-not-an-inert-rule
   ;; `genl` relates predicates of any arity, and `(genl seenBy targetRel)` is a binary
   ;; edge.  A rule binding ?r a `pair_kind` (whose instances are `pair_type`, disjoint
   ;; from `unary_predicate`) and an argument of `genl` can fire.

@@ -1762,9 +1762,9 @@
 ;; A constraint the predicate's own arguments fail is the wrong constraint, not a missing
 ;; one, and the positions are not thereby unconstrained: an individual at
 ;; either end is refused not-well-formed by wff/genl-problems, a disagreeing arity is
-;; an :arity-descension clash, and genl is a type_relation_predicate, which says of every one
-;; of its positions what genlArg says of one, and the rule-variable check reads it that
-;; way.
+;; an :arity-descension clash, and genl is a type_relation_predicate, whose
+;; (args ?relation predicate) below types every position as a predicate, the reading the
+;; rule-variable check takes of it.
 
 (comment minCommonGenl
          "(minCommonGenl ?type . ?types) means that ?type is a minimal common supertype of ?types: a strict supertype of every one of them, with no other strict common supertype of them below it. Computed from the genl closure through the edges the asking context sees, and never stored. With ?type open, a query binds it to each minimal common supertype, so (minCommonGenl ?x dog cat) lists where a new type above both would sit. With ?type ground, the sentence is true when ?type is one of them and false when it is none of them. With one type in ?types the answers are its minimal supertypes.")

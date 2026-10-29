@@ -3039,11 +3039,14 @@
 ;;
 ;; **A type-level position asks for a type, which is a `unary_predicate`.**  That is the
 ;; second reading this arm needs and the KB already holds it: every type is asserted a
-;; `unary_predicate` when the schema loads, and a `type_relation_predicate`'s arguments
-;; name kinds.  So a position is type-level when a `genlArg` names it **or** when its
-;; predicate is a `type_relation_predicate` — which is how `genl`'s second argument is
-;; constrained at all.  That position carries no declaration of its own, deliberately
-;; (see core.txt), and the relation kind is what says what it holds.
+;; `unary_predicate` when the schema loads.  So a position a `genlArg` names asks for a
+;; `unary_predicate`.  A position of a `type_relation_predicate` asks for what the
+;; predicate's `argAndRest` declarations name, `predicate` from core.txt's `(args ?relation
+;; predicate)`, because `genl` relates predicates of any arity: `(genl performedBy doneBy)`
+;; puts one binary predicate under another.  A position no `argAndRest` covers carries no
+;; relation-kind constraint, so a KB that does not load core.txt types none.  That reading
+;; is how `genl`'s arguments are constrained at all; they carry no position declaration of
+;; their own, deliberately (see core.txt).
 ;;
 ;; **Instance constraint against instance constraint, and nothing else.**  `(disjoint T
 ;; U)` says the two types share no instance, which is exactly what two such constraints
@@ -3083,8 +3086,8 @@
 (def ^:private collection-type
   "The type a **type-level** argument position asks its filler to be an instance of.
   Every type in the KB is asserted a `unary_predicate` as the schema loads, so this is
-  what `genlArg`'s \"a subtype of T\" and `type_relation_predicate`'s \"relates kinds\"
-  both amount to as a membership — and a membership is what `disjoint` separates."
+  what `genlArg`'s \"a subtype of T\" amounts to as a membership, and a membership is
+  what `disjoint` separates."
   'unary_predicate)
 
 (defn- binding-literals
@@ -3138,13 +3141,15 @@
   "The memberships one literal demands of the variables sitting in its arguments, as
   `[[variable {:type T :position n :pred P :via V :level :arg|:genlArg|:kind|:quoted}] …]`.
 
-  Three sources.  An `(arg P n T)` declaration types the filler directly.  A
-  **type-level** position — one a `genlArg` names, or any position of a
-  `type_relation_predicate` — types it as a `unary_predicate`, since what stands there is
-  a kind.  A `(quotedArg P n T)` at a type `self-denoting?` accepts types it as a `T`
-  literal, which is an instance of `T`.  `pending`, when given, is the demand of a
-  declaration not yet stored, read as stored (`pending-constraints`).  `:level` is kept so
-  the message can say which reading it read, and `:via` so a constraint that descended
+  Four sources.  An `(arg P n T)` declaration types the filler directly.  A
+  **type-level** position, one a `genlArg` names, types it as a `unary_predicate`, since
+  what stands there is a kind.  Any position of a `type_relation_predicate` is typed by
+  each `argAndRest` declaration covering it, `predicate` from core.txt's `(args ?relation
+  predicate)`; a position none covers carries no relation-kind constraint.  A
+  `(quotedArg P n T)` at a type `self-denoting?` accepts types it as a `T` literal, which
+  is an instance of `T`.  `pending`, when given, is the demand of a declaration not yet
+  stored, read as stored (`pending-constraints`).  `:level` is kept so the message can
+  say which reading it read, and `:via` so a constraint that descended
   from a super-predicate names the predicate it was written of, exactly as `args-problem`
   does.
 
@@ -3185,10 +3190,16 @@
                           (fn [m b n] {:type (get b '?type) :position n :pred pred
                                        :via (declared-of m) :level :quoted})))
          (when type-rel
-           (for [[i a] (map-indexed vector as)
-                 :when (sx/variable? a)]
-             [a {:type collection-type :position (inc i) :pred pred
-                 :via pred :level :kind}]))
+           (let [tails (for [m     (in-content-order (decls 'argAndRest))
+                             :let  [b (nth m 1) s (get b '?start) t (get b '?type)]
+                             :when (and (integer? s) (pos? s) (symbol? t) (not (sx/variable? t)))]
+                         [s t (declared-of m)])]
+             (for [[i a] (map-indexed vector as)
+                   :when (sx/variable? a)
+                   :let  [n (inc i)]
+                   [s t via] tails
+                   :when (<= s n)]
+               [a {:type t :position n :pred pred :via via :level :kind}])))
          (pending-constraints tax pending pred as context))))))
 
 (defn- variable-constraints
@@ -3203,8 +3214,8 @@
 
 (defn- variable-constraint-clause
   "How a conviction names one constraint it found — **a string (arg 2 of
-  comment)**, **a type (arg 2 of genl, a type_relation_predicate)** for a position
-  whose demand comes from the relation kind rather than from a declaration, or **a
+  comment)**, **a predicate (arg 2 of genl, a type_relation_predicate)** for a position
+  whose demand comes from the relation kind rather than from a position declaration, or **a
   string literal (arg 1 of p, constrained with quotedArg)**.  Carries `via-clause` for a
   constraint that descended from a super-predicate, exactly as `args-problem`'s message
   does."
@@ -3212,7 +3223,7 @@
   (str (case level
          :arg     (str "a " type)
          :genlArg "a type"
-         :kind    "a type"
+         :kind    (str "a " type)
          :quoted  (str "a " type " literal"))
        " (arg " position " of " pred
        (case level
@@ -3279,10 +3290,12 @@
       h)))
 
 (defn- declared-positions-global
-  "`[{position #{type …}} type-rel?]` for the functor `pred`, read as stored over every
+  "`[{position #{type …}} kind-types]` for the functor `pred`, read as stored over every
   context: the type each `arg`, `genlArg` or `quotedArg` declaration on `pred` or a
   predicate above it places on a position, as `literal-variable-constraints` reads it,
-  and whether a membership states `pred` a `type_relation_predicate` or a type below it.
+  and, when a membership states `pred` a `type_relation_predicate` or a type below it,
+  the set of every `argAndRest` type on `pred` or above it, which bounds what that
+  reading places on any position (nil otherwise).
   A superset of what `literal-reader` reads from any one context.  The declaring
   predicates above `pred` are read off one memo per kind for the pass
   (`tax/genls-global-among`), so a pass costs the `genl` edges above its functors once
@@ -3306,10 +3319,21 @@
                              genlArg   [collection-type]
                              quotedArg (when (some #(or (= t %) (tax/genl?-global tax t %)) self-denoting-kinds)
                                          [t]))]
-                 [n ty])]
+                 [n ty])
+        type-rel? (boolean (some #(seq (reads/as-stored-with-args idx % {1 pred}))
+                                 (tax/specs-global tax 'type_relation_predicate)))]
     [(reduce (fn [m [n t]] (update m n (fnil conj #{}) t)) {} by-pos)
-     (boolean (some #(seq (reads/as-stored-with-args idx % {1 pred}))
-                    (tax/specs-global tax 'type_relation_predicate)))]))
+     (when type-rel?
+       (into #{}
+             (let [declaring (tax/props tax (tax/arg-declaration-props 'argAndRest))]
+               (for [sup (when (seq declaring)
+                           (tax/genls-global-among tax pred declaring
+                                                   (pass-read [::declaring 'argAndRest declaring] #(volatile! {}))))
+                     f   (tax/specs-global tax 'argAndRest)
+                     h   (reads/as-stored-with-args idx f {1 sup})
+                     :let [[_ _ _ t :as s] (:sentence (p/get-sentex (:records kb) h))]
+                     :when (and (seq? s) (= 4 (count s)) (symbol? t) (not (sx/variable? t)))]
+                 t))))]))
 
 (defn- clash-possible?
   "Can a reader at some context read a clash between two constraints on one of rule
@@ -3325,11 +3349,11 @@
                         as   (nm/args lit)]
                     (if (and (sequential? lit) (symbol? pred) (not (sx/variable? pred))
                              (some sx/variable? as))
-                      (let [[by-pos type-rel?] (pass-read [::declared pred] #(declared-positions-global kb tax pred))]
+                      (let [[by-pos kind-types] (pass-read [::declared pred] #(declared-positions-global kb tax pred))]
                         (reduce (fn [acc [i a]]
                                   (if (sx/variable? a)
                                     (update acc a (fnil into #{})
-                                            (cond-> (get by-pos (inc i)) type-rel? (conj collection-type)))
+                                            (into (set (get by-pos (inc i))) kind-types))
                                     acc))
                                 acc (map-indexed vector as)))
                       acc)))
