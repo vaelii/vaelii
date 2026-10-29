@@ -168,6 +168,32 @@
         (is (v/in? kb h) "nothing was stored, so the rule stays believed")
         (v/retract! kb h)))))
 
+(tu/deftest-kb try-assert-refuses-a-covering-declaration-that-convicts-a-stored-rule
+  (doseq [decl [(fn [q b_] (list 'argAndRest q 1 b_)) (fn [q b_] (list 'args q b_))]]
+    (tu/with-terms [p q a_ b_]
+      (doseq [s [(list 'genl a_ 'thing) (list 'genl b_ 'thing) (list 'disjoint a_ b_)
+                 (list 'arg p 1 a_)]]
+        (v/assert kb s 'CxUniverse))
+      (let [h (v/assert kb (list 'implies (list p '?x) (list q '?x)) 'CxUniverse)
+            d (decl q b_)
+            r (refusal #(v/try-assert kb d 'CxUniverse))]
+        (is (= [:definitional-clash :arg-variable [h]]
+               [(:type r) (:violation r) (mapv :handle (:clashes-with r))])
+            (pr-str d))
+        (is (nil? (v/handle-of kb d 'CxUniverse)))
+        (is (v/in? kb h))
+        (v/retract! kb h)))))
+
+(tu/deftest-kb args-and-arg-at-position-1-judge-a-rule-alike
+  (let [verdict (fn [decl]
+                  (tu/with-terms [p q a_ b_]
+                    (doseq [s [(list 'genl a_ 'thing) (list 'genl b_ 'thing) (list 'disjoint a_ b_)
+                               (list 'arg p 1 a_) (decl q b_)]]
+                      (v/assert kb s 'CxUniverse))
+                    (:type (conviction kb (list 'implies (list p '?x) (list q '?x))))))]
+    (is (= [:arg-variable :arg-variable]
+           [(verdict #(list 'arg %1 1 %2)) (verdict #(list 'args %1 %2))]))))
+
 (tu/deftest-kb a-believed-rule-goes-out-with-its-conclusions-when-a-declaration-convicts-it
   (tu/with-terms [p q a_ b_ Foo]
     (doseq [s [(list 'genl a_ 'thing) (list 'genl b_ 'thing) (list 'disjoint a_ b_)

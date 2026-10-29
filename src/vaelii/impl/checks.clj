@@ -3040,11 +3040,12 @@
 ;; **A type-level position asks for a type, which is a `unary_predicate`.**  That is the
 ;; second reading this arm needs and the KB already holds it: every type is asserted a
 ;; `unary_predicate` when the schema loads.  So a position a `genlArg` names asks for a
-;; `unary_predicate`.  A position of a `type_relation_predicate` asks for what the
-;; predicate's `argAndRest` declarations name, `predicate` from core.txt's `(args ?relation
+;; `unary_predicate`.  Every position asks for what the predicate's `argAndRest`
+;; declarations covering it name, as an `arg` at the position would.  On a
+;; `type_relation_predicate` that is `predicate` from core.txt's `(args ?relation
 ;; predicate)`, because `genl` relates predicates of any arity: `(genl performedBy doneBy)`
 ;; puts one binary predicate under another.  A position no `argAndRest` covers carries no
-;; relation-kind constraint, so a KB that does not load core.txt types none.  That reading
+;; such constraint, so a KB that does not load core.txt types none of `genl`'s.  That reading
 ;; is how `genl`'s arguments are constrained at all; they carry no position declaration of
 ;; their own, deliberately (see core.txt).
 ;;
@@ -3121,21 +3122,27 @@
 (defn- pending-constraints
   "The constraints an argument declaration not yet stored places on the variables `as`
   of a literal on `pred`, read from `context`.  `dm` is the declaration's demand
-  (`declaration-demand`); it binds the literal when its predicate is `pred` or above it.
-  A conditional demand, `interArg`'s or `interArgEqual`'s, places none."
+  (`declaration-demand`, or an `:arg-type` `covering-demands` one, which types every
+  position from its `:from`); it binds the literal when its predicate is `pred` or above
+  it.  A conditional demand, `interArg`'s or `interArgEqual`'s, places none."
   [tax dm pred as context]
   (when (and dm (nil? (:trigger-pos dm))
              (or (= pred (:pred dm)) (tax/genl? tax pred (:pred dm) context)))
-    (let [n (:pos dm)
-          a (arg-at as n)
-          c {:position n :pred pred :via (:pred dm)}]
-      (when (sx/variable? a)
-        (case (:kind dm)
-          :arg-type        [[a (assoc c :type (:type dm) :level :arg)]]
-          :arg-genl        [[a (assoc c :type collection-type :level :genlArg)]]
-          :quoted-arg-type (when (self-denoting? tax (:type dm) context)
-                             [[a (assoc c :type (:type dm) :level :quoted)]])
-          nil)))))
+    (if-let [from (:from dm)]
+      (for [[i a] (map-indexed vector as)
+            :let  [n (inc i)]
+            :when (and (sx/variable? a) (<= from n))]
+        [a {:position n :pred pred :via (:pred dm) :type (:type dm) :level :arg}])
+      (let [n (:pos dm)
+            a (arg-at as n)
+            c {:position n :pred pred :via (:pred dm)}]
+        (when (sx/variable? a)
+          (case (:kind dm)
+            :arg-type        [[a (assoc c :type (:type dm) :level :arg)]]
+            :arg-genl        [[a (assoc c :type collection-type :level :genlArg)]]
+            :quoted-arg-type (when (self-denoting? tax (:type dm) context)
+                               [[a (assoc c :type (:type dm) :level :quoted)]])
+            nil))))))
 
 (defn- literal-variable-constraints
   "The memberships one literal demands of the variables sitting in its arguments, as
@@ -3143,9 +3150,10 @@
 
   Four sources.  An `(arg P n T)` declaration types the filler directly.  A
   **type-level** position, one a `genlArg` names, types it as a `unary_predicate`, since
-  what stands there is a kind.  Any position of a `type_relation_predicate` is typed by
-  each `argAndRest` declaration covering it, `predicate` from core.txt's `(args ?relation
-  predicate)`; a position none covers carries no relation-kind constraint.  A
+  what stands there is a kind.  Any position is typed by each `argAndRest` declaration
+  covering it, an `args` through its `(argAndRest P 1 T)` twin, so `(args P T)` and `(arg
+  P 1 T)` judge a rule alike; on a `type_relation_predicate` that is `predicate` from
+  core.txt's `(args ?relation predicate)`, read at `:level :kind`.  A
   `(quotedArg P n T)` at a type `self-denoting?` accepts types it as a `T` literal, which
   is an instance of `T`.  `pending`, when given, is the demand of a declaration not yet
   stored, read as stored (`pending-constraints`).  `:level` is kept so the message can
@@ -3189,17 +3197,16 @@
                  (of-kind 'quotedArg
                           (fn [m b n] {:type (get b '?type) :position n :pred pred
                                        :via (declared-of m) :level :quoted})))
-         (when type-rel
-           (let [tails (for [m     (in-content-order (decls 'argAndRest))
-                             :let  [b (nth m 1) s (get b '?start) t (get b '?type)]
-                             :when (and (integer? s) (pos? s) (symbol? t) (not (sx/variable? t)))]
-                         [s t (declared-of m)])]
-             (for [[i a] (map-indexed vector as)
-                   :when (sx/variable? a)
-                   :let  [n (inc i)]
-                   [s t via] tails
-                   :when (<= s n)]
-               [a {:type t :position n :pred pred :via via :level :kind}])))
+         (let [tails (for [m     (in-content-order (decls 'argAndRest))
+                           :let  [b (nth m 1) s (get b '?start) t (get b '?type)]
+                           :when (and (integer? s) (pos? s) (symbol? t) (not (sx/variable? t)))]
+                       [s t (declared-of m)])]
+           (for [[i a] (map-indexed vector as)
+                 :when (sx/variable? a)
+                 :let  [n (inc i)]
+                 [s t via] tails
+                 :when (<= s n)]
+             [a {:type t :position n :pred pred :via via :level (if type-rel :kind :arg)}]))
          (pending-constraints tax pending pred as context))))))
 
 (defn- variable-constraints
@@ -3293,9 +3300,8 @@
   "`[{position #{type …}} kind-types]` for the functor `pred`, read as stored over every
   context: the type each `arg`, `genlArg` or `quotedArg` declaration on `pred` or a
   predicate above it places on a position, as `literal-variable-constraints` reads it,
-  and, when a membership states `pred` a `type_relation_predicate` or a type below it,
-  the set of every `argAndRest` type on `pred` or above it, which bounds what that
-  reading places on any position (nil otherwise).
+  and the set of every `argAndRest` type on `pred` or above it, which bounds what that
+  reading places on any position.
   A superset of what `literal-reader` reads from any one context.  The declaring
   predicates above `pred` are read off one memo per kind for the pass
   (`tax/genls-global-among`), so a pass costs the `genl` edges above its functors once
@@ -3319,21 +3325,18 @@
                              genlArg   [collection-type]
                              quotedArg (when (some #(or (= t %) (tax/genl?-global tax t %)) self-denoting-kinds)
                                          [t]))]
-                 [n ty])
-        type-rel? (boolean (some #(seq (reads/as-stored-with-args idx % {1 pred}))
-                                 (tax/specs-global tax 'type_relation_predicate)))]
+                 [n ty])]
     [(reduce (fn [m [n t]] (update m n (fnil conj #{}) t)) {} by-pos)
-     (when type-rel?
-       (into #{}
-             (let [declaring (tax/props tax (tax/arg-declaration-props 'argAndRest))]
-               (for [sup (when (seq declaring)
-                           (tax/genls-global-among tax pred declaring
-                                                   (pass-read [::declaring 'argAndRest declaring] #(volatile! {}))))
-                     f   (tax/specs-global tax 'argAndRest)
-                     h   (reads/as-stored-with-args idx f {1 sup})
-                     :let [[_ _ _ t :as s] (:sentence (p/get-sentex (:records kb) h))]
-                     :when (and (seq? s) (= 4 (count s)) (symbol? t) (not (sx/variable? t)))]
-                 t))))]))
+     (into #{}
+           (let [declaring (tax/props tax (tax/arg-declaration-props 'argAndRest))]
+             (for [sup (when (seq declaring)
+                         (tax/genls-global-among tax pred declaring
+                                                 (pass-read [::declaring 'argAndRest declaring] #(volatile! {}))))
+                   f   (tax/specs-global tax 'argAndRest)
+                   h   (reads/as-stored-with-args idx f {1 sup})
+                   :let [[_ _ _ t :as s] (:sentence (p/get-sentex (:records kb) h))]
+                   :when (and (seq? s) (= 4 (count s)) (symbol? t) (not (sx/variable? t)))]
+               t)))]))
 
 (defn- clash-possible?
   "Can a reader at some context read a clash between two constraints on one of rule
@@ -3406,6 +3409,27 @@
                                {:kind :arg-type :pos c :type d :trigger-pos a :trigger-value b})
             nil)]
     (when (and m (symbol? pred) (not (sx/variable? pred)) (pos-int? (:pos m))
+               (symbol? (:type m)) (not (sx/variable? (:type m))))
+      (assoc m :pred pred))))
+
+(defn- covering-demands
+  "The per-argument demands a covering declaration `chk` makes of its predicate's tuples,
+  each with `:from`, the first position it types, in place of `:pos`: `args` and
+  `argAndRest` as `arg`, `argsGenl` and `argAndRestGenl` as `genlArg`, and `interArgs`
+  and `interArgAndRest` as an `interArg` target at every position from the start.  Nil
+  for any other declaration."
+  [chk]
+  (let [[f pred a b] chk
+        n (nm/arity chk)
+        m (case f
+            args            (when (= 2 n) {:kind :arg-type :from 1 :type a})
+            argsGenl        (when (= 2 n) {:kind :arg-genl :from 1 :type a})
+            interArgs       (when (= 2 n) {:kind :inter-arg-type :from 1 :type a})
+            argAndRest      (when (= 3 n) {:kind :arg-type :from a :type b})
+            argAndRestGenl  (when (= 3 n) {:kind :arg-genl :from a :type b})
+            interArgAndRest (when (= 3 n) {:kind :inter-arg-type :from a :type b})
+            nil)]
+    (when (and m (symbol? pred) (not (sx/variable? pred)) (pos-int? (:from m))
                (symbol? (:type m)) (not (sx/variable? (:type m))))
       (assoc m :pred pred))))
 
@@ -3513,15 +3537,19 @@
 
 (defn- rule-declaration-conflict
   "The first stored, believed rule that the argument declaration `chk` written in `context`
-  would convict, read with `chk`'s demand as stored (`variable-clash-problem`), as an
-  `:arg-variable` violation naming the rule in `:clashes-with`, or nil.  `try-assert` asks
+  would convict, read with `chk`'s demand as stored (`variable-clash-problem`): its
+  `declaration-demand`, or for `args` and `argAndRest` the `:arg-type` covering demand
+  (`covering-demands`).  Returns an `:arg-variable` violation naming the rule in
+  `:clashes-with`, or nil.  `try-assert` asks
   this (`*refuse-clashes?*`).  The rules read are those on the declared predicate and the
   predicates below it (`rules-on`), stated in `context` or a context below it, in content
   order, each read from its own context.  The predicates below are read over every
   context (`tax/specs-global`), since a `genl` edge stated below `context` relates them
   there, and each rule's predicate is tested from the rule's own context."
   [kb chk context]
-  (when-let [{pred :pred :as dm} (declaration-demand chk)]
+  (when-let [{pred :pred :as dm} (or (declaration-demand chk)
+                                     (let [c (covering-demands chk)]
+                                       (when (= :arg-type (:kind c)) c)))]
     (let [tax  (reasoning/taxonomy kb)
           recs (:records kb)
           down (set (tax/context-down tax context))]
@@ -4605,27 +4633,6 @@
   "Every expression kind `provers/shape-kinds` can give a compound."
   '[non_atomic_expression ill_formed_expression open_expression closed_expression
     open_formula sentence])
-
-(defn- covering-demands
-  "The per-argument demands a covering declaration `chk` makes of its predicate's tuples,
-  each with `:from`, the first position it types, in place of `:pos`: `args` and
-  `argAndRest` as `arg`, `argsGenl` and `argAndRestGenl` as `genlArg`, and `interArgs`
-  and `interArgAndRest` as an `interArg` target at every position from the start.  Nil
-  for any other declaration."
-  [chk]
-  (let [[f pred a b] chk
-        n (nm/arity chk)
-        m (case f
-            args            (when (= 2 n) {:kind :arg-type :from 1 :type a})
-            argsGenl        (when (= 2 n) {:kind :arg-genl :from 1 :type a})
-            interArgs       (when (= 2 n) {:kind :inter-arg-type :from 1 :type a})
-            argAndRest      (when (= 3 n) {:kind :arg-type :from a :type b})
-            argAndRestGenl  (when (= 3 n) {:kind :arg-genl :from a :type b})
-            interArgAndRest (when (= 3 n) {:kind :inter-arg-type :from a :type b})
-            nil)]
-    (when (and m (symbol? pred) (not (sx/variable? pred)) (pos-int? (:from m))
-               (symbol? (:type m)) (not (sx/variable? (:type m))))
-      (assoc m :pred pred))))
 
 (defn- held-demand-test
   "`{:atom? (fn [x]) :test (fn [types x context]) :values-convict? (fn [types-of xs

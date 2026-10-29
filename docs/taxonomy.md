@@ -2218,11 +2218,13 @@ does: `?kind` is asked for a kind at both ends.
 
 **A `genlArg` position asks for a `unary_predicate`**, which is what makes the two
 demands comparable at all — `disjoint` separates *memberships*, and a subtype demand is
-not one until it is read as the membership every type carries. **A position of a
-`type_relation_predicate` asks for what the predicate's `argAndRest` declarations name**:
-`predicate`, from `core.txt`'s `(args ?relation predicate)`. A position no such declaration
-covers carries no relation-kind constraint, so a KB that does not load `core.txt` types
-none. `genl` relates predicates of any arity, so a rule
+not one until it is read as the membership every type carries. **A position asks for
+what the `argAndRest` declarations covering it name**, as an `arg` at the position would,
+so `(args P T)` and `(arg P 1 T)` judge a rule alike, and `try-assert` refuses either one
+when it convicts a stored rule. On a `type_relation_predicate` that type is `predicate`,
+from `core.txt`'s `(args ?relation predicate)`. A position no such declaration covers
+carries no such constraint, so a KB that does not load `core.txt` types none of `genl`'s
+positions. `genl` relates predicates of any arity, so a rule
 binding a variable to a class of binary predicates and to an argument of `genl` is
 believed (`rule_variable_arg_test/a-genl-over-a-binary-predicate-class-is-not-an-inert-rule`),
 and a rule over the shipped `(genl performedBy doneBy)` fires. That reading is how

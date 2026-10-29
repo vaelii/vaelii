@@ -122,6 +122,16 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [argtypes.md](docs/argtypes.md#pruning-what-the-kb-says-more-specifically--vaelii_prune_subsumed_mints-on)
   *Migration:* none.
 
+- **`(args P T)` and `(argAndRest P n T)` constrain a rule's variables as `arg` does.** A
+  covering declaration typed a rule's variables only on a `type_relation_predicate`, so
+  `(args p b)` left believed a rule that `(arg p 1 b)` held inert, and `try-assert` of an
+  `argAndRest` or `args` that convicts a stored rule stored it where it refuses the `arg`.
+  Both are now read at every predicate, and `try-assert` refuses the covering declaration
+  as `:definitional-clash` with `:violation :arg-variable`, naming the rule
+  ([#244](https://github.com/vaelii/vaelii/issues/244)).
+  [taxonomy.md](docs/taxonomy.md#and-against-the-variables-of-a-rule)
+  *Migration:* none.
+
 ### Fix: integrity
 
 - **The rule-clash pairing reports a `:disjoint` pair a conclusion's declared arg type or a
