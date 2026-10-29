@@ -106,6 +106,14 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [taxonomy.md](docs/taxonomy.md#and-against-the-variables-of-a-rule)
   *Migration:* none.
 
+- **A type an argument declaration mints is lifted when its type is decontextualized.**
+  With `(decontextualized_predicate aType)` stated before `(pType Rex)` in CxWorld, the
+  minted `(aType Rex)` stayed in CxWorld; stated after it, the mint was lifted into
+  CxUniverse, and `recover` lifted it in either order. A new mint now lifts as an asserted
+  fact does ([#242](https://github.com/vaelii/vaelii/issues/242)).
+  [contexts.md](docs/contexts.md#the-lift-is-about-the-predicate-so-derived-content-is-lifted-too)
+  *Migration:* none.
+
 ### Fix: performance
 
 - **A KB that registers a shipped reasoner keeps a reasoning image and seals its log.**

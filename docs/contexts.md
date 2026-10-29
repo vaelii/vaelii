@@ -797,14 +797,18 @@ the context it was lifted from.
 
 ### The lift is about the predicate, so derived content is lifted too
 
-The declaration runs at **both** points new content is stored: `assert`, and forward
-chaining's `place-conclusion`. A rule concluding `(P ...)` gets its conclusion lifted
-exactly as a caller asserting `(P ...)` does, because the declaration is a claim about
-the *predicate*, not about how a particular sentence arrived.
+The declaration runs at each of the three points new content is stored: `assert`, forward
+chaining's `place-conclusion`, and `special/entail-arg-type`, which stores the type an
+argument declaration mints ([argtypes.md](argtypes.md)). A rule concluding `(P ...)` gets
+its conclusion lifted exactly as a caller asserting `(P ...)` does, and so does a minted
+`(P ...)`, because the declaration is a claim about the *predicate*, not about how a
+particular sentence arrived.
 
 Lifting only asserted content would make belief depend on arrival order, which
 [nmtms.md](nmtms.md) forbids: with the declaration first, a rule's `(P a)` would stay where
 it was concluded, and with the declaration last the retroactive sweep would lift it.
+`recover` would disagree with the live KB as well, since it replays the declaration's
+sweep over every stored `(P ...)`.
 
 Each copy is a **new datum in a context that did not have it**, so it goes on the
 chaining agenda like any rule conclusion: its arrival re-triggers any `exceptWhen` stated

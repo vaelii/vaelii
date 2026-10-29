@@ -48,18 +48,22 @@
 
 (defn- load-in
   "Assert each `[sentence context]` of `steps` in order at `:monotonic` on a fresh KB with
-  subsumed mints pruned; what the KB holds and the reasons."
-  [steps]
-  (tu/with-neutral-kb [kb tu/fresh]
-    (binding [argument/*assertive-arg-types?*  true
-              checks/*prune-subsumed-mints?* true]
-      (doseq [[s cx] steps] (v/assert kb s cx {:strength :monotonic}))
-      {:held (held kb) :reasons (reasons kb)})))
+  subsumed mints pruned; what the KB holds and the reasons.  With `recover?`, the reading
+  is `[live recovered]`, the second taken after `recover` rebuilds belief from the store."
+  ([steps] (load-in steps false))
+  ([steps recover?]
+   (tu/with-neutral-kb [kb tu/fresh]
+     (binding [argument/*assertive-arg-types?*  true
+               checks/*prune-subsumed-mints?* true]
+       (doseq [[s cx] steps] (v/assert kb s cx {:strength :monotonic}))
+       (let [read #(hash-map :held (held kb) :reasons (reasons kb))
+             live (read)]
+         (if recover? [live (do (v/recover kb) (read))] live))))))
 
 (defn- both-orders
-  "`[(load-in a) (load-in b)]`."
-  [a b]
-  [(load-in a) (load-in b)])
+  "`[(load-in a) (load-in b)]`, each with `recover?` as `load-in` takes it."
+  ([a b] (both-orders a b false))
+  ([a b recover?] [(load-in a recover?) (load-in b recover?)]))
 
 (deftest ^{:red true
            :doc "rests-on? walks a premise subsumer's justifications, so withdrawable-mint keeps a mint the premise subsumes."}
@@ -81,9 +85,7 @@
       (is (= edge-first edge-last)
           "the edge after the fact and declaration, and before them"))))
 
-(deftest ^{:red true
-           :doc "entail-arg-type never calls deduce-lifts, so only a mint stored before the decontextualized_predicate declaration is lifted by lift-existing."}
-  a-mint-made-after-a-decontextualized-declaration-is-lifted
+(deftest a-mint-made-after-a-decontextualized-declaration-is-lifted
   ;; `(arg pType 1 aType)` mints `(aType Rex)` in CxWorld off `(pType Rex)` there, and
   ;; `(decontextualized_predicate aType)` lifts `(aType ...)` into CxUniverse.
   (tu/with-terms [pType aType Rex CxWorld]
@@ -92,9 +94,13 @@
           decl  [[(list 'decontextualized_predicate aType) U]]
           fact  [[(list pType Rex) CxWorld]]
           [decl-last decl-first] (both-orders (concat setup fact decl)
-                                              (concat setup decl fact))]
+                                              (concat setup decl fact) true)]
       (is (= decl-first decl-last)
-          "the declaration after the fact, and before it"))))
+          "the declaration after the fact, and before it, live and recovered")
+      (is (= (first decl-first) (second decl-first))
+          "the declaration first, live and recovered")
+      (is (contains? (:held (first decl-first)) [(pr-str (list aType Rex)) (str U) true])
+          "the mint is lifted into CxUniverse"))))
 
 (deftest ^{:red true
            :doc "rule-clash reads a consequent's own declared arg type as a :declared demand, so arg-type-conflicted? drops a reachable disjoint pair."}

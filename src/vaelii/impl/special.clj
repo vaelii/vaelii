@@ -1674,8 +1674,9 @@
 ;; `entail-arg-type`'s docstring.  A second cycle runs through the restatement of a mint
 ;; spelled at a retired term: `restate-retired` calls `migrate-sentex`, whose twin
 ;; runs the integration arms (`integrate-twin`), and a declaration arm draws mints through
-;; `entail-arg-type`.
-(declare deduce-placed restate-retired)
+;; `entail-arg-type`.  A third runs through the lift of a new mint: `deduce-lifts` stores
+;; the CxUniverse copy and draws its entailments through `deduce-placed`.
+(declare deduce-lifts deduce-placed restate-retired)
 
 (def ^:private ^:dynamic *admission-memo*
   "nil, or a volatile `{[sentence context checked?] answer}` of what `inadmissible` said of
@@ -1852,6 +1853,13 @@
                               (if (or new? (and fresh? (not was-in?)))
                                 (deduce-placed kb sentence h2 context)
                                 empty-entailment-result)
+                              ;; a new mint lifts into CxUniverse as an asserted fact does;
+                              ;; one stored before the declaration is `lift-existing`'s
+                              (when new?
+                                (let [r (outside-fact #(deduce-lifts kb sentence h2 context))]
+                                  ;; the copy is content the admission checks read
+                                  (when (and memo (seq (:new r))) (vreset! memo {}))
+                                  r))
                               (when new?
                                 (let [r (outside-fact #(restate-retired kb s2))]
                                   ;; a restatement can write a twin and supersede `s2`
@@ -6101,18 +6109,14 @@
   context: a type is a unary predicate, and a declared type no arity statement binds to
   another length is one (`arity/mintable-type?`).  Never withheld as a subsumed mint is,
   since a type's arity holds at every context (`arity/relation-length`); a new membership
-  lifts as an asserted one does (`deduce-lifts`).  `thing` is left out."
+  lifts as every new mint does (`entail-arg-type`).  `thing` is left out."
   [kb sentence dh]
   (let [ctx (:context (p/get-sentex (:records kb) dh))]
     (reduce (fn [acc t]
-              (let [r (entail-arg-type kb {:assert (list 'unary_predicate t) :because []
-                                           :kind declared-type-informant :class true}
-                                       dh ctx false)]
-                (reduce (fn [acc h]
-                          (merge-with into acc
-                                      (deduce-lifts kb (:sentence (p/get-sentex (:records kb) h)) h ctx)))
-                        (merge-with into acc r)
-                        (:new r))))
+              (merge-with into acc
+                          (entail-arg-type kb {:assert (list 'unary_predicate t) :because []
+                                               :kind declared-type-informant :class true}
+                                           dh ctx false)))
             empty-entailment-result
             (distinct (remove #{'thing} (declared-types sentence))))))
 
