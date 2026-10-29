@@ -602,3 +602,23 @@
         (spit (File. ^String dir "format.edn") (pr-str {:format-version 999}))
         (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Unsupported"
                               (f/assert-format! dir)))))))
+
+(deftest a-manifest-write-cut-mid-write-leaves-a-readable-manifest
+  ;; the cut is a `spit` that writes half its content and throws, the torn file a plain
+  ;; write leaves at a crash; each manifest then holds the old content or the new one
+  (with-tmp
+    (fn [dir]
+      (f/write-reasoners! dir #{"a"})
+      (f/write-records-identity! dir {:kind :one})
+      (f/write-index-layout! dir 1)
+      (with-redefs [spit (fn [p ^String s & _]
+                           (with-open [o (java.io.FileOutputStream. (str p))]
+                             (.write o (.getBytes (subs s 0 (quot (count s) 2)))))
+                           (throw (java.io.IOException. "cut")))]
+        (doseq [w [#(f/write-reasoners! dir #{"a" "b"})
+                   #(f/write-records-identity! dir {:kind :two})
+                   #(f/write-index-layout! dir 2)]]
+          (try (w) (catch java.io.IOException _ nil))))
+      (is (contains? #{#{"a"} #{"a" "b"}} (f/recorded-reasoners dir)))
+      (is (contains? #{{:kind :one} {:kind :two}} (f/records-identity dir)))
+      (is (= :current (f/index-layout-decision dir 2 true))))))

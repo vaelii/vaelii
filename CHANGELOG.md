@@ -144,6 +144,16 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [integrity.md](docs/integrity.md#what-a-rule-clash-finding-means)
   *Migration:* none.
 
+### Fix: storage
+
+- **A crash while a store directory's manifest is written leaves a directory that
+  opens.** `reasoners.edn`, `records.edn`, `format.edn` and an index's `layout.edn` were
+  written in place, so a crash mid-write left a file the next open refused as
+  `:malformed-manifest` or `:unreadable-store`. Each is written to a temp, fsynced and
+  renamed over the old one.
+  [storage.md](docs/storage.md#a-directorys-sentinel)
+  *Migration:* none.
+
 ### Fix: performance
 
 - **A KB that registers a shipped reasoner keeps a reasoning image and seals its log.**

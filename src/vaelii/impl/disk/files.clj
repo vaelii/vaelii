@@ -120,6 +120,90 @@
                                 " never one")
                            {:type :malformed-manifest :file (.getPath f)} e))))))
 
+(defonce ^:private ^java.util.concurrent.atomic.AtomicBoolean dir-fsync-warned
+  (java.util.concurrent.atomic.AtomicBoolean. false))
+
+(defn fsync-dir!
+  "Best-effort fsync of the directory holding `path`, so a file's creation/deletion
+  is durable.  Swallowed on filesystems that reject directory fsync — `FileChannel/open`
+  on a directory is not portable.
+
+  **Warned once**, because the swallow is not free: a commit marker's *existence* is
+  the atomic commit point of a compaction, and `replay-temp-onto-raf!` truncates the
+  live log before copying the temp over it.  Where the marker's directory entry never
+  reaches the platter, a power loss mid-replay leaves no marker to replay from and no
+  original to fall back on.  Silence makes that exposure indistinguishable from a
+  filesystem where the fsync worked."
+  [^String path]
+  (try
+    (when-let [dir (.getParentFile (File. path))]
+      (with-open [ch (FileChannel/open (.toPath dir)
+                                       (into-array OpenOption [StandardOpenOption/READ]))]
+        (.force ch true)))
+    (catch Throwable t
+      (when (.compareAndSet dir-fsync-warned false true)
+        (trove/log! {:level :warn :id ::dir-fsync-unsupported
+                     :msg (str "this filesystem rejects directory fsync (" (.getMessage t)
+                               ") — a file's creation or deletion is durable only when "
+                               "the filesystem makes it so, which weakens the compaction "
+                               "commit marker.  Reported once.")
+                     :data {:path path}}))
+      nil)))
+
+(defn fsync-file!
+  "fsync the file at `path`, then the directory holding it (`fsync-dir!`)."
+  [^String path]
+  (with-open [ch (FileChannel/open (.toPath (File. path))
+                                   (into-array OpenOption [StandardOpenOption/WRITE]))]
+    (.force ch true))
+  (fsync-dir! path))
+
+(defn- write-atomic!
+  "Write `path` by calling `write!` on a `FileOutputStream` over a unique temp file,
+  fsyncing the temp, atomic-renaming it over `path`, then fsyncing the parent dir —
+  durable, not merely atomic (a power loss can otherwise leave the rename visible while
+  the data blocks are still zeros).  The per-call unique temp suffix keeps a racing fsync
+  tick from consuming another writer's temp."
+  [^String path write!]
+  (let [tmp    (str path ".tmp." (java.util.UUID/randomUUID))
+        parent (.getParentFile (File. path))]
+    (when parent (.mkdirs parent))
+    (try
+      (with-open [fos (FileOutputStream. tmp)]
+        (write! fos)
+        (.sync (.getFD fos)))
+      ;; Unguarded by platform, unlike `index-snapshot/rename!`, and the difference is
+      ;; the target: every file written this way — the counters, the premise set, the
+      ;; clean marker, the image's meta and its fallback blob, the EDN manifests — is read
+      ;; whole, and only the image's CSR sections are ever mapped.  So no process holds a
+      ;; mapping this replace has to break.
+      (Files/move (Paths/get tmp (into-array String []))
+                  (Paths/get path (into-array String []))
+                  (into-array java.nio.file.CopyOption
+                              [StandardCopyOption/ATOMIC_MOVE
+                               StandardCopyOption/REPLACE_EXISTING]))
+      (fsync-dir! path)
+      (finally
+        (.delete (File. tmp))))))
+
+(defn write-nippy-atomic!
+  "Write `value` to `path` as a headerless nippy stream (`freeze-to-out!`), through
+  `write-atomic!`'s temp, fsync and rename."
+  [^String path value]
+  (write-atomic! path (fn [^FileOutputStream fos]
+                        (let [out (DataOutputStream. (BufferedOutputStream. fos))]
+                          (nippy/freeze-to-out! out value)
+                          (.flush out)))))
+
+(defn- spit-manifest!
+  "Write `m` to `path` as EDN through `write-atomic!`, so a crash mid-write leaves the
+  previous manifest or the new one, never a file `read-edn-manifest` refuses as
+  `:malformed-manifest`."
+  [^String path m]
+  (write-atomic! path (fn [^FileOutputStream fos]
+                        (.write fos (.getBytes ^String (pr-str m)
+                                               java.nio.charset.StandardCharsets/UTF_8)))))
+
 (defn assert-format!
   "Check the store directory `root` against its `format.edn` sentinel: a known version
   is ok, an unknown one throws, and a missing sentinel is written with the current
@@ -149,7 +233,7 @@
                                  " — this engine supports " (sort supported-format-versions) ".")
                             {:type :unsupported-format :found v
                              :supported supported-format-versions :root (str root)})))))
-      (spit file (pr-str {:format-version format-version})))))
+      (spit-manifest! (.getPath file) {:format-version format-version}))))
 
 (def ^:private index-layout-file "layout.edn")
 
@@ -193,14 +277,14 @@
   "Write `root`'s `layout.edn` as mid-rebuild, so an open that lands before
   `write-index-layout!` reads `:stale` and rebuilds again."
   [root]
-  (spit (str root "/" index-layout-file) (pr-str {:index-layout ::rebuilding}))
+  (spit-manifest! (str root "/" index-layout-file) {:index-layout ::rebuilding})
   nil)
 
 (defn write-index-layout!
   "Write `root`'s `layout.edn` naming `current` — the commit mark of a layout
   rebuild (`index-layout-decision`)."
   [root current]
-  (spit (str root "/" index-layout-file) (pr-str {:index-layout current}))
+  (spit-manifest! (str root "/" index-layout-file) {:index-layout current})
   nil)
 
 (def ^:private reasoners-file "reasoners.edn")
@@ -216,7 +300,7 @@
 (defn write-reasoners!
   "Record `names` as the reasoner set of the store directory `root`."
   [root names]
-  (spit (str root "/" reasoners-file) (pr-str {:reasoners (vec (sort names))}))
+  (spit-manifest! (str root "/" reasoners-file) {:reasoners (vec (sort names))})
   nil)
 
 (def ^:private records-identity-file "records.edn")
@@ -243,7 +327,7 @@
   ;; the identity is written on the *first* open, which is before anything else has had cause
   ;; to make the directory
   (.mkdirs (File. ^String (str root)))
-  (spit (str root "/" records-identity-file) (pr-str {:records identity}))
+  (spit-manifest! (str root "/" records-identity-file) {:records identity})
   nil)
 
 (defn- dsync? [] (= :dsync (config/disk-fsync-mode)))
@@ -756,74 +840,6 @@
                                   " (" (.getMessage t) ") — falling back to default")})
            default))
        default))))
-
-(defonce ^:private ^java.util.concurrent.atomic.AtomicBoolean dir-fsync-warned
-  (java.util.concurrent.atomic.AtomicBoolean. false))
-
-(defn fsync-dir!
-  "Best-effort fsync of the directory holding `path`, so a file's creation/deletion
-  is durable.  Swallowed on filesystems that reject directory fsync — `FileChannel/open`
-  on a directory is not portable.
-
-  **Warned once**, because the swallow is not free: a commit marker's *existence* is
-  the atomic commit point of a compaction, and `replay-temp-onto-raf!` truncates the
-  live log before copying the temp over it.  Where the marker's directory entry never
-  reaches the platter, a power loss mid-replay leaves no marker to replay from and no
-  original to fall back on.  Silence makes that exposure indistinguishable from a
-  filesystem where the fsync worked."
-  [^String path]
-  (try
-    (when-let [dir (.getParentFile (File. path))]
-      (with-open [ch (FileChannel/open (.toPath dir)
-                                       (into-array OpenOption [StandardOpenOption/READ]))]
-        (.force ch true)))
-    (catch Throwable t
-      (when (.compareAndSet dir-fsync-warned false true)
-        (trove/log! {:level :warn :id ::dir-fsync-unsupported
-                     :msg (str "this filesystem rejects directory fsync (" (.getMessage t)
-                               ") — a file's creation or deletion is durable only when "
-                               "the filesystem makes it so, which weakens the compaction "
-                               "commit marker.  Reported once.")
-                     :data {:path path}}))
-      nil)))
-
-(defn fsync-file!
-  "fsync the file at `path`, then the directory holding it (`fsync-dir!`)."
-  [^String path]
-  (with-open [ch (FileChannel/open (.toPath (File. path))
-                                   (into-array OpenOption [StandardOpenOption/WRITE]))]
-    (.force ch true))
-  (fsync-dir! path))
-
-(defn write-nippy-atomic!
-  "Write a value to `path` by writing a unique temp file, fsyncing it, atomic-renaming
-  over `path`, then fsyncing the parent dir — durable, not merely atomic (a power loss
-  can otherwise leave the rename visible while the data blocks are still zeros).  The
-  per-call unique temp suffix keeps a racing fsync tick from consuming another
-  writer's temp."
-  [^String path value]
-  (let [tmp    (str path ".tmp." (java.util.UUID/randomUUID))
-        parent (.getParentFile (File. path))]
-    (when parent (.mkdirs parent))
-    (try
-      (with-open [fos (FileOutputStream. tmp)]
-        (let [out (DataOutputStream. (BufferedOutputStream. fos))]
-          (nippy/freeze-to-out! out value)
-          (.flush out)
-          (.sync (.getFD fos))))
-      ;; Unguarded by platform, unlike `index-snapshot/rename!`, and the difference is
-      ;; the target: every file written this way — the counters, the premise set, the
-      ;; clean marker, the image's meta and its fallback blob — is read whole through
-      ;; `read-nippy-file`, and only the image's CSR sections are ever mapped.  So no
-      ;; process holds a mapping this replace has to break.
-      (Files/move (Paths/get tmp (into-array String []))
-                  (Paths/get path (into-array String []))
-                  (into-array java.nio.file.CopyOption
-                              [StandardCopyOption/ATOMIC_MOVE
-                               StandardCopyOption/REPLACE_EXISTING]))
-      (fsync-dir! path)
-      (finally
-        (.delete (File. tmp))))))
 
 (defn- frame-length-at
   "The payload length of the frame whose prefix starts at `pos`, or nil where

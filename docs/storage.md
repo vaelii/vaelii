@@ -1895,6 +1895,10 @@ index directory's `records.edn` and a belief image's `manifest.edn`. A `format.e
 the bound is `:manifest-too-large` at `open-kb`, as it is at the catalog; a `layout.edn`
 past it reads as `:stale`, the answer a torn one gets.
 
+The engine writes each of these EDN manifests, and `reasoners.edn`, to a temp file,
+fsyncs it, renames it over the target and fsyncs the directory (`dfiles/write-atomic!`).
+A crash mid-write leaves the previous manifest or the new one, never a torn file.
+
 ## The canon gotcha
 
 `LazySeq`, `PersistentList`, and vector can be `=` yet freeze to **different**
