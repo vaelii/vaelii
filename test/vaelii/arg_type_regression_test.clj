@@ -122,22 +122,24 @@
       (is (contains? (:held (first decl-first)) [(pr-str (list aType Rex)) (str U) true])
           "the mint is lifted into CxUniverse"))))
 
-(deftest ^{:red true
-           :doc "rule-clash reads a consequent's own declared arg type as a :declared demand, so arg-type-conflicted? drops a reachable disjoint pair."}
-  a-conclusion-s-declared-arg-type-does-not-hide-a-disjoint-clash
+(deftest a-conclusion-s-declared-arg-type-does-not-hide-a-disjoint-clash
   ;; `(cat_kind ?x)` and `(dog_kind ?x)` are separated through `feline_kind` and
   ;; `canine_kind`.  `(arg cat_kind 1 feline_kind)` is what the cat conclusion entails
-  ;; about ?x, not a precondition on it, so anything that meows and barks is a clash.
-  (tu/with-neutral-kb [kb tu/fresh]
-    (tu/with-terms [feline_kind canine_kind cat_kind dog_kind meows barks]
-      (doseq [s [(list 'genl feline_kind 'thing) (list 'genl canine_kind 'thing)
-                 (list 'genl cat_kind feline_kind) (list 'genl dog_kind canine_kind)
-                 (list 'disjoint feline_kind canine_kind) (list 'arg cat_kind 1 feline_kind)]]
-        (v/assert kb s U))
-      (v/assert-rule kb [(list meows '?x)] (list cat_kind '?x) U {:direction :forward})
-      (v/assert-rule kb [(list barks '?x)] (list dog_kind '?x) U {:direction :forward})
-      (is (= [:disjoint] (mapv :kind (:pairs (:clashes (v/kb-quality kb)))))
-          "the two conclusions are one disjoint clash in waiting"))))
+  ;; about ?x, not a precondition on it, so anything that meows and barks is a clash.  The
+  ;; declarations are asserted before the rules and after them, each on a KB of its own.
+  (tu/with-terms [feline_kind canine_kind cat_kind dog_kind meows barks]
+    (let [decls (for [s [(list 'genl feline_kind 'thing) (list 'genl canine_kind 'thing)
+                         (list 'genl cat_kind feline_kind) (list 'genl dog_kind canine_kind)
+                         (list 'disjoint feline_kind canine_kind)
+                         (list 'arg cat_kind 1 feline_kind)]]
+                  #(v/assert % s U))
+          rules [#(v/assert-rule % [(list meows '?x)] (list cat_kind '?x) U {:direction :forward})
+                 #(v/assert-rule % [(list barks '?x)] (list dog_kind '?x) U {:direction :forward})]]
+      (doseq [[order steps] [[:declarations-first (concat decls rules)]
+                             [:rules-first (concat rules decls)]]]
+        (tu/with-neutral-kb [kb tu/fresh]
+          (doseq [f steps] (f kb))
+          (is (= [:disjoint] (mapv :kind (:pairs (:clashes (v/kb-quality kb))))) order))))))
 
 (deftest a-genl-over-a-binary-predicate-class-is-not-an-inert-rule
   ;; `genl` relates predicates of any arity, and `(genl seenBy targetRel)` is a binary

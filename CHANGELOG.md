@@ -122,6 +122,18 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [argtypes.md](docs/argtypes.md#pruning-what-the-kb-says-more-specifically--vaelii_prune_subsumed_mints-on)
   *Migration:* none.
 
+### Fix: integrity
+
+- **The rule-clash pairing reports a `:disjoint` pair a conclusion's declared arg type or a
+  `partition` separates.** `(arg cat_kind 1 feline_kind)` beside a rule concluding
+  `(cat_kind ?x)` dropped its clash with a rule concluding a `canine_kind`, disjoint from
+  `feline_kind`, as unreachable; a KB whose only separation was a `partition` or
+  `separating` declaration paired no unary conclusions. `kb-integrity`'s `:rule-clash`
+  and `kb-quality`'s `:clashes` now report both pairs
+  ([#243](https://github.com/vaelii/vaelii/issues/243)).
+  [integrity.md](docs/integrity.md#what-a-rule-clash-finding-means)
+  *Migration:* none.
+
 ### Fix: performance
 
 - **A KB that registers a shipped reasoner keeps a reasoning image and seals its log.**

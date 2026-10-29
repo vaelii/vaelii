@@ -702,7 +702,7 @@ answering to two lands under one of them:
 | kind | the clash |
 |---|---|
 | `:negation` | one concludes `S` and the other `(not T)` where `S` entails `T` — `(dog X)` against `(not (animal X))`, and never `(animal X)` against `(not (dog X))` |
-| `:disjoint` | two unary type conclusions about one term whose types a `disjoint`, `sibling_disjoint` or `disjoint_metatype` declaration separates ([taxonomy.md](taxonomy.md)) |
+| `:disjoint` | two unary type conclusions about one term whose types a `disjoint`, `sibling_disjoint`, `disjoint_metatype`, `partition` or `separating` declaration separates ([taxonomy.md](taxonomy.md)) |
 | `:functional` | two conclusions filling one `functional` slot for one subject with values that are not the same term. Both spellings of the mark count — `(functionalInArg P 2)` says the same thing about the same slot as `(functional P)` — and both positions of a binary tuple, `(functionalInArg P 1)` read in the mirror |
 | `:asymmetric` | one tuple concluded both ways round under a predicate declared `asymmetric`. A self tuple `(P a a)` is not one — the ontology admits it |
 
@@ -773,7 +773,10 @@ be a `relation` through `(arg arity 1 relation)`, and a rule `(lied_before ?x) =
 person, so the two rules never both fire for one term and the pair is dropped. A declared
 domain the other conclusion does not exclude, and an undeclared one, both stay candidates
 — two stated types clashing is the clash the pair reports, so at least one side of the
-disjoint pair must be a declared arg type.
+disjoint pair must be a declared arg type. A consequent's own predicate's declarations
+type the term as the conclusion does: `(arg cat 1 feline)` beside a rule concluding `(cat
+?x)` places `?x` under `feline`, as a stated type, so a rule concluding `(dog ?x)`, with
+`dog` under a `canine` disjoint from `feline`, still pairs with it as a `:disjoint` clash.
 
 `genl` declares no type on its first position, and a spec of `P` has `P`'s length, so
 `(genl ?r P)` demands `?r` the relation-wide exact-arity class of `(relation-arity kb P)`:

@@ -1398,8 +1398,9 @@ false for the pair.
 
 **Every reader of a separation reads all four spellings**, and each place that enumerates
 them is a place the four have to appear by name: `clashes/separations?`, the emptiness
-check `exposed-clashes` sits behind; `tax/separation-inputs`, which decides whether the
-membership candidates' separations still hold; `disjointness-witnesses`, whose emptiness a
+check `exposed-clashes` and the rule-clash pairing's unary conclusion pairs sit behind;
+`tax/separation-inputs`, which decides whether the membership candidates' separations
+still hold; `disjointness-witnesses`, whose emptiness a
 caller reads as *not disjoint at any reader*; `separation-routes`, which a placed nogood
 and a forward `disjoint` antecedent rest on. A presence check naming fewer
 spellings than the test behind it answers false on a KB `disjoint?` answers true in — and the pair the entry point stores is then never

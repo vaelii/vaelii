@@ -11,6 +11,7 @@
             [clojure.string :as str]
             [vaelii.impl.budget :as budget]
             [vaelii.impl.checks :as checks]
+            [vaelii.impl.clashes :as clashes]
             [vaelii.impl.decide.arity :as arity]
             [vaelii.impl.except :as exc]
             [vaelii.impl.inherit :as inherit]
@@ -1770,13 +1771,15 @@
 
 (defn- arg-type-conflicted?
   "Does a declaration demand a term be of a type disjoint from another type the two rules
-  place that term in?  `lits` are the positive antecedents of both rules and both
+  place that term in?  `antes` are the positive antecedents of both rules and `heads` both
   consequents, already under σ, so a variable the two rules unify appears once.  Each term
   collects `[type source]` pairs: `:stated` for a type a unary literal names, `:declared`
   for a type one of these declarations demands:
 
-  * an instance-type declaration of the literal's predicate on the term's position, `arg`
-    and its covering forms `args` / `argAndRest` alike (`declared-arg-types`);
+  * an instance-type declaration of an antecedent's predicate on the term's position, `arg`
+    and its covering forms `args` / `argAndRest` alike (`declared-arg-types`).  A
+    consequent's own declarations are `:stated`: the conclusion entails the type, so the
+    type is one the rule places the term in;
   * the relation-wide arity class of `P`'s length, for `a` in `(genl a P)`
     (`genl-arity-class`);
   * for an application written at any depth, its function's `result`, and its function's
@@ -1785,10 +1788,10 @@
   True when one term holds two disjoint types and at least one of them is `:declared`.
   `genlArg` and `genlResult` are not read: each bounds a subtype rather than a membership.
   See docs/quality.md, \"Contradictions in waiting\"."
-  [kb lits context]
+  [kb antes heads context]
   (let [tax     (reasoning/taxonomy kb)
         demands (reduce
-                 (fn [m l]
+                 (fn [m [l own]]
                    (let [f  (nm/functor l)
                          as (vec (nm/args l))]
                      (if (or (sx/negation? l) (not (symbol? f)) (sx/variable? f))
@@ -1801,9 +1804,10 @@
                                  m)]
                          (reduce (fn [m [x d]] (update m x (fnil conj #{}) d))
                                  m (concat (for [[n t] (declared-arg-types kb f (count as) context)]
-                                             [(nth as (dec n)) [t :declared]])
+                                             [(nth as (dec n)) [t own]])
                                            (application-demands kb f as context)))))))
-                 {} lits)]
+                 {} (concat (map vector antes (repeat :declared))
+                            (map vector heads (repeat :stated))))]
     (boolean
      (some (fn [[_ ts]]
              (let [ts (vec ts)]
@@ -1855,13 +1859,13 @@
         lits  (into (mapv subst (:antecedent a)) (map subst) (:antecedent b))
         pos   (into #{} (remove sx/negation?) lits)
         neg   (into #{} (comp (filter sx/negation?) (map second)) lits)
-        heads (conj pos (subst (:consequent a)) (subst (:consequent b)))]
+        heads [(subst (:consequent a)) (subst (:consequent b))]]
     (and (empty? (set/intersection pos neg))
          (not (negation-met-by-a-spec? kb pos neg context))
          (not (separated-antecedents? kb pos context))
          (not (arity-conflicted? kb pos context))
          (not (arity-floor-conflicted? kb pos context))
-         (not (arg-type-conflicted? kb heads context)))))
+         (not (arg-type-conflicted? kb pos heads context)))))
 
 (defn- rule-functors
   "Every predicate a rule names — its consequent's and its antecedents', a negation
@@ -1926,9 +1930,7 @@
   (let [tax (reasoning/taxonomy kb)
         pos (filterv #(= :positive (:polarity %)) rows)]
     {:by-key   (by-consequent rows)
-     :unary-fs (when (or (seq (tax/disjoint-pairs tax))
-                         (seq (tax/disjoint-metatypes tax))
-                         (seq (tax/sibling-disjoints tax)))
+     :unary-fs (when (clashes/separations? tax)
                  (into #{} (comp (filter #(= 1 (:arity %))) (map :functor)) pos))
      :marked   {:functional (marked-groups tax :functional pos)
                 :asymmetric (marked-groups tax :asymmetric pos)}}))

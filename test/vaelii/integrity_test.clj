@@ -1985,6 +1985,23 @@
       (is (= (set census) (set (map #(dissoc % :inert) found)))
           "kb-quality's :clashes reading is the same pairing, unsplit"))))
 
+(tu/deftest-kb a-partition-alone-separates-two-rule-conclusions
+  ;; The `partition` is the KB's only separation, so the presence check that admits unary
+  ;; conclusion pairs reads the covers or finds no pair.  The partition is asserted before
+  ;; the rules and after them, each on a KB of its own.
+  (tu/with-terms [animal_kind feline_kind canine_kind meows barks]
+    (let [decls [#(v/assert % (list 'genl animal_kind 'thing) 'CxUniverse)
+                 #(v/assert % (list 'partition animal_kind feline_kind canine_kind) 'CxUniverse)]
+          rules [#(v/assert-rule % [(list meows '?x)] (list feline_kind '?x) 'CxUniverse
+                                 {:direction :forward})
+                 #(v/assert-rule % [(list barks '?x)] (list canine_kind '?x) 'CxUniverse
+                                 {:direction :forward})]]
+      (doseq [[order steps] [[:partition-first (concat decls rules)]
+                             [:rules-first (concat rules decls)]]]
+        (tu/with-neutral-kb [kb tu/fresh]
+          (doseq [f steps] (f kb))
+          (is (= [:disjoint] (mapv :kind (:pairs (:clashes (v/kb-quality kb))))) order))))))
+
 (tu/deftest-kb rule-clash-findings-truncate-under-every-bound
   (tu/with-terms [bird_kind penguin_kind flies swims]
     (doseq [f [flies swims]]
