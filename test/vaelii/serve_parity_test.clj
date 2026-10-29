@@ -60,6 +60,12 @@
 
 ;; ---- the closures a query cannot reconstruct ----------------------------
 
+(tu/deftest-kb ordinary-defining-contexts-cross-the-wire
+  (tu/with-terms [Subject tagged CxHome]
+    (v/assert kb (list 'genlCx CxHome 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list tagged Subject) CxHome)
+    (is (= #{CxHome} (ok-result (open-app kb) :defining-contexts [Subject])))))
+
 (tu/deftest-kb the-cached-closures-are-served
   ;; Transitivity and the equality partition are cached and recomputed on edge change
   ;; rather than derived by rules (docs/taxonomy.md), so there is no query a remote

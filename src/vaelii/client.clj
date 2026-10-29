@@ -299,8 +299,9 @@
   `context`, and every *Exists* declaration (`exists-violations`, keyed `[functor pred a
   b]`), and return `{[functor pred indep] result…}` — each result carrying a `:status`,
   either `{:status :audited :violations #{…}}` or a `{:status :gap …}` diagnostic
-  (`:missing-slot-typing`, or `:legacy-ternary-declaration` for a stored pre-migration
-  ternary sentex the bulk import path can carry past the assert-time refusal)."
+  (`:missing-slot-typing`, :incomplete-defining-contexts, or `:legacy-ternary-declaration`
+  for a stored pre-migration ternary sentex the bulk import path can carry past the
+  assert-time refusal)."
   [conn context]
   (c/all-specified-violations conn context))
 
@@ -438,6 +439,11 @@
   OUT — the effective strength of the belief after settling."
   [conn handle]
   (c/defeat-class conn handle))
+
+(defn defining-contexts
+  "The maximal contexts of ordinary believed assertions about term."
+  [conn term]
+  (c/defining-contexts conn term))
 
 (defn dependent-justifications
   "Justifications that use `handle` as an antecedent — what rests on it, which is what an

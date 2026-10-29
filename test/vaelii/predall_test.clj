@@ -36,6 +36,46 @@
 
 (use-fixtures :each (tu/neutral-fresh #(doto (tu/fresh) (tu/load-core!))))
 
+(tu/deftest-kb nested-comments-do-not-satisfy-a-specified-comment
+  (tu/with-terms [CxTest fictional_defined FictionalDefinedTerm JimboMcFallible]
+    (v/assert kb (list 'genlCx CxTest 'CxUniverse) 'CxUniverse)
+    (doseq [sentence [(list 'unary_predicate fictional_defined)
+                      (list 'genl fictional_defined 'thing)
+                      (list fictional_defined FictionalDefinedTerm)
+                      (list 'predAllSpecified 'comment fictional_defined)]]
+      (v/assert kb sentence CxTest))
+    (let [comment (list 'comment FictionalDefinedTerm "every unit should have an swedish.")
+          nested (list 'believes JimboMcFallible comment)
+          declaration ['predAllSpecified 'comment fictional_defined]
+          result #(get (v/all-specified-violations kb CxTest) declaration
+                       {:status :audited :violations #{}})]
+      (v/assert kb nested CxTest)
+      (is (v/ask? kb (list fictional_defined FictionalDefinedTerm) CxTest))
+      (is (seq (v/sentexes-matching kb nested CxTest)))
+      (is (not (v/ask? kb comment CxTest)))
+      (is (= {:status :audited :violations #{FictionalDefinedTerm}} (result)))
+      (v/assert kb comment CxTest)
+      (is (v/ask? kb comment CxTest))
+      (is (= {:status :audited :violations #{}} (result))))))
+
+(tu/deftest-kb quoted-comments-do-not-satisfy-a-specified-comment
+  (tu/with-terms [CxTest fictional_defined FictionalDefinedTerm JimboMcFallible]
+    (v/assert kb (list 'genlCx CxTest 'CxUniverse) 'CxUniverse)
+    (doseq [sentence [(list 'unary_predicate fictional_defined)
+                      (list 'genl fictional_defined 'thing)
+                      (list fictional_defined FictionalDefinedTerm)
+                      (list 'predAllSpecified 'comment fictional_defined)]]
+      (v/assert kb sentence CxTest))
+    (let [comment (list 'comment FictionalDefinedTerm "every unit should have an swedish.")
+          quoted (list 'believes JimboMcFallible (list 'Quote comment))
+          declaration ['predAllSpecified 'comment fictional_defined]]
+      (v/assert kb quoted CxTest)
+      (is (v/ask? kb (list fictional_defined FictionalDefinedTerm) CxTest))
+      (is (seq (v/sentexes-matching kb quoted CxTest)))
+      (is (not (v/ask? kb comment CxTest)))
+      (is (= {:status :audited :violations #{FictionalDefinedTerm}}
+             (get (v/all-specified-violations kb CxTest) declaration))))))
+
 (defn- believes?
   "Is `sentence` a believed, stored sentex in `ctx`?  Read through `sentexes-matching`,
   which is belief-sensitive, rather than through `ask`."
@@ -1149,7 +1189,7 @@
              (specified-result kb functor notes item_kind CxChild))
           "the native-only audit reads fillers in its supplied context"))))
 
-(tu/deftest-kb native-and-stored-specified-tuples-use-the-stored-defining-context
+(tu/deftest-kb native-and-stored-specified-tuples-use-the-stored-requirement-readers
   (doseq [functor '[predAllSpecified predSpecifiedAll]]
     (tu/with-terms [notes item_kind Base Child CxDefined CxChild CxNested CxSibling]
       (specified-contexts kb functor notes item_kind CxDefined CxChild CxNested CxSibling)
@@ -1161,11 +1201,11 @@
       (let [key [functor notes item_kind]
             entries (filter #(= key (first %))
                             (predall/specified-declaration-audits kb CxChild))]
-        (is (= 1 (count entries)) "one tuple has one source obligation, not a native duplicate")
-        (is (= {:status :audited :violations #{Base}} (second (first entries)))
-            "a duplicate native answer neither expands the stored population nor heals it")))))
+        (is (= 4 (count entries)) "the stored requirement has four readers, not a native duplicate")
+        (is (= {:status :audited :violations #{Base Child}} (second (last entries)))
+            "the stored source selects the readers; a native answer adds no duplicate")))))
 
-(tu/deftest-kb specified-populations-use-the-declarations-context
+(tu/deftest-kb specified-populations-include-all-eligible-readers
   (doseq [functor '[predAllSpecified predSpecifiedAll]]
     (tu/with-terms [notes item_kind Base Child CxDefined CxChild CxNested CxSibling]
       (specified-contexts kb functor notes item_kind CxDefined CxChild CxNested CxSibling)
@@ -1176,9 +1216,9 @@
         (v/assert kb (list item_kind Child) CxChild)
         (doseq [context [CxDefined CxChild CxNested CxSibling]]
           (is (v/ask? kb declaration context) "the obligation is visible")
-          (is (= {:status :audited :violations #{}}
+          (is (= {:status :audited :violations #{Child}}
                  (specified-result kb functor notes item_kind context))
-              "a descendant-only instance does not expand the ancestor obligation"))))))
+              "a descendant-defined instance is checked where the obligation is visible"))))))
 
 (tu/deftest-kb specified-fillers-use-the-declarations-context
   (doseq [functor '[predAllSpecified predSpecifiedAll]]
@@ -1196,7 +1236,7 @@
           (v/assert kb (list 'except (list 'sentexHandle filler)) CxChild)
           (is (= {:status :audited :violations #{}}
                  (specified-result kb functor notes item_kind CxNested))
-              "a descendant except does not remove a filler from its defining context"))))))
+              "the independent child filler still satisfies the affected readers"))))))
 
 (tu/deftest-kb specified-declarations-retain-distinct-contexts-and-canonical-duplicates
   (doseq [functor '[predAllSpecified predSpecifiedAll]]
@@ -1214,10 +1254,10 @@
           (is (= {:status :audited :violations #{Base Child}}
                  (specified-result kb functor notes item_kind context))
               "an ancestor failure and a local failure survive the shared public key"))
-        (is (= {:status :audited :violations #{Base}}
+        (is (= {:status :audited :violations #{Base Child}}
                (specified-result kb functor notes item_kind CxSibling)))
         (v/retract! kb child)
-        (is (= {:status :audited :violations #{Base}}
+        (is (= {:status :audited :violations #{Base Child}}
                (specified-result kb functor notes item_kind CxChild)))
         (v/retract! kb parent)
         (is (not (v/ask? kb declaration CxChild)))
@@ -1274,10 +1314,10 @@
         (v/assert kb (list item_kind Base) CxDefined)
         (v/assert kb (list item_kind Child) CxChild)
         (let [filler (v/assert kb (specified-note functor notes Base) CxDefined)]
-          (is (= {:status :audited :violations #{}}
+          (is (= {:status :audited :violations #{Child}}
                  (specified-result kb functor notes item_kind CxNested)))
           (v/retract! kb filler))
-        (is (= {:status :audited :violations #{Base}}
+        (is (= {:status :audited :violations #{Base Child}}
                (specified-result kb functor notes item_kind CxChild))
             "the audit retains non-premise and type-aware declarations")
         (v/retract! kb source)

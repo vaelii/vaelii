@@ -131,10 +131,11 @@ be confused with that clean shape even when only one sparse category is present.
 specified category is exactly `all-specified-violations`, including its typed declaration
 gaps; it is composed, not reimplemented.
 
-Stored Specified obligations use each visible declaration's defining context, as
-described in [predall.md](predall.md). The result cap counts canonical declaration keys,
-not defining contexts. Completed source-context findings remain available if a later
-source-context audit exhausts the work or time limit. A native-only registry declaration
+Stored Specified obligations check every known reader seeing the requirement and an
+ordinary defining home, as described in [predall.md](predall.md). The result cap counts
+canonical declaration keys, not readers. Completed findings remain available if a later
+reader audit exhausts the work or time limit. Incomplete defining support is an explicit
+gap, not an exemption. A native-only registry declaration
 has no stored defining context and retains the querying-context audit.
 
 ## What a definition finding means

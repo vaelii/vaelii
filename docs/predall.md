@@ -140,7 +140,8 @@ Nothing fires on assert. The requirement is checked when a caller asks:
 
 Discriminate on `:status`, not key presence — a `{:status :gap …}` result carries no
 `:violations` key, and a bare `(:violations r)` read would nil-pun the gap into a
-clean pass. Two gap kinds ship: `:missing-slot-typing`, and
+clean pass. Three gap kinds ship: `:missing-slot-typing`,
+`:incomplete-defining-contexts` for unclassified live defining support, and
 `:legacy-ternary-declaration` for a stored pre-migration ternary sentex the bulk
 import path can carry past the assert-time refusal. A legacy gap is keyed by its whole
 stale argument tuple, `[functor pred a b]`, rather than by the three-element key the
@@ -154,19 +155,29 @@ cannot pass as one. Both read the KB and store nothing. `predSpecifiedAll` is th
 argument-swapped twin, audited by passing `:first` as the argument position; its filler
 contract derives from slot 1.
 
-The aggregate selects declarations through the prover registry in the querying context,
-then reads each stored Specified declaration's population, slot contract and fillers in
-the context storing that declaration. A descendant-only instance does not enlarge an
-ancestor obligation; a descendant-only filler does not satisfy that obligation. A
-declaration stated in the descendant creates a distinct local obligation. Multiple
-visible definitions with the same `[functor pred indep]` key combine their violation
-sets. A missing slot contract in any defining context remains an explicit gap. The direct `specified-violations` call
-still audits the caller-supplied context. Exists audits retain their querying context.
+The aggregate selects declarations through the prover registry in the querying context.
+Each stored requirement is checked in every known reader seeing the requirement GAF
+and an ordinary defining home of the quantified term. Each reader uses its own
+population, slot contract and fillers. Maximal defining homes reduce the eligibility
+join; maximal readers do not replace validation in descendants. A child can hide a
+parent's filler with `except`, and a child hiding the requirement does not impose it.
+Multiple requirements with one `[functor pred indep]` key combine their violation sets.
+The querying context selects the requirements, not a narrower validation region.
+
+Only nonempty, proved skeletal-only stored defining evidence exempts an instance.
+Native population answers with no stored home are audited in the actual reader.
+Unclassified support produces `{:status :gap :gap :incomplete-defining-contexts …}`
+with the term and support handles. An empty evidence set is not a clean exemption.
+An actual admissible filler discharges the obligation before defining evidence is
+needed. Unknown applicability does not invalidate a proved filler or certify an exemption.
+A missing slot contract remains an explicit gap. The direct `specified-violations`
+call audits its supplied context with the same instance-eligibility rules. Exists
+audits retain their querying context and do not use the skeletal exemption.
 
 A native prover can also supply a declaration tuple without a stored definition. Its
 binding map has no defining-context record, so that native-only obligation retains the
 previous behavior: population, contract and fillers are audited in the querying context.
-If the same tuple also has visible stored definitions, their defining contexts apply;
+If the same tuple also has visible stored definitions, their known readers apply;
 the native answer does not add a duplicate obligation in the querying context.
 
 The membership arm rides the KB's own reading: with `(arg hasPet 2 pet)` visible,
@@ -187,8 +198,10 @@ only the quantified side — the domain off `(arg P 1 D)` for totality, the rang
 so the sweep above reports it with no extra entry point, and retracting the mark or either
 `arg` declaration withdraws it.
 
-The cost is one read per member of the quantified collection, plus one membership read per
-candidate filler. This is a sweep to run at a checkpoint, not a check to run per write.
+Each eligible reader enumerates its quantified population and checks candidate fillers.
+For members lacking an admissible filler, defining evidence also walks stored mentions
+and usable support. Evidence and eligibility are memoized within a declaration audit,
+not across invocations. This is a sweep to run at a checkpoint, not per write.
 
 ## indeterminate_term: what makes a filler determinate
 

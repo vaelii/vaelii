@@ -565,6 +565,7 @@ so one vocabulary reads both.
 | `:functional` | a second value for a predicate declared `functional`, or for the position a `functionalInArg` declaration names — see [`assert` refused it](#assert-refused-it) | [equality.md](equality.md) |
 | `:handle-ceiling` | a handle past the dense TMS's int-keyed ceiling | [density.md](density.md) |
 | `:argument-family-ceiling` | more distinct `(predicate, position)` pairs than the packed root key's 24-bit scope field holds; take `:index :memory` | [indexing.md](indexing.md) |
+| `:incomplete-defining-contexts` | a believed term assertion has a support whose defining role cannot be established; the exception names the term and handles, not a partial home set | [api.md](api.md) |
 | `:incomplete-racer` | a portfolio was handed a strategy with `:first-result?` on, which stops the search rather than steering it | [inference.md](inference.md) |
 | `:inter-arg-type` | under the constraint-only reading, an `interArg`, `interArgs` or `interArgAndRest` constraint convicted an input of a function application inside an argument because of what another input is; a convicted fact is stored and held inert | [argtypes.md](argtypes.md) |
 | `:internal-error` | the daemon caught a throwable carrying no `:type` of its own | [operations.md](operations.md) |

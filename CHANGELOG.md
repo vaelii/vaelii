@@ -13,6 +13,30 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Additive: assertion contexts
+
+- **`defining-contexts` reads the maximal ordinary defining contexts of a term.**
+  Literal Quote and nested-sentence mentions, lift-only copies, generated arity-class
+  copies and NAT bookkeeping do not create a defining home. Independent ordinary
+  support still counts. Unclassified live support raises `:incomplete-defining-contexts`.
+  [api.md](docs/api.md)
+
+### Breaking: integrity
+
+- **Specified obligations audit every known eligible reader.** `all-specified-violations`
+  and `kb-integrity` validate each visible `predAllSpecified` / `predSpecifiedAll`
+  requirement wherever a reader sees its GAF and an ordinary defining home of the term.
+  Child-local instances and exceptions are checked in their own readers. Proved
+  skeletal-only defining evidence is exempt; absent or native-only evidence is not.
+  Unclassified support remains an explicit gap. Multiple readers combine under the
+  existing key without consuming extra result-cap entries. Native-only registry
+  declarations retain their querying-context audit.
+  [predall.md](docs/predall.md)
+  *Migration:* repair reader-local gaps instead of duplicating an inherited requirement.
+  Direct `specified-violations` uses instance eligibility in its supplied reader.
+  Exists audits and native-only registry declarations retain their existing behavior.
+  *Breaks:* `specified-violations`, `all-specified-violations`, `kb-integrity`
+
 ### Breaking
 
 - **The reification marks are in the forced-monotonic set.** `core.txt` declares

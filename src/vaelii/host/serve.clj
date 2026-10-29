@@ -465,6 +465,7 @@
     :handle-of    (op v/handle-of)
     :find-sentexes (op v/find-sentexes)
     :find-sentexes-all (op v/find-sentexes-all)
+    :defining-contexts (op v/defining-contexts)
     ;; the vocabulary — enumerate / count / search the terms themselves.  Served because
     ;; the alternative for a remote client is shipping every sentex over the wire to
     ;; collect the terms out of them.

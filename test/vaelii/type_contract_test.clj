@@ -389,7 +389,7 @@
     :disjoint :disjunction-too-wide :disk-locked :duplicate-handle :duplicate-tokens :error
     :exception-not-closed :export-busy :forbidden-context :fork-base-overlap :frozen-base :functional
     :handle-ceiling
-    :incomplete-racer :inter-arg-type :internal-error :interrupted :irreflexive :job-busy
+    :incomplete-defining-contexts :incomplete-racer :inter-arg-type :internal-error :interrupted :irreflexive :job-busy
     :labeling-inconsistent :labeling-run-blocked :length-against-shape
     :length-against-spelling
     :malformed-entry :malformed-manifest :malformed-record :manifest-too-large

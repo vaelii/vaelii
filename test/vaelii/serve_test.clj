@@ -1292,6 +1292,9 @@
             (is (nat-int? (client/assert conn (list bird Tweety) CxWire)))
             (let [rs (client/sentexes-matching conn (list bird '?x) CxWire)]
               (is (= (list bird Tweety) (:sentence (first rs))))))
+          (testing "ordinary defining contexts cross the real client boundary"
+            (is (= #{CxWire} (client/defining-contexts conn Tweety)))
+            (is (= #{CxWire} (vc/defining-contexts conn Tweety))))
           (testing "explicit nil integrity options match local and daemon defaults"
             (is (= (dissoc (v/kb-integrity kb #{} CxWire nil) :work :elapsed-ms)
                    (dissoc (client/kb-integrity conn #{} CxWire nil) :work :elapsed-ms))))

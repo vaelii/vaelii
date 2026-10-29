@@ -39,6 +39,7 @@
             [vaelii.impl.decide :as decide]
             [vaelii.impl.decide.argument :as argument]
             [vaelii.impl.decide.arity :as arity]
+            [vaelii.impl.defining :as defining]
             [vaelii.impl.disk.backend :as disk]
             [vaelii.impl.disk.durability :as dur]
             [vaelii.impl.except :as exc]
@@ -324,6 +325,13 @@
   "Every stored sentex that contains all of `terms`."
   [kb terms]
   (kb/find-sentexes-all kb terms))
+
+(defn defining-contexts
+  "The maximal contexts of ordinary believed assertions about term. Literal Quote,
+  nested-sentence mentions and skeletal-only assertions do not define a term. Throws
+  :incomplete-defining-contexts when a believed support cannot be classified."
+  [kb term]
+  (defining/defining-contexts kb term))
 
 ;; ---- the vocabulary: enumerate and search the terms themselves ----------
 ;; `find-sentexes` goes from a term to the sentexes mentioning it.  These go one step
@@ -6074,6 +6082,10 @@
   at `pred`'s second position; `:first` is `predSpecifiedAll`, whose filler sits first and
   whose quantified instance sits second.  It defaults to `:second`.
 
+  The context must see an ordinary defining home of the instance. Proved skeletal-only
+  defining evidence exempts the instance; absent stored evidence does not. Unclassified
+  support returns an :incomplete-defining-contexts gap with its term and handles.
+
   A filler is indeterminate exactly when it is an `indeterminate_term` — a skolem constant,
   or a member of a kind declared with `(genl NewKind indeterminate_term)`.  An *Exists*
   placeholder an author asserted is determinate and a skolemised witness is not, which is
@@ -6095,7 +6107,7 @@
   `context`, and every *Exists* declaration (`exists-violations`, keyed `[functor pred a
   b]`), and return `{[functor pred indep] result…}` — each result carrying a `:status`,
   either `{:status :audited :violations #{…}}` or a `{:status :gap …}` diagnostic
-  (`:missing-slot-typing`, or `:legacy-ternary-declaration` for a stored pre-migration
+  (`:missing-slot-typing`, :incomplete-defining-contexts, or `:legacy-ternary-declaration` for a stored pre-migration
   ternary sentex the bulk import path can carry past the assert-time refusal).  A `:legacy-ternary-declaration` gap is keyed by its whole stale argument
   tuple, `[functor pred a b]`, so it displaces neither the migrated declaration it
   shares a prefix with nor another stale sentex over the same predicate.  Declarations
@@ -6103,7 +6115,9 @@
   cannot fake.
 
   This public aggregate and `kb-integrity` both consume the same focused
-  per-declaration audit stream; only this wrapper returns its complete aggregate map."
+  per-declaration audit stream; only this wrapper returns its complete aggregate map.
+  A stored requirement is validated in every known reader seeing its GAF and an
+  ordinary defining home. Native-only declarations retain the supplied reader."
   [kb context]
   (predall/all-specified-violations kb context))
 
@@ -9352,7 +9366,7 @@
     :canonical-sentex :chain-report :chain-stats :check :check-edit :common-genls :common-specs
     :compare-tacticians :conflicts :context-down :context-up :contexts :contexts-of
     :contradictions :count-in-context :count-with-arg :count-with-functor
-    :defeat-class :dependent-justifications :deprecated? :describe
+    :defeat-class :defining-contexts :dependent-justifications :deprecated? :describe
     :direct-genls :direct-specs :disjoint-metatypes :disjoint? :disjointness-audit :equiv-class :escalate
     :exists-violations :filed-violations
     :explain-levels :export! :export-text! :exposed-clashes :find-sentexes

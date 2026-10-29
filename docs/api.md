@@ -597,6 +597,12 @@ default-chain-opts                              ; the bounds a chain run takes w
 (equiv-class kb term [context]) / (deprecated? kb term)  ; partition, read — scoped by
                                                          ; context like genls / specs
 (find-sentexes kb term) / (find-sentexes-all kb terms)  ; inverted term index
+(defining-contexts kb term)                            ; maximal ordinary defining contexts;
+                                                       ; literal Quote and nested sentences do not contribute;
+                                                       ; ordinary function arguments do contribute;
+                                                       ; lift/NAT-only support does not contribute;
+                                                       ; unclassified live support throws
+                                                       ; :incomplete-defining-contexts
 (indexable-terms sentex)                                ; the terms that make a sentex findable —
                                                         ; exactly the keys it is posted under
 ;; the content order — the engine's own, so an application ranking its answers breaks the
@@ -799,6 +805,35 @@ assertable-strengths                            ; #{:monotonic :default}, the se
                                                 ; {:portfolio? true} {:auto? true}.  Ignored by the DFS,
                                                 ; which has one order and no choice to make
 ```
+
+`defining-contexts` returns a set of the most general contexts containing ordinary,
+believed assertions about a term. The read includes ordinary derived assertions.
+The read excludes literal `Quote` contents and nested sentences, but enters ordinary
+function terms. NAT bookkeeping is recognized by the owning reified constant, including
+a projection mentioning another term as an argument. A lift-only copy and a consequence
+with only skeletal content support do not create an ordinary home. The engine's
+generated arity-class copy is skeletal too. An independent
+ordinary content support preserves the home.
+
+The read uses the term index and current support records. The read charges the active
+work meter. A believed assertion with unclassified support throws
+`:incomplete-defining-contexts` instead of returning a partial set. Native-only truths
+without a stored assertion have no assertion context in this result. An empty set does
+not certify that every possible proof of the term's membership is skeletal. The
+Specified audit uses the same evidence analysis. Only proved skeletal-only evidence
+exempts an instance; native or absent stored evidence retains an actual-reader audit.
+An incomplete helper exception becomes an explicit audit gap with the term and handles.
+The audit first checks for an actual admissible filler. A proved filler discharges the
+obligation without claiming that absent or unknown defining evidence is an exemption.
+
+A grounded ordinary rule can introduce a constant that does not occur in the rule's
+antecedent facts. The read follows the reachable usable-support graph, including the
+rule handle, rather than requiring every proof statement to occur in the term's index
+posting. An unfired rule's nested consequent does not define the constant. An ordinary
+rule does not turn a purely skeletal trigger into ordinary content. A mixed ordinary
+and skeletal introduction with no established term-bearing content source remains an
+incomplete classification. Ordinary argument-type prerequisites do not change the
+existing first-source classification of their generated membership.
 
 ## Choosing a query function
 

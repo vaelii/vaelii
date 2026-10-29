@@ -33,12 +33,14 @@
   all treated as determinate here, which is what makes `predAllSpecified` the exact
   antagonist of `predAllExists`."
   (:require [vaelii.impl.budget :as budget]
+            [vaelii.impl.defining :as defining]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.quasiquote :as quasiquote]
             [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
+            [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]))
 
@@ -148,6 +150,27 @@
                     (every? #(satisfies-typing? kb y % ctx) typings))))
            answers))))
 
+(defn- member-selector
+  [kb]
+  (let [tax (reasoning/taxonomy kb)
+        evidence (memoize #(budget/checked-call (fn [] (defining/definition-evidence kb %))))
+        eligible (memoize
+                  (fn [source subject]
+                    (let [{:keys [contexts skeletal-only?]} (evidence subject)]
+                      (cond
+                        skeletal-only? #{}
+                        (or (empty? contexts) (sx/variable? source)) ::actual-reader
+                        :else (into #{}
+                                    (mapcat (fn [home]
+                                              (budget/checked-seq
+                                               (budget/checked-call
+                                                #(tax/common-descendants tax [source home])))))
+                                    (budget/checked-seq contexts))))))]
+    (fn [source reader subject]
+      (budget/spend!)
+      (let [readers (eligible source subject)]
+        (or (= ::actual-reader readers) (contains? readers reader))))))
+
 (defn specified-violations
   "Audit one binary `(predAllSpecified pred indep)` declaration in `ctx` and return a
   result map that always carries a `:status` — `{:status :audited :violations #{x …}}`
@@ -175,6 +198,9 @@
   makes this the antagonist of the *Exists* class."
   ([kb pred indep ctx] (specified-violations kb pred indep ctx :second))
   ([kb pred indep ctx arg-pos]
+   (let [eligible? (member-selector kb)]
+     (specified-violations kb pred indep ctx arg-pos #(eligible? ctx ctx %))))
+  ([kb pred indep ctx arg-pos eligible?]
    (let [n       (case arg-pos
                    :second 2
                    :first  1
@@ -188,12 +214,19 @@
          typings (slot-typings kb pred n ctx)]
      (if (empty? typings)
        {:status :gap :gap :missing-slot-typing :pred pred :position n}
-       {:status :audited
-        :violations
-        (into #{}
-              (comp (map #(get % '?x))
-                    (remove #(admissible-filler? kb pred % typings n ctx)))
-              (quasiquote/ask-prepared kb (list indep '?x) ctx))}))))
+       (try
+         {:status :audited
+          :violations
+          (into #{}
+                (comp (map #(get % '?x))
+                      (remove #(admissible-filler? kb pred % typings n ctx))
+                      (filter eligible?))
+                (quasiquote/ask-prepared kb (list indep '?x) ctx))}
+         (catch clojure.lang.ExceptionInfo e
+           (if (= :incomplete-defining-contexts (:type (ex-data e)))
+             (merge {:status :gap :gap :incomplete-defining-contexts :pred pred}
+                    (select-keys (ex-data e) [:term :handles]))
+             (throw e))))))))
 
 (defn- exists-reading
   "`[subjects goal filler-type placeholder]` for the *Exists* declaration `(functor pred a
@@ -248,8 +281,8 @@
          (let [stored (content-ordered
                        (for [[_ _ record] (budget/checked-seq
                                            (res/matches-visible kb (list functor pred indep) ctx))]
-                         [pred indep (:context record)]))]
-           (if (seq stored) stored [[pred indep ctx]])))
+                         [pred indep (:context record) (:id record)]))]
+           (if (seq stored) stored [[pred indep ctx nil]])))
        (content-ordered
         (for [b (quasiquote/ask-prepared kb (list functor '?pred '?indep) ctx)]
           [(get b '?pred) (get b '?indep)]))))
@@ -264,18 +297,35 @@
     :else (update previous :violations into (:violations result))))
 
 (defn- specified-context-audits
-  "Emit cumulative results after each defining context, so a bounded caller retains
-  completed findings when a later context exhausts the work or time limit."
+  "Emit cumulative results after each eligible reader, retaining completed findings."
   [kb functor arg-pos declarations]
-  (let [[pred indep] (first declarations)
-        declaration [functor pred indep]]
+  (let [declarations (budget/checked-seq declarations)
+        [pred indep] (first declarations)
+        declaration [functor pred indep]
+        eligible? (member-selector kb)
+        readers (for [[_ _ source handle] declarations
+                      reader (budget/checked-seq
+                              (if handle
+                                (let [descendants
+                                      (budget/checked-call
+                                       #(tax/common-descendants (reasoning/taxonomy kb) [source]))]
+                                  (budget/checked-call
+                                   #(sort-by nm/name-key (budget/checked-seq descendants))))
+                                [source]))
+                      :when (or (nil? handle)
+                                (some #(= handle (:id (nth % 2)))
+                                      (budget/checked-seq
+                                       (budget/checked-call
+                                        #(res/matches-visible kb (list functor pred indep) reader)))))]
+                  [source reader])]
     (map (fn [result] [declaration result])
          (rest (reductions
-                (fn [previous [_ _ defining-context]]
+                (fn [previous [source reader]]
                   (merge-specified-results
-                   previous (specified-violations kb pred indep defining-context arg-pos)))
+                   previous (specified-violations kb pred indep reader arg-pos
+                                                  #(eligible? source reader %))))
                 {:status :audited :violations #{}}
-                declarations)))))
+                readers)))))
 
 (defn- exists-declarations
   "Read the stored *Exists* declarations `(functor pred a b)` in `ctx` as `[functor pred a
@@ -303,9 +353,9 @@
 (defn specified-declaration-audits
   "Every declaration audit as a lazy stream of `[declaration result]` entries.
 
-  A stored Specified declaration audits its population and fillers in its defining
-  context, not the querying descendant. Multiple defining contexts emit cumulative
-  results under the existing canonical declaration key. Native-only registry answers
+  A stored Specified declaration audits every known reader seeing that requirement and
+  an ordinary defining home of an instance. Each reader uses its own population,
+  contracts and fillers. Reader results combine under one canonical key. Native-only registry answers
   retain the supplied context, since their binding maps carry no defining context.
 
   The open reads are only the unavoidable declaration censuses. Each expensive audit
@@ -341,7 +391,7 @@
   and every *Exists* declaration (`exists-violations`, keyed `[functor pred a b]`),
   and return `{[functor pred indep] result …}` — each result carrying a `:status`:
   `{:status :audited :violations #{…}}` where the audit ran, or `{:status :gap …}`
-  for a declaration-contract diagnostic.  Two gap kinds ship: `:missing-slot-typing`
+  for a diagnostic. Gap kinds include `:missing-slot-typing`
   (the predicate carries no visible slot typing at the audited position) and
   `:legacy-ternary-declaration` (a stored pre-migration ternary sentex, reachable
   through the bulk import path, which the binary audit cannot read).  A legacy gap
@@ -354,9 +404,10 @@
   `kb-integrity` both fold the same focused per-declaration audit stream; only this
   function returns its complete aggregate map.
 
-  Each stored Specified declaration reads its population, slot contract and fillers in
-  its defining context. Visible definitions with one canonical key combine their
-  violation sets; a missing slot contract remains an explicit gap. Native-only registry
+  Each stored Specified declaration is checked in every known eligible reader, not only
+  maximal readers. A proved skeletal-only instance is exempt; an empty evidence set is
+  audited in the actual reader. Unclassified support is :incomplete-defining-contexts.
+  Visible definitions with one canonical key combine their violation sets. Native-only registry
   answers without a stored definition retain `ctx`, as do Exists audits."
   [kb ctx]
   (into {}
