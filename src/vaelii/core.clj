@@ -39,6 +39,7 @@
             [vaelii.impl.decide :as decide]
             [vaelii.impl.decide.argument :as argument]
             [vaelii.impl.decide.arity :as arity]
+            [vaelii.impl.defining :as defining]
             [vaelii.impl.disk.backend :as disk]
             [vaelii.impl.disk.durability :as dur]
             [vaelii.impl.except :as exc]
@@ -221,6 +222,13 @@
   "Every stored sentex that contains all of `terms`."
   [kb terms]
   (kb/find-sentexes-all kb terms))
+
+(defn defining-contexts
+  "The maximal contexts of ordinary believed assertions about term. Literal Quote,
+  nested-sentence mentions and skeletal-only assertions do not define a term. Throws
+  :incomplete-defining-contexts when a believed support cannot be classified."
+  [kb term]
+  (defining/defining-contexts kb term))
 
 ;; ---- the vocabulary: enumerate and search the terms themselves ----------
 ;; `find-sentexes` goes from a term to the sentexes mentioning it; these answer *which
@@ -4358,7 +4366,10 @@
   y satisfying `pred`'s derived slot contract, or `{:status :gap :gap :missing-slot-typing
   …}` where `pred` carries no visible slot typing at the audited position.
   `arg-pos` selects the twin: `:second` (the default) is `predAllSpecified`; `:first` is
-  `predSpecifiedAll`.  Computed on demand and not filed (docs/predall.md)."
+  `predSpecifiedAll`.  The context must see an ordinary defining home of the instance:
+  proved skeletal-only defining evidence exempts it, absent stored evidence does not, and
+  unclassified support returns an `:incomplete-defining-contexts` gap with its term and
+  handles.  Computed on demand and not filed (docs/predall.md)."
   ([kb pred indep context] (specified-violations kb pred indep context :second))
   ([kb pred indep context arg-pos]
    (predall/specified-violations kb pred indep context arg-pos)))
@@ -4367,10 +4378,12 @@
   "Audit every binary `predAllSpecified` and `predSpecifiedAll` declaration visible in
   `context`, and every *Exists* declaration (`exists-violations`, keyed `[functor pred a
   b]`), and return `{[functor pred indep] result…}`, each result `{:status :audited
-  :violations #{…}}` or a `{:status :gap …}` diagnostic (`:missing-slot-typing`, or
-  `:legacy-ternary-declaration` for a stored pre-migration ternary sentex, keyed by its
+  :violations #{…}}` or a `{:status :gap …}` diagnostic (`:missing-slot-typing`,
+  `:incomplete-defining-contexts`, or `:legacy-ternary-declaration` for a stored pre-migration ternary sentex, keyed by its
   whole argument tuple).  Declarations that hold are omitted and gaps never are, so an empty
-  map is a clean sweep.  `kb-integrity` consumes the same per-declaration audit stream."
+  map is a clean sweep.  `kb-integrity` consumes the same per-declaration audit stream.  A
+  stored requirement is validated in every known reader seeing its GAF and an ordinary
+  defining home; a native-only declaration keeps the supplied reader."
   [kb context]
   (predall/all-specified-violations kb context))
 
@@ -7188,7 +7201,7 @@
     :canonical-sentex :chain-report :chain-stats :check :check-edit :common-genls :common-specs
     :compare-tacticians :conflicts :context-down :context-up :contexts :contexts-of
     :contradictions :count-in-context :count-with-arg :count-with-functor
-    :defeat-class :dependent-justifications :deprecated? :describe :digest :digests
+    :defeat-class :defining-contexts :dependent-justifications :deprecated? :describe :digest :digests
     :direct-genls :direct-specs :disjoint-metatypes :disjoint? :disjointness-audit :equiv-class :escalate
     :exists-violations :filed-violations
     :explain-levels :export! :export-text! :exposed-clashes :find-sentexes

@@ -247,6 +247,7 @@
   default-nearest-depth :var,
   default-nearest-ms :var,
   defeat-class "[[kb handle]]",
+  defining-contexts "[[kb term]]",
   dependent-justifications "[[kb handle]]",
   deprecated? "[[kb term] [kb term context]]",
   describe "[[kb term] [kb term context] [kb term context opts]]",
