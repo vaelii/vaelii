@@ -157,7 +157,7 @@
   reaches this client looking exactly like one inside it."
   ([conn op args] (call conn op args nil))
   ([conn op args {:keys [timeout-ms]}]
-   (let [[status reply] (send-edn conn "/op" (pr-str {:op op :args (vec args)})
+   (let [[status reply] (send-edn conn "/op" (guard/edn-str {:op op :args (vec args)})
                                   (or timeout-ms (:timeout-ms conn)))]
      (if (:ok reply)
        (:result reply)

@@ -430,6 +430,14 @@
   ^String [req]
   (String. (read-capped-body-bytes req) java.nio.charset.StandardCharsets/UTF_8))
 
+(defn edn-str
+  "`x` printed as an EDN body for the other end to read: `pr-str` with `*print-length*`
+  and `*print-level*` released and `*print-meta*` off.  A caller's print bound would
+  otherwise elide a long collection to `...`, which the reader takes as a symbol."
+  ^String [x]
+  (binding [*print-length* nil *print-level* nil *print-meta* false]
+    (pr-str x)))
+
 (defn wrap-body-limit
   "Wrap `handler` so a request body past `max-body-bytes` gets `refusal` (a fn of the
   request) instead — the 413.

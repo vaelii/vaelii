@@ -1320,6 +1320,27 @@
         (finally
           (.stop server))))))
 
+(tu/deftest-kb a-callers-print-bound-elides-nothing-on-the-wire
+  (tu/with-terms [visits Ann Bob Cal Dee CxWire]
+    (let [s (list visits Ann Bob Cal Dee)]
+      (testing "the daemon's reply prints the sentence whole"
+        (v/assert kb s CxWire)
+        (let [body (pr-str {:op :sentexes-matching :args [(list visits '?a '?b '?c '?d) CxWire]})
+              resp (binding [*print-length* 3 *print-level* 3]
+                     ((open-app kb) {:request-method :post :uri "/op"
+                                     :headers {"content-type" "application/edn"}
+                                     :body (ByteArrayInputStream. (.getBytes ^String body "UTF-8"))}))]
+          (is (= [s] (map :sentence (:result (edn/read-string (:body resp))))))))
+      (testing "the client's request prints the sentence whole"
+        (v/retract! kb (v/handle-of kb s CxWire))
+        (let [server (serve/start kb {:port 0 :token nil})]
+          (try
+            (let [conn (client/client "localhost" (serve/port server) {:token nil})
+                  h    (binding [*print-length* 3 *print-level* 3]
+                         (client/assert conn s CxWire))]
+              (is (= h (v/handle-of kb s CxWire))))
+            (finally (.stop server))))))))
+
 (tu/deftest-kb the-public-shims-answer-what-the-daemon-answers
   ;; `vaelii.serve` and `vaelii.client` are one-line delegations, and a delegation to the
   ;; wrong var passes every test written against `vaelii.host.*`.  Each shim here is

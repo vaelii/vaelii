@@ -63,6 +63,7 @@
             [vaelii.host.starter :as starter]
             [vaelii.impl.io.text :as text]
             [vaelii.impl.kb :as kbi]
+            [vaelii.impl.naming :as nm]
             [vaelii.impl.progress :as progress]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.sentex :as sx]))
@@ -582,12 +583,12 @@
                                   (concat
                                    (for [{:keys [line into]} rems :when line]
                                      {:file (:file line) :start (:start line) :end (:end line)
-                                      :text (some-> into :form pr-str)})
+                                      :text (some-> into :form nm/print-key)})
                                    (for [a adds :when (not (taken a))
                                          :let [[s _] (text/peel-form (:form a))
                                                [f l] (or (some at (subject-terms s))
                                                          [(first files) :end])]]
-                                     {:file f :after l :text (pr-str (:form a))})))}))
+                                     {:file f :after l :text (nm/print-key (:form a))})))}))
          edits    (mapcat :edits plan)]
      (doseq [[f es] (group-by :file edits)]
        (edit-file! f es))

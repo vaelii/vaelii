@@ -289,7 +289,8 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
 - **Wire format is EDN.** A sentence is a symbol s-expression — `(dog Muffet)`, `?x` —
   which EDN round-trips losslessly; JSON would mangle the symbols. Bodies are read with
   `clojure.edn/read-string`, which has no reader-eval, so an untrusted body cannot run
-  code.
+  code. The daemon and the client write a body with `guard/edn-str`, which releases
+  `*print-length*` and `*print-level*`, so a caller's print bound elides no sentence.
 - **The protocol is one endpoint.** `POST /op` with `{:op <keyword> :args [...]}` returns
   `{:ok true :result …}` or `{:ok false :error "…" :type <keyword>}`. `GET /health`
   returns `{:ok true}`. The op is looked up in an **allowlist** (`serve/ops`) of

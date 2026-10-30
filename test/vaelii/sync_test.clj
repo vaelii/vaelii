@@ -376,3 +376,24 @@
       (finally
         (tu/clear-kb! kb)
         (run! io/delete-file (reverse (file-seq dir)))))))
+
+(deftest write-back-writes-a-form-whole-under-a-callers-print-bound
+  (let [dir  (io/file (System/getProperty "java.io.tmpdir") (str "vaelii-write-back-" (System/nanoTime)))
+        core (io/file dir "core.txt")
+        kb   (open-kb :write-back-bound (fn [_]))
+        u    'CxUniverse]
+    (try
+      (.mkdirs dir)
+      (spit core "(comment dog \"A dog.\")\n(genl dog mammal)\n")
+      (binding [*print-length* 2 *print-level* 1]
+        (sync/write-back! kb
+                          {:add    [{:context u :form '(set/monotonic (genl dog mammal))}
+                                    {:context u :form '(implies (and (dog ?d) (pet ?d)) (mammal ?d))}]
+                           :remove [{:context u :form '(genl dog mammal)}]}
+                          #(when (= u %) [core])))
+      (is (= (str "(comment dog \"A dog.\")\n(set/monotonic (genl dog mammal))\n\n"
+                  "(implies (and (dog ?d) (pet ?d)) (mammal ?d))\n")
+             (slurp core)))
+      (finally
+        (tu/clear-kb! kb)
+        (run! io/delete-file (reverse (file-seq dir)))))))

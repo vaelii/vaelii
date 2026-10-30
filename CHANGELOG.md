@@ -154,6 +154,15 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [storage.md](docs/storage.md#a-directorys-sentinel)
   *Migration:* none.
 
+### Fix: daemon and client
+
+- **A caller's `*print-length*` or `*print-level*` elides nothing the daemon, the client
+  or the starter's write-back writes.** Under a bound, the daemon's reply could be
+  unreadable EDN, a request from `vaelii.client` sent `...` in place of the rest of a
+  sentence, and `sync/write-back!` wrote `(set/monotonic #)` into a shipped file.
+  [operations.md](docs/operations.md#daemon--vaeliiserve)
+  *Migration:* none.
+
 ### Fix: performance
 
 - **A KB that registers a shipped reasoner keeps a reasoning image and seals its log.**

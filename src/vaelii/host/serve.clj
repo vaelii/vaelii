@@ -1350,7 +1350,7 @@
    (let [edn-reply (fn [status m]
                      {:status status
                       :headers {"content-type" "application/edn"}
-                      :body (pr-str m)})]
+                      :body (guard/edn-str m)})]
      (try
        (cond
          (not (guard/edn-body? req))
