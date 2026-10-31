@@ -1840,6 +1840,9 @@ E17_ALLOW = {
     ("src/vaelii/impl/context_nat.clj", "pairs-across"),
     ("src/vaelii/impl/inherit.clj", "moved-in"),
     ("src/vaelii/impl/inherit.clj", "witness?"),
+    # a preservation along genlCx is a claim about the context topology, read with no
+    # `except` holes (docs/inherit.md, "From whose vantage")
+    ("src/vaelii/impl/inherit.clj", "witness-terms"),
     ("src/vaelii/impl/inherit.clj", "licensing-functors"),
     ("src/vaelii/impl/inherit.clj", "crossings"),
     ("src/vaelii/impl/inherit.clj", "self-positions"),

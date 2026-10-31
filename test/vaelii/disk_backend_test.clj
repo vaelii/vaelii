@@ -588,6 +588,30 @@
             (let [f (RandomAccessFile. (str dir "/index/kv.log") "rw")]
               (.setLength f (- (.length f) (long n)))
               (.close f)))
+          (last-frame-offset [path]
+            (with-open [raf (RandomAccessFile. ^String path "r")]
+              (let [len (.length raf)]
+                (loop [pos 0 last-pos 0]
+                  (if (> (+ pos 4) len)
+                    last-pos
+                    (do (.seek raf pos)
+                        (let [n (.readInt raf)]
+                          (if (or (<= n 0) (> (+ pos 4 n) len))
+                            last-pos
+                            (recur (+ pos 4 n) pos)))))))))
+          (cut-to! [path new-len]
+            (with-open [raf (RandomAccessFile. ^String path "rw")] (.setLength raf (long new-len))))
+          (build-uncompacted! [dir]
+            ;; the crash shape is an *append-mode* log — compaction runs on close, and a
+            ;; crashed process never closed — so build one: compaction off for the write,
+            ;; markers deleted for the crash
+            (let [prior (System/getProperty "vaelii.disk.auto-compact")]
+              (System/setProperty "vaelii.disk.auto-compact" "off")
+              (try (build! dir)
+                   (finally (if prior (System/setProperty "vaelii.disk.auto-compact" prior)
+                                (System/clearProperty "vaelii.disk.auto-compact")))))
+            (.delete (java.io.File. (str dir "/index/clean.nippy")))
+            (.delete (java.io.File. (str dir "/records/clean.nippy"))))
           (reopened-finds-all? [dir]
             (let [kb2 (v/open-kb {:backend :disk-log :dir dir :recover? :auto})]
               (try
@@ -603,17 +627,27 @@
                   (is (reopened-finds-all? dir)))))
     (testing "a torn tail with no marker loses a batch seal, and the open detects it"
       (with-tmp (fn [dir]
-                  ;; the crash shape is an *append-mode* log — compaction runs on
-                  ;; close, and a crashed process never closed — so build one:
-                  ;; compaction off for the write, marker deleted for the crash
-                  (let [prior (System/getProperty "vaelii.disk.auto-compact")]
-                    (System/setProperty "vaelii.disk.auto-compact" "off")
-                    (try (build! dir)
-                         (finally (if prior (System/setProperty "vaelii.disk.auto-compact" prior)
-                                      (System/clearProperty "vaelii.disk.auto-compact")))))
-                  (.delete (java.io.File. (str dir "/index/clean.nippy")))
+                  (build-uncompacted! dir)
                   (lop! dir 64)
-                  (is (reopened-finds-all? dir)))))))
+                  (is (reopened-finds-all? dir)))))
+    (testing "the last record lost with a prefix of its index batch kept: the seal and the record count agree, the root count is one ahead, and the open rebuilds"
+      (with-tmp (fn [dir]
+                  (build-uncompacted! dir)
+                  (let [sl (str dir "/records/sentexes.log")
+                        si (str dir "/records/sentexes.idx")
+                        kl (str dir "/index/kv.log")]
+                    (cut-to! sl (last-frame-offset sl))
+                    (cut-to! si (- (.length (java.io.File. si)) 24))
+                    (cut-to! kl (last-frame-offset kl)))
+                  (let [lost (list 'tmp_short_p 'TmpShort19)
+                        kb2  (v/open-kb {:backend :disk-log :dir dir :recover? :auto})]
+                    (try
+                      (is (nil? (v/handle-of kb2 lost 'CxUniverse)) "no posting names the lost record")
+                      (is (= 19 (count (v/sentexes-matching kb2 '(tmp_short_p ?x) 'CxUniverse))))
+                      (v/assert kb2 lost 'CxUniverse)
+                      (is (v/ask? kb2 lost 'CxUniverse) "the lost fact is stored again and read")
+                      (is (= 20 (count (v/sentexes-matching kb2 '(tmp_short_p ?x) 'CxUniverse))))
+                      (finally (v/close! kb2)))))))))
 
 ;; ---- the close hands the directory over, and waits until it can -------------
 

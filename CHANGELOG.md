@@ -11,6 +11,49 @@ several releases is still a grep for the name you call. The full entry prose for
 released version is in this file's git history, at the tag of the release that shipped
 it — `git show v0.16.0:CHANGELOG.md`.
 
+## Unreleased
+
+### Fix: order independence
+
+- **A preservation along `genlCx` reads the context topology with no `except` holes.**
+  `inherit/witness-terms` read `genlCx` through the except-aware walk from the preserved
+  term's own context, so an `except` one context stated on a `genlCx` edge withdrew the
+  preserved claim from `CxUniverse` and from a sibling that could not see the except. The
+  read is the unscoped one inherit.md states.
+  [inherit.md](docs/inherit.md#from-whose-vantage)
+
+### Fix: storage
+
+- **A crash inside a pull's import of the dump keeps the writes the next open cannot
+  assert, and the next pull asserts them.** The open over the partly imported base
+  deleted the rebase marker whatever the replay returned, dropping each form naming a
+  record not yet imported, each form refused, and each retraction of a sentence the
+  partial base holds no premise of, a sentence a fork rule derived again during the
+  replay included. The marker keeps them, the open names them in its `::pending-replayed`
+  line, and the next rebase adds them to its capture.
+  [overlay.md](docs/overlay.md#replacing-the-base),
+  [operations.md](docs/operations.md#after-a-crash)
+- **A crash that loses the last record frame while a prefix of its index batch survives
+  is detected at the open.** The coverage check read the batch-seal counter alone when it
+  was non-zero, and that shape leaves the seal and the record count agreeing with the
+  root count one ahead; the trie kept a posting no record backed, `handle-of` named it,
+  and `assert` of the same sentence returned the handle, stored nothing and marked a
+  premise `ask?` could not read. The open compares the root count beside the seal and
+  rebuilds, and `assert` over a posting with no record takes the posting out and stores
+  the sentence anew.
+  [storage.md](docs/storage.md#the-on-disk-backend-disk)
+- **A second disk open naming neither `:dir` nor `:space` logs the default-space
+  warning.** The warning fired for in-RAM records only; two such disk opens share
+  `space-0` under the default directory the same way.
+  [storage.md](docs/storage.md#opening-a-kb)
+
+### Fix: browser
+
+- **The Postgres backup page reads a snapshot store's `records.edn` with `clojure.edn`.**
+  It read the file with `clojure.core/read-string`, the one reader of a store file not
+  held to the EDN reader.
+  [web.md](docs/web.md#backing-up-a-store-kept-in-postgres)
+
 ## 0.31.0 — 2026-10-30 — "Separations that lose to a stronger denial, lazy-forward rules and a computed `nonempty`, forks that pull a newer base and merge peers' deltas, content digests across seats, `CxTimeFn` slices ordered across monads"
 
 | Area | Change |

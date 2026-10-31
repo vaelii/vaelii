@@ -287,8 +287,8 @@ The rebase is five steps on the writer's thread:
    equal to the base record it copies, strength included, is the base's and is not kept.
    A durable fork writes these to its directory before step 2: the forms as a delta text
    KB under `rebase-delta/` (what `export-text! {:delta? true}` writes), each file fsynced,
-   then the marker `rebase-pending.nippy`, which holds the retracted premises' content keys
-   and each form's provenance and captured record.
+   then the marker `rebase-pending.nippy`, which holds the retracted premises' content keys,
+   each form's provenance and captured record, and the forms an earlier marker kept (below).
 2. **The own half is emptied**: its records, its bookkeeping and its index.
 3. **The dump is imported into the base's stores** through a second KB opened from the
    base's opts, under `:belief? :stored`: records, justifications, premise marks and index,
@@ -316,18 +316,21 @@ the fork wrote takes a new handle above the new base's range.
 
 Step 5 ends by deleting the marker and the delta. An `open-kb` of a durable fork whose
 directory holds the marker asserts the delta's forms again with their provenance and
-retracts the recorded base premises again, through step 5's code, then deletes the marker
-(`rebase/finish-pending!`). A crash between step 2 and the end of step 5, outside step 3,
-therefore loses none of the fork's writes. After a crash inside step 3 the base is partly
-imported, and the open asserts the writes over that base and deletes the marker whatever
-the result. It drops each form naming a record the partial base lacks, each form refused,
-and each retraction of a base premise the partial base does not hold. The
-`::pending-replayed` line at `:warn` counts the dropped forms, and no line names a dropped
-retraction. Importing the dump again with `:rebase? true` restores the base, and its
-capture reads only the fork's own records, so the dropped writes stay lost. An open whose KB refuses writes (`:recover? false`) keeps the
-marker, and the next rebase finishes it before step 1, calling that rebase's `:on-replayed`
-with each record the marker holds. A fork in RAM writes no delta and
-has nothing to recover after a crash.
+retracts the recorded base premises again, through step 5's code
+(`rebase/finish-pending!`). The marker then keeps the forms still refused, a form naming a
+record the base lacks included, and the retractions of a sentence the KB holds no premise
+of, a sentence a fork rule derived during the replay included; the open deletes the delta,
+and deletes the marker when it keeps nothing. A crash between step
+2 and the end of step 5 therefore loses none of the fork's writes. After a crash inside
+step 3 the base is partly imported, and the writes it cannot hold stay in the marker. The
+open logs `::pending-replayed` at `:warn`, counting the kept forms under `:refused` and
+`:unresolved` and naming the kept retractions under `:kept`. The next rebase adds what the
+marker keeps to step 1's capture, less a form the fork has since written again and a
+retraction of a sentence the fork's own records hold, and asserts it in step 5 against the
+complete base. An open whose KB refuses writes (`:recover? false`) keeps the marker, and
+the next rebase finishes it before step 1, calling that rebase's `:on-replayed` with each
+record the marker holds. A fork in RAM writes no delta and has nothing to recover after a
+crash.
 
 A read on another thread during a rebase answers from the fork before the rebase or after
 it. The rebase holds the write side of the fork's rebase lock from the replay of a marker

@@ -438,7 +438,7 @@
   '(set/backwardRule
     (implies (and (lessThan ?x ?l) (canBeStackedWith ?x ?y)) (movable ?x ?y))))
 
-(defn- splice-refused-frame!
+(defn splice-refused-frame!
   "Append a frame carrying `sentence` to `dir`'s sentex stream and tell `meta.edn` about
   it, so the dump states a count the stream can still meet.  The frame carries no
   `:antecedent`, so the reader hands the sentence to the constructor as written — which

@@ -74,10 +74,10 @@ a `:disk-locked` refusal names a process that is still running.
 - **A crash inside a seat's pull** (`import!` with `:rebase?`) leaves the seat's writes in
   its own directory, and the next open asserts them again
   ([overlay.md](overlay.md#replacing-the-base)). A crash inside the import of the dump
-  leaves the base partly imported, and that open drops each write the partial base cannot
-  hold: a form naming a record not yet imported, a form refused, and a retraction of a base
-  premise not yet imported. Pulling the commit again restores the base and none of those
-  writes.
+  leaves the base partly imported, and that open keeps in the marker each write the partial
+  base cannot hold: a form naming a record not yet imported, a form refused, and a
+  retraction of a sentence the partial base holds no premise of. The open logs them at `:warn`, and pulling
+  the commit again restores the base and asserts them over it.
 - **A declined restore** logs at `:warn`: `opened <dir> from its records and sealed it in
   t ms: the restore declined, <reason>`. The KB holds what the records hold, and its log
   starts again at a new generation. The reason says which write the log could not
@@ -1021,8 +1021,9 @@ and each one publishes its own writes and merges every peer's.
   refused `:canonical-mismatch` ([overlay.md](overlay.md#a-delta)).
 - **A seat may take a peer's dump as its base** with `deref/pull!`, which asserts the
   seat's writes again over the new base. A seat killed after the pull imported the dump
-  holds its writes again at its next open, and one killed inside the import loses the
-  writes the partial base cannot hold ([After a crash](#after-a-crash)).
+  holds its writes again at its next open. One killed inside the import holds the writes
+  the partial base can hold, and the next pull asserts the rest
+  ([After a crash](#after-a-crash)).
 - **Once every seat has merged every peer's delta, the seats believe one set** over the
   shared contexts, when no merge refused a form and no seat retracted a shared premise. A
   delta writes no retraction ([overlay.md](overlay.md#a-delta)). A form one merge refuses

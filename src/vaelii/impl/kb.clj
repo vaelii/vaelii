@@ -705,17 +705,19 @@
 (defonce ^:private default-ram-space-opens (atom 0))
 
 (defn- note-default-ram-space!
-  "Warn the second time a KB opens on the default in-RAM space without naming it.  The space
+  "Warn the second time a KB opens on the default space without naming it.  The space
   number names the store and defaults to 0, so `(open-kb {})` twice in one process is one
-  store behind two KB values with two belief graphs.  A warning and never a refusal, since
-  sharing a space is how `recover` and the suite's fixtures work; naming the number silences
-  it.  Only in-RAM records are affected."
+  store behind two KB values with two belief graphs; a disk open naming neither `:dir` nor
+  `:space` resolves to the default directory's `space-0` the same way.  A warning and never
+  a refusal, since sharing a space is how `recover` and the suite's fixtures work; naming
+  the number silences it."
   [opts rkind]
-  (when (and (= :memory rkind)
+  (when (and (#{:memory :disk} rkind)
              (not (contains? opts :space))
+             (not (contains? opts :dir))
              (= 2 (swap! default-ram-space-opens inc)))
     (trove/log! {:level :warn :id ::default-ram-space-reused
-                 :msg (str "a second in-RAM KB opened on the default space (:space 0) "
+                 :msg (str "a second KB opened on the default space (:space 0) "
                            "— the number names the store, so this KB and the earlier "
                            "one are two belief graphs over one set of records, and a "
                            "write through either is invisible to the other until it is "
@@ -1783,7 +1785,7 @@
           ;; batch-seal counter is the last op of every index batch, so a torn append-mode tail loses it first;
           ;; zero means the index predates the counter or arrived by `index-load` replay, and the root count
           ;; remains.  The damaged flag is the clean marker's length disagreeing with the file, which catches a
-          ;; lost tail of a compacted log whose seal and counts may still agree.
+          ;; lost tail of a compacted log whose seal and counts may still agree.  Both counts are compared: a lost last record beside a kept prefix of its index batch leaves the seal and the record count agreeing and the root count one ahead.
           (let [indexed  (long (reads/stored-count-at istore []))
                 sealed   (long (reads/stored-count-at istore kv/sealed-prefix))
                 damaged  (:damaged (:backend istore))
@@ -1791,7 +1793,8 @@
                 ;; against the whole table (`p/Tallying`).
                 stored   (cap/count-sentexes (:records kb))]
             (when (or damaged
-                      (if (pos? sealed) (not= sealed stored) (not= indexed stored)))
+                      (not= indexed stored)
+                      (and (pos? sealed) (not= sealed stored)))
               (dfiles/mark-index-rebuilding! root)
               (p/clear-index! istore)
               (let [t0 (System/nanoTime)
@@ -1835,7 +1838,8 @@
                 indexed  (long (reads/stored-count-at istore []))
                 damaged  (:damaged (:backend own-istore))]
             (when (or damaged
-                      (if (pos? sealed) (not= sealed stored) (not= indexed stored)))
+                      (not= indexed stored)
+                      (and (pos? sealed) (not= sealed stored)))
               (dfiles/mark-index-rebuilding! root)
               (let [{:keys [sentexes rules]} (reindex-fn kb)]
                 (dfiles/write-index-layout! root kv/index-layout-version)
@@ -2471,10 +2475,17 @@
   an existing one keeps what it has until `mark-premise` says otherwise."
   ([kb sentence context] (find-or-create-sentex kb sentence context nil))
   ([kb sentence context strength]
-   (if-let [h (find-sentex-handle kb sentence context)]
-     [h (p/get-sentex (:records kb) h) false]
-     (let [[h s] (create-sentex kb sentence context strength)]
-       [h s true]))))
+   (let [h (find-sentex-handle kb sentence context)
+         s (when h (p/get-sentex (:records kb) h))]
+     (cond
+       s [h s false]
+       h (do (trove/log! {:level :warn :id ::record-less-posting-dropped
+                          :data {:handle h :context context}
+                          :msg (str "index posting " h " names no record; the sentence is stored anew (run reindex to verify the index)")})
+             (try (p/unindex-sentex! (:index kb) (assoc (res/kb-sentex kb sentence context) :id h) h)
+                  (catch Throwable _ nil))
+             (let [[h s] (create-sentex kb sentence context strength)] [h s true]))
+       :else (let [[h s] (create-sentex kb sentence context strength)] [h s true])))))
 
 (defn antecedent-order
   "`handles` as a justification's stored antecedent vector, ordered by what each antecedent

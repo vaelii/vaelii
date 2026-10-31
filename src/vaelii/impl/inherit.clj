@@ -246,7 +246,7 @@
                                   (scoped #(if along?
                                              (tax/specs tx x context)
                                              (tax/genls tx x context))))
-                  genlCx (if along? (tax/context-down tx x) (tax/context-up tx x)) ; global on purpose
+                  genlCx (if along? (tax/context-down-global tx x) (tax/context-up-global tx x)) ; global on purpose
                   (fact-reach kb rel along? x context))))))
 
 (defn- relation-keys
