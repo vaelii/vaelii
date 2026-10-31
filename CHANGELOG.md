@@ -13,6 +13,18 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Fix: storage
+
+- **A crash that loses the last record frame while a prefix of its index batch survives
+  is detected at the open.** The coverage check read the batch-seal counter alone when it
+  was non-zero, and that shape leaves the seal and the record count agreeing with the
+  root count one ahead; the trie kept a posting no record backed, `handle-of` named it,
+  and `assert` of the same sentence returned the handle, stored nothing and marked a
+  premise `ask?` could not read. The open compares the root count beside the seal and
+  rebuilds, and `assert` over a posting with no record takes the posting out and stores
+  the sentence anew.
+  [storage.md](docs/storage.md#the-on-disk-backend-disk)
+
 ### Fix: browser
 
 - **The Postgres backup page reads a snapshot store's `records.edn` with `clojure.edn`.**
