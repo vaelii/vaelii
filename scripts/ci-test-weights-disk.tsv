@@ -81,6 +81,7 @@ vaelii.covering-arg-test	0.19
 vaelii.covering-inference-test	0.40
 vaelii.covering-test	1.28
 vaelii.curation-test	5.20
+vaelii.cxtra-social-test	1.28
 vaelii.datetime-test	0.01
 vaelii.defeated-goals-test	0.12
 vaelii.deferred-forward-test	0.04
@@ -318,7 +319,6 @@ vaelii.sibling-disjoint-test	0.27
 vaelii.sign-test	17.45
 vaelii.skolem-test	6.18
 vaelii.snapshot-sink-test	0.38
-vaelii.social-extension-test	1.28
 vaelii.social-test	0.54
 vaelii.solve-context-test	0.29
 vaelii.solve-rule-test	0.05

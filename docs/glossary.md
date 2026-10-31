@@ -1313,6 +1313,8 @@ its justification under `:subsumptions`; absent for a firing that matched every 
 its own key. Two firings that pair the same facts with different literals differ in them,
 so they are two justifications. See [nmtms.md](nmtms.md).
 
+**`successorTypeOrder`** ![kb](../.github/badges/cat-kb.svg): `(successorTypeOrder ?lower ?higher)` says that `?higher` is the next order up the metatype-order ladder from `?lower`, e.g. `(successorTypeOrder type metatype)`. `core.txt` states `(genlInverse successorTypeOrder typeGenl)`, so each fact answers the `typeGenl` goal with its arguments swapped. Inert like `typeGenl`. See [taxonomy.md](taxonomy.md).
+
 **Superseded** ![tms](../.github/badges/cat-tms.svg): The TMS state an equality
 merge puts a stale spelling in — stored but not believed and not matching,
 subtracting from reported belief rather than forced OUT, so its justified twin

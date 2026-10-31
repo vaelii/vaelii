@@ -217,7 +217,7 @@
 2	24	test/vaelii/argtype_pass_test.clj
 0	32	test/vaelii/argue_test.clj
 1	48	test/vaelii/arity_inert_test.clj
-0	205	test/vaelii/arity_vocabulary_test.clj
+0	204	test/vaelii/arity_vocabulary_test.clj
 3	48	test/vaelii/asp_aspif_test.clj
 16	2	test/vaelii/asp_namespaces_test.clj
 0	34	test/vaelii/asp_solver_test.clj

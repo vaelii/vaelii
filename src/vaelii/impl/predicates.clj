@@ -1674,6 +1674,15 @@
                           " derive (genl ?x ?genl) from (?classifier ?x) once rule support lands.")}
              (str "aspirational: a higher-order genl constraint whose rule-based derivation"
                   " depends on engine support for higher-order patterns. No inference path."))]
+     ['successorTypeOrder
+      (inert {:shape {:args [:term :term]} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes (str "(successorTypeOrder ?lower ?higher): ?higher is the order of type"
+                          " directly above ?lower on the metatype-order ladder. core.txt's"
+                          " (genlInverse successorTypeOrder typeGenl) reads each fact as the"
+                          " typeGenl fact with its arguments swapped.")}
+             (str "ontology, not grammar: no engine check names it. Its one inference path"
+                  " is the genlInverse edge to typeGenl, which is itself inert."))]
      ['typeOrthogonal
       (enforced {:shape {:args [:type :type]} :storage [:none] :checked false
                  :family nil :facets #{}

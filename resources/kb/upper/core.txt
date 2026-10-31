@@ -1900,7 +1900,6 @@
 (context CxRealWorld)
 (context CxSize)
 (context CxSocial)
-(context CxSocialExtension)
 (context CxTra)
 (context CxUniverse)
 (context CxWell)
@@ -2603,6 +2602,17 @@
 (arg typeGenl 2 unary_predicate)
 (comment typeGenl "Higher-order genl: (typeGenl ?classifier ?genl) means every instance of ?classifier is a genl of ?genl.")
 
+;; successorTypeOrder steps up the metatype-order ladder one order at a time, lower order
+;; first.  Its genlInverse edge to typeGenl reads each fact as the typeGenl fact with the
+;; two arguments swapped, so (successorTypeOrder type metatype) answers
+;; (typeGenl metatype type).
+(comment successorTypeOrder "(successorTypeOrder ?lower ?higher) means that ?higher is the order of type directly above ?lower: every instance of ?higher is a spec of ?lower, e.g. (successorTypeOrder type metatype) says that the instances of a metatype are first-order types.")
+(binary_predicate successorTypeOrder)
+(arg successorTypeOrder 1 type_type_by_order)
+(arg successorTypeOrder 2 type_type_by_order)
+(genlInverse successorTypeOrder typeGenl)
+(set/monotonic (asymmetric successorTypeOrder))
+
 ;; typeOrthogonal is typeGenl's orthogonal twin, with the classifier first as typeGenl
 ;; has it.  A generator generates one membership rule per fact.  The generated rule is strict,
 ;; and it concludes a forced-monotonic literal, so its firings are believed only where the
@@ -2696,8 +2706,10 @@
 (set/monotonic (genl metatype fixed_order_type))
 (set/monotonic (genl meta_metatype fixed_order_type))
 (typeGenl disjoint_metatype at_least_metatype)
-(typeGenl meta_metatype metatype)
-(typeGenl metatype type)
+;; The two steps of the ladder.  Through the genlInverse edge they answer
+;; (typeGenl metatype type) and (typeGenl meta_metatype metatype), which are not stated.
+(successorTypeOrder type metatype)
+(successorTypeOrder metatype meta_metatype)
 ;; type is under at_least_metatype too: every first-order type is a spec of thing.
 (typeGenl type thing)
 (typeGenl relation_kind binary_predicate)

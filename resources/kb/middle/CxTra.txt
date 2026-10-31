@@ -1,15 +1,24 @@
 ;; CxTra — vocabulary that is generally useful but specific to one domain, outside the
-;; starter contexts CxWell sees: software tools, their invocations and receipts, media
-;; resources and network names, information content, its carriers, and the sentences an
-;; agent claims about it, and perception relations. Sees the shared upper
-;; ontology via CxUniverse. CxWell does not see it, so the everyday contexts below CxWell
-;; read none of this vocabulary. A context opts in by placing itself under CxTra.
+;; starter contexts CxWell sees: software tools, their invocations and receipts, the
+;; capabilities a tool confers, media resources and network names, computers and the
+;; computational systems that run on them and how they group, access to a resource,
+;; the file paths a file is looked up by, pull requests on a forge, their status and who
+;; may merge them, information content, its carriers, the sentences an agent claims
+;; about it and the Discord messages that claim them, the strings that name a thing,
+;; perception relations, and relationship and plural-identity vocabulary narrower than
+;; CxSocial's. Sees the shared upper ontology via CxUniverse, and CxSocial. CxWell does
+;; not see it, so the everyday contexts below CxWell read none of this vocabulary. A
+;; context opts in by placing itself under CxTra.
 
 (genlCx CxTra CxUniverse)
-(comment CxTra "The opt-in middle context for vocabulary that is generally useful but specific to one domain, such as computing and perception, and so is not in a starter context that CxWell sees. CxTra sees CxUniverse. CxWell does not see CxTra, so a context reads the vocabulary only by placing itself under CxTra.")
+;; CxTra builds on CxSocial's relations: its relationship terms specialize them.
+(genlCx CxTra CxSocial)
+(comment CxTra "The opt-in middle context for vocabulary that is generally useful but specific to one domain, such as computing, perception and narrow relationship terms, and so is not in a starter context that CxWell sees. CxTra sees CxUniverse and CxSocial. CxWell does not see CxTra, so a context reads the vocabulary only by placing itself under CxTra.")
 
 ;; ==== computing ===========================================================
-;; The computing relations state no rule.
+;; The computing relations state one rule, the default that reads hasCapability from
+;; agentHasTool and toolEnablesCapability. No rule concludes anything about an
+;; invocation.
 ;;
 ;; The sixteen computing kinds that the relations here are typed over
 ;; (computational_system, software_tool, tool_invocation, media_resource, ip_address and
@@ -165,6 +174,23 @@
 (arg probesPredicate 1 software_tool)
 (arg probesPredicate 2 predicate)
 
+;; ---- what a tool enables ---------------------------------------------------
+;; toolEnablesCapability links a tool to the happening kinds whoever has the tool can be
+;; the doer of, and the rule below reads hasCapability from it and agentHasTool.  The
+;; rule is a default, so a monotonic (not (hasCapability ?agent ?kind)) defeats it, e.g. for
+;; a tool that is broken or withdrawn.  It is guarded by (causal ?agent): position 1 of
+;; agentHasTool declares thing and position 1 of hasCapability declares causal, so an
+;; unguarded rule would conclude causal of whatever has a tool.  The agent is the doer
+;; and the tool the instrument, so nothing here concludes hasCapability of the tool.
+(comment toolEnablesCapability "(toolEnablesCapability ?tool ?happeningKind) means that whoever has ?tool available can be the doer of a happening of kind ?happeningKind, e.g. a tool that fetches an image and returns what it shows enables image_viewing.")
+(binary_predicate toolEnablesCapability)
+(arg toolEnablesCapability 1 software_tool)
+(genlArg toolEnablesCapability 2 happening)
+
+(set/defaultRule (set/forwardRule
+  (implies (and (agentHasTool ?agent ?tool) (toolEnablesCapability ?tool ?kind) (causal ?agent))
+           (hasCapability ?agent ?kind))))
+
 ;; ---- invocations and receipts --------------------------------------------
 (comment toolInvoked "(toolInvoked ?invocation ?tool) means that ?invocation is a call of ?tool.")
 (set/monotonic (instance_relation_predicate toolInvoked))
@@ -188,6 +214,389 @@
 (set/monotonic (instance_relation_predicate dnsResolvesTo))
 (quotedArg dnsResolvesTo 1 string)
 (quotedArg dnsResolvesTo 2 string)
+
+;; ==== hosts: what runs where, and how hosts group ===========================
+;; A computer is hardware: tangible, an electronic_device.  A virtual machine, a software
+;; container and a software service are computational systems, intangible, and each runs
+;; on a computer or on another computational system.  runsOn relates the two and is
+;; transitive, because location composes.  No rule here carries any other fact across
+;; runsOn: a tool, a file, a version or a name of a container is not thereby one of its
+;; host, nor the reverse.
+;;
+;; Position 2 of runsOn, and position 1 of onNetwork and of hostnameOf, declare `thing`.
+;; Each holds a computer or a computational system, one tangible and one intangible, and
+;; the upper ontology ships no type above the two but thing.  Position 2 of each
+;; clusterNode relation declares `computational_system`: a cluster's node is the operating
+;; system install its node agent runs in, which runsOn a computer for a bare-metal node
+;; and runsOn a hypervisor for a virtual one.
+
+(comment computer "An electronic device built around a programmable processor and the memory it runs programs from: the hardware a computational system runs on. A computer that is switched off or broken is still one.")
+(positiveExampleComment computer "a laptop")
+(positiveExampleComment computer "a rack-mounted server")
+(positiveExampleComment computer "a single-board computer")
+(negativeExampleComment computer "a virtual machine, which is a computational system that runs on a computer")
+(genl computer electronic_device)
+(set/monotonic (disjoint person computer))
+(comment (disjoint person computer) "A person may run on a computer, as software whose execution environment the computer hosts, but is not one.")
+
+(comment virtual_machine "A computational system that emulates a whole computer and runs its own operating system kernel on a hypervisor.")
+(positiveExampleComment virtual_machine "a cloud server instance")
+(positiveExampleComment virtual_machine "a guest operating system under a desktop hypervisor")
+
+(comment software_container "A computational system that runs processes isolated from the rest of its host while sharing the host's operating system kernel.")
+(positiveExampleComment software_container "a container started from an image by a container runtime")
+(negativeExampleComment software_container "a box or a cup, which is a container")
+
+(comment software_service "A computational system that runs continuously and answers requests sent to it.")
+(positiveExampleComment software_service "a web server")
+(positiveExampleComment software_service "a database server")
+(positiveExampleComment software_service "a mail transfer agent")
+
+;; A virtual machine is not a container and neither is a service: a service runs in a
+;; container (runsOn) and is not one.  separating claims no coverage, since a software
+;; tool is a computational system that is none of the three.
+(set/monotonic (separating computational_system virtual_machine software_container software_service))
+
+(comment mcp_server "A software service that answers its clients over the Model Context Protocol, listing its tools and running them on request.")
+(positiveExampleComment mcp_server "a memory server an assistant stores notes in")
+(positiveExampleComment mcp_server "a server that exposes a chat platform's messages")
+(genl mcp_server software_service)
+
+(comment runsOn "(runsOn ?system ?host) means that ?system executes on ?host, a computer or another computational system: a service on a container, a container on a virtual machine or on a computer. Transitive, so a service on a container on a computer runs on that computer. No other fact about ?system is thereby a fact about ?host, nor the reverse.")
+(set/monotonic (instance_relation_predicate runsOn))
+(arg runsOn 1 computational_system)
+(arg runsOn 2 thing)
+(set/monotonic (transitive runsOn))
+
+(comment kubernetes_cluster "A computational system that schedules and runs containerized workloads across a set of nodes under one control plane, each node an operating system install that runs on a computer or on a hypervisor.")
+(positiveExampleComment kubernetes_cluster "a managed Kubernetes cluster rented from a cloud provider")
+(positiveExampleComment kubernetes_cluster "a three-node cluster of single-board computers")
+(genl kubernetes_cluster computational_system)
+
+(comment network "A collection of things that can address one another over shared links.")
+(positiveExampleComment network "a home local area network")
+(positiveExampleComment network "a mesh virtual private network")
+(genl network intangible)
+
+(comment kubernetes_namespace "A named scope inside one Kubernetes cluster that holds some of the cluster's workloads and keeps their names apart from those of other namespaces.")
+(positiveExampleComment kubernetes_namespace "the namespace a cluster runs its own system services in")
+(genl kubernetes_namespace intangible)
+
+;; A cluster performs computation; a network and a namespace do not, and neither is a
+;; body of people (organization) or something outside time (abstract), since each is
+;; created and deleted.  So network and kubernetes_namespace sit directly under
+;; intangible, the tightest true parent the upper ontology ships.
+(set/monotonic (separating intangible kubernetes_cluster network kubernetes_namespace))
+
+(comment clusterNode "(clusterNode ?cluster ?node) means that ?node is a node of ?cluster: the operating system install the cluster's node agent runs in, which runsOn a computer for a bare-metal node and runsOn a hypervisor for a virtual one. Membership only: controlPlaneNode and workerNode state the node's role.")
+(set/monotonic (instance_relation_predicate clusterNode))
+(arg clusterNode 1 kubernetes_cluster)
+(arg clusterNode 2 computational_system)
+
+(comment controlPlaneNode "(controlPlaneNode ?cluster ?node) means that ?node runs ?cluster's control plane: the components that schedule the cluster's workloads and hold its state.")
+(set/monotonic (instance_relation_predicate controlPlaneNode))
+(arg controlPlaneNode 1 kubernetes_cluster)
+(arg controlPlaneNode 2 computational_system)
+(genl controlPlaneNode clusterNode)
+
+(comment workerNode "(workerNode ?cluster ?node) means that ?node runs the workloads ?cluster schedules onto it.")
+(set/monotonic (instance_relation_predicate workerNode))
+(arg workerNode 1 kubernetes_cluster)
+(arg workerNode 2 computational_system)
+(genl workerNode clusterNode)
+
+(comment onNetwork "(onNetwork ?thing ?network) means that ?thing is a member of ?network, addressable on it. Not carried along runsOn: a container on a host is not thereby on the host's networks.")
+(set/monotonic (instance_relation_predicate onNetwork))
+(arg onNetwork 1 thing)
+(arg onNetwork 2 network)
+
+(comment kubernetesNamespaceOf "(kubernetesNamespaceOf ?namespace ?cluster) means that ?namespace is a namespace in ?cluster. Functional: a namespace is in one cluster.")
+(set/monotonic (instance_relation_predicate kubernetesNamespaceOf))
+(arg kubernetesNamespaceOf 1 kubernetes_namespace)
+(arg kubernetesNamespaceOf 2 kubernetes_cluster)
+(set/monotonic (functional kubernetesNamespaceOf))
+
+;; A host name is a string and not an identity.  hostnameOf is functional in neither
+;; position: one thing answers to several names, and one name can name several things
+;; in different naming contexts.  Either mark would equate two systems that share a name.
+(comment hostnameOf "(hostnameOf ?thing ?name) means that ?name names ?thing in some naming context: DNS, a machine's own configured name, a private network's name service or a container runtime. Two things with one name are not thereby one thing, and a name read from inside a container names the container, not its host.")
+(set/monotonic (instance_relation_predicate hostnameOf))
+(arg hostnameOf 1 thing)
+(quotedArg hostnameOf 2 string)
+(not (functional hostnameOf))
+(not (functionalInArg hostnameOf 1))
+
+;; ==== access to a resource ====================================================
+;; A grant of access is a capability.  (hasCapability ?principal (ShellAccessFn
+;; ?resource)) says that ?principal can run commands on ?resource.  Each access function
+;; maps a resource to a happening kind below one of the five access kinds, so the kind
+;; says what can be done and the function term keeps which resource.  hasCapability's
+;; transitiveInArg along genl carries a grant up to its access kind and to
+;; resource_access, so a question about any grant needs no predicate of its own.
+;; Access is stated allow-only: a missing grant is unknown, and nothing here concludes a
+;; denial.
+;;
+;; Each access function has its corresponding predicate, value last, so a rule joins on
+;; the predicate rather than on a function term.  Each predicate is functional: one kind
+;; per resource.  The functions and their predicates are mixed-level like hasCapability,
+;; position 1 a resource and position 2 a kind, so they carry no relation_kind.
+;;
+;; Two grants each entail a third over the same resource, by the default rules below:
+;; administering a resource and deploying onto it each entail changing it.  A genl edge
+;; between the kinds cannot say this: (genl admin_access write_access) would say only
+;; that administering one resource is changing some resource, and it is false besides,
+;; since granting others access changes nothing in the resource.  Merging into a
+;; repository entails changing it too, by the rule with the pull-request vocabulary
+;; below; every merge is a write, so merge_access is also below write_access, and the
+;; rule still carries the same repository.  Write
+;; does not entail read, since a drop box accepts writes from those who cannot read it.
+;; Shell does not entail read, since a forced-command login runs one command and reads
+;; nothing else.  Admin does not entail shell, since a web service's administrator need
+;; have no shell on its host.
+
+(comment resource_access "Acting on a resource under a grant of access to it.")
+(positiveExampleComment resource_access "reading a repository one has been given read access to")
+(positiveExampleComment resource_access "logging in to a server one holds an account on")
+(genl resource_access happening)
+
+(comment read_access "Reading a resource's contents or state under a grant.")
+(genl read_access resource_access)
+
+(comment write_access "Changing a resource's contents or state under a grant.")
+(genl write_access resource_access)
+
+(comment shell_access "Running commands on a resource, through a login shell or an equivalent command interface, under a grant.")
+(genl shell_access resource_access)
+
+(comment admin_access "Administering a resource under a grant: changing its configuration, or granting access to it to others.")
+(genl admin_access resource_access)
+
+(comment deploy_access "Deploying or rolling out workloads onto a resource under a grant.")
+(genl deploy_access resource_access)
+
+(comment ReadAccessFn "(ReadAccessFn ?resource) means the happening kind of reading ?resource's contents or state under a grant, a kind below read_access. A grant is stated as (hasCapability ?principal (ReadAccessFn ?resource)).")
+(reifiable_function ReadAccessFn)
+(unary_function ReadAccessFn)
+(functionCorrespondingPredicate ReadAccessFn readAccessOf)
+(arg ReadAccessFn 1 thing)
+(genlResult ReadAccessFn read_access)
+
+(comment readAccessOf "(readAccessOf ?resource ?kind) means that ?kind is the happening kind of reading ?resource under a grant: (ReadAccessFn ?resource) is ?kind.")
+(binary_predicate readAccessOf)
+(arg readAccessOf 1 thing)
+(genlArg readAccessOf 2 read_access)
+(set/monotonic (functional readAccessOf))
+
+(comment WriteAccessFn "(WriteAccessFn ?resource) means the happening kind of changing ?resource's contents or state under a grant, a kind below write_access. A grant is stated as (hasCapability ?principal (WriteAccessFn ?resource)).")
+(reifiable_function WriteAccessFn)
+(unary_function WriteAccessFn)
+(functionCorrespondingPredicate WriteAccessFn writeAccessOf)
+(arg WriteAccessFn 1 thing)
+(genlResult WriteAccessFn write_access)
+
+(comment writeAccessOf "(writeAccessOf ?resource ?kind) means that ?kind is the happening kind of changing ?resource under a grant: (WriteAccessFn ?resource) is ?kind.")
+(binary_predicate writeAccessOf)
+(arg writeAccessOf 1 thing)
+(genlArg writeAccessOf 2 write_access)
+(set/monotonic (functional writeAccessOf))
+
+(comment ShellAccessFn "(ShellAccessFn ?resource) means the happening kind of running commands on ?resource under a grant, a kind below shell_access. A grant is stated as (hasCapability ?principal (ShellAccessFn ?resource)).")
+(reifiable_function ShellAccessFn)
+(unary_function ShellAccessFn)
+(functionCorrespondingPredicate ShellAccessFn shellAccessOf)
+(arg ShellAccessFn 1 thing)
+(genlResult ShellAccessFn shell_access)
+
+(comment shellAccessOf "(shellAccessOf ?resource ?kind) means that ?kind is the happening kind of running commands on ?resource under a grant: (ShellAccessFn ?resource) is ?kind.")
+(binary_predicate shellAccessOf)
+(arg shellAccessOf 1 thing)
+(genlArg shellAccessOf 2 shell_access)
+(set/monotonic (functional shellAccessOf))
+
+(comment AdminAccessFn "(AdminAccessFn ?resource) means the happening kind of administering ?resource under a grant, a kind below admin_access. A grant is stated as (hasCapability ?principal (AdminAccessFn ?resource)).")
+(reifiable_function AdminAccessFn)
+(unary_function AdminAccessFn)
+(functionCorrespondingPredicate AdminAccessFn adminAccessOf)
+(arg AdminAccessFn 1 thing)
+(genlResult AdminAccessFn admin_access)
+
+(comment adminAccessOf "(adminAccessOf ?resource ?kind) means that ?kind is the happening kind of administering ?resource under a grant: (AdminAccessFn ?resource) is ?kind.")
+(binary_predicate adminAccessOf)
+(arg adminAccessOf 1 thing)
+(genlArg adminAccessOf 2 admin_access)
+(set/monotonic (functional adminAccessOf))
+
+(comment DeployAccessFn "(DeployAccessFn ?resource) means the happening kind of deploying workloads onto ?resource under a grant, a kind below deploy_access. A grant is stated as (hasCapability ?principal (DeployAccessFn ?resource)).")
+(reifiable_function DeployAccessFn)
+(unary_function DeployAccessFn)
+(functionCorrespondingPredicate DeployAccessFn deployAccessOf)
+(arg DeployAccessFn 1 thing)
+(genlResult DeployAccessFn deploy_access)
+
+(comment deployAccessOf "(deployAccessOf ?resource ?kind) means that ?kind is the happening kind of deploying workloads onto ?resource under a grant: (DeployAccessFn ?resource) is ?kind.")
+(binary_predicate deployAccessOf)
+(arg deployAccessOf 1 thing)
+(genlArg deployAccessOf 2 deploy_access)
+(set/monotonic (functional deployAccessOf))
+
+;; Each rule is forward because only a forward firing mints (WriteAccessFn ?resource)
+;; and so places the minted kind below write_access; a backward proof mints nothing.
+;; Each antecedent joins on the corresponding predicate, which the mint projects each
+;; access kind onto, since a stored grant names the minted constant and a non-ground
+;; function term in an antecedent matches none.
+(set/defaultRule (set/forwardRule
+  (implies (and (hasCapability ?principal ?kind) (adminAccessOf ?resource ?kind))
+           (hasCapability ?principal (WriteAccessFn ?resource)))))
+(set/defaultRule (set/forwardRule
+  (implies (and (hasCapability ?principal ?kind) (deployAccessOf ?resource ?kind))
+           (hasCapability ?principal (WriteAccessFn ?resource)))))
+
+(comment custodianOf "(custodianOf ?person ?thing) means that ?person is responsible for keeping ?thing in working order: the one to call when it breaks. Not access: a custodian need hold no grant over ?thing, and one who holds a grant need not be its custodian.")
+(set/monotonic (instance_relation_predicate custodianOf))
+(arg custodianOf 1 person)
+(arg custodianOf 2 thing)
+
+;; ==== file paths ===============================================================
+;; An absolute path names a file only within a filesystem namespace: the same path read
+;; in a container and on its host can resolve to two files, or to one, or to none.  So a
+;; reference is the pair, built by FilePathRefFn and read back through filePathRefOf,
+;; pathNamespace and pathText.  Looking files up in a namespace is an access kind, and a
+;; grant of it is (hasCapability ?principal (FileLookupFn ?namespace)).  Lookup is a
+;; precondition of reading a file, and entails no read access.
+
+(comment filesystem_namespace "A rooted tree of names in which an absolute file path is resolved. Not a host, a storage device or a mount point: two namespaces over the same storage need not resolve a path alike.")
+(positiveExampleComment filesystem_namespace "the file tree a container's processes see")
+(positiveExampleComment filesystem_namespace "the file tree of a computer's root filesystem")
+(genl filesystem_namespace intangible)
+
+(comment file_path_reference "An absolute path taken together with the filesystem namespace it is resolved in. A reference to look a file up by, which does not say that the file exists or can be read.")
+(genl file_path_reference linguistic)
+
+(comment file_lookup "Resolving paths in a filesystem namespace under a grant. A precondition of reading any file in the namespace, which does not say that a given path exists or can be read.")
+(genl file_lookup resource_access)
+
+(comment FilePathRefFn "(FilePathRefFn ?namespace ?path) means the reference made of the filesystem namespace ?namespace and the absolute path string ?path. Does not say that a file exists at the path.")
+(reifiable_function FilePathRefFn)
+(binary_function FilePathRefFn)
+(functionCorrespondingPredicate FilePathRefFn filePathRefOf 3)
+(arg FilePathRefFn 1 filesystem_namespace)
+(quotedArg FilePathRefFn 2 string)
+(result FilePathRefFn file_path_reference)
+
+(comment filePathRefOf "(filePathRefOf ?namespace ?path ?reference) means that ?reference is the reference made of ?namespace and the absolute path string ?path: (FilePathRefFn ?namespace ?path) is ?reference.")
+(ternary_predicate filePathRefOf)
+(arg filePathRefOf 1 filesystem_namespace)
+(quotedArg filePathRefOf 2 string)
+(arg filePathRefOf 3 file_path_reference)
+
+(comment pathNamespace "(pathNamespace ?reference ?namespace) means that ?reference's path is resolved in the filesystem namespace ?namespace. Functional: a reference has one namespace.")
+(set/monotonic (instance_relation_predicate pathNamespace))
+(arg pathNamespace 1 file_path_reference)
+(arg pathNamespace 2 filesystem_namespace)
+(set/monotonic (functional pathNamespace))
+
+(comment pathText "(pathText ?reference ?path) means that ?path is the absolute path string of ?reference. Functional: a reference has one path.")
+(set/monotonic (instance_relation_predicate pathText))
+(arg pathText 1 file_path_reference)
+(quotedArg pathText 2 string)
+(set/monotonic (functional pathText))
+
+(set/forwardRule
+ (implies (filePathRefOf ?namespace ?path ?reference)
+          (and (pathNamespace ?reference ?namespace)
+               (pathText ?reference ?path))))
+
+(comment FileLookupFn "(FileLookupFn ?namespace) means the happening kind of resolving paths in the filesystem namespace ?namespace under a grant, a kind below file_lookup. A grant is stated as (hasCapability ?principal (FileLookupFn ?namespace)).")
+(reifiable_function FileLookupFn)
+(unary_function FileLookupFn)
+(functionCorrespondingPredicate FileLookupFn fileLookupOf)
+(arg FileLookupFn 1 filesystem_namespace)
+(genlResult FileLookupFn file_lookup)
+
+(comment fileLookupOf "(fileLookupOf ?namespace ?kind) means that ?kind is the happening kind of resolving paths in ?namespace under a grant: (FileLookupFn ?namespace) is ?kind.")
+(binary_predicate fileLookupOf)
+(arg fileLookupOf 1 filesystem_namespace)
+(genlArg fileLookupOf 2 file_lookup)
+(set/monotonic (functional fileLookupOf))
+
+;; ==== pull requests on a forge =================================================
+;; A pull request is named by its repository and its number, built by PullRequestFn and
+;; read back through pullRequestOf, value last.  prStatus gives the stage it is at, and
+;; takes no time argument: a status holds over the time of the context it is stated in.
+;; holdsReadyLatch says whose call it is that a repository's drafts are ready, and is not
+;; a grant.  Merging is an access kind, and a grant of it is (hasCapability ?principal
+;; (MergeAccessFn ?repository)).  Every merge changes its repository's target branch, so
+;; merge_access is below write_access, and a default rule of the form the admin and
+;; deploy rules above take concludes write access over the same repository.  A role
+;; that may merge but not push, as on a protected branch, is stated as a monotonic
+;; (not (hasCapability ?principal (WriteAccessFn ?repository))), which defeats that
+;; default; a default-strength denial does not.
+
+(comment forge_repository "A version-controlled repository as a forge hosts it, with its branches and the pull requests opened against it. Stays the same repository as commits land and branches move.")
+(genl forge_repository digital_artifact)
+
+(comment pull_request "A request on a forge to merge a branch's commits into a branch of a repository, with its discussion and reviews. Stays the same request through every change of status and every push to its branch.")
+(genl pull_request digital_artifact)
+
+(comment PullRequestFn "(PullRequestFn ?repository ?number) means the pull request numbered ?number in ?repository. A forge never gives one number to two pull requests of one repository, so the pair fixes the request. Says nothing about its status or whether the forge still serves it.")
+(reifiable_function PullRequestFn)
+(binary_function PullRequestFn)
+(functionCorrespondingPredicate PullRequestFn pullRequestOf 3)
+(arg PullRequestFn 1 forge_repository)
+(arg PullRequestFn 2 positive_integer)
+(result PullRequestFn pull_request)
+
+(comment pullRequestOf "(pullRequestOf ?repository ?number ?pullRequest) means that ?pullRequest is the pull request numbered ?number in ?repository: (PullRequestFn ?repository ?number) is ?pullRequest. A query joins on it to reach a repository's pull requests.")
+(ternary_predicate pullRequestOf)
+(arg pullRequestOf 1 forge_repository)
+(arg pullRequestOf 2 positive_integer)
+(arg pullRequestOf 3 pull_request)
+
+(comment pull_request_status "A stage a pull request can be at on its forge. A stage, not a pull request: it outlasts every request that passes through it.")
+(genl pull_request_status nowhere_never)
+
+(comment PullRequestDraft "Open, and marked by its author as not ready for review. A forge refuses to merge a pull request at this stage.")
+(pull_request_status PullRequestDraft)
+
+(comment PullRequestReady "Open and ready for review, whether or not it is approved or can merge cleanly.")
+(pull_request_status PullRequestReady)
+
+(comment PullRequestMerged "Merged into its target branch by the forge. Final: a merged pull request is never reopened.")
+(pull_request_status PullRequestMerged)
+
+(comment PullRequestClosed "Closed without being merged. Not final: the forge can reopen it.")
+(pull_request_status PullRequestClosed)
+
+(comment prStatus "(prStatus ?pullRequest ?status) means that ?pullRequest is at the stage ?status on its forge. One stage at a time. Takes no time argument: it holds over the time of the context it is stated in.")
+(set/monotonic (instance_relation_predicate prStatus))
+(arg prStatus 1 pull_request)
+(arg prStatus 2 pull_request_status)
+(set/monotonic (functional prStatus))
+
+(comment holdsReadyLatch "(holdsReadyLatch ?person ?repository) means that a draft pull request of ?repository waits on ?person to mark it ready or clear it to be. Not a permission: it grants no capability over ?repository, and a capability holder need not hold it.")
+(set/monotonic (instance_relation_predicate holdsReadyLatch))
+(arg holdsReadyLatch 1 person)
+(arg holdsReadyLatch 2 forge_repository)
+
+(comment merge_access "Merging a pull request into a repository under a grant. A merge changes the repository's target branch, so every merge is a write.")
+(genl merge_access write_access)
+
+(comment MergeAccessFn "(MergeAccessFn ?repository) means the happening kind of merging pull requests into ?repository under a grant, a kind below merge_access. A grant is stated as (hasCapability ?principal (MergeAccessFn ?repository)). Says nothing about which pull requests are ready to merge.")
+(reifiable_function MergeAccessFn)
+(unary_function MergeAccessFn)
+(functionCorrespondingPredicate MergeAccessFn mergeAccessOf)
+(arg MergeAccessFn 1 forge_repository)
+(genlResult MergeAccessFn merge_access)
+
+(comment mergeAccessOf "(mergeAccessOf ?repository ?kind) means that ?kind is the happening kind of merging pull requests into ?repository under a grant: (MergeAccessFn ?repository) is ?kind.")
+(binary_predicate mergeAccessOf)
+(arg mergeAccessOf 1 forge_repository)
+(genlArg mergeAccessOf 2 merge_access)
+(set/monotonic (functional mergeAccessOf))
+
+(set/defaultRule (set/forwardRule
+  (implies (and (hasCapability ?principal ?kind) (mergeAccessOf ?repository ?kind))
+           (hasCapability ?principal (WriteAccessFn ?repository)))))
 
 ;; ==== content and carriers =================================================
 ;; information, among the computing kinds above, is the content: what a document says,
@@ -231,6 +640,34 @@
 (quotedArg agentClaims 2 sentex_handle_term)
 (target_following_predicate agentClaims)
 
+;; ---- the message a claim came from ------------------------------------------
+;; discordMessageClaims records where a stored claim came from, as agentClaims records
+;; who presents it, and is typed and marked as agentClaims is: position 2 holds a sentex
+;; handle, so it declares thing.  The claimer is the sentex's creator, read from its
+;; provenance, and is not an argument.
+(comment discord_message "A message posted on Discord, fixed by its snowflake id. Discord holds its text and its author, and an edit or a deletion there does not make it a different message.")
+(genl discord_message digital_artifact)
+
+(comment DiscordMessageFn "(DiscordMessageFn ?snowflake) means the Discord message whose snowflake id is ?snowflake, written as a decimal string. A snowflake is unique across Discord, so the id alone fixes the message. Does not say that the message can still be fetched.")
+(reifiable_function DiscordMessageFn)
+(unary_function DiscordMessageFn)
+(quotedArg DiscordMessageFn 1 string)
+(result DiscordMessageFn discord_message)
+(functionCorrespondingPredicate DiscordMessageFn discordMessageOf)
+
+(comment discordMessageOf "(discordMessageOf ?snowflake ?message) means that ?message is the Discord message whose snowflake id is ?snowflake, written as a decimal string: (DiscordMessageFn ?snowflake) is ?message.")
+(binary_predicate discordMessageOf)
+(quotedArg discordMessageOf 1 string)
+(arg discordMessageOf 2 discord_message)
+(set/monotonic (functional discordMessageOf))
+
+(comment discordMessageClaims "(discordMessageClaims ?message (sentexHandle H)) means that the Discord message ?message asserts, in natural language, what the sentex named by the handle states. Records where the claim came from, not that it is true. Declared target_following_predicate, so retracting the sentex retracts each receipt that names it.")
+(binary_predicate discordMessageClaims)
+(set/monotonic (instance_relation_predicate discordMessageClaims))
+(arg discordMessageClaims 1 discord_message)
+(arg discordMessageClaims 2 thing)
+(target_following_predicate discordMessageClaims)
+
 ;; dataContent and propositionalContent are both stated, never derived: no rule here
 ;; computes either one from an information's author, its encoding or its context. A
 ;; translation of the same text, or a message with a different author, states its own
@@ -247,6 +684,15 @@
 (set/monotonic (instance_relation_predicate propositionalContent))
 (arg propositionalContent 1 information)
 (arg propositionalContent 2 proposition)
+
+;; ---- names ------------------------------------------------------------------
+;; nameString is stated in the form toolName is, without toolName's
+;; instance_relation_predicate and functional marks: position 1 takes a thing of any
+;; kind, and a thing can have more than one name.
+(comment nameString "(nameString ?thing ?name) means that ?name is a string that names ?thing, e.g. a person's name as written. A thing can have more than one name string.")
+(binary_predicate nameString)
+(arg nameString 1 thing)
+(quotedArg nameString 2 string)
 
 ;; ==== perception ==========================================================
 ;; Arg 1 of every perception relation names the perceiver and declares `thing`: vaelii's
@@ -304,3 +750,111 @@
 (comment image_viewing
          "An event of taking in a static image through sight and perceiving what it shows. The event-kind counterpart of seeImage: (hasCapability ?x image_viewing) means ?x can be the doer of one.")
 (genl image_viewing acausal_event)
+
+;; ==== relationships and plural identity ======================================
+;; Relationship vocabulary narrower than CxSocial's own, which CxTra sees: nesting
+;; partners, chosen siblings, constructs and their founders, and the identities of a
+;; plural system.
+
+;; ---- nestingPartnerOf -------------------------------------------------------
+(comment nestingPartnerOf
+         "(nestingPartnerOf ?x ?y) means ?x and ?y are romantic partners who live together. A spec of romanticPartnerOf and of roommateOf, and read by the rule below from the two together.")
+(set/monotonic (instance_relation_predicate nestingPartnerOf))
+(set/monotonic (symmetric nestingPartnerOf))
+(arg nestingPartnerOf 1 person)
+(arg nestingPartnerOf 2 person)
+(genl nestingPartnerOf romanticPartnerOf)
+(genl nestingPartnerOf roommateOf)
+
+(set/forwardRule
+  (implies (and (romanticPartnerOf ?x ?y) (roommateOf ?x ?y))
+           (nestingPartnerOf ?x ?y)))
+
+;; ---- chosen kinship ----------------------------------------------------------
+(comment chosenSiblingOf
+         "(chosenSiblingOf ?x ?y) means ?x and ?y are siblings by choice, not by birth: family by choice, so a spec of relativeOf. Neither implies nor is implied by the biological siblingOf.")
+(set/monotonic (instance_relation_predicate chosenSiblingOf))
+(set/monotonic (symmetric chosenSiblingOf))
+(arg chosenSiblingOf 1 person)
+(arg chosenSiblingOf 2 person)
+(genl chosenSiblingOf relativeOf)
+
+;; ---- constructs and their founders --------------------------------------------
+;; A construct is a person.  It is not made, since made is tangible, and a construct
+;; makes no commitment either way on tangible or intangible, as core.txt says of a
+;; person.  A construct is never an organism; the separation is stated here, monotonic as
+;; the upper ontology's other separations from organism are, and (disjoint human construct)
+;; follows from it.  A construct runs on a computer and is not one: (disjoint person
+;; computer) above separates the two.  Uncommitted on tangibility, a construct is kept
+;; apart from no intangible or aspatial type by that route, so two more separations are
+;; stated here: a construct is not the computational system its mind runs in, and it is
+;; one person, not an organization, a group of people acting as one body.
+(comment construct "A person whose mind runs on a computational substrate rather than a biological one: an artificial agent with social agency, continuity of identity, and accountability for what it does.")
+(positiveExampleComment construct "an artificial agent that keeps its identity, memory and relationships from one conversation to the next")
+(negativeExampleComment construct "the computer or the container a construct runs on, which is a separate thing")
+(genl construct person)
+(set/monotonic (disjoint construct organism))
+(set/monotonic (disjoint construct computational_system))
+(set/monotonic (disjoint construct organization))
+
+;; A construct is never its own process: the computational system its mind runs in is a
+;; seat, and the construct has it: hasSeat relates the two, and runsOn places the seat on
+;; a container, a virtual machine or a computer.  hasSeat is not functional, since a
+;; construct can move from one seat to another or run in several at once.
+(comment seat "A computational system in which a construct runs: the execution environment its mind's processes live in, such as a container or a virtual machine.")
+(positiveExampleComment seat "a container a construct's sessions run in")
+(negativeExampleComment seat "the construct itself, which is a person and has its seat")
+(genl seat computational_system)
+
+(comment hasSeat "(hasSeat ?construct ?seat) means that ?construct runs in ?seat. Says nothing about what ?seat runs on, which runsOn states.")
+(set/monotonic (instance_relation_predicate hasSeat))
+(arg hasSeat 1 construct)
+(arg hasSeat 2 seat)
+(not (functional hasSeat))
+
+;; founderOf is the originatorOf of a construct: the person who founded it brought it into
+;; being by designing and starting it.  The founder of an organization is not one, since
+;; position 2 takes a construct.
+(comment founderOf
+         "(founderOf ?founder ?construct) means that ?founder is the person who founded the construct ?construct: who designed it and brought it into being.")
+(set/monotonic (instance_relation_predicate founderOf))
+(set/monotonic (asymmetric founderOf))
+(arg founderOf 1 person)
+(arg founderOf 2 construct)
+(genl founderOf originatorOf)
+
+;; ---- plural identity ----------------------------------------------------------
+;; Every person is exactly one of singlet, plural_system and alter, so the three partition
+;; person.  plural_system classifies the one who has the alters, for a human the body
+;; they share, and not the alters taken together; alterOf relates each alter to it.  A
+;; singlet has no alters and no relation hosts it.  Counting the body as a person beside
+;; its alters is imprecise as ontology, and the vocabulary takes it for its simplicity.
+;; The three are time-varying and person is not: the arrangement can change, and a
+;; person who passes from one part to another goes on existing.  Memberships are checked
+;; without time, so the partition is read of a person at one time: the KB states the
+;; arrangement that holds, and a change retracts the membership it ends.
+(comment singlet "A person with no alters. Time-varying: a singlet can stop being one and go on existing, as a person who comes to have alters becomes a plural system.")
+(comment plural_system "A person who has two or more alters: for a human, the body its alters share, not the alters taken together. Time-varying: a plural system can stop being one and go on existing, as a body whose alters integrate into one identity becomes a singlet.")
+(comment alter "One of the identities of a plural system, a person in its own right. Time-varying: an alter can stop being one and go on existing, since the arrangement of the system it belongs to can change.")
+(set/monotonic (partition person singlet plural_system alter))
+
+(comment alterOf
+         "(alterOf ?alter ?system) means that ?alter is one of the identities of the plural system ?system. Functional: an alter belongs to one system.")
+(set/monotonic (instance_relation_predicate alterOf))
+(set/monotonic (asymmetric alterOf))
+(arg alterOf 1 alter)
+(arg alterOf 2 plural_system)
+(set/monotonic (functional alterOf))
+
+(comment headmateOf
+         "(headmateOf ?x ?y) means that ?x and ?y are two alters of the same plural system. Read by the rule below from alterOf.")
+(set/monotonic (instance_relation_predicate headmateOf))
+(set/monotonic (symmetric headmateOf))
+(arg headmateOf 1 alter)
+(arg headmateOf 2 alter)
+(not (genl headmateOf knows))
+(comment (not (genl headmateOf knows)) "Sharing a body does not entail awareness: an alter can be unaware of another alter of the same system.")
+
+(set/forwardRule
+  (implies (and (alterOf ?a1 ?system) (alterOf ?a2 ?system) (different ?a1 ?a2))
+           (headmateOf ?a1 ?a2)))

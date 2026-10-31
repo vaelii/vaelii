@@ -499,6 +499,27 @@
       (is (false? (:checked spec))
           "typeGenl has no structural well-formedness arm — no engine reads it"))))
 
+(tu/deftest-kb successor-type-order-reads-as-typegenl-with-the-arguments-swapped
+  (testing "the ladder's two steps are stated"
+    (is (v/ask? kb '(successorTypeOrder type metatype) 'CxUniverse))
+    (is (v/ask? kb '(successorTypeOrder metatype meta_metatype) 'CxUniverse)))
+  (testing "the typeGenl facts of the ladder are answered, not stated"
+    (doseq [[higher lower] '[[metatype type] [meta_metatype metatype]]]
+      (is (v/ask? kb (list 'typeGenl higher lower) 'CxUniverse) (str higher " " lower))
+      (is (empty? (v/sentexes-matching kb (list 'typeGenl higher lower) 'CxUniverse))
+          (str "(typeGenl " higher " " lower ") is not stored"))))
+  (testing "both positions take an order of type"
+    (is (v/ask? kb '(arg successorTypeOrder 1 type_type_by_order) 'CxUniverse))
+    (is (v/ask? kb '(arg successorTypeOrder 2 type_type_by_order) 'CxUniverse)))
+  (testing "a step stated in a context answers the swapped typeGenl goal there and nowhere else"
+    (tu/with-terms [CxLadder Order4]
+      (v/assert kb (list 'genlCx CxLadder 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'successorTypeOrder 'meta_metatype Order4) CxLadder)
+      (is (v/ask? kb (list 'typeGenl Order4 'meta_metatype) CxLadder))
+      (is (not (v/ask? kb (list 'typeGenl 'meta_metatype Order4) CxLadder))
+          "the edge swaps the arguments, so the unswapped goal is not answered")
+      (is (not (v/ask? kb (list 'typeGenl Order4 'meta_metatype) 'CxUniverse))))))
+
 (def ^:private type-relating-predicates
   "The predicates whose every argument is a TYPE (or a predicate) the claim relates, so the
   claim is meaningful only in a context that sees all of them at once.  A `genl`, `disjoint`,

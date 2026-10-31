@@ -1633,15 +1633,15 @@ vocabulary to the shipped files, every `genlCx` edge excepted ([contexts.md](con
 The **middle contexts** are `kb/middle/`, each seeing CxUniverse (`CxKinship`,
 `CxMereology`, `CxBiology`, `CxChange`, `CxSocial` — the rules; `CxAnatomy` and `CxSize`
 — claims about kinds), and **CxWell** sees the seven, so it transitively sees the whole
-ontology but three opt-in theories.
+ontology but two opt-in theories.
 `CxNormalPhysicalConditions`, the states of matter at room temperature, and `CxTra`,
 vocabulary that is generally useful but specific to one domain (the relations over
-software tools, media resources and DNS names with the kinds they are typed over, and
-the perception relations), also sit in `kb/middle/` and see CxUniverse, and CxWell does not see either of
-them: a context opts in by placing itself under one. `CxSocialExtension` sits beside them and sees `CxSocial` instead,
-carrying `CxSocial`'s own relations to a context placed under it;
-`<Theory>Extension` names a theory that extends an existing starter theory with
-vocabulary most contexts under the base theory have no occasion to see.
+software tools, hosts, access and file paths, media resources and DNS names with the
+kinds they are typed over, the perception relations, and relationship and
+plural-identity vocabulary narrower than `CxSocial`'s), also sit in `kb/middle/`, and
+CxWell does not see either of them: a context opts in by placing itself under one.
+`CxTra` sees `CxSocial` as well as CxUniverse, so it carries `CxSocial`'s own relations
+to a context placed under it.
 
 The upper layer says what things **are**, always true, like `genl`; the middle contexts
 say how they **interrelate**, where several overlapping accounts can coexist. Each middle

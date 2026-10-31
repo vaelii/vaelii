@@ -58,24 +58,24 @@
         - CxSocial.txt    — what acquaintance follows from; employment as one way
                                  of belonging; the general relationship and
                                  dwelling vocabulary over two persons.
-        - CxSocialExtension.txt — relationship and plural-identity vocabulary
-                                 narrower than CxSocial's own. Opt-in: it sees
-                                 CxSocial and CxWell does not see it. The
-                                 Extension suffix names a theory that extends
-                                 an existing starter theory with vocabulary
-                                 most contexts under the base theory have no
-                                 occasion to see.
         - CxTra.txt       — vocabulary that is generally useful but specific to
                                  one domain: relations over software tools, their
-                                 invocations and receipts, media resources and DNS
-                                 names, the kinds the relations are typed over, and
+                                 invocations and receipts and the capabilities they
+                                 confer, media resources and DNS names, the kinds
+                                 the relations are typed over, computers and what
+                                 runs on them, access to a resource and to the
+                                 files a path names, pull requests on a forge
+                                 and who may merge them, and
                                  the perception relations perceives, sees, seeImage
-                                 and watchVideo. Opt-in: it sees CxUniverse and
+                                 and watchVideo, and relationship and plural-
+                                 identity vocabulary narrower than CxSocial's.
+                                 Opt-in: it sees CxUniverse and CxSocial, and
                                  CxWell does not see it.
 
   The topology, most general (top) to most specific (bottom): CxUniverse holds the upper
-  ontology; each middle context sees CxUniverse and not the other middle contexts; and
-  CxWell sees every middle context but the opt-in ones.  Each middle file wires itself in
+  ontology; each of the seven theories sees CxUniverse and not the other middle
+  contexts, and an opt-in theory sees the middle context its vocabulary builds on (CxTra
+  sees CxSocial); and CxWell sees every middle context but the opt-in ones.  Each middle file wires itself in
   with its own `genlCx` edges, so the topology is data.  **No cast and no contingent facts
   ship**: the starter is a schema, and
   contingent data (a cast, worked examples, the Aesop fables) belongs below CxWell

@@ -93,7 +93,7 @@ The default topology is three levels, most general (top) to most specific (botto
 | context | holds | sees |
 |---|---|---|
 | CxUniverse | the upper ontology: every file under `resources/kb/upper/` | nothing |
-| the middle contexts | `kb/middle/` — seven theories, beside three opt-in theories | CxUniverse |
+| the middle contexts | `kb/middle/` — seven theories, beside two opt-in theories | CxUniverse (CxTra also CxSocial) |
 | CxWell | no content of its own | the seven theories |
 
 Data hangs below CxWell.
@@ -173,18 +173,59 @@ Data hangs below CxWell.
   kitchen. A context opts in by placing itself under CxNormalPhysicalConditions, and a
   context under both CxWell and CxNormalPhysicalConditions reads the everyday theories at
   room temperature.
-- **CxTra** — an **opt-in** theory in `kb/middle/` that sees CxUniverse and that
-  CxWell does **not** see. CxTra holds vocabulary that is generally useful but specific
+- **CxTra** — an **opt-in** theory in `kb/middle/` that sees CxUniverse and CxSocial,
+  and that CxWell does **not** see. It sees CxSocial because its relationship terms
+  specialize CxSocial's relations, so a context placed under CxTra reads CxSocial's
+  relations too. CxTra holds vocabulary that is generally useful but specific
   to one domain, and no starter context CxWell sees states that vocabulary. A context
   opts in by placing itself under CxTra, and a context that does not see CxTra reads
-  none of its relations or kinds. CxTra holds three vocabularies:
-  - **computing** — ten relations over software tools, their invocations and
+  none of its relations or kinds. CxTra holds eight vocabularies:
+  - **computing** — eleven relations over software tools, their invocations and
     receipts, media resources and DNS names, and the sixteen kinds the relations are
     typed over (`computational_system`, `software_tool`, `tool_invocation`,
     `media_resource`, `ip_address` and the kinds below them), each with its comment,
-    its `genl` edges and its disjointness. The computing relations state no rule.
+    its `genl` edges and its disjointness. `(toolEnablesCapability ?tool ?kind)` says
+    that whoever has `?tool` can be the doer of a happening of kind `?kind`, and the
+    one computing rule, a default guarded by `causal`, reads `hasCapability` from it and
+    `agentHasTool`. No rule concludes anything about an invocation.
     `(functional toolName)` is a decontextualized mark, so every context that sees
     CxUniverse reads that mark.
+  - **hosts** — `computer` is hardware, an `electronic_device`, and
+    `virtual_machine`, `software_container` and `software_service` (with its spec
+    `mcp_server`) are computational systems, separated from one another.
+    `(runsOn ?system ?host)` is transitive, and no rule carries any other fact across
+    it, so a fact about a container is not thereby one about its host.
+    `kubernetes_cluster`, `network` and `kubernetes_namespace` group them, through
+    `clusterNode` (with its specs `controlPlaneNode` and `workerNode`; a node is the
+    operating system install, a computational system that runs on a computer or a
+    hypervisor), `onNetwork` and `kubernetesNamespaceOf`. `(hostnameOf ?thing ?name)` is functional in neither
+    position, so two systems that share a name are not thereby equal.
+  - **access** — a grant is a capability: `(hasCapability ?principal (ShellAccessFn
+    ?resource))`. Five reifiable functions, `ReadAccessFn`, `WriteAccessFn`,
+    `ShellAccessFn`, `AdminAccessFn` and `DeployAccessFn`, map a resource to a happening
+    kind below one of the five kinds under `resource_access`, and each has a functional
+    corresponding predicate (`readAccessOf` and the rest). Two default rules conclude
+    write access from admin access and from deploy access over the same resource. A
+    missing grant is unknown, and no rule concludes a denial. `(custodianOf ?person
+    ?thing)` names who keeps a thing working, and is not access.
+  - **file paths** — an absolute path names a file only within a
+    `filesystem_namespace`, so a `file_path_reference` is the pair, built by the
+    reifiable `FilePathRefFn` and read back through `filePathRefOf`, `pathNamespace`
+    and `pathText`. `file_lookup`, resolving paths in a namespace, is an access kind
+    below `resource_access`, and `(hasCapability ?principal (FileLookupFn ?namespace))`
+    states a grant of it, with `fileLookupOf` its corresponding predicate. Lookup
+    entails no read access.
+  - **pull requests** — a `pull_request` of a `forge_repository` (both below
+    `digital_artifact`) is named by the reifiable `(PullRequestFn ?repository
+    ?number)`, with `pullRequestOf` its corresponding predicate, value last.
+    `(prStatus ?pullRequest ?status)` takes one of four `pull_request_status` values,
+    `PullRequestDraft`, `PullRequestReady`, `PullRequestMerged` and
+    `PullRequestClosed`, and no time argument. `(holdsReadyLatch ?person ?repository)`
+    says whose call it is that a repository's drafts are ready, and is not a grant.
+    `merge_access` is below `write_access`, `(hasCapability ?principal (MergeAccessFn
+    ?repository))` states a grant of it, with `mergeAccessOf` its functional
+    corresponding predicate, and a default rule concludes write access over the same
+    repository.
   - **content and carriers** — `information` is content apart from its medium, and
     `conceptual_work` is information composed as one work. `(carries ?carrier ?info)`
     types position 1 `temporal` and position 2 `information`, so a tangible paper copy
@@ -199,22 +240,27 @@ Data hangs below CxWell.
     `(propositionalContent ?info ?proposition)` is not functional over the existing
     `proposition` type; neither is derived from an information's author, encoding or
     context. `agentClaims` is `target_following_predicate`, so retracting H retracts
-    the claims that name it.
+    the claims that name it. `(discordMessageClaims ?message (sentexHandle H))` records
+    that a `discord_message`, named by its snowflake id as a string through the
+    reifiable `DiscordMessageFn`, asserts sentex H; it is typed and marked as
+    `agentClaims` is, so it does not outlive H, and records where a claim came from,
+    not that it is true. `(nameString ?thing ?name)` takes a thing of any kind and
+    a string, and a thing can have more than one name string.
   - **perception** — `perceives` is the general relation and `sees` specializes it.
     `seeImage` and `watchVideo` conclude `sees` by a rule guarded by its `spatial`
     second argument, since an image or a video need not be located.
-- **CxSocialExtension** — an **opt-in** theory in `kb/middle/` that sees CxSocial,
-  and through it CxUniverse, and that CxWell does **not** see: `nestingPartnerOf`
-  (a spec of CxSocial's `romanticPartnerOf` and `roommateOf`, and read by a rule from
-  the two) and `chosenSiblingOf` (a spec of `relativeOf`). A context opts in by
-  placing itself under CxSocialExtension, which also carries CxSocial's own
-  relations to it. **`<Theory>Extension` names a
-  theory that extends an existing starter theory with vocabulary most contexts
-  under the base theory have no occasion to see:** the base theory ships to every
-  context below CxWell, and the extension only to a context placed under it.
-- **CxWell** — sees every middle context except the three opt-in theories, so it (and any
+  - **relationships and plural identity** — relationship vocabulary narrower than
+    CxSocial's: `nestingPartnerOf` (a spec of CxSocial's `romanticPartnerOf` and
+    `roommateOf`, and read by a rule from the two), `chosenSiblingOf` (a spec of
+    `relativeOf`), `construct` (a person whose mind runs on a computational substrate,
+    `:monotonic`-disjoint from `organism`, `computational_system` and `organization`), its `seat` (the computational
+    system it runs in, related by the non-functional `hasSeat`), `founderOf` (a spec of
+    `originatorOf` naming the person who founded a construct), and the plurality terms: `singlet`, `plural_system` and
+    `alter`, separated under `person`, with `alterOf` and `headmateOf` (read by a rule
+    from `alterOf`, and not a spec of `knows`).
+- **CxWell** — sees every middle context except the two opt-in theories, so it (and any
   context below it) transitively sees the whole ontology except
-  CxNormalPhysicalConditions, CxSocialExtension and CxTra. A
+  CxNormalPhysicalConditions and CxTra. A
   `kb/middle/` file is one of the seven theories when it states `(genlCx CxWell <its
   context>)`, and an opt-in theory when it does not.
 

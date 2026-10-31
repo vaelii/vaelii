@@ -23,9 +23,10 @@
   (atom ::unread))
 
 (def ^:private integrity-readers
-  "Three shipped contexts that together see every middle context: CxWell's seven through
-  CxRealWorld, and the two opt-in theories CxWell does not see."
-  '[CxNormalPhysicalConditions CxTra CxSocialExtension])
+  "Two shipped contexts that together see every middle context: CxWell's seven through
+  CxRealWorld, which CxNormalPhysicalConditions sees, and CxTra, the other opt-in theory
+  CxWell does not see."
+  '[CxNormalPhysicalConditions CxTra])
 
 (def ^:private starter-integrity
   "The default `kb-integrity` sweep over no candidate terms from each of
@@ -179,7 +180,7 @@
   ;;
   ;; A term more than one middle context defines or extends belongs in CxUniverse.  Using
   ;; another context's term is not caught here; *extending* one breaks a closure.  A middle
-  ;; context that sees another (CxSocialExtension sees CxSocial) is not beside it, so a
+  ;; context that sees another (CxTra sees CxSocial) is not beside it, so a
   ;; term the two touch passes when one context touching it is seen by every other.
   (let [pairs      (authored-sentences)
         up         (reduce (fn [m [_ s]]

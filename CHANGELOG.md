@@ -220,6 +220,21 @@ Fourteen entries are **Breaking** and three are **Refusals**. Each carries its o
   *Breaks:* `try-assert` of a unary predicate's membership over an argument outside the
   removed declaration's type
 
+### Breaking: shipped ontology
+
+- **CxSocialExtension merges into CxTra, and CxTra sees CxSocial.**
+  `kb/middle/CxTra.txt` states every form `CxSocialExtension.txt` stated
+  (`nestingPartnerOf`, `chosenSiblingOf`, `founderOf` and the plurality terms) and
+  `(genlCx CxTra CxSocial)` beside `(genlCx CxTra CxUniverse)`, since those relations
+  specialize CxSocial's. `core.txt` no longer states `(context CxSocialExtension)`. A
+  context is a unit of visibility, and both theories were opt-in, so one opt-in context
+  holds both. A context placed under CxTra now also reads CxSocial's relations and
+  rules. No relation, kind, rule or declaration changes.
+  [contexts.md](docs/contexts.md)
+  *Migration:* rename `CxSocialExtension` to `CxTra` in any `genlCx` edge, `ist` or
+  context argument that names it; a context placed under both needs one edge to CxTra.
+  *Breaks:* `CxSocialExtension`
+
 ### Breaking: storage
 
 - **A store records its reasoner set, and an open under another set is refused.**
@@ -494,6 +509,104 @@ Fourteen entries are **Breaking** and three are **Refusals**. Each carries its o
   `quality-report`'s order, every listed rule and declaration linked to its sentex. The
   button runs the census as a job beside a load; `/stats` and `/quality` link each other.
   [web.md](docs/web.md#the-health-report)
+
+### Additive: shipped ontology
+
+- **`core.txt` declares `successorTypeOrder`, the metatype-order ladder one step at a
+  time.** `(successorTypeOrder ?lower ?higher)` says that `?higher` is the order of type
+  directly above `?lower`. Both positions take a `type_type_by_order`, and `(genlInverse
+  successorTypeOrder typeGenl)` reads each fact as the `typeGenl` fact with its arguments
+  swapped. `core.txt` states `(successorTypeOrder type metatype)` and
+  `(successorTypeOrder metatype meta_metatype)`, which answer `(typeGenl metatype type)`
+  and `(typeGenl meta_metatype metatype)`; `core.txt` no longer states those two.
+  `vocabulary/classification` calls it inert, as it does `typeGenl`.
+  [glossary.md](docs/glossary.md)
+  *Migration:* none.
+
+- **CxTra ships `toolEnablesCapability`, and reads `hasCapability` from it by
+  default.** `(toolEnablesCapability ?tool ?kind)` says that whoever has the software
+  tool `?tool` can be the doer of a happening of kind `?kind`: position 1 is typed
+  `software_tool` and position 2 is a `happening` kind (`genlArg`). A default forward
+  rule concludes `(hasCapability ?agent ?kind)` from `(agentHasTool ?agent ?tool)` and
+  that fact, guarded by `(causal ?agent)`, since `agentHasTool` types its agent `thing`
+  and `hasCapability` types it `causal`. A `:monotonic` `(not (hasCapability ?agent ?kind))`
+  defeats it. [contexts.md](docs/contexts.md)
+  *Migration:* none.
+
+- **CxTra ships hosts, what runs on them, and access to a resource.** `computer` is
+  below `electronic_device` and `:monotonic`-disjoint from `person`: a person may run on
+  a computer but is not one.
+  `virtual_machine`, `software_container` and `software_service` are separated under
+  `computational_system`, and `mcp_server` is below `software_service`. `(runsOn
+  ?system ?host)` is transitive, and no rule carries any other fact across it.
+  `kubernetes_cluster` is a `computational_system`, and `network` and
+  `kubernetes_namespace` are `intangible`; `clusterNode` with its specs
+  `controlPlaneNode` and `workerNode`, whose node is a `computational_system` (the
+  operating system install that runs on a computer or a hypervisor), `onNetwork` and the
+  functional `kubernetesNamespaceOf` relate them. `(hostnameOf ?thing ?name)` takes a string and
+  states `(not (functional hostnameOf))` and `(not (functionalInArg hostnameOf 1))`, so
+  two systems that share a name are not equated. A grant of access is stated as
+  `(hasCapability ?principal (ShellAccessFn ?resource))`: `ReadAccessFn`,
+  `WriteAccessFn`, `ShellAccessFn`, `AdminAccessFn` and `DeployAccessFn` are reifiable,
+  their `genlResult` is one of five happening kinds below `resource_access`, and each
+  has a functional corresponding predicate, `readAccessOf` through `deployAccessOf`.
+  Two default forward rules conclude write access from admin access and from deploy
+  access over the same resource. `(custodianOf ?person ?thing)` says who keeps a thing
+  working. [contexts.md](docs/contexts.md)
+  *Migration:* none.
+
+- **CxTra ships file-path references and lookup access.** A `file_path_reference`
+  (below `linguistic`) is an absolute path taken with the `filesystem_namespace` (below
+  `intangible`) it is resolved in: `(FilePathRefFn ?namespace ?path)` builds one, with
+  `filePathRefOf` its corresponding predicate, and a forward rule reads `pathNamespace`
+  and `pathText`, each functional, from `filePathRefOf`. `file_lookup`, resolving paths
+  in a namespace, is below `resource_access`, and `(hasCapability ?principal
+  (FileLookupFn ?namespace))` states a grant of it, with `fileLookupOf` its functional
+  corresponding predicate. Lookup entails no read access. [contexts.md](docs/contexts.md)
+  *Migration:* none.
+
+- **CxTra ships `construct`, `seat`, `hasSeat`, `founderOf` and the plurality terms.** A `construct` is a
+  person whose mind runs on a computational substrate: below `person`, and
+  `:monotonic`-disjoint from `organism`, so `(disjoint human construct)` follows. A
+  `seat` is the `computational_system` a construct runs in, and `(hasSeat ?construct
+  ?seat)` relates the two; it states `(not (functional hasSeat))`, since a construct can
+  run in several seats.
+  `(founderOf ?founder ?construct)` is a spec of `originatorOf` naming the person who
+  founded a construct; position 2 takes a `construct`. `singlet`, `plural_system` and `alter` are separated
+  under `person`, with no coverage claimed. `(alterOf ?alter ?system)` is functional and
+  asymmetric, and a forward rule reads the symmetric `headmateOf` of two different alters
+  of one system. `(not (genl headmateOf knows))` states that sharing a body does not
+  entail knowing each other. [contexts.md](docs/contexts.md)
+  *Migration:* none.
+
+- **CxTra ships `nameString`, a thing's name as a string.** `(nameString ?thing ?name)`
+  takes a thing of any kind in position 1 and a string (`quotedArg`) in position 2. It
+  carries no functional mark, so a thing can have more than one name string.
+  [contexts.md](docs/contexts.md)
+  *Migration:* none.
+
+- **CxTra ships `discordMessageClaims`, the Discord message a claim came from.**
+  `(discordMessageClaims ?message (sentexHandle H))` says that the message asserts what
+  sentex H states. Position 1 takes a `discord_message`, below `digital_artifact`, which
+  the reifiable `(DiscordMessageFn ?snowflake)` names by its snowflake id as a string
+  (`quotedArg`), with `discordMessageOf` its corresponding predicate, value last;
+  position 2 takes `thing`, as `agentClaims`'s does. It is
+  `target_following_predicate`, so retracting H retracts the receipt.
+  [contexts.md](docs/contexts.md)
+  *Migration:* none.
+
+- **CxTra ships pull requests, their status, the ready latch and merge access.** A
+  `pull_request` of a `forge_repository`, both below `digital_artifact`, is named by the
+  reifiable `(PullRequestFn ?repository ?number)`, with `pullRequestOf` its
+  corresponding predicate, value last. `(prStatus ?pullRequest ?status)` takes a
+  `pull_request_status`, below `nowhere_never`: `PullRequestDraft`, `PullRequestReady`,
+  `PullRequestMerged` or `PullRequestClosed`. `(holdsReadyLatch ?person ?repository)`
+  says whose call it is that a repository's drafts are ready, and grants nothing.
+  `merge_access` is below `write_access`, `(hasCapability ?principal (MergeAccessFn
+  ?repository))` states a grant of it, with `mergeAccessOf` its functional
+  corresponding predicate, and a default forward rule concludes write access over the
+  same repository. [contexts.md](docs/contexts.md)
+  *Migration:* none.
 
 ### Fix: answers
 
