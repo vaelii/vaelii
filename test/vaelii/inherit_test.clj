@@ -1276,3 +1276,18 @@
                           #(binding [budget/*deadline* (System/nanoTime)]
                              (count (inherit/claims kb (list largerThan dog_t cat_t)
                                                     'CxUniverse)))))))))
+
+(tu/deftest-kb a-preservation-along-genlCx-reads-the-context-topology-with-no-except-holes
+  (tu/with-terms [CxP CxC CxS theme War]
+    (v/assert kb (list 'genlCx CxP 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxS 'CxUniverse) 'CxUniverse)
+    (let [edge (v/assert kb (list 'genlCx CxC CxP) 'CxUniverse)]
+      (v/assert kb (list 'transitiveInArgInverse theme 1 'genlCx) 'CxUniverse)
+      (v/assert kb (list theme CxP War) 'CxUniverse)
+      (is (seq (v/ask kb (list theme CxC War) CxS)) "the claim about CxP reaches CxC")
+      (let [x (v/assert kb (list 'except (v/sentex-handle edge)) CxC)]
+        (is (not (v/sees? kb CxC CxP)) "the except hides the edge from CxC")
+        (testing "and the preserved claim stands where the except is not visible (docs/inherit.md, \"From whose vantage\")"
+          (is (seq (v/ask kb (list theme CxC War) 'CxUniverse)))
+          (is (seq (v/ask kb (list theme CxC War) CxS))))
+        (v/retract! kb x)))))

@@ -13,6 +13,15 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Fix: order independence
+
+- **A preservation along `genlCx` reads the context topology with no `except` holes.**
+  `inherit/witness-terms` read `genlCx` through the except-aware walk from the preserved
+  term's own context, so an `except` one context stated on a `genlCx` edge withdrew the
+  preserved claim from `CxUniverse` and from a sibling that could not see the except. The
+  read is the unscoped one inherit.md states.
+  [inherit.md](docs/inherit.md#from-whose-vantage)
+
 ### Fix: storage
 
 - **A crash that loses the last record frame while a prefix of its index batch survives
