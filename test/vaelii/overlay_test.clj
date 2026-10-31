@@ -801,10 +801,14 @@
         (is (not (counted? {:space 0} :memory))
             "writing the default out is how a caller says the sharing is meant")
         (is (zero? @counter)))
-      (testing "durable records are keyed by directory and take a lock, so not those"
+      (testing "durable records under a named directory are keyed by it and take a lock, so not those"
         (reset! counter 0)
         (is (not (counted? {:dir "/tmp/whatever"} :disk)))
         (is (zero? @counter)))
+      (testing "a disk open naming neither a directory nor a space lands on the default space-0 and is counted"
+        (reset! counter 0)
+        (is (counted? {:backend :disk-log} :disk))
+        (is (= 1 @counter)))
       (testing "counting continues past the second, so the line stays a one-off"
         ;; the warning is keyed to the count reaching exactly 2: a line per open
         ;; would be noise in a process that legitimately opens many

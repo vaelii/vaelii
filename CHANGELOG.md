@@ -24,6 +24,10 @@ it — `git show v0.16.0:CHANGELOG.md`.
   rebuilds, and `assert` over a posting with no record takes the posting out and stores
   the sentence anew.
   [storage.md](docs/storage.md#the-on-disk-backend-disk)
+- **A second disk open naming neither `:dir` nor `:space` logs the default-space
+  warning.** The warning fired for in-RAM records only; two such disk opens share
+  `space-0` under the default directory the same way.
+  [storage.md](docs/storage.md#opening-a-kb)
 
 ### Fix: browser
 

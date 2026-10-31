@@ -705,17 +705,19 @@
 (defonce ^:private default-ram-space-opens (atom 0))
 
 (defn- note-default-ram-space!
-  "Warn the second time a KB opens on the default in-RAM space without naming it.  The space
+  "Warn the second time a KB opens on the default space without naming it.  The space
   number names the store and defaults to 0, so `(open-kb {})` twice in one process is one
-  store behind two KB values with two belief graphs.  A warning and never a refusal, since
-  sharing a space is how `recover` and the suite's fixtures work; naming the number silences
-  it.  Only in-RAM records are affected."
+  store behind two KB values with two belief graphs; a disk open naming neither `:dir` nor
+  `:space` resolves to the default directory's `space-0` the same way.  A warning and never
+  a refusal, since sharing a space is how `recover` and the suite's fixtures work; naming
+  the number silences it."
   [opts rkind]
-  (when (and (= :memory rkind)
+  (when (and (#{:memory :disk} rkind)
              (not (contains? opts :space))
+             (not (contains? opts :dir))
              (= 2 (swap! default-ram-space-opens inc)))
     (trove/log! {:level :warn :id ::default-ram-space-reused
-                 :msg (str "a second in-RAM KB opened on the default space (:space 0) "
+                 :msg (str "a second KB opened on the default space (:space 0) "
                            "— the number names the store, so this KB and the earlier "
                            "one are two belief graphs over one set of records, and a "
                            "write through either is invisible to the other until it is "
