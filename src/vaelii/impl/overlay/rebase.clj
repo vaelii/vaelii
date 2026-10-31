@@ -66,20 +66,34 @@
     (into #{} (keep #(some-> (p/get-sentex base %) content-key))
           (set/difference (set (p/premise-ids base)) (set (p/premise-ids rs))))))
 
+(defn- form-key
+  "What a captured form is matched on: its sentence and context."
+  [form context]
+  [(first (text/peel-form form)) context])
+
 (defn- capture
   "What the fork wrote against its base, read by content before anything moves:
   `:entries`, the text forms of its premises and inert sentexes with the provenance, the
   reference digests and the record of each (`text/premise-entries`), the record only for a
-  form one record holds; `:removed`, the content keys of the base premises it retracted."
-  [kb]
-  (let [rs (:records kb)
-        [entries _] (text/premise-entries kb (own-records kb))]
-    {:entries (mapv (fn [{:keys [context form handles digests]}]
-                      {:form form :context context :digests (or digests [])
-                       :provenance (p/get-provenance rs (first handles))
-                       :record (when-not (next handles) (p/get-sentex rs (first handles)))})
-                    entries)
-     :removed (removed-keys kb)}))
+  form one record holds; `:removed`, the content keys of the base premises it retracted.
+  `held`, what a stopped rebase's marker keeps (`read-pending`), adds its entries, under
+  `:held` too, less each the fork's own forms hold, and its retractions, less each of a
+  sentence the fork's own records hold."
+  [kb held]
+  (let [rs      (:records kb)
+        own     (own-records kb)
+        [es _]  (text/premise-entries kb own)
+        entries (mapv (fn [{:keys [context form handles digests]}]
+                        {:form form :context context :digests (or digests [])
+                         :provenance (p/get-provenance rs (first handles))
+                         :record (when-not (next handles) (p/get-sentex rs (first handles)))})
+                      es)
+        mine    (into #{} (map #(form-key (:form %) (:context %))) entries)
+        kept    (into [] (remove #(mine (form-key (:form %) (:context %)))) (:entries held))
+        owned   (into #{} (map content-key) own)]
+    {:entries (into entries kept)
+     :held    kept
+     :removed (into (removed-keys kb) (remove owned) (:removed held))}))
 
 ;; ---- replay ------------------------------------------------------------------
 
@@ -101,14 +115,15 @@
 
 (defn- replay!
   "Assert `captured` into `kb`, now over its new base, and return what landed.  The text
-  forms go through `text/load-entries!`, whose retry rounds stop at the first round that
-  asserts nothing more, with each form's reference digests checked (`text/digest-check`).
-  A form still refused then is reported under `:refused`, or under `:unresolved` when a
-  reference names no stored record.  Last, each base premise the fork retracted that the
-  new base also holds is retracted again.  `on-replayed`, when given, is called last with
-  the record each premise was captured from and the handle it is stored at again."
+  forms go through `text/load-entries!`'s retry rounds, each form's reference digests
+  checked (`text/digest-check`); a form still refused is reported under `:refused`, or
+  `:unresolved` when a reference names no stored record.  Then each base premise the fork
+  retracted that the new base holds is retracted again, and `on-replayed`, when given, is
+  called with the record each premise was captured from and its new handle.  `:left` is
+  what did not land, in `capture`'s shape: the refused entries, and the retractions of a
+  sentence `kb` holds no record of."
   [kb {:keys [entries removed]} {:keys [assert! assert-inert! retract! on-replayed]}]
-  (let [key-of  (fn [form context] [(first (text/peel-form form)) context])
+  (let [key-of  form-key
         prov-of (into {} (map (fn [{:keys [form context provenance]}]
                                 [(key-of form context) provenance]))
                       entries)
@@ -131,15 +146,18 @@
      (text/digest-check kb))
     (let [{unresolved true others false}
           (group-by #(= :unresolved-reference (:type %)) @refused)
-          index     (when (seq removed) (content-index kb))
+          index     (if (seq removed) (content-index kb) {})
           premises  (set (p/premise-ids (:records kb)))
-          retracted (into [] (comp (keep index) (filter premises)) (sort-by nm/print-key removed))]
+          retracted (into [] (comp (keep index) (filter premises)) (sort-by nm/print-key removed))
+          missed    (into #{} (map (juxt :form :context)) @refused)]
       (run! retract! retracted)
       (doseq [[r h] (vals @landed)] (on-replayed r h))
       {:asserted   (- (count entries) (count @refused))
        :refused    (vec others)
        :unresolved (mapv #(dissoc % :type) unresolved)
-       :retracted  (count retracted)})))
+       :retracted  (count retracted)
+       :left       {:entries (filterv #(missed [(:form %) (:context %)]) entries)
+                    :removed (into #{} (remove index) removed)}})))
 
 ;; ---- the pending delta -----------------------------------------------------------
 
@@ -164,25 +182,33 @@
   (when (.isDirectory f) (run! delete-tree! (.listFiles f)))
   (.delete f))
 
+(defn- write-marker!
+  "Write the marker into `dir`, atomically: the content keys of the retracted base premises,
+  each entry's provenance and captured record, and the `held` entries the delta does not
+  hold."
+  [dir {:keys [entries removed]} held]
+  (dfiles/write-nippy-atomic!
+   (str (io/file dir pending-file))
+   {:removed    removed
+    :held       (mapv (juxt :form :context :digests) held)
+    :provenance (into {} (map (juxt (juxt :form :context) :provenance)) entries)
+    :records    (into {} (keep #(when-let [r (:record %)]
+                                  [[(:form %) (:context %)] (codec/encode-sentex r)]))
+                      entries)}))
+
 (defn- write-pending!
   "Write `captured` into the durable fork `kb`'s directory `dir`: the fork's own records as
   a delta text KB (`text/write-kb!` over `own-records`, what `export-text! {:delta? true}`
-  writes) with each file fsynced, then the marker, holding the content keys of the
-  retracted base premises and each form's provenance and captured record.  The marker is
-  written last and atomically, so a directory holding it holds the whole delta."
+  writes) with each file fsynced, then the marker, holding `captured`'s `:held` entries
+  beside them.  The marker is written last, so a directory holding it holds the whole
+  delta."
   [kb dir captured]
   (let [d (io/file dir delta-dir)]
     (delete-tree! d)
     (let [{:keys [files]} (text/write-kb! kb d {:delta? true} (own-records kb))]
       (run! #(dfiles/fsync-file! (str (io/file d ^String %))) (conj files text/manifest-file))
       (dfiles/fsync-dir! (str d)))
-    (dfiles/write-nippy-atomic!
-     (str (io/file dir pending-file))
-     {:removed    (:removed captured)
-      :provenance (into {} (map (juxt (juxt :form :context) :provenance)) (:entries captured))
-      :records    (into {} (keep #(when-let [r (:record %)]
-                                    [[(:form %) (:context %)] (codec/encode-sentex r)]))
-                        (:entries captured))})))
+    (write-marker! dir captured (:held captured))))
 
 (defn- read-pending
   "The capture the marker and delta in `dir` hold, in `capture`'s shape, or nil when `dir`
@@ -190,15 +216,22 @@
   [dir]
   (let [mf (io/file dir pending-file)]
     (when (.exists mf)
-      (let [{:keys [removed provenance records]} (dfiles/read-nippy-file (str mf) {})
+      (let [{:keys [removed held provenance records]} (dfiles/read-nippy-file (str mf) {})
             d     (io/file dir delta-dir)
             forms (if (seq (text/kb-files d)) (:entries (text/entries d)) [])]
         {:entries (mapv (fn [[form context digests]]
-                          {:form form :context context :digests (or digests [])
+                          {:form form :context context :digests digests
                            :provenance (get provenance [form context])
                            :record (some-> (get records [form context]) codec/decode-sentex)})
-                        forms)
+                        (distinct (map (fn [[f c ds]] [f c (or ds [])]) (concat forms held))))
          :removed (set removed)}))))
+
+(defn- keep-pending!
+  "Rewrite the marker in `dir` to hold `left` alone, then delete the delta.  A crash between
+  the two leaves forms in both, and `read-pending` reads each once."
+  [dir left]
+  (write-marker! dir left (:entries left))
+  (delete-tree! (io/file dir delta-dir)))
 
 (defn- clear-pending!
   "Delete the marker in `dir`, then the delta beside it."
@@ -217,21 +250,31 @@
              (.exists (io/file dir pending-file)))))
 
 (defn finish-pending!
-  "Assert again the writes a rebase of the durable fork `kb` left in its directory's delta,
-  retract again the base premises it records, delete the marker and the delta, and return
-  `replay!`'s summary; nil when the directory holds no marker.  `fns` are `rebase!`'s."
+  "Assert again the writes a rebase of the durable fork `kb` left in its directory, and
+  retract again the base premises it records.  The marker then keeps the forms refused and
+  the retractions of a sentence `kb` holds no record of, the delta is deleted, and the
+  marker goes too when it keeps nothing.  Returns `replay!`'s summary with `:kept`, the
+  retractions kept; nil when the directory holds no marker.  `fns` are `rebase!`'s."
   [kb fns]
   (when-let [captured (and (pending? kb) (read-pending (:dir kb)))]
     (when-let [hook *phase-hook*] (hook :pending))
-    (let [landed (replay! kb captured fns)]
-      (clear-pending! (:dir kb))
-      (trove/log! {:level (if (some seq [(:refused landed) (:unresolved landed)]) :warn :info)
+    (let [{:keys [left] :as landed} (replay! kb captured fns)
+          landed (-> landed (dissoc :left) (assoc :kept (vec (sort-by nm/print-key (:removed left)))))]
+      (if (some seq (vals left))
+        (keep-pending! (:dir kb) left)
+        (clear-pending! (:dir kb)))
+      (trove/log! {:level (if (some seq (vals left)) :warn :info)
                    :id    ::pending-replayed
-                   :msg   (format (str "rebase: %s held the writes of a rebase that did not finish;"
-                                       " %,d asserted again, %d refused, %d naming a record no"
-                                       " longer held, %d base premises retracted")
-                                  (:dir kb) (long (:asserted landed)) (count (:refused landed))
-                                  (count (:unresolved landed)) (long (:retracted landed)))
+                   :msg   (cond-> (format (str "rebase: %s held the writes of a rebase that did not"
+                                               " finish; %,d asserted again, %d refused, %d naming a"
+                                               " record no longer held, %d base premises retracted,"
+                                               " %d retractions naming no record")
+                                          (:dir kb) (long (:asserted landed))
+                                          (count (:refused landed)) (count (:unresolved landed))
+                                          (long (:retracted landed)) (count (:kept landed)))
+                            (some seq (vals left))
+                            (str "; the marker keeps the refused forms and those retractions"
+                                 " for the next rebase"))
                    :data  landed})
       landed)))
 
@@ -271,8 +314,8 @@
   (`write-pending!`).  Then the own half is emptied (`ostore/rebase!`), the dump is imported
   into the base's stores, belief is rebuilt over the merged contents (`recovery/rebuild!`),
   what the fork wrote is asserted again (`replay!`), and the marker is deleted.  A marker
-  an earlier rebase left is finished first (`finish-pending!`).  `fns` carries the write
-  entry points, `{:assert! :assert-inert! :retract! :recover :reindex :on-replayed}`.
+  an earlier rebase left is finished first (`finish-pending!`), and what it keeps joins the
+  capture.  `fns` is `{:assert! :assert-inert! :retract! :recover :reindex :on-replayed}`.
 
   Refused before the first write: a fork whose base arrived as another KB's stores
   (`:frozen-base`), a dump this build does not read, and a dump whose reasoner set `kb`
@@ -301,7 +344,7 @@
      rs
      (fn []
        (finish-pending! kb fns)
-       (let [captured (capture kb)
+       (let [captured (capture kb (when own (read-pending own)))
              _        (when own (write-pending! kb own captured))
              summary  (ostore/rebase!
                        rs
@@ -314,7 +357,7 @@
          (observe/note-change)
          (recovery/rebuild! kb)
          (when regs (kb/add-reasoners! kb regs))
-         (let [landed (replay! kb captured fns)
+         (let [landed (dissoc (replay! kb captured fns) :left)
                _      (when own (clear-pending! own))
                ms     (long (/ (- (System/nanoTime) t0) 1000000))
                result (assoc landed :elapsed-ms ms)]

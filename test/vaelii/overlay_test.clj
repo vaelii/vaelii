@@ -1306,6 +1306,56 @@
             (tu/rm-rf! (str (.getParent (java.io.File. ^String d1))))
             (tu/rm-rf! (str (.getParent (java.io.File. ^String d2))))))))))
 
+(deftest a-rebase-stopped-inside-the-import-keeps-the-writes-the-partial-base-cannot-hold
+  (let [dir    (tu/tmpdir "vaelii-overlay-")
+        d1     (dump-of [::partial-src 1] '[Muffet Yap Zed])
+        d2     (dump-of [::partial-src 2] '[Bolt Muffet Yap Zed])
+        opts   {:backend :overlay
+                :base    {:backend :disk-log :dir (str dir "/base")}
+                :overlay {:backend :disk-log :dir (str dir "/own")}}
+        stop   (fn before-yap-and-zed [{:keys [phase done total]}]
+                 (when (and (= :sentexes phase) (= done (dec total)))
+                   (throw (ex-info "stopped" {:phase phase}))))
+        except (fn [f] (list 'except (v/sentex-handle (v/handle-of f '(dog Zed) 'CxOverlay))))
+        close  (fn [f] (v/close! f) (disk/close-dir! (str dir "/base")))
+        stopped-pull (fn [f]
+                       (is (= {:phase :sentexes}
+                              (ex-data (try (v/import! f d2 {:rebase? true :report-every 1
+                                                             :on-progress stop})
+                                            nil
+                                            (catch clojure.lang.ExceptionInfo e e)))))
+                       (close f))
+        reopen (fn []
+                 (let [logged (atom [])
+                       f      (binding [trove/*log-fn*
+                                        (fn [_ _ _ id payload]
+                                          (when (= ::rebase/pending-replayed id)
+                                            (swap! logged conj (:data (force payload)))))]
+                                (v/open-kb opts))
+                       [r]    @logged]
+                   (is (= ['CxSeen] (mapv :context (:unresolved r))) "the open reports the except")
+                   (is (= '[[(dog Yap) CxOverlay]] (:kept r)) "and the retraction")
+                   (is (rebase/pending? f) "and the marker keeps both")
+                   f))]
+    (try
+      (let [f (v/open-kb opts)]
+        (v/import! f d1 {:rebase? true})
+        (v/assert f '(genlCx CxSeen CxOverlay))
+        (v/assert f (except f) 'CxSeen)
+        (v/retract! f (v/handle-of f '(dog Yap) 'CxOverlay))
+        (stopped-pull f))
+      (stopped-pull (reopen))
+      (let [f (reopen)]
+        (try
+          (v/import! f d2 {:rebase? true})
+          (is (= '#{(dog Bolt) (dog Muffet) (dog Zed)} (dogs f)) "the retraction holds")
+          (is (v/handle-of f (except f) 'CxSeen) "the except names the new base's record")
+          (is (not (rebase/pending? f)))
+          (finally (close f))))
+      (finally
+        (tu/rm-rf! dir)
+        (run! #(tu/rm-rf! (str (.getParent (java.io.File. ^String %)))) [d1 d2])))))
+
 (defn- parked-or-done?
   "Has `t` parked on a lock or a condition, or finished?  A rebase hook that waits for this
   lets a read the rebase does not hold off answer from the fork as the phase leaves it."

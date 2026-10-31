@@ -24,6 +24,14 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Fix: storage
 
+- **A crash inside a pull's import of the dump keeps the writes the next open cannot
+  assert, and the next pull asserts them.** The open over the partly imported base
+  deleted the rebase marker whatever the replay returned, dropping each form naming a
+  record not yet imported, each form refused, and each retraction of a base premise not
+  yet imported. The marker keeps them, the open names them in its `::pending-replayed`
+  line, and the next rebase adds them to its capture.
+  [overlay.md](docs/overlay.md#replacing-the-base),
+  [operations.md](docs/operations.md#after-a-crash)
 - **A crash that loses the last record frame while a prefix of its index batch survives
   is detected at the open.** The coverage check read the batch-seal counter alone when it
   was non-zero, and that shape leaves the seal and the record count agreeing with the
