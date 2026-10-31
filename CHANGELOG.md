@@ -11,6 +11,15 @@ several releases is still a grep for the name you call. The full entry prose for
 released version is in this file's git history, at the tag of the release that shipped
 it — `git show v0.16.0:CHANGELOG.md`.
 
+## Unreleased
+
+### Fix: browser
+
+- **The Postgres backup page reads a snapshot store's `records.edn` with `clojure.edn`.**
+  It read the file with `clojure.core/read-string`, the one reader of a store file not
+  held to the EDN reader.
+  [web.md](docs/web.md#backing-up-a-store-kept-in-postgres)
+
 ## 0.31.0 — 2026-10-30 — "Separations that lose to a stronger denial, lazy-forward rules and a computed `nonempty`, forks that pull a newer base and merge peers' deltas, content digests across seats, `CxTimeFn` slices ordered across monads"
 
 | Area | Change |

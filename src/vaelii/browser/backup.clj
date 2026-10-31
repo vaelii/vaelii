@@ -23,7 +23,8 @@
   `store/` back in the store directory's place, and load the store.  `backup.edn`
   carries the commands.  The images then open against the restored records, since
   `pg_dump` keeps the fingerprint row they were sealed against."
-  (:require [clojure.java.io :as io]
+  (:require [clojure.edn :as edn]
+            [clojure.java.io :as io]
             [clojure.pprint :as pprint]
             [clojure.string :as str]
             [vaelii.browser.catalog :as catalog]
@@ -42,7 +43,7 @@
   [dir]
   (let [f (io/file dir "index" "records.edn")]
     (when (.exists f)
-      (let [[host port db schema] (:records (read-string (slurp f)))]
+      (let [[host port db schema] (:records (edn/read-string (slurp f)))]
         (when schema {:host host :port port :db db :schema schema})))))
 
 (defn backup-dir
