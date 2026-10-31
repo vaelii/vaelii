@@ -318,8 +318,9 @@ Step 5 ends by deleting the marker and the delta. An `open-kb` of a durable fork
 directory holds the marker asserts the delta's forms again with their provenance and
 retracts the recorded base premises again, through step 5's code
 (`rebase/finish-pending!`). The marker then keeps the forms still refused, a form naming a
-record the base lacks included, and the retractions of a sentence no record holds; the
-open deletes the delta, and deletes the marker when it keeps nothing. A crash between step
+record the base lacks included, and the retractions of a sentence the KB holds no premise
+of, a sentence a fork rule derived during the replay included; the open deletes the delta,
+and deletes the marker when it keeps nothing. A crash between step
 2 and the end of step 5 therefore loses none of the fork's writes. After a crash inside
 step 3 the base is partly imported, and the writes it cannot hold stay in the marker. The
 open logs `::pending-replayed` at `:warn`, counting the kept forms under `:refused` and

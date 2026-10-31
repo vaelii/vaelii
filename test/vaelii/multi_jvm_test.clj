@@ -390,7 +390,8 @@
   takes its exchange steps from stdin, one command and one directory per line.  The second
   argument is the dump the first start installs as the base, `-` on a restart.  The parent
   sends no wire call while a command runs, so the in-process writes and the daemon's never
-  overlap.  `pull-stopping` blocks at the rebase's `:refilled` phase for the parent's kill."
+  overlap.  `pull-stopping` blocks at the rebase's `:refilled` phase for the parent's kill,
+  and `pull-stopping-import` inside the dump's import, five sentex frames short of its end."
   "(require '[clojure.string :as str] '[vaelii.core :as v] '[vaelii.serve :as serve]
             '[vaelii.koinii.deref :as d] '[vaelii.impl.overlay.rebase :as rebase])
    (v/set-log-level :error)
@@ -410,6 +411,12 @@
            \"dump\"    (do (d/publish! kb arg) (say \"dumped\"))
            \"pull-stopping\" (binding [rebase/*phase-hook* #(when (= :refilled %) (say \"refilled\") @(promise))]
                              (d/pull! kb arg))
+           \"pull-stopping-import\"
+           (d/pull! kb arg {:report-every 1
+                            :on-progress (fn [{:keys [phase done total]}]
+                                           (when (and (= :sentexes phase) (= done (- total 5)))
+                                             (say \"importing\") @(promise)))})
+           \"pull\"    (do (d/pull! kb arg) (say \"pulled\"))
            \"stop\"    (do (.stop srv) (v/close! kb) (say \"stopped\") (System/exit 0)))
          (recur))))")
 
@@ -458,11 +465,11 @@
 
 (def ^:private seat-rounds
   "The rounds, each a row: `:writes` what each seat's agents assert over the wire, `:then`
-  the step before the exchange (a clean restart, or a pull of a peer's dump killed at
-  `:refilled` and reopened), `:refused` the refusal types each seat's merge reports,
-  `:holds`/`:lacks` what every seat believes and does not in CxField after it, and
-  `:excepts` whether each seat holds seat A's `except`, which sits in CxSeatA, outside
-  `shared-contexts`."
+  the step before the exchange (a clean restart, a pull of a peer's dump killed at
+  `:refilled` and reopened, or one killed inside its import, reopened and pulled again),
+  `:refused` the refusal types each seat's merge reports, `:holds`/`:lacks` what every
+  seat believes and does not in CxField after it, and `:excepts` whether each seat holds
+  seat A's `except`, which sits in CxSeatA, outside `shared-contexts`."
   [{:writes  {:a [['(genlCx CxField CxUniverse) 'CxUniverse {:strength :monotonic}]
                   ['(set/forwardRule (implies (mesh_sensor ?x) (mesh_device ?x))) 'CxField]
                   ['(mesh_sensor NodeA1) 'CxField]]
@@ -482,6 +489,11 @@
               :c [['(meshNear Rome Paris) 'CxField]]}
     :then    [:kill-mid-pull :c :a]
     :holds   '[(mesh_device NodeA3) (mesh_device NodeB3) (meshNear Rome Paris)]}
+   {:writes  {:a [['(mesh_sensor NodeA4) 'CxField]]
+              :b [['(mesh_sensor NodeB4) 'CxField]]
+              :c [['(mesh_sensor NodeC4) 'CxField]]}
+    :then    [:kill-mid-import :b :c]
+    :holds   '[(mesh_device NodeA4) (mesh_device NodeB4) (mesh_device NodeC4)]}
    {:writes  {:a [['(genlCx CxSeatA CxField) 'CxUniverse {:strength :monotonic}]
                   #(list 'except (list 'sentexHandle (vc/handle-of % '(meshNear Dover Calais) 'CxField)))]
               :b [['(symmetric meshNear) 'CxField {:strength :monotonic}]]}
@@ -518,10 +530,14 @@
               :restart       (do (command! (@seats k) "stop" "-" "stopped")
                                  (is (zero? (mj/await-exit! (:child (@seats k)))))
                                  (reopen! k))
-              :kill-mid-pull (let [dump (str root "/dump-" (inc n))]
-                               (command! (@seats peer) "dump" dump "dumped")
-                               (command! (@seats k) "pull-stopping" dump "refilled")
-                               (reopen! k))
+              (:kill-mid-pull :kill-mid-import)
+              (let [dump (str root "/dump-" (inc n))]
+                (command! (@seats peer) "dump" dump "dumped")
+                (if (= :kill-mid-pull step)
+                  (command! (@seats k) "pull-stopping" dump "refilled")
+                  (command! (@seats k) "pull-stopping-import" dump "importing"))
+                (reopen! k)
+                (when (= :kill-mid-import step) (command! (@seats k) "pull" dump "pulled")))
               nil)
             (when step
               (let [bs (believed (@seats k))]

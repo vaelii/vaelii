@@ -121,7 +121,7 @@
   retracted that the new base holds is retracted again, and `on-replayed`, when given, is
   called with the record each premise was captured from and its new handle.  `:left` is
   what did not land, in `capture`'s shape: the refused entries, and the retractions of a
-  sentence `kb` holds no record of."
+  sentence `kb` holds no premise of."
   [kb {:keys [entries removed]} {:keys [assert! assert-inert! retract! on-replayed]}]
   (let [key-of  form-key
         prov-of (into {} (map (fn [{:keys [form context provenance]}]
@@ -157,7 +157,7 @@
        :unresolved (mapv #(dissoc % :type) unresolved)
        :retracted  (count retracted)
        :left       {:entries (filterv #(missed [(:form %) (:context %)]) entries)
-                    :removed (into #{} (remove index) removed)}})))
+                    :removed (into #{} (remove #(contains? premises (index %))) removed)}})))
 
 ;; ---- the pending delta -----------------------------------------------------------
 
@@ -252,7 +252,7 @@
 (defn finish-pending!
   "Assert again the writes a rebase of the durable fork `kb` left in its directory, and
   retract again the base premises it records.  The marker then keeps the forms refused and
-  the retractions of a sentence `kb` holds no record of, the delta is deleted, and the
+  the retractions of a sentence `kb` holds no premise of, the delta is deleted, and the
   marker goes too when it keeps nothing.  Returns `replay!`'s summary with `:kept`, the
   retractions kept; nil when the directory holds no marker.  `fns` are `rebase!`'s."
   [kb fns]
@@ -268,7 +268,7 @@
                    :msg   (cond-> (format (str "rebase: %s held the writes of a rebase that did not"
                                                " finish; %,d asserted again, %d refused, %d naming a"
                                                " record no longer held, %d base premises retracted,"
-                                               " %d retractions naming no record")
+                                               " %d retractions naming no premise")
                                           (:dir kb) (long (:asserted landed))
                                           (count (:refused landed)) (count (:unresolved landed))
                                           (long (:retracted landed)) (count (:kept landed)))

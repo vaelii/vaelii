@@ -31,6 +31,7 @@
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reads :as reads]
             [vaelii.kv-backend-test :as kvt]
+            [vaelii.round-trip-test :as rtt]
             [vaelii.test-util :as tu])
   (:import [java.io File]))
 
@@ -1256,13 +1257,17 @@
 
 (defn- dump-of
   "An export dump in a fresh directory of a cleared `:memory` KB on space `sp` holding
-  `(dog x)` for each of `names`, asserted in the order given."
-  [sp names]
+  `(dog x)` for each of `names`, asserted in the order given, then each `[sentence opts]`
+  of `more`.  `frame`, a rule `assert` expands, is spliced in as one frame
+  (`rtt/splice-refused-frame!`)."
+  [sp names & [{:keys [more frame]}]]
   (let [src (doto (v/open-kb {:backend :memory :space sp :recover? false}) v/clear!)
         out (str (tu/tmpdir "vaelii-overlay-") "/dump")]
     (doseq [n names] (v/assert src (list 'dog n) 'CxOverlay {:strength :monotonic}))
+    (doseq [[s o] more] (v/assert src s 'CxOverlay o))
     (v/export! src out)
     (v/clear! src)
+    (when frame (rtt/splice-refused-frame! (File. out) frame 'CxOverlay {:strength :default}))
     out))
 
 (defn- dogs [kb] (sentences (v/sentexes-matching kb '(dog ?x) 'CxOverlay)))
@@ -1355,6 +1360,61 @@
       (finally
         (tu/rm-rf! dir)
         (run! #(tu/rm-rf! (str (.getParent (java.io.File. ^String %)))) [d1 d2])))))
+
+(deftest a-stopped-rebase-keeps-a-retraction-whose-sentence-a-non-premise-record-holds
+  (doseq [{:keys [row d1 d2 removed writes stop kept]}
+          [{:row     :a-fork-rule-derives-it-again-during-the-replay
+            :d1      ['[Muffet Yap Zed]] :d2 ['[Bolt Muffet Yap Zed]]
+            :removed '(dog Yap)
+            :writes  [['(implies (cat ?x) (dog ?x)) {:direction :forward}] ['(cat Yap) {}]]
+            :stop    (fn [{:keys [phase done total]}] (and (= :sentexes phase) (= done (dec total))))
+            :kept    '[[(dog Yap) CxOverlay]]}
+           {:row     :the-stopped-import-stored-an-expanded-form-and-its-premise-mark
+            :d1      ['[Muffet] {:more  [['(implies (cat ?x) (animal ?x)) {:direction :forward}]
+                                         ['(cat Tom) {}]]
+                                 :frame '(implies (pig ?x) (and (dog ?x) (pet ?x)))}]
+            :d2      ['[Bolt Muffet] {:more  [['(implies (cat ?x) (animal ?x)) {:direction :forward}]
+                                              ['(cat Tom) {}]]
+                                      :frame '(implies (pig ?x) (and (dog ?x) (pet ?x)))}]
+            :removed '(implies (pig ?x) (pet ?x))
+            :stop    (fn [{:keys [phase]}] (= :justifications phase))
+            :kept    []}]]
+    (testing (name row)
+      (let [dir    (tu/tmpdir "vaelii-overlay-")
+            d1     (apply dump-of [::kept-src row 1] d1)
+            d2     (apply dump-of [::kept-src row 2] d2)
+            opts   {:backend :overlay
+                    :base    {:backend :disk-log :dir (str dir "/base")}
+                    :overlay {:backend :disk-log :dir (str dir "/own")}}
+            close  (fn [f] (v/close! f) (disk/close-dir! (str dir "/base")))
+            held?  (fn [f] (some->> (v/handle-of f removed 'CxOverlay) (v/premise? f)))]
+        (try
+          (let [f (v/open-kb opts)]
+            (v/import! f d1 {:rebase? true})
+            (v/retract! f (v/handle-of f removed 'CxOverlay))
+            (doseq [[s o] writes] (v/assert f s 'CxOverlay o))
+            (is (= {:phase :stopped}
+                   (ex-data (try (v/import! f d2 {:rebase? true :report-every 1
+                                                  :on-progress #(when (stop %)
+                                                                  (throw (ex-info "stopped" {:phase :stopped})))})
+                                 nil
+                                 (catch clojure.lang.ExceptionInfo e e)))))
+            (close f))
+          (let [logged (atom [])
+                f      (binding [trove/*log-fn*
+                                 (fn [_ _ _ id payload]
+                                   (when (= ::rebase/pending-replayed id)
+                                     (swap! logged conj (:data (force payload)))))]
+                         (v/open-kb opts))]
+            (try
+              (is (= [kept (boolean (seq kept)) false]
+                     [(:kept (first @logged)) (rebase/pending? f) (boolean (held? f))]))
+              (v/import! f d2 {:rebase? true})
+              (is (= [false false] [(boolean (held? f)) (rebase/pending? f)]))
+              (finally (close f))))
+          (finally
+            (tu/rm-rf! dir)
+            (run! #(tu/rm-rf! (str (.getParent (File. ^String %)))) [d1 d2])))))))
 
 (defn- parked-or-done?
   "Has `t` parked on a lock or a condition, or finished?  A rebase hook that waits for this

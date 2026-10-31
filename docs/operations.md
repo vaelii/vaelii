@@ -76,7 +76,7 @@ a `:disk-locked` refusal names a process that is still running.
   ([overlay.md](overlay.md#replacing-the-base)). A crash inside the import of the dump
   leaves the base partly imported, and that open keeps in the marker each write the partial
   base cannot hold: a form naming a record not yet imported, a form refused, and a
-  retraction of a base premise not yet imported. The open logs them at `:warn`, and pulling
+  retraction of a sentence the partial base holds no premise of. The open logs them at `:warn`, and pulling
   the commit again restores the base and asserts them over it.
 - **A declined restore** logs at `:warn`: `opened <dir> from its records and sealed it in
   t ms: the restore declined, <reason>`. The KB holds what the records hold, and its log
