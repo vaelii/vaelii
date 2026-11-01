@@ -397,9 +397,8 @@
             ;; export scripts/derived-state-graph.py draws (docs/caches.md, "The
             ;; derived-state register")
             "derived-state"   ["run" "-m" "vaelii.derived-state-test"]
-            ;; the suite across JVMs — what `lein gate`'s test stage runs.  Memory stores
-            ;; only: a durable half is one lock and three usable space blocks, so the
-            ;; script refuses one rather than sharding into it.
+            ;; the suite across JVMs — what `lein gate`'s test stage runs and what each
+            ;; leg of deep.yml runs
             "test-parallel"   ["shell" ~bash "scripts/test-parallel.sh"]
             ;; the cross-process tests, which run only when named — `:multi-jvm` is
             ;; opt-in, so `lein test`, `lein test :all` and `lein gate` all pass over
