@@ -6,7 +6,7 @@ name: deep
 # a rename. It runs weekly: one run is 840 to 1,760 job-minutes (2026-10-19 and
 # 2026-10-25), and a tree that changes a few times a week does not have a fresh
 # answer every day. Running it daily would buy six identical verdicts and turn one
-# real failure into six lines of noise. A leg takes 25 to 100 minutes, since the
+# real failure into six lines of noise. A leg takes 25 to over 150 minutes, since the
 # legs are parallel, and the coverage job takes 2.5 to 5.7 hours; what the cadence
 # is protecting is the minutes, not the wait.
 #
@@ -100,9 +100,9 @@ jobs:
     # this workflow does work only where the minutes are free (see above `jobs:`)
     if: github.repository_owner == 'vaelii'
     runs-on: ubuntu-latest
-    # the same suite took 30 minutes on 2026-10-19 and passed 90 on 2026-10-25, with
-    # 336 of 386 namespaces done, because a hosted runner's speed varies threefold
-    timeout-minutes: 150
+    # memory-dense took 71 minutes on 2026-11-01 and overlay passed 150 with 380 of 420
+    # namespaces done, because a hosted runner's speed varies threefold
+    timeout-minutes: 240
     strategy:
       # Every backend reports, whatever the others did. The question this job
       # answers is *which* backends differ, and fail-fast would answer it with
@@ -214,7 +214,7 @@ jobs:
     if: github.repository_owner == 'vaelii'
     runs-on: ubuntu-latest
     # the backends job's budget, for the same reason
-    timeout-minutes: 150
+    timeout-minutes: 240
     strategy:
       # Same reason as the backends job: the question is *which* dimension
       # diverged, and fail-fast answers "at least one".

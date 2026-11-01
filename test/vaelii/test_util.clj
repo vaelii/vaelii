@@ -374,10 +374,10 @@
   (some? (find-ns 'cloverage.coverage)))
 
 (defn load-budget-ms
-  "How long a test waits on an asynchronous KB load or export: 120 s, and 1200 s under
-  `scripts/coverage.sh`, where 203 tests of `ontology-test` and `order-independence-test`
-  take 1361 s against 133 s.  A wait ends when the work does, so a long budget costs a
-  passing test nothing."
+  "How long a test waits on an asynchronous KB load, export or block tally: 120 s, and
+  1200 s under `scripts/coverage.sh`, where 203 tests of `ontology-test` and
+  `order-independence-test` take 1361 s against 133 s.  A wait ends when the work does, so
+  a long budget costs a passing test nothing."
   []
   (if (instrumented?) 1200000 120000))
 
