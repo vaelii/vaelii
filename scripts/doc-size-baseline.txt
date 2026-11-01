@@ -407,7 +407,7 @@
 18	7	test/vaelii/ns_counts.clj
 0	18	test/vaelii/ontology_folk_taxonomy_test.clj
 0	86	test/vaelii/ontology_rules_test.clj
-10	302	test/vaelii/ontology_test.clj
+10	322	test/vaelii/ontology_test.clj
 24	9	test/vaelii/oplog_crash_fuzz_test.clj
 4	9	test/vaelii/oplog_test.clj
 25	663	test/vaelii/order_independence_test.clj
