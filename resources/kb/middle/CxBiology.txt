@@ -91,7 +91,9 @@
 ;; particular penguin cannot fly — which an application can query and argue from. The
 ;; kind-level (not (capabilityType penguin flying)) says it of the kind; this says it of
 ;; the member, and neither follows from the other for the reason typeToInstancePred's own
-;; comment gives.
+;; comment gives.  The denial is about the penguin's own body: CxTra, whose tool
+;; vocabulary this context does not see, excepts it for a penguin that has something
+;; that enables flying.
 (set/forwardRule (implies (and (penguin ?x)) (not (hasCapability ?x flying))))
 
 ;; ---- where an animal lives is where it is --------------------------------

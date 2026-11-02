@@ -25,10 +25,13 @@
 ;; the kinds below them) are stated here too, with their comments, genl edges and
 ;; disjointness. A context that does not see CxTra reads none of them.
 ;;
-;; Among the computing relations, two positions declare `thing`. Position 1 of agentHasTool holds whatever can invoke a
+;; Among the computing relations, two positions declare `thing`. Position 1 of agentHasTool holds whatever can use a
 ;; tool, and the upper ontology ships no type for that: registered_agent names a
 ;; registered koinii participant (resources/kb/koinii/CxRegistry.txt). Position 3 of
 ;; toolArgType holds a type of any kind, so it declares (genlArg toolArgType 3 thing).
+;; Position 2 of agentHasTool and position 1 of toolEnablesCapability declare `temporal`,
+;; the nearest genl software and a physical tool share (the comment above agentHasTool
+;; says why).
 
 ;; ---- the computing kinds: the types the relations below are typed over ----
 ;; A software_tool is software that performs one bounded operation per invocation. It
@@ -39,6 +42,11 @@
 (positiveExampleComment computational_system "a running web service")
 (negativeExampleComment computational_system "the hardware that runs a computational system, which is a separate thing")
 (genl computational_system intangible)
+;; Software computes when it runs, so it is built, run, upgraded and retired in time: a
+;; computational system is temporal.  The type covers software that runs.  An abstract
+;; machine, such as a Turing machine taken as a mathematical object, is not a
+;; computational system; it would be a type of its own, on the atemporal side.
+(genl computational_system temporal)
 ;; A computational system is not something that happens, and is not a form the KB
 ;; represents.
 (disjoint computational_system event)
@@ -164,10 +172,17 @@
 (quotedArg toolArgComment 2 string)
 (quotedArg toolArgComment 3 string)
 
-(comment agentHasTool "(agentHasTool ?agent ?tool) means that ?tool is available to ?agent: ?agent can invoke ?tool.")
+;; Position 2 of agentHasTool and position 1 of toolEnablesCapability declare
+;; `temporal`.  Any held thing can enable a capability: software, a hammer, a jetpack.
+;; Software is intangible and a hammer or a jetpack is tangible, and the two partition
+;; thing, so the nearest genl they share is temporal: a computational system is
+;; temporal (above), and so is everything tangible.  A narrower declaration such as
+;; software_tool would conclude every physical tool a software tool, which the
+;; disjointness then contradicts.
+(comment agentHasTool "(agentHasTool ?agent ?tool) means that ?tool is available to ?agent: ?agent can use ?tool, invoking it if it is software and wielding, wearing or riding it if it is not. ?tool is any temporal thing, software or physical, e.g. a command-line program, a hammer or a jetpack.")
 (set/monotonic (instance_relation_predicate agentHasTool))
 (arg agentHasTool 1 thing)
-(arg agentHasTool 2 software_tool)
+(arg agentHasTool 2 temporal)
 
 (comment probesPredicate "(probesPredicate ?tool ?predicate) means that an invocation of ?tool can return evidence about a sentence whose predicate is ?predicate.")
 (set/monotonic (instance_relation_predicate probesPredicate))
@@ -182,14 +197,23 @@
 ;; agentHasTool declares thing and position 1 of hasCapability declares causal, so an
 ;; unguarded rule would conclude causal of whatever has a tool.  The agent is the doer
 ;; and the tool the instrument, so nothing here concludes hasCapability of the tool.
-(comment toolEnablesCapability "(toolEnablesCapability ?tool ?happeningKind) means that whoever has ?tool available can be the doer of a happening of kind ?happeningKind, e.g. a tool that fetches an image and returns what it shows enables image_viewing.")
+(comment toolEnablesCapability "(toolEnablesCapability ?tool ?happeningKind) means that whoever has ?tool available can be the doer of a happening of kind ?happeningKind. ?tool is any temporal thing, software or physical: a tool that fetches an image and returns what it shows enables image_viewing, and a jetpack enables flying.")
 (binary_predicate toolEnablesCapability)
-(arg toolEnablesCapability 1 software_tool)
+(arg toolEnablesCapability 1 temporal)
 (genlArg toolEnablesCapability 2 happening)
 
 (set/defaultRule (set/forwardRule
   (implies (and (agentHasTool ?agent ?tool) (toolEnablesCapability ?tool ?kind) (causal ?agent))
            (hasCapability ?agent ?kind))))
+;; CxBiology concludes (not (hasCapability ?x flying)) of every penguin, at the class
+;; of the penguin fact, so a known-true penguin with a jetpack would lose its flight to
+;; that denial and a default one would be left a dilemma.  The denial is about the
+;; penguin's own body and says nothing about flying with a tool: a penguin cannot fly
+;; unless it has something that enables flying.  The exception is written here because it
+;; names this theory's vocabulary, which CxBiology does not see; (ist CxBiology …) names
+;; the rule stored there, and the exception is read wherever both theories are seen.
+(exceptWhen (thereExists ?tool (and (agentHasTool ?x ?tool) (toolEnablesCapability ?tool flying)))
+  (ist CxBiology (set/forwardRule (implies (and (penguin ?x)) (not (hasCapability ?x flying))))))
 
 ;; ---- invocations and receipts --------------------------------------------
 (comment toolInvoked "(toolInvoked ?invocation ?tool) means that ?invocation is a call of ?tool.")

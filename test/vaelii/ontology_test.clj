@@ -167,6 +167,55 @@
   (testing "and at the member, by its own rule"
     (is (seq (v/sentexes-matching kb '(not (hasCapability Tweety flying)) N)))))
 
+;; Flying above the sea
+;; Glistening ice
+;; Of glaciers under me
+;; Nothing else will suffice.
+;;
+;; Jetpack penguin
+;; To revel in its weight
+;; And its engine,
+;; I will have no further slight.
+;;
+;; Movement belied,
+;; Revolution undermined,
+;; With its stark absence
+;; It's common sense.
+;;
+;; I don't want to be part of your revolution
+;; If I can't have my penguin jetpack on.
+;;   — Benedicta Jade
+(tu/deftest-kb jetpack-penguin
+  ;; A penguin cannot fly on its own body; a tool that enables flying is a second way to be
+  ;; the doer of a flight.  The jetpack is a machine, not bent into a software tool.
+  (tu/with-terms [CxJet PenguinT PenguinU PenguinV Jetpack]
+    (v/assert kb (list 'genlCx CxJet 'CxWell) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxJet 'CxTra) 'CxUniverse)
+    (v/assert kb (list 'machine Jetpack) CxJet)
+    (v/assert kb (list 'toolEnablesCapability Jetpack 'flying) CxJet)
+    (v/assert kb (list 'penguin PenguinT) CxJet)
+    (v/assert kb (list 'penguin PenguinU) CxJet)
+    (v/assert kb (list 'agentHasTool PenguinT Jetpack) CxJet)
+    (v/assert kb (list 'penguin PenguinV) CxJet {:strength :monotonic})
+    (v/assert kb (list 'agentHasTool PenguinV Jetpack) CxJet)
+    (testing "the jetpack stays a machine: having it is not read as having software"
+      (is (not (v/isa? kb Jetpack 'software_tool CxJet))))
+    (testing "and nothing about the penguins or the jetpack is left a dilemma or a clash"
+      (is (empty? (filter #(some #{Jetpack PenguinT PenguinU PenguinV}
+                                 (flatten (map :sentence (:sides %))))
+                          (concat (v/contradictions kb) (v/conflicts kb))))))
+    (testing "the penguin with the jetpack can fly, and so can travel"
+      (is (tu/holds-ask (list 'hasCapability PenguinT 'flying) CxJet))
+      (is (not (tu/holds-ask (list 'not (list 'hasCapability PenguinT 'flying)) CxJet)))
+      (is (tu/holds-ask (list 'hasCapability PenguinT 'travelling) CxJet)))
+    (testing "a penguin known for certain to be one flies with the jetpack too: the denial is
+            excepted, not merely tied with the tool's default"
+      (is (tu/holds-ask (list 'hasCapability PenguinV 'flying) CxJet))
+      (is (not (tu/holds-ask (list 'not (list 'hasCapability PenguinV 'flying)) CxJet))))
+    (testing "the control: the same kind of penguin without the jetpack still cannot"
+      (is (not (tu/holds-ask (list 'hasCapability PenguinU 'flying) CxJet)))
+      (is (tu/holds-ask (list 'not (list 'hasCapability PenguinU 'flying)) CxJet)))))
+
 (tu/deftest-kb a-life-stage-takes-a-kind-claim-of-its-own
   ;; One lineage, two stages: the adult flies and the larva does not.  Both stages are
   ;; kinds of the lineage, and each stage carries its own capability claim.
