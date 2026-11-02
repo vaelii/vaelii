@@ -191,7 +191,7 @@
 2	15	src/vaelii/impl/vantage.clj
 27	6	src/vaelii/impl/violations.clj
 64	2	src/vaelii/impl/vocabulary.clj
-104	76	src/vaelii/impl/wff.clj
+99	72	src/vaelii/impl/wff.clj
 24	43	src/vaelii/impl/wiring.clj
 59	38	src/vaelii/koinii/adjudication.clj
 29	5	src/vaelii/koinii/belief.clj

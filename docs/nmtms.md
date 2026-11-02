@@ -2751,7 +2751,7 @@ its mechanism is documented:
 | a defeat's force | a `defeat` is in force only where it is itself believed, and its support can hold another defeat's target | a defeat met again on one read closes a cycle, which the walk breaks by reading every assignment of a cycle of at most eight members, then at most 2m + 1 passes over m members ([A defeat-dependency cycle](#a-defeat-dependency-cycle)) |
 | a support cycle | `A` justified by `B` and `B` by `A` | `region-fixpoint` starts from nothing IN inside the region and only adds ([Locality](#2-locality)) |
 | the class equation | a node's defeat-class reads its antecedents' classes | `region-classes` starts every member at `:default` and applies a monotone operator ([Strength propagates](#strength-propagates-from-the-antecedents)) |
-| a `genl` or `genlCx` loop | an edge that would close a cycle in the closure | refused, or dropped and recorded when derived ([exceptions.md](exceptions.md#stratification)) |
+| a `genl` or `genlCx` loop | an edge that would close a cycle in the closure (for `genl`, the closure its context sees) | refused, or dropped and recorded when derived ([exceptions.md](exceptions.md#stratification)); a `genl` cycle split across contexts is stored, and the potential ranks the condensation ([taxonomy.md](taxonomy.md#the-closure-is-not-materialized--it-is-answered-on-demand)) |
 
 ### No switch removes a feature
 

@@ -1794,22 +1794,13 @@ E17_ALLOW = {
     # separation and the overlap witnesses only.  The `:open-sibling-pair` pass passes
     # `scoped?` and reads the audit context's edges instead.
     ("src/vaelii/impl/integrity.clj", "subsumption-reading"),
-    # Assert-time refusals. A refusal is a claim about the KB and not about a vantage:
-    # a cycle refused when asked from one context and allowed from another is not a
-    # refusal, it is a coin toss.  `disjoint-problems` is the deliberate exception and
-    # reads the scoped `genl?` instead — its overlap refusal is meant to agree with the
-    # scoped `(genl a b)` query, so an `except` that hides the bridging edge admits the
-    # pair (#92, docs/taxonomy.md).  The genl-relatedness guards in `disjoint?` itself
-    # stay global; only the assert-time reading moved, which is why disjoint is not here.
-    ("src/vaelii/impl/wff.clj", "genl-problems"),
-    # `genlCx-problems` is `genl-problems`'s twin on the context side: it refuses a
-    # `genlCx` cycle, which is a property of the whole edge set, so it reads
-    # `genlCx?-global` for the same reason `genl-problems` reads `genl?-global`.
+    # Assert-time refusals.  `genlCx-problems` refuses a `genlCx` cycle, which changes what
+    # every reader sees, so it reads `genlCx?-global`.  `genl-problems`,
+    # `covering-problems` and `disjoint-problems` read the edges the asserting context
+    # sees (#92, #254, docs/taxonomy.md).  `sees-genl-path?` runs the global walk first as
+    # a filter: it reads no index, and the scoped read runs only on a pair it admits.
     ("src/vaelii/impl/wff.clj", "genlCx-problems"),
-    # `covering-problems` refuses a part already above the whole because the edge the
-    # cover installs would close a `genl` cycle, the refusal `genl-problems` makes, so
-    # its cycle arm reads globally too; its disjointness arm stays scoped.
-    ("src/vaelii/impl/wff.clj", "covering-problems"),
+    ("src/vaelii/impl/wff.clj", "sees-genl-path?"),
     ("src/vaelii/impl/wff.clj", "negation-walk"),
     ("src/vaelii/impl/wff.clj", "genl-negation-cycle"),
     ("src/vaelii/impl/checks.clj", "edge-negation-cycle"),
@@ -1834,6 +1825,9 @@ E17_ALLOW = {
     ("src/vaelii/impl/special.clj", "separation-moved-types"),
     ("src/vaelii/impl/special.clj", "nonempty-moved-types"),
     ("src/vaelii/impl/special.clj", "requeue-separation-denial-rules"),
+    # A candidate filter for the mints a cycle-closing `genl` edge releases; each released
+    # mint is asked again from its own placement.
+    ("src/vaelii/impl/special.clj", "closes-genl-cycle?"),
     # The structural genlCx producer's candidate reads: a superset of the pairs its oracle
     # then decides under the scoped closure (`r-evidence`).
     ("src/vaelii/impl/context_nat.clj", "comparable-terms"),

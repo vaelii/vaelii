@@ -3368,6 +3368,13 @@
                            (:scc rel)))
     (reachable-in? tax :genl sub super)))
 
+(defn strict-genl?
+  "Is `sub` a strict subtype of `super` through the edges visible from `context`: at or
+  below it, and not above it?  Two types in a `genl` cycle are coextensive at a reader that
+  sees the cycle, so neither is strictly below the other there."
+  [tax sub super context]
+  (and (not= sub super) (genl? tax sub super context) (not (genl? tax super sub context))))
+
 (defn genls-among
   "`genls` of `t` from `context` cut to the set `among`: `genls-global-among` over `memo`,
   then each term `genl?` from `context` when a scope applies there, for a caller asking

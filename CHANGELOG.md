@@ -13,6 +13,24 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Breaking: inference
+
+- **A `genl` edge is refused for a cycle only where its own context sees the path back
+  ([#254](https://github.com/vaelii/vaelii/issues/254)).** `assert` of `(genl b a)` in one
+  context beside a stored `(genl a b)` in a sibling context threw `:not-well-formed`, and
+  so did a cover naming a part a sibling context places above its whole; both are stored.
+  An edge whose reverse path the asserting context sees is refused at every strength, as
+  before, and the refusal message names that context. A context below both siblings reads
+  the two types as coextensive, and there a membership in one withholds no minted
+  membership in the other.
+  [taxonomy.md](docs/taxonomy.md#the-closure-is-not-materialized--it-is-answered-on-demand),
+  [argtypes.md](docs/argtypes.md#pruning-what-the-kb-says-more-specifically--vaelii_prune_subsumed_mints-on)
+  *Migration:* a caller that relied on the refusal to keep the edges of every context
+  acyclic finds a cycle with `subsumption-status`'s `:coextensional`.
+  *Breaks:* `assert` and `try-assert` of a `genl` edge or a `covering` whose cycle only
+  another context sees; `genl?`, `genls`, `specs`, `ask` and the stored mints at a context
+  below both edges
+
 ### Fix: order independence
 
 - **A preservation along `genlCx` reads the context topology with no `except` holes.**
