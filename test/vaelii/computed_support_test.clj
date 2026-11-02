@@ -484,6 +484,27 @@
       (is (<= k few (* 2 k)))
       (is (= few (solves 8))))))
 
+(tu/deftest-kb a-batch-re-joins-a-computed-rule-once-at-its-settle
+  (tu/with-shipped-config
+    (tu/with-terms [rankOf outranks above person Ann Bob Cy]
+      (v/add-prover kb (ranking-prover rankOf outranks))
+      (let [rule   (v/assert kb (tu/fwd [(list person '?x) (list outranks '?x '?y)]
+                                        (list above '?x '?y))
+                             C)
+            rejoin @#'chain/rejoin-in-full
+            joins  (atom 0)]
+        (doseq [p [Ann Bob Cy]] (v/assert kb (list person p) C))
+        (with-redefs-fn {#'chain/rejoin-in-full
+                         (fn [& a]
+                           (swap! joins + (count (filter #{rule} (second a))))
+                           (apply rejoin a))}
+          #(v/with-deferred-settle kb
+             (doseq [[i p] (map-indexed vector [Ann Bob Cy])]
+               (v/assert kb (list rankOf p i) C))))
+        (is (= 1 @joins))
+        (is (= #{(list above Bob Ann) (list above Cy Ann) (list above Cy Bob)}
+               (believed kb above)))))))
+
 ;; ---- and what a purely arithmetic comparison still rests on ---------------
 
 (tu/deftest-kb an-arithmetic-comparison-adds-no-supporter-of-its-own

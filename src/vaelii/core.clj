@@ -2249,7 +2249,7 @@
   nil.  A batch written under `*bulk-load?*` draws no argument types over the `genlCx`
   moves it settles (`special/*entail-moves?*`), and a batch none of whose writes chained
   seeds no chaining from them (`special/*seed-moves?*`), as a settle per write would not.
-  The lazy-forward re-joins the batch owed run first (`chain/run-batch-rejoins`), and the
+  The re-joins the batch owed run first (`chain/run-batch-rejoins`), and the
   structural genlCx edges the settle's belief moves call for are built last
   (`nat-maint/reconcile-moves!`)."
   [kb in]
@@ -7026,7 +7026,7 @@
     (= :abduce op) (assoc :token (abduce/new-token))))
 
 (defn- replayed-batch-rejoins
-  "The map a frame recorded with `inputs` owes its lazy-forward re-joins to: under
+  "The map a frame recorded with `inputs` owes its re-joins to: under
   `oplog/replay!`, the replay's map for the batch `(:batch inputs)` names, emptied when that
   batch is not the previous frame's, and nil for a frame outside a batch; else
   `chain/*batch-rejoins*`."

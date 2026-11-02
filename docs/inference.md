@@ -2505,7 +2505,10 @@ antecedents already get ([qcn.md](qcn.md), [inherit.md](inherit.md)):
   resting on none of them reads an answer they did not move, and the join a predecessor
   owed placed it. A negated datum, a datum on an edge-installing functor and a relation
   membership keep every row (`provers/support-delta-source?`), and outside a run the
-  rules re-join in full at once.
+  rules re-join in full at once. Inside a `with-deferred-settle` batch the datums collect
+  in `chain/*batch-rejoins*`, and the closing settle re-joins each rule once
+  (`chain/run-batch-rejoins`). The `computed-reader-load` perf check holds the per-datum
+  cost of a one-settle load flat.
 - **A change to a source re-checks every firing of those rules.** A tightest bound narrows
   when a source arrives and widens when one leaves, while every handle the firing names
   stays believed. A datum on a `support-sources` predicate, arriving or leaving, therefore
