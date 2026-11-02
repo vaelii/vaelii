@@ -53,6 +53,9 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `believed?` and a scoped `genl?` over a KB with a placed defeat or a stored except rebuilt
   the frame per read, at a cost growing with the forced-monotonic declarations.
   [nmtms.md](docs/nmtms.md)
+- **A definitional-block tally takes half the time.** `describe`, `subsumption-statuses` and
+  `disjointness-audit` between two writes ask each ground goal once.
+  [integrity.md](docs/integrity.md)
 - **A bulk load re-joins a computed rule once.** Inside a `with-deferred-settle` batch, each
   datum a prover reads re-joined every rule with an antecedent that prover answers, so a
   shuffled load of the shipped starter spent a third of its time on re-joins that placed

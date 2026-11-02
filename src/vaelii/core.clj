@@ -3575,19 +3575,28 @@
   [kb result]
   (abduce/discard! kb (if (map? result) (:context result) result) abduce-ops))
 
+(def ^:private holds-limit
+  "The most ground goals `instance-reads` keeps per context for a change-clock value, cleared
+  wholesale past it."
+  4096)
+
 (defn- instance-reads
   "The three facts-only reads `integrity/subsumption-reading` makes, through `query` at
   `context` with `{:max-depth 0}`: `:members`, the terms a `(t ?x)` query answers for type
   `t`; `:isa?`, whether term `x` is an instance of type `t`; and `:holds?`, whether a
-  ground goal is answered.  Memoized per argument for one audit, which writes nothing
-  between its pairs.  The depth is forced so no rule is expanded under a caller's
-  `*query-options*` depth: a node-engine search of `(a ?x)` over the whole starter, once
-  per taxonomy-open pair, hangs."
+  ground goal is answered.  The first two are memoized per argument for one audit, which
+  writes nothing between its pairs.  `:holds?` is kept per context for one value of the
+  change clock, so every audit and `describe` between two writes asks a ground goal once.
+  The depth is forced so no rule is expanded under a caller's `*query-options*` depth: a
+  node-engine search of `(a ?x)` over the whole starter, once per taxonomy-open pair, hangs."
   [kb context]
-  {:members (memoize (fn [t] (into [] (map #(get % '?x))
-                                   (query kb (list t '?x) context {:max-depth 0}))))
-   :isa?    (memoize (fn [x t] (isa? kb x t context)))
-   :holds?  (memoize (fn [goal] (boolean (seq (query kb goal context {:max-depth 0})))))})
+  (let [held (observe/clocked (reasoning/qcn kb) [::holds context] (fn [_] (atom {})))]
+    {:members (memoize (fn [t] (into [] (map #(get % '?x))
+                                     (query kb (list t '?x) context {:max-depth 0}))))
+     :isa?    (memoize (fn [x t] (isa? kb x t context)))
+     :holds?  (fn [goal]
+                (caches-impl/read-through held (caches-impl/limit-of :resident holds-limit) goal
+                                          #(boolean (seq (query kb goal context {:max-depth 0})))))}))
 
 (defn subsumption-statuses
   "The set of applicable subsumption relationships between types `a` and `b`: any subset
