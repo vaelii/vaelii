@@ -47,6 +47,14 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `space-0` under the default directory the same way.
   [storage.md](docs/storage.md#opening-a-kb)
 
+### Fix: performance
+
+- **A bulk load re-joins a computed rule once.** Inside a `with-deferred-settle` batch, each
+  datum a prover reads re-joined every rule with an antecedent that prover answers, so a
+  shuffled load of the shipped starter spent a third of its time on re-joins that placed
+  nothing. The batch re-joins each such rule once, at its settle.
+  [inference.md](docs/inference.md#what-a-computed-answer-rests-on)
+
 ### Fix: browser
 
 - **The Postgres backup page reads a snapshot store's `records.edn` with `clojure.edn`.**

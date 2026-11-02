@@ -115,7 +115,7 @@
 
 (def ^:dynamic *replay-batch*
   "A volatile `replay!` binds for its extent, holding `[id m]`: the `:batch` id of the last
-  replayed `with-deferred-settle` frame, and `m`, a `java.util.HashMap` of the lazy-forward
+  replayed `with-deferred-settle` frame, and `m`, a `java.util.HashMap` of the
   re-joins that batch's frames owe its `:settle` frame, which `vaelii.core` binds as
   `chain/*batch-rejoins*`."
   nil)
