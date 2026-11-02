@@ -224,11 +224,12 @@
 
 (defn ^:daemon-op all-specified-violations
   "Audit every binary `predAllSpecified` and `predSpecifiedAll` declaration visible in
-  `context`, and every *Exists* declaration (`exists-violations`, keyed `[functor pred a
-  b]`), and return `{[functor pred indep] result…}`, each result `{:status :audited
-  :violations #{…}}` or a `{:status :gap …}` diagnostic (`:missing-slot-typing`,
-  `:incomplete-defining-contexts`, or `:legacy-ternary-declaration` for a stored
-  pre-migration ternary sentex, keyed by its whole argument tuple)."
+  `context`, each stored one in every known reader seeing its GAF and an ordinary defining
+  home, and every *Exists* declaration (`exists-violations`, keyed `[functor pred a b]`),
+  and return `{[functor pred indep] result…}`, each result `{:status :audited :violations
+  #{…}}` or a `{:status :gap …}` diagnostic (`:missing-slot-typing`,
+  `:incomplete-defining-contexts`, or `:legacy-ternary-declaration` keyed by its whole
+  argument tuple)."
   [conn context]
   (call conn :all-specified-violations [context]))
 
@@ -943,11 +944,12 @@
   (call conn :settle-stats []))
 
 (defn ^:daemon-op specified-violations
-  "The audit result for one binary `(predAllSpecified pred indep)` integrity requirement in
-  `context`, always carrying a `:status`: `{:status :audited :violations #{x…}}`, every
-  member x of `indep` for which no believed `(pred x y)` carries a **determinate** filler
-  y satisfying `pred`'s derived slot contract, or `{:status :gap :gap :missing-slot-typing
-  …}` where `pred` carries no visible slot typing at the audited position."
+  "The audit result for one binary `(predAllSpecified pred indep)` requirement in
+  `context`: `{:status :audited :violations #{x…}}`, every member x of `indep` that
+  `context` audits (it sees an ordinary defining home of x, or none is stored) with no
+  believed `(pred x y)` whose **determinate** filler y satisfies `pred`'s derived slot
+  contract, or a `{:status :gap …}` (`:missing-slot-typing`, or
+  `:incomplete-defining-contexts` naming unclassified support)."
   ([conn pred indep context] (call conn :specified-violations [pred indep context]))
   ([conn pred indep context arg-pos] (call conn :specified-violations [pred indep context arg-pos])))
 

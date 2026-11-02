@@ -353,8 +353,8 @@
   "Every declaration audit as a lazy stream of `[declaration result]` entries.
 
   A stored Specified declaration audits every known reader seeing that requirement and
-  an ordinary defining home of an instance. Each reader uses its own population,
-  contracts and fillers. Reader results combine under one canonical key. Native-only registry answers
+  an ordinary defining home of an instance, each with its own population, contracts and
+  fillers, and the results combine under one canonical key. Native-only registry answers
   retain the supplied context, since their binding maps carry no defining context.
 
   The open reads are only the unavoidable declaration censuses. Each expensive audit
@@ -403,10 +403,9 @@
   `kb-integrity` both fold the same focused per-declaration audit stream; only this
   function returns its complete aggregate map.
 
-  Each stored Specified declaration is checked in every known eligible reader, not only
-  maximal readers. A proved skeletal-only instance is exempt; an empty evidence set is
-  audited in the actual reader. Unclassified support is :incomplete-defining-contexts.
-  Visible definitions with one canonical key combine their violation sets. Native-only registry
+  Each stored Specified declaration is checked in every known eligible reader; a proved
+  skeletal-only instance is exempt, an empty evidence set is audited in the actual reader,
+  and unclassified support is an `:incomplete-defining-contexts` gap. Native-only registry
   answers without a stored definition retain `ctx`, as do Exists audits."
   [kb ctx]
   (into {}

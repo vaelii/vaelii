@@ -4360,30 +4360,27 @@
   (clashes/exposed-clashes kb))
 
 (defn specified-violations
-  "The audit result for one binary `(predAllSpecified pred indep)` integrity requirement in
-  `context`, always carrying a `:status`: `{:status :audited :violations #{x…}}`, every
-  member x of `indep` for which no believed `(pred x y)` carries a **determinate** filler
-  y satisfying `pred`'s derived slot contract, or `{:status :gap :gap :missing-slot-typing
-  …}` where `pred` carries no visible slot typing at the audited position.
-  `arg-pos` selects the twin: `:second` (the default) is `predAllSpecified`; `:first` is
-  `predSpecifiedAll`.  The context must see an ordinary defining home of the instance:
-  proved skeletal-only defining evidence exempts it, absent stored evidence does not, and
-  unclassified support returns an `:incomplete-defining-contexts` gap with its term and
-  handles.  Computed on demand and not filed (docs/predall.md)."
+  "The audit result for one binary `(predAllSpecified pred indep)` requirement in `context`:
+  `{:status :audited :violations #{x…}}`, every member x of `indep` that `context` audits
+  (it sees an ordinary defining home of x, or none is stored) with no believed `(pred x y)`
+  whose **determinate** filler y satisfies `pred`'s derived slot contract, or a `{:status
+  :gap …}` (`:missing-slot-typing`, or `:incomplete-defining-contexts` naming unclassified
+  support).  A proved skeletal-only instance is exempt.  `arg-pos` selects the twin:
+  `:second` (the default) is `predAllSpecified`; `:first` is `predSpecifiedAll`.
+  Computed on demand and not filed (docs/predall.md)."
   ([kb pred indep context] (specified-violations kb pred indep context :second))
   ([kb pred indep context arg-pos]
    (predall/specified-violations kb pred indep context arg-pos)))
 
 (defn all-specified-violations
   "Audit every binary `predAllSpecified` and `predSpecifiedAll` declaration visible in
-  `context`, and every *Exists* declaration (`exists-violations`, keyed `[functor pred a
-  b]`), and return `{[functor pred indep] result…}`, each result `{:status :audited
-  :violations #{…}}` or a `{:status :gap …}` diagnostic (`:missing-slot-typing`,
-  `:incomplete-defining-contexts`, or `:legacy-ternary-declaration` for a stored pre-migration ternary sentex, keyed by its
-  whole argument tuple).  Declarations that hold are omitted and gaps never are, so an empty
-  map is a clean sweep.  `kb-integrity` consumes the same per-declaration audit stream.  A
-  stored requirement is validated in every known reader seeing its GAF and an ordinary
-  defining home; a native-only declaration keeps the supplied reader."
+  `context`, each stored one in every known reader seeing its GAF and an ordinary defining
+  home, and every *Exists* declaration (`exists-violations`, keyed `[functor pred a b]`),
+  and return `{[functor pred indep] result…}`, each result `{:status :audited :violations
+  #{…}}` or a `{:status :gap …}` diagnostic (`:missing-slot-typing`,
+  `:incomplete-defining-contexts`, or `:legacy-ternary-declaration` keyed by its whole
+  argument tuple).  Declarations that hold are omitted and gaps never are, so an empty map
+  is a clean sweep.  `kb-integrity` consumes the same per-declaration audit stream."
   [kb context]
   (predall/all-specified-violations kb context))
 
