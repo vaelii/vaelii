@@ -1398,6 +1398,7 @@
                                          #'inherit/*memo*           no-memo}
                            (apply e args))))
                      #'exc/reader-state     @#'exc/build-reader-state
+                     #'exc/clock-frame      @#'exc/reader-frame
                      #'inherit/answers?     answers
                      #'checks/cover-problem (fn [kb sentence context keep?]
                                               (let [v (cover kb sentence context some?)]

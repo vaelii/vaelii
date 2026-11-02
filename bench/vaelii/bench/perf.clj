@@ -465,6 +465,19 @@
                  (v/assert kb leaf 'CxPerf m)
                  (quot t 40)))))))
 
+(defn- in-beside-declarations
+  "Four hundred `in?` reads between two writes, beside n forced-monotonic declarations and
+  one placed defeat.  Healthy 0.47x; with a reader frame built per read, 3.92x."
+  [n]
+  (let [kb (fresh-kb)
+        M  {:strength :monotonic}
+        h  (v/assert kb '(prf_note PrfItem) 'CxPerf)]
+    (v/with-deferred-settle kb
+      (doseq [i (range n)]
+        (v/assert kb (list 'forced_monotonic_predicate (symbol (str "prfForced" i))) 'CxUniverse M)))
+    (v/assert kb '(not (prf_note PrfItem)) 'CxPerf M)
+    (doall (for [_ (range 400)] (nanos (v/in? kb h))))))
+
 (defn- release-beside-forced-declarations
   "One `v/edit!` taking out n memberships `(prf_dog PrfX_i)`, per membership, beside 4000
   forced-monotonic declarations in `CxPrfB`, each read by a rule in `CxPrfA`, and one
@@ -7139,6 +7152,13 @@
     :sizes     [4 64]
     :max-ratio 0.5
     :run       release-beside-forced-declarations}
+
+   {:name      :in-beside-declarations
+    :group     :exceptions
+    :claim     "40x the forced-monotonic declarations costs under 1.5x per `in?` between two writes"
+    :sizes     [10 400]
+    :max-ratio 1.5
+    :run       in-beside-declarations}
 
    ;; Both ends measured 2026-10-17 by `lein perf --only`.  Healthy 0.99x.  With a `genl?`
    ;; walk to `thing` per atom at the declared position: 4.71x.

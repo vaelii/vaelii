@@ -49,6 +49,10 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Fix: performance
 
+- **A belief read between two writes builds one reader frame per context.** `in?`,
+  `believed?` and a scoped `genl?` over a KB with a placed defeat or a stored except rebuilt
+  the frame per read, at a cost growing with the forced-monotonic declarations.
+  [nmtms.md](docs/nmtms.md)
 - **A bulk load re-joins a computed rule once.** Inside a `with-deferred-settle` batch, each
   datum a prover reads re-joined every rule with an antecedent that prover answers, so a
   shuffled load of the shipped starter spent a third of its time on re-joins that placed

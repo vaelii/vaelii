@@ -978,10 +978,28 @@
   (when frame
     (assoc frame :yielding? yielding? :memo (volatile! {}))))
 
-(defn- build-reader-state
-  "What the walk reads at `ctx`, with the one-read memo, or nil (`reader-frame`)."
+(def ^:private clock-frame-limit
+  "The most contexts a change-clock value keeps a frame for (`clock-frame`), cleared
+  wholesale past it, like the resident cache that holds them."
+  256)
+
+(defn- clock-frame
+  "`reader-frame` at `ctx`, kept in `kb`'s resident cache for one value of the change clock,
+  so the reads between two writes build one frame per context.  This reads `clocked` and
+  not `cached`, so a held-values scope reads what a rebuild reads.  The frames sit under one
+  key of the cache: a read across many contexts clears only each other."
   [kb ctx]
-  (when-let [fr (reader-frame kb ctx)]
+  (when-not (or tax/*network-belief* (sx/variable? ctx))
+    (caches/read-through (observe/clocked (reasoning/qcn kb) ::frames (fn [_] (atom {})))
+                         (caches/limit-of :resident clock-frame-limit)
+                         [ctx tax/*search*]
+                         #(reader-frame kb ctx))))
+
+(defn- build-reader-state
+  "What the walk reads at `ctx`, with a one-read memo of its own, or nil (`reader-frame`).
+  A memo holds the defeats its read has open, so no two reads share one."
+  [kb ctx]
+  (when-let [fr (clock-frame kb ctx)]
     (with-read-memo fr (yielding-reads? kb (:tax fr)))))
 
 ;; ---- a pass's reader states ----------------------------------------------------------
