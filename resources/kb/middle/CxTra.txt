@@ -39,6 +39,11 @@
 (positiveExampleComment computational_system "a running web service")
 (negativeExampleComment computational_system "the hardware that runs a computational system, which is a separate thing")
 (genl computational_system intangible)
+;; Software computes when it runs, so it is built, run, upgraded and retired in time: a
+;; computational system is temporal.  The type covers software that runs.  An abstract
+;; machine, such as a Turing machine taken as a mathematical object, is not a
+;; computational system; it would be a type of its own, on the atemporal side.
+(genl computational_system temporal)
 ;; A computational system is not something that happens, and is not a form the KB
 ;; represents.
 (disjoint computational_system event)
