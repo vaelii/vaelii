@@ -28,6 +28,7 @@
             [vaelii.host.core-context :as core-context]
             [vaelii.impl.decide.argument :as argument]
             [vaelii.impl.protocols :as p]
+            [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
@@ -46,14 +47,16 @@
 (defn- justification-content
   "The justification graph as content: each conclusion's sentence and context against the
   set of its antecedents' sentences and contexts, with the informant.  Handles are
-  resolved to sentences on both sides for `content`'s reason."
+  resolved to sentences on both sides for `content`'s reason, and a rule's handle as an
+  informant is one of them."
   [kb]
   (let [recs (:records kb)
-        of   (fn [h] (let [sx (p/get-sentex recs h)] [(:sentence sx) (:context sx)]))]
+        of   (fn [h] (let [sx (p/get-sentex recs h)] [(sx/sentence-of sx) (:context sx)]))
+        by   (fn [i] (if (integer? i) (of i) i))]
     (into #{}
           (mapcat (fn [h]
                     (for [j (v/supporting-justifications kb h)]
-                      [(of h) (:informant j) (set (map of (:antecedents j)))])))
+                      [(of h) (by (:informant j)) (set (map of (:antecedents j)))])))
           (v/handles kb))))
 
 (defn- taxonomy-content

@@ -68,6 +68,13 @@
   [kb]
   (mapv class [(:records kb) (:index kb) (reasoning/tms kb)]))
 
+(defn- switch-roots
+  "The root of every implementation switch, a function as its class's name, which a reload
+  keeps."
+  []
+  (into {} (map (fn [vr] (let [r (var-get vr)] [vr (if (fn? r) (.getName ^Class (class r)) r)])))
+        (keys tu/shipped-defaults)))
+
 (deftest an-engine-reload-leaves-a-loaded-kb-answering
   (tu/with-snapshot-platform
     (let [dir     (str (Files/createTempDirectory "vaelii-reload-" (into-array FileAttribute [])))
@@ -86,7 +93,10 @@
                   vaelii.impl.sentex    (is (< 50 (count (filter find-ns nss)))
                                             "nearly every loaded engine namespace requires sentex")
                   (is (some #{edited} nss) "the edited namespace reloads"))
-                (let [skipped (reload/reload! nss)]
+                (let [switches (switch-roots)
+                      skipped  (reload/reload! nss)]
+                  (tu/install-sweeps!)
+                  (is (= switches (switch-roots)) "the switches a sweep installed stand")
                   (when (= 'vaelii.impl.dense-jtms edited)
                     (is (contains? (get skipped edited) 'DenseTms)
                         "the network's deftype is left as loaded")))
