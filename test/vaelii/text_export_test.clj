@@ -159,6 +159,36 @@
           (testing "and the same beliefs"
             (is (= (:believed before) (:believed after)))))))))
 
+(deftest an-exception-on-a-rule-another-context-stores-round-trips-through-text
+  (tu/with-terms [bird flies carried Tweety Wing CxExc CxRule CxBoth]
+    (with-dirs* 1 "ist-exception"
+      (fn [dir]
+        (let [path  (.getPath ^File dir)
+              rule  (list 'set/forwardRule
+                          (list 'implies (list 'and (list bird '?x)) (list flies '?x)))
+              build (fn [kb]
+                      (doseq [c [CxExc CxRule]]
+                        (v/assert kb (list 'genlCx c 'CxUniverse) 'CxUniverse))
+                      (doseq [c [CxExc CxRule]] (v/assert kb (list 'genlCx CxBoth c) 'CxUniverse))
+                      (v/assert kb rule CxRule)
+                      (v/assert kb (list 'exceptWhen
+                                         (list 'thereExists '?w (list carried '?x '?w))
+                                         (list 'ist CxRule rule))
+                                CxExc)
+                      (v/assert kb (list bird Tweety) CxBoth)
+                      (v/assert kb (list carried Tweety Wing) CxBoth))
+              [before after export _] (round-trip path build)
+              exc-text (slurp (io/file path (str CxExc ".txt")))]
+          (testing "the exception's file names the rule by reference, and the rule's file states it"
+            (is (str/includes? exc-text (str "(ist " CxRule)))
+            (is (str/includes? (slurp (io/file path (str CxRule ".txt"))) (str flies))))
+          (is (zero? (:skipped export)))
+          (testing "the same content, strengths and beliefs: the exception still blocks"
+            (is (= (:sentexes before) (:sentexes after)))
+            (is (= (:strengths before) (:strengths after)))
+            (is (= (:believed before) (:believed after)))
+            (is (not (contains? (:believed after) [(list flies Tweety) CxBoth])))))))))
+
 (deftest a-monotonic-premise-keeps-its-class-and-a-default-carries-no-wrapper
   ;; The one thing the shipped format has no spelling for, and the reason
   ;; `(set/monotonic S)` exists: a text KB that could not say it would round-trip every

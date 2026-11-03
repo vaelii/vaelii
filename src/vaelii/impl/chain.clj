@@ -456,7 +456,7 @@
   nil)
 
 (def ^:dynamic *batch-rejoins*
-  "The lazy-forward re-joins a `with-deferred-settle` batch owes (`owe-lazy-rejoins`), as a
+  "The re-joins a `with-deferred-settle` batch owes (`owe-computed-rejoins`), as a
   `java.util.HashMap` shaped as `*computed-rejoins*`' `:owed`, which the batch's closing
   settle runs (`run-batch-rejoins`).  Nil outside a batch."
   nil)
@@ -5565,30 +5565,25 @@
            rules)))
 
 (defn- owe-computed-rejoins
-  "Owe each rule of `rules` the re-join a datum `datum` on a source predicate puts it in
-  front of (`special/computed-reading-rules`).  Inside a run (`*computed-rejoins*`) a rule
-  not already owed one gets a marker queued behind the datum, and the datum joins the
-  rule's owed set; `filterable?` false (`provers/support-delta-source?`) makes that set
-  `:all`.  Outside a run, the rules are re-joined in full at once.  Returns the handles
-  that placed."
-  [kb rules datum filterable? max-depth truncated]
-  (if-let [{:keys [^java.util.Map owed queue]} *computed-rejoins*]
-    (do (doseq [rh rules]
-          (let [cur (.get owed rh)]
-            (when (nil? cur) (vswap! queue conj [::owed-rejoin rh]))
-            (.put owed rh (if (and filterable? (not= :all cur)) (conj (or cur #{}) datum) :all))))
-        [])
-    (rejoin-in-full kb rules max-depth truncated)))
-
-(defn- owe-lazy-rejoins
-  "`owe-computed-rejoins` for the readers of a lazy-forward rule's conclusion, except that
-  inside a `with-deferred-settle` batch the owed set goes to `*batch-rejoins*` and nothing
-  is joined until the batch settles."
+  "Owe each rule of `rules` the re-join a datum `datum` puts it in front of, on a source
+  predicate (`special/computed-reading-rules`) or read by a lazy-forward rule's conclusion
+  (`lazy-readers`).  Inside a `with-deferred-settle` batch the owed set goes to
+  `*batch-rejoins*` and nothing is joined until the batch settles.  Inside a run
+  (`*computed-rejoins*`) a rule not already owed one gets a marker queued behind the datum,
+  and the datum joins the rule's owed set; `filterable?` false
+  (`provers/support-delta-source?`) makes that set `:all`.  Outside both, the rules are
+  re-joined in full at once.  Returns the handles that placed."
   [kb rules datum filterable? max-depth truncated]
   (if-let [^java.util.Map owed (when wiring/*defer-settle?* *batch-rejoins*)]
     (do (doseq [rh rules] (owe-batch-rejoin owed rh (when filterable? [datum])))
         [])
-    (owe-computed-rejoins kb rules datum filterable? max-depth truncated)))
+    (if-let [{:keys [^java.util.Map owed queue]} *computed-rejoins*]
+      (do (doseq [rh rules]
+            (let [cur (.get owed rh)]
+              (when (nil? cur) (vswap! queue conj [::owed-rejoin rh]))
+              (.put owed rh (if (and filterable? (not= :all cur)) (conj (or cur #{}) datum) :all))))
+          [])
+      (rejoin-in-full kb rules max-depth truncated))))
 
 (defn- owed-rejoin?
   "Is the agenda entry `d` a re-join marker `owe-computed-rejoins` queued, not a handle?"
@@ -5762,10 +5757,10 @@
                              (fire-rule-bound kb rh b0s max-depth truncated))))
               drhs))
       (when lrhs
-        (owe-lazy-rejoins kb lrhs datum (and (not= sx/not-functor ffn)
-                                             (not (contains? tax/edge-installing-functors bfn)))
-                          max-depth truncated))
-      (when lmoved (owe-lazy-rejoins kb lmoved datum false max-depth truncated))))))
+        (owe-computed-rejoins kb lrhs datum (and (not= sx/not-functor ffn)
+                                                 (not (contains? tax/edge-installing-functors bfn)))
+                              max-depth truncated))
+      (when lmoved (owe-computed-rejoins kb lmoved datum false max-depth truncated))))))
 
 (defn- lazy-type-ends
   "The terms the antecedent `ante` of a reader puts at the `nonempty` arguments of the
@@ -5788,7 +5783,7 @@
   directly is joined once per variable it puts at a `nonempty` argument of `lsx`
   (`lazy-type-ends`) and per type of `moved`, in content order, as `fire-rule-over-types`
   joins a rule's own `nonempty` argument; a ground end among `moved` joins it in full.  Any
-  other reader owes the re-join in full (`owe-lazy-rejoins`)."
+  other reader owes the re-join in full (`owe-computed-rejoins`)."
   [kb lsx rs moved max-depth truncated]
   (let [f     (nm/functor (:consequent lsx))
         plans (for [rh (sort rs)
@@ -5799,7 +5794,7 @@
                 [rh (when (and (seq as) (every? some? es)) (vec (distinct (apply concat es))))])
         full  (into [] (keep (fn [[rh ends]] (when (nil? ends) rh))) plans)
         types (sort nm/compare-form moved)]
-    (into (if (seq full) (owe-lazy-rejoins kb full (:id lsx) false max-depth truncated) [])
+    (into (if (seq full) (owe-computed-rejoins kb full (:id lsx) false max-depth truncated) [])
           (mapcat (fn [[rh ends]]
                     (when (and ends (res/rule-believed? kb rh))
                       (if (some #(and (not (sx/variable? %)) (contains? moved %)) ends)
@@ -5834,7 +5829,7 @@
                 (if-let [rs (lazy-readers kb [datum] #(if (= datum %) sx (p/get-sentex (:records kb) %)))]
                   (if-let [moved (get *moved-types* datum)]
                     (rejoin-lazy-readers-over-types kb sx rs moved max-depth truncated)
-                    (owe-lazy-rejoins kb rs datum false max-depth truncated))
+                    (owe-computed-rejoins kb rs datum false max-depth truncated))
                   []))
             :else [])
           ;; a superseded fact is the one unbelieved datum that does not fire; its

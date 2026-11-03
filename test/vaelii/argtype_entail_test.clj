@@ -671,6 +671,36 @@
         (v/retract! kb (v/handle-of kb (list dog Muffet) CxWorld))
         (is (believed? kb (list animal Muffet) CxWorld))))))
 
+(defn- both-cycle-mints-kept?
+  "In each of `orders`, CxWorld under CxUp sees `(genl animal beast)` there, and joins
+  `(genl beast animal)` in CxDown once `:join` adds the context edge.  Both mints are
+  believed after every order."
+  [kb orders]
+  (with-pruning
+    (doseq [order orders]
+      (tu/with-terms [animal beast parentOf childOf Fred Mary CxUp CxDown CxWorld]
+        (doseq [cx [CxUp CxDown]] (a-context kb cx))
+        (v/assert kb (list 'genlCx CxWorld CxUp) 'CxUniverse)
+        (doseq [t [animal beast]] (a-type kb t CxWorld))
+        (v/assert kb (list 'arg parentOf 1 animal) CxWorld)
+        (v/assert kb (list 'arg childOf 1 beast) CxWorld)
+        (let [writes {:up     #(v/assert kb (list 'genl animal beast) CxUp {:strength :monotonic})
+                      :down   #(v/assert kb (list 'genl beast animal) CxDown {:strength :monotonic})
+                      :join   #(v/assert kb (list 'genlCx CxWorld CxDown) 'CxUniverse)
+                      :parent #(v/assert kb (list parentOf Fred Mary) CxWorld)
+                      :child  #(v/assert kb (list childOf Fred Mary) CxWorld)}]
+          (doseq [w order] ((writes w)))
+          (is (= [true true] (mapv #(believed? kb (list % Fred) CxWorld) [animal beast]))
+              (str order)))))))
+
+(def ^:private cycle-orders (tu/orders [:up :down :join :parent :child]))
+
+(tu/deftest-kb ^:slow two-mints-into-a-genl-cycle-are-both-kept-in-every-order
+  (both-cycle-mints-kept? kb cycle-orders))
+
+(tu/deftest-kb two-mints-into-a-genl-cycle-are-both-kept-in-sampled-orders
+  (both-cycle-mints-kept? kb (take-nth 10 cycle-orders)))
+
 (tu/deftest-kb a-subsumer-resting-on-the-mint-does-not-keep-it
   ;; `(awake Fido)`, `(alert Fido)`, `(calm Fido)` and `(fed Fido)` are derived from the mint
   ;; by forward rules and sit under `animal`, so each subsumes it while resting on it. The
@@ -1398,6 +1428,7 @@
                                          #'inherit/*memo*           no-memo}
                            (apply e args))))
                      #'exc/reader-state     @#'exc/build-reader-state
+                     #'exc/clock-frame      @#'exc/reader-frame
                      #'inherit/answers?     answers
                      #'checks/cover-problem (fn [kb sentence context keep?]
                                               (let [v (cover kb sentence context some?)]

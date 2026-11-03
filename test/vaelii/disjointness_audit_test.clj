@@ -375,3 +375,18 @@
         (format "disjoint coverage must not regress below 83.51%% (got %.2f%%)" disjoint-%))
     (is (<= unknown-% 6.82)
         (format "unknown pairs must not grow above 6.82%% (got %.2f%%)" unknown-%))))
+
+(tu/deftest-kb the-audits-between-two-writes-ask-a-ground-goal-once
+  (tu/with-terms [a_kind b_kind]
+    (let [asked (atom 0)
+          orig  @#'v/query
+          goal  (list 'orthogonal a_kind b_kind)
+          holds #((:holds? (#'v/instance-reads kb 'CxUniverse)) goal)]
+      (with-redefs-fn {#'v/query (fn [& args] (swap! asked inc) (apply orig args))}
+        (fn []
+          (is (false? (holds)))
+          (is (false? (holds)))
+          (is (= 1 @asked))
+          (v/assert kb goal 'CxUniverse)
+          (is (true? (holds)))
+          (is (= 2 @asked)))))))

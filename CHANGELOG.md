@@ -37,6 +37,24 @@ it — `git show v0.16.0:CHANGELOG.md`.
   support still counts. Unclassified live support raises `:incomplete-defining-contexts`.
   [api.md](docs/api.md)
 
+### Breaking: inference
+
+- **A `genl` edge is refused for a cycle only where its own context sees the path back
+  ([#254](https://github.com/vaelii/vaelii/issues/254)).** `assert` of `(genl b a)` in one
+  context beside a stored `(genl a b)` in a sibling context threw `:not-well-formed`, and
+  so did a cover naming a part a sibling context places above its whole; both are stored.
+  An edge whose reverse path the asserting context sees is refused at every strength, as
+  before, and the refusal message names that context. A context below both siblings reads
+  the two types as coextensive, and there a membership in one withholds no minted
+  membership in the other.
+  [taxonomy.md](docs/taxonomy.md#the-closure-is-not-materialized--it-is-answered-on-demand),
+  [argtypes.md](docs/argtypes.md#pruning-what-the-kb-says-more-specifically--vaelii_prune_subsumed_mints-on)
+  *Migration:* a caller that relied on the refusal to keep the edges of every context
+  acyclic finds a cycle with `subsumption-status`'s `:coextensional`.
+  *Breaks:* `assert` and `try-assert` of a `genl` edge or a `covering` whose cycle only
+  another context sees; `genl?`, `genls`, `specs`, `ask` and the stored mints at a context
+  below both edges
+
 ### Fix: order independence
 
 - **A preservation along `genlCx` reads the context topology with no `except` holes.**
@@ -70,6 +88,21 @@ it — `git show v0.16.0:CHANGELOG.md`.
   warning.** The warning fired for in-RAM records only; two such disk opens share
   `space-0` under the default directory the same way.
   [storage.md](docs/storage.md#opening-a-kb)
+
+### Fix: performance
+
+- **A belief read between two writes builds one reader frame per context.** `in?`,
+  `believed?` and a scoped `genl?` over a KB with a placed defeat or a stored except rebuilt
+  the frame per read, at a cost growing with the forced-monotonic declarations.
+  [nmtms.md](docs/nmtms.md)
+- **A definitional-block tally takes half the time.** `describe`, `subsumption-statuses` and
+  `disjointness-audit` between two writes ask each ground goal once.
+  [integrity.md](docs/integrity.md)
+- **A bulk load re-joins a computed rule once.** Inside a `with-deferred-settle` batch, each
+  datum a prover reads re-joined every rule with an antecedent that prover answers, so a
+  shuffled load of the shipped starter spent a third of its time on re-joins that placed
+  nothing. The batch re-joins each such rule once, at its settle.
+  [inference.md](docs/inference.md#what-a-computed-answer-rests-on)
 
 ### Fix: browser
 

@@ -371,15 +371,23 @@ and `genls` / `specs` walk it on demand.
   reachability with a `:depth`-pruned early-exit walk (`depth[src] ≤ depth[tgt]` rejects
   a pair in O(1)), which is what keeps the per-assert `wff` cycle check flat on a deep
   load.
-- A **cycle** is refused for both `genl` and `genlCx` at assert, and the potential is
-  what still makes a recovered one work. `wff` (assert path) and `special/wff-violation`
-  (derivation path) refuse a `genl` or `genlCx` edge that would close one: a type cycle
-  claims two types are coextensive — a claim about *terms*, which is the equality
-  partition's job, and which would make a `disjoint` pair disjoint from itself — and a
-  context cycle, though it claims only that the two contexts see each other, is refused
-  too, so the context hierarchy is a partial order like the type hierarchy. A recovered
-  or foreign store replays its stored edges past those checks (`recovery/recover`), so
-  the taxonomy still holds a cycle such a store presents.
+- A **cycle** is refused at assert, and the potential ranks one that reaches the graph
+  anyway. `wff` (assert path) and `special/wff-violation` (derivation path) refuse a
+  `genl` edge whose reverse path the asserting context sees, and a `genlCx` edge that
+  would close a cycle anywhere. A type cycle claims its types are coextensive, and one
+  stray edge from a general type down to a specific one would make every type between
+  them coextensive. A context cycle changes what every reader sees, so its check reads
+  every edge, and the context hierarchy is a partial order. A `genl` edge whose reverse
+  path only another context sees is stored. A context that sees one of the two edges
+  reads no cycle, and a context below both reads the types as coextensive
+  ([Reads are scoped by the asking context](#reads-are-scoped-by-the-asking-context)).
+  The check reads the asserting context only, so an edge stored in a context above one
+  that holds the reverse path closes the cycle for the lower context, and no check
+  refuses a `genlCx` edge for the type cycle it brings into view
+  (`context_scoping_test/a-genl-edge-closing-a-cycle-only-a-sibling-sees-is-stored`).
+  Two types on such a cycle withhold no mint of each other ([argtypes.md](argtypes.md)).
+  A recovered or foreign store replays its stored edges past both checks
+  (`recovery/recover`), so the taxonomy still holds a cycle such a store presents.
 - Holding it means the potential ranks the **condensation** rather than the graph:
   `edge x→y ⇒ depth[x] > depth[y]`, except inside a strongly connected component, where
   the members are level and `:scc` maps each to the component's representative
@@ -532,12 +540,12 @@ a path the scoped `genls` — walking the very same visible edges — returns. W
 filtered walk may **not** borrow is `reachable?`'s other half, answering true off a
 shared component: mutual reachability there is a fact about the *global* edge set, and
 the whole question a scoped read asks is which of those edges the reader can see. So a
-component is a reason to keep walking and never an answer. (A `genl` cycle between types is
-refused at assert time and reachable anyway: defeat an edge, assert its reverse — the
-check reads the *active* adjacency, which no longer holds the defeated one — then revive
-the first. A `genlCx` edge is forced-monotonic and is never defeated, so
-a context cycle comes only from a recovered or foreign store, which replays a stored
-cycle past the check, as it does a type cycle.)
+component is a reason to keep walking and never an answer. (A `genl` cycle between types
+reaches the graph when its edges sit in contexts none of which sees the others, and by
+defeating an edge, asserting its reverse and reviving the first: the check reads the
+*active* adjacency, which no longer holds the defeated one. A `genlCx` edge is
+forced-monotonic and is never defeated, so a context cycle comes only from a recovered or
+foreign store, which replays a stored cycle past the check.)
 
 The **`genlCx` closure itself is the stated exception and stays global**:
 visibility scoped by visibility would be circular, every `genlCx` edge is forced
@@ -574,7 +582,7 @@ E17 too. What is on it:
 |---|---|
 | `vaelii.core`'s own short arity of `genls` / `specs` / `genl?` / `disjoint?` / `has-prop?` / `inverse-of` | the public API offers both readings, and this arity **is** the KB-wide one |
 | a stored key, storage context or store census (`res/kb-sentex`, `checks/stored-spelling`, `nat-read/reifiable-function?`, `special/deduce-lifts`, `decide/forced-monotonic?`) | the argument-order fold, a reified spelling and a lift's context are stored once for every reader; the read walk hides the spelling a reader's belief rules out ([canonicalization.md](canonicalization.md)) |
-| assert-time refusals (`wff/genl-problems`, `wff/genlCx-problems`, `checks`) | a refusal is a claim about the KB: a cycle refused when asked from one context and allowed from another is a coin toss, not a rule |
+| assert-time refusals (`wff/genlCx-problems`, `checks`) | a `genlCx` cycle changes what every reader sees, so its refusal reads every edge; `wff/genl-problems` reads the asserting context's edges |
 | the forward join and the trigger keys (`rules/trigger-keys`, `chain`, `inherit/moved-predicates`, `vantage`) | a firing is placed in a context the join decides, so the candidate fan cannot be scoped by one — the narrowing happens at placement |
 | the exception re-check triggers (`special`) | a trigger over-approximates in the direction the answer is: a declaration this edge cannot see still qualifies a rule in some context that can, and a missed trigger is a wrong belief where a spare one is a query |
 | settle's candidate discovery, and the nogood candidates the settle places (`membership/term-nogoods`, the `decide/tuple` rows) | an over-approximated candidate merely checks and yields nothing; the placement that follows reads the contexts that see a route |
@@ -1524,11 +1532,11 @@ instance of its whole belonging to none of its parts is what it declines to spea
 
 `wff/covering-problems` rejects any of the three that states nothing or cannot hold: fewer
 than two parts, a repeated part, an individual in any position, a part equal to the
-whole, and a part the closure already places above the whole (the `genl` edge would close
-a cycle). Each refusal takes the structured `:not-well-formed` path rather than throwing,
-as every other `wff` arm does. A part disjoint from the whole is stored: the refusal would
-read the stored `disjoint`, and what is stored would depend on which of the two arrived
-first ([nmtms.md](nmtms.md#1-order-independence)).
+whole, and a part the asserting context already sees above the whole (the `genl` edge
+would close a cycle there). Each refusal takes the structured `:not-well-formed` path
+rather than throwing, as every other `wff` arm does. A part disjoint from the whole is
+stored: the refusal would read the stored `disjoint`, and what is stored would depend on
+which of the two arrived first ([nmtms.md](nmtms.md#1-order-independence)).
 
 ### The three partitions of `thing`
 
@@ -2088,7 +2096,8 @@ closures rather than the generic prover.
 Before storing, `assert` checks the special predicates are structurally sound:
 
 - `genl` / `genlCx` — both arguments are types / contexts (not individuals), not
-  equal, and don't create a cycle (the reverse relation must not already hold).
+  equal, and don't create a cycle: a `genl` edge's reverse relation must not already hold
+  where the edge is asserted, and a `genlCx` edge's must not hold anywhere.
 - `disjoint` / `disjoint_metatype` — arguments are types, and a type is not disjoint
   with itself. Two `genl`-related types may be declared disjoint: the refusal would read
   the stored edge, so the declaration is stored whichever of the two arrived first, the

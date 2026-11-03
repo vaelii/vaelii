@@ -6,9 +6,9 @@ name: deep
 # a rename. It runs weekly: one run is 840 to 1,760 job-minutes (2026-10-19 and
 # 2026-10-25), and a tree that changes a few times a week does not have a fresh
 # answer every day. Running it daily would buy six identical verdicts and turn one
-# real failure into six lines of noise. A leg takes 25 to 100 minutes, since the
-# legs are parallel, and the coverage job takes 2.5 to 5.7 hours; what the cadence
-# is protecting is the minutes, not the wait.
+# real failure into six lines of noise. The legs run in parallel, a leg takes 25 to
+# over 150 minutes in one JVM, and the coverage job takes 2.5 to 5.7 hours; what the
+# cadence is protecting is the minutes, not the wait.
 #
 # test.yml runs the `:default` selector on two of the nine backends, because a
 # contributor should not wait an hour for a verdict. That leaves five real gaps,
@@ -100,9 +100,9 @@ jobs:
     # this workflow does work only where the minutes are free (see above `jobs:`)
     if: github.repository_owner == 'vaelii'
     runs-on: ubuntu-latest
-    # the same suite took 30 minutes on 2026-10-19 and passed 90 on 2026-10-25, with
-    # 336 of 386 namespaces done, because a hosted runner's speed varies threefold
-    timeout-minutes: 150
+    # In one JVM, memory-dense took 71 minutes on 2026-11-01 and overlay passed 150 with
+    # 380 of 420 namespaces done, because a hosted runner's speed varies threefold.
+    timeout-minutes: 240
     strategy:
       # Every backend reports, whatever the others did. The question this job
       # answers is *which* backends differ, and fail-fast would answer it with
@@ -159,14 +159,16 @@ jobs:
           restore-keys: |
             m2-${{ runner.os }}-jdk${{ matrix.jdk }}-
 
-      # One backend per runner, so the script's own reason for running its nine
-      # sequentially does not apply: two durable suites collide on the
-      # single-writer lock and `VAELII_TEST_SPACE` admits only three
-      # non-overlapping blocks, but separate VMs share neither a disk nor a
-      # registry. Nine in parallel take as long as the slowest leg instead of the
-      # sum of the nine, and on a public repo the minutes are unmetered.
+      # One backend per runner: nine in parallel take as long as the slowest leg
+      # instead of the sum of the nine, and on a public repo the minutes are unmetered.
+      # The leg splits across three JVMs on the runner's four cores, because one test
+      # JVM runs one test at a time. The shards start together, so `lein deps` resolves
+      # a cold ~/.m2 before them.
       - name: Suite (${{ matrix.backend }}, :all)
-        run: ./scripts/test-backends.sh :all ${{ matrix.backend }}
+        env:
+          VAELII_TEST_BACKEND: ${{ matrix.backend }}
+          VAELII_GATE_OUT: logs/test-backends
+        run: lein deps && ./scripts/test-parallel.sh :all --jobs 3
 
       - name: Upload run log
         if: always()
@@ -214,7 +216,7 @@ jobs:
     if: github.repository_owner == 'vaelii'
     runs-on: ubuntu-latest
     # the backends job's budget, for the same reason
-    timeout-minutes: 150
+    timeout-minutes: 240
     strategy:
       # Same reason as the backends job: the question is *which* dimension
       # diverged, and fail-fast answers "at least one".
@@ -261,15 +263,24 @@ jobs:
           restore-keys: |
             m2-${{ runner.os }}-jdk25-
 
-      # Plain `lein test`, not `test-backends.sh`: that script's whole job is to
-      # loop the backend axis and reduce each run to a ✔/✘, which is why a failure
-      # there has to be fetched from an artifact. One run on one axis has no loop
-      # to reduce, so let the failures land in the job log where they are read.
+      # The backends job's three JVMs. `test-parallel.sh` prints the failing tests to
+      # the job log and keeps each shard's output in the artifact below.
       #
       # `env` as a command prefix rather than a `with: env:` block, because a
       # matrix leg needs two variables and one needs none of the other's.
       - name: Suite (${{ matrix.name }}, :all)
-        run: env ${{ matrix.env }} lein test :all
+        run: |
+          lein deps
+          env ${{ matrix.env }} VAELII_GATE_OUT=logs/test-sweeps ./scripts/test-parallel.sh :all --jobs 3
+
+      - name: Upload run log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: deep-${{ matrix.name }}
+          path: logs/test-sweeps/
+          if-no-files-found: ignore
+          retention-days: 14
 
   multi-jvm:
     name: multi-jvm

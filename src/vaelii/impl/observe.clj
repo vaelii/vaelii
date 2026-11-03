@@ -409,33 +409,39 @@
   docs/inference.md."
   nil)
 
-(defn cached
+(defn clocked
   "The value of `k` in the resident `cache`, an atom of `{k {:value v :clock n}}`, with
   `build` run whenever the change clock has moved since `v` was derived. A nil `cache` runs
-  `build` every time. A bound `*held-values*` overrides both. `build` is called with the
-  stale value it replaces, or nil, for a caller that derives the new answer from the old
-  (`qcn-kb`'s warm-started pass). The clock is read before `build` and the entry recorded
-  under that reading. Nothing here is content-keyed: the derivations over a resident value
-  stay keyed on that value, so two KBs reaching one network share one pass."
+  `build` every time. `build` is called with the stale value it replaces, or nil, for a
+  caller that derives the new answer from the old (`qcn-kb`'s warm-started pass). The clock
+  is read before `build` and the entry recorded under that reading. Nothing here is
+  content-keyed: the derivations over a resident value stay keyed on that value, so two KBs
+  reaching one network share one pass."
+  [cache k build]
+  (if (nil? cache)
+    (build nil)
+    (let [now (change-clock)
+          hit (get @cache k)
+          t   (caches/tally-of cache :R3)]
+      (if (and hit (== now (long (:clock hit))))
+        (do (caches/hit t) (:value hit))
+        (let [v (caches/recomputed t (build (:value hit)))]
+          (when (and hit (caches/tallying?))
+            (caches/compared t (= (:value hit) v)))
+          (swap! cache caches/assoc-bounded
+                 (caches/limit-of :resident resident-limit)
+                 k {:value v :clock now})
+          v)))))
+
+(defn cached
+  "`clocked`, overridden by a bound `*held-values*`: the value that scope holds for `k`, or
+  the one `clocked` answers now, held for the rest of the scope."
   [cache k build]
   (let [held *held-values*
         pk   (when held [cache k])]              ; the atom's identity is the KB's identity
     (if-let [found (and held (find @held pk))]
       (val found)
-      (let [v (if (nil? cache)
-                (build nil)
-                (let [now (change-clock)
-                      hit (get @cache k)
-                      t   (caches/tally-of cache :R3)]
-                  (if (and hit (== now (long (:clock hit))))
-                    (do (caches/hit t) (:value hit))
-                    (let [v (caches/recomputed t (build (:value hit)))]
-                      (when (and hit (caches/tallying?))
-                        (caches/compared t (= (:value hit) v)))
-                      (swap! cache caches/assoc-bounded
-                             (caches/limit-of :resident resident-limit)
-                             k {:value v :clock now})
-                      v))))]
+      (let [v (clocked cache k build)]
         (when held (swap! held assoc pk v))
         v))))
 

@@ -26,8 +26,8 @@
   **These own their directories and touch no shared space.**  Every KB here is a fresh
   temp directory, so the suite's scratch/isolated block is not involved and there is
   nothing for a net-neutrality fixture to check.  A child gets its own directory too:
-  two suites over one directory colliding on the single-writer lock is what
-  `scripts/test-parallel.sh` refuses to shard into, and here it is the subject.
+  two suites over one directory collide on the single-writer lock, which
+  `scripts/test-parallel.sh` avoids with a directory per shard and this file tests.
 
   **The last test in this file carries no mark on purpose.**  It is a source scan, it
   forks nothing, and it runs in `:default` — where it has to run, since what it checks is

@@ -783,7 +783,12 @@ mint is drawn. The membership, the edge that puts its type under the mint's, the
 the declaration in any of their twenty-four orders leave the same KB, which is what
 `every-arrival-order-prunes-the-same-way` asks, and
 `every-arrival-order-prunes-the-same-way-across-contexts` asks of the `genlCx` edge that
-lets the mint's context see the membership. The candidate subtypes are the predicates of
+lets the mint's context see the membership. "More specifically" means a **strict** subtype
+at the mint's context (`tax/strict-genl?`): two types on a `genl` cycle the context sees
+are coextensive, so a membership in one withholds no mint of the other. Both records are
+kept in every order of the two edges, the two facts and the `genlCx` edge that brings the
+second edge into the context's view
+(`two-mints-into-a-genl-cycle-are-both-kept-in-every-order`). The candidate subtypes are the predicates of
 the term's unary predicate set (`reads/as-stored-unary-predicates`), which a derived membership
 enters as a stated one does, so a predicate holding the term in a fact of another arity
 costs the check nothing.
@@ -886,6 +891,10 @@ subsumes what it did. The release is therefore a function of the store: a KB reb
 `recover` releases what the KB that withheld the mint releases, which
 `recovery_test/a-recovered-kb-releases-a-withheld-mint-as-the-live-one-does` asks of each
 of the five ways a subsumption ends.
+
+A `genl` edge that comes IN on a cycle releases as a departing edge does, by the same
+row: a membership that withheld a mint under a strict route is no longer strictly below
+it once the cycle closes (`special/closes-genl-cycle?`).
 
 One arrival re-derives too. A record takes the justification of everything that entails
 it, so a record a premise or a rule firing holds up coming IN while a believed record

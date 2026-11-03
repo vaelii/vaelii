@@ -37,7 +37,8 @@
 #                     namespaces). Set empty to disable exclusions.
 #   COVERAGE_TEST_SKIP  Space-separated test namespaces to leave unrun (default
 #                     reload-test, which reloads the engine from disk
-#                     uninstrumented). Skipping a test keeps every source namespace
+#                     uninstrumented, and the three ontology content tests).
+#                     Skipping a test keeps every source namespace
 #                     in the measurement — unlike COVERAGE_EXCLUDE, which changes
 #                     what the percentage is over. Set empty to run the whole suite.
 #
@@ -111,15 +112,19 @@ done
 # which leaves every source namespace measured and only removes whatever coverage
 # that one test contributed. Prefer this: the number stays comparable.
 #
-# One is skipped by default. `reload-test` reloads, from disk, every namespace an edit to `vaelii.impl.sentex`
+# Four are skipped by default. `reload-test` reloads, from disk, every namespace an edit to `vaelii.impl.sentex`
 # reaches — nearly the whole engine — plus `dense-jtms`, and leaves them reloaded for the
 # rest of the JVM. Cloverage runs the test namespaces in name order in one JVM, so run,
 # it leaves every test namespace after it (settle, special, taxonomy, the web tests)
 # exercising uninstrumented code that counts for nothing — eight points of the forms
 # total. Skipping it costs the coverage of `vaelii.browser.reload`'s reload path.
 #
+# `ontology-test`, `ontology-rules-test` and `ontology-folk-taxonomy-test` assert the
+# shipped ontology's content, and every other leg runs them. Instrumented, the three
+# take 44 minutes of the job whose limit deep.yml states.
+#
 # `order-independence-test`, which replays each scenario under every permutation of its
-# operation list, runs: about 75 s instrumented, against a few seconds without.
+# operation list, runs: about 12 minutes instrumented.
 #
 # Cloverage has `-t/--test-ns-regex` (which tests to run) but no test-exclude, so
 # this is spelled as a negative lookahead over the alternation. Set
@@ -131,7 +136,7 @@ done
 # silent and looks like success — the run finishes fast and reports a number (8.70%
 # forms, from namespace loading alone). Whenever this regex changes, check the run
 # logs a plausible count of `Testing ` lines before trusting the percentage.
-COVERAGE_TEST_SKIP="${COVERAGE_TEST_SKIP-reload-test}"
+COVERAGE_TEST_SKIP="${COVERAGE_TEST_SKIP-reload-test ontology-test ontology-rules-test ontology-folk-taxonomy-test}"
 if [[ -n "$COVERAGE_TEST_SKIP" ]]; then
   read -r -a skips <<< "$COVERAGE_TEST_SKIP"
   alternation=$(IFS='|'; echo "${skips[*]}")

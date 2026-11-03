@@ -323,7 +323,7 @@
   (is (re-find #"action=\"/stats/blocks\"" (:body (GET "/stats"))))
   (is (nil? (jobs/latest :blocks)) "a page load runs no tally")
   (*app* {:request-method :post :uri "/stats/blocks" :scheme :http :params {} :headers {}})
-  (let [j    (jobs/wait (:id (jobs/latest :blocks)) 60000)
+  (let [j    (jobs/wait (:id (jobs/latest :blocks)) (tu/load-budget-ms))
         body (:body (GET "/stats"))]
     (is (= :done (:status j)))
     (is (re-find #"Definitional blocks" body))

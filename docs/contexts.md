@@ -24,7 +24,7 @@ iff `Y ∈ context-up(K)`.
 `:monotonic` whatever strength it was written at, so it caps no firing's class, and a
 denial of a stored edge loses to it and moves no edge.
 
-**A `genlCx` cycle is refused at assert, like a `genl` cycle.** The context hierarchy
+**A `genlCx` cycle is refused at assert.** The context hierarchy
 is a partial order: `wff/genlCx-problems` reads the global `genlCx` closure and refuses
 an edge whose super already sees its sub, so mutual visibility is not a claim the edge
 set may assert. A cycle a recovered or foreign store replays past that check
@@ -187,7 +187,10 @@ Data hangs below CxWell.
     its `genl` edges and its disjointness. `(toolEnablesCapability ?tool ?kind)` says
     that whoever has `?tool` can be the doer of a happening of kind `?kind`, and the
     one computing rule, a default guarded by `causal`, reads `hasCapability` from it and
-    `agentHasTool`. No rule concludes anything about an invocation.
+    `agentHasTool`. Both relations take a `temporal` in the tool position, the nearest kind
+    software and a hammer or a jetpack share, and CxTra excepts CxBiology's
+    penguin denial, through `(ist CxBiology …)`, for a penguin that has something that
+    enables flying. No rule concludes anything about an invocation.
     `(functional toolName)` is a decontextualized mark, so every context that sees
     CxUniverse reads that mark.
   - **hosts** — `computer` is hardware, an `electronic_device`, and

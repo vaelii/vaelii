@@ -2349,6 +2349,12 @@ belief through the walk builds one frame where it built one per check (`perf`'s
 build answers
 (`placed_nogood_test/every-reader-state-a-pass-reads-is-the-one-a-fresh-read-builds`).
 
+A read outside such a pass takes its frame from the KB's resident cache, where
+`exc/clock-frame` keeps one frame per context for one value of the change clock, so a
+loop of `in?` between two writes builds one frame (`perf`'s `in-beside-declarations`). The
+frame reads what a rebuild reads at that clock, on any thread and in a held-values scope,
+and each read takes a memo of its own.
+
 A defeat stored, removed or relabelled posts the re-check of its target's sentence
 (`special/recheck-defeat-target`), as a store of that sentence does, and so does an `except`
 arriving or leaving that can take a defeat in or out of force: an except of the defeat, of
@@ -2745,7 +2751,7 @@ its mechanism is documented:
 | a defeat's force | a `defeat` is in force only where it is itself believed, and its support can hold another defeat's target | a defeat met again on one read closes a cycle, which the walk breaks by reading every assignment of a cycle of at most eight members, then at most 2m + 1 passes over m members ([A defeat-dependency cycle](#a-defeat-dependency-cycle)) |
 | a support cycle | `A` justified by `B` and `B` by `A` | `region-fixpoint` starts from nothing IN inside the region and only adds ([Locality](#2-locality)) |
 | the class equation | a node's defeat-class reads its antecedents' classes | `region-classes` starts every member at `:default` and applies a monotone operator ([Strength propagates](#strength-propagates-from-the-antecedents)) |
-| a `genl` or `genlCx` loop | an edge that would close a cycle in the closure | refused, or dropped and recorded when derived ([exceptions.md](exceptions.md#stratification)) |
+| a `genl` or `genlCx` loop | an edge that would close a cycle in the closure (for `genl`, the closure its context sees) | refused, or dropped and recorded when derived ([exceptions.md](exceptions.md#stratification)); a `genl` cycle split across contexts is stored, and the potential ranks the condensation ([taxonomy.md](taxonomy.md#the-closure-is-not-materialized--it-is-answered-on-demand)) |
 
 ### No switch removes a feature
 

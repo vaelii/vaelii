@@ -465,6 +465,19 @@
                  (v/assert kb leaf 'CxPerf m)
                  (quot t 40)))))))
 
+(defn- in-beside-declarations
+  "Four hundred `in?` reads between two writes, beside n forced-monotonic declarations and
+  one placed defeat.  Healthy 0.47x; with a reader frame built per read, 3.92x."
+  [n]
+  (let [kb (fresh-kb)
+        M  {:strength :monotonic}
+        h  (v/assert kb '(prf_note PrfItem) 'CxPerf)]
+    (v/with-deferred-settle kb
+      (doseq [i (range n)]
+        (v/assert kb (list 'forced_monotonic_predicate (symbol (str "prfForced" i))) 'CxUniverse M)))
+    (v/assert kb '(not (prf_note PrfItem)) 'CxPerf M)
+    (doall (for [_ (range 400)] (nanos (v/in? kb h))))))
+
 (defn- release-beside-forced-declarations
   "One `v/edit!` taking out n memberships `(prf_dog PrfX_i)`, per membership, beside 4000
   forced-monotonic declarations in `CxPrfB`, each read by a rule in `CxPrfA`, and one
@@ -2779,6 +2792,31 @@
                      (let [r (symbol (str "PlzR" i))]
                        (v/assert kb (list 'plzMark r 'PlzP) 'CxPerf)
                        (v/assert kb (list 'plz_cls r) 'CxPerf)))))
+          n)))))
+
+(defn- computed-reader-load
+  "n `conversionFactor` facts, which the quantity prover reads, loaded in one deferred settle
+  beside n firings of `(pcrMass ?x ?q) ∧ (quantityGreaterThan ?q (QuantityFn 1 Kilogram)) ⇒
+  (pcr_heavy ?x)`, timed per fact over three loads.
+
+  Each fact owes the rule a re-join, and the batch's settle runs one
+  (`chain/run-batch-rejoins`).  A re-join per fact reads here as growth."
+  [n]
+  (doall
+   (for [_ (range 3)]
+     (let [kb (fresh-kb)]
+       (v/with-deferred-settle kb
+         (v/assert kb '(set/forwardRule
+                        (implies (and (pcrMass ?x ?q)
+                                      (quantityGreaterThan ?q (QuantityFn 1 Kilogram)))
+                                 (pcr_heavy ?x)))
+                   'CxPerf)
+         (dotimes [i n]
+           (v/assert kb (list 'pcrMass (symbol (str "PCR" i)) '(QuantityFn 2 Kilogram)) 'CxPerf)))
+       (/ (nanos (v/with-deferred-settle kb
+                   (dotimes [i n]
+                     (v/assert kb (list 'conversionFactor (symbol (str "PcrUnit" i)) 'Kilogram 2)
+                               'CxPerf))))
           n)))))
 
 (defn- lazy-reader-rejoin-outside-a-batch
@@ -7115,6 +7153,13 @@
     :max-ratio 0.5
     :run       release-beside-forced-declarations}
 
+   {:name      :in-beside-declarations
+    :group     :exceptions
+    :claim     "40x the forced-monotonic declarations costs under 1.5x per `in?` between two writes"
+    :sizes     [10 400]
+    :max-ratio 1.5
+    :run       in-beside-declarations}
+
    ;; Both ends measured 2026-10-17 by `lein perf --only`.  Healthy 0.99x.  With a `genl?`
    ;; walk to `thing` per atom at the declared position: 4.71x.
    ;; Both ends measured 2026-10-20, load average 3.  Healthy 0.89x (1.081 ms against
@@ -9401,6 +9446,13 @@
     :sizes     [64 1024]
     :max-ratio 2.0
     :run       lazy-reader-load}
+
+   {:name      :computed-reader-load
+    :group     :chaining
+    :claim     "16x the conversionFactor facts, loaded in one settle beside 16x the firings of a rule the quantity prover answers, cost under 2x per fact"
+    :sizes     [64 1024]
+    :max-ratio 2.0
+    :run       computed-reader-load}
 
    {:name      :lazy-reader-rejoin-outside-a-batch
     :group     :chaining
