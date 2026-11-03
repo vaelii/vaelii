@@ -77,29 +77,24 @@
                    (conj seen h) (into records added) (assoc supports h js))))
         [records supports]))))
 
-(def ^:private informant-is-leaf?
-  "Does a firing's rule (a rule-handle informant) count as an antecedent of the walk, so
-  that the rule's premise is an asserted leaf?  The one place that choice is made."
-  false)
-
 (defn- walked-handles
-  "The handles the leaf walk descends to from justification `j`, or `:computed` when it
-  names none: a firing whose antecedents are all computed literals (`evaluate`,
+  "What the leaf walk descends to from justification `j`: every handle it rests on
+  (`jtms/rests-on`), its antecedents and its rule alike, so an asserted rule is a leaf and
+  a deduced one is walked down to its own support.  The mark `:computed` joins them when
+  `j` names no antecedent: a firing whose literals are all computed (`evaluate`,
   `lessThan`, a prover's answer) records no handle for them."
   [j]
-  (let [inf (:informant j)
-        hs (cond-> (vec (budget/checked-seq (:antecedents j)))
-             (and informant-is-leaf? (integer? inf)) (conj inf))]
-    (if (seq hs) hs :computed)))
+  (cond-> (vec (budget/checked-seq (jtms/rests-on j)))
+    (empty? (:antecedents j)) (conj :computed)))
 
 (defn- support-leaves
-  "`{:leaves #{h} :marks #{k}}`: the premises (`premise?`) the handles `hs` reach through
-  the justifications `supports` maps each handle to, and the keyword `step` returned for a
-  justification instead of handles to descend to.  A premise is a leaf and is not
+  "`{:leaves #{h} :marks #{k}}`: the premises (`premise?`) the items `hs` reach through the
+  justifications `supports` maps each handle to, `step` giving what each justification
+  descends to, and the keywords met among those items.  A premise is a leaf and is not
   descended past; a handle `supports` gives no justification adds nothing.  Each handle is
   walked once, so a shared node or a cycle is safe."
   [supports premise? step hs]
-  (loop [todo (vec hs), seen #{}, leaves #{}, marks #{}]
+  (loop [todo (vec (remove keyword? hs)), seen #{}, leaves #{}, marks (into #{} (filter keyword?) hs)]
     (budget/spend!)
     (if-let [h (peek todo)]
       (let [todo (pop todo)]
@@ -107,10 +102,11 @@
           (contains? seen h) (recur todo seen leaves marks)
           (premise? h) (recur todo (conj seen h) (conj leaves h) marks)
           :else (let [[todo marks] (reduce (fn [[todo marks] j]
-                                             (let [s (step j)]
-                                               (if (keyword? s)
-                                                 [todo (conj marks s)]
-                                                 [(into todo (remove seen) s) marks])))
+                                             (reduce (fn [[todo marks] x]
+                                                       (cond (keyword? x) [todo (conj marks x)]
+                                                             (contains? seen x) [todo marks]
+                                                             :else [(conj todo x) marks]))
+                                                     [todo marks] (step j)))
                                            [todo marks] (budget/checked-seq (get supports h)))]
                   (recur todo (conj seen h) leaves marks))))
       {:leaves leaves :marks marks})))
@@ -119,9 +115,9 @@
   "`{:leaves #{h} :computed? b}`: the premises handle `h`'s support bottoms out in, read
   through the justifications that are valid and that `h`'s context reads as `:supports`
   (`exc/justification-verdicts`), so a guard-covered or blocked alternative contributes
-  nothing.  A premise is its own leaf.  A firing's rule is not a leaf and is not walked.
-  `:computed?` is true when some valid firing on the way names no antecedent, its
-  literals all computed.  Cycle-safe."
+  nothing.  A premise is its own leaf.  A firing's rule is a node like its antecedents:
+  an asserted rule is a leaf, a deduced one is walked.  `:computed?` is true when some
+  valid firing on the way names no antecedent, its literals all computed.  Cycle-safe."
   [kb h]
   (let [tms (reasoning/tms kb)
         valid? (jtms/region-valid-fn tms #{} nil #{})
@@ -147,7 +143,7 @@
   (fn [j]
     (let [informant (:informant j)]
       (cond
-        (skeletal-informant? informant) :skeletal
+        (skeletal-informant? informant) [:skeletal]
         (spelling-informant? kb informant) [(first (:antecedents j))]
         :else (walked-handles j)))))
 
@@ -198,10 +194,7 @@
         leaves-of (fn [j]
                     (if-let [e (find @leaf-memo (:id j))]
                       (val e)
-                      (let [s (step j)
-                            r (if (keyword? s)
-                                {:leaves #{} :marks #{s}}
-                                (support-leaves supports premise? step s))]
+                      (let [r (support-leaves supports premise? step (step j))]
                         (vswap! leaf-memo assoc (:id j) r)
                         r)))
         ;; a premise an equality merge superseded seeds the role its rewritten twin reads

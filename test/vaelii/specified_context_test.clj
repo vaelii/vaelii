@@ -225,16 +225,20 @@
     (is (= {:status :audited :violations #{}}
            (result kb 'predAllSpecified notes item_kind 'CxUniverse)))))
 
-(tu/deftest-kb a-computed-only-firing-is-skeletal-defining-support
+(tu/deftest-kb a-computed-only-firing-under-an-asserted-rule-is-audited-as-ordinary
   ;; A forward firing whose antecedents are all computed names no antecedent, only its
-  ;; rule as informant.  Computed support is the engine's own knowledge and the rule is
-  ;; not a leaf, so the support is skeletal: no ordinary home, and no audit gap.
+  ;; rule as informant.  The asserted rule is an ordinary leaf, so the subject has an
+  ;; ordinary home and must carry the specified comment.
   (tu/with-terms [Subject notes item_kind]
     (schema kb 'predAllSpecified notes item_kind)
     (v/assert kb (tu/fwd [(list 'evaluate '?s (list '+ 1 2))] (list item_kind Subject))
               'CxUniverse)
     (v/assert kb (list 'predAllSpecified notes item_kind) 'CxUniverse)
     (is (true? (v/ask? kb (list item_kind Subject) 'CxUniverse)))
-    (is (= {:contexts #{} :skeletal-only? true} (defining/definition-evidence kb Subject)))
+    (is (= {:contexts #{'CxUniverse} :skeletal-only? false}
+           (defining/definition-evidence kb Subject)))
+    (is (= {:status :audited :violations #{Subject}}
+           (result kb 'predAllSpecified notes item_kind 'CxUniverse)))
+    (v/assert kb (note 'predAllSpecified notes Subject) 'CxUniverse)
     (is (= {:status :audited :violations #{}}
            (result kb 'predAllSpecified notes item_kind 'CxUniverse)))))
