@@ -206,7 +206,7 @@
     (is (= {:status :audited :violations #{}}
            (result kb 'predAllSpecified notes item_kind CxRequirement)))))
 
-(tu/deftest-kb unclassified-defining-support-is-a-gap-when-the-filler-is-missing
+(tu/deftest-kb mixed-defining-support-is-audited-as-ordinary
   (tu/with-terms [CxOrigin Subject Marker Other liftedTrigger prerequisite notes item_kind]
     (schema kb 'predAllSpecified notes item_kind)
     (v/assert kb (list 'genlCx CxOrigin 'CxUniverse) 'CxUniverse)
@@ -217,6 +217,21 @@
                        (list 'implies (list 'and (list liftedTrigger Marker)
                                             (list prerequisite Other))
                              (list item_kind Subject))) 'CxUniverse)
+    (v/assert kb (list 'predAllSpecified notes item_kind) 'CxUniverse)
+    (is (true? (v/ask? kb (list item_kind Subject) 'CxUniverse)))
+    (is (= {:status :audited :violations #{Subject}}
+           (result kb 'predAllSpecified notes item_kind 'CxUniverse)))
+    (v/assert kb (note 'predAllSpecified notes Subject) 'CxUniverse)
+    (is (= {:status :audited :violations #{}}
+           (result kb 'predAllSpecified notes item_kind 'CxUniverse)))))
+
+(tu/deftest-kb unclassified-defining-support-is-a-gap-when-the-filler-is-missing
+  ;; A forward firing whose antecedents are all computed names no antecedent, only its
+  ;; rule as informant, so its defining support stays unclassified.
+  (tu/with-terms [Subject notes item_kind]
+    (schema kb 'predAllSpecified notes item_kind)
+    (v/assert kb (tu/fwd [(list 'evaluate '?s (list '+ 1 2))] (list item_kind Subject))
+              'CxUniverse)
     (v/assert kb (list 'predAllSpecified notes item_kind) 'CxUniverse)
     (is (true? (v/ask? kb (list item_kind Subject) 'CxUniverse)))
     (let [audit (result kb 'predAllSpecified notes item_kind 'CxUniverse)]
