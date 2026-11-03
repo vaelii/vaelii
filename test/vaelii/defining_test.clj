@@ -110,6 +110,22 @@
       (v/retract! kb h)
       (is (= #{CxHome} (v/defining-contexts kb Subject))))))
 
+(tu/deftest-kb a-skeletal-content-antecedent-decides-before-the-other-support
+  ;; The conclusion's only antecedent mentioning Subject is the lifted copy, skeletal, so
+  ;; the ordinary prerequisite beside it does not make a global home.  The copy is
+  ;; classified a round after the conclusion is first read, which must wait for it.
+  (tu/with-terms [CxHome Subject Marker Other liftedRel prerequisite conclusion]
+    (contexts kb [CxHome])
+    (v/assert kb (list 'decontextualized_predicate liftedRel) 'CxUniverse)
+    (v/assert kb (list liftedRel Subject Marker) CxHome)
+    (v/assert kb (list prerequisite Other) 'CxUniverse)
+    (v/assert kb (list 'set/forwardRule
+                       (list 'implies (list 'and (list liftedRel '?x Marker) (list prerequisite Other))
+                             (list conclusion '?x)))
+              'CxUniverse)
+    (is (v/ask? kb (list conclusion Subject) 'CxUniverse))
+    (is (= #{CxHome} (v/defining-contexts kb Subject)))))
+
 (tu/deftest-kb independent-premise-on-a-lifted-datum-remains-ordinary
   (tu/with-terms [CxHome Subject liftedType]
     (contexts kb [CxHome])

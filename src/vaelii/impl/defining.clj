@@ -173,6 +173,8 @@
       (spelling-informant? kb informant) (get roles (first antecedents))
       (some #(= :ordinary (get roles %)) content) :ordinary
       (and (seq content) (every? #(= :skeletal (get roles %)) content)) :skeletal
+      ;; a content antecedent not yet classified may still decide: wait for it
+      (some #(nil? (get roles %)) content) nil
       :else (leaf-role roles (leaves-of justification)))))
 
 (defn definition-evidence
