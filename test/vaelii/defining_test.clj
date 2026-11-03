@@ -434,3 +434,40 @@
       (testing "a genlCx between the two leaves' contexts reduces to the more general one"
         (v/assert kb (list 'genlCx CxP2 CxRule2) 'CxUniverse)
         (is (= #{CxRule2} (v/defining-contexts kb Subject)))))))
+
+;; ---- equality: a mention is syntactic --------------------------------------------
+
+(defn- equal-names-define-apart
+  "`first-term` and `second-term` are equal (`sameAs`, asserted with `first-term` as the
+  first argument when `first-arg-first?`), and each is named by a fact in a context of
+  its own.  The equation is itself a mention of both names, so it is stated in `CxEq`,
+  below both fact contexts, where context maximization folds it into each.  Each term's
+  defining contexts are its own fact's context alone."
+  [kb first-term second-term first-arg-first? [tagFirst tagSecond] CxFirst CxSecond CxEq]
+  (contexts kb [CxFirst CxSecond])
+  (doseq [parent [CxFirst CxSecond]]
+    (v/assert kb (list 'genlCx CxEq parent) 'CxUniverse))
+  (v/assert kb (list tagFirst first-term) CxFirst)
+  (v/assert kb (list tagSecond second-term) CxSecond)
+  (v/assert kb (if first-arg-first?
+                 (list 'sameAs first-term second-term)
+                 (list 'sameAs second-term first-term))
+            CxEq)
+  (is (v/ask? kb (list tagSecond first-term) CxEq) "the equality is in force where it is stated")
+  (is (v/ask? kb (list tagFirst second-term) CxEq))
+  (is (not (v/ask? kb (list tagSecond first-term) CxFirst)) "and only there")
+  (is (= #{CxFirst} (v/defining-contexts kb first-term)))
+  (is (= #{CxSecond} (v/defining-contexts kb second-term))))
+
+(tu/deftest-kb an-equal-name-mentioned-elsewhere-does-not-define-the-other
+  ;; Iris, 2026-11-03: a fact about MorningStar and one about EveningStar in different
+  ;; contexts are mentions of each name alone, equality notwithstanding.  Both pairs and
+  ;; both argument orders, so no choice of representative (first argument, least name)
+  ;; passes by luck: MorningStar sorts after EveningStar, Alpha before Zeta.
+  (doseq [first-arg-first? [true false]]
+    (testing (str "MorningStar and EveningStar, first argument first: " first-arg-first?)
+      (tu/with-terms [MorningStar EveningStar tagM tagE CxM CxE CxEq]
+        (equal-names-define-apart kb MorningStar EveningStar first-arg-first? [tagM tagE] CxM CxE CxEq)))
+    (testing (str "Alpha and Zeta, first argument first: " first-arg-first?)
+      (tu/with-terms [Alpha Zeta tagA tagZ CxA CxZ CxEq]
+        (equal-names-define-apart kb Alpha Zeta first-arg-first? [tagA tagZ] CxA CxZ CxEq)))))
