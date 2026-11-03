@@ -487,6 +487,25 @@
         (is (= {:contexts #{} :skeletal-only? true} (defining/definition-evidence kb Lonely)))
         (is (= {:contexts #{} :skeletal-only? true} (defining/definition-evidence kb Other)))))))
 
+;; ---- contexts: genlCx is decontextualized, so a context is defined in CxUniverse ----
+
+(tu/deftest-kb a-contexts-defining-context-is-the-universe
+  ;; Iris, 2026-11-03: the genlCx links mention the context they relate, and genlCx is
+  ;; decontextualized (forced_decontextualized_predicate), so every context is defined
+  ;; in CxUniverse wherever its link was asserted, and a mention in a context below it
+  ;; maximizes into CxUniverse too.
+  (tu/with-terms [CxOther CxParent CxKid CxGrand]
+    (contexts kb [CxOther CxParent])
+    (testing "a context whose only genlCx was asserted in another context"
+      (v/assert kb (list 'genlCx CxKid CxParent) CxOther)
+      (is (= #{'CxUniverse} (v/defining-contexts kb CxKid))))
+    (testing "and which is also commented in a child context of its own"
+      (v/assert kb (list 'genlCx CxGrand CxKid) 'CxUniverse)
+      (v/assert kb (list 'comment CxKid "A context commented below itself.") CxGrand)
+      (is (= #{'CxUniverse} (v/defining-contexts kb CxKid))))
+    (testing "CxUniverse itself"
+      (is (= #{'CxUniverse} (v/defining-contexts kb 'CxUniverse))))))
+
 ;; ---- asserted-leaves-such-that: one walk, a unary filter, many starts ----------------
 
 (defn- such-that [kb keep? hs] (defining/asserted-leaves-such-that kb keep? hs))
