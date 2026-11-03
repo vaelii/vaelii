@@ -64,32 +64,6 @@
                 (contains? handles (:id record))))
             (budget/checked-call #(nat/reified-nats-in (sx/sentence-of record)))))))
 
-(defn- reachable-supports
-  [kb initial valid?]
-  (let [tms (reasoning/tms kb)]
-    (loop [todo (into [] (budget/checked-seq (keys initial))), seen #{}, records initial, supports {}]
-      (budget/spend!)
-      (if-let [h (peek todo)]
-        (if (contains? seen h)
-          (recur (pop todo) seen records supports)
-          (let [record (get records h)
-                verdicts (budget/checked-call #(exc/justification-verdicts kb h (:context record)))
-                js (into []
-                         (comp (keep #(jtms/justification tms %))
-                               (filter #(and (budget/checked-call (fn [] (valid? #{} %)))
-                                             (= :supports (get verdicts (:id %))))))
-                         (budget/checked-seq (jtms/supports tms h)))
-                dependencies (into #{} (mapcat #(budget/checked-seq (jtms/rests-on %)))
-                                   (budget/checked-seq js))
-                added (into {} (keep (fn [dependency]
-                                       (budget/spend!)
-                                       (when-not (contains? records dependency)
-                                         (when-let [s (p/get-sentex (:records kb) dependency)]
-                                           [dependency s])))) dependencies)]
-            (recur (into (pop todo) (remove seen) (keys added))
-                   (conj seen h) (into records added) (assoc supports h js))))
-        [records supports]))))
-
 (defn- walked-handles
   "What the leaf walk descends to from justification `j`: every handle it rests on
   (`jtms/rests-on`), its antecedents and its rule alike, so an asserted rule is a leaf and
@@ -99,30 +73,6 @@
   [j]
   (cond-> (vec (budget/checked-seq (jtms/rests-on j)))
     (empty? (:antecedents j)) (conj :computed)))
-
-(defn- support-leaves
-  "`{:leaves #{h} :marks #{k}}`: the premises (`premise?`) the items `hs` reach through the
-  justifications `supports` maps each handle to, `step` giving what each justification
-  descends to, and the keywords met among those items.  A premise is a leaf and is not
-  descended past; a handle `supports` gives no justification adds nothing.  Each handle is
-  walked once, so a shared node or a cycle is safe."
-  [supports premise? step hs]
-  (loop [todo (vec (remove keyword? hs)), seen #{}, leaves #{}, marks (into #{} (filter keyword?) hs)]
-    (budget/spend!)
-    (if-let [h (peek todo)]
-      (let [todo (pop todo)]
-        (cond
-          (contains? seen h) (recur todo seen leaves marks)
-          (premise? h) (recur todo (conj seen h) (conj leaves h) marks)
-          :else (let [[todo marks] (reduce (fn [[todo marks] j]
-                                             (reduce (fn [[todo marks] x]
-                                                       (cond (keyword? x) [todo (conj marks x)]
-                                                             (contains? seen x) [todo marks]
-                                                             :else [(conj todo x) marks]))
-                                                     [todo marks] (step j)))
-                                           [todo marks] (budget/checked-seq (get supports h)))]
-                  (recur todo (conj seen h) leaves marks))))
-      {:leaves leaves :marks marks})))
 
 (defn- leaf-walk
   "`{:leaves #{h} :marks #{k} :unsupported #{h}}`: one walk down from the handles `hs` to
@@ -200,17 +150,6 @@
   [kb informant]
   (or (kb/mint-informant? kb informant) (= jtms/respell-informant informant)))
 
-(defn- role-step
-  "`walked-handles` for the defining walk: a scaffolding copy is skeletal without
-  descending to the fact it copies, and a spelling descends to its source alone."
-  [kb]
-  (fn [j]
-    (let [informant (:informant j)]
-      (cond
-        (skeletal-informant? informant) [:skeletal]
-        (spelling-informant? kb informant) [(first (:antecedents j))]
-        :else (walked-handles j)))))
-
 (defn- defining-step
   "`walked-handles` for the defining walk, except that a spelling descends to its source
   alone: the rest of its antecedents are the marks or declaration that spell it."
@@ -235,108 +174,48 @@
                                (some-> (p/get-sentex records x) bookkeeping?)))
         :else (not (skeletal-informant? (:informant x)))))))
 
+(defn- defining-walk
+  [kb hs]
+  (leaf-walk kb (non-skeletal-fn kb) (defining-step kb) hs))
+
 (defn asserted-defining-leaves
   "`asserted-leaves-such-that` handle or handles `h-or-hs`, ignoring skeletal things: the
   walk halts at a skeletal node (`non-skeletal-fn`) instead of recursing, and a spelling is
   walked to its source alone.  One walk, however many starts."
   [kb h-or-hs]
-  (let [{:keys [leaves marks]} (leaf-walk kb (non-skeletal-fn kb) (defining-step kb)
-                                          (if (coll? h-or-hs) h-or-hs [h-or-hs]))]
+  (let [{:keys [leaves marks]} (defining-walk kb (if (coll? h-or-hs) h-or-hs [h-or-hs]))]
     {:leaves leaves :computed? (contains? marks :computed)}))
 
-(defn- leaf-role
-  "The role the asserted leaves `{:leaves :marks}` give a derivation: ordinary when a leaf
-  is, skeletal when every leaf is and every mark is skeletal (computed support is the
-  engine's own knowledge), else nil."
-  [roles {:keys [leaves marks]}]
-  (cond
-    (some #(= :ordinary (get roles %)) leaves) :ordinary
-    (and (or (seq leaves) (seq marks))
-         (every? #(= :skeletal (get roles %)) leaves)
-         (every? #{:computed :skeletal} marks)) :skeletal))
-
-(defn- support-role
-  [kb candidates roles leaves-of justification]
-  (budget/spend!)
-  (let [informant (:informant justification)
-        antecedents (budget/checked-seq (:antecedents justification))
-        content (filter candidates antecedents)]
-    (cond
-      (skeletal-informant? informant) :skeletal
-      (spelling-informant? kb informant) (get roles (first antecedents))
-      (some #(= :ordinary (get roles %)) content) :ordinary
-      (and (seq content) (every? #(= :skeletal (get roles %)) content)) :skeletal
-      ;; a content antecedent not yet classified may still decide: wait for it
-      (some #(nil? (get roles %)) content) nil
-      :else (leaf-role roles (leaves-of justification)))))
-
 (defn definition-evidence
-  "The ordinary contexts and whether nonempty stored defining evidence is skeletal-only.
-  An absent assertion is not evidence of skeletal-only definition."
+  "`{:contexts #{c} :skeletal-only? b}`: the maximal contexts of the ordinary asserted
+  leaves that mention `term`, read in one walk (`asserted-defining-leaves`) down from all
+  its believed mentions, and whether it has such mentions but no such leaf, every way in
+  being skeletal.  A believed derived mention with no supporting justification throws
+  :incomplete-defining-contexts.  An absent assertion is not evidence of skeletal-only
+  definition."
   [kb term]
   (let [term (sx/canon term)
         tms (reasoning/tms kb)
-        mentions (into {} (map (juxt :id identity)) (budget/checked-seq (kb/find-sentexes kb term)))
         hidden? (or (budget/checked-call #(exc/own-hidden-fn kb)) (constantly false))
         live? #(and (jtms/in? tms %) (not (hidden? %)))
-        candidates (into #{} (keep (fn [[h record]]
-                                     (when (mentions-term? kb term record) h)))
-                         (budget/checked-seq mentions))
-        valid? (jtms/region-valid-fn tms #{} nil #{})
-        [records supports] (reachable-supports kb mentions valid?)
-        bookkeeping? (bookkeeping-test kb)
-        premise? #(jtms/premise? tms %)
-        step (role-step kb)
-        leaf-memo (volatile! {})
-        leaves-of (fn [j]
-                    (if-let [e (find @leaf-memo (:id j))]
-                      (val e)
-                      (let [r (support-leaves supports premise? step (step j))]
-                        (vswap! leaf-memo assoc (:id j) r)
-                        r)))
-        ;; a premise an equality merge superseded seeds the role its rewritten twin reads
-        seeds (into {} (keep (fn [[h record]]
-                               (budget/spend!)
-                               (when (and (or (live? h) (jtms/superseded? tms h)) (premise? h))
-                                 [h (if (bookkeeping? record) :skeletal :ordinary)]))) records)
-        roles (loop [roles seeds]
-                (let [next (reduce-kv
-                            (fn [result h js]
-                              (budget/spend!)
-                              (if (or (= :ordinary (get result h)) (not (live? h)))
-                                result
-                                (let [rs (keep #(support-role kb candidates roles leaves-of %) js)]
-                                  (cond
-                                    (some #{:ordinary} rs) (assoc result h :ordinary)
-                                    (some #{:skeletal} rs) (assoc result h :skeletal)
-                                    :else result))))
-                            roles supports)]
-                  (if (= roles next) roles (recur next))))
-        relevant (into [] (filter (fn [[h record]]
-                                    (and (live? h)
-                                         (mentions-term? kb term record))))
-                       (budget/checked-seq mentions))
-        unresolved (into []
-                         (keep (fn [[h _]]
-                                 (when (and (not= :ordinary (get roles h))
-                                            (or (nil? (get roles h))
-                                                (some #(nil? (support-role kb candidates roles leaves-of %))
-                                                      (get supports h))))
-                                   h))) (budget/checked-seq relevant))]
+        mentions (into {} (keep (fn [record]
+                                  (budget/spend!)
+                                  (when (mentions-term? kb term record) [(:id record) record])))
+                       (budget/checked-seq (kb/find-sentexes kb term)))
+        relevant (into [] (filter live?) (budget/checked-seq (keys mentions)))
+        {:keys [leaves unsupported]} (defining-walk kb relevant)
+        unresolved (filterv unsupported relevant)]
     (when (seq unresolved)
       (throw (ex-info "Defining-context support is incomplete."
                       {:type :incomplete-defining-contexts :term term :handles unresolved})))
-    {:contexts (budget/checked-call
-                #(tax/max-cxs (reasoning/taxonomy kb)
-                              (into #{} (keep (fn [[h record]]
-                                                (when (= :ordinary (get roles h)) (:context record))))
-                                    (budget/checked-seq relevant))))
-     :skeletal-only? (boolean (and (seq relevant)
-                                   (every? #(= :skeletal (get roles (first %)))
-                                           (budget/checked-seq relevant))))}))
+    (let [homes (into #{} (keep #(when (live? %) (:context (get mentions %))))
+                      (budget/checked-seq leaves))]
+      {:contexts (budget/checked-call
+                  #(tax/max-cxs (reasoning/taxonomy kb) homes))
+       :skeletal-only? (boolean (and (seq relevant) (empty? homes)))})))
 
 (defn defining-contexts
-  "The maximal ordinary defining contexts. Unclassified support throws
+  "The maximal ordinary defining contexts. Unsupported believed mentions throw
   :incomplete-defining-contexts; an empty set does not certify skeletal-only evidence."
   [kb term]
   (:contexts (definition-evidence kb term)))
