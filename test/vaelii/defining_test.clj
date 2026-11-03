@@ -221,6 +221,24 @@
       (v/retract! kb h)
       (is (= #{CxHome} (v/defining-contexts kb Subject))))))
 
+(tu/deftest-kb a-rule-that-does-not-name-a-constant-leaves-it-to-the-leaf-that-does
+  ;; Iris, 2026-11-03: the variant where the rule does not name Subject.  The derived
+  ;; conclusion is stored in the rule's context, but its defining context comes from
+  ;; the leaf that names Subject, and goes with that leaf.
+  (tu/with-terms [CxHome CxTrig Subject trigger target]
+    (contexts kb [CxTrig])
+    (v/assert kb (list 'genlCx CxHome CxTrig) 'CxUniverse)
+    (v/assert kb (tu/fwd [(list trigger '?x)] (list target '?x)) CxHome)
+    (is (= #{} (v/defining-contexts kb Subject)) "before firing")
+    (let [h (v/assert kb (list trigger Subject) CxTrig)
+          derived (v/handle-of kb (list target Subject) CxHome)]
+      (is (some? derived))
+      (is (not (v/premise? kb derived)))
+      (is (= #{CxTrig} (v/defining-contexts kb Subject)) "after firing")
+      (v/retract! kb h)
+      (is (not (v/ask? kb (list target Subject) CxHome)))
+      (is (= #{} (v/defining-contexts kb Subject)) "after retracting the leaf"))))
+
 (tu/deftest-kb a-skeletal-trigger-under-an-asserted-rule-creates-an-ordinary-global-home
   ;; The asserted rule is a leaf of the firing it informs, and it is ordinary.
   (tu/with-terms [CxOrigin Subject Marker liftedTrigger target subject_kind]
