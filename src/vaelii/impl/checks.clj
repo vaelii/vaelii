@@ -2272,7 +2272,7 @@
   (let [tax (reasoning/taxonomy kb)]
     (first
      (for [p    (reads/as-stored-unary-predicates (:index kb) x)
-           :when (and (symbol? p) (not= p t) (tax/genl? tax p t context))
+           :when (and (symbol? p) (tax/strict-genl? tax p t context))
            h    (reads/as-stored-with-args (:index kb) p {1 x})
            :let [sx (p/get-sentex (:records kb) h)]
            :when (and sx (= (list p x) (:sentence sx))
@@ -2286,8 +2286,8 @@
   redundant, or nil: `S` a strict subtype of `t` reaching it through the edges `context`
   sees, so `x` reaches `t` over a route of two edges or more.
 
-  Removing every redundant edge of a directed acyclic graph leaves the same closure, and the
-  taxonomy refuses a `genl` cycle (`edge-stratification-violation`).  An edge out of `x` that a
+  Removing every redundant edge leaves the same closure when each route reaches `t` through
+  a strict subtype (`tax/strict-genl?`).  An edge out of `x` that a
   `covering`, `separating` or `partition` declaration installs (`tax/installed-edges`) is a
   route like a stated one, and its handle is read off the edge's supporters
   (`tax/genl-edge-supporters`).  Without it, a type whose only parent edge comes from a
@@ -2304,12 +2304,12 @@
             :let [sx (p/get-sentex (:records kb) h)
                   s  (when sx (nth (:sentence sx) 2 nil))]
             :when (and sx (= 3 (count (:sentence sx))) (symbol? s)
-                       (not= s t) (tax/genl? tax s t context)
+                       (tax/strict-genl? tax s t context)
                        (fits? h sx))]
         h))
      (first
       (for [s    (sort-by nm/name-key (tax/direct-genls tax x context))
-            :when (and (symbol? s) (not= s t) (tax/genl? tax s t context))
+            :when (and (symbol? s) (tax/strict-genl? tax s t context))
             h    (sort (tax/genl-edge-supporters tax x s context))
             :let [sx (p/get-sentex (:records kb) h)]
             :when (and sx (not= 'genl (nm/functor (:sentence sx))) (fits? h sx))]

@@ -1588,6 +1588,15 @@
   (or (membership-shaped? sentence) (seq (tax/installed-edges sentence))
       (context-edge-shaped? sentence)))
 
+(defn- closes-genl-cycle?
+  "Does a `genl` edge `sentence` installs (`tax/installed-edges`) lie on a cycle of the
+  unscoped closure?  Two types in a cycle are coextensive where the cycle is seen, so a
+  membership in one no longer withholds a mint of the other there (`tax/strict-genl?`):
+  the edge's arrival releases as an edge's departure does.  A candidate filter: each
+  released mint is asked again from its own placement."
+  [tax sentence]
+  (boolean (some (fn [[sub super]] (tax/genl?-global tax super sub)) (tax/installed-edges sentence))))
+
 (defn- mint-term
   "The term the mint family files `sentence` under — `x` of a membership `(t x)` or of an
   edge `(genl x t)` — or nil for a shape no membership or edge can make redundant."
@@ -2313,13 +2322,11 @@
           (cond
             (and (membership-shaped? sentence) (membership-shaped? s))
             (and (= (first (nm/args sentence)) (first (nm/args s)))
-                 (not= (nm/functor s) (nm/functor sentence))
-                 (tax/genl? tax (nm/functor s) (nm/functor sentence) context))
+                 (tax/strict-genl? tax (nm/functor s) (nm/functor sentence) context))
 
             (and (edge-shaped? sentence) (edge-shaped? s))
             (and (= (nth sentence 1) (nth s 1))
-                 (not= (nth s 2) (nth sentence 2))
-                 (tax/genl? tax (nth s 2) (nth sentence 2) context)))))))
+                 (tax/strict-genl? tax (nth s 2) (nth sentence 2) context)))))))
 
 (defn- withdrawable-mint
   "The handle of the record that makes the mint at `h` redundant, or nil when the mint
@@ -3005,7 +3012,8 @@
           gone? (fn [sx]
                   (let [now (p/get-sentex recs (:id sx))]
                     (or (not= (:sentence now) (:sentence sx)) (not= (:context now) (:context sx))
-                        (not (believed? (:id sx))))))
+                        (not (believed? (:id sx)))
+                        (closes-genl-cycle? tax (:sentence sx)))))
           back  (volatile! #{})]
       (merge-with
        into
@@ -3056,9 +3064,12 @@
                                         (not= (contains? was-in h) (believed? h))
                                         (mover? (:sentence %)))))
                         @moved)
+            tax   (reasoning/taxonomy kb)
             out   (-> []
                       (into (remove #(or (contains? withdrawn (:id %)) (not (mover? (:sentence %))))) queued)
-                      (into (remove #(believed? (:id %))) moves))
+                      (into (remove #(and (believed? (:id %))
+                                          (not (closes-genl-cycle? tax (:sentence %)))))
+                            moves))
             ;; a record a mint justification already concludes still owes the withheld
             ;; ones while a premise or a firing holds it up: in the order where the
             ;; record arrives first, each of them is drawn onto it

@@ -143,18 +143,18 @@
       (v/assert kb (list 'genl animal plant) 'CxUniverse)
       (is (= :not-well-formed (outcome kb (list 'covering animal plant dog) 'CxUniverse))))))
 
-(tu/deftest-kb a-part-a-sibling-context-places-above-the-whole-is-refused
-  ;; The edge the cover installs closes the cycle whichever context holds the edge above
-  ;; it, so the cover is refused where the bare `genl` is.
+(tu/deftest-kb a-part-only-a-sibling-context-places-above-the-whole-is-stored
+  ;; The cover is refused where the bare `genl` is: in the context that sees the edge
+  ;; above the whole, and not in its sibling.
   (tu/with-terms [animal dog plant]
     (let [left (tu/tmp-ctx) right (tu/tmp-ctx)]
       (v/assert kb (list 'genlCx left 'CxUniverse) 'CxUniverse)
       (v/assert kb (list 'genlCx right 'CxUniverse) 'CxUniverse)
       (v/assert kb (list 'genl animal plant) right)
-      (is (= :not-well-formed (outcome kb (list 'genl plant animal) left))
-          "the bare edge is a cycle from either sibling")
-      (is (= :not-well-formed (outcome kb (list 'covering animal plant dog) left)))
-      (is (not (v/genl? kb plant animal)) "and nothing closed the cycle"))))
+      (is (= [:not-well-formed :not-well-formed]
+             (mapv #(outcome kb % right) [(list 'genl plant animal) (list 'covering animal plant dog)])))
+      (is (= :ok (outcome kb (list 'covering animal plant dog) left)))
+      (is (= [true false] (mapv #(v/genl? kb plant animal %) [left right]))))))
 
 (tu/deftest-kb a-part-disjoint-from-the-whole-is-stored
   ;; decision 8 of docs/reference.md: the refusal would read the stored `disjoint`, so

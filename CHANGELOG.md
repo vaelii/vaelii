@@ -13,6 +13,48 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Breaking: integrity
+
+- **Specified obligations audit every known eligible reader.** `all-specified-violations`
+  and `kb-integrity` validate each visible `predAllSpecified` / `predSpecifiedAll`
+  requirement wherever a reader sees its GAF and an ordinary defining home of the term.
+  Child-local instances and exceptions are checked in their own readers. Proved
+  skeletal-only defining evidence is exempt; absent or native-only evidence is not.
+  Unclassified support remains an explicit gap. Multiple readers combine under the
+  existing key without consuming extra result-cap entries. Native-only registry
+  declarations retain their querying-context audit.
+  [predall.md](docs/predall.md)
+  *Migration:* repair reader-local gaps instead of duplicating an inherited requirement.
+  Direct `specified-violations` uses instance eligibility in its supplied reader.
+  Exists audits and native-only registry declarations retain their existing behavior.
+  *Breaks:* `specified-violations`, `all-specified-violations`, `kb-integrity`
+
+### Additive: assertion contexts
+
+- **`defining-contexts` reads the maximal ordinary defining contexts of a term.**
+  Literal Quote and nested-sentence mentions, lift-only copies, generated arity-class
+  copies and NAT bookkeeping do not create a defining home. Independent ordinary
+  support still counts. Unclassified live support raises `:incomplete-defining-contexts`.
+  [api.md](docs/api.md)
+
+### Breaking: inference
+
+- **A `genl` edge is refused for a cycle only where its own context sees the path back
+  ([#254](https://github.com/vaelii/vaelii/issues/254)).** `assert` of `(genl b a)` in one
+  context beside a stored `(genl a b)` in a sibling context threw `:not-well-formed`, and
+  so did a cover naming a part a sibling context places above its whole; both are stored.
+  An edge whose reverse path the asserting context sees is refused at every strength, as
+  before, and the refusal message names that context. A context below both siblings reads
+  the two types as coextensive, and there a membership in one withholds no minted
+  membership in the other.
+  [taxonomy.md](docs/taxonomy.md#the-closure-is-not-materialized--it-is-answered-on-demand),
+  [argtypes.md](docs/argtypes.md#pruning-what-the-kb-says-more-specifically--vaelii_prune_subsumed_mints-on)
+  *Migration:* a caller that relied on the refusal to keep the edges of every context
+  acyclic finds a cycle with `subsumption-status`'s `:coextensional`.
+  *Breaks:* `assert` and `try-assert` of a `genl` edge or a `covering` whose cycle only
+  another context sees; `genl?`, `genls`, `specs`, `ask` and the stored mints at a context
+  below both edges
+
 ### Fix: order independence
 
 - **A preservation along `genlCx` reads the context topology with no `except` holes.**

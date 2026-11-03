@@ -24,7 +24,7 @@ iff `Y ∈ context-up(K)`.
 `:monotonic` whatever strength it was written at, so it caps no firing's class, and a
 denial of a stored edge loses to it and moves no edge.
 
-**A `genlCx` cycle is refused at assert, like a `genl` cycle.** The context hierarchy
+**A `genlCx` cycle is refused at assert.** The context hierarchy
 is a partial order: `wff/genlCx-problems` reads the global `genlCx` closure and refuses
 an edge whose super already sees its sub, so mutual visibility is not a claim the edge
 set may assert. A cycle a recovered or foreign store replays past that check
