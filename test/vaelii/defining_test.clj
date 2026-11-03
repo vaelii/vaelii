@@ -439,24 +439,22 @@
 ;; ---- equality: a mention is syntactic --------------------------------------------
 
 (defn- equal-names-define-apart
-  "`first-term` and `second-term` are equal (`sameAs`, asserted with `first-term` as the
-  first argument when `first-arg-first?`), and each is named by a fact in a context of
-  its own.  The equation is itself a mention of both names, so it is stated in `CxEq`,
-  below both fact contexts, where context maximization folds it into each.  Each term's
-  defining contexts are its own fact's context alone."
-  [kb first-term second-term first-arg-first? [tagFirst tagSecond] CxFirst CxSecond CxEq]
-  (contexts kb [CxFirst CxSecond])
-  (doseq [parent [CxFirst CxSecond]]
-    (v/assert kb (list 'genlCx CxEq parent) 'CxUniverse))
+  "`first-term` and `second-term` are equal (`pred`, one of `sameAs`, `equals` and
+  `rewriteOf`, asserted with `first-term` as the first argument when `first-arg-first?`),
+  and each is named by a fact in a context of its own.  The equation is stated in `CxEq`,
+  a context of its own below `CxUniverse` alone, so context maximization cannot fold it
+  into either fact context.  An equation is a mention, not a use (Iris, 2026-11-03), so
+  it defines neither name: each term's defining contexts are its own fact's context alone."
+  [kb pred first-term second-term first-arg-first? [tagFirst tagSecond] CxFirst CxSecond CxEq]
+  (contexts kb [CxFirst CxSecond CxEq])
   (v/assert kb (list tagFirst first-term) CxFirst)
   (v/assert kb (list tagSecond second-term) CxSecond)
-  (v/assert kb (if first-arg-first?
-                 (list 'sameAs first-term second-term)
-                 (list 'sameAs second-term first-term))
-            CxEq)
-  (is (v/ask? kb (list tagSecond first-term) CxEq) "the equality is in force where it is stated")
-  (is (v/ask? kb (list tagFirst second-term) CxEq))
-  (is (not (v/ask? kb (list tagSecond first-term) CxFirst)) "and only there")
+  (let [equation (if first-arg-first?
+                   (list pred first-term second-term)
+                   (list pred second-term first-term))]
+    (v/assert kb equation CxEq)
+    (is (v/ask? kb equation CxEq) "the equation holds where it is stated"))
+  (is (not (v/ask? kb (list tagSecond first-term) CxFirst)) "and the merge only there")
   (is (= #{CxFirst} (v/defining-contexts kb first-term)))
   (is (= #{CxSecond} (v/defining-contexts kb second-term))))
 
@@ -464,14 +462,30 @@
   ;; Iris, 2026-11-03: a fact about MorningStar and one about EveningStar in different
   ;; contexts are mentions of each name alone, equality notwithstanding.  Both pairs and
   ;; both argument orders, so no choice of representative (first argument, least name)
-  ;; passes by luck: MorningStar sorts after EveningStar, Alpha before Zeta.
-  (doseq [first-arg-first? [true false]]
-    (testing (str "MorningStar and EveningStar, first argument first: " first-arg-first?)
+  ;; passes by luck: MorningStar sorts after EveningStar, Alpha before Zeta.  Each
+  ;; equality predicate, since each is skeletal for defining.
+  (doseq [pred '[sameAs equals rewriteOf]
+          first-arg-first? [true false]]
+    (testing (str pred ", MorningStar and EveningStar, first argument first: " first-arg-first?)
       (tu/with-terms [MorningStar EveningStar tagM tagE CxM CxE CxEq]
-        (equal-names-define-apart kb MorningStar EveningStar first-arg-first? [tagM tagE] CxM CxE CxEq)))
-    (testing (str "Alpha and Zeta, first argument first: " first-arg-first?)
+        (equal-names-define-apart kb pred MorningStar EveningStar first-arg-first?
+                                  [tagM tagE] CxM CxE CxEq)))
+    (testing (str pred ", Alpha and Zeta, first argument first: " first-arg-first?)
       (tu/with-terms [Alpha Zeta tagA tagZ CxA CxZ CxEq]
-        (equal-names-define-apart kb Alpha Zeta first-arg-first? [tagA tagZ] CxA CxZ CxEq)))))
+        (equal-names-define-apart kb pred Alpha Zeta first-arg-first? [tagA tagZ] CxA CxZ CxEq)))))
+
+(tu/deftest-kb a-term-named-only-in-an-equation-is-skeletal-only
+  ;; Iris, 2026-11-03: sameAs, equals and rewriteOf are mention rather than use, so an
+  ;; equation is skeletal for defining.  A term named in nothing else has believed
+  ;; mentions but no ordinary leaf: no defining context, and skeletal-only.
+  (doseq [pred '[sameAs equals rewriteOf]]
+    (testing (str pred)
+      (tu/with-terms [CxEq Lonely Other]
+        (contexts kb [CxEq])
+        (v/assert kb (list pred Lonely Other) CxEq)
+        (is (v/ask? kb (list pred Lonely Other) CxEq))
+        (is (= {:contexts #{} :skeletal-only? true} (defining/definition-evidence kb Lonely)))
+        (is (= {:contexts #{} :skeletal-only? true} (defining/definition-evidence kb Other)))))))
 
 ;; ---- asserted-leaves-such-that: one walk, a unary filter, many starts ----------------
 

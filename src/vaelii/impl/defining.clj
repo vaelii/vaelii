@@ -159,10 +159,20 @@
       [(first (:antecedents j))]
       (walked-handles j))))
 
+(defn- equation?
+  "Is `record` an equation, a sentence of an equality relation (`kb/equality-predicates`:
+  `rewriteOf`, `sameAs`, `equals`)?  An equation mentions its arguments rather than using
+  them, though they are not quoted: read as a use, every equation would define `A` by
+  `(equals A A)` (Iris, 2026-11-03).  So it is skeletal for defining, never defining
+  either argument.  A negated equation is an ordinary literal."
+  [record]
+  (boolean (some-> record sx/sentence-of kb/equality-sentence?)))
+
 (defn- non-skeletal-fn
   "The defining walk's filter: false for a skeletal node.  Skeletal are a premise that is
-  another NAT's bookkeeping, a scaffolding copy's justification (a lift or an arity-class
-  copy), and the `:computed` mark, the implicit leaf a computed literal stands for."
+  another NAT's bookkeeping, an equation (`equation?`), stated or derived, a scaffolding
+  copy's justification (a lift or an arity-class copy), and the `:computed` mark, the
+  implicit leaf a computed literal stands for."
   [kb]
   (let [tms (reasoning/tms kb)
         records (:records kb)
@@ -170,8 +180,10 @@
     (fn [x]
       (cond
         (keyword? x) false
-        (integer? x) (not (and (jtms/premise? tms x)
-                               (some-> (p/get-sentex records x) bookkeeping?)))
+        (integer? x) (let [record (p/get-sentex records x)]
+                       (not (or (equation? record)
+                                (and (jtms/premise? tms x)
+                                     (some-> record bookkeeping?)))))
         :else (not (skeletal-informant? (:informant x)))))))
 
 (defn- defining-walk
