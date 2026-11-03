@@ -1,7 +1,7 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.defining-test
-  (:require [clojure.test :refer [is use-fixtures]]
+  (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.budget :as budget]
             [vaelii.impl.defining :as defining]
@@ -206,17 +206,19 @@
       (is (not (v/ask? kb (list qFact Subject) CxHome)))
       (is (= #{} (v/defining-contexts kb Subject))))))
 
-(tu/deftest-kb a-grounded-ordinary-rule-can-introduce-a-defined-constant
+(tu/deftest-kb a-grounded-rule-that-names-a-constant-defines-it-in-the-rules-context
+  ;; Iris, 2026-11-03: a rule naming Subject in its body is a mention of Subject, so its
+  ;; context defines Subject whether or not the rule has fired.
   (tu/with-terms [CxHome Subject Marker trigger target]
     (contexts kb [CxHome])
     (v/assert kb (list 'set/forwardRule
                        (list 'implies (list trigger Marker) (list target Subject))) CxHome)
-    (is (= #{} (v/defining-contexts kb Subject)))
+    (is (= #{CxHome} (v/defining-contexts kb Subject)))
     (let [h (v/assert kb (list trigger Marker) CxHome)]
       (is (v/ask? kb (list target Subject) CxHome))
       (is (= #{CxHome} (v/defining-contexts kb Subject)))
       (v/retract! kb h)
-      (is (= #{} (v/defining-contexts kb Subject))))))
+      (is (= #{CxHome} (v/defining-contexts kb Subject))))))
 
 (tu/deftest-kb a-skeletal-trigger-under-an-asserted-rule-creates-an-ordinary-global-home
   ;; The asserted rule is a leaf of the firing it informs, and it is ordinary.
@@ -385,3 +387,50 @@
       (is (not (v/premise? kb rh)) "the companion rule is deduced")
       (is (= [rh] (map :informant (v/supporting-justifications kb h))) "and informs the firing")
       (is (= {:leaves #{bh dh} :computed? false} (leaves kb h))))))
+
+(tu/deftest-kb the-leaf-that-names-the-subject-defines-it-not-the-rule-or-the-other-premise
+  ;; Iris, 2026-11-03: a generic rule and a premise that doesn't name Subject help derive
+  ;; (r Subject Object) but don't define Subject; the premise that names it does.
+  (tu/with-terms [CxRule CxP CxQ CxJoin Subject Intermediate Object p q r]
+    (contexts kb [CxRule CxP CxQ])
+    (let [links (into #{} (map #(v/assert kb (list 'genlCx CxJoin %) 'CxUniverse))
+                      [CxRule CxP CxQ])
+          rh (v/assert kb (list 'set/forwardRule
+                                (list 'implies (list 'and (list p '?x '?y) (list q '?y '?z))
+                                      (list r '?x '?z)))
+                       CxRule)
+          ph (v/assert kb (list p Subject Intermediate) CxP)
+          qh (v/assert kb (list q Intermediate Object) CxQ)
+          h (held kb (list r Subject Object) CxJoin)]
+      (is (true? (v/ask? kb (list r Subject Object) CxJoin)))
+      (testing "the conclusion is a stored deduction resting on the rule and both premises"
+        ;; the firing also rests on the genlCx links that let the join context see them
+        (is (some? h))
+        (is (not (v/premise? kb h)))
+        (is (= {:leaves (into #{rh ph qh} links) :computed? false} (leaves kb h))))
+      (is (= #{CxP} (v/defining-contexts kb Subject))))))
+
+(tu/deftest-kb a-rule-that-names-the-subject-defines-it-beside-the-premise-that-does
+  ;; Iris, 2026-11-03: when the rule names Subject too, its context defines Subject
+  ;; alongside the premise's, reduced to the maximal ones via genlCx.
+  (tu/with-terms [CxRule2 CxP2 CxQ2 CxJoin2 Subject Intermediate Object p q r]
+    (contexts kb [CxRule2 CxP2 CxQ2])
+    (let [links (into #{} (map #(v/assert kb (list 'genlCx CxJoin2 %) 'CxUniverse))
+                      [CxRule2 CxP2 CxQ2])
+          rh (v/assert kb (list 'set/forwardRule
+                                (list 'implies (list 'and (list p Subject '?y) (list q '?y '?z))
+                                      (list r Subject '?z)))
+                       CxRule2)
+          ph (v/assert kb (list p Subject Intermediate) CxP2)
+          qh (v/assert kb (list q Intermediate Object) CxQ2)
+          h (held kb (list r Subject Object) CxJoin2)]
+      (is (true? (v/ask? kb (list r Subject Object) CxJoin2)))
+      (testing "the conclusion is a stored deduction resting on the rule and both premises"
+        ;; the firing also rests on the genlCx links that let the join context see them
+        (is (some? h))
+        (is (not (v/premise? kb h)))
+        (is (= {:leaves (into #{rh ph qh} links) :computed? false} (leaves kb h))))
+      (is (= #{CxRule2 CxP2} (v/defining-contexts kb Subject)))
+      (testing "a genlCx between the two leaves' contexts reduces to the more general one"
+        (v/assert kb (list 'genlCx CxP2 CxRule2) 'CxUniverse)
+        (is (= #{CxRule2} (v/defining-contexts kb Subject)))))))

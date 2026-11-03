@@ -15,7 +15,20 @@
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]))
 
+(declare mentions-in-sentence?)
+
 (defn- mentions-term?
+  "Does `record` name `term` as content?  A literal answers for its own sentence; a rule
+  answers for each of its antecedent literals and its consequent, each read as a sentence
+  of its own, so a rule that names `term` in its body mentions it."
+  [kb term record]
+  (if-let [antecedent (:antecedent record)]
+    (boolean (some #(mentions-in-sentence? kb term %)
+                   (cons (:consequent record)
+                         (if (sequential? (first antecedent)) antecedent [antecedent]))))
+    (mentions-in-sentence? kb term (sx/sentence-of record))))
+
+(defn- mentions-in-sentence?
   [kb term sentence]
   (letfn [(visit [form root?]
             (budget/spend!)
@@ -183,7 +196,7 @@
         hidden? (or (budget/checked-call #(exc/own-hidden-fn kb)) (constantly false))
         live? #(and (jtms/in? tms %) (not (hidden? %)))
         candidates (into #{} (keep (fn [[h record]]
-                                     (when (mentions-term? kb term (sx/sentence-of record)) h)))
+                                     (when (mentions-term? kb term record) h)))
                          (budget/checked-seq mentions))
         valid? (jtms/region-valid-fn tms #{} nil #{})
         [records supports] (reachable-supports kb mentions valid?)
@@ -217,7 +230,7 @@
                   (if (= roles next) roles (recur next))))
         relevant (into [] (filter (fn [[h record]]
                                     (and (live? h)
-                                         (mentions-term? kb term (sx/sentence-of record)))))
+                                         (mentions-term? kb term record))))
                        (budget/checked-seq mentions))
         unresolved (into []
                          (keep (fn [[h _]]
