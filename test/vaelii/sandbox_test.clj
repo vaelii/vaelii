@@ -363,7 +363,10 @@
   (set (filter #(str/starts-with? (name %) "CxSandbox") (v/contexts kb))))
 
 (tu/deftest-kb a-flood-of-fresh-sessions-leaves-at-most-the-cap
-  (with-redefs [sandbox/max-sandboxes (constantly 3)]
+  ;; one instant for every request: `value` counts calendar minutes, so a first session
+  ;; whose requests fall either side of a minute boundary is worth more than 0
+  (with-redefs [sandbox/max-sandboxes (constantly 3)
+                sandbox/now           (constantly (System/currentTimeMillis))]
     (let [app      (web/app kb)
           before   (live-sandboxes kb)
           sessions (vec (repeatedly 8 #(session app)))
