@@ -517,6 +517,30 @@
         (is (= {:contexts #{} :skeletal-only? true} (defining/definition-evidence kb Lonely)))
         (is (= {:contexts #{} :skeletal-only? true} (defining/definition-evidence kb Other)))))))
 
+(tu/deftest-kb a-negated-equation-is-skeletal-like-the-equation
+  ;; Iris, 2026-11-03: skeletality respects the literal's predicate, not the atom's
+  ;; polarity, so (not P) is treated identically to P.  A negated equation defines
+  ;; neither name, and a term named only in one is skeletal-only.
+  (doseq [pred '[sameAs equals rewriteOf]]
+    (testing (str "(not (" pred " ...)) between two names with facts of their own")
+      (tu/with-terms [CxFirst CxSecond CxEq First Second tagFirst tagSecond]
+        (contexts kb [CxFirst CxSecond CxEq])
+        (v/assert kb (list tagFirst First) CxFirst)
+        (v/assert kb (list tagSecond Second) CxSecond)
+        (let [negated (list 'not (list pred First Second))]
+          (v/assert kb negated CxEq)
+          (is (some? (v/handle-of kb negated CxEq)) "the negated equation is stored"))
+        (is (= #{CxFirst} (v/defining-contexts kb First)))
+        (is (= #{CxSecond} (v/defining-contexts kb Second)))))
+    (testing (str "a term named only in (not (" pred " ...))")
+      (tu/with-terms [CxEq Lonely Other]
+        (contexts kb [CxEq])
+        (let [negated (list 'not (list pred Lonely Other))]
+          (v/assert kb negated CxEq)
+          (is (some? (v/handle-of kb negated CxEq))))
+        (is (= {:contexts #{} :skeletal-only? true} (defining/definition-evidence kb Lonely)))
+        (is (= {:contexts #{} :skeletal-only? true} (defining/definition-evidence kb Other)))))))
+
 ;; ---- contexts: genlCx is decontextualized, so a context is defined in CxUniverse ----
 
 (tu/deftest-kb a-contexts-defining-context-is-the-universe

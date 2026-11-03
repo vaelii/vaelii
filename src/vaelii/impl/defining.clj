@@ -164,13 +164,14 @@
   `rewriteOf`, `sameAs`, `equals`)?  An equation mentions its arguments rather than using
   them, though they are not quoted: read as a use, every equation would define `A` by
   `(equals A A)` (Iris, 2026-11-03).  So it is skeletal for defining, never defining
-  either argument.  A negated equation is an ordinary literal."
+  either argument.  Skeletality reads the literal's predicate, whatever its polarity
+  (`sx/underlying-body`), so a negated equation is skeletal too (Iris, 2026-11-03)."
   [record]
-  (boolean (some-> record sx/sentence-of kb/equality-sentence?)))
+  (boolean (some-> record sx/sentence-of sx/underlying-body kb/equality-sentence?)))
 
 (defn- non-skeletal-fn
   "The defining walk's filter: false for a skeletal node.  Skeletal are a premise that is
-  another NAT's bookkeeping, an equation (`equation?`), stated or derived, a scaffolding
+  another NAT's bookkeeping, an equation (`equation?`), stated or derived, negated or not, a scaffolding
   copy's justification (a lift or an arity-class copy), and the `:computed` mark, the
   implicit leaf a computed literal stands for."
   [kb]
