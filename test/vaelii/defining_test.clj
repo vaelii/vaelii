@@ -4,6 +4,7 @@
   (:require [clojure.test :refer [is use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.budget :as budget]
+            [vaelii.impl.defining :as defining]
             [vaelii.impl.kb :as stored-kb]
             [vaelii.test-util :as tu]))
 
@@ -226,3 +227,103 @@
                              (list target Subject))) 'CxUniverse)
     (is (true? (v/ask? kb (list target Subject) 'CxUniverse)))
     (is (= #{'CxUniverse} (v/defining-contexts kb Subject)))))
+
+;; ---- asserted leaves: the premises a datum's valid support bottoms out in -----------
+
+(defn- leaves [kb h] (defining/asserted-leaves kb h))
+
+(defn- held [kb sentence context] (v/handle-of kb sentence context))
+
+(tu/deftest-kb a-premise-is-its-own-asserted-leaf
+  (tu/with-terms [CxHome Subject tagged]
+    (contexts kb [CxHome])
+    (let [h (v/assert kb (list tagged Subject) CxHome)]
+      (is (= {:leaves #{h} :computed? false} (leaves kb h))))))
+
+(tu/deftest-kb a-chain-bottoms-out-in-its-premise-and-not-its-rules
+  (tu/with-terms [CxHome Subject aFact bFact cFact]
+    (contexts kb [CxHome])
+    (let [r1 (v/assert kb (tu/fwd [(list aFact '?x)] (list bFact '?x)) CxHome)
+          r2 (v/assert kb (tu/fwd [(list bFact '?x)] (list cFact '?x)) CxHome)
+          a (v/assert kb (list aFact Subject) CxHome)
+          c (held kb (list cFact Subject) CxHome)]
+      (is (some? c))
+      (is (= {:leaves #{a} :computed? false} (leaves kb c)))
+      (is (not-any? #{r1 r2} (:leaves (leaves kb c)))))))
+
+(tu/deftest-kb a-diamond-reaches-its-shared-premise-once
+  (tu/with-terms [CxHome Subject aFact bFact cFact dFact eFact]
+    (contexts kb [CxHome])
+    (v/assert kb (tu/fwd [(list aFact '?x)] (list bFact '?x)) CxHome)
+    (v/assert kb (tu/fwd [(list aFact '?x)] (list cFact '?x)) CxHome)
+    (v/assert kb (tu/fwd [(list bFact '?x) (list cFact '?x) (list eFact '?x)] (list dFact '?x))
+              CxHome)
+    (let [a (v/assert kb (list aFact Subject) CxHome)
+          e (v/assert kb (list eFact Subject) CxHome)
+          d (held kb (list dFact Subject) CxHome)]
+      (is (some? d))
+      (is (= {:leaves #{a e} :computed? false} (leaves kb d))))))
+
+(tu/deftest-kb a-support-cycle-bottoms-out-in-the-premise-that-grounds-it
+  (tu/with-terms [CxHome Subject pFact qFact rFact]
+    (contexts kb [CxHome])
+    (v/assert kb (tu/fwd [(list rFact '?x)] (list pFact '?x)) CxHome)
+    (v/assert kb (tu/fwd [(list pFact '?x)] (list qFact '?x)) CxHome)
+    (v/assert kb (tu/fwd [(list qFact '?x)] (list pFact '?x)) CxHome)
+    (let [r (v/assert kb (list rFact Subject) CxHome)
+          p (held kb (list pFact Subject) CxHome)
+          q (held kb (list qFact Subject) CxHome)]
+      (is (= 2 (count (v/supporting-justifications kb p))) "p rests on r and on q")
+      (is (= {:leaves #{r} :computed? false} (leaves kb p)))
+      (is (= {:leaves #{r} :computed? false} (leaves kb q))))))
+
+(tu/deftest-kb a-guard-covered-alternative-contributes-no-leaf
+  (tu/with-terms [bird penguin bat flies Opus CxFly]
+    (contexts kb [CxFly])
+    (let [rule #(list 'set/defaultRule (list 'set/forwardRule (list 'implies (list % '?x) (list flies '?x))))]
+      (v/assert kb (rule bird) CxFly)
+      (v/assert kb (rule bat) CxFly)
+      (v/assert kb (list 'exceptWhen (list penguin '?x) (rule bird)) CxFly)
+      (let [b (v/assert kb (list bird Opus) CxFly)
+            t (v/assert kb (list bat Opus) CxFly)
+            _ (v/assert kb (list penguin Opus) CxFly)
+            h (held kb (list flies Opus) CxFly)]
+        (is (= #{:guard :supports} (set (vals (v/justification-verdicts kb h CxFly)))))
+        (is (= {:leaves #{t} :computed? false} (leaves kb h)))
+        (is (not (contains? (:leaves (leaves kb h)) b)))))))
+
+(tu/deftest-kb a-blocked-alternative-contributes-no-leaf
+  (tu/with-terms [bird penguin bat flies Opus CxFly]
+    (contexts kb [CxFly])
+    (v/assert kb (list 'closed_extent_predicate penguin) CxFly)
+    (v/assert kb (list 'set/defaultRule
+                       (list 'set/forwardRule
+                             (list 'implies (list 'and (list bird '?x) (list 'not (list penguin '?x)))
+                                   (list flies '?x)))) CxFly)
+    (v/assert kb (list 'set/defaultRule
+                       (list 'set/forwardRule (list 'implies (list bat '?x) (list flies '?x)))) CxFly)
+    (let [b (v/assert kb (list bird Opus) CxFly)
+          t (v/assert kb (list bat Opus) CxFly)
+          _ (v/assert kb (list penguin Opus) CxFly)
+          h (held kb (list flies Opus) CxFly)]
+      (is (= #{:blocked :supports} (set (vals (v/justification-verdicts kb h CxFly)))))
+      (is (= {:leaves #{t} :computed? false} (leaves kb h)))
+      (is (not (contains? (:leaves (leaves kb h)) b))))))
+
+(tu/deftest-kb an-all-computed-firing-has-no-leaf-and-is-marked-computed
+  (tu/with-terms [CxHome theSum]
+    (contexts kb [CxHome])
+    (let [rh (v/assert kb (tu/fwd [(list 'evaluate '?s (list '+ 1 2))] (list theSum '?s)) CxHome)
+          h (held kb (list theSum 3) CxHome)]
+      (is (= [[[] rh]] (mapv (juxt :antecedents :informant) (v/supporting-justifications kb h))))
+      (is (= {:leaves #{} :computed? true} (leaves kb h))))))
+
+(tu/deftest-kb a-computed-literal-beside-a-fact-leaves-only-the-fact
+  (tu/with-terms [CxHome Ann Bob ageOf youngerThan]
+    (contexts kb [CxHome])
+    (let [a (v/assert kb (list ageOf Ann 10) CxHome)
+          b (v/assert kb (list ageOf Bob 20) CxHome)
+          _ (v/assert kb (tu/fwd [(list ageOf '?x '?a) (list ageOf '?y '?b) (list 'lessThan '?a '?b)]
+                                 (list youngerThan '?x '?y)) CxHome)
+          h (held kb (list youngerThan Ann Bob) CxHome)]
+      (is (= {:leaves #{a b} :computed? false} (leaves kb h))))))

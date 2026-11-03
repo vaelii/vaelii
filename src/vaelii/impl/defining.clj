@@ -98,6 +98,59 @@
                    (conj seen h) (into records added) (assoc supports h js))))
         [records supports]))))
 
+(def ^:private informant-is-leaf?
+  "Does a firing's rule (a rule-handle informant) count as an antecedent of the walk, so
+  that the rule's premise is an asserted leaf?  The one place that choice is made."
+  false)
+
+(defn- walked-handles
+  "The handles the leaf walk descends to from justification `j`, or `:computed` when it
+  names none: a firing whose antecedents are all computed literals (`evaluate`,
+  `lessThan`, a prover's answer) records no handle for them."
+  [j]
+  (let [inf (:informant j)
+        hs (cond-> (vec (budget/checked-seq (:antecedents j)))
+             (and informant-is-leaf? (integer? inf)) (conj inf))]
+    (if (seq hs) hs :computed)))
+
+(defn- support-leaves
+  "`{:leaves #{h} :marks #{k}}`: the premises (`premise?`) the handles `hs` reach through
+  the justifications `supports` maps each handle to, and the keyword `step` returned for a
+  justification instead of handles to descend to.  A premise is a leaf and is not
+  descended past; a handle `supports` gives no justification adds nothing.  Each handle is
+  walked once, so a shared node or a cycle is safe."
+  [supports premise? step hs]
+  (loop [todo (vec hs), seen #{}, leaves #{}, marks #{}]
+    (budget/spend!)
+    (if-let [h (peek todo)]
+      (let [todo (pop todo)]
+        (cond
+          (contains? seen h) (recur todo seen leaves marks)
+          (premise? h) (recur todo (conj seen h) (conj leaves h) marks)
+          :else (let [[next marks] (reduce (fn [[next marks] j]
+                                             (let [s (step j)]
+                                               (if (keyword? s)
+                                                 [next (conj marks s)]
+                                                 [(into next (remove seen) s) marks])))
+                                           [todo marks] (budget/checked-seq (get supports h)))]
+                  (recur next (conj seen h) leaves marks))))
+      {:leaves leaves :marks marks})))
+
+(defn asserted-leaves
+  "`{:leaves #{h} :computed? b}`: the premises handle `h`'s support bottoms out in, read
+  through the justifications that are valid and that `h`'s context reads as `:supports`
+  (`exc/justification-verdicts`), so a guard-covered or blocked alternative contributes
+  nothing.  A premise is its own leaf.  A firing's rule is not a leaf and is not walked.
+  `:computed?` is true when some valid firing on the way names no antecedent, its
+  literals all computed.  Cycle-safe."
+  [kb h]
+  (let [tms (reasoning/tms kb)
+        valid? (jtms/region-valid-fn tms #{} nil #{})
+        initial (if-let [s (p/get-sentex (:records kb) h)] {h s} {})
+        [_ supports] (reachable-supports kb initial valid?)
+        {:keys [leaves marks]} (support-leaves supports #(jtms/premise? tms %) walked-handles [h])]
+    {:leaves leaves :computed? (contains? marks :computed)}))
+
 (defn definition-evidence
   "The ordinary contexts and whether nonempty stored defining evidence is skeletal-only.
   An absent assertion is not evidence of skeletal-only definition."
