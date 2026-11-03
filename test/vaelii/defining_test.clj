@@ -5,6 +5,7 @@
             [vaelii.core :as v]
             [vaelii.impl.budget :as budget]
             [vaelii.impl.defining :as defining]
+            [vaelii.impl.except :as exc]
             [vaelii.impl.kb :as stored-kb]
             [vaelii.test-util :as tu]))
 
@@ -471,3 +472,111 @@
     (testing (str "Alpha and Zeta, first argument first: " first-arg-first?)
       (tu/with-terms [Alpha Zeta tagA tagZ CxA CxZ CxEq]
         (equal-names-define-apart kb Alpha Zeta first-arg-first? [tagA tagZ] CxA CxZ CxEq)))))
+
+;; ---- asserted-leaves-such-that: one walk, a unary filter, many starts ----------------
+
+(defn- such-that [kb keep? hs] (defining/asserted-leaves-such-that kb keep? hs))
+
+(tu/deftest-kb a-rejected-node-halts-the-walk-there
+  ;; The filter rejects the middle of a chain: the walk neither descends past it nor
+  ;; keeps it as a leaf, so only the rule that rests on it remains.
+  (tu/with-terms [CxHome Subject aFact bFact cFact]
+    (contexts kb [CxHome])
+    (let [_r1 (v/assert kb (tu/fwd [(list aFact '?x)] (list bFact '?x)) CxHome)
+          r2 (v/assert kb (tu/fwd [(list bFact '?x)] (list cFact '?x)) CxHome)
+          _a (v/assert kb (list aFact Subject) CxHome)
+          b (held kb (list bFact Subject) CxHome)
+          c (held kb (list cFact Subject) CxHome)]
+      (is (= (leaves kb c) (such-that kb (constantly true) c)) "the default filter is asserted-leaves")
+      (is (= {:leaves #{r2} :computed? false} (such-that kb #(not= b %) c))))))
+
+(tu/deftest-kb many-starts-share-one-walk
+  ;; Two conclusions over a shared premise: one walk from both reads each handle's
+  ;; support once and unions their leaves.
+  (tu/with-terms [CxHome Subject aFact bFact cFact]
+    (contexts kb [CxHome])
+    (let [rb (v/assert kb (tu/fwd [(list aFact '?x)] (list bFact '?x)) CxHome)
+          rc (v/assert kb (tu/fwd [(list aFact '?x)] (list cFact '?x)) CxHome)
+          a (v/assert kb (list aFact Subject) CxHome)
+          b (held kb (list bFact Subject) CxHome)
+          c (held kb (list cFact Subject) CxHome)
+          reads (atom {})
+          verdicts exc/justification-verdicts]
+      (with-redefs [exc/justification-verdicts (fn [kb h ctx]
+                                                  (swap! reads update h (fnil inc 0))
+                                                  (verdicts kb h ctx))]
+        (is (= {:leaves #{a rb rc} :computed? false} (such-that kb (constantly true) [b c b]))))
+      (is (every? #{1} (vals @reads)) "each handle's support is read once")
+      (is (= #{b c} (set (keys @reads))) "and premises are not read at all"))))
+
+(tu/deftest-kb a-filtered-walk-through-a-cycle-terminates
+  (tu/with-terms [CxHome Subject pFact qFact rFact]
+    (contexts kb [CxHome])
+    (let [rules (into #{} (map #(v/assert kb % CxHome))
+                      [(tu/fwd [(list rFact '?x)] (list pFact '?x))
+                       (tu/fwd [(list pFact '?x)] (list qFact '?x))
+                       (tu/fwd [(list qFact '?x)] (list pFact '?x))])
+          r (v/assert kb (list rFact Subject) CxHome)
+          p (held kb (list pFact Subject) CxHome)
+          q (held kb (list qFact Subject) CxHome)]
+      (is (= {:leaves (conj rules r) :computed? false} (such-that kb (constantly true) [p q])))
+      (is (= {:leaves rules :computed? false} (such-that kb #(not= r %) [p q]))))))
+
+;; ---- asserted-defining-leaves: the walk halts at skeletal things ---------------------
+
+(defn- defining-leaves [kb hs] (defining/asserted-defining-leaves kb hs))
+
+(tu/deftest-kb the-defining-walk-halts-at-a-lifted-copy
+  (tu/with-terms [CxHome Subject Marker liftedRel conclusion]
+    (contexts kb [CxHome])
+    (v/assert kb (list 'decontextualized_predicate liftedRel) 'CxUniverse)
+    (let [source (v/assert kb (list liftedRel Subject Marker) CxHome)
+          rh (v/assert kb (tu/fwd [(list liftedRel '?x Marker)] (list conclusion '?x)) 'CxUniverse)
+          copy (held kb (list liftedRel Subject Marker) 'CxUniverse)
+          h (held kb (list conclusion Subject) 'CxUniverse)]
+      (is (some? copy))
+      (is (contains? (:leaves (leaves kb h)) source) "the plain walk descends through the copy")
+      (is (= {:leaves #{rh} :computed? false} (defining-leaves kb h)))
+      (is (= {:leaves #{} :computed? false} (defining-leaves kb copy))))))
+
+(tu/deftest-kb the-defining-walk-halts-at-a-computed-literal
+  (tu/with-terms [CxHome theSum]
+    (contexts kb [CxHome])
+    (let [rh (v/assert kb (tu/fwd [(list 'evaluate '?s (list '+ 1 2))] (list theSum '?s)) CxHome)
+          h (held kb (list theSum 3) CxHome)]
+      (is (= {:leaves #{rh} :computed? true} (leaves kb h)))
+      (is (= {:leaves #{rh} :computed? false} (defining-leaves kb h))))))
+
+(tu/deftest-kb the-defining-walk-halts-at-nat-bookkeeping
+  (tu/with-terms [CxHome Namespace namespace_kind LookupFn lookupOf access_kind usedBy Observer]
+    (contexts kb [CxHome])
+    (doseq [sentence [(list 'reifiable_function LookupFn)
+                      (list 'result LookupFn access_kind)
+                      (list 'functionCorrespondingPredicate LookupFn lookupOf)
+                      (list 'arg lookupOf 1 namespace_kind)]]
+      (v/assert kb sentence 'CxUniverse))
+    (v/assert kb (list usedBy (list LookupFn Namespace) Observer) CxHome)
+    (let [bk (held kb (list namespace_kind Namespace) 'CxUniverse)
+          nat-formula? #(= 'natFormula (first (:sentence (v/sentex kb %))))]
+      (is (some? bk))
+      (is (not (v/premise? kb bk)) "the global copy is deduced from the NAT's bookkeeping")
+      (is (some nat-formula? (:leaves (leaves kb bk))) "which the plain walk keeps as a leaf")
+      (is (seq (:leaves (defining-leaves kb bk))))
+      (is (not-any? nat-formula? (:leaves (defining-leaves kb bk)))
+          "and the defining walk halts at"))))
+
+(tu/deftest-kb the-defining-walk-keeps-an-asserted-rule-and-walks-a-deduced-one
+  (testing "an asserted rule is a leaf"
+    (tu/with-terms [CxHome Subject aFact bFact cFact]
+      (contexts kb [CxHome])
+      (let [r1 (v/assert kb (tu/fwd [(list aFact '?x)] (list bFact '?x)) CxHome)
+            r2 (v/assert kb (tu/fwd [(list bFact '?x)] (list cFact '?x)) CxHome)
+            a (v/assert kb (list aFact Subject) CxHome)
+            c (held kb (list cFact Subject) CxHome)]
+        (is (= {:leaves #{a r1 r2} :computed? false} (defining-leaves kb c))))))
+  (testing "a deduced rule is walked to the fact it rests on"
+    (tu/with-terms [bachelor Tom unmarried]
+      (let [dh (v/assert kb (list 'defnNecessary bachelor (list unmarried '?x)) 'CxUniverse)
+            bh (v/assert kb (list bachelor Tom) 'CxUniverse)
+            h (held kb (list unmarried Tom) 'CxUniverse)]
+        (is (= {:leaves #{bh dh} :computed? false} (defining-leaves kb h)))))))

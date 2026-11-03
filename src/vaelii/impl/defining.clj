@@ -124,20 +124,71 @@
                   (recur todo (conj seen h) leaves marks))))
       {:leaves leaves :marks marks})))
 
-(defn asserted-leaves
-  "`{:leaves #{h} :computed? b}`: the premises handle `h`'s support bottoms out in, read
-  through the justifications that are valid and that `h`'s context reads as `:supports`
-  (`exc/justification-verdicts`), so a guard-covered or blocked alternative contributes
-  nothing.  A premise is its own leaf.  A firing's rule is a node like its antecedents:
-  an asserted rule is a leaf, a deduced one is walked.  `:computed?` is true when some
-  valid firing on the way names no antecedent, its literals all computed.  Cycle-safe."
-  [kb h]
+(defn- leaf-walk
+  "`{:leaves #{h} :marks #{k} :unsupported #{h}}`: one walk down from the handles `hs` to
+  the premises their support bottoms out in.  Each handle's justifications are read once,
+  filtered to the valid ones its own context reads as `:supports`
+  (`exc/justification-verdicts`); `step` gives what each descends to.  `keep?` sees every
+  node the walk meets (a handle, a justification, a mark of `step`'s) before it is used:
+  a rejected node halts the walk there, neither descended nor kept.  A kept premise is a
+  leaf; a kept mark is collected; a non-premise with no such justification is
+  `:unsupported`.  Each node is visited once, so many starts share the work and a cycle
+  is safe."
+  [kb keep? step hs]
   (let [tms (reasoning/tms kb)
-        valid? (jtms/region-valid-fn tms #{} nil #{})
-        initial (if-let [s (p/get-sentex (:records kb) h)] {h s} {})
-        [_ supports] (reachable-supports kb initial valid?)
-        {:keys [leaves marks]} (support-leaves supports #(jtms/premise? tms %) walked-handles [h])]
-    {:leaves leaves :computed? (contains? marks :computed)}))
+        records (:records kb)
+        valid? (jtms/region-valid-fn tms #{} nil #{})]
+    (loop [todo (into [] (budget/checked-seq hs)), seen #{}, leaves #{}, marks #{}, unsupported #{}]
+      (budget/spend!)
+      (if-let [x (peek todo)]
+        (let [todo (pop todo), seen' (conj seen x)]
+          (cond
+            (contains? seen x) (recur todo seen leaves marks unsupported)
+            (not (budget/checked-call #(keep? x))) (recur todo seen' leaves marks unsupported)
+            (keyword? x) (recur todo seen' leaves (conj marks x) unsupported)
+            (jtms/premise? tms x) (recur todo seen' (conj leaves x) marks unsupported)
+            :else
+            (let [record (p/get-sentex records x)
+                  verdicts (when record
+                             (budget/checked-call
+                              #(exc/justification-verdicts kb x (:context record))))
+                  js (when record
+                       (into []
+                             (comp (keep #(jtms/justification tms %))
+                                   (filter #(and (budget/checked-call (fn [] (valid? #{} %)))
+                                                 (= :supports (get verdicts (:id %))))))
+                             (budget/checked-seq (jtms/supports tms x))))
+                  todo (reduce (fn [todo j]
+                                 (budget/spend!)
+                                 (if (budget/checked-call #(keep? j))
+                                   (into todo (remove seen') (step j))
+                                   todo))
+                               todo js)]
+              (recur todo seen' leaves marks
+                     (cond-> unsupported (and record (empty? js)) (conj x))))))
+        {:leaves leaves :marks marks :unsupported unsupported}))))
+
+(defn asserted-leaves-such-that
+  "`{:leaves #{h} :computed? b}`: the premises the support of `h-or-hs` (a handle or a
+  collection of them, walked together) bottoms out in, read through the justifications
+  that are valid and that each handle's own context reads as `:supports`
+  (`exc/justification-verdicts`), so a guard-covered or blocked alternative contributes
+  nothing.  `keep?` is a unary filter on every node the walk meets — a handle, a
+  justification, or the mark `:computed` that stands for the literals of a firing that
+  names no antecedent — defaulting to keeping all; a rejected node halts the walk there
+  and contributes nothing.  A premise is its own leaf.  A firing's rule is a node like its
+  antecedents: an asserted rule is a leaf, a deduced one is walked.  `:computed?` is true
+  when a kept `:computed` mark is met.  Cycle-safe; each handle is read once."
+  ([kb h-or-hs] (asserted-leaves-such-that kb (constantly true) h-or-hs))
+  ([kb keep? h-or-hs]
+   (let [{:keys [leaves marks]} (leaf-walk kb keep? walked-handles
+                                           (if (coll? h-or-hs) h-or-hs [h-or-hs]))]
+     {:leaves leaves :computed? (contains? marks :computed)})))
+
+(defn asserted-leaves
+  "`asserted-leaves-such-that` handle `h`, keeping every node."
+  [kb h]
+  (asserted-leaves-such-that kb h))
 
 (defn- skeletal-informant?
   "Does `informant` store engine scaffolding: a lifted copy or an arity-class copy?"
@@ -159,6 +210,39 @@
         (skeletal-informant? informant) [:skeletal]
         (spelling-informant? kb informant) [(first (:antecedents j))]
         :else (walked-handles j)))))
+
+(defn- defining-step
+  "`walked-handles` for the defining walk, except that a spelling descends to its source
+  alone: the rest of its antecedents are the marks or declaration that spell it."
+  [kb]
+  (fn [j]
+    (if (spelling-informant? kb (:informant j))
+      [(first (:antecedents j))]
+      (walked-handles j))))
+
+(defn- non-skeletal-fn
+  "The defining walk's filter: false for a skeletal node.  Skeletal are a premise that is
+  another NAT's bookkeeping, a scaffolding copy's justification (a lift or an arity-class
+  copy), and the `:computed` mark, the implicit leaf a computed literal stands for."
+  [kb]
+  (let [tms (reasoning/tms kb)
+        records (:records kb)
+        bookkeeping? (bookkeeping-test kb)]
+    (fn [x]
+      (cond
+        (keyword? x) false
+        (integer? x) (not (and (jtms/premise? tms x)
+                               (some-> (p/get-sentex records x) bookkeeping?)))
+        :else (not (skeletal-informant? (:informant x)))))))
+
+(defn asserted-defining-leaves
+  "`asserted-leaves-such-that` handle or handles `h-or-hs`, ignoring skeletal things: the
+  walk halts at a skeletal node (`non-skeletal-fn`) instead of recursing, and a spelling is
+  walked to its source alone.  One walk, however many starts."
+  [kb h-or-hs]
+  (let [{:keys [leaves marks]} (leaf-walk kb (non-skeletal-fn kb) (defining-step kb)
+                                          (if (coll? h-or-hs) h-or-hs [h-or-hs]))]
+    {:leaves leaves :computed? (contains? marks :computed)}))
 
 (defn- leaf-role
   "The role the asserted leaves `{:leaves :marks}` give a derivation: ordinary when a leaf
