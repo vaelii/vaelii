@@ -51,27 +51,6 @@
                 (contains? handles (:id record))))
             (budget/checked-call #(nat/reified-nats-in (sx/sentence-of record)))))))
 
-(defn- support-role
-  [kb candidates roles justification]
-  (budget/spend!)
-  (let [informant (:informant justification)
-        antecedents (budget/checked-seq (:antecedents justification))
-        source (first antecedents)
-        content (filter candidates antecedents)
-        prerequisites (budget/checked-seq (jtms/rests-on justification))]
-    (cond
-      (or (= 'decontextualized_predicate informant)
-          (= chain/arity-class-informant informant)) :skeletal
-      (or (kb/mint-informant? kb informant) (= jtms/respell-informant informant))
-      (get roles source)
-      (some #(= :ordinary (get roles %)) content) :ordinary
-      (and (seq content) (every? #(= :skeletal (get roles %)) content)) :skeletal
-      (and (seq antecedents) (every? #(= :ordinary (get roles %)) prerequisites)) :ordinary
-      (and (every? #(contains? #{:ordinary :skeletal} (get roles %)) antecedents)
-           (some #(= :ordinary (get roles %)) antecedents)) :ordinary
-      (and (seq antecedents) (every? #(= :skeletal (get roles %)) antecedents)
-           (or (not (integer? informant)) (contains? roles informant))) :skeletal)))
-
 (defn- reachable-supports
   [kb initial valid?]
   (let [tms (reasoning/tms kb)]
@@ -127,13 +106,13 @@
         (cond
           (contains? seen h) (recur todo seen leaves marks)
           (premise? h) (recur todo (conj seen h) (conj leaves h) marks)
-          :else (let [[next marks] (reduce (fn [[next marks] j]
+          :else (let [[todo marks] (reduce (fn [[todo marks] j]
                                              (let [s (step j)]
                                                (if (keyword? s)
-                                                 [next (conj marks s)]
-                                                 [(into next (remove seen) s) marks])))
+                                                 [todo (conj marks s)]
+                                                 [(into todo (remove seen) s) marks])))
                                            [todo marks] (budget/checked-seq (get supports h)))]
-                  (recur next (conj seen h) leaves marks))))
+                  (recur todo (conj seen h) leaves marks))))
       {:leaves leaves :marks marks})))
 
 (defn asserted-leaves
@@ -151,6 +130,51 @@
         {:keys [leaves marks]} (support-leaves supports #(jtms/premise? tms %) walked-handles [h])]
     {:leaves leaves :computed? (contains? marks :computed)}))
 
+(defn- skeletal-informant?
+  "Does `informant` store engine scaffolding: a lifted copy or an arity-class copy?"
+  [informant]
+  (or (= 'decontextualized_predicate informant) (= chain/arity-class-informant informant)))
+
+(defn- spelling-informant?
+  "Does `informant` store a spelling of its first antecedent: a mint or a respelling?"
+  [kb informant]
+  (or (kb/mint-informant? kb informant) (= jtms/respell-informant informant)))
+
+(defn- role-step
+  "`walked-handles` for the defining walk: a scaffolding copy is skeletal without
+  descending to the fact it copies, and a spelling descends to its source alone."
+  [kb]
+  (fn [j]
+    (let [informant (:informant j)]
+      (cond
+        (skeletal-informant? informant) :skeletal
+        (spelling-informant? kb informant) [(first (:antecedents j))]
+        :else (walked-handles j)))))
+
+(defn- leaf-role
+  "The role the asserted leaves `{:leaves :marks}` give a derivation: ordinary when a leaf
+  is, skeletal when every leaf is and every mark is skeletal (computed support is the
+  engine's own knowledge), else nil."
+  [roles {:keys [leaves marks]}]
+  (cond
+    (some #(= :ordinary (get roles %)) leaves) :ordinary
+    (and (or (seq leaves) (seq marks))
+         (every? #(= :skeletal (get roles %)) leaves)
+         (every? #{:computed :skeletal} marks)) :skeletal))
+
+(defn- support-role
+  [kb candidates roles leaves-of justification]
+  (budget/spend!)
+  (let [informant (:informant justification)
+        antecedents (budget/checked-seq (:antecedents justification))
+        content (filter candidates antecedents)]
+    (cond
+      (skeletal-informant? informant) :skeletal
+      (spelling-informant? kb informant) (get roles (first antecedents))
+      (some #(= :ordinary (get roles %)) content) :ordinary
+      (and (seq content) (every? #(= :skeletal (get roles %)) content)) :skeletal
+      :else (leaf-role roles (leaves-of justification)))))
+
 (defn definition-evidence
   "The ordinary contexts and whether nonempty stored defining evidence is skeletal-only.
   An absent assertion is not evidence of skeletal-only definition."
@@ -166,10 +190,22 @@
         valid? (jtms/region-valid-fn tms #{} nil #{})
         [records supports] (reachable-supports kb mentions valid?)
         bookkeeping? (bookkeeping-test kb)
+        premise? #(jtms/premise? tms %)
+        step (role-step kb)
+        leaf-memo (volatile! {})
+        leaves-of (fn [j]
+                    (if-let [e (find @leaf-memo (:id j))]
+                      (val e)
+                      (let [s (step j)
+                            r (if (keyword? s)
+                                {:leaves #{} :marks #{s}}
+                                (support-leaves supports premise? step s))]
+                        (vswap! leaf-memo assoc (:id j) r)
+                        r)))
         ;; a premise an equality merge superseded seeds the role its rewritten twin reads
         seeds (into {} (keep (fn [[h record]]
                                (budget/spend!)
-                               (when (and (or (live? h) (jtms/superseded? tms h)) (jtms/premise? tms h))
+                               (when (and (or (live? h) (jtms/superseded? tms h)) (premise? h))
                                  [h (if (bookkeeping? record) :skeletal :ordinary)]))) records)
         roles (loop [roles seeds]
                 (let [next (reduce-kv
@@ -177,7 +213,7 @@
                               (budget/spend!)
                               (if (or (= :ordinary (get result h)) (not (live? h)))
                                 result
-                                (let [rs (keep #(support-role kb candidates roles %) js)]
+                                (let [rs (keep #(support-role kb candidates roles leaves-of %) js)]
                                   (cond
                                     (some #{:ordinary} rs) (assoc result h :ordinary)
                                     (some #{:skeletal} rs) (assoc result h :skeletal)
@@ -192,7 +228,7 @@
                          (keep (fn [[h _]]
                                  (when (and (not= :ordinary (get roles h))
                                             (or (nil? (get roles h))
-                                                (some #(nil? (support-role kb candidates roles %))
+                                                (some #(nil? (support-role kb candidates roles leaves-of %))
                                                       (get supports h))))
                                    h))) (budget/checked-seq relevant))]
     (when (seq unresolved)

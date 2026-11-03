@@ -228,6 +228,32 @@
     (is (true? (v/ask? kb (list target Subject) 'CxUniverse)))
     (is (= #{'CxUniverse} (v/defining-contexts kb Subject)))))
 
+;; ---- computed support: the engine's own knowledge, skeletal ----------------------
+
+(tu/deftest-kb a-computed-only-firing-is-skeletal-defining-support
+  (tu/with-terms [Subject target]
+    (v/assert kb (tu/fwd [(list 'evaluate '?s (list '+ 1 2))] (list target Subject)) 'CxUniverse)
+    (is (v/ask? kb (list target Subject) 'CxUniverse))
+    (is (= {:contexts #{} :skeletal-only? true} (defining/definition-evidence kb Subject)))))
+
+(tu/deftest-kb a-computed-literal-beside-a-skeletal-trigger-stays-skeletal
+  (tu/with-terms [CxOrigin Subject Marker liftedTrigger target]
+    (contexts kb [CxOrigin])
+    (v/assert kb (list 'decontextualized_predicate liftedTrigger) 'CxUniverse)
+    (v/assert kb (list liftedTrigger Marker) CxOrigin)
+    (v/assert kb (tu/fwd [(list liftedTrigger Marker) (list 'evaluate '?n (list '+ 1 2))]
+                         (list target Subject)) 'CxUniverse)
+    (is (v/ask? kb (list target Subject) 'CxUniverse))
+    (is (not (contains? (v/defining-contexts kb Subject) 'CxUniverse)))))
+
+(tu/deftest-kb a-computed-literal-beside-an-ordinary-fact-is-ordinary
+  (tu/with-terms [Subject Other prerequisite target]
+    (v/assert kb (list prerequisite Other) 'CxUniverse)
+    (v/assert kb (tu/fwd [(list prerequisite Other) (list 'evaluate '?n (list '+ 1 2))]
+                         (list target Subject)) 'CxUniverse)
+    (is (v/ask? kb (list target Subject) 'CxUniverse))
+    (is (= #{'CxUniverse} (v/defining-contexts kb Subject)))))
+
 ;; ---- asserted leaves: the premises a datum's valid support bottoms out in -----------
 
 (defn- leaves [kb h] (defining/asserted-leaves kb h))
