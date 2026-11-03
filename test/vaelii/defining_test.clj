@@ -214,7 +214,7 @@
     (is (v/ask? kb (list subject_kind Subject) 'CxUniverse))
     (is (= #{CxOrigin} (v/defining-contexts kb Subject)))))
 
-(tu/deftest-kb mixed-introduction-support-with-no-content-role-is-incomplete
+(tu/deftest-kb mixed-introduction-support-with-no-content-role-is-ordinary
   (tu/with-terms [CxOrigin Subject Marker Other liftedTrigger prerequisite target]
     (contexts kb [CxOrigin])
     (v/assert kb (list 'decontextualized_predicate liftedTrigger) 'CxUniverse)
@@ -225,8 +225,4 @@
                                             (list prerequisite Other))
                              (list target Subject))) 'CxUniverse)
     (is (true? (v/ask? kb (list target Subject) 'CxUniverse)))
-    (let [failure (try (v/defining-contexts kb Subject) nil
-                       (catch clojure.lang.ExceptionInfo e (ex-data e)))]
-      (is (= :incomplete-defining-contexts (:type failure)))
-      (is (= Subject (:term failure)))
-      (is (seq (:handles failure))))))
+    (is (= #{'CxUniverse} (v/defining-contexts kb Subject)))))

@@ -67,6 +67,8 @@
       (some #(= :ordinary (get roles %)) content) :ordinary
       (and (seq content) (every? #(= :skeletal (get roles %)) content)) :skeletal
       (and (seq antecedents) (every? #(= :ordinary (get roles %)) prerequisites)) :ordinary
+      (and (every? #(contains? #{:ordinary :skeletal} (get roles %)) antecedents)
+           (some #(= :ordinary (get roles %)) antecedents)) :ordinary
       (and (seq antecedents) (every? #(= :skeletal (get roles %)) antecedents)
            (or (not (integer? informant)) (contains? roles informant))) :skeletal)))
 
