@@ -248,8 +248,8 @@
    ;; the believed extents, the equality partition that decides which name a filler
    ;; carries, the slot contract that decides which fillers count, and the
    ;; `indeterminate_term` category that decides whether the filler counts at all. Each
-   ;; declaration audits its own context: the ancestor has no dogs, while independent
-   ;; child declarations audit the child-local populations. Bud has no keeper in this
+   ;; declaration audits every reader seeing the requirement and a defining home.
+   ;; The ancestor's requirement reaches the child-local populations. Bud has no keeper in this
    ;; pool, so the home reading remains nonempty rather than silently vacuous.
    [[:a-keeper-is-a-person
      #(v/assert % '(arg keeperOf 1 person) cx-base {:strength :monotonic})]]
@@ -539,14 +539,18 @@
                         "and the exemption stops where the membership stops being visible")
                     ;; the audit reads all three: the extents, the elected spelling and
                     ;; the category
-                    (is (= {} (get-in r [:specified cx-base]))
-                        "the ancestor obligation is empty: the dogs belong to child contexts")
+                    (is (= {'[predSpecifiedAll keeperOf dog]
+                            {:status :audited :violations '#{Rex Bud}}}
+                           (get-in r [:specified cx-base]))
+                        "the ancestor requirement is checked in both child readers")
                     (is (= {'[predSpecifiedAll keeperOf dog]
                             {:status :audited :violations '#{Rex Bud}}}
                            (get-in r [:specified cx-home]))
                         "Bud has no keeper at all, and Rex's is an indeterminate term")
-                    (is (= {} (get-in r [:specified cx-field]))
-                        "where Nell's keeper is a person under the name the merge elected")))))
+                    (is (= {'[predSpecifiedAll keeperOf dog]
+                            {:status :audited :violations '#{Rex Bud}}}
+                           (get-in r [:specified cx-field]))
+                        "the shared ancestor requirement retains the failing home reader")))))
   (testing "and the guard the pool suspends can be seen holding"
     ;; Every reading above is of a guard something has made false, which on its own would
     ;; leave a rule that never fires indistinguishable from one that always does. This
