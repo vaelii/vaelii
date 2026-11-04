@@ -3,17 +3,21 @@
 (ns vaelii.starter-test
   "The starter schema loads and, with the test-world's cast beneath it, its rules and
   taxonomy behave."
-  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
+            [clojure.test :refer [deftest is testing use-fixtures]]
             [taoensso.trove :as trove]
             [vaelii.core :as v]
             [vaelii.host.core-context :as core-context]
             [vaelii.host.seed :as seed]
             [vaelii.host.starter :as starter]
+            [vaelii.impl.checks :as checks]
             [vaelii.impl.decide.argument :as argument]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.special :as special]
+            [vaelii.starter :as public-starter]
             [vaelii.test-util :as tu]
             [vaelii.world :as world]))
 
@@ -23,9 +27,10 @@
   (atom ::unread))
 
 (def ^:private integrity-readers
-  "Three shipped contexts that together see every middle context: CxWell's seven through
-  CxRealWorld, and the two opt-in theories CxWell does not see."
-  '[CxNormalPhysicalConditions CxTra CxSocialExtension])
+  "Two shipped contexts that together see every middle context: CxWell's seven through
+  CxRealWorld, which CxNormalPhysicalConditions sees, and CxTra, the other opt-in theory
+  CxWell does not see."
+  '[CxNormalPhysicalConditions CxTra])
 
 (def ^:private starter-integrity
   "The default `kb-integrity` sweep over no candidate terms from each of
@@ -179,7 +184,7 @@
   ;;
   ;; A term more than one middle context defines or extends belongs in CxUniverse.  Using
   ;; another context's term is not caught here; *extending* one breaks a closure.  A middle
-  ;; context that sees another (CxSocialExtension sees CxSocial) is not beside it, so a
+  ;; context that sees another (CxTra sees CxSocial) is not beside it, so a
   ;; term the two touch passes when one context touching it is seen by every other.
   (let [pairs      (authored-sentences)
         up         (reduce (fn [m [_ s]]
@@ -326,3 +331,218 @@
       (is (v/ask? kb (list 'unit_of_measure unit) c) (str unit))
       (is (v/ask? kb (list 'physical_dimension dimension) c) (str dimension))
       (is (nil? (v/handle-of kb (list 'thing unit) c)) (str unit)))))
+
+(defn- write-forms!
+  [f forms]
+  (spit (io/file f) (str/join "\n" (map pr-str forms))))
+
+(defn- counting-asserts
+  "`(f)`'s value and how many `v/assert` calls it made, as `[value n]`."
+  [f]
+  (let [n      (atom 0)
+        assert v/assert]
+    (with-redefs [v/assert (fn [& args] (swap! n inc) (apply assert args))]
+      (let [r (f)] [r @n]))))
+
+(defn- with-dump
+  "Call `(f start loads root)` under a `load-into` that stores one sentence and counts its
+  calls in the atom `loads`.  `(start)` answers `starter/load-through-dump` over `root`,
+  on a space of its own per KB.  The checkout's own edits are out of the question here,
+  so `edited-since-start?` answers false."
+  [f]
+  (tu/with-tmp
+    (fn [root]
+      (let [loads  (atom 0)
+            spaces (atom 0)
+            open   #(doto (v/open-kb (assoc tu/starter-build-space
+                                            :space [::dump (swap! spaces inc)]))
+                      tu/clear-kb!)]
+        (with-redefs [starter/load-into           (fn [kb]
+                                                    (swap! loads inc)
+                                                    (v/assert kb '(genl dump_probe thing)
+                                                              'CxUniverse))
+                      starter/edited-since-start? (constantly false)]
+          (f #(starter/load-through-dump open root) loads root))))))
+
+(defn- holds-probe?
+  [kb]
+  (boolean (some->> (v/handle-of kb '(genl dump_probe thing) 'CxUniverse) (v/in? kb))))
+
+(defn- dumps
+  "The entries under the dump directory `root`."
+  [root]
+  (vec (.list (io/file root))))
+
+(deftest a-second-start-restores-the-starter-and-runs-no-load
+  (with-dump
+    (fn [start loads root]
+      (is (holds-probe? (start)))
+      (is (= 1 (count (dumps root))))
+      (is (holds-probe? (start)))
+      (is (= 1 @loads)))))
+
+(deftest a-start-under-another-switch-reading-loads-and-replaces-the-dump
+  (with-dump
+    (fn [start loads root]
+      (start)
+      (let [before (dumps root)]
+        (binding [checks/*prune-subsumed-mints?* (not checks/*prune-subsumed-mints?*)]
+          (is (holds-probe? (start))))
+        (is (= 2 @loads))
+        (is (= 1 (count (dumps root))))
+        (is (not= before (dumps root))))
+      (binding [argument/*assertive-arg-types?* (not argument/*assertive-arg-types?*)]
+        (start))
+      (is (= 3 @loads)))))
+
+(deftest a-dump-the-import-refuses-gives-way-to-a-load-and-a-new-dump
+  (with-dump
+    (fn [start loads root]
+      (start)
+      (spit (io/file root (first (dumps root)) "meta.edn") "{:unterminated")
+      (is (holds-probe? (start)))
+      (is (= 2 @loads))
+      (is (holds-probe? (start)))
+      (is (= 2 @loads)))))
+
+(deftest a-file-edited-after-the-jvm-started-leaves-no-dump
+  (with-dump
+    (fn [start loads root]
+      (with-redefs [starter/edited-since-start? (constantly true)]
+        (is (holds-probe? (start))))
+      (is (= [] (dumps root)))
+      (is (= 1 @loads)))))
+
+(deftest the-edit-check-finds-the-source-and-the-shipped-kb-directories
+  (is (boolean? (#'starter/edited-since-start?))))
+
+(deftest a-restart-over-an-unwritten-store-loads-only-the-sources-from-the-first-changed-one
+  (tu/with-tmp
+    (fn [root]
+      (let [a     (io/file root "CxLayA.txt")
+            b     (io/file root "CxLayB.txt")
+            open  #(v/open-kb {:backend :disk-log :dir (str root "/store")})
+            start (fn [f] (let [kb (open)]
+                            (try (second (counting-asserts #(do (starter/load-sources kb [a b])
+                                                                (f kb))))
+                                 (finally (v/close! kb)))))
+            seen  (fn [kb] [(v/sentex-count kb) (v/handle-of kb '(linkedTo Ann Bob) 'CxLayB)])
+            state (atom nil)]
+        (write-forms! a '[(genlCx CxLayA CxUniverse) (genlCx CxLayB CxLayA)
+                          (implies (linkedTo ?x ?y) (nearTo ?x ?y))])
+        (write-forms! b '[(linkedTo Ann Bob) (linkedTo Bob Cy)])
+        (is (= 5 (start #(reset! state (seen %)))) "the first start loads both files")
+        (is (= 0 (start #(is (= @state (seen %))))) "an unchanged start loads nothing")
+        (write-forms! b '[(linkedTo Ann Bob) (linkedTo Bob Cy) (linkedTo Cy Dee)])
+        (is (= 3 (start #(do (is (= (second @state) (second (seen %))))
+                             (is (v/handle-of % '(linkedTo Cy Dee) 'CxLayB)))))
+            "a changed second file loads it alone")
+        (let [kb (open)] (v/assert kb '(linkedTo Dee Eve) 'CxLayB) (v/close! kb))
+        (is (= 6 (start (fn [_]))) "a write since the load loads every source")
+        (is (= 0 (start (fn [_]))) "and the reload records the store it left")))))
+
+(deftest ^:slow a-restart-the-load-key-skips-takes-under-a-fifth-of-a-build-or-a-reload
+  (tu/with-tmp
+    (fn [root]
+      (let [layer (io/file root "CxLayA.txt")
+            open  #(v/open-kb {:backend :disk-log :dir (str root "/store")})
+            start (fn [] (let [kb (open)
+                               t0 (System/nanoTime)
+                               n  (second (counting-asserts
+                                           #(public-starter/load-into kb {:layers [(str layer)]})))]
+                           (try [n (/ (- (System/nanoTime) t0) 1e6)] (finally (v/close! kb)))))]
+        (write-forms! layer (into '[(genlCx CxLayA CxUniverse)]
+                                  (for [i (range 50)] (list 'dog (symbol (str "Rex" i))))))
+        (let [[built build-ms]   (start)
+              [again again-ms]   (start)
+              _                  (let [kb (open)] (v/assert kb '(dog Rex50) 'CxLayA) (v/close! kb))
+              [reload reload-ms] (start)]
+          (is (< 3000 built))
+          (is (= 0 again))
+          (is (< 3000 reload))
+          (is (< again-ms (/ build-ms 5)) (str again-ms " ms against " build-ms " ms"))
+          (is (< again-ms (/ reload-ms 5)) (str again-ms " ms against " reload-ms " ms")))))))
+
+(defn- second-start
+  "`(f kb)` on the second of two starts over a disk store under `root`: the first loads
+  `sources`, then `edit!` runs, and the second loads `sources'`."
+  [root sources edit! sources' f]
+  (let [open #(v/open-kb {:backend :disk-log :dir (str root "/store")})]
+    (let [kb (open)] (try (starter/load-sources kb sources) (finally (v/close! kb))))
+    (edit!)
+    (let [kb (open)] (try (starter/load-sources kb sources') (f kb) (finally (v/close! kb))))))
+
+(deftest a-restart-retracts-a-sentence-its-changed-layer-dropped
+  (tu/with-tmp
+    (fn [root]
+      (let [a (io/file root "CxLayA.txt")]
+        (write-forms! a '[(genlCx CxLayA CxUniverse) (linkedTo Ann Bob) (linkedTo Bob Cy)])
+        (is (nil? (second-start root [a] #(write-forms! a '[(genlCx CxLayA CxUniverse) (linkedTo Ann Bob)])
+                                [a] #(v/handle-of % '(linkedTo Bob Cy) 'CxLayA))))))))
+
+(deftest a-restart-lowers-a-strength-its-changed-layer-lowered
+  (tu/with-tmp
+    (fn [root]
+      (let [a (io/file root "CxLayA.txt")]
+        (write-forms! a '[(genlCx CxLayA CxUniverse) (set/monotonic (linkedTo Ann Bob))])
+        (is (= :default
+               (second-start root [a] #(write-forms! a '[(genlCx CxLayA CxUniverse) (linkedTo Ann Bob)])
+                             [a] #(:strength (v/sentex % (v/handle-of % '(linkedTo Ann Bob) 'CxLayA))))))))))
+
+(deftest a-restart-retracts-a-layer-dropped-from-the-end-of-the-list
+  (tu/with-tmp
+    (fn [root]
+      (let [a (io/file root "CxLayA.txt")
+            b (io/file root "CxLayB.txt")]
+        (write-forms! a '[(genlCx CxLayA CxUniverse) (linkedTo Ann Bob)])
+        (write-forms! b '[(genlCx CxLayB CxLayA) (linkedTo Bob Cy)])
+        (is (nil? (second-start root [a b] (fn []) [a] #(v/handle-of % '(linkedTo Bob Cy) 'CxLayB))))))))
+
+(deftest a-restart-keeps-the-exception-an-unchanged-layer-states-in-a-trimmed-context
+  (tu/with-tmp
+    (fn [root]
+      (let [a    (io/file root "a" "CxLayA.txt")
+            b    (io/file root "b" "CxLayA.txt")
+            rule '(implies (linkedTo ?x ?y) (knows ?x ?y))
+            in?  (fn [kb s] (boolean (some->> (v/handle-of kb s 'CxLayA) (v/in? kb))))]
+        (io/make-parents a)
+        (io/make-parents b)
+        (write-forms! a [(list 'genlCx 'CxLayA 'CxUniverse) (list 'set/forwardRule rule)
+                         (list 'exceptWhen '(enemyOf ?x ?y) rule) '(enemyOf Ann Bob)])
+        (write-forms! b '[(linkedTo Ann Bob)])
+        (is (= [false true]
+               (second-start root [a b] #(write-forms! b '[(linkedTo Ann Bob) (linkedTo Bob Cy)])
+                             [a b] (fn [kb] [(in? kb '(knows Ann Bob)) (in? kb '(knows Bob Cy))]))))))))
+
+(deftest a-restart-keeps-a-premise-no-recorded-layer-stated
+  (doseq [[row before? after?] [["written before the first load" true false]
+                                ["written after a load and recorded by the reload it forces" false true]]]
+    (tu/with-tmp
+      (fn [root]
+        (let [a     (io/file root "CxLayA.txt")
+              open  #(v/open-kb {:backend :disk-log :dir (str root "/store")})
+              write #(let [kb (open)]
+                       (try (v/assert kb '(linkedTo Cy Dee) 'CxLayA) (finally (v/close! kb))))
+              start #(let [kb (open)] (try (starter/load-sources kb [a]) (% kb) (finally (v/close! kb))))]
+          (write-forms! a '[(genlCx CxLayA CxUniverse) (linkedTo Ann Bob)])
+          (when before? (write))
+          (start (fn [_]))
+          (when after? (write) (start (fn [_])))
+          (write-forms! a '[(genlCx CxLayA CxUniverse) (linkedTo Ann Bob) (linkedTo Bob Cy)])
+          (is (= [true true] (start (fn [kb] (mapv #(some? (v/handle-of kb % 'CxLayA))
+                                                   '[(linkedTo Cy Dee) (linkedTo Bob Cy)]))))
+              row))))))
+
+(deftest a-restart-keeps-a-sentence-an-unchanged-layer-states-at-that-layer-s-strength
+  (tu/with-tmp
+    (fn [root]
+      (let [a (io/file root "a" "CxLayA.txt")
+            b (io/file root "b" "CxLayA.txt")]
+        (io/make-parents a)
+        (io/make-parents b)
+        (write-forms! a '[(genlCx CxLayA CxUniverse) (linkedTo Ann Bob)])
+        (write-forms! b '[(set/monotonic (linkedTo Ann Bob)) (linkedTo Bob Cy)])
+        (is (= :default
+               (second-start root [a b] #(write-forms! b '[(linkedTo Bob Cy)])
+                             [a b] #(some->> (v/handle-of % '(linkedTo Ann Bob) 'CxLayA)
+                                             (v/sentex %) :strength))))))))

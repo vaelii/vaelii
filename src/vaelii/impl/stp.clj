@@ -10,15 +10,18 @@
   (:require [clojure.set :as set]
             [taoensso.trove :as trove]
             [vaelii.impl.caches :as caches]
+            [vaelii.impl.datetime :as dt]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.qcn :as qcn]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.timepoint :as tp]
             [vaelii.impl.types.prover :as prover-types]
             [vaelii.impl.types.reasoning :as reasoning]
-            [vaelii.impl.violations :as violations]))
+            [vaelii.impl.violations :as violations])
+  (:import [java.time ZoneOffset]))
 
 ;; =========================================================================
 ;; THE ALGORITHM — pure data in, pure data out.  No KB, no context, no belief.
@@ -374,6 +377,27 @@
   `vaelii.impl.interval` requires this namespace and not the reverse."
   (set (keys endpoint-signature)))
 
+(def interval-denotation
+  "Every interval predicate, the thirteen base ones and the seven derived ones, mapped to
+  the set of Allen base relations it denotes.  A goal `(P i j)` is entailed exactly when
+  the relations still possible between i and j are a subset of P's denotation.  Here for
+  `allen-relations`' reason, since the point calculus reads a stated Allen fact too."
+  '{before        #{:before}        after         #{:after}
+    meets         #{:meets}         metBy         #{:met-by}
+    overlaps      #{:overlaps}      overlappedBy  #{:overlapped-by}
+    starts        #{:starts}        startedBy     #{:started-by}
+    during        #{:during}        contains      #{:contains}
+    finishes      #{:finishes}      finishedBy    #{:finished-by}
+    intervalEqual #{:equal}
+    precedes            #{:before :meets}
+    precededBy          #{:after :met-by}
+    subintervalOf       #{:during :starts :finishes :equal}
+    properSubintervalOf #{:during :starts :finishes}
+    hasSubinterval      #{:contains :started-by :finished-by :equal}
+    sharesTimeWith      #{:overlaps :overlapped-by :starts :started-by :during :contains
+                          :finishes :finished-by :equal}
+    temporallyDisjoint  #{:before :after :meets :met-by}})
+
 (defn endpoint-gaps
   "The four instant pairs an Allen relation between intervals `[a-start a-end]` and
   `[b-start b-end]` is decided by, keyed as `endpoint-signature` keys them.  The narrowing
@@ -422,23 +446,96 @@
   "The two predicates naming an interval's bounding instants."
   '#{startOf endOf})
 
+(def network-predicates
+  "Every predicate `problem` reads a constraint from: `temporalDistance`, and
+  `includesInstant` into a calendar term (`instant-constraints`)."
+  '#{temporalDistance includesInstant})
+
 ;; ---- reading the KB into a network ---------------------------------------
 
 (defn- node-term? [x] (and (symbol? x) (not (sx/variable? x))))
 
+(defn- metric-term?
+  "A term the metric network places: a node term, or a calendar moment (`tp/moment`)."
+  [x]
+  (or (node-term? x) (some? (tp/moment x))))
+
+(def ^:private epochs
+  "The node of each `tp/moment` frame the frame's calendar moments are placed from: the
+  term naming 1970-01-01T00:00:00 in it."
+  {:local '(InstantFn 1970 1 1 0 0 0)
+   :utc   '(StartFn (DatetimeFn "1970-01-01T00:00:00Z"))})
+
+(defn- second-key
+  "`[[dimension base-unit] factor handles]` of one `Second` in `context`'s unit table
+  (`provers/measure-with-support`): the key and factor a calendar moment's offset is read
+  in, and the rows it rests on."
+  [kb context]
+  (let [[[k f] sup] (provers/measure-with-support kb '(QuantityFn 1 Second) context)]
+    [k f sup]))
+
+(defn- anchor
+  "`[node offset]` for a metric term `x`: a node term at offset 0, or a calendar moment at
+  its frame's epoch node, its seconds after the epoch (`dt/epoch-second`) times `factor`;
+  nil for any other term."
+  [factor x]
+  (if (node-term? x)
+    [x 0]
+    (when-let [[frame fields] (tp/moment x)]
+      (some->> (dt/epoch-second fields) (* factor) provers/round-magnitude (vector (epochs frame))))))
+
 (defn- stated-constraints
-  "Every believed, visible `(temporalDistance P Q M)` as `[[dimension base-unit] P Q lo hi
-  support]`, the magnitudes in the base unit and snapped by `provers/round-magnitude`.
-  `support` is the fact's handle plus the unit-table rows it converted through."
+  "Every believed, visible `(temporalDistance P Q M)` over two metric terms as `[[dimension
+  base-unit] P Q lo hi support]`, the magnitudes in the base unit and snapped by
+  `provers/round-magnitude`.  `support` is the fact's handle plus the unit-table rows it
+  converted through."
   [kb context]
   (vec
    (for [m (res/matches-visible kb '(temporalDistance ?p ?q ?m) context)
          :let  [b (second m), p (get b '?p), q (get b '?q), measure (get b '?m)]
-         :when (and (node-term? p) (node-term? q) (provers/measure? measure))
+         :when (and (metric-term? p) (metric-term? q) (provers/measure? measure))
          :let  [[[k lo hi] sup] (provers/measure-with-support kb measure context)]]
      [k p q
       (provers/round-magnitude lo) (provers/round-magnitude hi)
       (conj sup (first m))])))
+
+(defn- instant-constraints
+  "Every believed, visible `(includesInstant T X)` with `T` a calendar term or range and `X`
+  a node term, as a stated constraint (`stated-constraints`) under the key `k` from the
+  epoch node of `T`'s frame to `X`: between `T`'s start and end offsets (`anchor`), closed
+  at both ends, resting on the fact and `sup`."
+  [kb context k factor sup]
+  (vec
+   (for [m (res/matches-visible kb '(includesInstant ?t ?x) context)
+         :let  [b (second m), t (get b '?t), x (get b '?x)
+                [n lo] (anchor factor (list 'StartFn t))
+                [_ hi] (anchor factor (list 'EndFn t))]
+         :when (and n hi (node-term? x))]
+     [k n x lo hi (conj sup (first m))])))
+
+(defn- placed
+  "The stated constraint `c` between two node terms: `c` itself when both are nodes, else,
+  under `Second`'s key `sk`, the constraint between their anchors (`anchor`), resting also
+  on `sup`; nil under another key."
+  [[sk factor sup] [k p q lo hi hs :as c]]
+  (if (and (node-term? p) (node-term? q))
+    c
+    (let [[np op] (anchor factor p)
+          [nq oq] (anchor factor q)
+          d       (when (and np nq (= k sk)) (- oq op))]
+      (when d
+        [k np nq (provers/round-magnitude (- lo d)) (provers/round-magnitude (- hi d)) (into hs sup)]))))
+
+(defn- epoch-bound
+  "The constraint between the two `epochs` nodes when the stated constraints `stated` name
+  both: the UTC epoch at most `ZoneOffset/MAX` (18 hours) before or after the wall-clock
+  one, the range every zone offset lies in, resting on `Second`'s rows `sup`; else nil."
+  [[sk factor sup] stated]
+  (let [{:keys [local utc]} epochs
+        named (into #{} (mapcat (fn [[_ p q]] [p q])) stated)]
+    (when (and (named local) (named utc))
+      (let [b (provers/round-magnitude (* factor (.getTotalSeconds ZoneOffset/MAX)))]
+        [sk local utc (- b) b sup]))))
 
 (defn- report-mixed-dimensions!
   "File `:metric-temporal-mixed-dimensions` in the violations ledger and log it at :warn."
@@ -457,13 +554,19 @@
     (violations/report-without-run kb entry)))
 
 (defn- build-problem
-  "The stated constraints as `{:dimension :unit :net :support}`, nil when none, or
-  `{:mixed dims :handles #{handle} :instants #{instant}}` when they span more than one
-  dimension.  `:support` is `{[p q] → #{handle}}`, both directions of each stated pair;
+  "The stated constraints, each `placed` between two nodes, as `{:dimension :unit :net
+  :support}`, nil when none, or `{:mixed dims :handles #{handle} :instants #{instant}}`
+  when they span more than one dimension; with `instant-constraints` and `epoch-bound` when
+  they span `Second`'s or none.  `:support` is `{[p q] → #{handle}}`, both directions of each pair;
   `:handles` is every stated constraint's support, `:instants` every instant one names."
   [kb context]
-  (let [stated (stated-constraints kb context)
-        dims   (set (map first stated))]
+  (let [[sk :as unit] (second-key kb context)
+        stated        (into [] (keep #(placed unit %)) (stated-constraints kb context))
+        stated        (if (every? #(= sk (first %)) stated)
+                        (let [s (into stated (apply instant-constraints kb context unit))]
+                          (if-let [eb (epoch-bound unit s)] (conj s eb) s))
+                        stated)
+        dims          (set (map first stated))]
     (cond
       (empty? stated)    nil
       (= 1 (count dims)) (let [[dim unit] (first dims)
@@ -492,7 +595,8 @@
     prob))
 
 (defn problem
-  "Every `temporalDistance` believed and visible from `context`, as
+  "Every `temporalDistance` and calendar `includesInstant` believed and visible from
+  `context`, as
   `{:dimension :unit :net :support}`.  nil when nothing is stated, and nil — reported once
   per KB and context — when the constraints span more than one dimension."
   [kb context]
@@ -643,39 +747,52 @@
 
 ;; ---- the bridge to intervals ---------------------------------------------
 
-(defn endpoints-with-support
-  "Interval `i`'s `[[start end] handles]` from the believed, visible `startOf` / `endOf`
-  facts and those facts' handles.  nil when either is missing or names two different
-  instants; one instant restated in several visible contexts is one reading, all its
-  handles named."
-  [kb i context]
-  (let [one (fn [pred]
-              (let [ms (res/matches-visible kb (list pred i '?p) context)
-                    ps (into #{} (comp (map (comp #(get % '?p) second))
-                                       (filter node-term?))
-                             ms)]
-                (when (= 1 (count ps))
-                  [(first ps) (into #{} (map first) ms)])))
-        [s sh] (one 'startOf)
-        [e eh] (one 'endOf)]
-    (when (and s e) [[s e] (into sh eh)])))
+(defn stated-endpoint
+  "`[endpoint handles]` from the believed `(pred i endpoint)` facts visible in `context`,
+  `pred` `startOf` or `endOf`, an endpoint read when `(term? endpoint)`.  nil when they
+  name none or two different instants; one instant restated in several visible contexts
+  is one reading, all its handles named."
+  [kb i context pred term?]
+  (let [ms (res/matches-visible kb (list pred i '?p) context)
+        ps (into #{} (comp (map (comp #(get % '?p) second)) (filter term?)) ms)]
+    (when (= 1 (count ps))
+      [(first ps) (into #{} (map first) ms)])))
 
-(defn intervals-with-endpoints
-  "`{interval [[start end] #{handle}]}` for every interval `endpoints-with-support` reads."
-  [kb context]
+(defn endpoints-with-support
+  "Interval `i`'s `[[start end] handles]` from its `stated-endpoint`s and those facts'
+  handles, an endpoint read when `(term? endpoint)`, by default a symbol.  nil when either
+  is missing."
+  ([kb i context] (endpoints-with-support kb i context node-term?))
+  ([kb i context term?]
+   (let [[s sh] (stated-endpoint kb i context 'startOf term?)
+         [e eh] (stated-endpoint kb i context 'endOf term?)]
+     (when (and s e) [[s e] (into sh eh)]))))
+
+(defn- endpoints-of-matches
+  "`{interval [[start end] #{handle}]}` for each interval a visible match of one of
+  `patterns` binds as `?i` and `endpoints-with-support` reads."
+  [kb context patterns]
   (into {}
         (keep (fn [i] (when-let [e (endpoints-with-support kb i context)] [i e])))
         (into #{}
-              (comp (mapcat #(res/matches-visible kb (list % '?i '?p) context))
+              (comp (mapcat #(res/matches-visible kb % context))
                     (map (comp #(get % '?i) second))
                     (filter node-term?))
-              endpoint-predicates)))
+              patterns)))
+
+(defn intervals-with-endpoints
+  "`{interval [[start end] #{handle}]}` for every interval `endpoints-with-support` reads,
+  or with `starts`, for each whose visible stated start is one of `starts`."
+  ([kb context]
+   (endpoints-of-matches kb context (for [p endpoint-predicates] (list p '?i '?p))))
+  ([kb context starts]
+   (endpoints-of-matches kb context (for [t starts] (list 'startOf '?i t)))))
 
 (def allen-narrowing-sources
   "Every predicate the metric narrowing of the interval algebra reads: the constraints, the
   endpoint predicates and the unit table.  `vaelii.impl.interval` declares these as the
   narrowing's `:sources`."
-  (into (into stp-predicates endpoint-predicates) provers/unit-table-predicates))
+  (into (into network-predicates endpoint-predicates) provers/unit-table-predicates))
 
 (def allen-narrowing-bindings
   "The dynamic vars the metric narrowing of the interval algebra reads: the tolerance the
@@ -832,25 +949,34 @@
 ;; ---- the prover ----------------------------------------------------------
 
 (defn- solve-distance-with-support
-  "`(temporalDistance P Q M)` as `[[bindings handles] …]`: an open `M` binds the derived
-  bound when both sides are finite; a ground `M` checks that the derived bound lies inside
-  it, its support adding the stated measure's own unit-table rows."
+  "`(temporalDistance P Q M)` as `[[bindings handles] …]`, between the anchors of `P` and
+  `Q` (`anchor`), their offsets added: an open `M` binds the derived bound when both sides
+  are finite; a ground `M` checks that the derived bound lies inside it, its support adding
+  the stated measure's own unit-table rows.  Two calendar moments of one frame need no
+  stated constraint."
   [kb goal context]
-  (let [[_ p q m] goal]
-    (when-let [{:keys [dimension unit net support] :as prob} (problem kb context)]
-      (let [closed (closure kb context prob [p q])]
+  (let [[_ p q m] goal
+        nodes?    (and (node-term? p) (node-term? q))
+        [sk f us] (when-not nodes? (second-key kb context))
+        [np op]   (anchor f p)
+        [nq oq]   (anchor f q)
+        prob      (problem kb context)
+        key       (if prob [(:dimension prob) (:unit prob)] sk)]
+    (when (and np nq (or prob (and (not nodes?) (= np nq))) (or nodes? (= key sk)))
+      (let [closed (if prob (closure kb context prob [np nq]) {})]
         (when-not (= :inconsistent closed)
-          (let [[lo hi] (constraint closed p q)
-                sup     (delay (path-support net support p q))]
+          (let [[lo hi] (map #(+ % (- oq op)) (constraint closed np nq))
+                sup     (delay (cond-> (if prob (path-support (:net prob) (:support prob) np nq) #{})
+                                 (not nodes?) (into us)))]
             (cond
               (sx/variable? m)
               (when (and (Double/isFinite (double lo)) (Double/isFinite (double hi)))
-                [[{m (provers/render-quantity lo hi unit)} @sup]])
+                [[{m (provers/render-quantity lo hi (second key))} @sup]])
 
               (provers/measure? m)
               (let [[[k slo shi] msup] (provers/measure-with-support kb m context)
                     eps                provers/*quantity-tolerance*]
-                (if (and (= [dimension unit] k)
+                (if (and (= key k)
                          (>= lo (- slo eps))
                          (<= hi (+ shi eps)))
                   [[{} (into @sup msup)]]
@@ -863,7 +989,7 @@
   (applicable? [_ _ goal _]
     (and (sequential? goal) (= 4 (count goal))
          (contains? stp-predicates (first goal))
-         (node-term? (nth goal 1)) (node-term? (nth goal 2))
+         (metric-term? (nth goal 1)) (metric-term? (nth goal 2))
          (let [m (nth goal 3)] (or (sx/variable? m) (provers/measure? m)))))
   (est-bindings [_ _ _ _] 1)
   (cost         [_ _ _ _] :compute)
@@ -873,7 +999,7 @@
   prover-types/SupportingProver
   (support-functors [_] stp-predicates)
   ;; not `startOf` / `endOf`: a `temporalDistance` goal names its instants directly
-  (support-sources [_] (into stp-predicates provers/unit-table-predicates))
+  (support-sources [_] (into network-predicates provers/unit-table-predicates))
   (solve-with-support [_ kb goal context] (solve-distance-with-support kb goal context)))
 
 (defn stp-prover

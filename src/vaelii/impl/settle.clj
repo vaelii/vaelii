@@ -166,38 +166,6 @@
                     (when (special/firing-informant? kb inf) inf))))
           (remove new was))))
 
-(defn- region-terms
-  "Every symbol standing as an argument of a sentex in `region`, or of one the removal
-  record holds (`integrate/*removed-sink*`) — the terms whose memberships this settle can
-  have moved.  A retracted membership has left the store, so the removal record is
-  where its term is read."
-  [kb region]
-  (into #{}
-        (comp (mapcat #(nm/args (:sentence %)))
-              (filter symbol?))
-        (concat (keep #(p/get-sentex (:records kb) %) region)
-                (some-> integrate/*removed-sink* deref))))
-
-(defn- released-lifts
-  "The decontextualized copies an argument conviction refused that the content this
-  settle stored no longer convicts, as new handles to chain from
-  (`special/release-lift!`).  An entry is re-asked only when the generations it was
-  decided under (`special/conviction-generations`: the `genl` and `genlCx` generations
-  and the separations) moved or `region` holds, or this settle removed, a sentex naming
-  its convicted term.  Empty during a rebuild, since `recover` rebuilds the entries
-  (`special/rebuild-pending!`)."
-  [kb region]
-  (let [pending (when-not *rebuilding?* (special/lift-refusals kb))]
-    (if (empty? pending)
-      []
-      (let [gens  (special/conviction-generations kb)
-            terms (delay (region-terms kb @region))]
-        (into []
-              (mapcat (fn [[h e]]
-                        (when (or (not= gens (:gens e)) (contains? @terms (:term e)))
-                          (:new (special/release-lift! kb h e gens)))))
-              pending)))))
-
 (defn- arity-class-seeds
   "The class memberships a metatype route derives that the records stored since the last
   pass with no sync on their store path (`arity/take-classes!`), the relabelled handles
@@ -242,6 +210,14 @@
         (violations/report kb (:violations mig))
         (special/minted-seeds kb (:new mig)))
     []))
+
+(defn- revived-edge-seeds
+  "The facts a `genl` edge in `revived` makes matchable, as new handles to chain from: the
+  `special/batch-subsumption-seeds` the edge's arrival chains, owed again when a relabel
+  brings it back IN."
+  [kb revived]
+  (when (seq revived)
+    (special/batch-subsumption-seeds kb (keep #(:sentence (p/get-sentex (:records kb) %)) revived))))
 
 (defn- class-moved-merge-seeds
   "The merges and un-merges a collision member's class moving owes
@@ -938,8 +914,8 @@
         ;; mark owes, and the entailments and equalities a defeated genl edge took OUT
         ;; while a second route still licenses them
         mnew    (-> (into [] (:minted placed))
-                    (into (released-lifts kb region))
                     (into (revived-mark-seeds kb (into rs back)))
+                    (into (revived-edge-seeds kb revived))
                     (into (except-move-seeds kb))
                     (into (context-move-seeds kb moves))
                     (into (defeated-derivation-seeds kb out))
@@ -1155,15 +1131,14 @@
 
 (defn- respelled-seeds
   "Drain the `:respell` queue, the predicates whose permuting marks moved in the settle
-  just run, the `[:row h]` rows a write stored while their readers disagree on a mark,
-  the `[:reifiable f]` functions whose reifiable mark moved, the `[:corresponded f]`
-  functions a `genlCx` move can re-spell rules through, and the `[:valued k]`,
-  `[:valued-fn f]` and `[:valued-facts f]` constants whose correspondence derivations
-  moved (`nat-read/note-values`), through `chain/reconcile-spellings!`,
-  `chain/reconcile-reified!`, `chain/reconcile-corresponded!` and `chain/sync-values!`,
-  and return `[respelled valued]`, the handles the first three made and the handles
-  `sync-values!` made.  A rebuild clears
-  the queue and respells nothing, since a recovered store was spelled when written.  With
+  just run, the `[:row h]` rows a write stored while their readers disagree on a mark, the
+  `[:mention p]` predicates whose mention mark moved, the `[:reifiable f]` functions whose
+  reifiable mark moved, the `[:corresponded f]` functions a `genlCx` move can re-spell
+  rules through, and the `[:valued k]`, `[:valued-fn f]` and `[:valued-facts f]` constants
+  whose correspondence derivations moved (`nat-read/note-values`), through
+  `chain/reconcile-spellings!`, `chain/reconcile-reified!`, `chain/reconcile-corresponded!`
+  and `chain/sync-values!`, and return `[respelled valued]`, the handles the first three
+  made and the handles `sync-values!` made.  A rebuild clears the queue and respells nothing, since a recovered store was spelled when written.  With
   `*sweep?*` off the queue is kept, so `core/preview`'s rollback settle drains it against
   the restored KB and the handles stay the same."
   [kb]
@@ -1179,7 +1154,11 @@
                                fns    (tagged :reifiable)
                                cfs    (remove (set fns) (tagged :corresponded))]
                            (reset! q #{})
-                           [(-> (chain/reconcile-spellings! kb (remove vector? moved) (tagged :row))
+                           [(-> (chain/reconcile-spellings!
+                                 kb (remove vector? moved)
+                                 (distinct (into (tagged :row)
+                                                 (mapcat #(integrate/rows-a-mention-spells kb %))
+                                                 (tagged :mention))))
                                 (into (when (seq fns) (chain/reconcile-reified! kb fns)))
                                 (into (when (seq cfs) (chain/reconcile-corresponded! kb cfs))))
                             (chain/sync-values! kb (tagged :valued) (tagged :valued-fn)
@@ -1229,8 +1208,7 @@
       ;; label to read it off (`defeat-moves`), and the write record a report reads
       (binding [integrate/*removed-sink* (or integrate/*removed-sink*
                                              (integrate/removal-sink
-                                              (or (exc/placed-reads? kb)
-                                                  (special/argument-refusals? kb))))
+                                              (exc/placed-reads? kb)))
                 observe/*write-record*   (write-record kb)]
         (try
           (loop [round 1, dropped? false]

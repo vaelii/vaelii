@@ -1589,8 +1589,8 @@
   nil)
 
 (def ^:dynamic *negated-keys-memo*
-  "nil, or a volatile bound beside `*stratification-memo*` holding the stored rules'
-  `[:not P]` antecedent keys, emptied with it."
+  "nil, or a volatile bound beside `*stratification-memo*` holding `stored-negated-keys`,
+  emptied with it."
   nil)
 
 (defn forget-stratification
@@ -1598,6 +1598,19 @@
   []
   (when-let [m *stratification-memo*] (vreset! m nil))
   (when-let [m *negated-keys-memo*] (vreset! m nil)))
+
+(defn stored-negated-keys
+  "The `[:not P]` antecedent keys the stored rules take, as a set: one pass over the stored
+  keys (`reads/as-stored-rule-keys-meeting`), held for `index` in `*negated-keys-memo*`
+  while one is bound."
+  [index]
+  (let [mem *negated-keys-memo*
+        hit (some-> mem deref)]
+    (if (identical? index (first hit))
+      (second hit)
+      (let [nk (set (reads/as-stored-rule-keys-meeting index (constantly nil) vector?))]
+        (when mem (vreset! mem [index nk]))
+        nk))))
 
 ;; A rule is posted under each antecedent key in the `:rule-antecedent` count trie and under
 ;; its consequent key in `:rule-consequent`, each ending in the rule's context; a watched

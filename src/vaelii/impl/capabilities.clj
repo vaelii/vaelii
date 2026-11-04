@@ -13,12 +13,19 @@
   carries no code to cover; these fallbacks do, and here they stay measured.
   `vaelii.impl.jtms-protocol` is split from `vaelii.impl.jtms` for the same reason.
 
-  Each entry point is the same shape: `satisfies?` the capability, take its op, else the
+  Each entry point is the same shape: `has?` the capability, take its op, else the
   loop it replaces.  A caller therefore never branches on a capability, and a store
   without one reads exactly as it did before the capability existed.  `hinting` and
   `recovery-hint-chunk` are not entry points but the chunking a prefetch entry point is used
   through, which is why they sit here beside it."
   (:require [vaelii.impl.protocols :as p]))
+
+(defn has?
+  "`(satisfies? protocol x)`, read by `instance?` alone while no `extend` names `protocol`.
+  `satisfies?` walks every supertype of an `x` lacking the protocol, on each call."
+  [protocol x]
+  (or (instance? (:on-interface protocol) x)
+      (and (some? (seq (:impls protocol))) (satisfies? protocol x))))
 
 (defn prefetcher
   "`(fn [ids] …)` hinting **sentexes** to `store`, or **nil** when it does not prefetch.
@@ -27,13 +34,13 @@
   branches on it once and then runs its ordinary per-handle loop, so a store without the
   capability pays nothing for the existence of the capability."
   [store]
-  (when (satisfies? p/Prefetching store)
+  (when (has? p/Prefetching store)
     (fn [ids] (p/prefetch-sentexes! store ids))))
 
 (defn justification-prefetcher
   "`(fn [ids] …)` hinting **justifications** to `store`, or nil — `prefetcher`'s twin."
   [store]
-  (when (satisfies? p/Prefetching store)
+  (when (has? p/Prefetching store)
     (fn [ids] (p/prefetch-justifications! store ids))))
 
 (def recovery-hint-chunk
@@ -86,14 +93,14 @@
   "How many live sentexes `store` holds.  `p/Tallying`'s answer when it has one, else the
   cardinality of the handle set — the same number either way."
   ^long [store]
-  (if (satisfies? p/Tallying store)
+  (if (has? p/Tallying store)
     (long (p/sentex-tally store))
     (long (count (p/sentex-ids store)))))
 
 (defn count-justifications
   "How many live justifications `store` holds — `count-sentexes`'s twin."
   ^long [store]
-  (if (satisfies? p/Tallying store)
+  (if (has? p/Tallying store)
     (long (p/justification-tally store))
     (long (count (p/justification-ids store)))))
 
@@ -101,14 +108,14 @@
   "A live sentex handle from `store`, or nil when it holds none.  The engine's spelling of
   *is this store empty*, and of *give me one record to prove this build can read them*."
   [store]
-  (if (satisfies? p/Tallying store)
+  (if (has? p/Tallying store)
     (p/a-sentex-id store)
     (first (p/sentex-ids store))))
 
 (defn some-justification-id
   "A live justification handle from `store`, or nil — `some-sentex-id`'s twin."
   [store]
-  (if (satisfies? p/Tallying store)
+  (if (has? p/Tallying store)
     (p/a-justification-id store)
     (first (p/justification-ids store))))
 
@@ -117,7 +124,7 @@
   together with `some-justification-id` to tell a store that can be recovered into belief
   from one that has to be loaded again (`vaelii.browser.catalog`)."
   [store]
-  (if (satisfies? p/Tallying store)
+  (if (has? p/Tallying store)
     (p/a-premise-id store)
     (first (p/premise-ids store))))
 
@@ -125,7 +132,7 @@
   "Mark every handle in `id->strength` a premise at its strength — the store's bulk write
   when it has one, else `mark-premise` per handle, which is the loop this replaces."
   [store id->strength]
-  (if (satisfies? p/BulkAnnotating store)
+  (if (has? p/BulkAnnotating store)
     (p/mark-premise-batch store id->strength)
     (doseq [[id strength] id->strength] (p/mark-premise store id strength)))
   nil)
@@ -134,7 +141,7 @@
   "Persist every `[id prov]` pair — the store's bulk write when it has one, else
   `put-provenance` per pair.  `mark-premises`'s twin."
   [store entries]
-  (if (satisfies? p/BulkAnnotating store)
+  (if (has? p/BulkAnnotating store)
     (p/put-provenance-batch store entries)
     (doseq [[id prov] entries] (p/put-provenance store id prov)))
   nil)
@@ -163,7 +170,7 @@
   Close it (`with-open`) before reading any of what was written back."
   ([store] (sentex-sink store {}))
   ([store {:keys [premises?] :or {premises? true} :as opts}]
-   (if (satisfies? p/BulkLoading store)
+   (if (has? p/BulkLoading store)
      (p/open-sentex-sink store (assoc opts :premises? premises?))
      (loop-sink store p/put-sentex premises?))))
 
@@ -171,6 +178,6 @@
   "`sentex-sink`'s twin for justifications, which carry no strength and mark no premise."
   ([store] (justification-sink store {}))
   ([store opts]
-   (if (satisfies? p/BulkLoading store)
+   (if (has? p/BulkLoading store)
      (p/open-justification-sink store opts)
      (loop-sink store p/put-justification false))))

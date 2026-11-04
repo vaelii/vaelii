@@ -201,7 +201,7 @@
                              (not= 'not (nm/functor %))
                              (inherit/declared-about? kb (nm/functor %)))
                        (:antecedent rsx))]
-    (if (or (some nil? tests) (empty? antes))
+    (if (or (empty? antes) (empty? firings) (some nil? tests))
       firings
       (filter (fn [jid]
                 (if-let [j (p/get-justification (:records kb) jid)]
@@ -237,13 +237,13 @@
 (defn exception-candidates
   "The justifications of the queued rules whose block condition the queued triggers could
   have flipped.  One record fetch per rule, and none for a rule queued `:all`, which
-  keeps every firing.  The block literals are the exception conjuncts read through
-  their query frames (`rules/watched-literals`), the NAF inner queries and the aggregate
-  bodies (docs/naf.md).  A withdrawal marker adds the firings its own test keeps
-  (`entailment-candidates`, `preserving-candidates`, `except-candidates`, and
-  `firings-naming` for a separation's types and a merge's class), and `::computed`
-  keeps every firing.  A `different`-only rule's triggers narrow to the firings naming
-  the terms they moved (`special/different-rechecked-terms`).
+  keeps every firing.  The block literals are the exception conjuncts read through their
+  query frames (`rules/watched-literals`), the NAF inner queries, the aggregate bodies and
+  the closed-extent negatives (`chain/redecided-negative-antecedents`, docs/naf.md).  A
+  withdrawal marker adds the firings its own test keeps (`entailment-candidates`,
+  `preserving-candidates`, `except-candidates`, `firings-naming`), and `::computed` keeps
+  every firing.  A `different`-only rule's triggers narrow to the firings naming the
+  terms they moved (`special/different-rechecked-terms`).
 
   One question memo (`inherit/with-memo`) holds every marker's `moved-goal-test` reads:
   the markers one settle pass queues share their terms, and a `genl` edge into a broad
@@ -274,7 +274,8 @@
                                              (concat (mapcat rules/watched-literals
                                                              (apply concat (provers/rule-exceptions kb rh)))
                                                      (rules/naf-queries rsx)
-                                                     (rules/aggregate-queries rsx)))
+                                                     (rules/aggregate-queries rsx)
+                                                     (chain/redecided-negative-antecedents kb rsx)))
                                 pres   (keep ::special/preserving marks)
                                 seps   (keep ::special/separation marks)]
                             (cond

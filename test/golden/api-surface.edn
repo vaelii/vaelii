@@ -53,6 +53,7 @@
   count-with-functor "[[conn pred]]",
   covers-of "[[conn whole]]",
   defeat-class "[[conn handle]]",
+  defining-contexts "[[conn term]]",
   dependent-justifications "[[conn handle]]",
   deprecated? "[[conn term] [conn term context]]",
   describe
@@ -125,6 +126,7 @@
   readable-sentence "[[conn sx]]",
   relation-arity "[[conn term]]",
   relation? "[[conn term] [conn term context]]",
+  replace-facts! "[[conn context facts] [conn context facts opts]]",
   representative "[[conn term] [conn term context]]",
   retract! "[[conn handle]]",
   same-class? "[[conn a b] [conn a b context]]",
@@ -161,7 +163,7 @@
   vocabulary-audit "[[conn]]",
   watch "[[conn] [conn goal context]]",
   watchers "[[conn]]",
-  why "[[conn handle]]",
+  why "[[conn handle] [conn handle opts]]",
   why-not
   "[[conn handle] [conn sentence context] [conn sentence context opts]]"},
  vaelii.core
@@ -183,6 +185,8 @@
   all-specified-violations "[[kb context]]",
   arg-types-owed "[[kb]]",
   argue "[[kb asent context] [kb asent context opts]]",
+  argue-opt-keys
+  [:auto? :content? :max-depth :portfolio? :proof? :racers :strategy],
   ask "[[kb goal] [kb goal context] [kb goal context opts]]",
   ask-opt-keys [:max-ms],
   ask-within "[[kb goal budget] [kb goal context budget]]",
@@ -247,6 +251,7 @@
   default-nearest-depth :var,
   default-nearest-ms :var,
   defeat-class "[[kb handle]]",
+  defining-contexts "[[kb term]]",
   dependent-justifications "[[kb handle]]",
   deprecated? "[[kb term] [kb term context]]",
   describe "[[kb term] [kb term context] [kb term context opts]]",
@@ -314,6 +319,7 @@
   min-common-genls "[[kb types] [kb types context]]",
   min-context-parents "[[kb c]]",
   min-genls "[[kb t] [kb t context]]",
+  mint-rule-kind "[[s]]",
   negative? "[[sentex]]",
   open-kb "[[] [opts]]",
   owed-releases "[[kb]]",
@@ -353,6 +359,7 @@
   relation? "[[kb term] [kb term context]]",
   release-withheld! "[[kb]]",
   remove-unsupported! "[[kb opts]]",
+  replace-facts! "[[kb context facts] [kb context facts opts]]",
   representative "[[kb term] [kb term context]]",
   request-stop! "[[kb]]",
   reset-settle-stats! "[[kb]]",
@@ -406,10 +413,10 @@
   vocabulary-audit "[[kb]]",
   watch "[[kb f] [kb goal context f]]",
   watchers "[[kb]]",
-  why "[[kb handle]]",
+  why "[[kb handle] [kb handle opts]]",
   why-not
   "[[kb handle] [kb sentence context] [kb sentence context opts]]",
-  why-not-opt-keys [:max-depth :max-ms :nearest],
+  why-not-opt-keys [:content? :max-depth :max-ms :nearest],
   with-deferred-settle "[[kb & body]]",
   write-hazards "[[kb]]"},
  vaelii.serve
@@ -455,6 +462,7 @@
    :count-with-functor
    :covers-of
    :defeat-class
+   :defining-contexts
    :dependent-justifications
    :deprecated?
    :describe
@@ -522,6 +530,7 @@
    :readable-sentence
    :relation-arity
    :relation?
+   :replace-facts
    :representative
    :retract
    :same-class?
@@ -596,6 +605,7 @@
    :count-with-functor
    :covers-of
    :defeat-class
+   :defining-contexts
    :dependent-justifications
    :deprecated?
    :describe
@@ -662,6 +672,7 @@
    :readable-sentence
    :relation-arity
    :relation?
+   :replace-facts
    :representative
    :retract
    :same-class?
@@ -696,7 +707,7 @@
    :why-not],
   port "[[server]]",
   start "[[kb opts]]"},
- vaelii.starter {load-into "[[kb]]"},
+ vaelii.starter {load-into "[[kb] [kb opts]]"},
  vaelii.web
  {-main "[[& args]]",
   consequences "[[env heading batch]]",

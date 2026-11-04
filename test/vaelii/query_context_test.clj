@@ -154,8 +154,8 @@
               ["two genl edges" [(list 'genl tt1 tt2) (list 'genl tt2 tt3)] (list 'genl tt1 tt3)]
               ["an argument type read up genl" [(list 'arg pm 1 tt1)] (list 'arg pm 1 tt3)]
               ["a separation read down genl" [(list 'disjoint tt2 'number)] (list 'disjoint tt1 'number)]
-              ;; the mark's lifted copy in CxUniverse answers too
-              ["a reflexive pair" [(list 'reflexive prefl)] (list prefl A A) ['CxUniverse]]
+              ;; the mark's lifted copy in CxUniverse answers, and CxA sees CxUniverse
+              ["a reflexive pair" [(list 'reflexive prefl)] (list prefl A A) #{'CxUniverse}]
               ["an open membership a declaration types"
                [(list 'arg pm 1 tt1) (list pm B C)] (list tt1 '?x)]
               ["a denial read off a negates declaration"
@@ -181,7 +181,7 @@
               ["two hops of sameAs" [(list 'sameAs D E) (list 'sameAs E F)] (list 'sameAs D F)]]]
        (doseq [f facts] (v/assert kb f CxA))
        (doseq [s [:fan :post-hoc]]
-         (is (= (into #{CxA} also)
+         (is (= (or also #{CxA})
                 (set (map vantage/witness-key
                           (binding [vantage/*strategy* s] (v/query kb goal 'CxInference)))))
              (str label ", " s)))))))

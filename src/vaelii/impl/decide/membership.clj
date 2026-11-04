@@ -34,10 +34,10 @@
 ;; (`sync-memberships`), which reads no membership.  A term holding a separated pair, or a
 ;; membership beside a denial its nogoods convict, is live under `::live-mem`, and its
 ;; memberships and denials there are the family's candidates under `:membership`.
-;; `::moved` holds the terms whose nogoods the settle places again (`take-moved!`).  Recover keeps the terms of two unary
-;; predicates (`reads/as-stored-unary-multi-terms`) and of a unary body stored in both
-;; polarities that hold two memberships or a membership and a denial, read off their
-;; unary predicate sets (`recovered-terms`).
+;; `::moved` holds the terms whose nogoods the settle places again, and `::moved-supertype` the
+;; members of their `:supertype` nogoods (`take-moved!`).  Recover keeps the terms of two unary
+;; predicates (`reads/as-stored-unary-multi-terms`) and of a unary body stored in both polarities
+;; that hold two memberships or a membership and a denial, read off their unary predicate sets (`recovered-terms`).
 
 (defn- membership-of
   "`[x t positive?]` for a stored fact `sx` whose sentence is `(t x)` or `(not (t x))`
@@ -248,18 +248,25 @@
   in `:membership`.  A term with no separated pair (`::sep`) and no denial has none, and
   is read no further.  A term whose nogoods moved, or every term
   holding one when `force?`, is queued under `::moved` with the members of its nogoods
-  before and after, for the settle to place (`take-moved!`)."
+  before and after, and under `::moved-supertype` with those of its `:supertype` ones,
+  for the settle to place (`take-moved!`), or under `::edge-moved` when
+  `force?` is `:edge` and alone queues it (`take-edge-moved!`)."
   [w c x force?]
   (let [tax (:tax w)
         old (get-in c [::live-mem x])
         was (get-in c [::ngs x])
         ngs (when (or (seq (get-in c [::sep x])) (denied? c x) (cover-candidate? tax c x))
               (not-empty (vec (term-nogoods tax w c x))))
-        new (not-empty (into #{} (mapcat :members) ngs))]
+        new (not-empty (into #{} (mapcat :members) ngs))
+        sup (into #{} (comp (filter #(= :supertype (:kind %))) (mapcat :members)) (concat was ngs))
+        moved? (not= (set was) (set ngs))]
     (as-> c c
-      (if (and (or was ngs) (or force? (not= (set was) (set ngs))))
-        (update-in c [::moved x] (fnil into #{}) (concat old new))
-        c)
+      (cond
+        (not (or was ngs))           c
+        (and (not moved?) (= :edge force?)) (update c ::edge-moved (fnil conj #{}) x)
+        (or force? moved?)           (cond-> (update-in c [::moved x] (fnil into #{}) (concat old new))
+                                       (seq sup) (update-in [::moved-supertype x] (fnil into #{}) sup))
+        :else                        c)
       (if (seq ngs) (assoc-in c [::ngs x] ngs) (update c ::ngs #(some-> % (dissoc x))))
       (if (= old new)
         c
@@ -342,8 +349,8 @@
   move, beside a denial or a second type (`cover-candidate?`): the lower end of a moved
   edge, the whole of a cover with a part at or below one (`cover-wholes-under`), and the
   whole of a moved cover (`tax/cover-moves`).  Every term placed is queued when an edge
-  moved.  On a full test every term holding nogoods is placed again too.  Reads no
-  membership."
+  moved, under `::edge-moved` beside the lower ends when no declaration moved and the test
+  is not a full one.  On a full test every term holding nogoods is placed again too."
   [kb w c]
   (let [tax    (:tax w)
         st     (tax/separation-inputs tax)
@@ -356,6 +363,7 @@
         edge?  (or (nil? seen) (not= g seen))
         decl?  (not= st old)
         retest (fn [c x ts] (reduce #(test-type test (untest %1 x %2) x %2) c ts))
+        lows   (when (and edge? (not full)) (tax/moves-since tax :genl seen))
         [c xs] (if full
                  ;; each pair once, by its first type in the term's order
                  [(reduce-kv (fn [c x ts]
@@ -363,8 +371,7 @@
                                  (if bs (recur (test-type test c x t bs) bs) c)))
                              (assoc c ::sep {}) (::types c))
                   (keys (::mem c))]
-                 (let [lows   (when edge? (tax/moves-since tax :genl seen))
-                       ends   (cond-> (set lows) decl? (into (tax/separation-moves old st)))
+                 (let [ends   (cond-> (set lows) decl? (into (tax/separation-moves old st)))
                        hits   (holding c (listed-under kb w ends [:kept]))
                        covers (cond-> (set lows)
                                 (seq lows) (into (cover-wholes-under w lows))
@@ -375,10 +382,12 @@
                                   (holding c (listed-under kb w covers [:kept :denied]))))]))
         xs     (cond-> (set xs)
                  full (into (keys (::ngs c))))
-        c      (assoc c ::sep-inputs st ::genl-seen g)
+        force  (cond (not edge?) false (or full decl?) true :else :edge)
+        c      (cond-> (assoc c ::sep-inputs st ::genl-seen g)
+                 (= :edge force) (update ::edge-lows (fnil into #{}) lows))
         ;; the cover arm's pair tests share the type tests the pair tests above built
         w      (assoc w ::separated? (pair-separations test))]
-    (reduce #(place-term w %1 %2 edge?) c xs)))
+    (reduce #(place-term w %1 %2 force) c xs)))
 
 (defn- add-held
   "`c` with the kept term `x`'s entries `m` recorded, and no separation read:
@@ -456,16 +465,27 @@
           (swap! cands update-in [::moved (first xs)] (fnil into #{}) hs))))))
 
 (defn moved?
-  "Has the index queued a term whose nogoods the settle places again (`take-moved!`)?"
+  "Has the index queued a term whose nogoods the settle places again (`take-moved!`,
+  `take-edge-moved!`)?"
   [c]
-  (boolean (seq (::moved c))))
+  (boolean (or (seq (::moved c)) (seq (::edge-moved c)))))
 
 (defn take-moved!
-  "`{x #{h}}`, the terms whose nogoods moved since the last call, each with the members of
-  its nogoods before and after the move, and the queue emptied (`place-term`)."
+  "`{:terms {x #{h}} :supertype {x #{h}}}`, the terms whose nogoods moved since the last
+  call, each with the members of its nogoods before and after the move, and of its
+  `:supertype` nogoods, with both queues emptied (`place-term`)."
   [kb]
-  (let [[old _] (swap-vals! (reasoning/nogood-candidates kb) dissoc ::moved)]
-    (::moved old {})))
+  (let [[old _] (swap-vals! (reasoning/nogood-candidates kb) dissoc ::moved ::moved-supertype)]
+    {:terms (::moved old {}) :supertype (::moved-supertype old {})}))
+
+(defn take-edge-moved!
+  "`{:terms #{x} :lows #{t}}`, the terms queued since the last call because a `genl` edge
+  moved with their nogoods unmoved, and the lower ends of the edges moved, with both
+  emptied (`place-term`, `sync-memberships`).  Such a term's nogoods need placing again
+  only where `reaches-lows?` holds."
+  [kb]
+  (let [[old _] (swap-vals! (reasoning/nogood-candidates kb) dissoc ::edge-moved ::edge-lows)]
+    {:terms (::edge-moved old #{}) :lows (::edge-lows old #{})}))
 
 (defn terms-of
   "The terms of the memberships and denials among the handles `hs` that the candidate
@@ -542,6 +562,32 @@
       :supertype
       (and (= 1 (count pos)) (seq neg))               :cover
       (< 1 (count pos))                               :cover)))
+
+(defn under-lows
+  "`(fn [t])`: is the type `t` at or below one of the types `lows` over the unscoped closure
+  in `w` (`decide/unscoped-closures`)?  Each type's answer is held for the life of the fn,
+  which reads one still taxonomy."
+  [w lows]
+  (let [lows   (set lows)
+        missed (volatile! #{})
+        memo   (volatile! {})]
+    (fn [t] (caches/get-or! memo t #((:genls-global-meets? w) t lows missed)))))
+
+(defn reaches-lows?
+  "Can a `genl` edge with its lower end at a type `under?` (`under-lows`) holds of move the
+  routes or the placements of the nogood `ng` (`routes`, `chain/route-placements`): is a
+  type of its members, or a part of a cover over a whole above a held type, one of them?
+  Every route and link of `ng` reads only the upward closures of those types and of the
+  types above them, and a path through an edge starts at or below its lower end, so an
+  edge move changes no route, link witness or placement of a nogood this answers false
+  of.  True when the members are not one term's."
+  [w recs under? {:keys [members]}]
+  (if-let [[_ pos neg] (member-types recs members)]
+    (boolean (or (some under? pos) (some under? neg)
+                 (some (fn [s] (some (fn [[_ parts]] (some under? parts))
+                                     ((:covers-over-global w) s)))
+                       pos)))
+    true))
 
 (defn- cover-routes
   "The routes of a cover nogood over the held types `pos` and the denied types `neg`
@@ -698,6 +744,8 @@
        [:nogood-candidates ::live-mem] [:nogood-candidates ::denials]
        [:nogood-candidates ::ngs] [:nogood-candidates ::types]
        [:nogood-candidates ::genl-seen] [:nogood-candidates ::no-pos]
-       [:nogood-candidates ::moved]]
+       [:nogood-candidates ::moved] [:nogood-candidates ::moved-supertype]
+       [:nogood-candidates ::edge-moved]
+       [:nogood-candidates ::edge-lows]]
   :bound "the stored memberships and denials of each term holding two memberships, or a membership and a denial"
   :note "the unary members, each kept term's memberships and denials by type and its separated type pairs, read off a term's unary predicate set at its first write and at recover, and the kept terms under a type off the index; synced at a read by `tax/separation-inputs` and the relation moves (J5)"})

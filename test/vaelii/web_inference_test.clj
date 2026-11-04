@@ -51,7 +51,7 @@
       (testing "the tree has a root node and at least one rule rewrite"
         (is (re-find #"node-0" b))          ; the root's summary anchor
         (is (re-find #"the query" b))       ; the root is the query, not a rewrite
-        (is (re-find #"rule #" b)))         ; a child came off a rule
+        (is (re-find #"(?s) via </span>.{0,60}badge-link" b))) ; a child came off a rule
       (testing "the answers are listed and reachable back into the tree"
         (is (re-find #"#node-" b))          ; an answer links to the node it came off
         (is (re-find #"answer" b)))

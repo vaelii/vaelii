@@ -1,7 +1,7 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.relation-properties-test
-  "The four relation properties added in #14, enforced rather than declared, and
+  "The four relation properties, enforced rather than declared, and
   `negates` beside them:
 
   * **`irreflexive`** — a self tuple `(P a a)` is a one-member nogood each reader
@@ -400,17 +400,14 @@
                  (mapv #(= (v/representative kb x %) (v/representative kb y %))
                        [U CxFam CxStory]))))))))
 
-(tu/deftest-kb a-merge-mark-reaches-a-context-with-no-edge-only-from-its-own-statement
-  ;; CxIsle is named by no `genlCx` edge, so it sees CxUniverse no more than it sees
-  ;; anything else: a mark stated elsewhere, lifted or not, does not merge its facts, and
-  ;; one stated in it merges them there.  Its own statement is lifted like any other, so
-  ;; it merges the facts of every context that sees CxUniverse.  Each in either order.
+(tu/deftest-kb a-merge-mark-stated-in-any-context-merges-the-facts-each-context-sees
+  ;; A mark is lifted to CxUniverse, which every context sees, so wherever it is stated it
+  ;; merges the facts a context sees: facts in CxUniverse merge everywhere, and facts in a
+  ;; context no edge names merge there alone.  Each in either order.
   (tu/with-terms [CxFam CxStory CxIsle]
-    (v/assert kb (list 'genlCx CxFam U) U)
-    (v/assert kb (list 'genlCx CxStory U) U)
     (doseq [mark                       ['anti_symmetric 'functional 'functionalInArg]
-            [mark-cx fact-cx expected] [[CxIsle U [true true false]]
-                                        [CxStory CxIsle [false false false]]
+            [mark-cx fact-cx expected] [[CxIsle U [true true true]]
+                                        [CxStory CxIsle [false false true]]
                                         [CxIsle CxIsle [false false true]]]
             decl-first?                [true false]]
       (let [rel   (tu/tmp-pred "rel")

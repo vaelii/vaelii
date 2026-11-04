@@ -548,8 +548,9 @@
     (v/assert kb (list 'before B D) C)
     (v/assert kb (list 'after A D) C)
     (is (not (v/ask? kb (list 'before A B) C)))
-    (let [e (first (filter #(= :qualitative-inconsistency (:violation %)) (v/violations kb)))]
-      (is (= :allen (:calculus e)))
+    (let [e (first (filter #(= [:qualitative-inconsistency :allen] [(:violation %) (:calculus %)])
+                           (v/violations kb)))]
+      (is (some? e))
       (is (nil? (:pairs (:detail e)))
           "no single pair is at fault — every constraint is satisfiable as written, and
            only composing them empties one")
@@ -558,19 +559,26 @@
 (defn- inconsistencies [kb]
   (filterv #(= :qualitative-inconsistency (:violation %)) (v/violations kb)))
 
+(defn- by-calculus [es]
+  (into {} (map (juxt :calculus identity)) es))
+
 (tu/deftest-kb a-write-that-makes-a-network-unsatisfiable-files-its-entry-at-the-write
   ;; no rule joins on the calculus and nothing reads the network: the settle asks
   (tu/with-terms [A B]
     (v/assert kb (list 'before A B) C)
     (is (empty? (inconsistencies kb)))
     (v/assert kb (list 'after A B) C)
-    (let [[e :as es] (inconsistencies kb)]
-      (is (= 1 (count es)) "filed by the write, before any read")
+    (let [es (inconsistencies kb)
+          e  (:allen (by-calculus es))]
+      (is (= 2 (count es)) "filed by the write, before any read")
       (is (= [:allen C] [(:calculus e) (:context e)]))
-      (is (= [A B] (:nodes (:detail e)))))
+      (is (= [A B] (:nodes (:detail e))))
+      (testing "the two Allen facts' endpoint orders leave the point network unsatisfiable too"
+        (is (= (set (for [x [A B] f ['StartFn 'EndFn]] (list f x)))
+               (set (:nodes (:detail (:point (by-calculus es)))))))))
     (testing "a read of the same network files nothing more"
       (is (not (v/ask? kb (list 'before A B) C)))
-      (is (= 1 (count (inconsistencies kb)))))))
+      (is (= 2 (count (inconsistencies kb)))))))
 
 (tu/deftest-kb try-assert-refuses-a-write-that-makes-a-network-unsatisfiable
   (tu/with-terms [A B D E]
@@ -603,7 +611,7 @@
         (v/assert kb (list 'after A D) C)
         (let [[e :as es] (:unsatisfiable (last @events))]
           (is (= 1 (count es)))
-          (is (= (first (inconsistencies kb)) e) "the ledger's entry, in the ledger's shape")
+          (is (= (:allen (by-calculus (inconsistencies kb))) e) "the ledger's entry, in the ledger's shape")
           (is (= #{A B D} (set (:nodes (:detail e))))))
         (finally (v/unwatch kb t))))))
 

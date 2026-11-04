@@ -78,7 +78,7 @@
 
 ;; ---- where the refusal lives: a policy, not a store limit -----------------
 
-(tu/deftest-kb naming-off-stores-into-a-nat-symbol-but-it-is-an-island
+(tu/deftest-kb naming-off-stores-into-a-nat-symbol-but-it-is-no-node
   ;; the refusal is the naming check's, and the `genlCx` refusal is wff's, which
   ;; `:naming :off` does not reach
   (tu/with-terms [MtFn Story1 likes Tom Ann]
@@ -89,7 +89,7 @@
           "with naming off the store accepts the symbol as a context")
       (testing "and the fact reads back from that symbol"
         (is (= [{'?x Ann}] (v/ask kb-off (list likes Tom '?x) k))))
-      (testing "but the symbol is no node of the hierarchy and sees nothing"
+      (testing "but the symbol is no node of the hierarchy, and sees CxUniverse alone"
         (is (not (contains? (set (v/contexts kb)) k)))
-        (is (not (v/sees? kb k 'CxUniverse))
-            "an island: it does not even see CxUniverse, which every real context sees")))))
+        (is (v/sees? kb k 'CxUniverse) "the implicit edge, which a stored edge does not name")
+        (is (= #{k 'CxUniverse} (set (v/context-up kb k))))))))

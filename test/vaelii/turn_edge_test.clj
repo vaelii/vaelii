@@ -248,40 +248,38 @@
       (is (seq (v/sentexes-matching kb '(forced_decontextualized_predicate genlCx) 'CxUniverse))))
     (testing "but no middle contexts: those come with the starter"
       (is (empty? (v/sentexes-matching kb '(genlCx CxBiology CxUniverse) '?ctx)))
-      (is (not (tax/sees? (reasoning/taxonomy kb) 'CxWell 'CxUniverse))))))
+      (is (empty? (v/sentexes-matching kb '(genlCx CxWell ?up) '?ctx))))
+    (testing "CxWell sees CxUniverse with no stored edge"
+      (is (tax/sees? (reasoning/taxonomy kb) 'CxWell 'CxUniverse)))))
 
-(deftest ^:slow a-user-context-above-cxuniverse-supplies-universal-vocabulary
-  ;; A user context that CxUniverse sees holds the user's own *universal* domain terms,
-  ;; which `sync/sync!` leaves alone because they are not premises of CxUniverse.
-  ;; Vocabulary put there (a type, an arg, an individual) is visible from every data
-  ;; context below Well, and its arg constraints are read there.
+(deftest ^:slow universal-vocabulary-stated-in-cxuniverse-reaches-every-data-context
+  ;; A user's universal domain terms go into CxUniverse itself, which every context sees;
+  ;; no context may sit above it.  Vocabulary put there (a type, an arg, an individual) is
+  ;; visible from every data context below Well, and its arg constraints are read there.
   (tu/with-neutral-kb [kb starter-world-kb]
     (let [widgets (tu/tmp-ctx) widget (tu/tmp-type) priceOf (tu/tmp-pred)
           gadget (tu/tmp-ind) bad (tu/tmp-ind) plain (tu/tmp-ind)]
-      ;; seen by CxUniverse, so every descendant of CxUniverse (the middle theories, and
-      ;; CxNaturalWorld below Well) sees it
-      (v/assert kb (list 'genlCx 'CxUniverse widgets) 'CxUniverse)
-      ;; universal domain vocabulary defined once, in the user context
-      (v/assert kb (list 'genl widget 'made)      widgets)
-      (v/assert kb (list 'arg priceOf 1 widget) widgets)
-      (v/assert kb (list widget gadget)            widgets)
-      (testing "the user context is above CxUniverse"
-        (is (tax/sees? (reasoning/taxonomy kb) 'CxUniverse widgets))
-        (is (tax/sees? (reasoning/taxonomy kb) 'CxNaturalWorld widgets)))   ; via Universe, through Well
-      (testing "the user context's vocabulary is visible from a data context"
+      (testing "an edge above CxUniverse is refused"
+        (is (= :not-well-formed
+               (tu/refusal-type #(v/assert kb (list 'genlCx 'CxUniverse widgets) 'CxUniverse)))))
+      ;; universal domain vocabulary defined once, in CxUniverse
+      (v/assert kb (list 'genl widget 'made)      'CxUniverse)
+      (v/assert kb (list 'arg priceOf 1 widget) 'CxUniverse)
+      (v/assert kb (list widget gadget)            'CxUniverse)
+      (testing "the vocabulary is visible from a data context"
         (is (v/isa? kb gadget widget     'CxNaturalWorld))
         (is (v/isa? kb gadget 'made      'CxNaturalWorld)))          ; genl widget made
-      (testing "a fact using the user context's term is allowed from the data context"
+      (testing "a fact using the term is allowed from the data context"
         (v/assert kb (list priceOf gadget 10) 'CxNaturalWorld)      ; gadget is a widget: OK
         (is (seq (v/sentexes-matching kb (list priceOf gadget 10) 'CxNaturalWorld))))
-      (testing "and the user context's arg constraint speaks for the data context"
+      (testing "and the arg constraint speaks for the data context"
         (testing "under the entailing reading it derives the type it names"
           (tu/with-entailing
             (v/assert kb (list priceOf plain 7) 'CxNaturalWorld)
             (is (v/handle-of kb (list widget plain) 'CxNaturalWorld))))
         (testing "under the constraint-only reading it holds a term placed outside it inert"
           ;; a symbol is convicted only by a type separated from the declared one
-          (v/assert kb (list 'disjoint widget 'dog) widgets)
+          (v/assert kb (list 'disjoint widget 'dog) 'CxUniverse)
           (v/assert kb (list 'dog bad) 'CxNaturalWorld)
           (tu/without-entailing
            (is (= :arg-type (:type (tu/write-conviction kb (list priceOf bad 5) 'CxNaturalWorld))))
@@ -302,12 +300,12 @@
       (is (v/in? kb1 moral) "the moral was derived before the restart")
       (let [kb2 (tu/test-kb)]                     ; same dbs, empty memory
         (testing "before recover, the in-memory graph is empty"
-          (is (not (tax/sees? (reasoning/taxonomy kb2) 'CxWell 'CxUniverse)))
+          (is (not (tax/sees? (reasoning/taxonomy kb2) 'CxWell 'CxBiology)))
           (is (not (v/in? kb2 moral))))
         (v/recover kb2)
         (testing "the context topology is rebuilt from the durable genlCx sentexes"
-          (is (tax/sees? (reasoning/taxonomy kb2) 'CxBiology  'CxUniverse))
-          (is (tax/sees? (reasoning/taxonomy kb2) 'CxWell     'CxUniverse))     ; transitive
+          (is (tax/sees? (reasoning/taxonomy kb2) 'CxWell     'CxBiology))
+          (is (tax/sees? (reasoning/taxonomy kb2) 'CxStories  'CxBiology))     ; transitive
           (is (tax/sees? (reasoning/taxonomy kb2) 'CxStories  'CxWell)))
         (testing "a story character keeps its ontology type after recovery"
           (is (v/isa? kb2 'LionA 'mammal))

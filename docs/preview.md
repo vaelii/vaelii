@@ -177,15 +177,8 @@ write that makes the same network from filing its entry
 The markers go back whole, a reader thread's included, so a network a reader reported while
 the batch ran can be reported a second time.
 
-A constraint or lift entry records the `genl` and `genlCx` generations it was decided
-under, and `settle` re-asks an entry whose generations moved. A batch that adds or removes
-an edge moves them, and the rollback's removal moves them again, since a generation only
-grows. When the rollback has put both relations and the separations back as the batch found
-them (`tax/relations-match?`, which compares the edges out of each lower end moved since),
-the restored entries recorded under the generations of the batch's start take the
-generations now (`special/advance-refusal-generations!`). The next write therefore
-re-asks what it would have re-asked with no preview before it. An entry already owed a
-re-ask when the batch started keeps its generations. A declaration waiting on a type bound
+A constraint entry records the `genl` and `genlCx` generations it was decided under, and
+`settle` re-asks an entry whose generations moved. A declaration waiting on a type bound
 to another length is read only when that type's own bindings move, which no edge does, so
 a previewed edge reads none
 (`preview_test/a-rolled-back-preview-reads-no-declaration-waiting-on-a-length`).

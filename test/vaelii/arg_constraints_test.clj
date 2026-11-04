@@ -56,8 +56,8 @@
         (is (empty? (res/arg-constraints kb herdOf 'CxUniverse)))))))
 
 (tu/deftest-kb the-refusal-record-holds-no-firing-of-a-rule-that-does-not-forward-chain
-  (let [named (fn [] (into #{} (for [[rh es] (dissoc @(reasoning/refused kb) :kinds)
-                                     :when (and (set? es) (not-any? :lift es)
+  (let [named (fn [] (into #{} (for [[rh es] @(reasoning/refused kb)
+                                     :when (and (set? es)
                                                 (not (rules/forward-sentex? (p/get-sentex (:records kb) rh))))]
                                  rh)))]
     (is (empty? (named)) "after the core load")

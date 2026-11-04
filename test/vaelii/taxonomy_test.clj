@@ -70,9 +70,9 @@
         (is (= '#{dog} (tax/max-types-global t '[dog dog])))
         (is (thrown? clojure.lang.ExceptionInfo (tax/min-types-global t '[dog mammal])))))))
 
-(deftest extremal-types-keeps-two-members-that-subsume-each-other
+(deftest extremal-keeps-two-members-that-subsume-each-other
   ;; the closures are given as a map, so the cycle needs no taxonomy that admits one
-  (let [ends  @#'tax/extremal-types
+  (let [ends  @#'tax/extremal
         above '{a #{a b top} b #{a b top} top #{top} low #{low a b top}}]
     (is (= '#{a b} (ends above true '[a b])))
     (is (= '#{a b} (ends above false '[a b])))
@@ -107,10 +107,10 @@
     (testing "the nearest neighbours do not, and two incomparable ones both stay"
       (is (= '#{CxMid CxAside} (tax/min-context-parents t 'CxLeaf)))
       (is (= '#{CxMid} (tax/max-context-children t 'CxTop))))
-    (testing "a context with one neighbour has that one, and a context that is no node has none"
+    (testing "a context with one neighbour has that one, and a context that is no node has CxUniverse"
       (is (= '#{CxTop} (tax/min-context-parents t 'CxMid)))
       (is (= '#{CxLeaf} (tax/max-context-children t 'CxMid)))
-      (is (= #{} (tax/min-context-parents t 'CxUnheard)))
+      (is (= '#{CxUniverse} (tax/min-context-parents t 'CxUnheard)) "the implicit root")
       (is (= #{} (tax/max-context-children t 'CxUnheard))))
     (testing "removing the nearer edge makes the farther neighbour the nearest"
       (tax/del-genlCx! t 'CxLeaf 'CxMid 2)
@@ -162,7 +162,7 @@
 
 (deftest nearest-of-keeps-mutually-subsuming-neighbours
   ;; the closures are given as a map, so the cycle needs no taxonomy that admits one
-  (let [ends    @#'tax/extremal-types
+  (let [ends    @#'tax/extremal
         nearest (fn [above up? node nbrs]
                   (@#'tax/nearest-of above #(ends above up? %) up? node nbrs))]
     (testing "two neighbours that subsume each other are both kept, and drop a farther one"
@@ -688,7 +688,7 @@
       (is (tax/sees? t 'CxUniversalVocabulary 'CxBaseKB))
       (is (tax/sees? t 'CxSomeTheory 'CxUniversalVocabulary))
       (is (not (tax/sees? t 'CxUniversalVocabulary 'CxSomeTheory)))
-      (is (= '#{CxBaseKB CxUniversalVocabulary}
+      (is (= '#{CxBaseKB CxUniversalVocabulary CxUniverse}
              (tax/context-up t 'CxBaseKB)))
       (is (= '#{CxSomeTheory CxBaseKB CxUniversalVocabulary}
              (tax/context-down t 'CxUniversalVocabulary))))
@@ -1140,7 +1140,7 @@
         (tax/restore-depths t)
         (dotimes [_ 20]
           (let [cs (vec (repeatedly (+ 2 (.nextInt rnd 2)) #(cx (.nextInt rnd 14))))]
-            (is (= (tax/maximal-contexts t (tax/common-descendants t cs))
+            (is (= (tax/max-cxs t (tax/common-descendants t cs))
                    (tax/maximal-common-descendant-contexts t cs))
                 (str "trial " trial " " (pr-str cs)))))))))
 
@@ -1160,8 +1160,9 @@
     (testing "incomparable siblings share their child"
       (is (tax/common-descendant? t '[CxBio CxChem])))
     (testing "no context sees both arms of a disconnected pair"
-      (is (not (tax/common-descendant? t '[CxBio CxOrphan])))
-      (is (not (tax/common-descendant? t '[CxUniverse CxElsewhere CxOrphan]))))
+      (is (not (tax/common-descendant? t '[CxBio CxOrphan]))))
+    (testing "every context sees CxUniverse, so it joins any pair one context sees"
+      (is (tax/common-descendant? t '[CxUniverse CxElsewhere CxOrphan])))
     (testing "the empty family has no witness, a singleton is its own"
       (is (not (tax/common-descendant? t [])))
       (is (tax/common-descendant? t '[CxBio])))

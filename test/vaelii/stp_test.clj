@@ -323,6 +323,37 @@
       (v/assert kb (list 'temporalDistance R S '(QuantityIntervalFn 5 5 Minute)) C)
       (is (empty? (v/ask kb (list 'temporalDistance P S '?d) C))))))
 
+(tu/deftest-kb a-calendar-moment-is-placed-at-its-offset-from-its-frames-epoch-node
+  (load-time-units kb)
+  (tu/with-terms [P X]
+    (let [h (v/assert kb (list 'temporalDistance '(InstantFn 2000 1 1 0 0 0) P '(QuantityFn 1 Hour)) C)]
+      (testing "a gap stated from a moment reaches the same moment spelled another way, and a later one"
+        (is (= '(QuantityFn 3600 Second) (bound kb (list 'temporalDistance '(StartFn (DayFn 2000 1 1)) P '?d))))
+        (is (= '(QuantityFn 1800 Second) (bound kb (list 'temporalDistance '(InstantFn 2000 1 1 0 30 0) P '?d)))))
+      (testing "no gap joins a moment in no zone to an absolute one"
+        (is (empty? (v/ask kb (list 'temporalDistance '(StartFn (DatetimeFn "2000-01-01T00:00Z")) P '?d) C))))
+      (v/retract! kb h))
+    (v/assert kb '(dimensionOf Metre Length) C)
+    (v/assert kb (list 'temporalDistance P X '(QuantityFn 5 Metre)) C)
+    (v/assert kb (list 'includesInstant '(YearFn 2000) X) C)
+    (testing "an instant placed under another key than the stated constraints' joins no network and refuses none"
+      (is (= ['Length #{P X}] [(:dimension (stp/problem kb C)) (stp/nodes (:net (stp/problem kb C)))])))))
+
+(tu/deftest-kb the-two-epoch-nodes-lie-within-the-widest-zone-offset-of-each-other
+  (load-time-units kb)
+  (tu/with-terms [X Y]
+    (let [loc '(InstantFn 2000 1 1 0 0 0)
+          abs '(StartFn (DatetimeFn "2000-01-01T00:00Z"))]
+      (v/assert kb (list 'includesInstant '(DayFn 2000 1 1) X) C)
+      (v/assert kb (list 'includesInstant '(DatetimeFn "2000-01-01T12Z") Y) C)
+      (testing "a wall-clock reading and the same absolute reading are at most 18 hours apart"
+        (is (= '(QuantityIntervalFn -64800 64800 Second) (bound kb (list 'temporalDistance loc abs '?d)))))
+      (let [h (v/assert kb (list 'includesInstant '(DatetimeFn "2000-03-01T00Z") X) C)]
+        (testing "an instant inside a local day and an absolute hour 60 days later fits no offset"
+          (is (inconsistent? kb C))
+          (is (empty? (v/ask kb (list 'temporalDistance loc abs '?d) C))))
+        (v/retract! kb h)))))
+
 (tu/deftest-kb an-inconsistent-network-answers-nothing-and-is-reported
   (load-time-units kb)
   (v/clear-violations! kb)
@@ -719,7 +750,7 @@
 
 (tu/deftest-kb the-narrowing-declares-what-moves-it-and-what-names-a-reader
   (testing "every predicate the closure reads is a trigger, the unit table included"
-    (is (= '#{temporalDistance startOf endOf dimensionOf conversionFactor}
+    (is (= '#{temporalDistance includesInstant startOf endOf dimensionOf conversionFactor}
            stp/allen-narrowing-sources)))
   (testing "a calculus folds both sets into its triggers, beside the point network's"
     (is (= (-> (:predicates iv/allen)
@@ -729,7 +760,8 @@
     (testing "and a conversionFactor names no reader context"
       (is (contains? (:trigger-predicates iv/allen) 'conversionFactor))
       (is (not (contains? (:context-predicates iv/allen) 'conversionFactor)))
-      (is (contains? (:context-predicates iv/allen) 'temporalDistance)))))
+      (is (contains? (:context-predicates iv/allen) 'temporalDistance))
+      (is (contains? (:context-predicates iv/allen) 'includesInstant)))))
 
 ;; ---- registration --------------------------------------------------------
 

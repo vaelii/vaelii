@@ -14,11 +14,11 @@
                local and remote answer through the same table and cannot drift)
 
   The pure display fns (`term-role`, `reified-term?`, `readable-sentence`,
-  `indexable-terms`, `negative?`, `rests-on`, `query-contexts`, `assertable-strengths`,
-  `sort-by-content`, `levels`, `calculi`), the bootstrap fns (`open-kb`, `clear!`), the
-  in-process `write-hazards` and the process-wide `switch-value` take no target and
-  delegate to `vaelii.core`.  They are here so a caller can require this one namespace
-  and reach the whole surface it needs.
+  `indexable-terms`, `negative?`, `mint-rule-kind`, `rests-on`, `query-contexts`,
+  `assertable-strengths`, `sort-by-content`, `levels`, `calculi`), the bootstrap fns
+  (`open-kb`, `clear!`), the in-process `write-hazards` and the process-wide
+  `switch-value` take no target and delegate to `vaelii.core`.  They are here so a caller
+  can require this one namespace and reach the whole surface it needs.
 
   Reads — including `check` / `check-edit`, which answer what `assert` would refuse
   and write nothing — plus the four writes the browser performs: `edit` (an
@@ -209,6 +209,7 @@
 (def levels            core/levels)
 (def calculi           core/calculi)
 (def negative?         core/negative?)
+(def mint-rule-kind    core/mint-rule-kind)
 (def rests-on          core/rests-on)
 (def query-contexts    core/query-contexts)
 (def assertable-strengths core/assertable-strengths)

@@ -139,7 +139,7 @@
 
 (def ^:dynamic *unit-deadline*
   "The `now` instant past which `check-unit!` throws, or nil for none.  Bound by a pass
-  around the read-only checks of one unit (`special/record-arg-types!`), never around a
+  around the read-only checks of one unit (`vaelii.core/record-arg-types!`), never around a
   write."
   nil)
 

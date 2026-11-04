@@ -306,7 +306,7 @@
     ;; calls are that no-op, and the probe is optimistic — no lock in the steady state.
     ;; Skipping is sound under the single-writer contract: nothing moves the node
     ;; between the probe and the write that is not taken.  Same skip the reference
-    ;; makes (`jtms/-ensure-node`), under the same switch.
+    ;; makes (`jtms/ensure-node`), under the same switch.
     (when-not (and observe/*chain-fast-paths* (opt-read lock (ensure-noop? this datum depth)))
       (with-write lock (begin-record! this) (ensure! this datum depth)))
     nil)

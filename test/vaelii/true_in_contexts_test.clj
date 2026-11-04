@@ -11,7 +11,7 @@
   The inverse is spelled the way vaelii already spells it: a goal read at a **variable
   context**, `(v/ask kb s '?where)`, which unifies each witness into `?where`
   (docs/contexts.md, \"The query contexts\").  That read already keeps only the maximal
-  witnesses (`taxonomy/maximal-contexts`, called from `vantage/witnessed`).  It does not
+  witnesses (`taxonomy/max-cxs`, called from `vantage/witnessed`).  It does not
   merge times, so a fact true in 2000 and in 2001 is two answers today where it ought to
   be one answer, 2000 through 2001.  Merging adjacent times, along one monad only, is what the `^:red` tests here ask
   for.
@@ -224,16 +224,14 @@
         (is (not (true-here? kb s (slice (year 2000)))))
         (is (not (true-here? kb s (slice CxStory (year 2001)))))))))
 
-(tu/deftest-kb ^:red along-a-partially-open-time-the-answer-is-the-open-region-with-its-stated-bound
+(tu/deftest-kb along-a-partially-open-time-the-answer-is-the-open-region-with-its-stated-bound
   ;; A time that starts at the beginning of 2000 and has no end stated: its end is
   ;; unknown, not infinite.  The fact is written there and at the moment it starts.  A
   ;; vaelii interval is half-open, start in and end out, so that moment is inside the open
   ;; time and the inverse names the open region alone.  The test asserts the bound the answer
   ;; carries and its inclusivity, and that no end is made up: the answer's time has the
   ;; stated start, includes it, and answers no endOf; and 2010, which an assumed endpoint
-  ;; would place inside, is not where the fact is true.  Today nothing orders the
-  ;; instant's slice under the open time's (an-instant-slice-nobody-wrote-into-still-inherits-from-its-year),
-  ;; so the inverse names both.
+  ;; would place inside, is not where the fact is true.
   (declare-cxtimefn! kb)
   (v/add-reasoner kb :calendar :point :includes-instant)
   (tu/with-terms [p Since2000]

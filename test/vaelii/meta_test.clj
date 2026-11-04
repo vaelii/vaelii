@@ -19,6 +19,7 @@
             [vaelii.impl.checks :as checks]
             [vaelii.impl.decide :as decide]
             [vaelii.impl.except :as exc]
+            [vaelii.impl.profile :as prof]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]
@@ -151,11 +152,11 @@
     ;; the domain relations, orthogonal, negates, inverse and diachronicallyDisjoint are the
     ;; symmetric marks, decontextualized like the other algebraic marks, so they answer the
     ;; enumeration wherever CxUniverse is seen.  seeAlso is NOT among them — it is a directional cross-reference, not
-    ;; symmetric.  The social relations (CxSocial and CxSocialExtension) are among them:
+    ;; symmetric.  The social relations (CxSocial's and CxTra's) are among them:
     ;; their marks are stated in CxUniverse like the rest, and ?ctx is open.
     (is (= '#{siblingOf marriedTo friendOf orthogonal siblingDisjointException
               relativeOf romanticPartnerOf coworkerOf roommateOf
-              nestingPartnerOf chosenSiblingOf diachronicallyDisjoint negates inverse}
+              nestingPartnerOf chosenSiblingOf headmateOf diachronicallyDisjoint negates inverse}
            (set (map #(get % '?p) (v/ask kb '(symmetric ?p) '?ctx)))))
     ;; `genl` and `genlCx` are in the enumeration because core.txt asserts (transitive genl)
     ;; / (transitive genlCx) outright.  They *are* transitive; answering them from cached
@@ -172,8 +173,8 @@
     ;; `instantBefore` / `instantAfter` are the point algebra's strict orders, transitive
     ;; so a forward join reads a narrative's consecutive links as one ordering.
     ;; `intangiblePartOf` is `tangiblePartOf`'s twin for things without mass, and
-    ;; `subInformationOf` its spec over information.
-    (is (= '#{ancestorOf partOf tangiblePartOf intangiblePartOf subInformationOf subSituationOf properPartOf properTangiblePartOf
+    ;; `subInformationOf` its spec over information; CxTra's `runsOn` chains through hosts.
+    (is (= '#{ancestorOf partOf tangiblePartOf intangiblePartOf subInformationOf runsOn subSituationOf properPartOf properTangiblePartOf
               properSubSituationOf properPartOfRegion properSubintervalOf locatedIn largerThan instantBefore instantAfter
               causes beforeEvent genl genlCx
               heavierThan tallerThan olderThan greaterInMagnitudeThan}
@@ -723,6 +724,24 @@
   (walk/postwalk-replace (zipmap (vals names) (keys names))
                          (mapv (juxt :sentence :context (comp :not-forced-monotonic :detail))
                                (forced-entries kb context))))
+
+(tu/deftest-kb a-reader-reads-a-premise-void-without-reading-its-record
+  (tu/with-terms [CxU CxFoo kind_t kind_s SpA SpB]
+    (foo-under-u kb CxU CxFoo)
+    (v/assert kb (list 'forced_monotonic_predicate kind_t) CxFoo)
+    (v/assert kb (list 'set/forwardRule (list 'implies (list kind_s '?x) (list kind_t '?x))) CxU)
+    (let [ps     (mapv #(v/assert kb (list kind_s %) CxU) [SpA SpB])
+          fs     (mapv #(v/handle-of kb (list kind_t %) CxU) [SpA SpB])
+          reader (exc/verdict-reader kb)
+          read   (atom #{})
+          void?  (fn [^StackTraceElement e] (str/includes? (.getClassName e) "except$forced_void"))
+          out    (binding [prof/*handle-sink*
+                           (fn [h] (when (some void? (.getStackTrace (Thread/currentThread)))
+                                     (swap! read conj h)))]
+                   (mapv #(reader % CxFoo) (concat ps fs)))]
+      (is (= [true true false false] (mapv :believed? out)))
+      (is (= [#{} #{} #{:void} #{:void}] (mapv (comp set vals :verdicts) out)))
+      (is (empty? (filter (set ps) @read)) (str "premise records read: " (vec (filter (set ps) @read)))))))
 
 (tu/deftest-kb the-forced-conclusion-entries-are-the-same-in-every-arrival-order
   ;; a network-void firing (orthogonal, in the baseline forced-monotonic set) and a reader-only void
@@ -1442,24 +1461,21 @@
     (is (empty? (v/sentexes-matching kb (list 'not (list flies Opus)) 'CxUniverse))
         "the negative literal does not")))
 
-(tu/deftest-kb a-lift-out-of-sight-of-the-universe-stores-a-clashing-copy-and-reports-it
-  ;; The definitional checks run where a fact is stated, against what is visible from
-  ;; there, so they cover the CxUniverse copy whenever the stating context sees
-  ;; CxUniverse.  Two contexts no genlCx edge names do not: neither sees the other's
-  ;; fact, so each assert passes and the copies meet in CxUniverse.  The copy is admitted
-  ;; as a firing's conclusion is: the clash is stored and decided there, in either order.
+(tu/deftest-kb a-fact-clashing-with-a-lifted-copy-is-checked-at-the-assert
+  ;; Two contexts no genlCx edge names, neither seeing the other's fact.  Each sees
+  ;; CxUniverse, so the second fact meets the first's lifted copy at its own assert:
+  ;; `try-assert` refuses it, and `assert` stores it as a reported dilemma.
   (tu/with-terms [dog cat Rex CxOffA CxOffB]
-    (is (not (v/sees? kb CxOffA 'CxUniverse)) "no edge names CxOffA")
     (v/assert kb (list 'genl dog 'thing) 'CxUniverse)
     (v/assert kb (list 'genl cat 'thing) 'CxUniverse)
     (v/assert kb (list 'disjoint dog cat) 'CxUniverse)
     (v/assert kb (list 'decontextualized_predicate dog) 'CxUniverse)
     (v/assert kb (list 'decontextualized_predicate cat) 'CxUniverse)
     (v/clear-violations! kb)
-
     (v/assert kb (list dog Rex) CxOffA)
-    (testing "each fact is admissible where it is stated — neither context sees the other"
-      (is (v/assert kb (list cat Rex) CxOffB)))
+    (testing "the second context sees the first fact's copy, so try-assert refuses"
+      (is (= :definitional-clash (tu/refusal-type #(v/try-assert kb (list cat Rex) CxOffB)))))
+    (v/assert kb (list cat Rex) CxOffB)
     (testing "both copies are stored in CxUniverse"
       (is (seq (v/sentexes-matching kb (list dog Rex) 'CxUniverse)))
       (is (seq (v/sentexes-matching kb (list cat Rex) 'CxUniverse))))

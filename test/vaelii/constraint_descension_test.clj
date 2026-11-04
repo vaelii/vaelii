@@ -761,9 +761,9 @@
 
 ;; ---- and the retroactive halves of the other two marks ------------------
 ;;
-;; The deciding sweep (`settle/declaration-parts`) reaches the facts beneath a mark
-;; on a super-predicate, whichever of the facts, the declaration and the `genl` edge
-;; arrives last.  The cross-context half is `exposure_test`'s.
+;; The clash lane (`special/offer-marked-existing`, `special/offer-marked-under-edge`)
+;; reaches the facts beneath a mark on a super-predicate, whichever of the facts, the
+;; declaration and the `genl` edge arrives last.  The cross-context half is `exposure_test`'s.
 
 (defn- kinds
   "The kinds of the represented contradictions, in report order."

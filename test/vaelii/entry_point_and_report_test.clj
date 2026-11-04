@@ -107,7 +107,7 @@
 
 ;; ---- disjointness: every trigger, one nogood ----------------------------
 ;;
-;; Four rows of the table share one retroactive reader (`settle/clash-nogoods`) and one
+;; Four rows of the table share one nogood family (`vaelii.impl.decide.membership/family`) and one
 ;; entry point (`checks/disjoint-problems`), and each row is a different sentence arriving last:
 ;; the separation itself, a metatype declaring its members pairwise separate, a term
 ;; joining such a metatype, a `genl` edge closing a separation over content already

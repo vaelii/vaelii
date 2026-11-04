@@ -26,9 +26,9 @@
   (`genls`, `context-up`, …) are specced too, since a wrong-arity call to one of
   them is exactly the kind of mistake instrumentation should surface early.
 
-  **Twenty-three publics that take an option map are outside it**, and instrumenting says
+  **Twenty-four publics that take an option map are outside it**, and instrumenting says
   nothing about their arguments: the batch writes (`assert-many`,
-  `bulk-assert-facts!`, `edit!`), the fork and the two consequence readers over it (`fork`,
+  `bulk-assert-facts!`, `edit!`, `replace-facts!`), the fork and the two consequence readers over it (`fork`,
   `preview`, `edit-with-consequences!`), the store transfers (`import!`, `export!`,
   `export-text!`, `load-text!`, and `load-foreign!`, whose options belong to the reader
   plugin), the batch digest read (`digests`),
@@ -208,6 +208,7 @@
 ;; the batch `edit-records!` takes and the options of the rebuild after it
 ;; (docs/storage.md), under their own namespace: `::direction` is `assert`'s option
 (s/def :vaelii.impl.spec.record-edit/remove (s/coll-of ::handle-arg))
+(s/def :vaelii.impl.spec.record-edit/add (s/coll-of any?))
 (s/def :vaelii.impl.spec.record-edit/direction (s/map-of ::handle-arg keyword?))
 (s/def :vaelii.impl.spec.record-edit/seeds (s/coll-of ::handle-arg))
 (s/def :vaelii.impl.spec.record-edit/arg-types? boolean?)
@@ -215,7 +216,8 @@
 
 (s/fdef vaelii.core/edit-records!
   :args (s/cat :kb ::kb
-               :batch (s/keys :opt-un [:vaelii.impl.spec.record-edit/remove
+               :batch (s/keys :opt-un [:vaelii.impl.spec.record-edit/add
+                                       :vaelii.impl.spec.record-edit/remove
                                        :vaelii.impl.spec.record-edit/direction])))
 
 (s/fdef vaelii.core/settle-record-edits!
@@ -424,8 +426,11 @@
 (s/fdef vaelii.core/dependent-justifications  :args (s/cat :kb ::kb :handle ::handle-arg))
 (s/fdef vaelii.core/provenance   :args (s/cat :kb ::kb :handle ::handle-arg) :ret (s/nilable map?))
 
+(s/def ::content? boolean?)
+
 (s/fdef vaelii.core/why
-  :args (s/cat :kb ::kb :handle ::handle-arg)
+  :args (s/cat :kb ::kb :handle ::handle-arg
+               :opts (s/? (s/nilable (s/keys :opt-un [::content?]))))
   :ret map?)
 
 ;; `why-not`'s sentence arity reads three: how many near misses to report, and the two
@@ -435,7 +440,7 @@
 ;; `::max-depth` are the specs the budget map above registered: one keyword names one spec
 ;; in the registry, so re-`s/def`ing either here would silently retune the budget too.
 (s/def ::nearest pos-int?)
-(s/def ::why-not-opts (s/keys :opt-un [::nearest ::max-depth ::max-ms]))
+(s/def ::why-not-opts (s/keys :opt-un [::nearest ::max-depth ::max-ms ::content?]))
 
 (s/fdef vaelii.core/why-not
   ;; two shapes: a stored handle, or a proposition (for a blocked/excepted answer

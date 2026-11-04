@@ -11,11 +11,9 @@
 #
 #   - **Split a namespace.**  A shard is a whole number of namespaces, because a
 #     `:once` fixture is what several tests in one file share.
-#   - **Run the durable backends.**  Two disk suites over one directory collide on the
-#     single-writer lock, and `VAELII_TEST_SPACE` admits only six non-overlapping
-#     blocks — so this refuses a `VAELII_TEST_BACKEND` with a durable half rather than
-#     sharding into corruption.  `scripts/test-backends.sh` is sequential on purpose
-#     and stays that way.
+#   - **Put two durable shards over one directory.**  They would collide on the
+#     single-writer lock, so each shard of a `VAELII_TEST_BACKEND` with a durable half
+#     gets its own `vaelii.disk.dir` under the run directory.
 #   - **Hide a failure.**  Every shard's exit status is read from a marker the shard
 #     itself echoes, never from a pipeline (`lein test | tee` reports `tee`).  The
 #     aggregate is red if any shard is.
@@ -23,8 +21,8 @@
 # Balance comes from measured time, not guesswork: each run averages how long every
 # namespace took into `logs/test-timings.tsv`, and the next run bin-packs
 # longest-first into the emptiest shard.  A namespace with no local figure takes its
-# CI weight (scripts/ci-test-weights-memory.tsv) scaled to local time, and one with
-# neither takes the mean.
+# CI weight (scripts/ci-test-weights-memory.tsv, or -all.tsv under `:all`) scaled to
+# local time, and one with neither takes the mean.
 #
 # Usage:
 #   scripts/test-parallel.sh                 # :default, jobs from scripts/lib/slots.sh, at least TEST_MIN_JOBS (3)
@@ -74,14 +72,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# A durable half means one lock and six usable space blocks — not shardable.
-case "${VAELII_TEST_BACKEND:-memory}" in
-  *disk*)
-    echo "test-parallel: VAELII_TEST_BACKEND=${VAELII_TEST_BACKEND} has a durable half." >&2
-    echo "  Two disk suites over one directory collide on the single-writer lock." >&2
-    echo "  Use scripts/test-backends.sh, which is sequential for this reason." >&2
-    exit 2 ;;
-esac
+[[ "$selector" == ":all" ]] && CI_WEIGHTS=scripts/ci-test-weights-all.tsv
+
+durable=0
+case "${VAELII_TEST_BACKEND:-memory}" in disk-*) durable=1 ;; esac
 
 # P-2 minus running vaelii JVMs (scripts/lib/slots.sh), floored at TEST_MIN_JOBS: an idle
 # REPL or server counts as a running JVM, and one shard takes the suite past 50 minutes.
@@ -208,9 +202,15 @@ for ((b = 1; b <= jobs; b++)); do
   # the namespace as a second argument and dies on arity, rather than filtering by it.
   revision_header "shard $b" > "$log"
   (
+    diskdir="$OUT/test.disk-$b"
+    if [[ $durable -eq 1 ]]; then
+      rm -rf "$diskdir"
+      export JVM_OPTS="${JVM_OPTS:+$JVM_OPTS }-Dvaelii.disk.dir=$diskdir"
+    fi
     { lein test "${shard_ns[@]}" "$selector"; echo "SHARD-EXIT:$?"; } 2>&1 \
       | tee -a "$log" \
       | ns_timings "$timing" > /dev/null
+    [[ $durable -eq 1 ]] && rm -rf "$diskdir"
   ) &
   pids+=("$!")
 done

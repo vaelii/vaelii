@@ -213,11 +213,10 @@
 ;; `endOf` at w for the before side and a `startOf` at w for the after side.  The two
 ;; meet at w, share no time, and w belongs to the after side alone.
 ;;
-;; Every row here is red for one reason: the shipped `:allen`/`:point` reasoners do not,
-;; today, read a stored `startOf`/`endOf` fact of a non-calendar individual at all.  The
-;; instant network's nodes for such a thing are its `(StartFn x)` and `(EndFn x)` terms,
-;; and no stored `startOf`/`endOf` fact constrains either one, so `includesInstant`
-;; finds both sides open and answers `:unknown`, and no Allen relation is derived.
+;; Every Allen row here is red for one reason: `:allen` reads a stored `startOf`/`endOf`
+;; fact only when both bounds are named moments on the point network, and every bound here
+;; is an `InstantFn` moment, so no Allen relation is derived.  `includesInstant` reads
+;; each stated bound as a reading of the side it bounds.
 ;; `registering-allen-makes-an-entailed-relation-derivable` (public_api_test.clj)
 ;; composes `before` from two stated `before` facts, never from endpoints, and
 ;; `a-calendar-term-stops-a-calculus-running-alone` (calendar_test.clj) gets its
@@ -262,9 +261,8 @@
 
 (tu/deftest-kb ^:red w-belongs-to-the-after-side-of-the-pair-alone
   ;; w equals before-w's end, so before-w excludes w, and w equals after-w's start, which
-  ;; comes before after-w's end, so after-w includes w.  Every row is red for the reason
-  ;; the comment above interval-pair! gives: the stored bounds never reach the instant
-  ;; network, so each row reads :unknown.
+  ;; comes before after-w's end, so after-w includes w.  The third row is red: before-w
+  ;; states no start, so nothing places the last second before w inside it.
   (v/add-reasoner kb :allen :point :calendar :includes-instant)
   (tu/with-terms [DatedEndingAtW DatedStartingAtW]
     (let [w (at 6)
@@ -326,10 +324,8 @@
 ;; status's stretch at T and starts the new one's there: at T the new status holds and
 ;; the old one does not.  A pull request queried at its exact merge timestamp reads
 ;; Merged.  The interval rows read `includesInstant` against the stretches' stored
-;; `startOf`/`endOf` facts, which never reach the instant network (the comment above
-;; `interval-pair!` gives the mechanism), so each interval row reads :unknown today.  The
-;; status rows read a slice keyed by an instant, which no shipped reasoner orders under
-;; the stretch holding the instant, so each status row reads :unknown today as well.
+;; `startOf`/`endOf` facts.  The status rows read a slice keyed by an instant, which the
+;; stretch's stated bounds order under the stretch's slice when the instant is inside it.
 (defn- merge-at-t!
   "Pushes Draft from 1 October, Open from 3 October and Merged from T, midnight starting
   5 October, along `CxGitHub`, then a watermark at midnight starting 6 October; answers
@@ -347,10 +343,9 @@
     (watermark! kb env Push (at 6) MergedStretch nil)
     env))
 
-(tu/deftest-kb ^:red the-instant-of-a-transition-belongs-to-the-new-stretch
+(tu/deftest-kb the-instant-of-a-transition-belongs-to-the-new-stretch
   ;; T is Open's end, which Open's stretch excludes, and Merged's start, which Merged's
-  ;; stretch includes.  Every row is red because the stretches' stored bounds never reach
-  ;; the instant network, so each row reads :unknown.
+  ;; stretch includes.
   (v/add-reasoner kb :allen :point :calendar :includes-instant)
   (tu/with-terms [prStatus CxGitHub PR219 Draft Open Merged
                   DraftStretch OpenStretch MergedStretch Push]
@@ -372,9 +367,7 @@
        (list 'includesInstant MergedStretch (at 4 23 59 59)) :false]])))
 
 (tu/deftest-kb ^:red a-query-at-the-exact-merge-instant-reads-merged
-  ;; Every row is red for the one reason the comment above merge-at-t! gives: the slice
-  ;; at an instant is not ordered under the stretch holding it, so it sees neither
-  ;; status nor the watermark's closed extent, and each verdict is :unknown.
+  ;; The two :false rows, which rest on the watermark's closed extent, read :unknown.
   (v/add-reasoner kb :allen :point :calendar :includes-instant)
   (tu/with-terms [prStatus CxGitHub PR219 Draft Open Merged
                   DraftStretch OpenStretch MergedStretch Push]
@@ -398,10 +391,8 @@
 ;;
 ;; A credential valid from nbf until exp holds over the stretch [nbf, exp): valid at nbf,
 ;; dead at exp.  The interval rows read `includesInstant` against the interval's stored
-;; `startOf`/`endOf` facts, which never reach the instant network, so each interval row
-;; reads :unknown today.  The validity rows read a slice keyed by an instant, which no
-;; shipped reasoner orders under the interval holding it, so each validity row reads
-;; :unknown today as well.
+;; `startOf`/`endOf` facts.  The validity rows read a slice keyed by an instant, which the
+;; interval's stated bounds order under the interval's slice when the instant is inside it.
 (def ^:private nbf (at 7 9 0 0))
 (def ^:private exp (at 7 10 0 0))
 
@@ -420,10 +411,9 @@
                      (list 'closed_extent_predicate credentialValid))
             U))
 
-(tu/deftest-kb ^:red a-validity-interval-includes-nbf-and-excludes-exp
+(tu/deftest-kb a-validity-interval-includes-nbf-and-excludes-exp
   ;; nbf is the interval's start, which the interval includes, and exp its end, which the
-  ;; interval excludes.  Every row is red because the interval's stored bounds never reach
-  ;; the instant network, so each row reads :unknown.
+  ;; interval excludes.
   (v/add-reasoner kb :allen :point :calendar :includes-instant)
   (tu/with-terms [credentialValid CxIssuer Token Validity]
     (validity-interval! kb {:credentialValid credentialValid :issuer CxIssuer
@@ -440,9 +430,7 @@
        (list 'includesInstant Validity (at 7 9 59 59)) :true]])))
 
 (tu/deftest-kb ^:red a-credential-is-valid-at-nbf-and-dead-at-exp
-  ;; Every row is red for the one reason the comment above validity-interval! gives: the
-  ;; slice at an instant is not ordered under the interval holding it, so each verdict is
-  ;; :unknown.
+  ;; The two :false rows read :unknown.
   (v/add-reasoner kb :allen :point :calendar :includes-instant)
   (tu/with-terms [credentialValid CxIssuer Token Validity]
     (validity-interval! kb {:credentialValid credentialValid :issuer CxIssuer

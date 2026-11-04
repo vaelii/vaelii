@@ -20,6 +20,7 @@
             [vaelii.impl.except :as exc]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.naming :as nm]
+            [vaelii.impl.observe :as observe]
             [vaelii.impl.progress :as progress]
             [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
@@ -1141,7 +1142,7 @@
     (let [h    (v/assert kb (list pf Ann Bob) CxA)
           read #(exc/excepted? kb h CxA)
           was  (read)]
-      (is (= [3 1 2]
+      (is (= [0 1 2]
              (frames-built [#(dotimes [_ 3] (read))
                             ;; a fact moves the clock and nothing the frame reads
                             #(exc/with-reader-states
@@ -1170,18 +1171,21 @@
                                       (conj k (boolean (on? (first k) (second k))))))))))
 
 (defn- fresh-state-misses
-  "Run `f` with every reader state a `*reader-states*` memo answers compared with a fresh
-  build (`state-reading`): `[answer [[ctx held fresh] …]]`."
+  "Run `f` with every reader state a read takes, off a `*reader-states*` memo or the change
+  clock's frame, compared with a fresh build (`state-reading`): `[answer [[ctx held fresh] …]]`."
   [preds f]
   (let [bad   (atom [])
         held  @#'exc/reader-state
-        build @#'exc/build-reader-state]
+        frame @#'exc/reader-frame
+        build (fn [kb ctx]
+                (when-let [fr (frame kb ctx)]
+                  (#'exc/with-read-memo fr (#'exc/yielding-reads? kb (:tax fr)))))]
     (with-redefs-fn {#'exc/reader-state
                      (fn [kb ctx]
-                       (let [st (held kb ctx)]
-                         (when exc/*reader-states*
-                           (let [a (state-reading kb st preds), b (state-reading kb (build kb ctx) preds)]
-                             (when (not= a b) (swap! bad conj [ctx a b]))))
+                       (let [st (held kb ctx)
+                             a  (state-reading kb st preds)
+                             b  (state-reading kb (build kb ctx) preds)]
+                         (when (not= a b) (swap! bad conj [ctx a b]))
                          st))}
       #(let [r (f)] [r @bad]))))
 
@@ -1238,6 +1242,34 @@
                          [step (= (rows) (binding [exc/*reader-states* nil] (rows)))])))))]
       (is (= [] misses))
       (is (every? second answers) (pr-str (remove second answers))))))
+
+(tu/deftest-kb the-reads-between-two-writes-build-one-frame-per-context
+  (tu/with-terms [p_note Ann Bob CxA CxB]
+    (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+    (let [h     (v/assert kb (list p_note Ann) CxA)
+          built (atom [])
+          frame @#'exc/reader-frame
+          read  #(dotimes [_ 3] (v/believed? kb h CxA) (v/believed? kb h CxB))]
+      (v/assert kb (list 'not (list p_note Ann)) CxA {:strength :monotonic})
+      (with-redefs-fn {#'exc/reader-frame (fn [k ctx] (swap! built conj ctx) (frame k ctx))}
+        (fn []
+          (read)
+          (is (= {CxA 1 CxB 1} (frequencies @built)))
+          (v/assert kb (list p_note Bob) CxA)
+          (reset! built [])
+          (read)
+          (is (= {CxA 1 CxB 1} (frequencies @built))))))))
+
+(tu/deftest-kb a-held-values-scope-reads-the-frame-a-rebuild-reads
+  (tu/with-terms [p_note p_clash Ann CxA CxB]
+    (let [h     (v/assert kb (list p_note Ann) CxA)
+          state #(#'exc/reader-state kb CxA)]
+      (v/assert kb (list p_clash Ann) CxB)
+      (v/assert kb (list 'not (list p_clash Ann)) CxB {:strength :monotonic})
+      (observe/with-held-values
+        (is (nil? (:excepted? (state))))
+        (v/assert kb (list 'except (v/sentex-handle h)) CxA)
+        (is (some? (:excepted? (state))))))))
 
 (tu/deftest-kb the-held-yield-read-answers-as-the-whole-read-after-each-write
   ;; a forced-monotonic fact stored, its denial stored and retracted, and the declaration

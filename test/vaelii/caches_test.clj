@@ -736,7 +736,9 @@
    "lengths-cache-limit"   :arity-lengths
    "supporter-cache-limit" :taxonomy-supporters
    "parse-memo-limit"      :source-parses
-   "crossing-reads-limit"  :preservation-crossing})
+   "crossing-reads-limit"  :preservation-crossing
+   "clock-frame-limit"     :resident
+   "holds-limit"           :resident})
 
 (defn- limit-constants
   "Every limit-shaped constant defined under `src/`."

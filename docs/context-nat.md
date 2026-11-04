@@ -54,14 +54,12 @@ CxUniverse believes the declaration.
 
 The check reads the declaration in CxUniverse, the context every reader reads the slot's
 `natFormula` map in ([nat.md](nat.md#what-reification-does-not-cover)). A declaration
-stated in CxUniverse or in a context CxUniverse sees admits the slot. A
-declaration stated in an unwired context or in a spec of CxUniverse admits no read, and
-an `except` or a denial at CxUniverse hides the declaration (`res/supporter-visible?`). An
-`except` in a sub-context leaves the declaration believed at CxUniverse, and the slot
-reads. The check does not read the context the slot names: a `cx/` context no `genlCx`
-edge names sees nothing but itself
-([contexts.md](contexts.md#a-context-outside-the-topology)), so a check read there would
-refuse every read of an unwired context NAT.
+stated in CxUniverse admits the slot. A declaration stated in any other context admits
+no read, since CxUniverse sees no other context
+([contexts.md](contexts.md#cxuniverse-is-the-implicit-root)), and an `except` or a denial
+at CxUniverse hides the declaration (`res/supporter-visible?`). An `except` in a
+sub-context leaves the declaration believed at CxUniverse, and the slot reads. The check
+does not read the context the slot names.
 
 Only the **outer** function reifies. Its arguments are left alone by the mint, so an
 `unreifiable_function` argument — `(DatetimeFn "2000")` — stays **structural inside the
@@ -122,13 +120,29 @@ The context slot is *not* on the sentence-reify walk — it is a separate argume
 `assert` — so `maybe-reify-context` reifies it explicitly: on the write path (`assert`,
 minting) and on every read entry point (`ist-goal`, dedup-only, never minting, behind the
 declaration check above). A query scoped to `(CxTimeFn …)` therefore resolves to the same
-`cx/` constant the write minted and meets the facts stored there; a never-seen NAT context
-resolves to the `no-match` sentinel and the read is scoped to nothing, answering empty
-rather than minting a context to ask about. `assert-inert`, which never mints, resolves the
-slot the same way and refuses one with no stored constant (`:unminted-nat`). `check`
-reads the slot as the `cx/` constant `assert` stores in, the stored one or the one the
-expression's content names, and mints none (`nat/context-for-check`), so `check` reports
-what `assert` refuses for a compound slot as for a symbol.
+`cx/` constant the write minted and meets the facts stored there. A read mints no context
+for a never-seen application either. When the producer would order the application below
+contexts that exist (`context-nat/unminted-supers`), the read runs over a read copy of the
+KB whose taxonomy holds those computed `genlCx` edges from the content-named constant
+(`kb/with-context-edges`), so a slice nobody wrote into sees what its supers see. The read
+copy is held among the resident values under the change clock (`context-nat/unwritten-read`),
+so the reads between two writes build one. The first read after a write reads the contexts
+the slice could be ordered below at one declared position, the one whose terms hold fewer
+postings beside the function (`context-nat/above-candidates`). At a position no comparator
+answers, it reads the contexts holding a term the position's sub-relations relate the
+slice's term to. At a position a comparator answers, it reads the contexts holding a
+calendar term containing the slice's time in each spelling (`datetime/containing-terms`), a
+`DatetimeRangeFn` range, a symbol with a stated bound, or the other end of a stored fact. It
+reads a calendar term by the term's own term-index key, which a store indexed at
+`sx/*min-indexed-depth*` 2 or less holds. `lein perf`'s
+`context-nat-read-unwritten-slice-after-write` and
+`context-nat-read-unwritten-slice-beside-monads` measure the read. Otherwise the application
+resolves to the `no-match` sentinel, and the read is scoped to nothing and answers empty.
+`assert-inert`, which never mints, resolves the slot the same way and refuses one with no
+stored constant (`:unminted-nat`). `check` reads the slot as the `cx/` constant `assert`
+stores in, the stored one or the one the expression's content names, and mints none
+(`nat/context-for-check`), so `check` reports what `assert` refuses for a compound slot as
+for a symbol.
 
 ## The structural genlCx producer
 
@@ -184,11 +198,21 @@ declaration or a revival re-runs it over every pair of a function's contexts; a 
 route to an edge already believed moves no label and is no move.
 
 **Every arrival order converges within eight levels of slice nesting**, the producer's
-round cap below. Three things can arrive last, and each has an arm
+round cap below. Five things can arrive last, and each has an arm
 (`reconcile-arrival`). A declaration arriving after the contexts sweeps every pair of them;
 a context arriving after a declaration is swept when it is minted, over the pairs it is in;
-and an `(R a b)` **evidence fact** arriving after both sweeps the pairs ordered `a` below `b`
-in the functions declared to order by `R` (`functions-ordered-by`), which is the arm a
+a **stated bound**, `(startOf X t)` or `(endOf X t)`, sweeps the pairs of each context
+naming `X`; a **stated order**, `(instantBefore a b)` or its converse `(instantAfter b a)`,
+pairs each context holding a time at or before `a` with each holding a time at or after
+`b`, both ways (`reconcile-order`). The first set is `a`, each moment a chain of stated
+orders places before it, and each time with a stated bound among those moments
+(`bounded-along`), and the second is the same after `b`; every pair the fact can newly order
+has one side in each. A comparison of a moment of the first set with `a` or with one of the
+second, or of `b` with one of the second, is read off the two walks, and any other walks
+from both of its ends at once (`graph/reaches?`); the path behind a comparison is read only
+for a pair whose comparisons all hold (`lein perf`'s `context-nat-instant-order-append`).
+An `(R a b)` **evidence fact** arriving after both sweeps the pairs ordered `a` below `b` in
+the functions declared to order by `R` (`functions-ordered-by`), which is the arm a
 comparator dimension never needs and a stored-fact one cannot do without. A `genlCx` edge
 from `a` to `b` is the evidence of the closure oracle below: it sweeps the pairs whose
 argument at a `genlMonad`-ordered position is at or below `a` on one side and at or above
@@ -234,14 +258,31 @@ The producer feeds the `genlCx` closure, which a relabel loop reads, so it may *
 a prover search to decide `R` ([naf.md](naf.md)). `R` is resolved only by a **bounded**
 oracle:
 
-- a registered **pure structural comparator**, keyed on the sub-relation — the datetime one
-  answers `subintervalOf` between two `DatetimeFn` terms by reading their shape. A
-  comparator that answers is the position's only route;
+- a registered **pure structural comparator**, keyed on the sub-relation — the datetime
+  ones answer `subintervalOf` between two calendar terms or ranges, and `subtimeOf` from an
+  `InstantFn` moment into an interval, by reading their shape. A comparator that answers is
+  the position's only route;
+- for `subintervalOf` and `subtimeOf`, the **stated bounds** of a named time: each
+  believed `(startOf X t)` beside a believed `(endOf X u)`, each bound an `(InstantFn …)`
+  moment or a named one, gives `X` an extent, which the containment test reads against the
+  other argument's extent. Each stated start is also read alone, as an extent with no end,
+  which holds its start under `subtimeOf` and no other time: an interval is half-open and
+  nonempty, so it holds its start whatever its end. That reading rests on the start alone,
+  so an end stated at or before the start leaves it standing, while `IncludesInstantProver`
+  reads the two bounds as contradicting each other and answers neither polarity. A symbol
+  with no stated bound is read as a named moment, the extent `[t t]`. Two `InstantFn` bounds
+  compare by their fields. Any other pair of bounds compares by the believed stated orders
+  along one path from the first to the second, each `instantAfter` fact read as its converse
+  `instantBefore`: the path a breadth-first walk reaches first, each moment's facts read in
+  content order (`instant-path`). The bound facts and the path's facts are the route's
+  supporters, so retracting one withdraws the route;
 - else the **`genlCx` closure**, for `genlMonad`. A monad's time is `Forever`, so a monad
   that sees another is `genlMonad`-below it. The oracle reads one path from the first
   argument up to the other, as the first argument sees it (`tax/reach-support`, which
   expands neighbours in name order), and the supporters of its edges justify the computed
-  edge; and
+  edge. The implicit edge to CxUniverse has no supporter, so no monad is `genlMonad`-below
+  CxUniverse through it, and a read of a slice leaves CxUniverse out of the terms it looks
+  up (`tax/context-routed-global`); and
 - each **believed stored `(R a b)` fact**. A stated `(genlMonad A B)` orders the slices
   along `A` and `B` this way, and places neither monad under the other, so two stated
   `genlMonad` facts in a row order no slice along the first monad below one along the
@@ -292,6 +333,16 @@ bridge between them: the comparator never learns which constructor it was handed
 `(MonthFn 2000 1)` and `(DatetimeFn "2000-01")` name the same interval, and a KB told the
 year one way and the month the other still orders the two contexts. Fields are numeric, so
 `"2000-1"`, `"2000-01"` and `(MonthFn 2000 1)` are one month.
+
+A `(DatetimeRangeFn FROM TO)` range and an `(InstantFn Y M D h m s)` moment are read by
+extent. `datetime/extent` gives a range the half-open span from the start of `FROM`'s
+interval to the end of `TO`'s, and none when that span is empty, and `subinterval?` tests
+extent containment whenever either side is a range. `time.txt` also declares
+`(contextArgSubrelation CxTimeFn 2 subtimeOf)`, whose comparator `instant-within?` places
+a moment at or after an interval's start and before its end. It answers only for a moment,
+so a pair of intervals has one comparator route. A time with a UTC offset or a
+`ZonedDatetimeFn` zone is read by its UTC extent and ordered against absolute times only
+([time.md](time.md#absolute-time-utc-offsets-and-named-zones)).
 
 Three constructors and not six: a year, a month and a day are the granularities somebody
 writes a holiday or a policy *for*, and each finer field is a spelling ISO already gives.
@@ -377,8 +428,9 @@ nothing until the expression is used again.
 
 ## What this does not cover
 
-- **One dimension ships.** The calendar — `DatetimeFn` / `YearFn` / `MonthFn` / `DayFn`
-  under `subintervalOf` — is the worked example; other dimensions are added by declaring a
+- **One dimension ships.** The calendar — `DatetimeFn` / `YearFn` / `MonthFn` / `DayFn` /
+  `DatetimeRangeFn` under `subintervalOf`, and `InstantFn` under `subtimeOf` — is the
+  worked example; other dimensions are added by declaring a
   `(result F context)`, a `contextArgSubrelation`, and either registering a comparator or
   asserting the `R` facts.
 - **A calendar term's endpoints are somebody else's job.** `(YearFn 2000)` is a
@@ -386,13 +438,15 @@ nothing until the expression is used again.
   claim about moments. The moments it lies between are computed — half-open, so 2000 ends
   where 2001 begins — by the calendar clock, which answers `startOf` / `endOf` with an
   `(InstantFn Y M D h m s)` term and stores nothing ([time.md](time.md), "The calendar
-  clock"). Nothing here reads them: the two mechanisms share the field reader in
+  clock"). Nothing here reads the clock's answers, and the oracle reads stated bounds only:
+the two mechanisms share the field reader in
   `vaelii.impl.datetime` and nothing else, and they agree exactly — `b`'s fields being a
   prefix of `a`'s is the same claim as `a`'s bounds lying inside `b`'s, so the `genlCx`
   edge this page produces and the `subintervalOf` the clock answers hold of the same pairs.
-- **The closure oracle reads one path.** A second `genlCx` path between the same monads
-  adds no route to a slice edge, so retracting the path the oracle read re-derives the edge
-  under a new handle. Belief is the same in either arrival order within the round cap.
+- **The closure oracle reads one path, and so does the walk over stated orders.** A second
+  `genlCx` path between the same monads, or a second chain between two bounds, adds no
+  route to a slice edge, so retracting the path the oracle read re-derives the edge under a
+  new handle. Belief is the same in either arrival order within the round cap.
 
 ## Where it lives
 
@@ -407,8 +461,8 @@ nothing until the expression is used again.
   `orphan?`'s extent check, `computed-genlCx-edge?` (the authorship test), and
   `orphans-named-by`'s reading of a removed sentex's context slot.
 - `vaelii.impl.naming` — `context?` (the `cx/` namespace).
-- `vaelii.core` — the context-arg reify in `assert` and the read entry points (`ist-goal`),
-  and the context-slot shape checks (`context-shape-problem` on a write,
+- `vaelii.core` — the context-arg reify in `assert` and the read entry points (`ist-goal`,
+  whose `read-context` reads an unwritten slice over a read copy), and the context-slot shape checks (`context-shape-problem` on a write,
   `read-context-shape-problem` on a read).
 - `vaelii.impl.nat-maintenance` — the producer's call site on the assert path
   (`reconcile-assert`), its re-run over a teardown's belief moves on `retract!` / `edit!`
@@ -416,13 +470,17 @@ nothing until the expression is used again.
   a computed or revived edge licenses, and
   `collect-orphans!`, which collects both kinds of constant in one sweep.
 - `vaelii.impl.wff` — the `contextArgSubrelation` well-formedness check.
-- `vaelii.impl.context-nat` — the producer, the comparator registry, `reconcile-arrival`
-  and `reconcile-moves`, and `functions-ordered-by`, the evidence-arrived-last arm of the
-  stored-fact oracle.
+- `vaelii.impl.context-nat` — the producer, the comparator registry, the stated-bounds
+  route (`bounds-routes`), `reconcile-arrival` and `reconcile-moves`,
+  `functions-ordered-by`, the evidence-arrived-last arm of the stored-fact oracle, and
+  `unwritten-read`, the held read copy over the contexts an unwritten slice reads up from.
+- `vaelii.impl.kb` — `with-context-edges`, the read copy whose detached taxonomy holds an
+  unwritten slice's edges.
 - `vaelii.impl.special` — `*producer-moves*`, the belief moves a write records for the
   producer.
-- `vaelii.impl.datetime` — the calendar containment comparator, over the ISO strings and
-  the three calendar constructors alike, and beside it the half-open `bounds` the calendar
+- `vaelii.impl.datetime` — the calendar containment comparators, over the ISO strings, the
+  three calendar constructors and ranges (`extent`) alike, the moment comparator
+  `instant-within?`, and beside them the half-open `bounds` the calendar
   clock reads a term's two moments out of ([time.md](time.md)).
 - `resources/kb/upper/core.txt` — `contextArgSubrelation`, and `result`'s comment on
   `(result F context)`, documented in the KB's own representation.

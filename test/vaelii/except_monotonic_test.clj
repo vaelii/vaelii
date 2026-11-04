@@ -118,3 +118,57 @@
         (testing "(e) retracting the except restores the edge and what it proves"
           (is (v/ask? kb edge CxChild))
           (is (v/ask? kb goal CxChild)))))))
+
+;; ---- a ground fact asserted :monotonic --------------------------------------
+;; A fact's strength does not shield it from an `except`, which hides it at and below
+;; its own context; the parent still believes it.
+
+(tu/deftest-kb an-except-hides-a-monotonic-ground-fact-from-its-subtree-only
+  (tu/with-terms [dog_t Rex CxParent CxChild CxGrandchild]
+    (parent-and-child kb CxParent CxChild)
+    (v/assert kb (list 'genlCx CxGrandchild CxChild) 'CxUniverse mono)
+    (let [fact (list dog_t Rex)
+          fh   (v/assert kb fact CxParent mono)]
+      (testing "(a) before the except: visible from the parent and below it"
+        (is (= :monotonic (:strength (v/sentex kb fh))) "stored at the strength it was asserted at")
+        (is (v/ask? kb fact CxParent))
+        (is (v/ask? kb fact CxChild))
+        (is (v/ask? kb fact CxGrandchild)))
+      (let [eh (v/assert kb (list 'except (v/sentex-handle fh)) CxChild mono)]
+        (testing "(b) the except of a monotonic fact is admitted"
+          (is (v/believed? kb eh CxChild)))
+        (testing "(c) hidden from the child and below, still read from the parent"
+          (is (not (v/ask? kb fact CxChild)))
+          (is (not (v/ask? kb fact CxGrandchild)))
+          (is (v/ask? kb fact CxParent))
+          (is (v/believed? kb fh CxParent)))
+        (v/retract! kb eh)
+        (testing "(d) retracting the except restores the fact below the parent"
+          (is (v/ask? kb fact CxChild))
+          (is (v/ask? kb fact CxGrandchild)))))))
+
+;; ---- exceptWhen around a bare (monotonic-strength) forward rule -------------
+;; Admitted and blocking on a monotonic rule; the unexcepted firing is `:default`
+;; (docs/reference.md, invariant 9).
+
+(tu/deftest-kb an-exceptWhen-on-a-monotonic-forward-rule-blocks-its-binding
+  (tu/with-terms [bird_t penguin_t flyer_t Tweety Pingu CxBird]
+    (v/assert kb (list 'genlCx CxBird 'CxUniverse) 'CxUniverse mono)
+    (v/assert kb (list bird_t Tweety) CxBird mono)
+    (v/assert kb (list bird_t Pingu) CxBird mono)
+    (v/assert kb (list penguin_t Pingu) CxBird mono)
+    (v/assert kb (list 'exceptWhen (list penguin_t '?b)
+                       (tu/fwd [(list bird_t '?b)] (list flyer_t '?b)))
+              CxBird mono)
+    (testing "the rule is stored at :monotonic"
+      (is (= :monotonic
+             (:strength (first (filter #(some? (:antecedent %))
+                                       (v/sentexes-in-context kb CxBird)))))))
+    (testing "the unexcepted binding concludes, at :default since the firing is guarded"
+      (let [h (v/handle-of kb (list flyer_t Tweety) CxBird)]
+        (is (some? h))
+        (is (v/ask? kb (list flyer_t Tweety) CxBird))
+        (is (= :default (v/defeat-class kb h)))))
+    (testing "the excepted binding concludes nothing"
+      (is (not (v/ask? kb (list flyer_t Pingu) CxBird)))
+      (is (empty? (v/sentexes-matching kb (list flyer_t Pingu) CxBird))))))

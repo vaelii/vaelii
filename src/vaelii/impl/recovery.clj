@@ -23,6 +23,7 @@
             [vaelii.impl.feed :as feed]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
+            [vaelii.impl.nat :as nat]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.overlay.frozen :as frozen]
             [vaelii.impl.progress :as progress]
@@ -486,9 +487,6 @@
               ;; ...and the spellings a held rule reads where its context meets a
               ;; correspondence declaration's, which an older store holds none of
               held     (chain/sync-held-respellings! kb)]
-          ;; ...and the lifts an argument conviction still refuses, which that
-          ;; re-fire does not reach
-          (special/rebuild-pending! kb)
           (when (seq held) (chain/chain kb held {}))
           (when (or classes? (seq held) (pos? (long (or derived 0)))) (settle/settle kb))))
       ;; the settle above places the inherited clashes and stands aside from the other
@@ -706,6 +704,17 @@
   (swap! (:unrecovered kb) assoc :last-recover (:recover image) :derived-source image-source)
   (reasoning-image/register-close! kb image-source))
 
+(defn- respell-permuted-reified!
+  "Settle `kb` with `[:reifiable f]` queued for each reifiable function a `symmetric` or
+  commuting mark holds of, so a use a store holds under the constant of an application's
+  written order moves to the sorted one's (docs/nat.md, A reifiable mark moving).  Nothing
+  while `kb` refuses writes for stale belief."
+  [kb]
+  (when-let [fs (and (not (:stale-belief @(:unrecovered kb)))
+                     (seq (nat/permuted-reifiable-functions kb)))]
+    (swap! (reasoning/respell kb) into (map #(vector :reifiable %)) fs)
+    (settle/settle kb)))
+
 (defn recover
   "The implementation of `vaelii.core/recover` — build the in-memory JTMS and taxonomy for
   the persistent stores.  The public contract, and when a caller runs it, are on
@@ -785,7 +794,9 @@
         ;; `:stale` install leaves `:stale-belief` standing, which `start-rebuild!` set.
         (kb/note-hazards! kb {:no-belief false})
         (note-unsupported! kb)
-        kb))))
+        kb))
+    (respell-permuted-reified! kb)
+    kb))
 
 (defn recover-with-image
   "`recover`, trying the reasoning image in `dir` first — an export dump's, which

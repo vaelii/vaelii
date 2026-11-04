@@ -167,6 +167,55 @@
   (testing "and at the member, by its own rule"
     (is (seq (v/sentexes-matching kb '(not (hasCapability Tweety flying)) N)))))
 
+;; Flying above the sea
+;; Glistening ice
+;; Of glaciers under me
+;; Nothing else will suffice.
+;;
+;; Jetpack penguin
+;; To revel in its weight
+;; And its engine,
+;; I will have no further slight.
+;;
+;; Movement belied,
+;; Revolution undermined,
+;; With its stark absence
+;; It's common sense.
+;;
+;; I don't want to be part of your revolution
+;; If I can't have my penguin jetpack on.
+;;   — Benedicta Jade
+(tu/deftest-kb jetpack-penguin
+  ;; A penguin cannot fly on its own body; a tool that enables flying is a second way to be
+  ;; the doer of a flight.  The jetpack is a machine, not bent into a software tool.
+  (tu/with-terms [CxJet PenguinT PenguinU PenguinV Jetpack]
+    (v/assert kb (list 'genlCx CxJet 'CxWell) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxJet 'CxTra) 'CxUniverse)
+    (v/assert kb (list 'machine Jetpack) CxJet)
+    (v/assert kb (list 'toolEnablesCapability Jetpack 'flying) CxJet)
+    (v/assert kb (list 'penguin PenguinT) CxJet)
+    (v/assert kb (list 'penguin PenguinU) CxJet)
+    (v/assert kb (list 'agentHasTool PenguinT Jetpack) CxJet)
+    (v/assert kb (list 'penguin PenguinV) CxJet {:strength :monotonic})
+    (v/assert kb (list 'agentHasTool PenguinV Jetpack) CxJet)
+    (testing "the jetpack stays a machine: having it is not read as having software"
+      (is (not (v/isa? kb Jetpack 'software_tool CxJet))))
+    (testing "and nothing about the penguins or the jetpack is left a dilemma or a clash"
+      (is (empty? (filter #(some #{Jetpack PenguinT PenguinU PenguinV}
+                                 (flatten (map :sentence (:sides %))))
+                          (concat (v/contradictions kb) (v/conflicts kb))))))
+    (testing "the penguin with the jetpack can fly, and so can travel"
+      (is (tu/holds-ask (list 'hasCapability PenguinT 'flying) CxJet))
+      (is (not (tu/holds-ask (list 'not (list 'hasCapability PenguinT 'flying)) CxJet)))
+      (is (tu/holds-ask (list 'hasCapability PenguinT 'travelling) CxJet)))
+    (testing "a penguin known for certain to be one flies with the jetpack too: the denial is
+            excepted, not merely tied with the tool's default"
+      (is (tu/holds-ask (list 'hasCapability PenguinV 'flying) CxJet))
+      (is (not (tu/holds-ask (list 'not (list 'hasCapability PenguinV 'flying)) CxJet))))
+    (testing "the control: the same kind of penguin without the jetpack still cannot"
+      (is (not (tu/holds-ask (list 'hasCapability PenguinU 'flying) CxJet)))
+      (is (tu/holds-ask (list 'not (list 'hasCapability PenguinU 'flying)) CxJet)))))
+
 (tu/deftest-kb a-life-stage-takes-a-kind-claim-of-its-own
   ;; One lineage, two stages: the adult flies and the larva does not.  Both stages are
   ;; kinds of the lineage, and each stage carries its own capability claim.
@@ -498,6 +547,27 @@
           "typeGenl stores a fact for a reader only, never for inference")
       (is (false? (:checked spec))
           "typeGenl has no structural well-formedness arm — no engine reads it"))))
+
+(tu/deftest-kb successor-type-order-reads-as-typegenl-with-the-arguments-swapped
+  (testing "the ladder's two steps are stated"
+    (is (v/ask? kb '(successorTypeOrder type metatype) 'CxUniverse))
+    (is (v/ask? kb '(successorTypeOrder metatype meta_metatype) 'CxUniverse)))
+  (testing "the typeGenl facts of the ladder are answered, not stated"
+    (doseq [[higher lower] '[[metatype type] [meta_metatype metatype]]]
+      (is (v/ask? kb (list 'typeGenl higher lower) 'CxUniverse) (str higher " " lower))
+      (is (empty? (v/sentexes-matching kb (list 'typeGenl higher lower) 'CxUniverse))
+          (str "(typeGenl " higher " " lower ") is not stored"))))
+  (testing "both positions take an order of type"
+    (is (v/ask? kb '(arg successorTypeOrder 1 type_type_by_order) 'CxUniverse))
+    (is (v/ask? kb '(arg successorTypeOrder 2 type_type_by_order) 'CxUniverse)))
+  (testing "a step stated in a context answers the swapped typeGenl goal there and nowhere else"
+    (tu/with-terms [CxLadder Order4]
+      (v/assert kb (list 'genlCx CxLadder 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'successorTypeOrder 'meta_metatype Order4) CxLadder)
+      (is (v/ask? kb (list 'typeGenl Order4 'meta_metatype) CxLadder))
+      (is (not (v/ask? kb (list 'typeGenl 'meta_metatype Order4) CxLadder))
+          "the edge swaps the arguments, so the unswapped goal is not answered")
+      (is (not (v/ask? kb (list 'typeGenl Order4 'meta_metatype) 'CxUniverse))))))
 
 (def ^:private type-relating-predicates
   "The predicates whose every argument is a TYPE (or a predicate) the claim relates, so the

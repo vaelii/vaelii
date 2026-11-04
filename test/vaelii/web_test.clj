@@ -78,6 +78,35 @@
   (with-redefs [acc/types (fn [& _] (throw (ex-info "the type set was read" {})))]
     (is (= 200 (:status (GET "/jobs"))) "a page that colours no term never reads it")))
 
+(deftest the-header-names-the-running-version
+  (let [[_ declared] (re-find #"defproject com\.vaelii/vaelii \"([^\"]+)\"" (slurp "project.clj"))
+        label        #(re-find #"<span class=\"version\"[^>]*>[^<]*</span>" (:body (GET "/")))]
+    (is (str/includes? (label) (str ">" declared "<")) "the version project.clj declares")
+    (with-redefs [web/build {:version "1.2.3" :revision "abc123"}]
+      (is (= "<span class=\"version\" title=\"revision abc123\">1.2.3</span>" (label))))
+    (with-redefs [web/build {:version "1.2.3" :revision nil}]
+      (is (= "<span class=\"version\">1.2.3</span>" (label)) "no revision renders no tooltip"))
+    (with-redefs [web/build nil]
+      (is (nil? (label)) "no descriptor on the classpath renders no label"))))
+
+(deftest the-header-groups-the-kb-link-and-colour-dots-outside-the-menubar
+  (let [body (:body (GET "/"))]
+    (is (re-find #"(?s)<div class=\"header-end\">.*class=\"kb-active\".*id=\"palette-dot\"" body))
+    (is (not (re-find #"(?s)<nav class=\"menubar\">((?!</nav>).)*kb-active" body)))))
+
+(deftest a-page-source-breaks-lines-at-block-elements-only
+  (doseq [[html broken]
+          [["<ul><li><a>x</a> <b>y</b></li><li>z</li></ul>"
+            "<ul>\n<li><a>x</a> <b>y</b></li>\n<li>z</li>\n</ul>"]
+           ["<div><span>a</span><span>b</span></div>" "<div><span>a</span><span>b</span></div>"]
+           ["<pre><code>a\n  b</code></pre><div>c</div>" "<pre><code>a\n  b</code></pre>\n<div>c</div>"]
+           ["<p>x</p><path d=\"M0\"></path>" "<p>x</p>\n<path d=\"M0\"></path>"]]]
+    (is (= broken (str/replace html @#'web/line-break-at "\n"))))
+  (let [body (:body (GET "/"))]
+    (is (re-find #"(?m)^<main id=\"main\"" body))
+    (is (not (re-find #"</li><li|</div><div" body)))
+    (is (not (str/includes? (:body (GET "/" nil htmx)) "\n<main")) "a fragment takes no newline")))
+
 (deftest default-page-shows-upper-ontology
   (let [r (GET "/")]
     (is (= 200 (:status r)))
@@ -323,7 +352,7 @@
   (is (re-find #"action=\"/stats/blocks\"" (:body (GET "/stats"))))
   (is (nil? (jobs/latest :blocks)) "a page load runs no tally")
   (*app* {:request-method :post :uri "/stats/blocks" :scheme :http :params {} :headers {}})
-  (let [j    (jobs/wait (:id (jobs/latest :blocks)) 60000)
+  (let [j    (jobs/wait (:id (jobs/latest :blocks)) (tu/load-budget-ms))
         body (:body (GET "/stats"))]
     (is (= :done (:status j)))
     (is (re-find #"Definitional blocks" body))
@@ -738,8 +767,8 @@
   ;; so it is read first — part of the sort key, never a row lifted out of the sequence,
   ;; because paging re-slices this sequence at an offset.
   (let [body  (:body (GET "/term" "q=dog"))
-        grp   (second (re-find #"aria-label=\"Argument position 1\" class=\"sx-list\">(.*?)</ul>" body))
-        first-row (second (re-find #"<li[^>]*>(.*?)</li>" grp))]
+        grp   (second (re-find #"(?s)aria-label=\"Argument position 1\" class=\"sx-list\">(.*?)</ul>" body))
+        first-row (second (re-find #"(?s)<li[^>]*>(.*?)</li>" grp))]
     (is (re-find #">comment</a>" first-row)
         "the comment leads the group it lands in"))
   (testing "the key is total, so the order is one a continuation reproduces"
@@ -1001,7 +1030,7 @@
       (is (str/starts-with? (nth rows 3) (str (ind 9) "(")))
       (is (not (str/starts-with? (nth rows 3) (ind 10))))))
   (testing "a fact is one line — the layout separates an implication's two sides"
-    (let [body (:body (GET "/term" "q=dog"))]      ; nine facts, no rule among them
+    (let [body (:body (GET "/term" "q=dog" htmx))] ; nine facts, no rule among them
       (is (not (str/includes? body "sx-rule")))
       (is (nil? (rule-lines body)))
       (is (not (re-find #"</a>\n" body)) "and no row carries a newline of its own"))))
@@ -1142,7 +1171,7 @@
   ;; whether the argument declarations entail (`VAELII_ASSERTIVE_ARG_TYPES`).
   (let [shown  (:body (GET "/term" "q=Ann"))
         hid    (GET "/term" "q=Ann&derived=hide")
-        stored #(some->> % (re-find #"Argument position 1 .*?· (\d+) stored") second parse-long)]
+        stored #(some->> % (re-find #"(?s)Argument position 1 .*?· (\d+) stored") second parse-long)]
     (is (pos? (derived-badges shown)) "the page shows them by default")
     (is (= (derived-badges shown)
            (- (count (re-seq #"data-h=" shown)) (count (re-seq #"data-h=" (:body hid)))))
@@ -1151,7 +1180,7 @@
     (is (re-find #"show derived" (:body hid)) "the control now offers the other direction")
     (is (= (stored shown) (stored (:body hid)))
         "the heading still counts what is stored, not what is rendered")
-    (is (< (count (re-seq #"data-h=" (re-find #"Argument position 1 .*?</ul>" (:body hid))))
+    (is (< (count (re-seq #"data-h=" (re-find #"(?s)Argument position 1 .*?</ul>" (:body hid))))
            (stored (:body hid)))
         "which is more than the hidden group lists")
     (testing "the choice is remembered, with an expiry, and does not clobber the session cookie"
@@ -1816,6 +1845,104 @@
           (is (re-find #"Superseded" (:body r)))          ; the why-not detail block
           (is (re-find #"restated under its class representative" (:body r))))))))
 
+(tu/deftest-kb the-sentex-page-reads-a-rule-circle-by-how-the-rule-runs
+  (doseq [[wrap hue word]
+          [[#(list 'set/forwardRule %)                     "badge-both"       "Rule, both ways"]
+           [#(list 'set/forwardOnlyRule %)                 "badge-forward"    "Forward rule"]
+           [#(list 'set/backwardRule %)                    "badge-backward"   "Backward rule"]
+           [#(list 'set/assumptionRule %)                  "badge-choice"     "Choice rule"]
+           [#(list 'set/hardConstraint %)                  "badge-constraint" "Constraint rule"]
+           [#(list 'set/inertRule (list 'set/solveRule %)) "badge-solve"      "Solve rule"]
+           [#(list 'set/inertRule %)                       "badge-inert"      "Inert rule"]]]
+    (tu/with-terms [cand pick]
+      (let [h    (v/assert kb (wrap (list 'implies (list cand '?s) (list pick '?s))) 'CxUniverse)
+            body (:body (GET (str "/sentex/" h)))]
+        (is (re-find (re-pattern (str "class=\"badge " hue)) body) word)
+        (is (re-find (re-pattern (str "<b>" word "</b>")) body))))))
+
+(tu/deftest-kb the-sentex-page-reads-a-fact-circle
+  (tu/with-terms [flies airborne Tweety Polly]
+    (v/assert-rule kb [(list flies '?x)] (list airborne '?x) 'CxUniverse {:direction :forward})
+    (let [default  (v/assert kb (list flies Tweety) 'CxUniverse {:strength :default})
+          known    (v/assert kb (list flies Polly) 'CxUniverse {:strength :monotonic})
+          derived  (v/handle-of kb (list airborne Tweety) 'CxUniverse)
+          negative (v/assert kb (list 'not (list airborne Polly)) 'CxUniverse {:strength :default})
+          page     #(:body (GET (str "/sentex/" %)))]
+      (is (re-find #"<b>Default premise</b>" (page default)))
+      (is (re-find #"Filled: asserted, at strength default" (page default)))
+      (is (re-find #"Full colour: believed" (page default)))
+      (is (re-find #"<b>Monotonic premise</b>" (page known)))
+      (is (re-find #"<b>Derived</b>" (page derived)))
+      (is (re-find #"Ring: derived" (page derived)))
+      (is (re-find #"<b>Negative default premise</b>" (page negative))))))
+
+(tu/deftest-kb an-out-sentex-is-dimmed-and-offers-no-proof-of-belief
+  (tu/with-terms [flies Tweety CxNest]
+    (let [h (v/assert kb (list flies Tweety) CxNest {:strength :default})]
+      (v/assert kb (list 'not (list flies Tweety)) CxNest {:strength :monotonic})
+      (let [body (:body (GET (str "/sentex/" h)))]
+        (is (re-find #"Dimmed: stored and not believed" body))
+        (is (not (re-find #"Why is this believed" body)))))))
+
+(tu/deftest-kb the-sentex-page-says-why-an-inert-rule-is-inert
+  (let [rules (filterv #(and (:antecedent %) (empty? (:engines %)))
+                       (v/sentexes-in-context kb 'CxUniverse))
+        page  #(:body (GET (str "/sentex/" (:id %))))]
+    (testing "a mint rule names the declarations the engine computes"
+      (let [s (first (filter v/mint-rule-kind rules))]
+        (is (re-find (re-pattern (str "<code>" (v/mint-rule-kind s) "</code> declarations"))
+                     (page s)))))
+    (testing "a derived one names its generator and the note on the generator's mapping"
+      (let [body (page (first (remove :strength rules)))]
+        (is (re-find #"concluded it inside" body))
+        (is (re-find #"The rule each fact generates is inert" body))))
+    (testing "every shipped inert rule states a reason"
+      (is (= [] (filterv #(re-find #"says why\." (page %)) rules)))))
+  (tu/with-terms [cand pick]
+    (let [h (v/assert kb (list 'set/inertRule (list 'implies (list cand '?s) (list pick '?s)))
+                      'CxUniverse)]
+      (is (re-find #"written inside" (:body (GET (str "/sentex/" h)))))
+      (is (re-find #"says why\." (:body (GET (str "/sentex/" h)))))
+      (v/assert kb (list 'implementationNote pick "Kept for readers.") 'CxUniverse)
+      (is (re-find #"Kept for readers" (:body (GET (str "/sentex/" h)))))
+      (is (not (re-find #"says why\." (:body (GET (str "/sentex/" h)))))))))
+
+(tu/deftest-kb the-sentex-page-names-what-withdrew-a-conclusion
+  (tu/with-terms [flies airborne Tweety CxBird]
+    (v/assert kb (list flies Tweety) CxBird {:strength :default})
+    (v/assert-rule kb [(list flies '?x)] (list airborne '?x) CxBird {:direction :forward})
+    (let [concluded (v/handle-of kb (list airborne Tweety) CxBird)
+          fact      (v/handle-of kb (list flies Tweety) CxBird)]
+      (v/assert kb (list 'not (list flies Tweety)) CxBird {:strength :monotonic})
+      (let [body (:body (GET (str "/sentex/" concluded)))]
+        (is (re-find #"<b>Withdrawn</b>" body))
+        (is (re-find (re-pattern (str "hidden: .{0,60}badge-link\" href=\"/sentex/" fact "\""))
+                     body))))))
+
+(tu/deftest-kb the-sentex-page-names-the-firing-a-forced-conclusion-rests-on
+  (tu/with-terms [trigger_kind made_kind species_kind]
+    (v/assert kb (list 'set/forwardRule
+                       (list 'implies (list trigger_kind '?s) (list 'orthogonal '?s made_kind)))
+              'CxUniverse)
+    (v/assert kb (list trigger_kind species_kind) 'CxUniverse)
+    (let [h    (v/handle-of kb (list 'orthogonal species_kind made_kind) 'CxUniverse)
+          body (:body (GET (str "/sentex/" h)))]
+      (is (re-find #"<b>Forced conclusion</b>" body))
+      (is (re-find #"forced_monotonic_predicate" body))
+      (is (re-find (re-pattern (str trigger_kind)) body)))))
+
+(tu/deftest-kb the-sentex-page-says-a-held-rule-reaches-no-respelling
+  (tu/with-terms [FruitFn fruitOf ripe Ann favoriteFood CxSide]
+    (v/assert kb (list 'genlCx CxSide 'CxUniverse) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'reifiable_function FruitFn) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'functionCorrespondingPredicate FruitFn fruitOf) CxSide)
+    (let [h (v/assert kb (list 'set/forwardRule
+                               (list 'implies (list favoriteFood Ann (list FruitFn '?t))
+                                     (list ripe '?t)))
+                      'CxUniverse)]
+      (is (= :inert (:reason (v/why-not kb h))))
+      (is (re-find #"respells in no context it reaches" (:body (GET (str "/sentex/" h))))))))
+
 (tu/deftest-kb sentex-page-shows-a-defeated-default
   (tu/with-terms [flies Tweety CxNest]
     (let [pos (v/assert kb (list flies Tweety) CxNest {:strength :default})]
@@ -1869,11 +1996,51 @@
   (tu/with-terms [likes Ann Bob]
     (let [a    (v/assert kb (list likes Ann Bob) 'CxUniverse)
           b    (v/assert kb (list likes Bob Ann) 'CxUniverse)
-          body (:body (GET "/history/literals" (str "handles=" b "," a)))]
+          body (:body (GET "/history/sentexes" (str "handles=" b "," a)))]
       (is (re-find (re-pattern (str "(?s)badge-link\" href=\"/sentex/" b "\".*badge-link\" href=\"/sentex/" a "\""))
                    body))
       (is (re-find (re-pattern (str "data-href=\"/sentex/" a "\"")) body) "with its remove button")
-      (is (= "" (:body (GET "/history/literals" "handles=12,x"))) "a list that does not read"))))
+      (is (= "" (:body (GET "/history/sentexes" "handles=12,x"))) "a list that does not read"))))
+
+(tu/deftest-kb the-history-draws-a-rule-as-a-row-of-the-rule-kind
+  (tu/with-terms [likes trusts Ann Bob]
+    (let [l    (v/assert kb (list likes Ann Bob) 'CxUniverse)
+          r    (v/assert kb (list 'set/forwardRule
+                                  (list 'implies (list likes '?a '?b) (list trusts '?a '?b)))
+                         'CxUniverse)
+          body (:body (GET "/history/sentexes" (str "handles=" l "," r)))]
+      (is (= 2 (count (re-seq #"sx-item sx-clip history-item" body))))
+      (is (re-find (re-pattern (str "data-href=\"/sentex/" l "\" data-kind=\"literal\"")) body))
+      (is (re-find (re-pattern (str "data-href=\"/sentex/" r "\" data-kind=\"rule\"")) body)))))
+
+(deftest the-core-predicate-rows-are-sentex-rows-with-the-whole-comment-as-a-title
+  (let [body (:body (GET "/front/rows" "section=predicates&offset=0"))]
+    (is (= 50
+           (count (re-seq #"<li class=\"sx-item sx-clip\" data-h=\"\d+\" title=\"" body))
+           (count (re-seq #"class=\"badge-link\"" body))))))
+
+(deftest the-legend-orders-the-terms-and-names-every-circle
+  (let [body  (:body (GET "/"))
+        terms (re-find #"(?s)<p class=\"legend\">Terms:.*?</p>" body)]
+    (is (= ["unary predicate" "binary predicate" "ternary+ predicate" "connective" "context"
+            "individual" "literal" "?variable"]
+           (mapv second (re-seq #"<(?:a|span) class=\"[^\"]+\">([^<]+)<" terms))))
+    (doseq [hue ["forward" "backward" "both" "inert" "choice" "constraint" "solve"]]
+      (is (re-find (re-pattern (str "class=\"badge badge-" hue "\"")) body) hue))))
+
+(tu/deftest-kb a-justification-draws-its-rule-and-conclusion-with-their-circles
+  (tu/with-terms [flies airborne Tweety]
+    (let [r    (v/assert-rule kb [(list flies '?x)] (list airborne '?x) 'CxUniverse
+                              {:direction :forward})
+          _    (v/assert kb (list flies Tweety) 'CxUniverse)
+          h    (v/handle-of kb (list airborne Tweety) 'CxUniverse)
+          j    (:id (first (v/supporting-justifications kb h)))
+          link #(re-pattern (str "badge-link\" href=\"/sentex/" % "\""))]
+      (is (re-find (link r) (:body (GET (str "/sentex/" h)))) "the sentex page's via")
+      (is (re-find #"via <span class=\"muted\">this sentex</span>" (:body (GET (str "/sentex/" r))))
+          "a rule's own page names itself in words on each dependent")
+      (is (re-find (link h) (:body (GET (str "/justification/" j)))) "its conclusion")
+      (is (re-find (link r) (:body (GET (str "/why/" h)))) "the why tree's via"))))
 
 (tu/deftest-kb the-history-keeps-only-what-the-active-kb-holds
   (tu/with-terms [likes Ann Bob]

@@ -77,9 +77,10 @@
       (doseq [c supers]
         (v/assert kb (list 'genlCx CxSub c) 'CxUniverse {:chain? false})
         (v/assert kb (list parentOf Tom (tu/tmp-ind "Kid")) c {:chain? false}))
-      ;; the view context is in its own up-closure, so populate it too — a barren
+      ;; the view context and CxUniverse are in its up-closure, so populate them too — a barren
       ;; branch makes the measurement depend on set iteration order, not on laziness
-      (v/assert kb (list parentOf Tom (tu/tmp-ind "Kid")) CxSub {:chain? false})
+      (doseq [c [CxSub 'CxUniverse]]
+        (v/assert kb (list parentOf Tom (tu/tmp-ind "Kid")) c {:chain? false}))
       ;; a BINARY goal, so `match-pattern` short-circuits to `raw-match` and the only
       ;; fan-out in play is over contexts.  Bind the hierarchical path off: this asserts the
       ;; *reference fan-out*'s laziness (level 4's default is the set-algebra path, which
@@ -88,9 +89,9 @@
         (doseq [level [3 4]]
           (let [[one all] (calls #'res/raw-match
                                  (fn [consume] (consume (v/lookup kb level goal CxSub))))]
-            (testing (str "level " level ": the up-closure really is forty-one contexts wide")
-              (is (= 41 all)))
-            (testing (str "level " level ": one result costs one context probe, not forty-one")
+            (testing (str "level " level ": the up-closure really is forty-two contexts wide")
+              (is (= 42 all)))
+            (testing (str "level " level ": one result costs one context probe, not forty-two")
               (is (= 1 one)
                   (str "level " level " expanded " one " contexts to produce one result, out of "
                        all " — an eager mapcat expands at least four")))))))))
@@ -107,15 +108,17 @@
       (doseq [_ (range 40)]
         (let [t (tu/tmp-type "dog")]
           (v/assert kb (list 'genl t animal) CxStory {:chain? false})
-          (v/assert kb (list t (tu/tmp-ind "Muffet")) CxStory {:chain? false})))
-      ;; `animal` is in its own spec closure — populate it, for the reason above
-      (v/assert kb (list animal (tu/tmp-ind "Muffet")) CxStory {:chain? false})
+          (doseq [c [CxStory 'CxUniverse]]
+            (v/assert kb (list t (tu/tmp-ind "Muffet")) c {:chain? false}))))
+      ;; `animal` and CxUniverse are in the closures read — populate both, as above
+      (doseq [c [CxStory 'CxUniverse]]
+        (v/assert kb (list animal (tu/tmp-ind "Muffet")) c {:chain? false}))
       ;; the reference fan-out (level 4's default is the set-algebra path — see below)
       (binding [res/*hierarchical-retrieval* false]
         (let [[one all] (calls #'res/raw-match
                                (fn [consume] (consume (v/lookup kb 4 goal CxStory))))]
-          (testing "the spec closure really is forty-one subtypes wide"
-            (is (= 41 all)))
+          (testing "the spec closure really is forty-one subtypes wide, in each of two contexts"
+            (is (= 82 all)))
           (testing "one result costs one subtype probe, not forty-one"
             (is (= 1 one)
                 (str "expanded " one " subtypes to produce one result, out of " all))))))))
@@ -138,18 +141,18 @@
       (doseq [t typs]
         (v/assert kb (list 'genl t animal) CxSub {:chain? false}))
       ;; EVERY cell of the cross product is populated — including the view context
-      ;; itself (which is in its own up-closure) and `animal` itself (which is in its
+      ;; itself and CxUniverse (both in its up-closure) and `animal` itself (which is in its
       ;; own spec closure).  Leave either empty and the branch order, which is set
       ;; iteration order over gensyms, decides whether a lazy walk pays for a whole
       ;; barren row: the test then passes or fails by luck rather than by laziness.
-      (doseq [c (conj ctxs CxSub), t (conj typs animal)]
+      (doseq [c (conj ctxs CxSub 'CxUniverse), t (conj typs animal)]
         (v/assert kb (list t (tu/tmp-ind "Muffet")) c {:chain? false}))
       ;; the reference fan-out (level 4's default is the set-algebra path — see below)
       (binding [res/*hierarchical-retrieval* false]
         (let [[one all] (calls #'res/raw-match
                                (fn [consume] (consume (v/lookup kb 4 goal CxSub))))]
           (testing "the full cross product is what taking every result costs"
-            (is (= 169 all)))
+            (is (= 182 all)))
           (testing "taking one result costs one cell of it"
             (is (= 1 one)
                 (str "expanded " one " of " all " (context x subtype) branches for one result"))))))))

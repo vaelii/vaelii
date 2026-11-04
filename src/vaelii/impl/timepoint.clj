@@ -45,14 +45,18 @@
   (list (some (fn [[f w]] (when (= w which) f)) point-functions) thing))
 
 (defn moment
-  "The six calendar fields of the moment `x` names, or nil when the calendar does not
-  place it: an `(InstantFn …)` term, or a point of a calendar term."
+  "`[frame fields]` of the moment `x` names, or nil when the calendar does not place it:
+  an `(InstantFn …)` term or a point of a calendar term or range, in frame `:local`, or a
+  point of a time with a UTC offset or zone, in frame `:utc` (`dt/utc-extent`)."
   [x]
-  (or (dt/instant-fields x)
-      (when-let [[s e] (some-> (thing-of x) dt/bounds)]
-        (case (point-functions (first x))
-          (:start :earliest-start :latest-start) s
-          (:end :earliest-end :latest-end)       e))))
+  (if-let [f (dt/instant-fields x)]
+    [:local f]
+    (when-let [[frame [s e]] (when-let [t (thing-of x)]
+                               (or (some->> (dt/extent t) (vector :local))
+                                   (some->> (dt/utc-extent t) (vector :utc))))]
+      [frame (case (point-functions (first x))
+               (:start :earliest-start :latest-start) s
+               (:end :earliest-end :latest-end)       e)])))
 
 ;; ---- the constraints the terms fix --------------------------------------
 
@@ -91,12 +95,16 @@
   (for [w (vals point-functions) :let [p (point w m)] :when (present p)] [p m same]))
 
 (defn- calendar-edges
-  "Each calendar moment in `present` ordered against the next one by its fields."
+  "Each calendar moment in `present` ordered against the next one in its frame by its
+  fields: a moment in no zone and an absolute one are not ordered."
   [present]
   (->> (keep (fn [x] (when-let [m (moment x)] [m x])) present)
-       (sort-by first)
-       (partition 2 1)
-       (map (fn [[[ma a] [mb b]]] [a b (if (= ma mb) same strict)]))))
+       (group-by ffirst)
+       (sort-by key)
+       (mapcat (fn [[_ ms]]
+                 (->> (sort-by first ms)
+                      (partition 2 1)
+                      (map (fn [[[ma a] [mb b]]] [a b (if (= ma mb) same strict)])))))))
 
 (defn constraints-over
   "The constraints the point terms among `nodes` fix, as `{:net … :support {}}` in the

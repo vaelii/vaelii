@@ -77,7 +77,7 @@
                   vs    (into #{} (map :context) hits)]
               {:nogood   members
                :priority (member-priority tms members)
-               :vantages (if (next vs) (tax/maximal-contexts tax vs) vs)
+               :vantages (if (next vs) (tax/max-cxs tax vs) vs)
                :kind     :inherited
                :sentence (list 'contradicts a b)
                ;; the claim nobody stored, where it was read, the general `:claim` it was
@@ -214,6 +214,18 @@
     (filter preds below)
     (filter #(contains? (tax/genls-global tax %) t) preds)))
 
+(defn- separated-under
+  "The handles of `sep`, the separated memberships' entries of `entries`, whose type is at
+  or below one of the types `lows`, or all of `sep` when one of the preserved `preds` is:
+  a `genl` edge moves the separations of the types at or below its lower end alone."
+  [tax preds entries sep lows]
+  (if (some #(seq (preserved-below tax preds %)) lows)
+    sep
+    (let [lows   (set lows)
+          missed (volatile! #{})
+          under? (memoize #(tax/genls-global-meets? tax % lows missed))]
+      (filter #(under? (:pred (get entries %))) sep))))
+
 (defn- separated-reach
   "The stored memberships the stored claims of the preserved `preds` can deny, read from the
   claims (`inherit/claim-reach-separated`, every class and polarity): the whole store's
@@ -242,10 +254,10 @@
 
 (defn- preserving-moves
   "What the moved handles `moves` (`[handle region?]`, `region?` false for a withdrawal
-  alone) re-open, as `[whole reached sep-moved?]`: the predicates whose stored extent is
-  re-asked, the stored facts a moved claim reaches, and whether a handle with no record,
-  a `genl` edge or a separation moved, for the caller to re-ask the memberships
-  `inherit/separated-claims` answered.  `vantaged` (a delay) holds the predicates with an
+  alone) re-open, as `[whole reached sep]`: the predicates whose extent is re-asked, the
+  stored facts a moved claim reaches, and the separated memberships re-asked: `:all` when
+  a separation or a recordless non-`genl` handle moved, else the moved `genl` edges' lower
+  ends (`separated-under`) or nil.  `vantaged` (a delay) holds the predicates with an
   entry; `left` is `note-removed!`'s sentences; `narrow?` false re-opens the whole extent
   of every predicate a claim or an edge moves (docs/nmtms.md, \"The inherited-clash
   memo\", the vocabulary, claim and separation inputs)."
@@ -261,13 +273,13 @@
         wide   (let [rs (disj (tax/genls-global tax 'genl) 'genl)]
                  (into #{} (keep (fn [[p r]] (when (contains? rs r) p))) pairs))]
     (inherit/with-memo
-      (let [[whole reached sep-moved?]
+      (let [[whole reached sep]
             (reduce
-             (fn [[whole reached sep-moved?] [h region?]]
+             (fn [[whole reached sep] [h region?]]
                (let [s   (p/get-sentex recs h)
                      sen (if s (sx/sentence-of s) (get left h))]
                  (if-not sen
-                   [whole reached sep-moved?]
+                   [whole reached sep]
                    (let [body  (kb/body-under-not sen)
                          f     (nm/functor body)
                          [claimed other]
@@ -309,13 +321,16 @@
                                               (inherit/claim-reach-separated kb sen %)
                                               (mapcat extent (inherit/separated-types kb %))))))
                             claimed)
-                      (boolean (or sep-moved? (nil? s) edge? ends))]))))
-             [#{} #{} false]
+                      (cond (= :all sep)             :all
+                            (and edge? narrow?)      (conj (or sep #{}) (first (nm/args body)))
+                            (or edge? (nil? s) ends) :all
+                            :else                    sep)]))))
+             [#{} #{} nil]
              moves)]
         [(into whole (comp (filter #(inherit/claims-stored? kb %)) (mapcat #(inherit/separated-types kb %)))
                (filter preds whole))
          reached
-         sep-moved?]))))
+         sep]))))
 
 (defn- entry-live?
   "Does every member of entry `e` but its candidate hold the defeat-class `e` recorded?"
@@ -376,9 +391,9 @@
                        (-> (set handles)
                            (into (:moved prev))
                            (into (special/pending-supersession-moves kb))))
-        [whole reached sep-moved?]
+        [whole reached sep]
         (if whole?
-          [#{} #{} false]
+          [#{} #{} nil]
           (preserving-moves kb pairs left
                             ;; a moved flat-cache entry is read through what its supporters state
                             (concat (map #(vector % true) handles)
@@ -407,9 +422,12 @@
                                           (concat (named :context (:below reach))
                                                   (named :asker (:under reach)))))
                                   ;; a separation leaving moves no extent
-                                  (into (if sep-moved?
+                                  (into (if (= :all sep)
                                           (:sep b)
-                                          (filter #(contains? (:sep b) %) (named :read handles)))))]
+                                          (concat (filter #(contains? (:sep b) %) (named :read handles))
+                                                  (when (seq sep)
+                                                    (separated-under tax (into #{} (map first) pairs)
+                                                                     entries (:sep b) sep))))))]
                     (into moves
                           (comp (remove moves) (remove #(entry-live? tms (get entries %))))
                           (set (named :member moved-belief)))))

@@ -283,7 +283,8 @@
   "Written-spelling record `rec` for a row about to be spelled `stored`, each written
   spelling put through `rewrite` and the pieces `stored` already says dropped — or `rec`
   unchanged when `rewrite` is nil.  A permuting mark keeps the spellings as written; a
-  reifiable mark moving re-spells them as it re-spells the row (`move-row!`)."
+  reifiable mark moving re-spells them as it re-spells the row, but for the applications
+  whose constants their expressions sorted name (`chain/reconcile-row-spelling!`)."
   [rewrite stored {:keys [premise derived] :as rec}]
   (if-not rewrite
     rec
@@ -422,8 +423,8 @@
   justifications concluding it, its premise mark, the conclusions drawn through it and the
   handle-naming metas. `fold-supports!` runs first, so the survivor holds a copy of each
   justification concluding the row before `take-out!` drops the originals. Swept records go
-  to the removal choke point."
-  [kb doomed survivor witness rewrite]
+  to the removal choke point. `want` is the spelling the survivor ends at."
+  [kb doomed survivor want witness rewrite]
   ;; read before anything moves: the doomed row's pieces, spelled as it wrote them, go to
   ;; the survivor with everything else it hands over
   (let [dsx     (p/get-sentex (:records kb) doomed)
@@ -433,7 +434,7 @@
         copied  (fold-supports! kb doomed survivor)]
     (when (seq copied) (special/refile-mint! kb nil survivor))
     (put-spellings! kb survivor
-                    (rewritten rewrite (some-> rewrite (apply [ssent]))
+                    (rewritten rewrite (when rewrite want)
                                (assoc spieces
                                       :premise (merge-with strength/max (:premise spieces) (:premise dpieces))
                                       :derived (into (:derived spieces)
@@ -487,9 +488,9 @@
                  (nil? mirror)   (:id (respell! kb sx want rewrite))
                  ;; this row is the one that leaves; the mirror is already the wanted
                  ;; spelling
-                 (= doomed self) (do (fold-row! kb self mirror witness rewrite) mirror)
+                 (= doomed self) (do (fold-row! kb self mirror want witness rewrite) mirror)
                  ;; the mirror leaves, and this row takes the spelling it vacated
-                 :else           (do (fold-row! kb mirror self witness rewrite)
+                 :else           (do (fold-row! kb mirror self want witness rewrite)
                                      (:id (respell! kb (p/get-sentex (:records kb) self) want rewrite))))
             {:keys [new violations]} (redraw-mints! kb at)]
         {:at at :new (into [at] new) :violations violations}))))
@@ -573,6 +574,22 @@
                        (reads/as-stored-with-functor idx pred))
                      (reads/as-stored-with-term idx pred)))))
 
+(defn rows-a-mention-spells
+  "The stored rows a mention of `pred` arriving or leaving can respell, sorted: those the
+  term index keys by `pred` and by a functor a permuting or term mark sorts, a candidate
+  set holding every row with such a compound beside `pred`.  One posting intersection per
+  marked functor, so a row of `pred` holding no marked functor is not read.  The marks are
+  read KB-wide, as the store spells a row under a mark any context holds."
+  [kb pred]
+  (let [tax (reasoning/taxonomy kb)
+        t   @tax
+        idx (:index kb)]
+    (vec (into (sorted-set)
+               (mapcat #(reads/as-stored-with-terms idx [pred %]))
+               (distinct (concat (tax/props tax :symmetric) (keys (:commuting t))
+                                 (tax/props tax :associative) (tax/props tax :idempotent)
+                                 (keys (:meet t))))))))
+
 (defn commute-predicate
   "Bring `pred`'s stored rows into the spelling its marks now give them, folding mirrored
   pairs — `commute-existing`'s walk, for a caller that knows the predicate rather than
@@ -595,13 +612,17 @@
 
 (defn commute-existing
   "When a declaration that re-spells arrives (`symmetric`, or either commutativity relation),
-  bring the named predicate's already stored facts into the argument order it puts every
-  later one in. Returns `commute-predicate`'s result (the rows whose spelling moved, which
-  are new content to every rule reading the canonical one, and the mints their spellings
-  drew), or nil when `sentence` moves no spelling. The storage migrates rather than an alias
-  recording that two rows mean one. The extent is `P`'s own stored rows and the rows applying
-  `P` below the literal (`rows-spelled-by`), not its spec subtree. Read from storage, never
-  belief. Linear in the facts it reaches. See docs/canonicalization.md."
+  bring the named predicate's stored facts into the argument order it puts every later one
+  in, and queue `[:reifiable P]` for a reifiable `P` (`chain/reconcile-reified!`, the mark
+  read unscoped). Returns `commute-predicate`'s result (the moved rows, new content to every
+  rule reading the canonical one, and the mints their spellings drew), or nil when
+  `sentence` moves no spelling. The extent is `P`'s own rows and the rows applying `P` below
+  the literal (`rows-spelled-by`), read from storage. Linear in the facts it reaches. See
+  docs/canonicalization.md."
   [kb sentence witness]
   (when-let [p (recanonicalizing-subject kb sentence)]
+    (when (and (contains? '#{symmetric commutative commutativeInArgs commutativeInArgAndRest}
+                          (nm/functor sentence))
+               (tax/has-prop? (reasoning/taxonomy kb) :reifiable p))
+      (swap! (reasoning/respell kb) conj [:reifiable p]))
     (commute-predicate kb p witness)))

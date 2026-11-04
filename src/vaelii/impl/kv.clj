@@ -1072,13 +1072,13 @@
   "The count prefix of the batch-seal counter: incremented as the **last** op of every
   `index-sentex` batch and decremented as the last op of an unindex's cleanup batch,
   so it equals the indexed-sentex count exactly when every batch landed whole.  The
-  durable open's coverage check compares it against the record count: the WAL logs one
-  frame per op, so a torn tail keeps a batch's *prefix* — the root counter `count-at
-  []` reads is op 0 and survives every tear, which is what makes it the wrong
-  instrument — while this counter is the op a tear loses first.  A namespaced keyword,
-  so it collides with no term path; only the count key is written, so no trie walk
-  ever meets it.  Zero on a store whose index arrived by `index-load` replay or was
-  written before the counter existed — the check falls back to the root count there."
+  durable open's coverage check compares it against the record count beside the root
+  counter `count-at []` reads: the WAL logs one frame per op, so a torn tail keeps a
+  batch's *prefix*, and the root counter is op 0 and survives every tear while this
+  counter is the op a tear loses first.  A namespaced keyword, so it collides with no
+  term path; only the count key is written, so no trie walk ever meets it.  Zero on a
+  store whose index arrived by `index-load` replay or was written before the counter
+  existed, and the check skips this counter's comparison there."
   [::sealed])
 
 (defn- unindex-present!

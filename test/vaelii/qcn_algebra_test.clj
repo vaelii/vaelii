@@ -6,12 +6,15 @@
   is not among them: `vaelii.impl.distance` composes weakly, exact per pair of classes."
   (:require [clojure.set :as set]
             [clojure.test :refer [deftest is testing]]
+            [vaelii.core :as v]
             [vaelii.impl.distance :as dist]
             [vaelii.impl.interval :as iv]
             [vaelii.impl.orientation :as dir]
             [vaelii.impl.point :as pt]
+            [vaelii.impl.reads :as reads]
             [vaelii.impl.relative :as rel]
-            [vaelii.impl.space :as space]))
+            [vaelii.impl.space :as space]
+            [vaelii.test-util :as tu]))
 
 (def algebras
   "Every shipped algebra, by name."
@@ -136,3 +139,33 @@
             "every base relation has a predicate of its own")
         (is (= (count universe) (count singletons))
             "and no two predicates name the same one")))))
+
+(defn- stated-inert
+  "The arguments of each `(f …)` sentence stored inert in CxUniverse."
+  [kb f]
+  (for [h (reads/as-stored-with-functor (:index kb) f)
+        :let [sx (v/sentex kb h)]
+        :when (and (= 'CxUniverse (:context sx)) (not (v/in? kb h)))]
+    (vec (rest (:sentence sx)))))
+
+(deftest every-inert-property-the-upper-files-state-of-a-calculus-holds-in-its-algebra
+  ;; Reads the stored sentences, so a wrong upper line fails here.
+  (tu/with-neutral-kb [kb #(doto (tu/fresh) (tu/load-core!))]
+    (let [den   (into {} (for [calc (vals calculi) p (:predicates calc)]
+                           [p [calc ((:denotation calc) p)]]))
+          conv  (fn [calc rs] ((:converse (:algebra calc)) rs))
+          pairs (fn [f] (for [[p q] (stated-inert kb f)
+                              :let  [[cp dp] (den p) [cq dq] (den q)]
+                              :when (and cp (= cp cq))]
+                          [p q cp dp dq]))
+          asym  (for [[p] (stated-inert kb 'asymmetric) :let [[c d] (den p)] :when c] [p c d])]
+      (testing "an inverse pair's denotations are each other's converse"
+        (is (= 21 (count (pairs 'inverse))))
+        (is (= [] (offenders (fn [[_ _ c dp dq]] (= (conv c dp) dq)) (pairs 'inverse)))))
+      (testing "an asymmetric relation shares no base relation with its converse"
+        (is (= 16 (count asym)))
+        (is (= [] (offenders (fn [[_ c d]] (empty? (set/intersection d (conv c d)))) asym))))
+      (testing "a negates pair shares no base relation"
+        (is (= 106 (count (pairs 'negates))))
+        (is (= [] (offenders (fn [[_ _ _ dp dq]] (empty? (set/intersection dp dq)))
+                             (pairs 'negates))))))))

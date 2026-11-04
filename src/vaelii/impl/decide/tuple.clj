@@ -249,7 +249,7 @@
   the unscoped closures `w`, since a scoped read asks a reader's withdrawal, which reads
   this."
   [w c by]
-  (if (nil? c)
+  (if (or (nil? c) (= sx/root-context c))
     (set (keys by))
     (let [ups  (:context-up-global w)
           down ((:context-down-global w) c)
@@ -258,7 +258,7 @@
                 (into #{} (comp (mapcat ups) (filter #(contains? by %)))
                       down)
                 (into #{} (filter #(and (some? %)
-                                        (or (= c %)
+                                        (or (= c %) (= sx/root-context %)
                                             (boolean (some down ((:context-down-global w) %))))))
                       (keys by)))
         (contains? by nil) (conj nil)))))

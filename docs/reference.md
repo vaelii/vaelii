@@ -56,9 +56,9 @@ believed?(W, S, C) = S is in believed(W, C)
 ```
 
 1. **Visibility.** `up(C)` is reflexive and transitive. A context no `genlCx` edge names
-   sees only itself, with no implicit root
-   ([contexts.md](contexts.md#a-context-outside-the-topology)). `up(C)` reads the stored
-   edges alone, whatever context stores them, and does not depend on belief (invariant 1).
+   sees itself and CxUniverse, the implicit root
+   ([contexts.md](contexts.md#cxuniverse-is-the-implicit-root)). `up(C)` reads the stored
+   edges and the implicit edge alone, whatever context stores them, and does not depend on belief (invariant 1).
 2. **Taxonomy.** At `C`, `A` is a subtype of `B` when a chain of `genl` edges, each
    believed at `C`, leads from `A` to `B`; every type is a subtype of itself and of
    `thing`. The closure reads only edges `C` believes
@@ -66,7 +66,11 @@ believed?(W, S, C) = S is in believed(W, C)
    `separating` or `partition` declaration states a `genl` edge from each part to the
    whole ([taxonomy.md](taxonomy.md#covering-a-whole-and-the-parts-named-against-it)).
 3. **Derivation.** A rule visible at `C` fires on sentences believed at `C`. An antecedent
-   `(T ?x)` matches `(S x)` when `S` is a subtype of `T` at `C`. An antecedent also
+   `(T ?x)` matches `(S x)` when `S` is a subtype of `T` at `C`, unless `(not (T x))` is
+   believed at `C` and no path of `:monotonic` edges leads from `S` to `T` there: the
+   denial undercuts the edge's reading at either strength
+   ([inference.md](inference.md#an-edges-reading)). The derivation repeats until the
+   denials it reads are the denials it believes. An antecedent also
    matches a claim reached by argument preservation
    ([inherit.md](inherit.md#forward-chaining-on-a-claim-nobody-stored)). The rules are
    evaluated stratum by stratum over the rule dependency graph, which the engine keeps
@@ -370,7 +374,9 @@ tests say, unless the difference is a known divergence below. `vaelii.reference-
 is the witness. It loads random small worlds in every arrival order into fresh KBs and
 compares the engine's belief at each context with the reference's, sentence by sentence:
 a stored sentence through `core/believed?` on its handle, and an inherited claim, which
-has no handle, through `core/ask?` at the context. A context whose view holds a merge
+has no handle, through `core/ask?` at the context. A handle that holds only as an edge
+reading stores a subsumption answer, which the function reads through item 3 alone, and
+is not compared. A context whose view holds a merge
 verdict is not compared, and the harness counts it. The first order's KB is also closed,
 recovered and compared again.
 

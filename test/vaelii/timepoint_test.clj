@@ -68,6 +68,8 @@
      [CxWolf :loss-in-attack      (instantBefore (StartFn Attack) (StartFn Loss))]
      [CxWolf :loss-ends-by-attack (instantNotAfter (EndFn Loss) (EndFn Attack))]
      [CxWolf :watch-ends-with-attack (instantEqual (EndFn Watch) (EndFn Attack))]
+     [CxWolf :dream-before-watch  (before Dream Watch)]
+     [CxWolf :song-with-run1      (sharesTimeWith Song Run1)]
      ;; a retelling: the wolf was already prowling when he first cried
      [CxWolfRetold :prowling-first (instantBefore (StartFn Attack) (StartFn Cry1))]]
    :questions
@@ -79,7 +81,9 @@
      ;; nothing states when he stopped laughing: the question alone makes it a node
      [CxWolf [:before (EndFn Laugh1) (EndFn Return1)] :unknown]
      [CxWolf [:allen Trick1 Trick2] #{:before}]
-     [CxWolf [:allen Distrust Return2] #{:contains :started-by :overlapped-by}]]
+     [CxWolf [:allen Distrust Return2] #{:contains :started-by :overlapped-by}]
+     [CxWolf [:before (EndFn Dream) (StartFn Cry1)] :true]
+     [CxWolf [:before (StartFn Song) (StartFn Laugh1)] :true]]
    :checks
    '[[CxWolf :consistent]
      [CxWolfRetold {:fixes #{:later-again :wolf-after-trick2 :prowling-first}}]]})
@@ -336,6 +340,59 @@
                (fire-in-order kb [(list pred '?x target)] early_one facts rule-at))
             (str pred " rule at " rule-at))))))
 
+(tu/deftest-kb a-declared-reflexive-point-predicate-fires-a-forward-rule-once-per-node
+  (doseq [order [[:decl :rule :ab :bq] [:rule :ab :bq :decl]
+                 [:ab :decl :rule :bq] [:bq :rule :decl :ab]]]
+    (tu/with-terms [A B Q notLater]
+      (let [ctx     (tu/tmp-ctx "Story")
+            facts   {:decl '(reflexive instantNotAfter)
+                     :ab   (list 'instantBefore A B)
+                     :bq   (list 'instantBefore B Q)}
+            derived #(set (map (comp vec rest :sentence)
+                               (v/sentexes-matching kb (list notLater '?x '?y) ctx)))]
+        (v/assert kb (list 'genlCx ctx 'CxUniverse) 'CxUniverse)
+        (doseq [k order]
+          (if (= k :rule)
+            (v/assert-rule kb [(list 'instantNotAfter '?x '?y)] (list notLater '?x '?y) ctx
+                           {:direction :forward})
+            (v/assert kb (facts k) ctx)))
+        (testing (pr-str order)
+          (is (= #{[A A] [B B] [Q Q] [A B] [B Q] [A Q]} (derived)))
+          (let [d (v/handle-of kb (:decl facts) ctx)]
+            (is (contains? (set (keys (:nodes (v/why kb (v/handle-of kb (list notLater A A) ctx)))))
+                           d))
+            (v/retract! kb d))
+          (is (= #{[A B] [B Q] [A Q]} (derived))))))))
+
+(tu/deftest-kb an-allen-fact-moves-both-networks-and-a-point-firing-rests-on-it
+  (doseq [allen-first? [false true] rule-at [0 1 2]]
+    (let [k (if allen-first?
+              (doto (v/open-kb {:backend :memory :space [::allen-first] :recover? false})
+                (tu/clear-kb!)
+                (tu/load-core!)
+                (v/add-reasoner :allen :point))
+              kb)]
+      (try
+        (tu/with-terms [A B C early_one]
+          (let [ctx     (tu/tmp-ctx "Story")
+                allen   (list 'before A B)
+                [pre post] (split-at rule-at [allen (list 'instantBefore (list 'StartFn B) (list 'StartFn C))])
+                derived #(set (map (comp second :sentence)
+                                   (v/sentexes-matching k (list early_one '?x) ctx)))]
+            (v/assert k (list 'genlCx ctx 'CxUniverse) 'CxUniverse)
+            (run! #(v/assert k % ctx) pre)
+            (v/assert-rule k [(list 'instantBefore '?x (list 'StartFn C))] (list early_one '?x) ctx
+                           {:direction :forward})
+            (run! #(v/assert k % ctx) post)
+            (testing (pr-str {:allen-first? allen-first? :rule-at rule-at})
+              (is (= (if allen-first? [:allen :point] [:point :allen])
+                     (mapv :name (qkb/calculi-triggered-by k 'before))))
+              (is (contains? (derived) (list 'EndFn A)))
+              (v/retract! k (v/handle-of k allen ctx))
+              (is (not (contains? (derived) (list 'EndFn A))))
+              (is (contains? (derived) (list 'StartFn B))))))
+        (finally (when allen-first? (tu/drop-space! [::allen-first])))))))
+
 ;; ---- an unsatisfiable network -------------------------------------------
 
 (tu/deftest-kb an-unsatisfiable-network-is-reported-once-whatever-the-goal-names
@@ -407,6 +464,34 @@
         (is (contains? (second (first (prover-types/solve-with-support
                                        pr kb (list 'not (list 'includesInstant Party Dusk)) c)))
                        after))))))
+
+(tu/deftest-kb a-stated-start-or-end-decides-an-inclusion-and-a-start-alone-holds-its-own-moment
+  (tu/with-terms [Since Span Dawn Noon Dusk]
+    (let [c       'CxUniverse
+          pr      (pt/includes-instant-prover)
+          start   (v/assert kb (list 'startOf Since Noon) c)
+          verdict (fn [x t] [(v/ask? kb (list 'includesInstant x t) c)
+                             (v/ask? kb (list 'not (list 'includesInstant x t)) c)])]
+      (v/assert kb (list 'instantBefore Dawn Noon) c)
+      (v/assert kb (list 'instantBefore Noon Dusk) c)
+      (is (= [[true false] [false true] [false false]] (map #(verdict Since %) [Noon Dawn Dusk])))
+      (is (contains? (second (first (prover-types/solve-with-support
+                                     pr kb (list 'includesInstant Since Noon) c)))
+                     start))
+      (v/assert kb (list 'startOf Span Dawn) c)
+      (v/assert kb (list 'endOf Span Dusk) c)
+      (is (= [[true false] [false true]] (map #(verdict Span %) [Noon Dusk])))
+      (v/retract! kb start)
+      (is (= [false false] (verdict Since Noon))))))
+
+(tu/deftest-kb an-open-thing-ranges-over-the-things-a-stated-bound-names
+  (tu/with-terms [Since Noon CxElse]
+    (let [c   'CxUniverse
+          day '(InstantFn 2000 1 1 0 0 0)]
+      (v/assert kb (list 'startOf Since day) c)
+      (v/assert kb (list 'startOf Since Noon) CxElse)
+      (is (= [{'?x Since}] (v/query kb (list 'includesInstant '?x day) c)))
+      (is (empty? (v/query kb (list 'includesInstant '?x Noon) c))))))
 
 (tu/deftest-kb a-stored-inclusion-is-answered-beside-the-network
   (tu/with-terms [Party Noon Dusk]

@@ -50,17 +50,20 @@ it claims to, not about the absence of a login on a tool that never offered one.
   and the check sits outside form parsing, so an oversized body is refused with 413
   before it is decoded.
 - **Loopback is not an access control either.** Every local account can reach it, and
-  `POST /kbs/export` writes a directory of dump files wherever the process can write.
-  On a shared host, treat reaching the port as equivalent to holding the KB.
+  under `VAELII_REQUEST_PATHS` `POST /kbs/export` writes a directory of dump files
+  wherever the process can write. On a shared host, treat reaching the port as
+  equivalent to holding the KB.
 - **Every route, read or write, requires a recognised `Host`.** On a loopback bind the
   header must name loopback (`vaelii.host.guard`), which is what refuses a DNS-rebound
   page — against which the origin check above is useless, since the attacker controls
   `Origin` and `Host` alike and they agree. Binding an address with `--listen` drops
   the allowlist unless `VAELII_ALLOWED_HOSTS` names one.
-- **Two routes write to the filesystem** rather than to a KB: `POST /kbs/export` takes
-  the destination directory from the request, and `POST /kbs/load` will create a
-  durable store at a client-named path. Both are origin- and `Host`-checked like any
-  other write, and both are as reachable as the operator's browser is.
+- **Two routes write to the filesystem** rather than to a KB: `POST /kbs/export` writes
+  a destination directory, and `POST /kbs/load` creates a durable store at a path.
+  A request that names the path is refused (`:path-not-served`) unless the server was
+  started with `VAELII_REQUEST_PATHS=1`; without it the server picks the path. Both are
+  origin- and `Host`-checked like any other write, and both are as reachable as the
+  operator's browser is.
 - **A registered extension adds routes under `/ext/<name>/`.** The browser applies the
   origin check to each of its POSTs and the write guard to each `:write` route, and the
   `Host` allowlist and token cover them like every other route; what a handler does

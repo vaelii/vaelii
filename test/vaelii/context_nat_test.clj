@@ -163,22 +163,24 @@
 
 (tu/deftest-kb a-declaration-admits-the-slot-only-where-cxuniverse-sees-it
   ;; The slot resolves through the `natFormula` map in CxUniverse, so the declaration is
-  ;; read there: stated in CxUniverse or in a context above it, it admits the slot; stated
-  ;; in an unwired context or in a spec of CxUniverse, it does not.
-  (doseq [where [:universe :above :unwired :below]]
-    (tu/with-terms [Winter NewYear holiday CxBelow CxAbove CxElse]
+  ;; read there: stated in CxUniverse, it admits the slot; stated in a context with no
+  ;; edge or in a spec of CxUniverse, it does not.  No context sits above CxUniverse.
+  (doseq [where [:universe :unwired :below]]
+    (tu/with-terms [Winter NewYear holiday CxBelow CxElse]
       (let [cxfn (fresh-cxfn "Scope")
             _    (v/assert kb (list 'genlCx CxBelow 'CxUniverse) 'CxUniverse {:strength :monotonic})
-            _    (v/assert kb (list 'genlCx 'CxUniverse CxAbove) 'CxUniverse {:strength :monotonic})
             _    (v/assert kb (list 'result cxfn 'context)
-                           ({:universe 'CxUniverse :above CxAbove :unwired CxElse :below CxBelow}
-                            where))
+                           ({:universe 'CxUniverse :unwired CxElse :below CxBelow} where))
             slot (list cxfn Winter)
             fact (list holiday NewYear)]
         (v/assert kb fact slot)
-        (is (= (if (#{:universe :above} where) true :refused)
+        (is (= (if (= :universe where) true :refused)
                (:slot (slot-reading kb fact slot)))
-            (str where))))))
+            (str where)))))
+  (tu/with-terms [CxAbove]
+    (is (= :not-well-formed
+           (tu/refusal-type #(v/assert kb (list 'genlCx 'CxUniverse CxAbove) 'CxUniverse)))
+        "an edge above CxUniverse is refused")))
 
 (tu/deftest-kb an-object-nat-is-still-not-a-context
   (tu/with-terms [FruitFn AppleTree]
@@ -389,11 +391,10 @@
         year  (list cxfn 'CxMonad yterm)
         month (list cxfn 'CxMonad mterm)
         rfact (list 'subFooOf mterm yterm)
-        above (tu/tmp-ctx "Above")]
-    ;; two R-evidence facts, CxUniverse first (lower handle), then a context above it
+        above (tu/tmp-ctx "Side")]
+    ;; two R-evidence facts, CxUniverse first (lower handle), then another context
     ;; (higher handle but the smaller context by content, `CxTmp…`) — so a
     ;; handle/retrieval-first pick and a content-first pick disagree.
-    (v/assert kb (list 'genlCx 'CxUniverse above) 'CxUniverse)
     (v/assert kb rfact 'CxUniverse)
     (v/assert kb rfact above)
     (v/assert kb '(holiday NewYear) year)
@@ -580,6 +581,90 @@
         (v/retract! kb (:id (tu/sentex-matching kb (list 'subFooOf mterm yterm) 'CxUniverse)))
         (is (not (v/sees? kb km ky)))))))
 
+(tu/deftest-kb stated-bounds-arriving-after-both-contexts-order-them
+  (let [cxfn (declare-calendar-dimension! kb)]
+    (tu/with-terms [Spring Equinox Windy]
+      (v/assert kb (list 'time_interval Spring) 'CxUniverse)
+      (let [ks (:context (v/sentex kb (v/assert kb (list 'holiday Equinox) (list cxfn 'CxMonad Spring))))
+            km (:context (v/sentex kb (v/assert kb (list 'weather Windy) (list cxfn 'CxMonad '(MonthFn 2000 3)))))
+            _  (is (not (v/sees? kb km ks)) "no bounds yet")
+            _  (v/assert kb (list 'startOf Spring '(InstantFn 2000 3 1 0 0 0)) 'CxUniverse)
+            h  (v/assert kb (list 'endOf Spring '(InstantFn 2000 6 1 0 0 0)) 'CxUniverse)]
+        (is (= [true false] [(v/sees? kb km ks) (v/sees? kb ks km)])
+            "the second bound arriving last orders March below the named interval")
+        (v/retract! kb h)
+        (is (not (v/sees? kb km ks)) "retracting a bound withdraws the edge")))))
+
+(tu/deftest-kb an-instant-order-arriving-after-both-contexts-and-their-named-bounds-orders-them
+  (doseq [order [#(list 'instantBefore %1 %2) #(list 'instantAfter %2 %1)]]
+    (let [cxfn (declare-calendar-dimension! kb)]
+      (tu/with-terms [Spring April Mar1 Mar15 Apr1 May1 Jun1 Equinox Windy]
+        (doseq [m [Mar1 Mar15 Apr1 May1 Jun1]] (v/assert kb (list 'time_point m) 'CxUniverse))
+        (doseq [[i s e] [[Spring Mar1 Jun1] [April Apr1 May1]]]
+          (v/assert kb (list 'time_interval i) 'CxUniverse)
+          (v/assert kb (list 'startOf i s) 'CxUniverse)
+          (v/assert kb (list 'endOf i e) 'CxUniverse))
+        (v/assert kb (order Mar1 Mar15) 'CxUniverse)
+        (v/assert kb (order May1 Jun1) 'CxUniverse)
+        (let [ks (:context (v/sentex kb (v/assert kb (list 'holiday Equinox) (list cxfn 'CxMonad Spring))))
+              ka (:context (v/sentex kb (v/assert kb (list 'weather Windy) (list cxfn 'CxMonad April))))
+              _  (is (not (v/sees? kb ka ks)) "no chain from Spring's start to April's yet")
+              h  (v/assert kb (order Mar15 Apr1) 'CxUniverse)]
+          (is (= [true false] [(v/sees? kb ka ks) (v/sees? kb ks ka)])
+              "the middle link of the chain arriving last orders April below Spring")
+          (v/retract! kb h)
+          (is (not (v/sees? kb ka ks)) "retracting the link withdraws the edge"))))))
+
+(tu/deftest-kb a-slice-at-a-named-moment-is-ordered-below-a-named-interval-its-chain-places-it-in
+  (doseq [chain-last? [false true]]
+    (let [cxfn (declare-calendar-dimension! kb)]
+      (tu/with-terms [Spring Mar1 Mar15 Jun1 Equinox Windy]
+        (v/assert kb (list 'contextArgSubrelation cxfn 2 'subtimeOf) 'CxUniverse)
+        (v/assert kb (list 'time_interval Spring) 'CxUniverse)
+        (v/assert kb (list 'startOf Spring Mar1) 'CxUniverse)
+        (v/assert kb (list 'endOf Spring Jun1) 'CxUniverse)
+        (let [chain! #(doseq [[a b] [[Mar1 Mar15] [Mar15 Jun1]]]
+                        (v/assert kb (list 'instantBefore a b) 'CxUniverse))
+              at     #(list cxfn 'CxMonad %)
+              _      (when-not chain-last? (chain!))
+              ks     (:context (v/sentex kb (v/assert kb (list 'holiday Equinox) (at Spring))))]
+          (when-not chain-last?
+            (is (true? (v/ask? kb (list 'holiday Equinox) (at Mar15)))
+                "the unwritten slice at the moment sees the interval's fact"))
+          (let [km (:context (v/sentex kb (v/assert kb (list 'weather Windy) (at Mar15))))]
+            (when chain-last? (chain!))
+            (is (= [true false] [(v/sees? kb km ks) (v/sees? kb ks km)]))))))))
+
+(tu/deftest-kb a-slice-at-a-stated-start-is-ordered-below-the-open-time-it-starts
+  (doseq [start-last? [false true]]
+    (let [cxfn (declare-calendar-dimension! kb)]
+      (tu/with-terms [Since Equinox Windy Fog]
+        (v/assert kb (list 'contextArgSubrelation cxfn 2 'subtimeOf) 'CxUniverse)
+        (v/assert kb (list 'time_interval Since) 'CxUniverse)
+        (let [start! #(v/assert kb (list 'startOf Since '(InstantFn 2000 1 1 0 0 0)) 'CxUniverse)
+              at     #(list cxfn 'CxMonad %)
+              h      (when-not start-last? (start!))
+              ks     (:context (v/sentex kb (v/assert kb (list 'holiday Equinox) (at Since))))
+              km     (:context (v/sentex kb (v/assert kb (list 'weather Windy)
+                                                      (at '(InstantFn 2000 1 1 0 0 0)))))
+              kl     (:context (v/sentex kb (v/assert kb (list 'weather Fog)
+                                                      (at '(InstantFn 2000 6 1 0 0 0)))))
+              h      (or h (start!))]
+          (is (= [true false false] [(v/sees? kb km ks) (v/sees? kb ks km) (v/sees? kb kl ks)]))
+          (v/retract! kb h)
+          (is (not (v/sees? kb km ks))))))))
+
+(tu/deftest-kb a-stated-end-before-the-start-leaves-the-slice-at-the-start-ordered
+  (let [cxfn (declare-calendar-dimension! kb)]
+    (tu/with-terms [Since Equinox Windy]
+      (v/assert kb (list 'contextArgSubrelation cxfn 2 'subtimeOf) 'CxUniverse)
+      (v/assert kb (list 'startOf Since '(InstantFn 2000 1 1 0 0 0)) 'CxUniverse)
+      (v/assert kb (list 'endOf Since '(InstantFn 1999 1 1 0 0 0)) 'CxUniverse)
+      (let [at #(list cxfn 'CxMonad %)
+            ks (:context (v/sentex kb (v/assert kb (list 'holiday Equinox) (at Since))))
+            km (:context (v/sentex kb (v/assert kb (list 'weather Windy) (at '(InstantFn 2000 1 1 0 0 0)))))]
+        (is (v/sees? kb km ks))))))
+
 (tu/deftest-kb a-genlcx-edge-a-rule-concludes-after-the-contexts-orders-them
   (tu/with-terms [CxLow CxHigh monadBelow]
     (let [cxfn (fresh-cxfn "Monad")]
@@ -596,6 +681,21 @@
             "the concluded edge orders the contexts along its two ends")
         (v/retract! kb h)
         (is (not (v/sees? kb klo khi)) "the edge's premise retracted")))))
+
+(tu/deftest-kb no-monad-is-genlmonad-below-cxuniverse
+  (tu/with-terms [CxLow CxHigh]
+    (let [cxfn (fresh-cxfn "Monad")]
+      (v/assert kb (list 'result cxfn 'context) 'CxUniverse)
+      (v/assert kb (list 'contextArgSubrelation cxfn 1 'genlMonad) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxLow CxHigh) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxHigh 'CxUniverse) 'CxUniverse)
+      (let [ctx-of #(:context (v/sentex kb (v/assert kb '(holiday NewYear) (list cxfn %))))
+            klo    (ctx-of CxLow)
+            khi    (ctx-of CxHigh)
+            ktop   (ctx-of 'CxUniverse)]
+        (is (v/sees? kb klo khi))
+        (is (not (v/sees? kb klo ktop)) "the path ends on the implicit edge, which has no supporter")
+        (is (not (v/sees? kb khi ktop)))))))
 
 (tu/deftest-kb a-genlcx-edge-a-rule-concludes-once-a-formula-declaration-releases-it-orders-the-slices
   (doseq [order [:declaration-first :declaration-last]]
@@ -667,6 +767,51 @@
         (v/retract! kb (if (= :path before) h1 h2))
         (is (= [2 true e] [n (v/sees? kb k1 k2) (edge)])
             (str before " then " after ": two justifications, and the fact keeps the edge"))))))
+
+(tu/deftest-kb an-unwritten-slice-sees-both-its-supers-with-a-one-entry-supporter-cache
+  (tu/with-terms [CxSupM CxSubM CxOtherM p q]
+    (v/assert kb (list 'genlCx CxSupM 'CxWell) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxSubM CxSupM) 'CxUniverse)
+    (let [h (v/assert kb (list 'genlCx CxOtherM 'CxWell) 'CxUniverse)]
+      (v/assert kb (list 'except (list 'sentexHandle h)) CxOtherM))
+    (v/assert kb (list p) (list 'CxTimeFn CxSubM '(YearFn 2000)))
+    (v/assert kb (list q) (list 'CxTimeFn CxSupM '(MonthFn 2000 3)))
+    (let [unwritten (list 'CxTimeFn CxSubM '(MonthFn 2000 3))]
+      (try
+        (v/set-cache-limit :taxonomy-supporters 1)
+        (testing "an except on a genlCx supporter makes the walk read each edge's supporters"
+          (is (= [true true] [(v/ask? kb (list p) unwritten) (v/ask? kb (list q) unwritten)])))
+        (finally (v/set-cache-limit :taxonomy-supporters nil))))))
+
+(tu/deftest-kb an-unwritten-slice-reads-its-supers-by-the-terms-containing-its-time
+  (tu/with-terms [CxM CxSuperM Spring Q1 p q r]
+    (let [cxfn (declare-calendar-dimension! kb)
+          at   #(list cxfn %1 %2)
+          dt   #(list 'DatetimeFn %)
+          day  (dt "2000-03-05")
+          e    (at CxM day)]
+      (v/assert kb '(unreifiable_function DatetimeFn) 'CxUniverse)
+      (v/assert kb '(unreifiable_function DatetimeRangeFn) 'CxUniverse)
+      (v/assert kb (list 'contextArgSubrelation cxfn 1 'genlMonad) 'CxUniverse)
+      (v/assert kb (list 'genlMonad CxM CxSuperM) 'CxUniverse)
+      (v/assert kb (list 'time_interval Spring) 'CxUniverse)
+      (v/assert kb (list 'startOf Spring '(InstantFn 2000 3 1 0 0 0)) 'CxUniverse)
+      (v/assert kb (list 'endOf Spring '(InstantFn 2000 6 1 0 0 0)) 'CxUniverse)
+      (doseq [y (range 1960 1990)] (v/assert kb (list p) (at CxM (dt (str y)))))
+      (v/assert kb (list p) (at CxM (dt "2000-04")))
+      (let [qh (v/assert kb (list 'subintervalOf day Q1) 'CxUniverse)
+            ks (set (for [t [(dt "2000") (dt "2000-3") '(DayFn 2000 3 5) '(DatetimeRangeFn "2000-02" "2000-04")
+                             Spring Q1]]
+                      (:context (v/sentex kb (v/assert kb (list p) (at CxM t))))))
+            ks (conj ks (:context (v/sentex kb (v/assert kb (list p) (at CxSuperM day)))))]
+        (with-redefs [cn/candidates (fn [& _] (throw (ex-info "read every context along the monad" {})))]
+          (is (= ks (set (map first (#'cn/unminted-supers kb e))))))
+        (v/assert kb (list r) (at CxM Q1))
+        (is (true? (v/ask? kb (list r) e)))
+        (v/assert kb (list q) (at CxM (dt "2000-03")))
+        (is (true? (v/ask? kb (list q) e)) "a context minted after a read is read by the next")
+        (v/retract! kb qh)
+        (is (not (v/ask? kb (list r) e)) "a retraction after a read is read by the next")))))
 
 ;; ---- the computed edge's supporters, stated below the context it is stored in ----
 ;;

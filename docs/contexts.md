@@ -18,13 +18,14 @@ partition and scope belief.
 assertions of the more general ones. `vaelii.impl.taxonomy` caches the reflexive-
 transitive up/down closure (`context-up`, `context-down`, `sees?`), recomputed when a
 `genlCx` edge is asserted/retracted. A context `K` sees a sentex in context `Y`
-iff `Y ∈ context-up(K)`.
+iff `Y ∈ context-up(K)`. Every context's ancestor set holds CxUniverse
+([CxUniverse is the implicit root](#cxuniverse-is-the-implicit-root)).
 
 **A `genlCx` edge is `:monotonic` and undeniable.** `genlCx` is forced-monotonic ([nmtms.md](nmtms.md#the-forced-monotonic-set)): every edge is held
 `:monotonic` whatever strength it was written at, so it caps no firing's class, and a
 denial of a stored edge loses to it and moves no edge.
 
-**A `genlCx` cycle is refused at assert, like a `genl` cycle.** The context hierarchy
+**A `genlCx` cycle is refused at assert.** The context hierarchy
 is a partial order: `wff/genlCx-problems` reads the global `genlCx` closure and refuses
 an edge whose super already sees its sub, so mutual visibility is not a claim the edge
 set may assert. A cycle a recovered or foreign store replays past that check
@@ -58,21 +59,23 @@ The placement reads share these rules:
   maximal common descendant, by |ctxs|² depth-pruned `sees?` probes and no closure read:
   a rule and its antecedent facts on one chain, nearly every forward firing. Two
   members that see each other tie, and `term-min` breaks it, not list position.
-- **`maximal-in`** is the one filter behind `maximal-common-descendant-contexts` and
-  `maximal-contexts`, so a `CxInference` witness, a forward placement and an
-  exception-aware placement share one notion of most general. A candidate is struck when
-  another candidate stands above it and does not see it back, and `placement-rep` names
-  each survivor's group. With `member?`, an ancestor strikes a candidate when `member?`
-  holds of it (`descendant-frontier`).
+- **`max-cxs`** maximizes a set of contexts, and `maximal-common-descendant-contexts`
+  calls it, so a `CxInference` witness, a forward placement and an exception-aware
+  placement share one notion of most general. It runs `extremal`, the core under
+  `min-types` and `max-types`
+  ([taxonomy.md](taxonomy.md#what-the-pure-reads-of-the-hierarchy-promise)), over each
+  candidate's `context-up`. A candidate is struck when another candidate stands above it
+  and does not see it back, and `placement-rep` names each survivor's group. With
+  `member?`, an ancestor strikes a candidate when `member?` holds of it
+  (`descendant-frontier`). Forward placement calls `max-cxs` on a set it already filtered
+  while visibility exceptions are active. A `CxInference` fan reports only the maximal
+  answering readers, since a reader below one that answered adds no claim.
 - **`maximal-common-descendant-contexts`** returns the maximal common descendants of
   `ctxs`: possibly empty, possibly several. It exits early when one member sees the rest
   (`seeing-member`) and when the intersection empties, which skips the per-survivor
   `context-up` read. Its callers accumulate contexts in a set, so it builds the distinct
   vector with `into []` and a transducer: `clojure.core/distinct`'s seq arity throws on a
   set.
-- **`maximal-contexts`** maximizes a set the caller already filtered, as forward
-  placement does while visibility exceptions are active. A `CxInference` fan reports only
-  the maximal answering readers, since a reader below one that answered adds no claim.
 - **`meet-closure`** closes `ctxs` under `maximal-common-descendant-contexts` of its
   pairs, plus the members, for the readers that inherit some combination of them
   ([qcn.md](qcn.md), [equality.md](equality.md)). Pairs reach every subset, since a
@@ -93,14 +96,14 @@ The default topology is three levels, most general (top) to most specific (botto
 | context | holds | sees |
 |---|---|---|
 | CxUniverse | the upper ontology: every file under `resources/kb/upper/` | nothing |
-| the middle contexts | `kb/middle/` — seven theories, beside three opt-in theories | CxUniverse |
+| the middle contexts | `kb/middle/` — seven theories, beside two opt-in theories | CxUniverse (CxTra also CxSocial) |
 | CxWell | no content of its own | the seven theories |
 
 Data hangs below CxWell.
 
-- **CxUniverse** — the root: every context the middle layer wires in sees it, and a
-  context no `genlCx` edge names sees nothing but itself ([A context outside the
-  topology](#a-context-outside-the-topology)). `vaelii.host.core-context` loads every
+- **CxUniverse** — the root: every context sees it, a context no `genlCx` edge names
+  included ([CxUniverse is the implicit root](#cxuniverse-is-the-implicit-root)).
+  `vaelii.host.core-context` loads every
   file under `resources/kb/upper/` into it as one batch. `core.txt` is the
   code-supported vocabulary (every special predicate the engine interprets) and the top
   of the ontology: the parts of the three partitions of `thing`
@@ -173,18 +176,62 @@ Data hangs below CxWell.
   kitchen. A context opts in by placing itself under CxNormalPhysicalConditions, and a
   context under both CxWell and CxNormalPhysicalConditions reads the everyday theories at
   room temperature.
-- **CxTra** — an **opt-in** theory in `kb/middle/` that sees CxUniverse and that
-  CxWell does **not** see. CxTra holds vocabulary that is generally useful but specific
+- **CxTra** — an **opt-in** theory in `kb/middle/` that sees CxUniverse and CxSocial,
+  and that CxWell does **not** see. It sees CxSocial because its relationship terms
+  specialize CxSocial's relations, so a context placed under CxTra reads CxSocial's
+  relations too. CxTra holds vocabulary that is generally useful but specific
   to one domain, and no starter context CxWell sees states that vocabulary. A context
   opts in by placing itself under CxTra, and a context that does not see CxTra reads
-  none of its relations or kinds. CxTra holds three vocabularies:
-  - **computing** — ten relations over software tools, their invocations and
+  none of its relations or kinds. CxTra holds eight vocabularies:
+  - **computing** — eleven relations over software tools, their invocations and
     receipts, media resources and DNS names, and the sixteen kinds the relations are
     typed over (`computational_system`, `software_tool`, `tool_invocation`,
     `media_resource`, `ip_address` and the kinds below them), each with its comment,
-    its `genl` edges and its disjointness. The computing relations state no rule.
+    its `genl` edges and its disjointness. `(toolEnablesCapability ?tool ?kind)` says
+    that whoever has `?tool` can be the doer of a happening of kind `?kind`, and the
+    one computing rule, a default guarded by `causal`, reads `hasCapability` from it and
+    `agentHasTool`. Both relations take a `temporal` in the tool position, the nearest kind
+    software and a hammer or a jetpack share, and CxTra excepts CxBiology's
+    penguin denial, through `(ist CxBiology …)`, for a penguin that has something that
+    enables flying. No rule concludes anything about an invocation.
     `(functional toolName)` is a decontextualized mark, so every context that sees
     CxUniverse reads that mark.
+  - **hosts** — `computer` is hardware, an `electronic_device`, and
+    `virtual_machine`, `software_container` and `software_service` (with its spec
+    `mcp_server`) are computational systems, separated from one another.
+    `(runsOn ?system ?host)` is transitive, and no rule carries any other fact across
+    it, so a fact about a container is not thereby one about its host.
+    `kubernetes_cluster`, `network` and `kubernetes_namespace` group them, through
+    `clusterNode` (with its specs `controlPlaneNode` and `workerNode`; a node is the
+    operating system install, a computational system that runs on a computer or a
+    hypervisor), `onNetwork` and `kubernetesNamespaceOf`. `(hostnameOf ?thing ?name)` is functional in neither
+    position, so two systems that share a name are not thereby equal.
+  - **access** — a grant is a capability: `(hasCapability ?principal (ShellAccessFn
+    ?resource))`. Five reifiable functions, `ReadAccessFn`, `WriteAccessFn`,
+    `ShellAccessFn`, `AdminAccessFn` and `DeployAccessFn`, map a resource to a happening
+    kind below one of the five kinds under `resource_access`, and each has a functional
+    corresponding predicate (`readAccessOf` and the rest). Two default rules conclude
+    write access from admin access and from deploy access over the same resource. A
+    missing grant is unknown, and no rule concludes a denial. `(custodianOf ?person
+    ?thing)` names who keeps a thing working, and is not access.
+  - **file paths** — an absolute path names a file only within a
+    `filesystem_namespace`, so a `file_path_reference` is the pair, built by the
+    reifiable `FilePathRefFn` and read back through `filePathRefOf`, `pathNamespace`
+    and `pathText`. `file_lookup`, resolving paths in a namespace, is an access kind
+    below `resource_access`, and `(hasCapability ?principal (FileLookupFn ?namespace))`
+    states a grant of it, with `fileLookupOf` its corresponding predicate. Lookup
+    entails no read access.
+  - **pull requests** — a `pull_request` of a `forge_repository` (both below
+    `digital_artifact`) is named by the reifiable `(PullRequestFn ?repository
+    ?number)`, with `pullRequestOf` its corresponding predicate, value last.
+    `(prStatus ?pullRequest ?status)` takes one of four `pull_request_status` values,
+    `PullRequestDraft`, `PullRequestReady`, `PullRequestMerged` and
+    `PullRequestClosed`, and no time argument. `(holdsReadyLatch ?person ?repository)`
+    says whose call it is that a repository's drafts are ready, and is not a grant.
+    `merge_access` is below `write_access`, `(hasCapability ?principal (MergeAccessFn
+    ?repository))` states a grant of it, with `mergeAccessOf` its functional
+    corresponding predicate, and a default rule concludes write access over the same
+    repository.
   - **content and carriers** — `information` is content apart from its medium, and
     `conceptual_work` is information composed as one work. `(carries ?carrier ?info)`
     types position 1 `temporal` and position 2 `information`, so a tangible paper copy
@@ -199,22 +246,27 @@ Data hangs below CxWell.
     `(propositionalContent ?info ?proposition)` is not functional over the existing
     `proposition` type; neither is derived from an information's author, encoding or
     context. `agentClaims` is `target_following_predicate`, so retracting H retracts
-    the claims that name it.
+    the claims that name it. `(discordMessageClaims ?message (sentexHandle H))` records
+    that a `discord_message`, named by its snowflake id as a string through the
+    reifiable `DiscordMessageFn`, asserts sentex H; it is typed and marked as
+    `agentClaims` is, so it does not outlive H, and records where a claim came from,
+    not that it is true. `(nameString ?thing ?name)` takes a thing of any kind and
+    a string, and a thing can have more than one name string.
   - **perception** — `perceives` is the general relation and `sees` specializes it.
     `seeImage` and `watchVideo` conclude `sees` by a rule guarded by its `spatial`
     second argument, since an image or a video need not be located.
-- **CxSocialExtension** — an **opt-in** theory in `kb/middle/` that sees CxSocial,
-  and through it CxUniverse, and that CxWell does **not** see: `nestingPartnerOf`
-  (a spec of CxSocial's `romanticPartnerOf` and `roommateOf`, and read by a rule from
-  the two) and `chosenSiblingOf` (a spec of `relativeOf`). A context opts in by
-  placing itself under CxSocialExtension, which also carries CxSocial's own
-  relations to it. **`<Theory>Extension` names a
-  theory that extends an existing starter theory with vocabulary most contexts
-  under the base theory have no occasion to see:** the base theory ships to every
-  context below CxWell, and the extension only to a context placed under it.
-- **CxWell** — sees every middle context except the three opt-in theories, so it (and any
+  - **relationships and plural identity** — relationship vocabulary narrower than
+    CxSocial's: `nestingPartnerOf` (a spec of CxSocial's `romanticPartnerOf` and
+    `roommateOf`, and read by a rule from the two), `chosenSiblingOf` (a spec of
+    `relativeOf`), `construct` (a person whose mind runs on a computational substrate,
+    `:monotonic`-disjoint from `organism`, `computational_system` and `organization`), its `seat` (the computational
+    system it runs in, related by the non-functional `hasSeat`), `founderOf` (a spec of
+    `originatorOf` naming the person who founded a construct), and the plurality terms: `singlet`, `plural_system` and
+    `alter`, separated under `person`, with `alterOf` and `headmateOf` (read by a rule
+    from `alterOf`, and not a spec of `knows`).
+- **CxWell** — sees every middle context except the two opt-in theories, so it (and any
   context below it) transitively sees the whole ontology except
-  CxNormalPhysicalConditions, CxSocialExtension and CxTra. A
+  CxNormalPhysicalConditions and CxTra. A
   `kb/middle/` file is one of the seven theories when it states `(genlCx CxWell <its
   context>)`, and an opt-in theory when it does not.
 
@@ -264,11 +316,13 @@ cast facts in `CxNaturalWorld` places its conclusion back in `CxNaturalWorld`
 
 ### Adding a context
 
-A user adds a context of their own to the topology. A context CxUniverse sees
-(`(genlCx CxUniverse CxMy)`) holds universal vocabulary, visible from every data context
-below CxWell. A theory sees CxUniverse and is seen by CxWell (`(genlCx CxMy CxUniverse)`
-and `(genlCx CxWell CxMy)`), so every data context below CxWell reads it. Neither touches
-a shipped file or a premise of CxUniverse, so sync leaves both in place.
+Universal vocabulary goes into CxUniverse itself, which every context sees. Sync locks
+CxUniverse's premises about the engine's own terms to the upper files and leaves a
+sentence about the user's own terms in place. `wff` refuses `(genlCx CxUniverse CxMy)`
+with `:not-well-formed`: CxUniverse is the top of the topology. A theory is seen by CxWell
+(`(genlCx CxWell CxMy)`), so every data context below CxWell reads it, and it sees
+CxUniverse with no edge. An edge does not touch a shipped file, so sync leaves it in
+place.
 
 ## Context-aware inference
 
@@ -335,7 +389,7 @@ conjunct the same wildcard and merges what comes back, so a fact in `CxA` joins 
 one reader's `genlCx` ancestor set covers the whole derivation, and that reader is the
 answer's witness.
 
-The witness is the **most general** such reader (`tax/maximal-contexts`), computed per
+The witness is the **most general** such reader (`tax/max-cxs`), computed per
 answer from every reader that gave it. The readers below it see a superset of the same
 knowledge and add no claim, so reporting all of them would make the answer count a fact
 about how finely the KB is divided. Under `:proof?` an answer is one derivation, so two
@@ -554,7 +608,8 @@ The removal is **total**, not just for reads:
   a handle every route of it rests on), never on a placed `defeat` (below). The except re-checks the firings over `H`'s consequence closure and re-joins from
   that closure when it leaves (`special/recheck-except`, `special/drain-except-moves!`),
   so its cost is the consequences of `H` and not the extent of the rules they use
-  (`lein perf`'s `except-beside-unrelated-firings`). A conclusion placed *above*
+  (`lein perf`'s `except-beside-unrelated-firings`). A rule in the closure is re-joined
+  over its own extent, since the except moved that rule's visibility. A conclusion placed *above*
   the ancestor set (a context that does not see the except) stays stored and believed
   there. A read from a context that sees the except does not find that conclusion when
   every justification it has rests on a hidden handle (the read walk, `exc/hidden-fn`,
@@ -633,9 +688,10 @@ moved reaching the support of an active edge's supporter. `tax/context-move` com
 one move shows or hides, from the taxonomy as it stands, in two strata:
 
 - **raw**: `super`'s global ancestor set with `super`, less `sub`'s global ancestor set
-  without the edge. The excepts in force at a reader are read off its raw ancestor set, so
-  the excepts that come into or leave force at a reader under `sub` are the ones stated in
-  these contexts.
+  without the edge. That ancestor set keeps the implicit edge to CxUniverse, so an edge to
+  CxUniverse moves no context. The excepts in force at a reader are read off its raw
+  ancestor set, so the excepts that come into or leave force at a reader under `sub` are
+  the ones stated in these contexts.
 - **effective**: the readers under `sub` fall into classes by the contexts of their global
   ancestor set that state an `except` on a `genlCx` supporter's support, or on one of those
   excepts (`exc/genlCx-except-contexts`). Readers of one class read every `genlCx` supporter
@@ -822,16 +878,11 @@ copy is visible to the *next* assert, and the settle weighs the clash where the 
 assert is made. The same reach is why a declaration written in CxUniverse constrains
 every context in the tree, and it is the reason the target is fixed.
 
-The residual case is a context outside the topology, which sees neither its
-siblings nor CxUniverse. There the stating context could not have run the check
-either, so the lift runs it on the copy itself (`unchecked-target?` — one `sees?` per
-lift, and only that case pays anything more). A sweep over stored facts, the one a
-declaration arriving last runs and the one `recover` runs, asks `sees?` once per stating
-context. The copy is asked what a rule's
-conclusion is asked (`checks/derivation-violation`): a clash with a believed member is
-stored and placed as a nogood, and only an inadmissible copy, an argument
-conviction or a malformed form, is dropped, recording a `violations` entry that names
-the context it was lifted from.
+Every context sees CxUniverse, so the stating context's assert ran the checks against what
+the copy meets there, and `special/deduce-lift` stores the copy unchecked. A fact whose copy
+an argument constraint would convict is refused at that assert, and a fact that clashes
+with a copy already in CxUniverse is weighed at its own assert
+(`meta_test/a-fact-clashing-with-a-lifted-copy-is-checked-at-the-assert`).
 
 ### The lift is about the predicate, so derived content is lifted too
 
@@ -936,8 +987,7 @@ mirror of a fact from a sibling through the store and denied it through `has-pro
 symmetric prover and the supporter a mirrored firing names. `special/deduce-lifts`
 therefore deduces a permuting mark into CxUniverse whether or not the KB declares the lift,
 resting the copy on the statement alone. On a KB carrying the upper layer, which declares it, the
-copy is the same copy. A context that sees neither a statement nor the copy reads the
-four as the store does ([A context outside the topology](#a-context-outside-the-topology)).
+copy is the same copy, and every context sees it through CxUniverse.
 
 **A KB without the upper layer holds the other twelve where they are stated.** Nothing lifts
 them, so every reader reads `(transitive R)` stated in `CxA` from `CxA` and below, alike.
@@ -974,54 +1024,62 @@ Each table entry records its supporting sentexes with their contexts
 and, where the mark is lifted, the copy in CxUniverse, which is what every reader outside
 `CxA`'s descendants answers from.
 
-### A context outside the topology
+### CxUniverse is the implicit root
 
-A context no `genlCx` edge names sees nothing but itself, not even CxUniverse. The
-lattice has no implicit root. A reader of such a context reads what was stated there,
-which is what an agent context's independence rests on
-([belief.md](belief.md#independence-and-inheriting-base)), and an edge is how a KB puts the
-context into the topology. A context above CxUniverse that sees no context below it does
-not see CxUniverse either, so it reads a lifted copy no more than an unwired context
-does.
+Every context other than CxUniverse and the query contexts sees CxUniverse with no stored
+`genlCx` edge; `CxNothing` reads no fact at all. The
+taxonomy adds the edge where it computes the ancestor set (`with-root`, `sees?`), so
+reads, rule firing, taxonomy closures and the definitional checks read CxUniverse from a
+context no edge names. An agent context therefore sees the definitional layer, and
+contingent facts it should not inherit belong in CxWell or below
+([belief.md](belief.md#independence-and-inheriting-base)). An explicit
+`(genlCx CxMy CxUniverse)` adds nothing to what `CxMy` sees, and `context-move` reads
+such an edge as showing and hiding nothing.
 
-For the twelve marks lifted by declaration, "every context" in the table above therefore
-means every context that sees CxUniverse. A context that does not:
+No context sits above CxUniverse. `wff/genlCx-problems` refuses `(genlCx CxUniverse X)`
+for every `X` with `:not-well-formed`, since `X` already sees CxUniverse and the edge
+closes a cycle through the implicit edge.
 
-- reads a mark only from a statement it sees, its own included. `(functional R)` stated in
-  it merges its facts there, and one stated in a sibling does not.
-- has its own statements lifted like any other context's, so every context that sees
-  CxUniverse reads a mark stated in it.
-- runs no definitional check whose declaration it cannot see. It sees none of CxUniverse's
-  argument declarations, so it admits what a context under CxUniverse refuses, and a lift out
-  of it runs the check on the copy (`unchecked-target?`, above).
-- gets no CxUniverse rule firing over its facts, since no context sees both the rule and the
-  fact. Each such firing files a `:no-placement` entry.
+Every upward walk of the context relation reads one parent set: the stored parents plus
+CxUniverse for every context other than CxUniverse (`with-root-parents`). `up-besides`,
+`move-gains`, `min-context-parents` and the scoped closures read it, so a moved edge's
+"without" walk counts CxUniverse as seen. A walk down from CxUniverse would visit every
+context, and a context no edge names is a node of no closure, so no engine read takes it:
 
-The four permuting marks are the exception, because of the stored key. The store sorts a
-fact by a mark stated in any context, so a fact stated in such a context is sorted by a mark stated
-anywhere, and its reader answers the fact's mirror. Every other reader of the property
-reads it where the store does:
+- `maximal-common-descendant-contexts` and `common-descendants` drop CxUniverse from the
+  set before reading the down closures. The maximal common descendants of CxUniverse and
+  `X` are `X`'s own.
+- `contexts-seen-with-global` of CxUniverse is every context it is given.
+- A fact stored in CxUniverse reads the declarations below it by functor, with no
+  context narrowing (`special/declarations-below`).
+- A declaration in CxUniverse reads the tuples it constrains in every context
+  (`checks/declaration-conflict`, `argument-convictions`, the `irreflexive` and
+  `genlArg` sweeps).
+
+`context-down` of CxUniverse, a public read, answers CxUniverse and every context some
+stored `genlCx` edge names. The query `(genlCx ?x CxUniverse)` answers the contexts whose
+stored edges reach CxUniverse, as `(genl ?x thing)` answers the types whose stored edges
+reach `thing`.
+
+For the twelve marks lifted by declaration, "every context" in the table above holds
+without exception: a mark stated in any context is lifted to CxUniverse, which every
+context reads. A firing of a CxUniverse rule over a fact in a context no edge names is
+placed in that context, the maximal common descendant of the two.
+
+The four permuting marks are read where the store reads them. The store sorts a fact by a
+mark stated in any context, so its reader answers the fact's mirror. Every other reader of
+the property reads it where the store does:
 
 - `has-prop?` answers `:symmetric` and `:commutative` from any context as whether that
   context believes a statement, every statement read as visible from it (`tax/has-prop?`),
   and the symmetric prover reads the property through it.
 - A forward firing that read a fact through its mirror names the mark statement, so
   retracting the mark withdraws the firing, and is placed by the rule and the facts it
-  matched alone (`chain/placement-antecedents`). Were the statement's context to
-  constrain the placement as well, a context that sees no statement would lose the firing
-  to a `:no-placement` when the mark arrives first, and keep the firing it made before the
-  mark when the mark arrives last. The statement named is the CxUniverse copy where it is
-  believed, since it stands while any statement does.
+  matched alone (`chain/placement-antecedents`). The statement named is the CxUniverse
+  copy where it is believed, since it stands while any statement does.
 
 The mark asked as a sentence, `(ask? kb '(symmetric R) Ctx)`, is answered where a
 statement is visible, as any sentence is.
-
-`relation_properties_test`'s
-`a-merge-mark-reaches-a-context-with-no-edge-only-from-its-own-statement` asserts the twelve,
-`inherit_test`'s `a-permuting-mark-is-read-from-a-context-with-no-edge` asserts the property
-reads, and `order_independence_test`'s
-`a-firing-a-mark-no-statement-of-reaches-is-placed-in-every-order` asserts the firing, in an
-unwired context and in one that sees a context other than CxUniverse.
 
 ## forced_decontextualized_predicate: a canonical home in CxUniverse
 

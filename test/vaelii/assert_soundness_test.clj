@@ -38,8 +38,7 @@
 ;; stored unchecked.
 
 (tu/deftest-kb a-wrapper-around-a-fact-does-not-smuggle-it-past-the-disjointness-check
-  ;; one context throughout: the disjointness check is context-scoped and this KB
-  ;; is fresh, so a declaration in an unwired CxUniverse would be invisible
+  ;; one context throughout: the disjointness check is context-scoped
   (tu/with-terms [dog cat Felix Tom]
     (v/assert kb (list 'disjoint dog cat) 'CxNaturalWorld)
     (v/assert kb (list cat Felix) 'CxNaturalWorld)
@@ -181,7 +180,7 @@
 ;; ---- gap 4: a rule the rule index cannot key on ------------------------
 ;;
 ;; The rule index has two cells and both are keyed on a **predicate**
-;; (`kv/rule-ante-key` / `rule-conseq-key`).  A variable in functor position names none,
+;; (`vr/antecedent-key` / `consequent-key`).  A variable in functor position names none,
 ;; and `canonicalize-rule` numbers it to `?var0` before `special/index-rule-sentex` reads
 ;; the sentence.  The split (reasoning/27): a variable functor in an **antecedent** is the
 ;; widest trigger the engine can have — no arriving fact can key it, so it fires only when

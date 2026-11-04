@@ -122,7 +122,7 @@ NOT_DERIVED: dict[tuple[str, str], str] = {
 # An entry leaves when its row's content becomes stored sentexes; an entry naming a row
 # that does not declare `:holds-content? true` fails, so the list only shrinks.
 HOLDS_CONTENT: dict[str, str] = {
-    "S5": "closed-extent and separation refusals and the `:lift` entries",
+    "S5": "closed-extent and separation refusals",
 }
 
 # `row id -> what it indexes`: the rows still holding a belief-free index outside the
@@ -138,8 +138,8 @@ COVERED_FILES: set[str] = {"decide/arity.clj"}
 # `row id -> why it has no `:covered-by` yet`.  Same shrink-only rule as HOLDS_CONTENT: an
 # entry naming a row that declares `:covered-by`, or a row outside COVERED_FILES, fails.
 COVERAGE_OWED: dict[str, str] = {
-    "N3": "unmeasured: the recompute-at-read replacement waits on a box under load 15",
-    "N8": "unmeasured: the recompute-at-read replacement waits on a box under load 15",
+    "N3": "unmeasured: the recompute-at-read replacement has not been timed",
+    "N8": "unmeasured: the recompute-at-read replacement has not been timed",
 }
 
 # The row whose entries are the beliefs; a row reading it, directly or through other

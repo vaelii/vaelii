@@ -203,7 +203,7 @@
    {:name :fanned-join
     :build fanned-join
     :reads {:arity-binding 2 :argument-root 200 :argument-slot 200 :exception-index 200
-            :predicate-extent 1203 :rule-index 300 :trie-counts 500}}
+            :opposed 100 :predicate-extent 1203 :rule-index 300 :trie-counts 500}}
 
    ;; two `:trie-lookup` per firing, not one: the mirror is a second orientation to look
    ;; the conclusion's own handle up under, and both orientations reach `join-matches`

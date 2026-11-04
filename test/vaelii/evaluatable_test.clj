@@ -365,6 +365,30 @@
       (let [concluded? (v/ask? kb (list sameLen Pc Pd) 'CxUniverse)]
         (is concluded? (pr-str order))))))
 
+(tu/deftest-kb ^:slow a-computed-antecedent-is-never-asked-open-in-any-arrival-or-antecedent-order
+  (doseq [rule-last? [false true]
+          antes (tu/permutations '[(rowOf ?a ?b ?c ?d ?f) (apart ?a ?b ?c ?d ?f ?e) (mark ?e)])]
+    (tu/with-terms [rowOf apart mark linked tagOf Node CxRow]
+      (let [open  (atom 0)
+            [a0 e0] [(symbol (str Node "A0")) (symbol (str Node "E0"))]
+            antes (mapv #(replace {'rowOf rowOf 'apart apart 'mark mark} %) antes)
+            rule  #(v/assert-rule kb antes (list linked '?a '?e) CxRow {:direction :forward})]
+        (v/add-prover kb (v/prover {:applicable?        (fn [_ g _] (and (seq? g) (= apart (first g))))
+                                    :solve-with-support (fn [_ [_ a _ _ _ _ e :as g] _]
+                                                          (cond (not (sx/ground-term? g)) (do (swap! open inc) [])
+                                                                (and (= a a0) (= e e0)) [[{} []]]
+                                                                :else []))
+                                    :support-functors   #{apart}
+                                    :support-sources    #{tagOf}}))
+        (v/assert kb (list tagOf Node) CxRow)
+        (when-not rule-last? (rule))
+        (doseq [i (range 32)] (v/assert kb (list rowOf (symbol (str Node "A" i)) Node Node Node Node) CxRow))
+        (doseq [j (range 40)] (v/assert kb (list mark (symbol (str Node "E" j))) CxRow))
+        (when rule-last? (rule))
+        (is (= [0 #{{'?x a0 '?y e0}}]
+               [@open (set (v/query kb [(list linked '?x '?y)] CxRow))])
+            (pr-str rule-last? antes))))))
+
 ;; ---- the sole-prover guard applies to the wrapper too -------------------
 
 (tu/deftest-kb a-rule-concluding-the-predicate-stops-the-evaluatable-running-alone

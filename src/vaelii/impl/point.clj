@@ -12,6 +12,7 @@
             [vaelii.impl.qcn-kb :as qkb]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.stp :as stp]
             [vaelii.impl.timepoint :as tp]
             [vaelii.impl.types.prover :as prover-types]))
 
@@ -69,12 +70,45 @@
 
 ;; ---- the calculus, and the glue it shares with every other algebra -------
 
+(defn- allen-fact-constraints
+  "The constraints the believed Allen facts visible from `context` put on their two
+  things' points, as `{:net … :support …}`, or nil when none narrows a pair.  `(P a b)`
+  narrows each of the four endpoint comparisons (`stp/endpoint-gaps`) to the union, over
+  `P`'s denotation, of `stp/endpoint-signature`'s ordering, both directions, each resting
+  on the fact.  It reads the stored facts and not the interval network, which reads this
+  one (docs/time.md, \"The points of a temporal thing\")."
+  [kb context]
+  (let [ends   #(vector (tp/point :start %) (tp/point :end %))
+        named? #(and (symbol? %) (not (sx/variable? %)))
+        r (reduce
+           (fn [acc [hs a b den]]
+             (reduce-kv
+              (fn [acc k [p q]]
+                (let [rels (into #{} (map #(get-in stp/endpoint-signature [% k])) den)]
+                  (if (= all-relations rels)
+                    acc
+                    (-> acc
+                        (update-in [:net [p q]] (fnil set/intersection all-relations) rels)
+                        (update-in [:net [q p]] (fnil set/intersection all-relations)
+                                   (converse-set rels))
+                        (update-in [:support [p q]] (fnil into #{}) hs)
+                        (update-in [:support [q p]] (fnil into #{}) hs)))))
+              acc (stp/endpoint-gaps (ends a) (ends b))))
+           {:net {} :support {}}
+           (for [[pred den] stp/interval-denotation
+                 [hs a b]   (qkb/asserted-pairs kb named? pred context)]
+             [hs a b den]))]
+    (when (seq (:net r)) r)))
+
 (def instants
   "The point algebra as a `vaelii.impl.qcn-kb` calculus, with `timepoint/constraints-over`
-  as its node-set narrowing."
+  as its node-set narrowing and `allen-fact-constraints` as its stated-fact one."
   (qkb/calculus :point point-algebra instant-denotation
-                {:over-nodes tp/constraints-over
-                 :node?      tp/node-term?}))
+                {:fn         allen-fact-constraints
+                 :over-nodes tp/constraints-over
+                 :node?      tp/node-term?
+                 :sources    (set (keys stp/interval-denotation))
+                 :contexts   (set (keys stp/interval-denotation))}))
 
 (defn possible-point-relations
   "The base relations still possible between instants `i1` and `i2` given everything
@@ -89,24 +123,41 @@
 
 ;; ---- a thing against a moment -------------------------------------------
 
-(defn- endpoint-relations
-  "`[st te]`: the relations still possible between `thing`'s start and `t`, and between `t`
-  and `thing`'s end."
-  [kb context thing t]
-  [(possible-point-relations kb context (tp/point :start thing) t)
-   (possible-point-relations kb context t (tp/point :end thing))])
+(defn- readings
+  "A fn of a moment `t` answering `[st te]`, each side a vector of `[rels pairs handles]`
+  readings: the relations possible between `thing`'s start and `t` (`st`) and between `t`
+  and its end (`te`), the network pairs each rests on, and the stated facts it reads.  The
+  network's reading of the two point terms comes first.  A stated `startOf` `m` reads `st`
+  as `m` against `t`, and `te` as what an end after `m` leaves, since an interval holds its
+  start; a stated `endOf` `n` reads `te` as `t` against `n`.  The bounds are read once."
+  [kb context thing]
+  (let [rel    #(possible-point-relations kb context %1 %2)
+        s      (tp/point :start thing)
+        e      (tp/point :end thing)
+        [m mh] (stp/stated-endpoint kb thing context 'startOf tp/node-term?)
+        [n nh] (stp/stated-endpoint kb thing context 'endOf tp/node-term?)]
+    (fn [t]
+      (let [mt (when m (rel m t))]
+        [(cond-> [[(rel s t) [[s t]] #{}]] m (conj [mt [[m t]] mh]))
+         (cond-> [[(rel t e) [[t e]] #{}]]
+           n (conj [(rel t n) [[t n]] nh])
+           m (conj [(compose (converse-set mt) #{:before}) [[m t]] mh]))]))))
+
+(defn- side-relations [side] (apply set/intersection (map first side)))
 
 (defn- inclusion-verdict
-  "Does a thing include the moment `t`, given `endpoint-relations`' `[st te]` — at or after
-  its start and before its end, the calendar terms' half-open convention?  `:true`,
-  `:false` when `t` falls before the start or at or after the end, `:unknown` when the
-  network leaves either side open, `:inconsistent` when the network contradicts itself."
+  "Does a thing include the moment `t`, given `readings`' `[st te]` — at or after its start
+  and before its end, the calendar terms' half-open convention?  `:true`, `:false` when `t`
+  falls before the start or at or after the end, `:unknown` when the readings leave either
+  side open, `:inconsistent` when they contradict each other or the network itself."
   [[st te]]
-  (cond
-    (or (empty? st) (empty? te))                                  :inconsistent
-    (and (set/subset? st #{:before :equal}) (= te #{:before}))    :true
-    (or (= st #{:after}) (set/subset? te #{:after :equal}))       :false
-    :else                                                         :unknown))
+  (let [st (side-relations st)
+        te (side-relations te)]
+    (cond
+      (or (empty? st) (empty? te))                                  :inconsistent
+      (and (set/subset? st #{:before :equal}) (= te #{:before}))    :true
+      (or (= st #{:after}) (set/subset? te #{:after :equal}))       :false
+      :else                                                         :unknown)))
 
 (defn- inclusion-literal
   "`[neg? thing t]` for a goal `(includesInstant thing t)` or its negation, each argument a
@@ -121,37 +172,54 @@
 (defn- inclusion-contexts [kb context]
   (if (sx/variable? context) (qkb/reader-contexts kb instants) [context]))
 
-(defn- deciding-pairs
-  "The endpoint pairs a verdict of `v` rests on: both for `:true`, and for `:false` the one
-  or two that put `t` outside."
-  [thing t [st te] v]
-  (let [s [(tp/point :start thing) t]
-        e [t (tp/point :end thing)]]
-    (if (= v :true)
-      [s e]
-      (cond-> []
-        (= st #{:after})                  (conj s)
-        (set/subset? te #{:after :equal}) (conj e)))))
+(defn- side-support
+  "`[pairs handles]` of the first reading in `side` whose relations satisfy `ok?` alone,
+  else of every reading in it."
+  [side ok?]
+  (if-let [[_ ps hs] (first (filter (comp ok? first) side))]
+    [ps hs]
+    [(mapcat second side) (into #{} (mapcat #(nth % 2)) side)]))
+
+(defn- deciding-support
+  "`[pairs handles]` a verdict of `v` rests on: both sides of `readings` for `:true`, and
+  for `:false` the one or two that put `t` outside."
+  [[st te] v]
+  (let [at-or-after? #(set/subset? % #{:after :equal})
+        sides (if (= v :true)
+                [[st #(set/subset? % #{:before :equal})] [te #(= % #{:before})]]
+                (cond-> []
+                  (= (side-relations st) #{:after})  (conj [st #(= % #{:after})])
+                  (at-or-after? (side-relations te)) (conj [te at-or-after?])))
+        sups  (map #(apply side-support %) sides)]
+    [(mapcat first sups) (into #{} (mapcat second) sups)]))
+
+(defn- bounded-things
+  "The things a believed `startOf` or `endOf` visible in `context` bounds."
+  [kb context]
+  (into #{} (comp (mapcat #(res/matches-visible kb (list % '?i '?p) context))
+                  (map (comp #(get % '?i) second)))
+        stp/endpoint-predicates))
 
 (defn- entailed-inclusions
-  "The network's answers to `goal` as `[bindings support]`, one per reader context that
-  answers.  An open thing ranges over the things with a point in that context's network,
-  and an open moment over its nodes."
+  "The answers `readings` give `goal` as `[bindings support]`, one per reader context that
+  answers.  An open thing ranges over the things with a point in that context's network or
+  a stated bound visible there (`bounded-things`), and an open moment over its nodes."
   [kb goal context support?]
   (let [[neg? x t] (inclusion-literal goal)
         want  (if neg? :false :true)
         open? sx/variable?]
     (for [c    (inclusion-contexts kb context)
           :let [ns (when (or (open? x) (open? t)) (qkb/nodes (qkb/network kb instants c)))]
-          xv   (if (open? x) (into #{} (keep tp/thing-of) ns) [x])
+          xv   (if (open? x) (into (into #{} (keep tp/thing-of) ns) (bounded-things kb c)) [x])
+          :let [read (readings kb c xv)]
           tv   (if (open? t) ns [t])
           :when (or (not= x t) (= xv tv))
-          :let [rels (endpoint-relations kb c xv tv)]
+          :let [rels (read tv)]
           :when (= want (inclusion-verdict rels))]
       [(cond-> {} (open? x) (assoc x xv) (open? t) (assoc t tv))
        (when support?
-         (into #{} (mapcat (fn [[a b]] (qkb/support instants kb c a b)))
-               (deciding-pairs xv tv rels want)))])))
+         (let [[pairs hs] (deciding-support rels want)]
+           (into hs (mapcat (fn [[a b]] (qkb/support instants kb c a b))) pairs)))])))
 
 (defn- solve-inclusion
   "`goal`'s solutions as `[bindings support]` pairs, the one reader behind both prover
@@ -181,7 +249,7 @@
   (solve [_ kb goal context] (map first (solve-inclusion kb goal context false)))
   prover-types/SupportingProver
   (support-functors [_] #{'includesInstant})
-  (support-sources [_] (set (keys instant-denotation)))
+  (support-sources [_] (into stp/endpoint-predicates (keys instant-denotation)))
   (solve-with-support [_ kb goal context] (solve-inclusion kb goal context true)))
 
 (defn includes-instant-prover

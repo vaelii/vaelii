@@ -34,7 +34,7 @@
 
 (def pad-kinds
   "The standing kinds one padding copy holds."
-  [:contradicts :defeat :mint :held :lift :sep :rule :deep])
+  [:contradicts :defeat :mint :held :sep :rule :deep])
 
 (defn- sym [fmt k] (symbol (format fmt k)))
 
@@ -74,14 +74,6 @@
                                              (list (r "OwnsPet") '?y '?x)))
                           below)
                      (in! (list (r "PetOf") 5 (i "Ann")) below))
-      ;; a fact in a context outside the topology whose lift into CxUniverse the
-      ;; argument constraint convicts waits as a `:lift` entry; the declaration the lift
-      ;; fails and its type are the content of P in CxUniverse
-      :lift        (let [out (sym "CxPad%dLiftOut" k)]
-                     (v/assert kb (list 'genl (t "lanimal") 'thing) 'CxUniverse mono)
-                     (v/assert kb (list 'arg (r "Lifted") 2 (t "lanimal")) 'CxUniverse)
-                     (v/assert kb (list 'decontextualized_predicate (r "Lifted")) out)
-                     (v/assert kb (list (r "Lifted") (i "L") 5) out))
       ;; a membership of a type separated from a preserved one: an inherited-clash entry
       ;; with `:sep?`, and its placed `contradicts`
       :sep         (do (in! (list 'transitiveInArgInverse (t "down") 1 'genl) cx mono)
@@ -307,10 +299,6 @@
    {:frame "vaelii.impl.discovery$preserving_entries"
     :reads "every inherited-clash entry over a separation, re-asked on a separation write (`sep-moved?`)"
     :world {:pad [:sep] :ops disjoint-edge}}
-   :released-lifts
-   {:frame "vaelii.impl.settle$released_lifts"
-    :reads "every waiting `:lift` refusal, on a taxonomy write"
-    :world {:pad [:lift] :ops disjoint-edge}}
    :seeds-in
    {:frame "vaelii.impl.special$seeds_in"
     :reads "every forward rule, on a `genlCx` edge that moves a rule's context holding more facts than there are rule keys"

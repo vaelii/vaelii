@@ -563,7 +563,7 @@
             visible (filter (fn [ctx]
                               (every? #(supporter-visible? kb % ctx false) handles))
                             common)]
-        (tax/maximal-contexts tax visible))
+        (tax/max-cxs tax visible))
       (tax/maximal-common-descendant-contexts tax contexts))))
 
 (defn visible-supporter-fn
@@ -574,6 +574,22 @@
   [kb context]
   (when (and (symbol? context) (not (sx/variable? context)))
     (memoize #(supporter-visible? kb % context))))
+
+(defn declared-by
+  "The believed statements of the `kind` property of `pred` (`tax/prop-supporter-contexts`)
+  that `context` sees, as a set of handles; every believed one for a nil or `?var` context.
+  Every one, since naming one of two would decide a justification by arrival order."
+  [kb kind pred context]
+  (let [tx (reasoning/taxonomy kb)
+        hs (tax/prop-supporter-contexts tx kind pred)]
+    (if (empty? hs)
+      #{}
+      (let [tms (reasoning/tms kb)
+            up  (when (and (symbol? context) (not (sx/variable? context)))
+                  (set (tax/context-up tx context)))]
+        (into #{}
+              (keep (fn [[h c]] (when (and (or (nil? up) (nil? c) (contains? up c)) (jtms/in? tms h)) h)))
+              hs)))))
 
 (defn representative-in
   "`term`'s equality-class representative as `visible?` sees the merges.  The global
@@ -822,9 +838,10 @@
 (defn opaque-fn
   "`sx/sentex`'s `:opaque?` read: the functors whose applications keep their arguments as
   written below the literal.  A NAT-quoting predicate's expression is a verbatim payload,
-  and a reifiable function's ground application is named by the constant its written
-  expression hashes to (docs/nat.md), so neither is sorted.  The reifiable mark is read
-  unscoped: the walk decides the stored key, which every reader shares."
+  and a reifiable function's ground application is named by the constant its
+  `nat-read/sorted-expression` hashes to (docs/nat.md), so neither is sorted here.  The
+  reifiable mark is read unscoped: the walk decides the stored key, which every reader
+  shares."
   [tax]
   #(or (contains? nat-quoting-predicates %) (tax/has-prop? tax :reifiable %)))
 
@@ -841,16 +858,43 @@
         (when-let [cs (seq (keep datetime/order-comparators (sort-by nm/name-key rs)))]
           (fn [a b] (boolean (some #(% a b) cs))))))))
 
+(defn mention-declarations
+  "The JTMS-IN `quotedArg` and `quotedArgAndRest` declarations on `f` typing position `n`,
+  as stored sentexes: a `(quotedArg f n T)`, or a `(quotedArgAndRest f k T)` with `k` at
+  most `n`.  Read only for a functor the taxonomy marks as declaring one, and KB-wide: the
+  store's spelling, which every reader shares, keeps a mention any context declares, and
+  a per-reader read filters the declarations (`without-unread-mentions`)."
+  [kb tax f n]
+  (let [q?   (tax/has-prop? tax :declares-quoted-arg f)
+        qr?  (tax/has-prop? tax :declares-quoted-arg-and-rest f)
+        read (fn [kind at?] (keep #(when-let [sx (p/get-sentex (:records kb) %)]
+                                     (let [k (nth (:sentence sx) 2 nil)]
+                                       (when (and (integer? k) (at? (long k))) sx)))
+                                  (reads/believed-with-args kb kind {1 f})))]
+    (when (or q? qr?)
+      (concat (when q? (read 'quotedArg #(= (long n) %)))
+              (when qr? (read 'quotedArgAndRest #(<= % (long n))))))))
+
+(defn mention-at
+  "`sx/sentex`'s `:mention-at?` read: whether position `n` of an application of `f` is a
+  mention, which the walk keeps as written: one `mention-declarations` names.  Read
+  unscoped: the walk decides the stored key, which every reader shares."
+  [kb tax]
+  (fn [f n] (boolean (seq (mention-declarations kb tax f n)))))
+
 (defn store-marks
-  "`sx/sentex`'s canonicalization reads under every permuting mark and term mark the store
-  spells by.  Read unscoped: the fold decides the stored key, which every reader shares."
-  [tax]
-  {:symmetric?   #(tax/has-prop? tax :symmetric %)
-   :groups-of    (fn [f _arity] (tax/commuting-groups tax f))
-   :opaque?      (opaque-fn tax)
-   :associative? #(tax/has-prop? tax :associative %)
-   :idempotent?  #(tax/has-prop? tax :idempotent %)
-   :meet-order   (meet-order tax)})
+  "`sx/sentex`'s canonicalization reads under every permuting mark, term mark and mention
+  position the store spells by.  Read unscoped: the fold decides the stored key, which
+  every reader shares."
+  [kb]
+  (let [tax (reasoning/taxonomy kb)]
+    {:symmetric?   #(tax/has-prop? tax :symmetric %)
+     :groups-of    (fn [f _arity] (tax/commuting-groups tax f))
+     :opaque?      (opaque-fn tax)
+     :mention-at?  (mention-at kb tax)
+     :associative? #(tax/has-prop? tax :associative %)
+     :idempotent?  #(tax/has-prop? tax :idempotent %)
+     :meet-order   (meet-order tax)}))
 
 (defn probe-spelling
   "Literal `sentence` with every ground compound below it in the order the store holds
@@ -858,8 +902,19 @@
   with.  `sentence` itself when no argument is a compound."
   [kb sentence]
   (if (and (seq? sentence) (some #(and (seq? %) (seq %)) (rest sentence)))
-    (sx/sort-compounds sentence (store-marks (reasoning/taxonomy kb)))
+    (sx/sort-compounds sentence (store-marks kb))
     sentence))
+
+(defn nested-probes
+  "The spellings literal `sentence` is probed in for the compounds below it that hold a
+  variable, each in every argument order its own functor's permuting marks let a stored
+  fact hold it in (`sx/nested-arrangements` under `store-marks`), `sentence` first.
+  `[sentence]` when no argument is a compound holding a variable."
+  [kb sentence]
+  (let [s (if (and (seq? sentence) (= sx/not-functor (first sentence))) (second sentence) sentence)]
+    (if (and (seq? s) (some #(and (seq? %) (seq %) (not (sx/sortable-term? %))) (rest s)))
+      (sx/nested-arrangements sentence (store-marks kb))
+      [sentence])))
 
 (def ^:dynamic *spelled-by*
   "nil, or `[pred context entries]`: while bound, `kb-sentex` sorts a literal on `pred` in
@@ -869,21 +924,22 @@
   nil)
 
 (defn- spelling-opts
-  "`sx/sentex`'s canonicalization reads with predicate `p`'s marks restricted to the
+  "`sx/sentex`'s canonicalization reads in `kb` with predicate `p`'s marks restricted to the
   permuting-mark `entries`.  Every other functor, a compound's below the literal among
   them, is read by the marks the store sorts by.
 
   The groups are read unscoped: the fold decides the stored key, which every reader
   shares."
-  [tax p entries]
-  (assoc (store-marks tax)
-         :symmetric? #(if (= p %)
-                        (contains? entries [:prop :symmetric %])
-                        (tax/has-prop? tax :symmetric %))
-         :groups-of  (fn [f _arity] (if (= p f)
-                                      (into #{} (filter #(contains? entries [:commuting f %]))
-                                            (tax/commuting-groups tax f))
-                                      (tax/commuting-groups tax f)))))
+  [kb p entries]
+  (let [tax (reasoning/taxonomy kb)]
+    (assoc (store-marks kb)
+           :symmetric? #(if (= p %)
+                          (contains? entries [:prop :symmetric %])
+                          (tax/has-prop? tax :symmetric %))
+           :groups-of  (fn [f _arity] (if (= p f)
+                                        (into #{} (filter #(contains? entries [:commuting f %]))
+                                              (tax/commuting-groups tax f))
+                                        (tax/commuting-groups tax f))))))
 
 ;; ---- an open application read through its corresponding predicate ----------
 ;; docs/nat.md, The corresponding predicate.  `kb-sentex` respells a rule here, below
@@ -1442,12 +1498,11 @@
   apply (`spelling-planner`).  A rule's open applications are read through their
   corresponding predicates first (`respell-applications`)."
   [kb sentence context]
-  (let [tax (reasoning/taxonomy kb)
-        [p ctx entries] *spelled-by*]
+  (let [[p ctx entries] *spelled-by*]
     (sx/sentex (respell-applications kb sentence context) context
                (if (and p (= ctx context) (= p (permuted-functor sentence)))
-                 (spelling-opts tax p entries)
-                 (store-marks tax)))))
+                 (spelling-opts kb p entries)
+                 (store-marks kb)))))
 
 ;; ---- a permuting mark read per reader --------------------------------------
 ;;
@@ -1480,6 +1535,78 @@
   makes two readers read one fact differently."
   [kb entries]
   (every? (fn [[_ sup]] (some #(held-everywhere? kb %) (keys sup))) entries))
+
+(defn- split-mention-at
+  "`(fn [f n])`: is position `n` of `f` a mention the store keeps as written that a reader
+  may not read as one, since no declaration typing it is stated in CxUniverse and
+  `held-everywhere?`?"
+  [kb tax]
+  (fn [f n]
+    (let [ds (mention-declarations kb tax f n)]
+      (boolean (and (seq ds)
+                    (not-any? #(and (= sx/root-context (:context %)) (held-everywhere? kb (:id %)))
+                              ds))))))
+
+(defn declares-mention?
+  "Does the taxonomy mark `f` as declaring a `quotedArg` or `quotedArgAndRest` position?
+  Read unscoped, a superset `split-mention-at` and `without-unread-mentions` narrow per
+  reader."
+  [tax f]
+  (or (tax/has-prop? tax :declares-quoted-arg f) (tax/has-prop? tax :declares-quoted-arg-and-rest f)))
+
+(defn- applies-declared-mention?
+  "Does `sentence` hold an application with a compound argument whose functor the taxonomy
+  marks as declaring a mention: the only positions `sx/mention-arrangements` probes?"
+  [tax sentence]
+  (boolean (some (fn [t] (and (seq? t) (symbol? (first t))
+                              (some #(and (seq? %) (seq %)) (rest t))
+                              (declares-mention? tax (first t))))
+                 (tree-seq seq? seq sentence))))
+
+(defn mention-probes
+  "The spellings of literal `sentence` beyond itself that a read probes for a fact stored
+  under a mention some reader does not read (`split-mention-at`):
+  `sx/mention-arrangements`, the rest of each in the store's order (`probe-spelling`).
+  Empty when no functor applied to a compound in `sentence` declares a mention."
+  [kb sentence]
+  (let [tax (reasoning/taxonomy kb)]
+    (if (and (seq? sentence) (applies-declared-mention? tax sentence))
+      (into [] (comp (map #(probe-spelling kb %)) (distinct) (remove #{sentence}))
+            (rest (sx/mention-arrangements sentence (store-marks kb) (split-mention-at kb tax))))
+      [])))
+
+(defn- fan-mention-probes
+  "The spellings a read of literal `sentence` from `view-context` probes for a row of a
+  predicate its fan reads (`fan-closure`, swapped members with arguments 1 and 2
+  exchanged) other than its own functor that declares a mention: that predicate's literal
+  in every order of each compound at a position it declares (`sx/mention-arrangements`),
+  since the store keeps such a compound as written.  Empty when no fan member declares one.
+  The declarations are read unscoped, a superset `without-unread-mentions` narrows per
+  reader."
+  [kb sentence view-context]
+  (let [tax  (reasoning/taxonomy kb)
+        neg? (sx/negation? sentence)
+        body (if neg? (second sentence) sentence)
+        f    (when (seq? body) (first body))
+        decl (into (tax/props tax :declares-quoted-arg) (tax/props tax :declares-quoted-arg-and-rest))]
+    (if-not (and (seq decl) (symbol? f) (not (sx/variable? f))
+                 (some #(and (seq? %) (seq %)) (rest body)))
+      []
+      (let [ctx       (when (and (symbol? view-context) (not (sx/variable? view-context))) view-context)
+            [fan swp] (fan-closure kb (if neg? :up :down) f ctx)
+            marks     (store-marks kb)
+            spell     (fn [g args]
+                        (let [lit (apply list g args)]
+                          (rest (sx/mention-arrangements (if neg? (list sx/not-functor lit) lit) marks
+                                                         (fn [h _] (= h g))))))]
+        (into [] (comp (map #(probe-spelling kb %)) (distinct) (remove #{sentence}))
+              (concat (for [g (sort-by nm/name-key decl) :when (and (not= g f) (contains? fan g))
+                            p (spell g (rest body))]
+                        p)
+                      (when (= 3 (count body))
+                        (for [g (sort-by nm/name-key decl) :when (contains? swp g)
+                              p (spell g (reverse (rest body)))]
+                          p))))))))
 
 (defn entries-at
   "The entries of `entries` some supporter of which `reader` believes
@@ -1532,7 +1659,7 @@
     (fn [sentence context]
       (when-let [p (permuted-functor sentence)]
         (when (ents p)
-          (into {} (map (fn [e] [(sx/sentence-of (sx/sentex sentence context (spelling-opts tax p e))) e]))
+          (into {} (map (fn [e] [(sx/sentence-of (sx/sentex sentence context (spelling-opts kb p e))) e]))
                 (rdrs p context)))))))
 
 (defn reader-spelled-by
@@ -1628,8 +1755,8 @@
   one.  This makes lookup order-insensitive, including a fact asserted before its
   `symmetric` declaration.  Deduped by handle and bindings: `(sibOf ?a ?b)` over a stored
   `(sibOf Rex Tib)` binds both ways round, two answers about one handle.  Lazy through the
-  fan.  `raw-match` calls it with `match-one`, the rete alpha matcher with its memory
-  probe, so the paths cannot fan differently.  The `symmetric` mark is read unscoped."
+  fan, over each spelling `nested-probes` gives.  `raw-match` calls it with `match-one`,
+  the rete alpha matcher with its memory probe.  The `symmetric` mark is read unscoped."
   [kb probe sentence]
   (let [tax      (reasoning/taxonomy kb)
         sentence (probe-spelling kb sentence)
@@ -1637,14 +1764,20 @@
         ;; the global property, as kb-sentex reads it — the mirror probe exists because
         ;; storage sorted the arguments; a reader that does not believe the mark has the
         ;; mirror dropped by `without-unbelieved-spellings`
-        others (if (sx/symmetric-literal? sentence #(tax/has-prop? tax :symmetric %))
-                 [(sx/mirror-literal sentence)]
-                 ;; The declaration read comes first so an unmarked predicate pays one map lookup and builds no
-                 ;; closure; `rest` is the fan-out.
-                 (let [f (when (sequential? sentence) (first sentence))]
-                   (when (and (symbol? f) (seq (tax/commuting-groups tax f)))
-                     (rest (sx/commuting-arrangements
-                            sentence (fn [g _] (tax/commuting-groups tax g)))))))]
+        own    (fn [s]
+                 (if (sx/symmetric-literal? s #(tax/has-prop? tax :symmetric %))
+                   [(sx/mirror-literal s)]
+                   ;; The declaration read comes first so an unmarked predicate pays one map lookup and builds no
+                   ;; closure; `rest` is the fan-out.
+                   (let [f (when (sequential? s) (first s))]
+                     (when (and (symbol? f) (seq (tax/commuting-groups tax f)))
+                       (rest (sx/commuting-arrangements
+                              s (fn [g _] (tax/commuting-groups tax g))))))))
+        nested (rest (nested-probes kb sentence))
+        others (if (seq nested)
+                 (into [] (comp (distinct) (remove #{sentence}))
+                       (concat (own sentence) (mapcat #(cons % (own %)) nested)))
+                 (own sentence))]
     (if (seq others)
       (letfn [(step [forms seen]
                 (when-let [form (first forms)]
@@ -1765,7 +1898,7 @@
                             (when-let [e (at pf)]
                               (not= s (sx/sentence-of
                                        (sx/sentex (read-spelling goal b s) view-context
-                                                  (spelling-opts tax pf e)))))))
+                                                  (spelling-opts kb pf e)))))))
                         (boolean (when-let [rr @rr] (rr s))))))
                 matches)))))
 
@@ -1799,6 +1932,40 @@
   `genlInverse` edges, which a negated pattern on `f` reads swapped."
   [kb f context]
   (second (tax/signed-closure (reasoning/taxonomy kb) :up f context)))
+
+(defn- without-unread-mentions
+  "Drop the matches of `goal` that read a fact stored under a mention in another argument
+  order where the match's reader reads the mention: the arguments of the two differ once
+  each is spelled as the goal's functor's, under the mentions that reader believes
+  (`supporter-visible?`).  A sub-predicate's row is so read at the goal's positions, a
+  row the fan reads swapped (`swapped-sub-predicates`) with its two exchanged.  The reader
+  is `view-context`, or the match's own context under a variable one.  Reads nothing
+  unless `goal` has `probes`, its `mention-probes` and `fan-mention-probes`."
+  [kb view-context goal probes matches]
+  (if (empty? probes)
+    matches
+    (let [tax     (reasoning/taxonomy kb)
+          scoped  (and (symbol? view-context) (not (sx/variable? view-context)))
+          marks   (memoize (fn [reader]
+                             (assoc (store-marks kb) :mention-at?
+                                    (fn [f n] (boolean (some #(supporter-visible? kb (:id %) reader)
+                                                             (mention-declarations kb tax f n)))))))
+          neg?    (sx/negation? goal)
+          body    #(if (sx/negation? %) (second %) %)
+          swapped (delay ((if neg? swapped-super-predicates swapped-sub-predicates)
+                          kb (first (body goal)) (when scoped view-context)))]
+      (remove (fn [[_ b stored]]
+                (when-not (:antecedent stored)
+                  (let [m     (marks (if scoped view-context (:context stored)))
+                        g     (body (substitute goal b))
+                        args  (fn [xs] (let [lit (apply list (first g) xs)]
+                                         (rest (body (sx/normalize-literal
+                                                      (if neg? (list sx/not-functor lit) lit) m)))))
+                        stord (rest (body (:sentence stored)))]
+                    (not (or (= (args (rest g)) (args stord))
+                             (and (= 2 (count stord)) (contains? @swapped (first (body (:sentence stored))))
+                                  (= (args (rest g)) (args (reverse stord)))))))))
+              matches))))
 
 (def ^:private slot-cut-min
   "The fewest members a fan holds before `slot-cut` reads the slot predicate sets to cut it.  A
@@ -2190,18 +2357,28 @@
           ;; the argument lists a candidate of functor `f` may be probed under, `args`
           ;; first — the generalization of the symmetric mirror, memoized per functor so
           ;; a posting of one functor over many contexts builds them once.
+          ;; the argument lists the compounds below the literal are probed in
+          ;; (`nested-probes`), `args` first; nil when no compound holding a variable
+          ;; permutes
+          nested (let [ns (nested-probes kb sentence)]
+                   (when (next ns) (mapv #(vec (rest %)) ns)))
           alt-args (volatile! {})
           args-for (fn [f]
                      (or (get @alt-args f)
-                         (let [v (if (and f (or (contains? sym-preds f)
-                                                (contains? comm-preds f)))
-                                   (mapv #(vec (rest %))
-                                         (if (contains? sym-preds f)
-                                           [(cons f args) (cons f (reverse args))]
-                                           (sx/commuting-arrangements
-                                            (cons f args)
-                                            (fn [g _] (tax/commuting-groups tax g)))))
-                                   [(vec args)])]
+                         (let [base (or nested [(vec args)])
+                               v    (if (and f (or (contains? sym-preds f)
+                                                   (contains? comm-preds f)))
+                                      (into [] (comp (mapcat
+                                                      (fn [as]
+                                                        (if (contains? sym-preds f)
+                                                          [(cons f as) (cons f (reverse as))]
+                                                          (sx/commuting-arrangements
+                                                           (cons f as)
+                                                           (fn [g _] (tax/commuting-groups tax g))))))
+                                                     (map #(vec (rest %)))
+                                                     (distinct))
+                                            base)
+                                      base)]
                            (vswap! alt-args assoc f v)
                            v)))
           seen  (volatile! #{})
@@ -2261,7 +2438,7 @@
                         (unify (:context pat) (:context stored)
                                (unify (:sentence pat) (:sentence stored))))))
             out
-            (if-not (or sym? comm-preds)
+            (if-not (or sym? comm-preds nested)
               ;; Nothing under this functor is symmetric, so a candidate answers at most once and the handle is the
               ;; dedup key; a `keep` and a handle-keyed guard skip the record fetch for a repeated candidate.
               (keep (fn [h]
@@ -2440,29 +2617,69 @@
              (distinct (filter #(and (symbol? %) (names-object-constant? %))
                                (tree-seq sequential? seq sentence))))))))
 
+(defn- without-edge-read-matches
+  "`matches` of the positive unary `sentence` `(q …)` less each match of a membership
+  `(s x)` the `genl` fan read where an edge reading of `(q x)` rests on it
+  (`exc/edge-read-functors`) and `view-context` sees no path from `s` to `q` held at
+  `:monotonic`: the stored reading answers for `x` there.  One presence check
+  (`reads/stores-opposed-with-functor?`) while no body of `q` is stored in both
+  polarities.  See docs/inference.md, \"An edge's reading\"."
+  [kb view-context sentence matches]
+  (let [q (when (and (sequential? sentence) (= 2 (count sentence))) (first sentence))]
+    (if (and (seq matches) (sx/plain-symbol? q) (not= sx/not-functor q)
+             (symbol? view-context) (not (sx/variable? view-context))
+             (reads/stores-opposed-with-functor? (:index kb) q))
+      (let [recs    (:records kb)
+            idx     (:index kb)
+            tax     (reasoning/taxonomy kb)
+            holding (delay (holding-class kb))
+            strict? (fn [s] (when-let [hs (tax/reach-support tax :genl s q view-context @holding [:monotonic])]
+                              (every? #(= :monotonic (@holding (first %))) hs)))]
+        (remove (fn [[h]]
+                  (let [s (:sentence (p/get-sentex recs h))]
+                    (and (seq? s) (= 2 (count s)) (not= q (first s))
+                         (reads/stored-opposed? idx (list q (second s)))
+                         (contains? (exc/edge-read-functors kb h) q)
+                         (not (strict? (first s))))))
+                matches))
+      matches)))
+
 (defn without-hidden-matches
   "`matches` of `sentence` less what `view-context` cannot read: the handles an `except`
-  hides (`exc/without-excepted`), the spellings an equality merge retired
-  (`without-retired`) and the spellings its marks do not license
-  (`without-unbelieved-spellings`), in that order."
-  [kb view-context sentence matches]
-  (->> matches
-       (exc/without-excepted kb view-context)
-       (without-retired kb view-context)
-       (without-unbelieved-spellings kb view-context sentence)))
+  hides (`exc/without-excepted`), the fan matches an edge reading answers for
+  (`without-edge-read-matches`), the spellings an equality merge retired
+  (`without-retired`), the spellings its marks do not license
+  (`without-unbelieved-spellings`) and the orders of a mention it reads
+  (`without-unread-mentions`), in that order.  `probes` is `sentence`'s `mention-probes`
+  when the caller holds them."
+  ([kb view-context sentence matches]
+   (without-hidden-matches kb view-context sentence (mention-probes kb sentence) matches))
+  ([kb view-context sentence probes matches]
+   (->> matches
+        (exc/without-excepted kb view-context)
+        (without-edge-read-matches kb view-context sentence)
+        (without-retired kb view-context)
+        (without-unbelieved-spellings kb view-context sentence)
+        (without-unread-mentions kb view-context sentence probes))))
 
 (defn- visible-matches
-  "The retrieval both of `matches-visible`'s arities perform: the chosen path, then the
-  two visibility filters, then an open functor's super-predicates
-  (`with-open-functor-supers`), then the matches of the spelling that reads each copied
-  value in place of its constant (`copied-values`).  One definition, so a cached and an
-  uncached read cannot come to answer differently."
+  "The retrieval both of `matches-visible`'s arities perform: the chosen path over
+  `sentence`, its `mention-probes` and its `fan-mention-probes`, then the visibility
+  filters, then an open functor's super-predicates (`with-open-functor-supers`), then the
+  matches of the spelling that reads each copied value in place of its constant
+  (`copied-values`).  One definition, so a cached and an uncached read cannot come to
+  answer differently."
   [kb sentence view-context]
-  (let [own (->> (if *hierarchical-retrieval*
-                   (matches-hierarchical kb sentence view-context)
-                   (matches-visible* kb sentence view-context))
-                 (without-hidden-matches kb view-context sentence)
-                 (with-open-functor-supers kb sentence view-context))]
+  (let [read  #(if *hierarchical-retrieval*
+                 (matches-hierarchical kb % view-context)
+                 (matches-visible* kb % view-context))
+        extra (into [] (distinct) (concat (mention-probes kb sentence)
+                                          (fan-mention-probes kb sentence view-context)))
+        own   (->> (if (seq extra)
+                     (nm/distinct-by (fn [[h b]] [h b]) (mapcat read (cons sentence extra)))
+                     (read sentence))
+                   (without-hidden-matches kb view-context sentence extra)
+                   (with-open-functor-supers kb sentence view-context))]
     (if-let [kv (copied-values kb sentence view-context visible-matches)]
       (distinct (concat own (visible-matches kb (walk/postwalk-replace kv sentence) view-context)))
       own)))

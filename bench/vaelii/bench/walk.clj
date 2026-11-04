@@ -4,7 +4,7 @@
   "What a declared-transitive predicate's closure walk costs, and where the cost sits.
 
   `(transitive ancestorOf)` over a chain is answered by walking believed facts one hop at
-  a time (`provers/reach`), and every hop is a `matches-visible` whose surviving candidate
+  a time (`provers/cached-reach`), and every hop is a `matches-visible` whose surviving candidate
   handle is turned back into a term by **one record fetch** (`resolution.clj`, the
   per-candidate `get-sentex`).  Three readings, and they answer three different questions:
 

@@ -64,6 +64,18 @@
     {:types    (into {} (for [x (tax/types t)]    [x (set (tax/genls-global t x))]))
      :contexts (into {} (for [c (tax/contexts t)] [c (set (tax/context-up t c))]))}))
 
+(defn- same-kb
+  "Assert that `built` and `restored` agree on everything a test can read off a KB."
+  [built restored]
+  (testing "the same sentexes are stored"
+    (is (= (v/sentex-count built) (v/sentex-count restored))))
+  (testing "sentence, context, truth, strength and belief agree, sentex for sentex"
+    (is (= (content built) (content restored))))
+  (testing "the justification graph agrees"
+    (is (= (justification-content built) (justification-content restored))))
+  (testing "the taxonomy closures agree"
+    (is (= (taxonomy-content built) (taxonomy-content restored)))))
+
 (deftest a-restored-starter-is-the-asserted-one
   ;; two spaces of this namespace's own, and neither is `tu/starter-build-space` — the
   ;; dump's own build KB lives there and `clear-kb!` on it would wipe the dump's source
@@ -72,14 +84,25 @@
         built    (doto (v/open-kb (space :built))    (tu/clear-kb!) (starter/load-into))
         restored (doto (v/open-kb (space :restored)) (tu/clear-kb!) (tu/load-starter!))]
     (try
-      (testing "the same sentexes are stored"
-        (is (= (v/sentex-count built) (v/sentex-count restored))))
-      (testing "sentence, context, truth, strength and belief agree, sentex for sentex"
-        (is (= (content built) (content restored))))
-      (testing "the justification graph agrees"
-        (is (= (justification-content built) (justification-content restored))))
-      (testing "the taxonomy closures agree"
-        (is (= (taxonomy-content built) (taxonomy-content restored))))
+      (same-kb built restored)
       (finally
         (tu/clear-kb! built)
         (tu/clear-kb! restored)))))
+
+(deftest ^:slow a-starter-restored-through-its-dump-is-the-loaded-one
+  (tu/with-tmp
+    (fn [root]
+      (let [spaces   (atom 0)
+            open     #(doto (v/open-kb (assoc tu/starter-build-space
+                                              :space [::through (swap! spaces inc)]))
+                        tu/clear-kb!)]
+        (with-redefs [starter/edited-since-start? (constantly false)]
+          (let [built    (starter/load-through-dump open root)
+                restored (starter/load-through-dump open root)]
+            (try
+              (is (= 2 @spaces))
+              (is (= 1 (count (.list (java.io.File. ^String root)))))
+              (same-kb built restored)
+              (finally
+                (tu/clear-kb! built)
+                (tu/clear-kb! restored)))))))))

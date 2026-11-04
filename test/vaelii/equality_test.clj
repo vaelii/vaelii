@@ -532,6 +532,18 @@
           (is (nil? (v/handle-of kb (list caresFor lo Tom) CxFam)))
           (is (true? (believed? kb (list caresFor hi Tom) CxFam))))))))
 
+(tu/deftest-kb a-fact-in-cxuniverse-merges-with-one-in-a-context-no-edge-names
+  (doseq [mark '[functional anti_symmetric] flip? [false true]]
+    (tu/with-terms [rel Kid Ann Bea CxFam]
+      (let [[fa fb] (if (= 'functional mark)
+                      [(list rel Kid Ann) (list rel Kid Bea)]
+                      [(list rel Ann Bea) (list rel Bea Ann)])]
+        (v/assert kb (list mark rel) CxFam)
+        (doseq [[f c] (cond-> [[fa 'CxUniverse] [fb CxFam]] flip? reverse)]
+          (v/assert kb f c {:strength :monotonic}))
+        (testing (str mark (when flip? ", the CxUniverse fact last"))
+          (is (some? (v/handle-of kb (list 'equals Ann Bea) CxFam))))))))
+
 (tu/deftest-kb a-collision-merges-only-when-both-facts-are-monotonic
   ;; A merge rests on `:monotonic` evidence alone (docs/reference.md, decisions 6 and
   ;; 13): with a `:default` member the collision is a nogood, in either arrival order.

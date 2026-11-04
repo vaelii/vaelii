@@ -1382,8 +1382,9 @@ frames plus fixed-width 24-byte `.idx` slots keyed by integer id.
   none), and provenance — an open application map — passes through as it
   comes.  Each decoder dispatches on the thawed frame's shape, so **frames written before
   the codec still read** and no store needs rewriting.  Decoding interns the symbols it
-  rebuilds, so a paged record shares one vocabulary object per name with the in-memory
-  store instead of minting a private copy per fetch.
+  rebuilds, from a positional frame and from a record nippy froze whole alike (the
+  Postgres and SQLite adapters store the latter), so a paged record shares one vocabulary
+  object per name with the in-memory store instead of minting a private copy per fetch.
 - **Tokenized bodies** (`disk.tokens`, opt-in via `vaelii.disk.tokens` / `:tokenize?`) —
   the positional frame still spells its sentence out, so the vocabulary is written into
   every frame.  A tokenized frame replaces the s-expression fields with one varint byte
@@ -2060,7 +2061,8 @@ index directory's `records.edn` and a belief image's `manifest.edn`. A `format.e
 the bound is `:manifest-too-large` at `open-kb`, as it is at the catalog; a `layout.edn`
 past it reads as `:stale`, the answer a torn one gets.
 
-The engine writes each of these EDN manifests, and `reasoners.edn`, to a temp file,
+The engine writes each of these EDN manifests, `reasoners.edn` and `load-key.edn`
+([operations.md](operations.md#restarting-over-a-built-store)) to a temp file,
 fsyncs it, renames it over the target and fsyncs the directory (`dfiles/write-atomic!`).
 A crash mid-write leaves the previous manifest or the new one, never a torn file.
 
@@ -2241,29 +2243,32 @@ open an existing directory with `:reasoners :stored`.
 
 ### Editing the records of a KB without belief
 
-A removal through `edit!` or `retract!` keeps belief current at the write: it sweeps the
-dependents of what it removes, re-checks what the removal released, and settles, and a
-batch pays that over its whole reach. A repair of many records can apply its batches to
-the records instead and pay one rebuild after them.
+A write through `edit!`, `assert` or `retract!` keeps belief current at the write: it
+chains from what it adds, sweeps the dependents of what it removes, re-checks what the
+removal released, and settles, and a batch pays that over its whole reach. A repair of
+many records can apply its batches to the records instead and pay one rebuild after them.
 
 ```clojure
 (def kb (open-kb {:backend :disk-log :dir d :recover? false}))
-(def r  (edit-records! kb {:remove hs :direction {rule-h :backward}}))
-;; => {:removed n :unpremised n :absent n :redirected n :justifications-removed n :seeds [h …]}
+(def r  (edit-records! kb {:add       [['(genl dog canine) 'CxWorld]
+                                       ['(sense lex/mutt dog) 'CxWorld]]
+                           :remove    hs
+                           :direction {rule-h :backward}}))
+;; => {:added n :present n :removed n :unpremised n :absent n :redirected n
+;;     :justifications-removed n :seeds [h …]}
 (settle-record-edits! kb {:seeds (:seeds r)})
 ;; => {:rebuilt :recover :unrooted n :removed-sentexes n :removed-justifications n
-;;     :rules-chained n :rechained n :arg-types {…}}
+;;     :rules-chained n :rechained n :arrived n :arg-types {…}}
 ```
 
 **`edit-records!` writes records and nothing else.** It runs no check, no dependency sweep
 and no settle, so it refuses a KB with belief or one answering from an installed image
-(`:belief-built`): open the store with `{:recover? false}`. A batch takes `:remove`, a
-seq of handles, and `:direction`, `{handle direction}` over stored derive rules
-([inference.md](inference.md#rule-direction-virtual-predicates)). It takes no additions:
-canonicalizing a symmetric or commutative argument, homing a forced-decontextualized
-predicate and deduplicating on a derived index each read belief. An addition goes through
-`edit!` after the settle. The handles come from a read of an index: `:disk-log` keeps its
-index on disk, so `handle-of` answers on it opened `{:recover? false}`. `:disk-memory`,
+(`:belief-built`): open the store with `{:recover? false}`. A batch takes `:add`, a seq
+of `[sentence context]` (below), `:remove`, a seq of handles, and `:direction`, `{handle
+direction}` over stored derive rules
+([inference.md](inference.md#rule-direction-virtual-predicates)). The handles come from a
+read of an index: `:disk-log` keeps its index on disk, so `handle-of` answers on it opened
+`{:recover? false}`. `:disk-memory`,
 `:disk-dense`, `:disk-columnar` and `:disk-snapshot` open `{:recover? false}` with
 `:no-index` among their `write-hazards`, and there `handle-of` reads an empty index and
 answers nil, so read the handles before closing the KB that built the index. Per batch:
@@ -2280,8 +2285,41 @@ answers nil, so read the handles before closing the KB that built the index. Per
 - A removal naming no stored record, a nil one included, counts under `:absent`.
 - An `except`, `defeat` or `exceptWhen` removal is refused (`:record-edit-unsupported`):
   its departure re-posts what the remaining ones name, which only `edit!` computes. A
-  direction on a fact, a choice rule or an absent handle is refused too. Every refusal
-  comes before the first write.
+  direction on a fact, a choice rule or an absent handle is refused too, and a removal or
+  direction change of a mint rule is refused `:mint-rule`
+  ([argtypes.md](argtypes.md#the-entailment-as-a-justified-datum)). Every refusal comes
+  before the first write.
+
+**An addition is a premise record and the postings `assert` gives it.** `:add` takes
+ground `genl`, `sense` and `comment` facts whose two arguments are symbols or strings.
+The shipped vocabulary marks none of the three symmetric, commutative or
+forced-decontextualized, so each is stored as written, in the context it names, and
+needs no belief to place. A batch writes its additions before anything else, and each
+one three ways:
+
+- A sentence the index holds as a premise is left alone and counts under `:present`.
+- A sentence the index holds as a derived record gains the premise mark, counts under
+  `:present`, and is a seed.
+- Any other is a new record: its index postings first, a `genl` edge's taxonomy-supporter
+  postings next (the ones `recover` rebuilds the taxonomy from), then the record with its
+  premise mark. It counts under `:added` and is a seed. It carries no creation provenance.
+
+The checks are those of the write path that read no belief, each refusing before the
+first write: a malformed entry (`:shape`), a free variable (`:not-ground`), the naming
+checks under the KB's `:naming` policy (`:naming`), and the well-formedness `check` reads
+off the sentence alone (`:not-well-formed`). `:record-edit-unsupported` refuses another
+functor or arity, a compound argument, a `genl` between predicates (a forced-monotonic
+edge that carries declarations down), a predicate the store marks symmetric, commutative
+or forced-decontextualized, a context the index does not name (not the root, holding no
+record and named by no `genlCx` edge), and a sentence stored as an inert record. On a
+store whose index was never built (`:no-index`), an addition is refused `:unrecovered-kb`:
+deduplication reads the index, so run `reindex` first.
+
+What `assert` refuses by reading belief goes unchecked: a `genl` edge closing a `genl`
+cycle, one closing a cycle through negation, and a disjointness or argument clash. The
+rebuild settles a clash as a conflict where `assert` refuses it, and a cycle is not
+refused at all, so the caller screens each addition with `check` while the KB still has
+belief.
 
 **`settle-record-edits!` rebuilds once and sweeps.** It runs `reindex` when the index is
 missing and `recover` when belief is, then the sweep: it deletes the justifications the
@@ -2293,31 +2331,46 @@ stored facts. The antecedents of each unrooted rule firing, less the deleted rec
 re-chained (`:rechained`), as `edit!` re-chains the antecedents of a firing that named a
 removed edge ([contexts.md](contexts.md)): where a second route still licenses the firing,
 it comes back at a fresh handle. The recover logs each such firing among the
-justifications it leaves out. Last, `record-arg-types` re-asks every fact an argument
-declaration reaches, which releases a general type mint a removed membership or `genl`
-edge withheld ([argtypes.md](argtypes.md)).
+justifications it leaves out. Then each seed that is a stored positive premise fact
+arrives (`:arrived`) as `assert` brings a fact in after storing it, the steps `recover`
+does not run: the equality migrations and merges, the nogood offers, the argument-order
+migration, the lift, the argument-type mints at its placements, the companion rules and
+the arity class memberships. One chain runs from all of them and from the stored facts
+their `genl` edges make newly matchable, then the reified-term maintenance and a settle.
+Last, `record-arg-types` re-asks every fact an argument declaration reaches, which
+releases a general type mint a removed membership or `genl` edge withheld, and draws the
+ones an added edge brings a stored fact under ([argtypes.md](argtypes.md)).
 
 **`{:arg-types? false}` leaves that pass to its own call.** The settle then returns a KB
 that is settled and forced to disk, so a copy taken right after it is a consistent one,
-and the pass is owed (`arg-types-owed`): `edit-records!` records it when a batch removes
-anything, and the settle when its sweep removed anything and nothing was owed yet.
+and the pass is owed (`arg-types-owed`): `edit-records!` records it before its first write
+when a batch adds a `genl` edge or removes or redirects a stored record, and the settle
+when its sweep removed anything and nothing was owed yet.
 `record-arg-types!` runs it with a budget per fact, stops at a fact boundary and resumes
 from what the store records, under this engine or a later one
 ([argtypes.md](argtypes.md#the-pass-over-a-stored-kb)). `:on-progress` reports each phase
 as `{:phase :done :total}`: `:reindex`, `:recover` with the recover's seven steps, and
-`:sweep` with its six, the chain's `:derived` and `:pending` beside; a throw from it lands
-at the next phase boundary.
+`:sweep` with its eight, the chain's `:derived` and `:pending` beside; a throw from it
+lands at the next phase boundary.
 
 The believed sentences then equal those the same batches through `edit!` leave, handle
 numbers aside: `edit_test/edit-records-then-settle-believes-what-edit-believes` runs each
-case both ways. A record OUT after the rebuild that no seed reaches stays stored and
-unbelieved; `unsupported` reports one no justification concludes.
+case both ways, and `edit_test/edit-records-additions-settle-to-what-edit-writes` compares
+an addition batch per context, record by record: the stored sentences, their premise
+marks, belief, and each one's justifications with their antecedents, the firings and the
+argument-type mints among them. A record OUT after the rebuild that no seed reaches stays
+stored and unbelieved; `unsupported` reports one no justification concludes. The sweep
+runs from every seed, so an OUT record in the consequence closure of a derived record the
+batch marked is deleted, where `edit!` leaves it stored; belief is the same either way.
 
 **A crash loses nothing the rebuild needs.** A KB without belief carries no operation
-log, so neither call is logged; a batch is idempotent instead. It writes the directions
-and premise marks first, then each deleted record with its postings, then the dead
-justifications, which the recover leaves out while their records are gone. The same batch
-run again completes it, counting what is already deleted under `:absent`. Its `:seeds`
+log, so neither call is logged; a batch is idempotent instead. It writes the additions
+first, each one's postings before its record, then the directions and premise marks,
+then each deleted record with its postings, then the dead justifications, which the
+recover leaves out while their records are gone. The same batch run again completes it,
+counting what is already added under `:present` and what is already deleted under
+`:absent`; a posting an interrupted addition left with no record is taken out and the
+sentence stored anew. Its `:seeds`
 are computed from the justifications it deletes, so a caller keeps them with its own
 record of the batch: a re-run after a crash past those deletes returns fewer, and the
 records the lost seeds reached stay stored and OUT, which `unsupported` reports. A crash
@@ -2648,11 +2701,15 @@ derives fewer conclusions than the chained write derives.
 - **Close the base once.** Load the content every read shares, rules included, and
   bring it to its chained closure before the first snapshot.
 - **Keep one KB across reads.** Hold the snapshot's facts in a context of their own.
-  Write each new snapshot as one `edit!`: `:add` holds the facts that arrived, and
-  `:remove` holds the handles (`handle-of`) of the facts that left. The adds land before
-  the removes and one settle closes the batch, so a conclusion both snapshots support
-  stays IN throughout ([api.md](api.md)). Every add is a chained write, so no pass
-  follows the `edit!`. The batch's cost follows the size of the difference.
+  Write each new snapshot with `replace-facts!`, which reads the ground literal premises
+  stored in that context and writes the difference as one `edit!`: `:add` holds the facts
+  that arrived, and `:remove` holds the handles of the facts that left. The adds land
+  before the removes and one settle closes the batch, so a conclusion both snapshots
+  support stays IN throughout ([api.md](api.md)). Every add is a chained write, so no
+  pass follows the write. The edit's cost follows the size of the difference; the read of
+  the context and one `handle-of` per fact follow the snapshot's size. Swapping 200 facts,
+  each firing one forward rule, costs 136 ms a call in a 250-fact snapshot and 119 ms in a
+  2000-fact one on the memory backend (`lein perf --only replace-facts-difference`).
 - **An aggregate rule can stay in the base.** One `edit!` against a stored aggregate
   rule costs 5.1 ms at 10 nodes, against 4.4 ms for the rule asserted after the facts
   and 21.3 ms for one assert per fact (`lein bench-aggchain`,

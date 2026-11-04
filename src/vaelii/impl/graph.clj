@@ -1,7 +1,8 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.impl.graph
-  "Graph walks over a caller-supplied neighbour fn: reachable set and strongly connected components.
+  "Graph walks over a caller-supplied neighbour fn: reachable set, reachability between two
+  nodes and strongly connected components.
   A walk visits neighbours in the order `step` yields them and never sorts. See docs/namespaces.md.")
 
 (defn scc
@@ -68,3 +69,19 @@
           {:found n :tree tree}
           (recur (reduce add [(pop q) tree] (step n tree))))
         {:tree tree}))))
+
+(defn reaches?
+  "Does a path lead from `a` to the distinct node `b`, `succ` and `pred` giving a node's
+  successors and predecessors?  Walks from both ends, each step widening the smaller
+  frontier by one level, and answers false once either frontier is empty, so a node with
+  few successors or `b` with few predecessors answers in few steps whatever lies beyond."
+  [succ pred a b]
+  (loop [fseen #{a} front [a] bseen #{b} back [b]]
+    (cond
+      (or (empty? front) (empty? back)) false
+      (<= (count front) (count back))
+      (let [nx (into [] (comp (mapcat succ) (remove fseen) (distinct)) front)]
+        (or (boolean (some bseen nx)) (recur (into fseen nx) nx bseen back)))
+      :else
+      (let [nx (into [] (comp (mapcat pred) (remove bseen) (distinct)) back)]
+        (or (boolean (some fseen nx)) (recur fseen front (into bseen nx) nx))))))

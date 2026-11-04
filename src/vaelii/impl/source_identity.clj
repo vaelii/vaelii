@@ -48,6 +48,7 @@
     vaelii.core/mark-inert!
     vaelii.core/edit!
     vaelii.core/edit-with-consequences!
+    vaelii.core/replace-facts!
     vaelii.core/preview
     vaelii.core/abduce
     vaelii.core/abduce-discard!

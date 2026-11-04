@@ -470,7 +470,7 @@
                          :reasoners :stored})
              (v/open-kb {}))]
     (when starter
-      (try (starter/load-into kb)
+      (try (starter/load-sources kb [:starter])
            (catch Throwable t
              (try (v/close! kb) (catch Throwable c (.addSuppressed t c)))
              (throw t))))

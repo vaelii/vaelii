@@ -364,22 +364,21 @@
 ;; `genls-problem` runs three probes: a **global** individual floor (could the
 ;; argument ever be a type?), a **scoped** open-world floor (does the writer see
 ;; any evidence at all?), and the scoped subtype test.  The middle one is what
-;; keeps a NAF check from convicting harder the less a context sees: an imported
-;; reified NAT's minting edges land in CxUniverse, and a writer whose ancestor set does not
-;; reach them must excuse, not convict.
+;; keeps a NAF check from convicting harder the less a context sees: a writer whose
+;; ancestor set does not reach a reified NAT's minting edges must excuse, not convict.
 
 (tu/deftest-kb an-argument-whose-edges-are-out-of-sight-is-excused-not-convicted
   ;; the constraint-only reading: the refusal is the subject
   (tu/without-entailing
    (let [rel (tu/tmp-pred) root (tu/tmp-type) kind (tu/tmp-type)
          reified (tu/tmp-ind) plain (tu/tmp-ind)
-         ctx (tu/tmp-ctx)]
-     ;; ctx is deliberately unwired: it cannot see CxUniverse
+         ctx (tu/tmp-ctx) side (tu/tmp-ctx)]
+     ;; ctx does not see `side`, the sibling the minting edge is stated in
      (v/assert kb (list 'genl root 'thing) ctx)
      (v/assert kb (list 'genlArg rel 1 root) ctx)
-     ;; a reified NAT-shaped constant minted with real genl edges into CxUniverse —
-     ;; the raw writer stands in for nat/mint-nat!, whose edges are exactly this
-     (tax/add-genl (reasoning/taxonomy kb) reified root 999901 'CxUniverse)
+     ;; a reified NAT-shaped constant minted with a real genl edge in a sibling context —
+     ;; the raw writer stands in for nat/mint-nat!, whose edges are this shape
+     (tax/add-genl (reasoning/taxonomy kb) reified root 999901 side)
      (testing "globally in the hierarchy, invisibly from ctx: open world excuses"
        (is (v/assert kb (list rel reified (tu/tmp-type)) ctx)))
      (testing "a plain individual with no edges anywhere is still convicted"

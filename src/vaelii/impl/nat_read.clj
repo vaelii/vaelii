@@ -189,22 +189,45 @@
     (map #(apply list %)
          (reduce (fn [acc a] (for [s acc m (cls a)] (conj s m))) [[(first E)]] (rest E)))))
 
+(defn- permuting-marks
+  "The `symmetric` and commuting marks of taxonomy `tax`, in the shape `sx/permute-args`
+  and `sx/every-order` take.  They are read unscoped, since a constant's name is a stored
+  key every reader shares."
+  [tax]
+  {:symmetric? #(tax/has-prop? tax :symmetric %)
+   :groups-of  (fn [g _] (tax/commuting-groups tax g))})
+
+(defn sorted-expression
+  "Ground application `E` with its own arguments in the order the store's `symmetric` and
+  commuting marks give it (`sx/permute-args`): the expression a reified constant is named
+  by and found under, so both spellings of a commuted application name one constant.  The
+  associative, idempotent and meet arms are not applied, since they can collapse an
+  application to one argument.  The marks are read unscoped: the constant decides the
+  stored key, which every reader shares."
+  [kb E]
+  (let [tax (reasoning/taxonomy kb)
+        f   (first E)]
+    (if (or (tax/has-prop? tax :symmetric f) (seq (tax/commuting-groups tax f)))
+      (sx/permute-args E (permuting-marks tax))
+      E)))
+
 (defn- map-rows
   "The `pred` rows (`natFormula` or a compound `rewriteOf`) a reader in `context` reads
-  as naming the ground NAT expression `E` at argument 2.  A row answers when its
-  expression, normalized under the merges `context` sees, is `E`'s normal form there,
-  and either it is stated (a premise, superseded or not) or `context` sees its context
-  and believes it.  A stated `natFormula` row answers in every context, so the mint map
-  is read from every context; a stated `rewriteOf` row answers only where `context` sees
-  its context, and in every context for a `?var` `context`.  A migration twin answers
-  only where its merge is visible (docs/nat.md, A NAT resolves under the reader's
-  merges).  The stated rows are probed for each spelling `class-spellings` names."
+  as naming the ground NAT expression `E` at argument 2: a row whose expression,
+  normalized under `context`'s merges, is `E`'s normal form, stated (a premise,
+  superseded or not) or seen and believed from `context`.  A stated `natFormula` row
+  answers in every context, a stated `rewriteOf` row where `context` sees its context or
+  `context` is a `?var`, and a migration twin where its merge is visible (docs/nat.md, A
+  NAT resolves under the reader's merges).  Stated rows are probed for each
+  `class-spellings` spelling, a `rewriteOf` row in each `sx/every-order`, compared sorted."
   [kb pred E context]
   (let [ctx      (reader-of context)
         tx       (reasoning/taxonomy kb)
         tms      (reasoning/tms kb)
         visible? (res/visible-supporter-fn kb ctx)
-        norm     #(res/normal-form kb % visible?)
+        rw?      (= 'rewriteOf pred)
+        norm     #(cond->> (res/normal-form kb % visible?) rw? (sorted-expression kb))
+        orders   (if rw? #(sx/every-order % (permuting-marks tx)) vector)
         N        (norm E)
         rows     (fn [S] (->> (reads/as-stored-with-args (:index kb) pred {2 S})
                               (keep #(p/get-sentex (:records kb) %))
@@ -212,12 +235,14 @@
         stated?  #(and (jtms/premise? tms (:id %)) (jtms/network-in? tms (:id %))
                        (or (= 'natFormula pred) (nil? visible?) (tax/sees? tx ctx (:context %))))
         seen?    #(and (tax/sees? tx ctx (:context %)) (jtms/in? tms (:id %)))]
-    (concat (filter #(or (stated? %) (seen? %)) (rows N))
-            (for [S     (class-spellings kb E visible?)
-                  :when (not= S N)
-                  sx    (rows S)
-                  :when (and (stated? sx) (= N (norm S)))]
-              sx))))
+    (distinct
+     (concat (filter #(or (stated? %) (seen? %)) (mapcat rows (orders N)))
+             (for [C     (class-spellings kb E visible?)
+                   S     (orders C)
+                   :when (not= S N)
+                   sx    (rows S)
+                   :when (and (stated? sx) (= N (norm S)))]
+               sx)))))
 
 (defn dedup-constant
   "The existing reified constant for the ground NAT expression `E` in reify namespace `ns`
@@ -301,16 +326,17 @@
         (dedup-constant kb E ns context))))
 
 (defn reify-nat-for-read
-  "Read-mode leaf: reify nested NAT arguments, then resolve the expression to its
-  existing term in reify namespace `ns` for a reader in `context` (`existing-term`), or
-  to `no-match`.  Never mints.  A quoting function's argument stays opaque, as
-  `reify-or-mint-nat` holds it."
+  "Read-mode leaf: reify nested NAT arguments, then resolve the expression, in its
+  `sorted-expression` order, to its existing term in reify namespace `ns` for a reader in
+  `context` (`existing-term`), or to `no-match`.  Never mints.  A quoting function's
+  argument stays opaque, as `reify-or-mint-nat` holds it."
   [kb form ns context]
   (let [E (if (sx/quoting-functor? (first form))
             (apply list form)
-            (apply list (first form)
-                   (map #(if (reifiable-ground-nat? kb %) (reify-nat-for-read kb % nat-namespace context) %)
-                        (rest form))))]
+            (sorted-expression
+             kb (apply list (first form)
+                       (map #(if (reifiable-ground-nat? kb %) (reify-nat-for-read kb % nat-namespace context) %)
+                            (rest form)))))]
     (or (existing-term kb E ns context) no-match)))
 
 (defn- read-leaf

@@ -75,7 +75,7 @@
     :kind    :core
     :name    "Upper vocabulary"
     :blurb   "The upper ontology alone — the predicates the engine interprets and the upper types, all in CxUniverse."
-    :scale   "3,000+ sentexes"
+    :scale   "4,500+ sentexes"
     :options []}
    {:id      "starter"
     :kind    :starter

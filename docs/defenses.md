@@ -201,13 +201,13 @@ missing. The last column names the test that asserts the departure, or `none`.
 | locality | a `conversionFactor` arriving ([quantity.md](quantity.md#what-a-comparison-rests-on)) | The datum re-joins every forward rule with a comparison antecedent, since nothing connects the unit table to a comparison by predicate. | `computed_support_test/the-unit-table-may-arrive-last` |
 | locality | a metric bound's support ([stp.md](stp.md#what-a-derived-bound-rests-on)) | Past the walk bound, a bound rests on every supporter in its network, a sound superset. The walk is bounded because a successor chain can go round a zero-weight cycle without end. | `none` |
 | locality | the derived-value caches ([caches.md](caches.md#the-bound-cleared-wholesale-not-evicted)) | A cache clears wholesale at its bound or on any state change, never by entry. | `literal_cache_engine_test/an-unrelated-assertion-retires-every-entry` |
-| scoping | the checks a shared structure needs ([contexts.md](contexts.md#where-a-relation-property-is-read-from), [taxonomy.md](taxonomy.md)) | The `genl` cycle check, the `genlCx` closure and argument sorting read every context, because each decides a structure every reader shares: a type cycle, the visibility relation, and a sentex's one storage key. The stratification graph fans over the global spec closure, since a narrowed fan would admit an unstratified rule set. Lint E17 holds the allowlist of global closure callers. | `context_scoping_test/the-genl-cycle-check-is-global-on-purpose`, `/the-genlCx-closure-is-global-on-purpose`, `/argument-sorting-is-a-storage-key-and-so-is-global` |
+| scoping | the checks a shared structure needs ([contexts.md](contexts.md#where-a-relation-property-is-read-from), [taxonomy.md](taxonomy.md)) | The `genlCx` cycle check, the `genlCx` closure and argument sorting read every context, because each decides a structure every reader shares: a context cycle, the visibility relation, and a sentex's one storage key. The stratification graph fans over the global spec closure, since a narrowed fan would admit an unstratified rule set. Lint E17 holds the allowlist of global closure callers. | `wff_edge_test/genlCx-rejects-a-cycle-through-another-context`, `context_scoping_test/the-genlCx-closure-is-global-on-purpose`, `/argument-sorting-is-a-storage-key-and-so-is-global` |
 | scoping | a relation property ([contexts.md](contexts.md#where-a-relation-property-is-read-from)) | A `decontextualized_predicate` declaration is lifted into `CxUniverse`, so every context reads it. A relation's algebra is a claim about the relation, not about a subject matter. | `context_scoping_test/predicate-metadata-is-a-licence-the-whole-kb-holds` |
 | scoping | a NAT's mint ([nat.md](nat.md#typing-an-application-that-is-never-minted)) | The mint reads its result declarations globally and materializes into `CxUniverse`, because what a term denotes does not vary by reader. The check on an application stays scoped. | `arggenl_test/a-result-declaration-a-context-cannot-see-does-not-refuse-it` |
 | scoping | the browser's term graph ([web.md](web.md#a-terms-shape-drawn)) | One edge in two contexts is drawn once, and the graph labels no edge with a context. | `none` |
 | belief | levels 0 and 1 ([levels.md](levels.md#operators)) | The two levels answer about storage, so a defeated sentex keeps its handle there. The floor defaults to level 2. | `property_cells_test/levels-read-no-defeated-fact` |
 | belief | `CxEverything` ([contexts.md](contexts.md#cxeverything-syntactic-and-a-named-opt-out-of-belief-filtering)) | The named opt-out reads the store with no belief and no context filter. The as-stored reads (`reads/as-stored-…`, lint E16) and a profile's counts read storage the same way, under names that say so. | `query_context_test/cxeverything-sees-a-defeated-default` |
-| state | the refusal record ([exceptions.md](exceptions.md), [nmtms.md](nmtms.md#3-separated-state)) | Firings a closed extent or a separation refuses, and the `:lift` entries, are sentences no store holds, so `recover` re-derives them. A firing an argument conviction convicts is stored and held OUT by the argument hold. | `lein lint`'s `derived` check, `HOLDS_CONTENT` |
+| state | the refusal record ([exceptions.md](exceptions.md), [nmtms.md](nmtms.md#3-separated-state)) | Firings a closed extent or a separation refuses are sentences no store holds, so `recover` re-derives them. A firing an argument conviction convicts is stored and held OUT by the argument hold. | `lein lint`'s `derived` check, `HOLDS_CONTENT` |
 | state | the rete matcher's alpha memories ([nmtms.md](nmtms.md#3-separated-state)) | Under `VAELII_RETE=1` or `rete/track!`, the matcher keeps stored facts by functor and argument in its own index beside the IndexStore. | `lein lint`'s `derived` check, `OUTSIDE_INDEX` |
 | belief | a reader thread beside the writer ([storage.md](storage.md#the-single-writer-contract)) | A read takes the postings and then belief per candidate, so a match stored or withdrawn between the two reads is missing. Beside a settle, belief is held but the taxonomy closures are read as the settle moves them. One state per read needs a realized answer and a retry, or a versioned store. | `none` |
 
@@ -435,12 +435,14 @@ argument with no type violates nothing, so the declaration would convict a relat
 carries some other type and admit one that carries none. Naming a relation before typing
 it is the common authoring order, so the admitted case is the common one.
 
-### `TransitiveInArgProver` answers no open goal
+### `TransitiveInArgProver` answers no goal open at a preserved position
 
-The prover answers a ground goal and leaves an open argument to the fact and rule provers
-([inherit.md](inherit.md#reading-it-back)). Do not enumerate an open goal: the answer set
-is the inverse reach of every stored claim of the predicate, which reads the whole extent
-and each claim's reach to answer a question a closed goal answers from one product. The
+The prover answers a goal whose preserved positions are bound, and leaves a goal open at
+a preserved position to the fact and rule provers ([inherit.md](inherit.md#reading-it-back)).
+Do not enumerate that case: the reach from an unbound term is the whole relation, so the
+answer set is the inverse reach of every stored claim of the predicate, which reads the
+whole extent and each claim's reach to answer a question a bound position answers from
+one reach. The
 forward join does enumerate, since a conclusion is drawn per tuple whether or not a goal
 asks for it ([inherit.md](inherit.md#forward-chaining-on-a-claim-nobody-stored)).
 
@@ -1170,6 +1172,16 @@ cover it refutes would have no opposing handle, and the write would be refused w
 stated clash is stored. `res/separation-denials` therefore returns the denying memberships
 with each denial, and the refuted cover names them as members, so the write is stored and
 placed.
+
+### An implied `genl` edge still seeds its subtree
+
+Defends [taxonomy.md](taxonomy.md#what-a-batch-of-edges-costs-the-passes-that-read-it). A
+`(genl sub super)` edge whose `super` the closure already reaches from `sub`, in a context
+that sees the edge, adds no match, and skipping its seeds looks free. It is not: a firing
+names the widest-bottleneck route as its witness, and re-chaining the subtree replaces the
+witness with one through the new edge. Skipping would keep the old route's witness in one
+arrival order and the new edge's in the other, so the stored justifications, and the class
+a firing floors at when the new edge is the stronger route, would depend on arrival order.
 
 ### A NAT is reified before the index rather than indexed structurally
 

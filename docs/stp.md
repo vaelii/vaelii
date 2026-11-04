@@ -190,6 +190,37 @@ The prover is **opt-in**; the vocabulary is not.
 (v/add-reasoner kb :metric-time)
 ```
 
+## Calendar moments
+
+A calendar moment is an `InstantFn` term, or a point term of a calendar term or a range,
+such as `(StartFn (DatetimeFn "1990-05-17T14:32"))` (`timepoint/moment`, [time.md](time.md)).
+The network places one at its frame's **epoch node**, offset by its seconds after
+1970-01-01T00:00:00 (`datetime/epoch-second`). The epoch node is `(InstantFn 1970 1 1 0 0
+0)` for a wall-clock moment and `(StartFn (DatetimeFn "1970-01-01T00:00:00Z"))` for an
+absolute one (`stp/epochs`). A network naming both epoch nodes bounds the second within 18
+hours of the first either way (`stp/epoch-bound`), the range `java.time.ZoneOffset` gives
+every zone offset, so a wall-clock moment and an absolute one are at most 18 hours from the
+same reading in the other frame, and a placement that needs a wider offset is the network's
+inconsistency. A network naming one epoch node joins no moment of the other frame. The
+offset is read in the base unit through `Second`'s rows of the unit table, and every
+bound it enters rests on those rows.
+
+- **A goal.** `(temporalDistance P Q ?d)` over two moments of one frame answers the
+  difference of their offsets, exact, with no constraint stated. Over a moment and an
+  instant, it answers the network's bound between the epoch node and the instant, shifted by
+  the moment's offset.
+- **A stated constraint.** A `temporalDistance` fact naming a moment constrains its epoch
+  node instead, shifted by the offset (`stp/placed`).
+- **A placed instant.** A visible `(includesInstant T X)`, `T` a calendar term or a range
+  and `X` a symbol, is the constraint from `T`'s epoch node to `X` between the offsets of
+  `T`'s start and end (`stp/instant-constraints`). Both ends are closed: the end of a
+  half-open interval is the least upper bound of the gap. Two such instants inside two
+  minutes are bounded to a 120-second width.
+
+A moment and a placed instant join the network only under `Second`'s `[dimension
+base-unit]` key, when the stated constraints use that key or there are none, so neither
+causes the mixed-dimension refusal.
+
 ## What a derived bound rests on
 
 A forward rule may join on a bound nobody stated — `(temporalDistance Dawn Dusk ?d)` where
@@ -361,8 +392,8 @@ no `temporalDistance` gets the qualitative answer back untouched.
 
 `temporalDistance` (ternary), `startOf` and `endOf` (binary) are declared in
 `resources/kb/upper/time.txt` beside the interval and instant relations, each with
-its own `comment` sentex. Instants and intervals are ordinary individuals; nothing declares
-them, and nothing here is about clocks or calendars.
+its own `comment` sentex. Instants and intervals are ordinary individuals, and nothing
+declares them. A calendar moment is placed by its fields ("Calendar moments").
 
 ## Cost
 

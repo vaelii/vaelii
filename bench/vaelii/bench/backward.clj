@@ -18,7 +18,7 @@
       tiering Phase 1 found for fact postings applies to rule postings).
 
   Structural sizes (candidate counts, posting RAM) are trusted; any wall-clock is untrusted
-  under contention.  Rules are indexed via `p/index-rule` directly (the reference load path,
+  under contention.  Rules are indexed via `rules/index-rule` directly (the reference load path,
   as in bench/memory.clj), so this measures the rule INDEX, not assert-rule's checks.
 
   Run: `lein bench-backward [max-rules]`  (default 200000)."

@@ -708,6 +708,15 @@
   [form]
   (when (sentex-handle? form) (long (second form))))
 
+(defn names-a-handle?
+  "Does `sentence` name a stored sentex by handle?  A `(sentexHandle N)` term anywhere
+  inside is a handle by shape.  An `(except N)` carries a bare integer, a handle by
+  position, indistinguishable from the `86400` in `(conversionFactor Day Second 86400)`;
+  so it is recognised by its functor instead."
+  [sentence]
+  (boolean (or (and (sequential? sentence) (= except-functor (first sentence)))
+               (some sentex-handle? (tree-seq sequential? seq sentence)))))
+
 ;; ---- exceptWhen as a meta-sentex ----------------------------------------
 ;; An exceptWhen exception is stored as `(exceptWhen <query> (sentexHandle <rule-id>))`
 ;; — a meta-sentex naming the rule it qualifies.  The query is a single literal (bare)
@@ -1819,10 +1828,11 @@
   (let [[polarity body] (peel-not form)]
     (if (= polarity :negative) (list 'not body) body)))
 
-(defn- permute-args
+(defn permute-args
   "`form`'s own arguments in the order its permuting marks give a ground application: the
-  symmetric sort, then the commuting sort.  The literal and every compound below it take
-  their argument order from this one list of arms (`canonical-args`)."
+  symmetric sort, then the commuting sort.  The literal, every compound below it
+  (`canonical-args`) and the expression a reified constant is named by
+  (`nat-read/sorted-expression`) take their argument order from this one list of arms."
   [form {:keys [symmetric? groups-of]}]
   (-> form (sort-symmetric-args symmetric?) (sort-commuting-args groups-of)))
 
@@ -1883,26 +1893,132 @@
           (= args (rest form))                    form
           :else                                   (apply list f args))))))
 
+(defn- mention-at-fn
+  "`marks`' `:mention-at?`, `(fn [functor position])`, or one answering false."
+  [{:keys [mention-at?]}]
+  (or mention-at? (constantly false)))
+
 (defn- canonical-args
   "`form` with every compound argument, at any depth, in the form `canonical-term` gives
   it, innermost first, so an arm above compares canonical subterms.  The walk enters list
-  forms only, and stops at an application `held-as-written?`.  `form` itself is returned
-  when nothing below it moved."
+  forms only, and stops at an application `held-as-written?` and at a position
+  `:mention-at?` names.  `form` itself is returned when nothing below it moved."
   [form {:keys [opaque?] :as marks}]
   (let [compound? #(and (seq? %) (seq %))]
     (if (or (not (compound? form))
             (not-any? compound? (rest form))
             (held-as-written? form opaque?))
       form
-      (let [args  (rest form)
-            args' (mapv (fn [a]
-                          (if (and (compound? a) (not (held-as-written? a opaque?)))
-                            (canonical-term (canonical-args a marks) marks)
-                            a))
-                        args)]
+      (let [args     (rest form)
+            mention? (mention-at-fn marks)
+            args'    (into [] (map-indexed
+                               (fn [i a]
+                                 (if (and (compound? a) (not (held-as-written? a opaque?))
+                                          (not (mention? (first form) (inc i))))
+                                   (canonical-term (canonical-args a marks) marks)
+                                   a)))
+                           args)]
         (if (every? true? (map identical? args args'))
           form
           (apply list (first form) args'))))))
+
+(defn canonical-subterm
+  "Term `t` in the form the store holds it in as an argument (`canonical-args`): a compound
+  not `held-as-written?` with its own and every inner application in canonical form, any
+  other term itself.  `marks` is `sentex`'s canonicalization reads."
+  [t {:keys [opaque?] :as marks}]
+  (if (and (seq? t) (seq t) (not (held-as-written? t opaque?)))
+    (canonical-term (canonical-args t marks) marks)
+    t))
+
+(defn- open-compound?
+  "Is `t` a list compound holding a variable outside a `(Quote …)`: one a store holds in
+  an argument order a pattern cannot be sorted into?"
+  [t]
+  (and (seq? t) (seq t) (not (sortable-term? t))))
+
+(defn- own-arrangements
+  "The argument orders compound `t` is probed in under its own functor's permuting marks:
+  its pruned commuting arrangements (`commuting-arrangements`) and, for a symmetric binary
+  application, its mirror.  `t` first."
+  [t {:keys [symmetric? groups-of]}]
+  (cond-> (commuting-arrangements t (or groups-of (constantly nil)))
+    (and symmetric? (symmetric-literal? t symmetric?)) (-> (conj (mirror-literal t)) distinct vec)))
+
+(defn nested-arrangements
+  "Every spelling of literal `form` a lookup probes for the compounds below it: each
+  compound holding a variable, at any depth, in each argument order its own functor's
+  permuting marks let a stored fact hold it in (`own-arrangements`), innermost first.
+  `form` is first, and its own arguments keep their order, which `res/raw-match-with`
+  fans.  Under a `not` the body's arguments keep theirs.  The walk stops where
+  `canonical-args` does.  `[form]` when no argument is an open compound."
+  [form {:keys [opaque?] :as marks}]
+  (letfn [(mention? [f i] ((mention-at-fn marks) f i))
+          (term [t]
+            (if (and (open-compound? t) (not (held-as-written? t opaque?)))
+              (into [] (comp (mapcat #(own-arrangements % marks)) (distinct)) (args-of t))
+              [t]))
+          (args-of [t]
+            (let [alts (into [] (map-indexed
+                                 (fn [i a] (if (and (open-compound? a) (mention? (first t) (inc i))) [a] (term a))))
+                             (rest t))]
+              (if (every? #(= 1 (count %)) alts)
+                [t]
+                (map #(apply list (first t) %) (cartesian alts)))))
+          (below [f]
+            (if (and (seq? f) (some open-compound? (rest f)) (not (held-as-written? f opaque?)))
+              (into [] (distinct) (args-of f))
+              [f]))]
+    (if (and (seq? form) (= not-functor (first form)) (= 2 (count form)))
+      (mapv #(list not-functor %) (below (second form)))
+      (below form))))
+
+(defn every-order
+  "Every argument order compound `t` may have been written in under its own functor's
+  permuting marks: each permutation within each commuting component, or the mirror of a
+  symmetric binary application.  `t` first."
+  [t {:keys [symmetric? groups-of]}]
+  (let [args  (vec (rest t))
+        n     (count args)
+        comps (or (commuting-components ((or groups-of (constantly nil)) (first t) n) n)
+                  (when (and symmetric? (symmetric-literal? t symmetric?)) [[1 2]]))]
+    (into [] (distinct)
+          (cons t (for [choice (cartesian (mapv #(ordered-slot-choices (count %) (count %)) comps))]
+                    (apply list (first t)
+                           (reduce (fn [acc [ps slots]]
+                                     (reduce (fn [a [i s]] (assoc a (dec (nth ps s)) (nth args (dec (nth ps i)))))
+                                             acc (map-indexed vector slots)))
+                                   args (map vector comps choice))))))))
+
+(defn mention-arrangements
+  "Every spelling of literal `form` a fact may be stored under at a mention position
+  `split?` names (`(fn [functor position])`): each compound there, and every compound
+  inside it, in every argument order its own functor's permuting marks allow
+  (`every-order`).  The walk descends where `canonical-args` does.  `form` first, and
+  `[form]` when no such position holds a compound."
+  [form {:keys [opaque?] :as marks} split?]
+  (letfn [(compound? [t] (and (seq? t) (seq t) (not (held-as-written? t opaque?))))
+          (orders [t]
+            (if (compound? t)
+              (into [] (comp (mapcat #(every-order % marks)) (distinct))
+                    (map #(apply list (first t) %) (cartesian (mapv orders (rest t)))))
+              [t]))
+          (walk [t]
+            (if (compound? t)
+              (let [alts (into [] (map-indexed
+                                   (fn [i a]
+                                     (cond (not (compound? a))                      [a]
+                                           (not ((mention-at-fn marks) (first t) (inc i))) (walk a)
+                                           (split? (first t) (inc i))                (orders a)
+                                           :else                                    [a])))
+                               (rest t))]
+                (if (every? #(= 1 (count %)) alts)
+                  [t]
+                  (mapv #(apply list (first t) %) (cartesian alts))))
+              [t]))]
+    (if (and (seq? form) (= not-functor (first form)) (= 2 (count form)))
+      (mapv #(list not-functor %) (walk (second form)))
+      (walk form))))
 
 (defn sort-compounds
   "`form` with every compound below it in the argument order the store gives a ground
@@ -1924,12 +2040,13 @@
       (reduce heads (cond-> #{} (symbol? (first form)) (conj (first form))) (rest form))
       #{})))
 
-(defn- normalize-literal
+(defn normalize-literal
   "One literal in canonical form.  `marks` carries the KB reads canonicalization makes —
   `:symmetric?`, whether a functor is declared symmetric, `:groups-of`, the commutativity
   groups it declares at a given arity, `:opaque?`, whether an application of a functor
-  keeps its arguments as written, and the term marks `canonical-term` reads below the
-  literal (`:associative?`, `:idempotent?`, `:meet-order`).  Each defaults to answering
+  keeps its arguments as written, `:mention-at?`, whether a functor's argument position is
+  kept as written, and the term marks `canonical-term` reads below the literal
+  (`:associative?`, `:idempotent?`, `:meet-order`).  Each defaults to answering
   nothing, so a KB-free construction reorders no arguments.  The compounds below the
   literal are put in canonical form first (`canonical-args`), then the literal's own
   arguments in order."
@@ -2428,17 +2545,17 @@
   docstring).  Context defaults to 'default; id defaults to nil until the record store assigns
   a handle.
 
-  `opts` may carry the canonicalization reads: `:symmetric?`, a predicate on functors;
-  `:groups-of`, `(fn [functor arity] -> groups)`; `:opaque?`, a predicate naming the functors
-  whose applications keep their arguments as written; and the term marks `:associative?`,
-  `:idempotent?` and `:meet-order`, `(fn [functor] -> (fn [a b] a-below-b?))` or nil.  The
-  sorts apply to the literal and every compound below it, the term marks to the compounds
-  below it (`canonical-term`).  Without them no predicate commutes anything."
+  `opts` may carry the canonicalization reads (`normalize-literal`): `:symmetric?`,
+  `:groups-of`, `:opaque?`, `:mention-at?`, `(fn [functor position])`, and the term marks
+  `:associative?`, `:idempotent?` and `:meet-order`.  The sorts apply to the literal and
+  every compound below it, the term marks to the compounds below it (`canonical-term`).
+  Without them no predicate commutes anything."
   ([sentence] (sentex sentence 'default))
   ([sentence context] (sentex sentence context nil))
-  ([sentence context {:keys [symmetric? groups-of opaque? associative? idempotent? meet-order]
+  ([sentence context {:keys [symmetric? groups-of opaque? mention-at? associative? idempotent?
+                             meet-order]
                       :or   {symmetric?   (constantly false) groups-of   (constantly nil)
-                             opaque?      (constantly false)
+                             opaque?      (constantly false) mention-at? (constantly false)
                              associative? (constantly false) idempotent? (constantly false)
                              meet-order   (constantly nil)}
                       :as   _opts}]
@@ -2452,7 +2569,7 @@
      (sentex-types/->LiteralSentex (canon sentence) (intern-sym context) nil nil)
      (constructed-sentex sentence context
                          {:symmetric? symmetric? :groups-of groups-of :opaque? opaque?
-                          :associative? associative? :idempotent? idempotent?
+                          :mention-at? mention-at? :associative? associative? :idempotent? idempotent?
                           :meet-order meet-order}))))
 
 (defn body

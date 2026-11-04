@@ -531,31 +531,47 @@
     (is (v/disjoint? kb q1_t q2_t 'CxUniverse)
         "the rule-concluded separation constrains the moment it is believed")))
 
+;; ---- a genl cycle is refused where the asserting context sees it --------
+
+(tu/deftest-kb a-genl-edge-is-refused-at-a-context-that-sees-the-path-back
+  ;; The refusal holds at every strength, in the context of the edge it closes a cycle
+  ;; with and below it: one stray edge would make every type between the two coextensive.
+  (doseq [strength [:monotonic :default]]
+    (tu/with-terms [a_t b_t CxLow]
+      (v/assert kb (list 'genlCx CxLow 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'genl a_t b_t) 'CxUniverse {:strength :monotonic})
+      (testing strength
+        (is (= [:not-well-formed :not-well-formed]
+               (for [cx ['CxUniverse CxLow]]
+                 (try (v/assert kb (list 'genl b_t a_t) cx {:strength strength}) :ok
+                      (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))))
+        (is (not (v/genl? kb b_t a_t CxLow)))))))
+
+(tu/deftest-kb a-genl-edge-closing-a-cycle-only-a-sibling-sees-is-stored
+  ;; Each sibling reads its own edge alone; a context below both reads the cycle, and
+  ;; there a member of either type is a member of the other.
+  (tu/with-terms [a_t b_t CxA CxB CxBoth Al]
+    (siblings! kb CxA CxB)
+    (v/assert kb (list 'genl a_t b_t) CxA)
+    (v/assert kb (list 'genl b_t a_t) CxB)
+    (doseq [up [CxA CxB]] (v/assert kb (list 'genlCx CxBoth up) 'CxUniverse))
+    (v/assert kb (list b_t Al) 'CxUniverse)
+    (is (= [true false true] (mapv #(v/genl? kb a_t b_t %) [CxA CxB CxBoth])))
+    (is (= [false true true] (mapv #(v/genl? kb b_t a_t %) [CxA CxB CxBoth])))
+    (is (= [false true true] (mapv #(v/ask? kb (list a_t Al) %) [CxA CxB CxBoth])))))
+
 ;; ---- what is global, and stated to be ----------------------------------
 ;;
 ;; Not leaks: each is a property of a structure the whole KB shares, and narrowing it
 ;; would break something worse than it fixes.  Asserted so the next reader does not have
 ;; to guess (docs/taxonomy.md, docs/contexts.md).
 
-(tu/deftest-kb the-genl-cycle-check-is-global-on-purpose
-  ;; A context-narrowed check would admit a globally cyclic edge, and a type cycle
-  ;; claims two types are coextensive — a claim about *terms*, which is the equality
-  ;; partition's job, and which would make a `disjoint` pair disjoint from itself.  So
-  ;; the refusal is about what the edge means, not about what the reads can survive:
-  ;; they survive a cycle either way, which is the test below.
-  (tu/with-terms [a15_t b15_t CxA CxB]
-    (siblings! kb CxA CxB)
-    (v/assert kb (list 'genl a15_t b15_t) CxA)
-    (is (thrown? clojure.lang.ExceptionInfo
-                 (v/assert kb (list 'genl b15_t a15_t) CxB))
-        "refused although B cannot see the edge it closes a cycle with")))
-
 (tu/deftest-kb a-cycle-belief-assembles-is-answered-alike-by-every-reader-of-it
-  ;; The check above reads the **active** adjacency, so belief walks around it: take an
-  ;; edge OUT, assert its reverse — nothing is cyclic while the first is out — then bring
-  ;; the first back and both stand.  The edge goes OUT here as `preview` suspends a
-  ;; removal.  Nothing refuses the result, so the reads owe it an answer rather than an
-  ;; assumption, and the three readers of one question owe the *same* answer.  The
+  ;; The `genl` cycle check reads the **active** adjacency, so belief walks around it:
+  ;; take an edge OUT, assert its reverse — nothing is cyclic while the first is out —
+  ;; then bring the first back and both stand.  The edge goes OUT here as `preview`
+  ;; suspends a removal.  Nothing refuses the result, so the reads owe it an answer rather
+  ;; than an assumption, and the three readers of one question owe the *same* answer.  The
   ;; potential ranks the condensation, so the two types are level rather than ordered,
   ;; and a scoped walk pruned on a strict descent alone denies the edge its own closure
   ;; returns.
@@ -602,6 +618,18 @@
     (is (seq (v/sentexes-matching kb (list palOf16 Ann Bob) CxB))
         "B retrieves the mirror, because storage sorted the arguments and storage
          does not vary by reader")))
+
+(tu/deftest-kb an-open-query-below-a-root-answers-the-stated-closure-alone
+  (tu/with-terms [lone_type CxLone CxLeaf Fido]
+    (v/assert kb (list lone_type Fido) CxLone)
+    (v/assert kb (list 'genlCx CxLeaf 'CxUniverse) 'CxUniverse)
+    (let [open (fn [q] (set (map '?x (v/query kb q 'CxUniverse))))]
+      (is (seq (v/query kb (list 'genlCx CxLone 'CxUniverse) 'CxUniverse))
+          "the closed check reads the implicit edge")
+      (is (contains? (open '(genlCx ?x CxUniverse)) CxLeaf))
+      (is (not (contains? (open '(genlCx ?x CxUniverse)) CxLone)))
+      (is (not (contains? (open '(genl ?x thing)) lone_type))
+          "a type no edge names is no answer either"))))
 
 (tu/deftest-kb an-open-context-query-requires-one-reader-to-see-the-whole-join
   (tu/with-terms [leftP17 rightP17 Item CxA CxB]

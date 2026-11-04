@@ -698,8 +698,8 @@
 
    ;; **The vocabulary write, and the first budget here that is not about a fact.**  What it
    ;; prices is everything a `genl` edge sets off that a fact does not: the arity refresh
-   ;; below it and the argument-type entailment's two checks.  No rule reads a term above
-   ;; the edge, so the chaining seeds read no subtree.  The arity refresh reads one
+   ;; below it and the argument-type entailment's two checks.  No rule is stored, so the
+   ;; chaining seeds read the key count once and no subtree.  The arity refresh reads one
    ;; `:arity-binding` entry an edge, the probe of the lower end for a binding
    ;; (`arity/drain!`), and the lower end's length set (`arity/refresh-shapes!`).  The
    ;; refresh moves the lengths at or below the lower end, so `special/recheck-on-lengths`
@@ -710,7 +710,7 @@
     :build   taxonomy-edge
     :sentexes 100
     :reads   {:arity-binding 100 :exception-index 300 :opposed 100 :predicate-extent 1400
-              :rule-index 500 :term-index 200 :trie-counts 900 :trie-lookup 100 :mint 100}
+              :rule-index 400 :term-index 200 :trie-counts 900 :trie-lookup 100 :mint 100}
     :writes  {:levels 500 :terms 400 :roots 1300 :term-names 101 :slots 201}}
 
    ;; **No read per relative**: an arity arriving reads the lengths stored above its

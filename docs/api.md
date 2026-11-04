@@ -97,6 +97,8 @@ should. The file map is [namespaces.md](namespaces.md). Entry points are `lein r
                                                 ; (docs/argtypes.md, "Nothing records a withheld mint")
 (edit! kb {:add [[sentence context opts?] ...] :remove [handle ...]} opts?) ; add-then-remove, one settle;
                                                 ; opts :max-ms / :stop? bound the adds (`edit-opt-keys`)
+(replace-facts! kb context facts opts?)         ; context's ground literal premises become `facts`, in one
+                                                ; edit! -> {:added n :removed n :edit <edit!'s result>}
 (check kb sentence context opts)                ; would assert succeed? -> [] or [{:type :message …}]
 (check-edit kb {:add […] :remove […]})          ; the same over an edit batch, each problem naming its entry
 (preview kb {:add […] :remove […]} opts)        ; what the batch would BELIEVE -> the diff, then rolled back
@@ -620,6 +622,12 @@ default-chain-opts                              ; the bounds a chain run takes w
 (equiv-class kb term [context]) / (deprecated? kb term)  ; partition, read — scoped by
                                                          ; context like genls / specs
 (find-sentexes kb term) / (find-sentexes-all kb terms)  ; inverted term index
+(defining-contexts kb term)                            ; maximal ordinary defining contexts;
+                                                       ; literal Quote and nested sentences do not contribute;
+                                                       ; ordinary function arguments do contribute;
+                                                       ; lift/NAT-only support does not contribute;
+                                                       ; unclassified live support throws
+                                                       ; :incomplete-defining-contexts
 (indexable-terms sentex)                                ; the terms that make a sentex findable —
                                                         ; exactly the keys it is posted under
 ;; the content order — the engine's own, so an application ranking its answers breaks the
@@ -708,11 +716,15 @@ assertable-strengths                            ; #{:monotonic :default}, the se
 (edit-records! kb {:remove hs :direction {h d}}) ; on a KB opened {:recover? false}: delete the
                                                 ; removed records and what rests on them, write
                                                 ; each rule's direction; no check, sweep or settle
-                                                ; -> {:removed :unpremised :absent :redirected
-                                                ;     :justifications-removed :seeds}
+                                                ; -> {:added :present :removed :unpremised :absent
+                                                ;     :redirected :justifications-removed :seeds}
+(edit-records! kb {:add [[s ctx] …]})           ; store ground genl / sense / comment premises
+                                                ; with their index postings, a stored derived
+                                                ; one marked premise
 (settle-record-edits! kb {:seeds ss})           ; one recover (or reindex), then sweep the seeds
                                                 ; and the unrooted, chain, re-chain the unrooted
-                                                ; firings' antecedents, record-arg-types;
+                                                ; firings' antecedents, bring the stored premise
+                                                ; seeds in as assert does, record-arg-types;
                                                 ; {:arg-types? false} leaves the pass owed,
                                                 ; :on-progress reports each phase
                                                 ; (docs/storage.md, "Editing the records of a
@@ -734,6 +746,10 @@ assertable-strengths                            ; #{:monotonic :default}, the se
                                                 ;  :because [h1 h2 …]}]} h1 {…} …}}, one node per
                                                 ; reachable handle, rules originalized.  Linear in
                                                 ; the graph, so no depth bound and no truncation
+(why kb handle {:content? true})                ; the same graph with every sentex named (ist Cx S)
+                                                ; and no handle, so two seats compare it with =
+                                                ; (overlay.md, "Two seats' explanations").
+                                                ; why-not's sentence arity and argue take it too
 (why-not kb handle)                             ; stored but OUT: :defeated (+ what contradicts it)
                                                 ; / :withdrawn (+ the defeats it rests on)
                                                 ; / :superseded (+ the restatement that displaced it)
@@ -764,7 +780,7 @@ assertable-strengths                            ; #{:monotonic :default}, the se
                                                 ; and it is `ask` (no rule expands); {:max-depth n} and
                                                 ; it is `query`.  There is no default depth here either
                                                 ; A ground side's search stops at its first answer
-                                                ; opts: `query-opt-keys`, checked at THIS entry point — a
+                                                ; opts: `argue-opt-keys`, checked at THIS entry point — a
                                                 ; misspelt depth checked downstream is never checked at
                                                 ; all, and answers :unknown for a derivable sentence
                                                 ; :for-why / :against-why are `why`'s graph, for a
@@ -777,7 +793,7 @@ assertable-strengths                            ; #{:monotonic :default}, the se
                                                 ; {:handle :sentence :context} per reading.  A stored sentence
                                                 ; a placed nogood defeats at context is :false, with its
                                                 ; defeat reports under :defeated-by
-;; introspection: sentex, justification, supporting-justifications, dependent-justifications, premise?, defeat-class
+;; introspection: sentex, justification, supporting-justifications, dependent-justifications, premise?, mint-rule-kind, defeat-class
 ;;   both justification listings are ordered by CONTENT — the informant's own sentence,
 ;;   then the antecedent sentences — and so is the antecedent vector inside each
 ;;   justification, which is what `why`'s :because and `why-not`'s :missing print.  So
@@ -832,6 +848,37 @@ assertable-strengths                            ; #{:monotonic :default}, the se
                                                 ; {:portfolio? true} {:auto? true}.  Ignored by the DFS,
                                                 ; which has one order and no choice to make
 ```
+
+`defining-contexts` returns a set of the most general contexts containing ordinary,
+believed assertions about a term. The read includes ordinary derived assertions.
+The read excludes literal `Quote` contents and nested sentences, but enters ordinary
+function terms. NAT bookkeeping is recognized by the owning reified constant, including
+a projection mentioning another term as an argument. A lift-only copy and a consequence
+with only skeletal content support do not create an ordinary home. The engine's
+generated arity-class copy is skeletal too. An independent
+ordinary content support preserves the home. A fact an equality merge respells keeps the
+home of the fact as stated, since the stated spelling the merge supersedes classifies as
+a premise.
+
+The read uses the term index and current support records. The read charges the active
+work meter. A believed assertion with unclassified support throws
+`:incomplete-defining-contexts` instead of returning a partial set. Native-only truths
+without a stored assertion have no assertion context in this result. An empty set does
+not certify that every possible proof of the term's membership is skeletal. The
+Specified audit uses the same evidence analysis. Only proved skeletal-only evidence
+exempts an instance; native or absent stored evidence retains an actual-reader audit.
+An incomplete helper exception becomes an explicit audit gap with the term and handles.
+The audit first checks for an actual admissible filler. A proved filler discharges the
+obligation without claiming that absent or unknown defining evidence is an exemption.
+
+A grounded ordinary rule can introduce a constant that does not occur in the rule's
+antecedent facts. The read follows the reachable usable-support graph, including the
+rule handle, rather than requiring every proof statement to occur in the term's index
+posting. An unfired rule's nested consequent does not define the constant. An ordinary
+rule does not turn a purely skeletal trigger into ordinary content. A mixed ordinary
+and skeletal introduction with no established term-bearing content source remains an
+incomplete classification. Ordinary argument-type prerequisites do not change the
+existing first-source classification of their generated membership.
 
 ## Choosing a query function
 
@@ -957,6 +1004,23 @@ flickers OUT and back.  The final belief equals running the asserts and retracts
 singly — `edit!` skips the intermediate tear-down and the N per-op settles.  Use it to
 *replace* knowledge (a rule by a refined rule, a fact by a corrected one) without the
 conclusions resting on it going dark in between.
+
+`replace-facts!` takes a context and its new facts, and writes the difference as one
+`edit!`. It reads the ground literal premises stored in that context alone, as stored: no
+`genlCx` ancestor, no rule, no derived sentex and no other context's premise. A premise
+naming a sentex (an `exceptWhen`, an `except`, any sentence holding a `(sentexHandle N)`)
+is not read, so a snapshot never retracts one. Each fact names the row `handle-of` finds, so either order of
+a symmetric literal names one row. A fact the context does not hold as a premise is added,
+and each premise there no fact names is retracted. The `edit-opt-keys` in its opts bound
+the edit, and the other keys are each added fact's `assert` opts. A held fact is
+re-asserted when its opts or a `set/monotonic` wrapper request a stronger strength than the
+stored one, as a re-assert raises it, and otherwise keeps the stored strength. `:added`
+counts the rows the adds name, so both spellings of a symmetric literal add one. Equal sets
+write nothing and return `:edit nil`. A rule, a fact holding a variable (inside a `Quote`,
+or a schematic `equals`), which the read of ground premises never retracts, a fact
+`assert` stores in another context (a `forced_decontextualized_predicate` fact, an `(ist Ctx S)`
+naming another context) and a fact naming a sentex are refused (`:shape`)
+([storage.md](storage.md#writing-the-difference-between-two-snapshots)).
 
 **A batch is all-or-nothing.**  `check-edit` refuses a malformed entry or an unknown
 removal handle before anything is applied, but it judges each `:add` against the KB **as
@@ -1565,6 +1629,7 @@ take back. Usually that means destroying or removing stored knowledge, and on
 | `retract!` | tears down premise support and everything solely resting on it |
 | `edit!` | its `:remove` half runs the same teardown `retract!` does, so a batch that adds and removes is as irreversible as its removals |
 | `edit-with-consequences!` | the same write, reporting what it turned out to mean |
+| `replace-facts!` | an `edit!` whose `:remove` half retracts each premise of the context the new facts do not name |
 | `clear!` | wipes every record and index entry |
 | `clear-violations!` | empties the dropped-conclusion ledger (the drops are final either way); the `:forced-conclusion` entries `violations` reads off the stored firings stay |
 | `abduce-discard!` | drops an abduction's scratch context and everything it licensed |
@@ -1576,6 +1641,14 @@ take back. Usually that means destroying or removing stored knowledge, and on
 | `release-withheld!` | only adds, but empties the owed-release queue, which no call fills again for the departures it held |
 | `import!` | fills the store wholesale, at the dump's own handles and bypassing the assert path; the only undo is `clear!` |
 | `close!` | destroys nothing — but the KB value in hand, and every KB sharing the directory, is dead afterwards; reopening yields a new KB, not the one you held |
+| `edit-records!` | adds and removes premises and changes rule directions in the records of a KB without belief, with no settle and no check that reads belief; `settle-record-edits!` is the one way to belief afterwards |
+| `settle-record-edits!` | rebuilds belief over the edited records and deletes the stored justifications resting on a record the store no longer holds |
+| `remove-unsupported!` | deletes the unsupported records it names, each through `retract!` |
+| `mark-inert!` | writes `:inert true` into the provenance of the unsupported records it names |
+| `load-foreign!` | loads a whole directory through a foreign reader plugin; the undo is `retract!` per handle, as for `load-text!` |
+| `record-arg-types!` | a resumable pass that writes argument-type records into the store; what it owes is kept there until the next call resumes it |
+| `request-stop!` | asks a running `record-arg-types!` pass to stop; the pass's partial progress stays in the store |
+| `install-memory-guard!` | attaches a listener to the JVM's garbage collectors for the life of the process; nothing detaches it |
 
 Inside `vaelii.impl.*` the same convention runs — `delete-sentex!`, `unindex-sentex!`,
 `del-genl!`, `unmark-prop!`, `clear-records!`, `clear-index!`.
@@ -1605,7 +1678,7 @@ predicate meta-ontology (`predicate` ⊃ unary/binary/ternary + the algebraic
 subtypes)), each documented by a `(comment <term> "...")` sentex so the KB
 documents itself in its own representation (`core-context/comment-of` reads them back),
 plus the metadata⇒predicate-type rules, and one file per domain beside it.
-`vaelii.host.starter/load-into` builds a
+`vaelii.starter/load-into` (the shim over `vaelii.host.starter/load-into`) builds a
 **schema-only** common-sense KB on top — types, relation definitions, and theory
 rules, but **no individuals or facts**. Its declarative content lives as plain text
 under `resources/kb/`, read by `vaelii.host.seed`
@@ -1614,7 +1687,10 @@ never run code). Every sentence about a term is grouped **term-centrically** (bl
 natural sort order), and every context file is **discovered on the classpath and loaded
 on kb start** (`seed/layer-files`), so adding a KB is dropping a file — no code
 change. What stays in `starter.clj` is the *order the layers* load in and the one
-computed batch (every type is a `unary_predicate`, placed in CxUniverse). The context
+computed batch (every type is a `unary_predicate`, placed in CxUniverse). `(load-into kb
+{:layers [path …]})` then loads each text KB path through `load-text!`, and over a durable
+store nothing wrote to since the last call skips the sources before the first whose files
+changed ([operations.md](operations.md#restarting-over-a-built-store)). The context
 topology is three levels, most general (top) to most specific (bottom).
 
 **CxUniverse** is the root, seen by every context the topology wires in. It holds the
@@ -1633,21 +1709,21 @@ vocabulary to the shipped files, every `genlCx` edge excepted ([contexts.md](con
 The **middle contexts** are `kb/middle/`, each seeing CxUniverse (`CxKinship`,
 `CxMereology`, `CxBiology`, `CxChange`, `CxSocial` — the rules; `CxAnatomy` and `CxSize`
 — claims about kinds), and **CxWell** sees the seven, so it transitively sees the whole
-ontology but three opt-in theories.
+ontology but two opt-in theories.
 `CxNormalPhysicalConditions`, the states of matter at room temperature, and `CxTra`,
 vocabulary that is generally useful but specific to one domain (the relations over
-software tools, media resources and DNS names with the kinds they are typed over, and
-the perception relations), also sit in `kb/middle/` and see CxUniverse, and CxWell does not see either of
-them: a context opts in by placing itself under one. `CxSocialExtension` sits beside them and sees `CxSocial` instead,
-carrying `CxSocial`'s own relations to a context placed under it;
-`<Theory>Extension` names a theory that extends an existing starter theory with
-vocabulary most contexts under the base theory have no occasion to see.
+software tools, hosts, access and file paths, media resources and DNS names with the
+kinds they are typed over, the perception relations, and relationship and
+plural-identity vocabulary narrower than `CxSocial`'s), also sit in `kb/middle/`, and
+CxWell does not see either of them: a context opts in by placing itself under one.
+`CxTra` sees `CxSocial` as well as CxUniverse, so it carries `CxSocial`'s own relations
+to a context placed under it.
 
 The upper layer says what things **are**, always true, like `genl`; the middle contexts
 say how they **interrelate**, where several overlapping accounts can coexist. Each middle
 file wires itself in with its own `genlCx` edges, so the topology is data. A vocabulary
-KB holds the upper layer alone, and a user adds a context of their own above CxUniverse
-or below it.
+KB holds the upper layer alone, and a user adds a context of their own below
+CxUniverse, which every context sees.
 The middle theories are the defeasible defaults that state their own exception with
 `exceptWhen` (birds fly except penguins; animals breathe air except fish; organisms
 are alive until they are dead and awake until they are asleep; a `metal_stuff` is solid
@@ -1740,7 +1816,7 @@ settle places the clash, which is what gives the loser a `why-not`.
 |---|---|---|
 | `:non-confluent` | two schematic equations disagree about a shared term; the normal form stays deterministic, so nothing is dropped | `:with` `:message` |
 | `:inert-argument` | a stored fact, asserted or concluded by a rule, whose argument fails a declared argument type as `assert` reads it — a value under `arg`, a symbol under the constraint-only reading, a `quotedArg` kind — held in the `:out` forced set, so it is never believed (docs/argtypes.md).  Read off the held facts at each call, not filed: the entry stands while the fact is stored and convicted, and carries no `:run` | the check's problem map |
-| `:inert-rule` | a stored rule, asserted or minted, one of whose variables two argument constraints hold to separated types, so no term fills it: `:detail` is the `:arg-variable` conviction.  The rule is held in the `:out` forced set, so it is never believed and fires nothing (docs/argtypes.md).  Read off the held rules at each call, as `:inert-argument` is | `:variable` `:expected` `:message` |
+| `:inert-rule` | a stored rule, asserted or minted, that is a premise or has a justification other than a generator's firing, one of whose variables two argument constraints hold to separated types, so no term fills it: `:detail` is the `:arg-variable` conviction.  The rule is held in the `:out` forced set, so it is never believed and fires nothing (docs/argtypes.md).  Read off the held rules at each call, as `:inert-argument` is | `:variable` `:expected` `:message` |
 | `:forced-conclusion` | a stored firing concluding a forced-monotonic literal, or its denial, from a rule whose antecedents are not all forced-monotonic or that has an `unknown`, `exceptWhen` or `set/defaultRule`: the firing is held void at some reader, so it supports nothing there, and `:not-forced-monotonic` names the rule's antecedent predicates that are not forced-monotonic (docs/nmtms.md).  Read off the stored firings at each call, not filed: the entry stands while the firing is stored and convicted, `:sentence` is the conclusion's stored spelling, and the entry carries no `:run` | `:not-forced-monotonic` `:message` |
 | `:aggregate` | an aggregate prover cannot reduce an extent — values that are not numbers of one dimension, or bounds only partially ordered.  Filed once per distinct error, since a count is recomputed rather than cached | `:message` `:values` |
 | `:qualitative-inconsistency` | the qualitative network visible from a context is unsatisfiable, so no goal naming a node of an unsatisfiable component is answered there | `:calculus` `:message` `:nodes` `:pairs` `:sources` |

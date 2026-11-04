@@ -227,19 +227,19 @@
       (observe! r done elapsed true)))
   nil)
 
-(def ^:private log-vars
-  "Every dynamic var the timer's `trove/log!` and `logging/set-level`'s backend read."
-  [#'trove/*log-fn* #'trove/*ctx* #'*out* #'*err*])
-
 (defn- timer-task
-  "The task the timer runs for `r`: `on-timer!` under the thread bindings `start` names."
+  "The task the timer runs for `r`: `on-timer!` under the thread bindings in force here.
+  The task runs in a clone of this thread's binding frame, which shares the bindings rather
+  than copying each one, as `future` conveys them, and restores the timer thread's own frame
+  after it."
   [r]
-  (let [f     trove/*log-fn*
-        frame (if (or (nil? f) (logging/installed? f))
-                (reduce (fn [m v] (if (thread-bound? v) (assoc m v (var-get v)) m)) {} log-vars)
-                (get-thread-bindings))
+  (let [frame (clojure.lang.Var/cloneThreadBindingFrame)
         task  (promise)]
-    (deliver task (fn [] (with-bindings* frame #(on-timer! r @task))))
+    (deliver task (fn []
+                    (let [own (clojure.lang.Var/getThreadBindingFrame)]
+                      (clojure.lang.Var/resetThreadBindingFrame frame)
+                      (try (on-timer! r @task)
+                           (finally (clojure.lang.Var/resetThreadBindingFrame own))))))
     @task))
 
 (defrecord Reporter [id label log-ns total clock t0 ^AtomicLong done ^AtomicLong check-at
@@ -255,9 +255,8 @@
   `opts`: `:clock`, a zero-argument fn answering nanoseconds (`System/nanoTime` by
   default), and `:timer?`, whether a timer logs the lines no tick does (by default under
   the default clock and a `total` other than 0).  The timer logs under every binding in
-  force here, or under those of `log-vars` alone when `trove/*log-fn*` is nil or
-  `set-log-level`'s backend.  A level raised mid-loop prints its next timer line.  The
-  `*observer*` in force here is the reporter's."
+  force here.  A level raised mid-loop prints its next timer line.  The `*observer*` in
+  force here is the reporter's."
   (^java.io.Closeable [id label total] (start id label total nil))
   (^java.io.Closeable [id label total {:keys [clock] :as opts}]
    (let [timer? (get opts :timer? (and (nil? clock) (not= 0 total)))

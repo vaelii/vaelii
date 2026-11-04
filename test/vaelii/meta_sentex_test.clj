@@ -111,6 +111,25 @@
         (is (empty? (v/sentexes-matching kb (list flies P) ctx)) "penguin still excepted")
         (is (seq (v/sentexes-matching kb (list flies O) ctx)) "ostrich flies again")))))
 
+(tu/deftest-kb two-spellings-of-one-exception-are-one-meta-sentex
+  (doseq [spelling [:comparison :symmetric]]
+    (tu/with-terms [tpX tp_y tsym Ann Bob Xi]
+      (let [[e1 e2] (case spelling
+                      :comparison [(list 'greaterThan '?y 3) (list 'lessThan 3 '?y)]
+                      :symmetric  [(list tsym Ann Bob) (list tsym Bob Ann)])
+            rule (list 'set/forwardRule (list 'implies (list tpX '?x '?y) (list tp_y '?x)))]
+        (when (= spelling :symmetric)
+          (v/assert kb (list 'symmetric tsym) 'CxUniverse)
+          (v/assert kb (list tsym Ann Bob) 'CxUniverse))
+        (let [m1 (v/assert kb (list 'exceptWhen e1 rule) 'CxUniverse)
+              m2 (v/assert kb (list 'exceptWhen e2 rule) 'CxUniverse)]
+          (v/assert kb (list tpX Xi 5) 'CxUniverse)
+          (testing (name spelling)
+            (is (= m1 m2) "an exception conjunct folds as a stored literal does (docs/canonicalization.md)")
+            (is (empty? (v/sentexes-matching kb (list tp_y Xi) 'CxUniverse)) "the exception blocks the rule")
+            (v/retract! kb m1)
+            (is (seq (v/sentexes-matching kb (list tp_y Xi) 'CxUniverse)) "retracting the one handle releases the rule")))))))
+
 (tu/deftest-kb a-conjunctive-consequent-aligns-the-exception-per-conjunct
   ;; A conjunctive consequent splits into one rule per conjunct, and a self-join tie
   ;; group in the antecedents can be numbered *differently* by each conjunct (the

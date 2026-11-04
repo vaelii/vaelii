@@ -101,6 +101,27 @@
         (doto (Thread. ^Runnable task) (.start) (.join))))
     (is (= [[:caller "the step: 15 s in"]] @out))))
 
+(deftest the-timer-reads-the-binding-frame-it-was-made-in-not-a-copy
+  (let [now (atom 0)
+        out (atom [])]
+    (with-open [r (progress/start ::step "the step" nil {:clock #(deref now) :timer? false})]
+      (binding [*tag*          :made
+                trove/*log-fn* (fn [_ns _coords _level _id payload]
+                                 (swap! out conj [*tag* (:msg (force payload))]))]
+        (let [task (#'progress/timer-task r)]
+          (set! *tag* :set-after)
+          (reset! now 15000000000)
+          (doto (Thread. ^Runnable task) (.start) (.join)))))
+    (is (= [[:set-after "the step: 15 s in"]] @out))))
+
+(deftest the-timer-thread-keeps-no-binding-of-a-task-it-ran
+  (with-open [r (progress/start ::step "the step" nil {:clock (constantly 0) :timer? false})]
+    (let [task  (binding [*tag* :caller] (#'progress/timer-task r))
+          after (promise)]
+      (doto (Thread. ^Runnable #(do (task) (deliver after (thread-bound? #'*tag*))))
+        (.start) (.join))
+      (is (false? @after)))))
+
 (deftest a-reporter-started-while-the-log-drops-info-logs-on-the-timer-once-the-level-is-raised
   ;; the dial and the root `*log-fn*` are process-wide, so both are put back
   (let [root  (.getRawRoot #'trove/*log-fn*)

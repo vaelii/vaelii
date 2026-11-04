@@ -826,13 +826,18 @@ A KB with no rule reads the count alone (`trigger-keys-beside-rules` in `lein pe
 
 The other readers of the rule-key set read from the smaller side too, each as one read. A
 `genl` edge's subsumption seeds test each term of the upper end's upward closure and of
-the re-join families for membership (`special/rule-reads-above?`), and intersect the
+the re-join families for membership (`special/rule-reads-above`), and intersect the
 lower end's negated fan as `trigger-keys` does (`special/negative-subsumption-seeds`). A
-datum a `SupportingProver` reads intersects the prover's answers (`special/rules-taking`).
-A `genlCx` move reads the key count, and the set only when it builds the fan
-(`special/move-seeds`). `lein perf` holds each flat in the key count:
+batch of edges (`special/batch-subsumption-seeds`) makes those reads once for every edge:
+the key count, the re-join families and the negated keys (`rules/stored-negated-keys`).
+An edge whose spec reach passes the key count, and every edge on a KB declaring a
+`genlInverse` edge, intersects its reach with the negated keys from the smaller side. A
+datum a `SupportingProver` reads intersects the prover's answers
+(`special/rules-taking`). A `genlCx` move reads the key count, and the set only when it
+builds the fan (`special/move-seeds`). `lein perf` holds each flat in the key count:
 `rule-reads-above-beside-rule-keys`, `negative-seeds-beside-rule-keys`,
-`computed-reading-beside-rule-keys` and `visibility-seeds-beside-rule-keys`. The
+`batch-seeds-beside-rule-keys`, `computed-reading-beside-rule-keys` and
+`visibility-seeds-beside-rule-keys`. The
 stratification graph reads the whole set once per graph for the readers of `not`
 (`checks/stratification-readers`), because no family holds the negated keys apart from
 the rest.

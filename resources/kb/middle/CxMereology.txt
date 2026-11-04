@@ -11,11 +11,8 @@
 (set/forwardRule (implies (and (owns ?p ?whole) (tangiblePartOf ?part ?whole))
                           (owns ?p ?part)))
 
-;; kb-integrity suggests a transitiveInArgInverse declaration for each rule.  The
-;; declaration answers a ground goal only (docs/inherit.md, "Reading it back"), and an
-;; open (locatedIn ?part ?place) or (owns ?p ?part) query reads stored conclusions, so
-;; the rules stay.
+;; kb-integrity suggests a transitiveInArgInverse declaration for each rule.
 (acknowledgedFinding :rule-macro (transitiveInArgInverse locatedIn 1 tangiblePartOf)
-                     "An open locatedIn query reads the stored conclusions; the declaration answers ground goals only.")
+                     "An open locatedIn query reads the stored conclusions; the declaration answers no goal open at the part.")
 (acknowledgedFinding :rule-macro (transitiveInArgInverse owns 2 tangiblePartOf)
-                     "An open owns query reads the stored conclusions; the declaration answers ground goals only.")
+                     "An open owns query reads the stored conclusions; the declaration answers no goal open at the part.")

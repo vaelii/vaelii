@@ -249,7 +249,9 @@ matcher reads a stored fact in every arrangement its own functor's permuting mar
 `(symmetric pr)` holds. That firing holds only while a mark does, so the join, the
 trigger and a rete run each compare the instantiated antecedent's arguments with the
 stored fact's (`chain/read-marks`), and where they differ the justification names the
-mark statements that license the rearrangement (`inherit/permuted-read-supports`). Each
+mark statements that license the rearrangement (`inherit/permuted-read-supports`). A
+compound below the literal read in another order adds its own functor's statements, one
+set per compound, to each alternative. Each
 minimal set of statements that licenses it is its own justification: a binary fact under
 both `symmetric` and `commutative` is read backwards by either, and the firing survives
 retracting one of them. The statement named is the CxUniverse copy the engine lifts
@@ -260,7 +262,7 @@ joins the justification and not the placement: the firing is placed by the rule 
 facts it matched (`chain/placement-antecedents`), because the store reads the mark from
 every context, and a context that sees no statement of it places the firing where it
 places one over a fact stored in the order the rule reads
-([contexts.md](contexts.md#a-context-outside-the-topology)). The mark costs a firing no
+([contexts.md](contexts.md#cxuniverse-is-the-implicit-root)). The mark costs a firing no
 index read, since the statements come off the taxonomy's supporter sets (`firing_cost_test`'s symmetric-trigger workload). The comparison runs
 only for an antecedent whose sub-predicate closure carries a permuting mark
 (`chain/permuting-antecedent?`), and at a trigger only for a fact whose own predicate
@@ -653,7 +655,9 @@ run, builds each conclusion's key set from `-supports` on the first ask and answ
 every later one in a single hash probe.
 
 That cache is one of three fast paths on the placement path, with the `ensure-node`
-no-op skip and the single-context placement answer; `observe/*chain-fast-paths*` is the
+no-op skip (a node already present at a depth no higher moves neither the network nor the
+change clock, so the scoped caches a run reads stay warm) and the single-context placement
+answer; `observe/*chain-fast-paths*` is the
 one switch over all three, and binding it **false** runs the reference paths instead.
 Each is a pure cost decision that computes exactly what its reference computes, which is
 what `chain_fast_paths_test` compares and what `vaelii.bench.pyramid`'s `-ref` modes
@@ -778,6 +782,43 @@ the predicate extent), so the candidate set was always the coarse one and it is
 default assert-then-query flow a forward-capable rule has already materialized the
 subtype conclusion, so this only *adds* answers where forward has not run it — a
 backward-only rule, `{:chain? false}`, or a goal past the forward run's depth.
+
+### An edge's reading
+
+A denial of a supertype stops the positive fan where the edge does not contrapose. With
+`(genl beast perishing)` at `:default`, `(beast Hydra)` and `(not (perishing Hydra))`
+stored, the edge reads `(perishing Hydra)` off the membership, and the denial states the
+contrary of that reading about `Hydra` itself. The denial undercuts the reading at either
+strength, as a stated claim undercuts an inherited `:default` one
+([inherit.md](inherit.md#specificity-undercuts-and-does-not-arbitrate)). `ask?`, `query`
+and `argue` answer `(perishing Hydra)` false, `(beast Hydra)` stays believed, and
+`contradictions` reports nothing. A `genl` edge carries no `exceptWhen`, so a denial is
+the exception a `:default` edge takes for one term.
+
+The reading is a stored sentex, the **edge reading**. For a membership `(s x)` beside a
+stored denial of `(q x)` with `s` below `q` (the `supertype` candidate,
+[nmtms.md](nmtms.md#the-nogood-families)), `chain/sync-edge-readings!` stores `(q x)` at
+each placement of the membership and the path that sees no path of `:monotonic` edges,
+under the informant `edgeReading`, justified by the membership and the path's edge
+supporters. The sync reads the dependents of the members of the term's `supertype` nogoods
+only, those that left in the pass included (`membership/take-moved!`). Each stored denial
+of `(q x)` places a guard defeat of the reading resting on the denial and the reading's
+antecedents (`chain/edge-reading-defeat-placements`). A reader that sees the denial
+believed reads the reading's justification invalid, and only that justification: a second
+support of `(q x)`, stated or derived, stands and meets the denial as a negation pair. A
+pair whose positive side holds only as edge readings is no nogood (`exc/edge-read-only?`).
+Where a path of `:monotonic` edges is seen, the edge contraposes, no reading is stored,
+and the `supertype` nogood weighs the membership against the denial.
+
+The fan and the chainer read the reading instead of the membership.
+`res/without-hidden-matches` drops a fan match of `(s x)` for a goal on `q` where an edge
+reading of `(q x)` rests on the match and the reader sees no `:monotonic` path
+(`without-edge-read-matches`). A forward firing through the link is placed only where a
+`:monotonic` path is seen (`chain/edge-read-links`), so a rule on `(q ?x)` fires on the
+reading and follows its undercut. A reading leaves with its denial, its membership or its
+edge, and its membership is re-chained so that the firings through the link are placed
+again. `constraint_nogood_test` holds each claim in every arrival order at both denial
+strengths.
 
 ### `genlInverse`: the fan with the arguments swapped
 
@@ -2159,11 +2200,15 @@ the rows in hand. On a tie with another literal the test runs second,
 since the model cannot say whether that literal keeps fewer rows. A check over the
 variables of the first two literals, ahead of a third that multiplies their rows by five,
 is asked once per row of the two (`evaluatable_test`). A literal costed at `deferred-est`
-runs after every literal it ties with, too. A prefix the index counts at no rows ties
+under the bindings in hand runs after every literal not costed at it, whatever rows the
+join formula estimates for it. The formula can estimate it below its binders in two ways.
+It divides `deferred-est` by the distinct count of each variable the literal shares with
+the prefix, so a literal sharing four variables with a 64-row prefix is estimated below
+an 80-row literal it does not share one with. A prefix the index counts at no rows ties
 every literal at none, and the count can be wrong: a trigger that binds a commuting
 literal to the spelling the store does not hold reads a row through the commutation that
-the index does not count. Taken there, the computed literal would be asked open, answer
-nothing, and leave the trigger without the firing a full join finds.
+the index does not count. Taken early, the computed literal would be asked open, answer
+nothing, and leave the join without its firing.
 
 **Ordering is a cost decision, never a semantic one.** Four classes of literal are
 placed by readiness rather than by cost, the first two exactly as
@@ -2477,8 +2522,12 @@ out-of-tree prover gets the same treatment: `core/prover` builds one from plain 
 spec giving `:solve-with-support`, `:support-functors` and `:support-sources` implements
 this protocol, with `solve` answering the bindings of `:solve-with-support` in its order
 and each support element checked to be a handle as the answer is read. A prover that does
-not implement it is taken at its word — its answer reads nothing stored, so no retraction
-can invalidate it.
+not implement it answers with an empty support, which is complete for a prover that reads
+nothing stored (`EvaluableProver`, `EvaluateProver`). `FactProver`, `SymmetricProver` and
+`InverseProver` read stored facts and name none of them (`provers/answers-with-support`),
+as does the calendar clock's reading of a named interval's stated bounds
+([time.md](time.md#the-calendar-clock)), and the forward join drops an empty-support answer
+from a prover that is not a `SupportingProver` (`chain/solve-computed`).
 
 Four things follow. The first three are the ones the qualitative and the inherited
 antecedents already get ([qcn.md](qcn.md), [inherit.md](inherit.md)):
@@ -2505,7 +2554,10 @@ antecedents already get ([qcn.md](qcn.md), [inherit.md](inherit.md)):
   resting on none of them reads an answer they did not move, and the join a predecessor
   owed placed it. A negated datum, a datum on an edge-installing functor and a relation
   membership keep every row (`provers/support-delta-source?`), and outside a run the
-  rules re-join in full at once.
+  rules re-join in full at once. Inside a `with-deferred-settle` batch the datums collect
+  in `chain/*batch-rejoins*`, and the closing settle re-joins each rule once
+  (`chain/run-batch-rejoins`). The `computed-reader-load` perf check holds the per-datum
+  cost of a one-settle load flat.
 - **A change to a source re-checks every firing of those rules.** A tightest bound narrows
   when a source arrives and widens when one leaves, while every handle the firing names
   stays believed. A datum on a `support-sources` predicate, arriving or leaving, therefore
@@ -2616,13 +2668,15 @@ defeated edge or an unbelieved claim names no reading. Entries and readings sort
 sentence and context, never on handle. `TransitiveInArgProver` reports
 `inherit/answer-readings`: for a positive goal the claim, each declaration that permits a
 move and the edges the move crossed (`inherit/supports-for`), and for a denial the stated
-denial with its strongest reading. `why` reads a handle, and such an answer has none.
+denial with its strongest reading. A calculus answer names its pair's support
+([qcn.md](qcn.md#support-what-an-entailed-relation-rests-on)). `why` reads a handle, and
+such an answer has none.
 
 A prover that does not implement the protocol names nothing, so these retrieval-time
 answers carry a leaf without `:supports`: a membership the `genl` closure answers from a
 sub-type's fact, the `symmetric` mirror, an `inverse` partner, a `negates` or
-disjointness denial, a covering, a closed extent, a `defnSufficient` membership and an
-equality rewrite. An evaluable comparison reads nothing stored, and a backward rule's
+disjointness denial, a covering, a closed extent, a `defnSufficient` membership, an
+equality rewrite and the diagonal `ReflexiveProver` gives a term outside every network. An evaluable comparison reads nothing stored, and a backward rule's
 answer is a rule node.
 
 The over-approximation is deliberate and is in one direction: a reading taken over a *set*
@@ -2986,7 +3040,7 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   open is answered by the rules, and each answer's proof cites its rule.
 - **FactProver** — index matches (`matches-visible`). Partial (50).
 
-Twenty-four in all, and `provers/registry` is the live list — an application's own
+Thirty-two in all (`provers/default-provers`), and `provers/registry` is the live list — an application's own
 provers sit beside them in the same atom.
 
 **No prover expands a rule.** Rule search is `core/query`'s, at a depth the caller
@@ -3143,3 +3197,9 @@ reasoning. Raw introspection still sees everything.
   C0)` through `provers/InverseProver`, and a forward rule with a `(parentOf ?p ?c)`
   antecedent fires on no `childOf` fact. The forward join reads `inverse` only inside a
   transitive walk (`chain/transitive-source-preds`).
+- **A forward rule on a super-predicate does not read a declaring sub-predicate's row
+  through a mention probe.** `ask` of the super-predicate probes the sub-predicate's
+  spellings (`res/fan-mention-probes`); the forward trigger and join probe the
+  antecedent's own functor alone (`res/mention-probes`), as does the placement's check
+  (`chain/mention-unread?`)
+  ([canonicalization.md](canonicalization.md#compounds-below-the-literal-sorted)).

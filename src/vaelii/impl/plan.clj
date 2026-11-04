@@ -389,18 +389,16 @@
         out))))
 
 (defn- greedy-block
-  "Order one block's `pairs` by repeatedly taking the literal whose join onto the prefix
-  has the fewest rows, ties to a literal `cost` does not call a test under the variables
-  bound so far, then to one it does not cost `unbounded`, then to the earlier index.  A
-  test binds nothing and keeps at most the rows in hand.  On a tie the model cannot say
-  whether the other literal keeps fewer, and a test run ahead of one that does is asked on
-  the rows it would have dropped.  A prefix estimated at no rows ties every literal at
-  none, and a literal computed from its bindings joined there, ahead of the literals that
-  bind it, answers nothing: the join would end empty however many rows the prefix holds.
-  `cost`
-  returns `[est-matches test?]`.  Returns `{:pairs :n :s :prune?}`: the order, the rows
-  the block produces, the sum of its prefix rows, and whether every literal's
-  `est-matches` is at most 1."
+  "Order one block's `pairs` by repeatedly taking a literal `cost` does not cost
+  `unbounded` under the variables bound so far, while one remains, then the one whose join
+  onto the prefix has the fewest rows, ties to a literal `cost` does not call a test, then
+  to the earlier index.  A literal costed `unbounded` lacks the bindings it computes from,
+  and asked ahead of its binders it answers nothing, however few rows the join formula
+  estimates for it.  A test binds nothing and keeps at most the rows in hand.  On a tie the
+  model cannot say whether the other literal keeps fewer, and a test run ahead of one that
+  does is asked on the rows it would have dropped.  `cost` returns `[est-matches test?]`.
+  Returns `{:pairs :n :s :prune?}`: the order, the rows the block produces, the sum of its
+  prefix rows, and whether every literal's `est-matches` is at most 1."
   [pairs prefix0 bound0 cost summary-of]
   (loop [remaining pairs, prefix prefix0, bound bound0, acc [], s 0.0, prune? true]
     (if (empty? remaining)
@@ -408,9 +406,9 @@
       (let [scored (map (fn [[i l :as pr]]
                           (let [[b test?] (cost l bound)
                                 joined    (clamped-join prefix (summary-of pr) b)]
-                            [(:rows joined) (if test? 1 0) (if (>= b unbounded) 1 0) i pr joined b]))
+                            [(if (>= b unbounded) 1 0) (:rows joined) (if test? 1 0) i pr joined b]))
                         remaining)
-            [rows _ _ _ pick joined b] (first (sort-by (fn [[r t u i]] [r t u i]) scored))]
+            [_ rows _ _ pick joined b] (first (sort-by (fn [[u r t i]] [u r t i]) scored))]
         (recur (filterv #(not= (first %) (first pick)) remaining)
                joined
                (into bound (sx/form-variables (second pick)))

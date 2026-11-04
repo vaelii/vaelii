@@ -481,7 +481,7 @@
                     (recur (rest stack) (assoc! built u cl) entered)))))))
         (get built (unit node))))))
 
-(defn- closure-of
+(defn- stored-closure-of
   "The reflexive-transitive reach of `node` in relation `rel-key`, direction
   `dir-key` (`:fwd` up, `:rev` down), memoized per generation in the taxonomy's weighted
   LRU.  `tax` is the taxonomy atom.
@@ -512,6 +512,75 @@
           (caches/spent (:tally lru) t0)
           (caches/compare-retired (:tally lru) [rel-key dir-key node] (:gen rel) v)
           v))))
+
+(def ^:private root-cx sx/root-context)
+
+(defn root-context?
+  "Is `c` CxUniverse, the context every other context sees with no stored edge?  A walk
+  down from it would visit every context, so its callers answer that case directly.
+  See docs/contexts.md, \"CxUniverse is the implicit root\"."
+  [c]
+  (= c root-cx))
+
+(defn- rooted?
+  "Does `c` see CxUniverse through the implicit edge: `c` is neither CxUniverse nor a query
+  context (`nm/query-contexts`), `CxNothing` reading nothing at all?"
+  [c]
+  (not (or (root-context? c) (nm/query-context? c))))
+
+(defn- reachable-in?
+  "Does `src` reach `tgt` in relation `rel-key` over the stored edges, following `:fwd`?
+  The depth-pruned `reachable?` rejects most pairs in O(1) and never materializes a
+  closure: the path shared by `genl?` / `sees?` and the assert-time cycle checks in `wff`.
+  A relation left `:loose?` by a deferred batch has no sound potential yet, so the depth
+  is withheld and the walk runs unpruned: the same answer at a higher cost."
+  [tax rel-key src tgt]
+  (let [rel (get @tax rel-key)]
+    (reachable? src tgt (:fwd rel) (when-not (:loose? rel) (:depth rel)) (:scc rel))))
+
+(defn- implicit-reach?
+  "Does context `k` reach context `y` through the implicit edge: `k` is not CxUniverse,
+  and `y` is CxUniverse or a context CxUniverse reaches over stored edges?"
+  [tax k y]
+  (and (rooted? k) (reachable-in? tax :genlCx root-cx y)))
+
+(defn- with-root-parents
+  "Context `c`'s parents `ps` over one `genlCx` edge, with the implicit edge to CxUniverse
+  added for every context other than CxUniverse: the parent read every upward walk of
+  the context relation takes."
+  [c ps]
+  (if (rooted? c) (conj (set ps) root-cx) ps))
+
+(defn- with-root
+  "`closure`, `node`'s stored `genlCx` closure in direction `dir-key`, with the implicit
+  edges added, memoized under the relation's generation.  Up: a node other than
+  CxUniverse gains `up`, CxUniverse's closure (a thunk).  Down: CxUniverse and a context
+  it reaches gain every context node of the relation.  A context no edge names is a
+  node of no closure, so no caller that must reach every context walks down from
+  CxUniverse (`root-context?`).  A map scope is not memoized."
+  [tax dir-key node scope closure up]
+  (let [t   @tax
+        rel (:genlCx t)
+        lru (:closure-lru t)
+        k   [:genlCx (:gen rel) ::rooted dir-key node scope]
+        held (fn [make] (if (map? scope)
+                          (make)
+                          (or (caches/lru-get lru k) (caches/lru-put! lru k (make)))))]
+    (if (= dir-key :fwd)
+      (if (or (not (rooted? node)) (contains? closure root-cx))
+        closure
+        (held #(into closure (up))))
+      (if-not (reachable-in? tax :genlCx root-cx node)
+        closure
+        (held #(into closure (:nodes rel)))))))
+
+(defn- closure-of
+  "`stored-closure-of`, with `genlCx`'s implicit edges to CxUniverse added (`with-root`)."
+  [tax rel-key dir-key node]
+  (let [v (stored-closure-of tax rel-key dir-key node)]
+    (if (= rel-key :genlCx)
+      (with-root tax dir-key node nil v #(stored-closure-of tax :genlCx :fwd root-cx))
+      v)))
 
 ;; ---- scoped reads: the visibility filter over the same closures ----------
 ;; A read from context K uses the edges some believed supporter asserts from a context in
@@ -884,9 +953,9 @@
                            (reduce (fn [acc m]
                                      (let [acc (reduce #(need %1 m %2) acc (get adj m))]
                                        (if (= ::several acc) (reduced acc) acc)))
-                                   #{} (closure-of tax rel-key dir-key node)))))))
+                                   #{} (stored-closure-of tax rel-key dir-key node)))))))
 
-(defn- closure-of-vis
+(defn- stored-closure-of-vis
   "`closure-of` over only the edges effective in `scope`, memoized in the same LRU under
   the interned scope key and the relation's `:gen`.  The answer is a subset of
   `closure-of`'s.  A set scope that sees every context the global closure rests on reads
@@ -895,7 +964,7 @@
   (or (when (set? scope)
         (let [r (closure-needs tax rel-key dir-key node)]
           (when (and (not= ::several r) (every? scope r))
-            (closure-of tax rel-key dir-key node))))
+            (stored-closure-of tax rel-key dir-key node))))
       (let [t   @tax
             rel (get t rel-key)
             lru (:closure-lru t)
@@ -910,6 +979,15 @@
                                       [rel-key dir-key node (if (map? scope) (dissoc scope :clock) scope)]
                                       [(:gen rel) (:clock scope)] v)
               v)))))
+
+(defn- closure-of-vis
+  "`stored-closure-of-vis`, with `genlCx`'s implicit edges to CxUniverse added
+  (`with-root`).  The implicit edge has no supporter, so every scope admits it."
+  [tax rel-key dir-key node scope]
+  (let [v (stored-closure-of-vis tax rel-key dir-key node scope)]
+    (if (= rel-key :genlCx)
+      (with-root tax dir-key node scope v #(stored-closure-of-vis tax :genlCx :fwd root-cx scope))
+      v)))
 
 (defn- reachable-filtered?
   "`reachable?` over only the edges effective in `scope`, the sibling walk of the scoped
@@ -2685,25 +2763,6 @@
   (let [rel (get @tax rel-key)]
     (when (:grows rel) (logged-since rel :grows gen))))
 
-(defn relations-match?
-  "Do `tax`'s `genl` and `genlCx` relations hold the active edges and supporting contexts
-  the taxonomy value `before` held, under the same rebuild epoch?  Compares the edges out
-  of each lower end moved since `before`'s generations (`moves-since`), so the cost is the
-  moved ends, not the relations."
-  [tax before]
-  (let [t @tax]
-    (and (= (:epoch t 0) (:epoch before 0))
-         (every? (fn [k]
-                   (let [old (get before k) new (get t k)]
-                     (every? (fn [a]
-                               (let [bs (get-in new [:fwd a])]
-                                 (and (= bs (get-in old [:fwd a]))
-                                      (every? #(= (get-in new [:edge-ctxs [a %]])
-                                                  (get-in old [:edge-ctxs [a %]]))
-                                              bs))))
-                             (moves-since tax k (:gen old 0)))))
-                 [:genl :genlCx]))))
-
 (defn relation-gen
   "The generation counter of a cached relation (`:genl` / `:genlCx`), bumped on
   every edge change.  A caller memoizing something derived from a closure reads this to
@@ -2718,17 +2777,6 @@
   carries this beside the generations (`special/taxonomy-generations`)."
   [tax]
   (:epoch @tax 0))
-
-(defn- reachable-in?
-  "Does `src` reach `tgt` in relation `rel-key`, following `:fwd`?  The depth-pruned
-  `reachable?` rejects most pairs in O(1) and never materializes a closure — the cheap
-  path shared by `genl?` / `sees?` and the assert-time cycle checks in `wff`.
-
-  A relation left `:loose?` by a deferred batch has no sound potential yet, so the
-  depth is withheld and the walk runs unpruned: slower, and the same answer."
-  [tax rel-key src tgt]
-  (let [rel (get @tax rel-key)]
-    (reachable? src tgt (:fwd rel) (when-not (:loose? rel) (:depth rel)) (:scc rel))))
 
 ;; ---- genl (types) --------------------------------------------------------
 ;; Each read comes in two: the scoped one walks the edges visible from a context
@@ -3101,9 +3149,10 @@
   scoped like the relation's closures (`genls` / `specs`, `context-up`).  Not reflexive:
   the closures include `t` because transitivity is reflexive, and a step is not."
   [tax rel-key dir-key t context]
-  (if-some [scope (relation-scope tax rel-key context)]
-    (into #{} (visible-neighbours @tax rel-key dir-key scope t))
-    (get-in @tax [rel-key dir-key t] #{})))
+  (cond-> (if-some [scope (relation-scope tax rel-key context)]
+            (into #{} (visible-neighbours @tax rel-key dir-key scope t))
+            (get-in @tax [rel-key dir-key t] #{}))
+    (and (= rel-key :genlCx) (= dir-key :fwd)) (->> (with-root-parents t))))
 
 (defn direct-genls
   "The types `t` is a subtype of by **one** `genl` edge of the closure — its direct
@@ -3133,35 +3182,39 @@
   [tax t]
   (direct-neighbours tax :genl :rev t nil))
 
-(defn- extremal-types
-  "The members of `types` at one end of the subsumption order among themselves: with
-  `low?` the minimal ones (no other member strictly below), without it the maximal ones.
-  `above` maps a type to its reflexive up-closure.  A set.  Members that subsume each
-  other are not strictly ordered and both stay, and only a member drops a member.  Fewer
-  than two distinct members are returned with no `above` read."
-  [above low? types]
-  (let [among (set types)]
-    (if (< (count among) 2)
-      among
-      (let [over    (into {} (map (juxt identity above)) among)
-            ;; the members strictly above `t`.  The smaller of the two sets is walked, and
-            ;; an element is tested against both: `up` also holds every supertype of `t`
-            ;; that is no member
-            supers  (fn [t]
-                      (let [up (over t)]
-                        (into [] (comp (filter #(and (contains? among %) (contains? up %)))
-                                       (remove #(or (= t %) (contains? (over %) t))))
-                              (if (< (count up) (count among)) up among))))
-            dropped (reduce (fn [acc t]
-                              (let [ss (supers t)]
-                                (cond low?     (into acc ss)
-                                      (seq ss) (conj acc t)
-                                      :else    acc)))
-                            #{} among)]
-        (reduce disj among dropped)))))
+(defn- extremal
+  "The members of `xs` at one end of the order `above` reads, `above` mapping a node to its
+  reflexive up-closure: with `low?` the minimal ones (no other member strictly below),
+  without it the maximal ones.  A node is strictly above `t` when it is in `t`'s
+  up-closure and `t` is not in its own, so two members above each other both stay.  With
+  `member?`, at the maximal end, a node `member?` holds of strikes the members below it,
+  and `xs` must hold every maximal such node.  A set.  Fewer than two distinct members, with
+  no `member?`, are returned with no `above` read."
+  ([above low? xs] (let [among (set xs)] (extremal above low? among among)))
+  ([above low? member? xs]
+   (let [among (set xs)]
+     (if (and (< (count among) 2) (identical? member? xs))
+       among
+       (let [over    (volatile! (into {} (map (juxt identity above)) among))
+             up-of   (fn [t] (or (get @over t) (let [u (above t)] (vswap! over assoc t u) u)))
+             ;; the nodes strictly above `t`.  Over a member set the smaller of it and `up`
+             ;; is walked, and an element is tested against both: `up` also holds every
+             ;; node above `t` that is no member
+             supers  (fn [t]
+                       (let [up (up-of t)]
+                         (into [] (comp (filter #(and (member? %) (contains? up %)))
+                                        (remove #(or (= t %) (contains? (up-of %) t))))
+                               (if (and (set? member?) (< (count member?) (count up))) member? up))))
+             dropped (reduce (fn [acc t]
+                               (let [ss (supers t)]
+                                 (cond low?     (into acc ss)
+                                       (seq ss) (conj acc t)
+                                       :else    acc)))
+                             #{} among)]
+         (reduce disj among dropped))))))
 
 (defn- up-closure-fn
-  "The read `extremal-types` takes as `above`: a node's reflexive up-closure in `rel-key`
+  "The read `extremal` takes as `above`: a node's reflexive up-closure in `rel-key`
   (`:genl` or `:genlCx`) through the edges visible from `context`, or through every
   active edge for a nil `context`."
   [tax rel-key context]
@@ -3177,24 +3230,24 @@
   closure is read for fewer than two distinct members.  `min-types-global` is the
   unscoped read."
   [tax types context]
-  (extremal-types (up-closure-fn tax :genl context) true types))
+  (extremal (up-closure-fn tax :genl context) true types))
 
 (defn max-types
   "The **maximal** members of `types`: the members with no other member strictly above
   them, through the edges visible from `context`.  `min-types`' reasoning, the other
   direction, and `#{animal}` in its example.  `max-types-global` is the unscoped read."
   [tax types context]
-  (extremal-types (up-closure-fn tax :genl context) false types))
+  (extremal (up-closure-fn tax :genl context) false types))
 
 (defn min-types-global
   "`min-types` through **every** active edge — no context scope."
   [tax types]
-  (extremal-types (up-closure-fn tax :genl nil) true types))
+  (extremal (up-closure-fn tax :genl nil) true types))
 
 (defn max-types-global
   "`max-types` through **every** active edge — no context scope."
   [tax types]
-  (extremal-types (up-closure-fn tax :genl nil) false types))
+  (extremal (up-closure-fn tax :genl nil) false types))
 
 (defn- nearest-of
   "The members of `nbrs`, the one-step neighbours of `node`, that no other member stands
@@ -3214,12 +3267,12 @@
 
 (defn- nearest-neighbours
   "`direct-neighbours` in `rel-key` reduced to the nearest ones (`nearest-of`): the
-  minimal parents, the maximal children (`extremal-types`, which for `:genl` is
+  minimal parents, the maximal children (`extremal`, which for `:genl` is
   `min-types` / `max-types`), scoped like the relation's closures."
   [tax rel-key dir-key t context]
   (let [up?   (= :fwd dir-key)
         above (up-closure-fn tax rel-key context)]
-    (nearest-of above #(extremal-types above up? %)
+    (nearest-of above #(extremal above up? %)
                 up? t (direct-neighbours tax rel-key dir-key t context))))
 
 (defn min-genls
@@ -3367,6 +3420,13 @@
                            (when-not (:loose? rel) (:depth rel))
                            (:scc rel)))
     (reachable-in? tax :genl sub super)))
+
+(defn strict-genl?
+  "Is `sub` a strict subtype of `super` through the edges visible from `context`: at or
+  below it, and not above it?  Two types in a `genl` cycle are coextensive at a reader that
+  sees the cycle, so neither is strictly below the other there."
+  [tax sub super context]
+  (and (not= sub super) (genl? tax sub super context) (not (genl? tax super sub context))))
 
 (defn genls-among
   "`genls` of `t` from `context` cut to the set `among`: `genls-global-among` over `memo`,
@@ -3619,8 +3679,11 @@
   walks one caller asks under one supporter-class reading enter each type once per
   target; a route through a cycle falls back to `bfs-witness-path`."
   [tax rel-key sub super context supporter-class thresholds ^java.util.HashMap router]
-  (if (= sub super)
-    []
+  (cond
+    (= sub super) []
+    (and (= rel-key :genlCx) (implicit-reach? tax sub super))
+    (reach-support* tax rel-key root-cx super context supporter-class thresholds router)
+    :else
     (let [t   @tax
           rel (get t rel-key)
           scope (relation-scope tax rel-key context)
@@ -3882,12 +3945,15 @@
   node, each visible neighbour once per visible supporter of the edge that no other visible
   supporter covers.  `dir-key` `:fwd` steps along the edges and `:rev` against them.  With
   `supporter-class` each supporter carries its strength rank; with `hidable` (`handle ->
-  boolean`) each supporter an except can hide is marked.  Built eagerly into a vector, and a
-  node's sorted neighbours are held for a reading pass under `reach-support`'s key
+  boolean`) each supporter an except can hide is marked; with the class `floor`, only the
+  supporters `supporter-class` reads at least that strong.  Built eagerly into a vector, and
+  a node's sorted neighbours are held for a reading pass under `reach-support`'s key
   (`pass-held`)."
   ([tax rel-key context supporter-class hidable]
-   (edge-steps tax rel-key context supporter-class hidable :fwd))
+   (edge-steps tax rel-key context supporter-class hidable :fwd nil))
   ([tax rel-key context supporter-class hidable dir-key]
+   (edge-steps tax rel-key context supporter-class hidable dir-key nil))
+  ([tax rel-key context supporter-class hidable dir-key floor]
    (let [t     @tax
          rel   (get t rel-key)
          scope (relation-scope tax rel-key context)
@@ -3901,7 +3967,8 @@
      (fn [node]
        (persistent!
         (reduce (fn [acc n2]
-                  (let [cands (visible-edge-supporters t rel-key (e-of node n2) scope)]
+                  (let [cands (cond->> (visible-edge-supporters t rel-key (e-of node n2) scope)
+                                floor (filterv #(>= (long (rank (nth % 0))) (strength/rank-of floor))))]
                     (cond
                       (empty? cands)      acc
                       (nil? (next cands)) (step acc n2 (nth cands 0))
@@ -3942,11 +4009,15 @@
   is seen wherever the other is.  The routes a placement that has to descend below the
   firing's other ingredients chooses among (`chain/placement-ingredients`).  With
   `hidable` (`handle → boolean`), a route resting on a supporter an except can hide
-  covers only the routes resting on that supporter too."
+  covers only the routes resting on that supporter too.  With the class `floor`, only the
+  routes every supporter of which reads that strong, which no weaker route covers."
   ([tax rel-key sub super context supporter-class]
-   (reach-supports tax rel-key sub super context supporter-class nil))
+   (reach-supports tax rel-key sub super context supporter-class nil nil))
   ([tax rel-key sub super context supporter-class hidable]
-   (every-uncovered-route tax sub super (edge-steps tax rel-key context supporter-class hidable))))
+   (reach-supports tax rel-key sub super context supporter-class hidable nil))
+  ([tax rel-key sub super context supporter-class hidable floor]
+   (every-uncovered-route tax sub super
+                          (edge-steps tax rel-key context supporter-class hidable :fwd floor))))
 
 (defn reach-strength
   "The defeat class of the strongest route `sub ->* super` in `rel-key` that `context`
@@ -3983,6 +4054,13 @@
   `except` holes: `context-down`'s unscoped read, for `context-up-global`'s callers."
   [tax c]
   (closure-of tax :genlCx :rev c))
+
+(defn context-routed-global
+  "The contexts joined to `c` by stored `genlCx` edges in direction `dir-key` (`:fwd` up,
+  `:rev` down), unscoped, less CxUniverse: `reach-support` takes the implicit edge to
+  CxUniverse, so it names no supporter for a path there."
+  [tax dir-key c]
+  (disj (stored-closure-of tax :genlCx dir-key c) root-cx))
 
 (defn context-up
   "Contexts c inherits from, incl c, after context-visible genlCx exceptions."
@@ -4026,13 +4104,15 @@
 (defn- up-besides
   "The contexts `c` inherits from, incl `c`, over the `genlCx` edges effective in `scope`
   (`relation-scope`; the active adjacency when nil) but the edge `[sub super]` and every
-  edge `usable?` refuses.  A walk that comes back to `c` has found a cycle, whose members
-  already see what the edge shows, and answers `#{c}`."
+  edge `usable?` refuses.  The implicit edge to CxUniverse stays, so an edge to CxUniverse
+  moves no context.  A walk that comes back to `c` has found a cycle, whose members already
+  see what the edge shows, and answers `#{c}`."
   [t scope c [sub super] usable?]
-  (let [up1 (fn [n] (filter #(and (not (and (= n sub) (= % super))) (usable? n %))
-                            (if (some? scope)
-                              (visible-neighbours t :genlCx :fwd scope n)
-                              (get-in t [:genlCx :fwd n] #{}))))]
+  (let [up1 (fn [n] (with-root-parents
+                      n (filter #(and (not (and (= n sub) (= % super))) (usable? n %))
+                                (if (some? scope)
+                                  (visible-neighbours t :genlCx :fwd scope n)
+                                  (get-in t [:genlCx :fwd n] #{})))))]
     (loop [acc #{c}, todo (into [] (up1 c))]
       (if-let [n (peek todo)]
         (cond (= n c)           #{c}
@@ -4084,10 +4164,10 @@
           off     (conj (set off) edge)
           memo    (fn [f] (let [m (volatile! {})]
                             (fn [r] (or (get @m r) (let [v (f r)] (vswap! m assoc r v) v)))))
-          after   (memo (fn [r] (graph/reach-all [r] #(get fwd % #{}))))
+          after   (memo (fn [r] (graph/reach-all [r] #(with-root-parents % (get fwd % #{})))))
           without (memo (fn [r] (graph/reach-all [r] (fn [n] (filter #(and (not (contains? off [n %]))
                                                                            (usable? n %))
-                                                                     (get fwd n #{}))))))
+                                                                     (with-root-parents n (get fwd n #{})))))))
           gain    (fn [r] (into #{} (remove (without r)) (after r)))
           by-gain (reduce (fn [acc r]
                             (let [s (after r)
@@ -4136,7 +4216,7 @@
          ;; one walk up from all of `under`: a union of each member's cached ancestor set
          ;; costs |under| × |ancestors|, cubic over a chain of moves in one pass
          seen    (delay (let [fwd (get-in @tax [:genlCx :fwd])]
-                          (graph/reach-all @under #(get fwd % #{}))))
+                          (graph/reach-all @under #(with-root-parents % (get fwd % #{})))))
          below   (delay (into #{} (remove up) @seen))
          walk    (delay (when (empty? except-ctxs) (move-gains t @under up edge off usable?)))
          classes (if (empty? except-ctxs)
@@ -4165,8 +4245,10 @@
       :seen    seen
       :below   below
       :gained-below
-      (if (seq except-ctxs)
-        below
+      (cond
+        (root-context? super) (delay #{})
+        (seq except-ctxs) below
+        :else
         (delay (let [{:keys [fwd rev]} (:genlCx @tax)
                      off?    (fn [a b] (and (= a sub) (= b super)))
                      ;; the contexts that reach `super` without the edge, `super` included
@@ -4174,18 +4256,19 @@
                                                                       (get rev n #{}))))
                      gainers (remove kept @under)]
                  (into #{} (remove up)
-                       (graph/reach-all gainers (fn [n] (remove #(off? n %) (get fwd n #{}))))))))})))
+                       (graph/reach-all gainers (fn [n] (remove #(off? n %) (with-root-parents n (get fwd n #{})))))))))})))
 
 (defn context-down
   "Contexts that inherit from `c`, including `c`, after context-visible genlCx
   exceptions.  While some `except` targets a `genlCx` supporter (`relation-filter-active?`)
   the raw candidates are filtered by each candidate's own forward answer, memoized per
   context and reading (`*network-belief*`, `*search*`) and keyed by the change clock;
-  otherwise the raw closure is the answer."
+  otherwise the raw closure is the answer.  At CxUniverse the raw closure is the answer:
+  no `except` removes the implicit edge."
   [tax c]
   (let [raw (closure-of tax :genlCx :rev c)
         t   @tax]
-    (if-not (relation-filter-active? t :genlCx)
+    (if (or (root-context? c) (not (relation-filter-active? t :genlCx)))
       raw
       (let [rel  (:genlCx t)
             gen  (:gen rel)
@@ -4218,6 +4301,13 @@
   scope.  The `genlCx` twin of `genl?-global`, and `sees?`'s unscoped read; `wff`
   uses it to refuse a cycle, which is a property of the whole edge set."
   [tax sub super]
+  (or (reachable-in? tax :genlCx sub super) (implicit-reach? tax sub super)))
+
+(defn genlCx-stored?-global
+  "Does context sub reach context super over the stored active edges alone, without the
+  implicit edge to CxUniverse?  `wff` refuses a `genlCx` edge that closes a stored cycle
+  with it."
+  [tax sub super]
   (reachable-in? tax :genlCx sub super))
 
 (defn contexts-seen-with-global
@@ -4229,46 +4319,49 @@
   `c`'s down-set and the `xs`' down-sets together, plus that upward walk, and never
   builds the larger down-set."
   [tax c xs]
-  (let [up    (context-up-global tax c)
-        kids  #(seq (context-children-global tax %))
-        ;; one step of a depth-first walk of the contexts at or below a start: the stack
-        ;; holds child seqs, so a context with n children costs one step, not n
-        step  (fn [[seen stack]]
-                (let [s     (peek stack)
-                      n     (first s)
-                      stack (if-let [more (next s)] (conj (pop stack) more) (pop stack))]
-                  (if (contains? seen n)
-                    [seen stack]
-                    [(conj seen n) (if-let [cs (kids n)] (conj stack cs) stack)])))
-        start (fn [a] [#{a} (if-let [cs (kids a)] (list cs) ())])
-        done? #(empty? (second %))
-        ;; the walk below `c`, one for the whole call: each `x`'s walk advances it a step
-        ;; per step of its own, so the `xs` together advance it through `c`'s down-set at
-        ;; most once
-        wc    (volatile! (start c))
-        ;; the contexts at or above a context at or below `c`, once that walk ended: one
-        ;; upward walk, each context visited once
-        above (delay (loop [seen (first @wc), stack (vec (first @wc))]
-                       (if-let [n (peek stack)]
-                         (let [ps (into [] (remove seen) (context-parents-global tax n))]
-                           (recur (into seen ps) (into (pop stack) ps)))
-                         seen)))
-        ;; `x` and `c` share a descendant, found in the smaller of their down-sets
-        shares? (fn [x]
-                  (loop [wx (start x)]
-                    (cond (done? @wc) (contains? @above x)
-                          (done? wx)  (boolean (some #(genlCx?-global tax % c) (first wx)))
-                          :else       (do (vswap! wc step) (recur (step wx))))))]
-    (into #{} (filter #(or (contains? up %) (genlCx?-global tax % c) (shares? %))) xs)))
+  (if (root-context? c)
+    (set xs)
+    (let [up    (context-up-global tax c)
+          kids  #(seq (context-children-global tax %))
+          ;; one step of a depth-first walk of the contexts at or below a start: the stack
+          ;; holds child seqs, so a context with n children costs one step, not n
+          step  (fn [[seen stack]]
+                  (let [s     (peek stack)
+                        n     (first s)
+                        stack (if-let [more (next s)] (conj (pop stack) more) (pop stack))]
+                    (if (contains? seen n)
+                      [seen stack]
+                      [(conj seen n) (if-let [cs (kids n)] (conj stack cs) stack)])))
+          start (fn [a] [#{a} (if-let [cs (kids a)] (list cs) ())])
+          done? #(empty? (second %))
+          ;; the walk below `c`, one for the whole call: each `x`'s walk advances it a step
+          ;; per step of its own, so the `xs` together advance it through `c`'s down-set at
+          ;; most once
+          wc    (volatile! (start c))
+          ;; the contexts at or above a context at or below `c`, once that walk ended: one
+          ;; upward walk, each context visited once
+          above (delay (loop [seen (first @wc), stack (vec (first @wc))]
+                         (if-let [n (peek stack)]
+                           (let [ps (into [] (remove seen) (context-parents-global tax n))]
+                             (recur (into seen ps) (into (pop stack) ps)))
+                           seen)))
+          ;; `x` and `c` share a descendant, found in the smaller of their down-sets
+          shares? (fn [x]
+                    (loop [wx (start x)]
+                      (cond (done? @wc) (contains? @above x)
+                            (done? wx)  (boolean (some #(genlCx?-global tax % c) (first wx)))
+                            :else       (do (vswap! wc step) (recur (step wx))))))]
+      (into #{} (filter #(or (contains? up %) (genlCx?-global tax % c) (shares? %))) xs))))
 
 (defn sees? "Does context k see assertions in context y?" [tax k y]
-  (if-some [scope (relation-scope tax :genlCx k)]
-    (let [t   @tax
-          rel (:genlCx t)]
-      (reachable-filtered? k y t :genlCx scope
-                           (when-not (:loose? rel) (:depth rel))
-                           (:scc rel)))
-    (reachable-in? tax :genlCx k y)))
+  (or (if-some [scope (relation-scope tax :genlCx k)]
+        (let [t   @tax
+              rel (:genlCx t)]
+          (reachable-filtered? k y t :genlCx scope
+                               (when-not (:loose? rel) (:depth rel))
+                               (:scc rel)))
+        (reachable-in? tax :genlCx k y))
+      (and (rooted? k) (sees? tax root-cx y))))
 
 (defn seeing-member
   "The member of `ctxs` that sees every other member, or nil.  It is a maximal common
@@ -4287,31 +4380,26 @@
 (defn- common-descendant-set
   "Every context that sees all of `cs` — the intersection of the down closures,
   stopping at the first empty intermediate rather than intersecting the rest into
-  nothing."
+  nothing.  CxUniverse is dropped first, since every context sees it; `cs` holding
+  CxUniverse alone answers `#{CxUniverse}`, the one member a caller can place at."
   [tax cs]
-  (if (seq cs)
-    (reduce (fn [acc c]
-              (let [i (set/intersection acc (context-down tax c))]
-                (if (seq i) i (reduced i))))
-            (context-down tax (first cs)) (rest cs))
-    #{}))
+  (let [cs' (remove root-context? cs)]
+    (cond
+      (seq cs') (reduce (fn [acc c]
+                          (let [i (set/intersection acc (context-down tax c))]
+                            (if (seq i) i (reduced i))))
+                        (context-down tax (first cs')) (rest cs'))
+      (seq cs)  #{root-cx}
+      :else     #{})))
 
-(defn- maximal-in
-  "The most general members of the candidate set `cands`, each collapsed to its cycle's one
-  name (`placement-rep`).  A member is struck when another candidate stands above it and does
-  not see it back.  With `member?`, an ancestor strikes `k` when `member?` holds of it, and
-  `cands` must be a subset of what `member?` names that holds every maximum of it
-  (`descendant-frontier`).  See docs/contexts.md."
-  ([tax cands] (maximal-in tax cands #(contains? cands %)))
-  ([tax cands member?]
-   (into #{}
-         (comp (remove (fn [k]
-                         (some (fn [anc] (and (not= anc k)
-                                              (member? anc)
-                                              (not (sees? tax anc k))))
-                               (context-up tax k))))
-               (map (fn [k] (placement-rep tax k))))
-         cands)))
+(defn max-cxs
+  "The maximal (most general) contexts in `ctxs` under the current visibility relation,
+  for a set the caller already filtered: `extremal` over each one's `context-up`, each
+  survivor collapsed to its cycle's one name (`placement-rep`).  With `member?`, any
+  context `member?` holds of strikes one below it (`extremal`).  See docs/contexts.md."
+  ([tax ctxs] (let [s (set ctxs)] (max-cxs tax s s)))
+  ([tax ctxs member?]
+   (into #{} (map #(placement-rep tax %)) (extremal #(context-up tax %) false member? ctxs))))
 
 (defn- descendant-frontier
   "The common descendants that a walk down the `genlCx` edges from `c0` meets first:
@@ -4348,11 +4436,12 @@
         (if (relation-filter-active? @tax :genlCx)
           ;; an except on a `genlCx` supporter hides edges the raw adjacency still holds,
           ;; which the walk would pass through
-          (maximal-in tax (common-descendant-set tax cs))
-          (let [downs (mapv (fn [c] (context-down tax c)) cs)
+          (max-cxs tax (common-descendant-set tax cs))
+          (let [cs    (into [] (remove root-context?) cs)
+                downs (mapv (fn [c] (context-down tax c)) cs)
                 in?   (fn [k] (every? (fn [d] (contains? d k)) downs))
                 c0    (nth cs (apply min-key (fn [i] (count (nth downs i))) (range (count cs))))]
-            (maximal-in tax (descendant-frontier tax c0 in?) in?)))))))
+            (max-cxs tax (descendant-frontier tax c0 in?) in?)))))))
 
 (defn maximal-common-descendant-contexts
   "The maximal elements of the common descendants of `ctxs` (the contexts K with each ctx
@@ -4377,13 +4466,6 @@
   are (`clashes/exposed-clashes` asks each whether it can prove a disjointness)."
   [tax ctxs]
   (common-descendant-set tax (into [] (distinct) ctxs)))
-
-(defn maximal-contexts
-  "The maximal (most general) contexts in the supplied `ctxs` under the current
-  visibility relation, for a set the caller already filtered.  Mutually visible contexts
-  collapse through `placement-rep`.  See docs/contexts.md."
-  [tax ctxs]
-  (maximal-in tax (set ctxs)))
 
 (defn common-descendant?
   "Does any context see every member of `ctxs` — is the common-descendant-set
@@ -5332,8 +5414,7 @@
   a context the reader can see?
 
   `:symmetric` and `:commutative` are read from every context, as the store sorts a fact
-  stated in a context that sees no statement of the mark — one with no `genlCx` edge, or
-  one above CxUniverse, where the lifted copy sits.  With a context they answer whether
+  stated in a context that sees no statement of the mark.  With a context they answer whether
   that context believes a statement (`keyed-entry-believed?`), which a `defeat` or an
   `except` it sees takes away."
   ([tax kind pred] (contains? (get (:props @tax) kind) pred))

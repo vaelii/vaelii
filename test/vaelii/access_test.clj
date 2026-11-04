@@ -23,8 +23,7 @@
   (fn [f]
     (let [kb (tu/fresh)]
       ;; the world context is wired below the vocabulary one, as the starter wires
-      ;; every real context: the matching fan-out and the disjointness check are
-      ;; context-scoped, so an unwired reader would see the facts but not the edges
+      ;; every real context
       (v/assert kb '(genlCx CxNaturalWorld CxUniverse) 'CxUniverse)
       (v/assert kb '(genl animal thing) 'CxUniverse)
       (v/assert kb '(genl dog animal) 'CxUniverse)

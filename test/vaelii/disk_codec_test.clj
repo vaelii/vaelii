@@ -109,15 +109,27 @@
     (is (not (contains? (codec/decode-justification (assoc want :out #{})) :out)))))
 
 (deftest decoding-interns-the-vocabulary
-  ;; a record paged off disk must share the one pooled object per name, or every fetch
-  ;; mints its own copies and the hot cache retains them
-  (let [a (sentex-types/->LiteralSentex (list 'parentOf 'Tom 'Ann) 'CxWell 1 nil)
-        r (sx-trip a)]
-    (is (identical? (sx/intern-sym 'parentOf) (first (:sentence r))))
-    (is (identical? (sx/intern-sym 'Tom) (second (:sentence r))))
-    (is (identical? (sx/intern-sym 'CxWell) (:context r))))
-  (let [j (d-trip (jtms/->just 20 9 [1 2] 3 nil :monotonic '#{[kind inspace]}))]
-    (is (identical? (sx/intern-sym 'kind) (ffirst (:subsumptions j))))))
+  ;; a decoded record shares the one pooled object per name in either frame shape, or
+  ;; every fetch mints its own copies and the hot cache retains them
+  (doseq [[shape sx-dec d-dec] [[:positional sx-trip d-trip]
+                                [:whole-record
+                                 #(codec/decode-sentex (nippy/thaw (nippy/freeze %)))
+                                 #(codec/decode-justification (nippy/thaw (nippy/freeze %)))]]]
+    (testing (name shape)
+      (let [r (sx-dec (sentex-types/->LiteralSentex (list 'parentOf 'Tom 'Ann) 'CxWell 1 nil))]
+        (is (identical? (sx/intern-sym 'parentOf) (first (:sentence r))))
+        (is (identical? (sx/intern-sym 'Tom) (second (:sentence r))))
+        (is (identical? (sx/intern-sym 'CxWell) (:context r))))
+      (let [r (sx-dec (sentex-types/->RuleSentex 'CxWell 8 '[(dog ?var0)] '(mammal ?var0) nil
+                                                 '{?var0 ?x} #{:forward} nil :derive))]
+        (is (identical? (sx/intern-sym 'CxWell) (:context r)))
+        (is (identical? (sx/intern-sym 'dog) (ffirst (:antecedent r))))
+        (is (identical? (sx/intern-sym 'mammal) (first (:consequent r))))
+        (is (identical? (sx/intern-sym '?x) (get (:varmap r) '?var0))))
+      (let [j (d-dec (jtms/->just 20 'someRule [1 2] 3 '{?x Ann} :monotonic '#{[kind inspace]}))]
+        (is (identical? (sx/intern-sym 'someRule) (:informant j)))
+        (is (identical? (sx/intern-sym 'Ann) (get (:bindings j) '?x)))
+        (is (identical? (sx/intern-sym 'kind) (ffirst (:subsumptions j))))))))
 
 (deftest non-record-values-pass-through
   (testing "a plain map is not a Literal and must round-trip as the map it is"

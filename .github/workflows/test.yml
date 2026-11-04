@@ -14,10 +14,9 @@ name: test
 # 317s; deferring them here is only honest because deep.yml runs `:all`. If
 # that job is ever removed, this one has to become `:all`.
 #
-# BOTH LEGS ARE SHARDED ACROSS RUNNER VMs, eight ways each. This is not the
-# same-host JVM sharding scripts/test-parallel.sh refuses for durable backends —
-# separate VMs share neither a disk nor a registry, the same reason deep.yml runs
-# nine backends in parallel. Shards are whole namespaces (a `:once` fixture is
+# BOTH LEGS ARE SHARDED ACROSS RUNNER VMs, eight ways each. Separate VMs share
+# neither a disk nor a registry, the same reason deep.yml runs nine backends in
+# parallel. Shards are whole namespaces (a `:once` fixture is
 # what tests in one file share), and `scripts/ci-shard.sh` decides which
 # namespaces each shard gets: it packs them by measured time, because an equal
 # count of files is not an equal amount of work.

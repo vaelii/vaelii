@@ -7,9 +7,7 @@
   the declared one, and `mintable-type?` declines a mint whose type an arity statement
   binds to another length.  Both read the KB as it stands, so each needs a way back for the order
   where the missing edge or membership arrives later: a convicted rule conclusion is stored
-  and held by the argument hold (docs/argtypes.md), a declined decontextualized copy is
-  remembered and re-asked by `settle` (docs/exceptions.md, \"A refused firing is remembered
-  as bindings\"), and an unminted declaration is read again when its type's own bindings
+  and held by the argument hold (docs/argtypes.md), and an unminted declaration is read again when its type's own bindings
   move (`special/mints-on-lengths`).  And a
   `forced_decontextualized_predicate` declaration moves the extent stored before it.
 
@@ -25,7 +23,6 @@
             [vaelii.impl.naming :as nm]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.special :as special]
-            [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.order-independence-test :as oi]
             [vaelii.test-util :as tu]))
@@ -192,26 +189,20 @@
 
 ;; ---- the rebuild after recover ---------------------------------------------------
 
-(tu/deftest-kb a-rebuild-asks-each-stating-context-once-whether-it-sees-the-universe
-  ;; six facts of a decontextualized predicate over two contexts: the lift walk asks
-  ;; `sees?` from each stating context once, not once per fact
+(tu/deftest-kb a-declaration-arriving-after-its-facts-lifts-each-of-them
+  ;; six facts of a predicate over two contexts, then its `decontextualized_predicate`
+  ;; declaration: the sweep copies every one into CxUniverse, unchecked, since each
+  ;; stating context sees CxUniverse
   (tu/with-terms [liftedRel Alpha CxWorld CxOther]
     (tu/with-neutral-kb [kb tu/fresh]
       (a-context kb CxWorld 'CxUniverse)
       (a-context kb CxOther 'CxUniverse)
-      (v/assert kb (list 'decontextualized_predicate liftedRel) 'CxUniverse
-                {:strength :monotonic})
       (doseq [i (range 6)]
         (v/assert kb (list liftedRel Alpha (tu/fresh-term :individual 'Beta))
                   (if (even? i) CxWorld CxOther)))
-      (let [asks (atom [])
-            sees tax/sees?]
-        (with-redefs [tax/sees? (fn [tx k y]
-                                  (when (and (= 'CxUniverse y) (#{CxWorld CxOther} k))
-                                    (swap! asks conj k))
-                                  (sees tx k y))]
-          (special/rebuild-pending! kb))
-        (is (= {CxWorld 1 CxOther 1} (frequencies @asks)))))))
+      (v/assert kb (list 'decontextualized_predicate liftedRel) 'CxUniverse
+                {:strength :monotonic})
+      (is (= 6 (count (v/sentexes-matching kb (list liftedRel Alpha '?b) 'CxUniverse)))))))
 
 ;; ---- the settle's re-ask ---------------------------------------------------------
 
@@ -250,50 +241,21 @@
           (is (some? (v/handle-of kb (list orphan Bolt) CxWorld))
               "and the declarations mint over the fact"))))))
 
-;; ---- the kind index -------------------------------------------------------------
+;; ---- a convicted lift ---------------------------------------------------------
 
-(defn- kinds-by-walk
-  "The kind index a walk of every entry in `kb`'s refusal record builds: per kind, the
-  handles holding an entry of it, nil when none does."
-  [kb]
-  (let [m @(reasoning/refused kb)]
-    (not-empty
-     (reduce (fn [acc [k recs]]
-               (reduce (fn [acc kind]
-                         (if (and (set? recs) (some kind recs))
-                           (update acc kind (fnil conj #{}) k)
-                           acc))
-                       acc
-                       [:lift]))
-             {}
-             (dissoc m :kinds)))))
-
-(tu/deftest-kb the-kind-index-names-the-handles-a-walk-of-the-record-finds
-  ;; A settle pass reads the lift entries off the kind index alone, so an entry under a
-  ;; handle the index does not name is never re-asked.  Each step records or retires one
-  ;; entry, and the index is compared with a walk of the whole record after it.  An
-  ;; entry whose source fact left is retired when a pass re-asks it, which a `genl` edge
-  ;; moving the generations owes.
-  (tu/with-terms [lanimal other lifted L CxOut]
+(tu/deftest-kb a-fact-whose-lift-the-argument-constraint-convicts-is-refused-at-the-assert
+  ;; The declaration and the argument constraint are in CxUniverse, which the stating
+  ;; context sees, so the source assert reads the conviction (5 being a number) and
+  ;; stores neither the fact nor a copy, and the refusal record holds nothing for it.
+  (tu/with-terms [lanimal lifted L CxOut]
     (tu/with-neutral-kb [kb tu/fresh]
-      (let [seen (volatile! [])
-            step (fn [label]
-                   (vswap! seen conj [label (:kinds @(reasoning/refused kb))
-                                      (= (kinds-by-walk kb) (:kinds @(reasoning/refused kb)))]))]
-        ;; a fact in a context outside the topology whose lift into CxUniverse the
-        ;; argument constraint convicts, 5 being a number
-        (a-type kb lanimal 'CxUniverse)
-        (v/assert kb (list 'arg lifted 2 lanimal) 'CxUniverse)
-        (v/assert kb (list 'decontextualized_predicate lifted) CxOut)
+      (a-type kb lanimal 'CxUniverse)
+      (v/assert kb (list 'arg lifted 2 lanimal) 'CxUniverse)
+      (v/assert kb (list 'decontextualized_predicate lifted) CxOut)
+      (let [before @(reasoning/refused kb)]
         (v/assert kb (list lifted L 5) CxOut)
-        (step :lift-recorded)
-        (v/retract! kb (v/handle-of kb (list lifted L 5) CxOut))
-        (a-type kb other 'CxUniverse)
-        (step :fact-retracted)
-        (let [[[_ k1] [_ k2]] @seen]
-          (is (every? last @seen) (str "the kind index and the walk differ: " (pr-str @seen)))
-          (is (= [#{:lift} nil] [(set (keys k1)) k2])
-              "each step moved the kind it names"))))))
+        (is (empty? (v/sentexes-matching kb (list lifted L 5) '?ctx)))
+        (is (= before @(reasoning/refused kb)))))))
 
 ;; ---- the whole shipped ontology -----------------------------------------------
 

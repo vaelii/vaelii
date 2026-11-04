@@ -339,6 +339,20 @@
 
 ;; ---- inconsistency -------------------------------------------------------
 
+(defn- reflexive-reading
+  "The `:supports` of an answer resting on the shipped `(reflexive subintervalOf)` in `k`."
+  [k]
+  [[{:handle   (v/handle-of k '(reflexive subintervalOf) C)
+     :sentence '(reflexive subintervalOf)
+     :context  C}]])
+
+(tu/deftest-kb argue-names-the-facts-an-entailed-allen-relation-rests-on
+  (tu/with-terms [A B D]
+    (let [ab (v/assert kb (list 'before A B) C)
+          bd (v/assert kb (list 'meets B D) C)
+          r  (v/argue kb (list 'before A D) C)]
+      (is (= [#{ab bd}] (mapv #(set (map :handle %)) (:supports (first (:for-derivation r)))))))))
+
 (tu/deftest-kb a-contradictory-component-answers-nothing-and-a-term-outside-it-answers
   ;; a rule concluding `subintervalOf` sends its goals down the union path, where
   ;; `ReflexiveProver` answers beside the calculus
@@ -364,7 +378,8 @@
         (testing "a term outside that component answers as in a coherent network"
           (is (v/ask? kb (list 'subintervalOf D D) C))
           (is (= {:verdict :true :for [{}]
-                  :for-derivation [{:goal (list 'subintervalOf D D) :via :leaf}]}
+                  :for-derivation [{:goal (list 'subintervalOf D D) :via :leaf
+                                    :supports (reflexive-reading kb)}]}
                  (v/argue kb (list 'subintervalOf D D) C {:max-depth 2})))
           (is (= {:verdict :unknown} (v/argue kb (list 'subintervalOf A A) C {:max-depth 2})))
           (is (= #{:equal} (iv/possible-allen-relations kb C D D))))
@@ -423,6 +438,8 @@
             (is (= (if rule? #{:rules} #{})
                    (provers/shadowing-channels k (list 'subintervalOf E E) C)))
             (is (v/ask? k (list 'subintervalOf A A) C))
+            (is (= (reflexive-reading k)
+                   (:supports (first (:for-derivation (v/argue k (list 'subintervalOf A A) C))))))
             (is (not (v/ask? k (list 'subintervalOf E E) C))
                 "E holds a type disjoint from subintervalOf's declared time_interval")
             (is (empty? (v/ask k (list 'subintervalOf E '?y) C)))))
@@ -478,6 +495,23 @@
         (v/retract! kb h)
         (is (v/ask? kb (list 'before A B) C))
         (is (seq (v/sentexes-matching kb (list finishedFirst A) '?ctx)))))))
+
+(tu/deftest-kb an-interval-read-by-its-stated-bounds-keeps-its-answers-beside-an-order-of-its-start-term
+  ;; The order is true of the stated bounds: April starts at Apr1, which the chain places
+  ;; before May1 only through April's own extent.
+  (tu/with-terms [Spring April Mar1 Mar15 Apr1 May1 Jun1]
+    (doseq [m [Mar1 Mar15 Apr1 May1 Jun1]] (v/assert kb (list 'time_point m) C))
+    (doseq [[i s e] [[Spring Mar1 Jun1] [April Apr1 May1]]]
+      (v/assert kb (list 'time_interval i) C)
+      (v/assert kb (list 'startOf i s) C)
+      (v/assert kb (list 'endOf i e) C))
+    (doseq [[a b] [[Mar1 Mar15] [Mar15 Apr1] [May1 Jun1]]]
+      (v/assert kb (list 'instantBefore a b) C))
+    (let [answers #(mapv (fn [r] (v/ask? kb (list r April Spring) C)) '[subintervalOf during])]
+      (is (= [true true] (answers)) "the stated bounds alone")
+      (let [h (v/assert kb (list 'instantBefore (list 'StartFn April) May1) C)]
+        (is (= [true true] (answers)) "beside the order of April's start term")
+        (v/retract! kb h)))))
 
 ;; ---- open enumeration ----------------------------------------------------
 

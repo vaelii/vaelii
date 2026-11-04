@@ -338,18 +338,22 @@
           (sort-by nm/print-key (reads/as-stored-unary-predicates (:index kb) term)))))
 
 (defn- argument-symbols
-  "The symbols `sentence` holds in an argument position of one of its literals
-  (`nm/applied-literals`), at any depth of a compound argument, outside every quoting
-  form (`sx/quoting-functor?`).  The `.` of a dotted rest pattern `(?f . ?args)` names no
-  term."
-  [sentence]
-  (letfn [(walk [x]
+  "The symbols `sentence`, stated at `context`, holds in an argument position of one of its
+  literals (`nm/applied-literals`), at any depth of a compound argument, outside every
+  quoting form (`sx/quoting-functor?`) and every position a `quotedArg` or
+  `quotedArgAndRest` declaration types (`checks/quoted-positions`).  The `.` of a dotted
+  rest pattern `(?f . ?args)` names no term."
+  [kb sentence context]
+  (letfn [(unquoted [f xs]
+            (let [qs (checks/quoted-positions kb f context)]
+              (keep-indexed (fn [i x] (when-not (qs (inc i)) x)) xs)))
+          (walk [x]
             (cond (= '. x)    []
                   (symbol? x) [x]
                   (and (sequential? x) (seq x) (not (sx/quoting-functor? (first x))))
-                  (mapcat walk x)
+                  (concat (walk (first x)) (mapcat walk (unquoted (first x) (rest x))))
                   :else []))]
-    (into #{} (comp (mapcat (fn [[_ lit]] (rest lit))) (mapcat walk))
+    (into #{} (comp (mapcat (fn [[_ lit]] (unquoted (first lit) (rest lit)))) (mapcat walk))
           (nm/applied-literals sentence))))
 
 (defn- used-in?
@@ -362,7 +366,7 @@
             (budget/spend!)
             (when-let [s (p/get-sentex recs h)]
               (and (tax/sees? tx context (:context s))
-                   (contains? (argument-symbols (sx/sentence-of s)) term))))
+                   (contains? (argument-symbols kb (sx/sentence-of s) (:context s)) term))))
           (reads/as-stored-with-term (:index kb) term))))
 
 (defn- undeclared-term
@@ -864,7 +868,7 @@
   supporters' contexts are then narrowed to the ones that see `context`."
   [kb pred context]
   (let [tx     (reasoning/taxonomy kb)
-        down   (set (tax/context-down tx context))
+        down   (if (tax/root-context? context) (constantly true) (set (tax/context-down tx context)))
         stated (for [[k [_ shape]] res/arg-constraint-kinds]
                  (if (= :every shape) (list k pred '?t) (list k pred '?n '?t)))
         edges  (mapcat (fn [super] (budget/spend!) (tax/genl-edge-supporters tx pred super nil))
@@ -872,7 +876,7 @@
     (->> (concat (keep (fn [[_ _ s]] (budget/spend!) (:context s))
                        (mapcat #(res/matches-visible kb % '?ctx) stated))
                  (map :context (handle-records kb edges)))
-         (filter #(and (not= context %) (contains? down %)))
+         (filter #(and (not= context %) (down %)))
          distinct
          (sort-by nm/print-key))))
 
@@ -1750,9 +1754,8 @@
   - **`:functional`** — two conclusions filling one functional slot for one subject with
     values that are not the same term.  The mark is read **up** the predicate hierarchy,
     so two `fatherOf` conclusions clash against `(functional parentOf)`, and it is read
-    in **both** spellings: `(functionalInArg parentOf 2)` says the same thing about the
-    same slot, so a detector reading only `:props` was blind to a KB that spells it that
-    way (#56).  Read per **position**: the mark names the constrained slot, so a
+    in **both** spellings, since `(functionalInArg parentOf 2)` says the same thing about
+    the same slot.  Read per **position**: the mark names the constrained slot, so a
     position-2 mark unifies the subjects and compares the values and a position-1 mark
     mirrors that, and only position 3 and up is out of reach — a slot these two literals
     do not have.
@@ -2101,10 +2104,10 @@
   when the KB declares none, which is the presence check that keeps the pairing off a KB with
   nothing to say — one map read.
 
-  **`:functional` reads both spellings, here as well as in `consequent-clash`** (#56).
-  This is the candidate filter that decides which pairs are ever *formed*, so widening only the
-  pairwise test left it answering nil for a KB whose sole mark is `(functionalInArg P 2)`
-  — no candidate pair, and nothing for the widened test to run on.  The reach is
+  **`:functional` reads both spellings, here as well as in `consequent-clash`**.
+  This is the candidate filter that decides which pairs are ever *formed*: a filter
+  reading `:props` alone answers nil for a KB whose sole mark is `(functionalInArg P 2)`,
+  and the pairwise test then has no candidate pair to run on.  The reach is
   `marks-over`, which is where the two spellings and the position-2 filter are
   stated once; `:asymmetric` has one spelling and keeps the plain read."
   [tax kind rows]
@@ -2235,10 +2238,9 @@
   "The function a `:rule-clash` acknowledgment's subject names the pair under:
   `(RulePairFn (Quote r1) (Quote r2))`.  Each rule is quoted on its own, and a quoted term
   is opaque, so the two orders' being one pair is a fact about `RulePairFn`, outside both
-  quotes, which core.txt states as `(commutative RulePairFn)`.  `acknowledged-pair` still
-  reads the two rules as a bag: it compares each rule by `rule-identity`, which may order
-  the two differently from their quoted spellings, and a KB without core.txt holds no
-  mark."
+  quotes, which core.txt states as `(commutative RulePairFn)`.  The subject position is a
+  mention, which the store keeps as written, so `acknowledged-pair` reads the two rules as
+  a bag of `rule-identity` values."
   'RulePairFn)
 
 (defn- acknowledged-pair

@@ -189,22 +189,6 @@
     (report kb [entry]))
   nil)
 
-(defn withdraw!
-  "Remove the entries rule `rule` filed for dropping `sentence` in `context`, once the
-  conclusion has been placed after all.
-
-  The one entry a later event retracts.  A firing dropped on an argument constraint is
-  remembered and re-asked (`chain/release-refusal!`), and when the type it lacked
-  arrives the conclusion is stored — the KB an arrival order that brought the type first
-  would have built, which files nothing.  Left standing, the entry would report which
-  order this KB was loaded in rather than anything wrong with it."
-  [kb sentence context rule]
-  (swap! (reasoning/violations kb)
-         (fn [v]
-           (into [] (remove #(and (= rule (:rule %)) (= sentence (:sentence %))
-                                  (= context (:context %))))
-                 v))))
-
 (defn withdraw-rule!
   "Remove every entry rule `rule` filed, when its firings are dropped to be made again
   (`chain/reconcile-reified!`): a firing that still drops files its entry again."

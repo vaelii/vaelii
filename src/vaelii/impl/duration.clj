@@ -82,9 +82,9 @@
   [rels [lo1 hi1] [lo2 hi2]]
   (cond
     (empty? rels)                                              nil
-    (set/subset? rels (iv/interval-denotation 'temporallyDisjoint)) [0 0]
-    (set/subset? rels (iv/interval-denotation 'subintervalOf))      [lo1 hi1]
-    (set/subset? rels (iv/interval-denotation 'hasSubinterval))     [lo2 hi2]
+    (set/subset? rels (stp/interval-denotation 'temporallyDisjoint)) [0 0]
+    (set/subset? rels (stp/interval-denotation 'subintervalOf))      [lo1 hi1]
+    (set/subset? rels (stp/interval-denotation 'hasSubinterval))     [lo2 hi2]
     :else                                                      [0 (min hi1 hi2)]))
 
 (defn- solve-total
@@ -181,7 +181,7 @@
   (support-sources [_]
     (-> #{'length}
         (into provers/unit-table-predicates)
-        (into stp/stp-predicates)
+        (into stp/network-predicates)
         (into stp/endpoint-predicates)
         (into (iv/allen-predicates))))
   (solve-with-support [_ kb goal context] (solve-with-support-for kb goal context)))

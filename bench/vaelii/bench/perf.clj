@@ -792,6 +792,22 @@
      (for [i (range n)]
        (nanos (v/assert kb (list 'pbird (symbol (str "PB" i))) 'CxPerf {}))))))
 
+(defn- replace-facts-difference
+  "One `v/replace-facts!` per reading over an n-fact snapshot in `CxPrfSnap`, where 200 of
+  its facts are swapped for 200 others: 200 adds and 200 removals, each firing or tearing
+  down one forward rule's conclusion.  The readings alternate between the two snapshots.
+  The call reads the context's n premises and names each fact once, and the edit follows
+  the 200 swaps; a call rewriting the whole snapshot follows n."
+  [n]
+  (let [kb    (fresh-kb)
+        fact  #(list 'prf_snap (symbol (str % %2)))
+        snapA (mapv #(fact "PrfS" %) (range n))
+        snapB (into (subvec snapA 200) (map #(fact "PrfT" %)) (range 200))]
+    (v/assert kb '(set/forwardRule (implies (prf_snap ?x) (prf_seen ?x))) 'CxPrfSnap)
+    (v/replace-facts! kb 'CxPrfSnap snapA)
+    (doall (for [i (range 12)]
+             (nanos (v/replace-facts! kb 'CxPrfSnap (if (even? i) snapB snapA)))))))
+
 (defn- taxonomy-depth
   "n `genl` edges arriving parent-before-child down one chain.  Every edge pays a `wff`
   cycle check, and what keeps that flat is the topological depth potential — a check
@@ -935,6 +951,28 @@
        (for [_ (range 60)]
          (nanos (let [h (v/assert kb denial 'CxPermD {:strength :monotonic})]
                   (v/retract! kb h))))))))
+
+(defn- mention-flip-beside-unmoved-rows
+  "One `(quotedArg pQuoLabel 1 string)` stated and retracted over and over, in a KB
+  holding n facts `(pQuoLabel \"s\" PQLi)` that hold no compound, beside a commutative
+  function and 20 facts applying it under another predicate.  Each arrival and departure
+  queues the rows of `pQuoLabel` a mark could move (`integrate/rows-a-mention-spells`),
+  and none of the n holds a marked functor.  The one value at position 1 keeps the
+  declaration's own sweep of the stored tokens there (`checks/declaration-candidates`)
+  at one read."
+  [n]
+  (let [kb (fresh-kb)]
+    (v/assert kb '(commutative PQuoPairFn) 'CxPerf {})
+    (v/with-deferred-settle kb
+      (doseq [i (range n)]
+        (v/assert kb (list 'pQuoLabel "s" (symbol (str "PQL" i))) 'CxPerf {}))
+      (doseq [i (range 20)]
+        (v/assert kb (list 'p_quo_other (list 'PQuoPairFn (symbol (str "PQZ" i)) (symbol (str "PQA" i))))
+                  'CxPerf {})))
+    (doall
+     (for [_ (range 60)]
+       (nanos (let [h (v/assert kb '(quotedArg pQuoLabel 1 string) 'CxPerf {})]
+                (v/retract! kb h)))))))
 
 (defn- arg-root-retrieval
   "A pattern binding an argument that sits *after* a variable — `(pRelOf ?x Tk)`, which no
@@ -1594,11 +1632,27 @@
     kb))
 
 (defn- rule-reads-above-beside-rule-keys
-  "`special/rule-reads-above?` of a `genl` edge's upper end `prk_super_t`, which no rule
-  reads, against n rules each reading a predicate of its own, on the columnar index.
+  "`special/rule-reads-above`'s test of a `genl` edge's upper end `prk_super_t`, which no
+  rule reads, built per call, against n rules each reading a predicate of its own, on the
+  columnar index.
 
-  `subsumption-seeds` asks it once per edge.  A read of every stored key grows with n,
-  and a membership test per term of the upward closure and of the licensing families
+  `subsumption-seeds` builds one per call.  A read of every stored key grows with n, and a
+  membership test per term of the upward closure and of the licensing families does not."
+  [n]
+  (let [kb  (rule-key-kb n)
+        tax (reasoning/taxonomy kb)]
+    (doall
+     (for [_ (range 100)]
+       (nanos (dotimes [_ reads-per-reading]
+                ((#'special/rule-reads-above kb tax (reads/stored-rule-key-test (:index kb)))
+                 'prk_super_t)))))))
+
+(defn- negative-seeds-beside-rule-keys
+  "`special/negative-subsumption-seeds` of a `genl` edge from `prk_sub_t` to `prk_super_t`
+  against n rules each reading a positive predicate of its own, on the columnar index.
+
+  `subsumption-seeds` asks it once per call.  A pass over every stored key for the
+  negated ones grows with n, and a membership test per term of `prk_sub_t`'s spec closure
   does not."
   [n]
   (let [kb  (rule-key-kb n)
@@ -1606,21 +1660,28 @@
     (doall
      (for [_ (range 100)]
        (nanos (dotimes [_ reads-per-reading]
-                (#'special/rule-reads-above? kb tax 'prk_super_t)))))))
+                (#'special/negative-subsumption-seeds
+                 kb tax (reads/stored-rule-key-test (:index kb)) [['prk_sub_t 'prk_super_t]])))))))
 
-(defn- negative-seeds-beside-rule-keys
-  "`special/negative-subsumption-seeds` of a `genl` edge from `prk_sub_t` to `prk_super_t`
-  against n rules each reading a positive predicate of its own, on the columnar index.
+(defn- batch-seeds-beside-rule-keys
+  "`special/batch-subsumption-seeds` of n `genl` edges, each from a type of its own to
+  `prk_super_t`, against n rules each reading a predicate of its own, half of them under a
+  negation, on the columnar index of a KB declaring a `genlInverse` edge, per 64 edges.
 
-  `subsumption-seeds` asks it once per edge.  A pass over every stored key for the
-  negated ones grows with n, and a membership test per term of `prk_sub_t`'s spec closure
-  does not."
+  A spec walk sees no `genlInverse` edge, so every edge meets the stored negated keys.
+  Measured 2026-11-03 with the keys read once per batch: 0.119 ms at 64 and 0.065 ms at
+  2,048 (0.55x).  Read once per edge, 1.32 ms against 19.6 ms (14.9x)."
   [n]
-  (let [kb (rule-key-kb n)]
+  (let [kb    (rule-key-kb 0)
+        edges (mapv #(list 'genl (symbol (str "prk_e" % "_t")) 'prk_super_t) (range n))]
+    (v/assert kb '(genlInverse prkInvLow prkInvHigh) 'CxUniverse {:strength :monotonic})
+    (doseq [i (range n)]
+      (rules/index-rule (:index kb) (+ 1000000 i)
+                        [(if (even? i) (symbol (str "pRk" i)) [:not (symbol (str "pRk" i))])]
+                        nil 'CxPerf))
     (doall
      (for [_ (range 100)]
-       (nanos (dotimes [_ reads-per-reading]
-                (#'special/negative-subsumption-seeds kb 'prk_sub_t 'prk_super_t)))))))
+       (quot (* 64 (nanos (special/batch-subsumption-seeds kb edges))) n)))))
 
 (defn- computed-reading-beside-rule-keys
   "`special/computed-reading-rules` of a `conversionFactor` datum, which the quantity
@@ -2781,6 +2842,31 @@
                        (v/assert kb (list 'plz_cls r) 'CxPerf)))))
           n)))))
 
+(defn- computed-reader-load
+  "n `conversionFactor` facts, which the quantity prover reads, loaded in one deferred settle
+  beside n firings of `(pcrMass ?x ?q) ∧ (quantityGreaterThan ?q (QuantityFn 1 Kilogram)) ⇒
+  (pcr_heavy ?x)`, timed per fact over three loads.
+
+  Each fact owes the rule a re-join, and the batch's settle runs one
+  (`chain/run-batch-rejoins`).  A re-join per fact reads here as growth."
+  [n]
+  (doall
+   (for [_ (range 3)]
+     (let [kb (fresh-kb)]
+       (v/with-deferred-settle kb
+         (v/assert kb '(set/forwardRule
+                        (implies (and (pcrMass ?x ?q)
+                                      (quantityGreaterThan ?q (QuantityFn 1 Kilogram)))
+                                 (pcr_heavy ?x)))
+                   'CxPerf)
+         (dotimes [i n]
+           (v/assert kb (list 'pcrMass (symbol (str "PCR" i)) '(QuantityFn 2 Kilogram)) 'CxPerf)))
+       (/ (nanos (v/with-deferred-settle kb
+                   (dotimes [i n]
+                     (v/assert kb (list 'conversionFactor (symbol (str "PcrUnit" i)) 'Kilogram 2)
+                               'CxPerf))))
+          n)))))
+
 (defn- lazy-reader-rejoin-outside-a-batch
   "n `plo_cls` memberships beside `(plo_cls ?r) ⇒ (ploArity ?r 2)` lazy-forward and
   `(ploArity ?r ?n) ⇒ (plo_out ?r)` forward, then one more membership asserted, timed per
@@ -3139,8 +3225,7 @@
   "One assert of a fact naming nothing, on a KB whose 16 `unknown` rules hold n refused
   firings between them in the refusal record.
 
-  Every settle pass asks the record for the lifts waiting in it (`settle/released-lifts`),
-  and the KB holds none: what the unrelated assert owes the record is nothing at both sizes.  The population is built
+  What the unrelated assert owes the record is nothing at both sizes.  The population is built
   under one deferred settle, with each blocking fact stored before the firing it
   refuses."
   [n]
@@ -4385,37 +4470,6 @@
       (doall (for [i (range 200)]
                (nanos (v/assert kb (list leaf (symbol (str "Pmd" i))) 'CxPerf)))))))
 
-(def ^:private lift-rebuild-facts
-  "The facts of a decontextualized predicate `lift-rebuild` states in its deepest context."
-  2000)
-
-(defn- lift-rebuild
-  "A chain of n contexts under CxPerf, an `except` of the chain's first `genlCx` edge from
-  a side context (so a scoped `sees?` reads each edge supporter's visibility), and
-  `lift-rebuild-facts` facts of a decontextualized predicate stated in the deepest
-  context; then `special/rebuild-pending!` timed whole and read per hundred facts.
-
-  The lift walk asks whether a stating context sees CxUniverse once per context
-  (`special/lift-statements`).  Asking it per fact walks the chain per fact, and reads
-  here as growth with n."
-  [n]
-  (let [kb (fresh-kb)
-        cx (fn [i] (symbol (str "CxPlr" i)))]
-    (v/with-deferred-settle kb
-      (v/assert kb '(genlCx CxPerf CxUniverse) 'CxUniverse {:strength :monotonic})
-      (v/assert kb '(genlCx CxPlrSide CxPerf) 'CxUniverse {:strength :monotonic})
-      (v/assert kb '(decontextualized_predicate pLiftRebuild) 'CxUniverse {:strength :monotonic})
-      (doseq [i (range 1 (inc n))]
-        (let [h (v/assert kb (list 'genlCx (cx i) (if (= 1 i) 'CxPerf (cx (dec i))))
-                          'CxUniverse {:strength :monotonic})]
-          (when (= 1 i)
-            (v/assert kb (list 'except (list 'sentexHandle h)) 'CxPlrSide
-                      {:strength :monotonic}))))
-      (doseq [j (range lift-rebuild-facts)]
-        (v/assert kb (list 'pLiftRebuild (symbol (str "PLR" j)) 'PLRHub) (cx n) {})))
-    (doall (for [_ (range 4)]
-             (/ (nanos (special/rebuild-pending! kb)) (/ lift-rebuild-facts 100.0))))))
-
 (defn- constraint-genl-edge
   "A `genl` edge flipped in and out of belief above a predicate holding n facts, on a KB
   declaring `functional`, either on the predicate above the edge or on one the edge cannot
@@ -5202,6 +5256,25 @@
              (v/assert kb edge 'CxUniverse m)
              (nanos (v/retract! kb (v/handle-of kb edge 'CxUniverse)))))))))
 
+(defn- genlcx-root-edge-beside-universe-facts
+  "One `(genlCx sub CxUniverse)` edge stored and retracted beside n declared facts in
+  CxUniverse.  The claim is that `tax/context-move` keeps the implicit edge every context
+  has to CxUniverse, so the stored edge moves no context and neither move re-draws the
+  mints of the facts stored there.  Each reading names a fresh `sub`."
+  [n]
+  (binding [argument/*assertive-arg-types?* true]
+    (let [kb (fresh-kb)
+          m  {:strength :monotonic}]
+      (v/assert kb '(genl gr_kind thing) 'CxUniverse m)
+      (v/assert kb '(arg grRel 1 gr_kind) 'CxUniverse m)
+      (v/with-deferred-settle kb
+        (doseq [i (range n)]
+          (v/assert kb (list 'grRel (symbol (str "GrF" i)) 'GrThing) 'CxUniverse m)))
+      (doall
+       (for [i (range 60)
+             :let [edge (list 'genlCx (symbol (str "CxGrK" i)) 'CxUniverse)]]
+         (nanos (v/retract! kb (v/assert kb edge 'CxUniverse m))))))))
+
 (defn- genlcx-edge-beside-excepted-declarations
   "One `(genlCx sub CxGedOther)` edge beside n `arg` declarations, each over 16 facts and
   each excepted in `CxGedHide`, a context `CxGedOther` does not see.  Each fact's second
@@ -5937,6 +6010,89 @@
   (let [[kb at] (slice-grid n)]
     (doall (for [i (range 60)]
              (nanos (v/assert kb '(psgNote PsgItem PsgVal) (at 0 (+ 3000 i)) {:strength :monotonic}))))))
+
+(defn- context-nat-read-unwritten-slice
+  "Sixty asks in a month slice nobody wrote into, along a monad holding n year contexts
+  of a context function ordered by `genlMonad` at its monad and `subintervalOf` at its
+  year, each after one write in another context when `write?`.  Without the writes,
+  healthy 0.53x; with a read copy built and the monad's contexts read per ask, 4.73x.
+  With them, healthy 0.30x; with the monad's contexts read per ask, 2.99x."
+  [write? n]
+  (let [kb (fresh-kb)
+        M  {:strength :monotonic}
+        at #(list 'CxPruFn 'CxPruM (list 'DatetimeFn %))]
+    (v/assert kb '(result CxPruFn context) 'CxUniverse M)
+    (v/assert kb '(unreifiable_function DatetimeFn) 'CxUniverse M)
+    (v/assert kb '(contextArgSubrelation CxPruFn 1 genlMonad) 'CxUniverse M)
+    (v/assert kb '(contextArgSubrelation CxPruFn 2 subintervalOf) 'CxUniverse M)
+    (v/assert kb '(genlCx CxPruM CxPerf) 'CxUniverse M)
+    (v/with-deferred-settle kb
+      (doseq [y (range 1000 (+ 1000 n))] (v/assert kb '(pruNote PruItem PruVal) (at (str y)) M)))
+    (doall (for [i (range 60)]
+             (do (when write? (v/assert kb (list 'pruElse (symbol (str "PruE" i)) 'PruVal) 'CxPruElse M))
+                 (nanos (v/ask? kb '(pruNote PruItem PruVal) (at "1000-03"))))))))
+
+(defn- context-nat-read-unwritten-slice-beside-monads
+  "Sixty first asks, each after a write in another context, in a month slice nobody wrote
+  into along one monad holding twenty year contexts, beside n other monads holding contexts
+  at the same twenty years.  Healthy 0.96x; with the read of the month's containing
+  terms chosen by its count of terms, reading every monad's context at the year, 3.65x."
+  [n]
+  (let [kb (fresh-kb)
+        M  {:strength :monotonic}
+        at (fn [mo y] (list 'CxPruFn mo (list 'DatetimeFn y)))]
+    (v/assert kb '(result CxPruFn context) 'CxUniverse M)
+    (v/assert kb '(unreifiable_function DatetimeFn) 'CxUniverse M)
+    (v/assert kb '(contextArgSubrelation CxPruFn 1 genlMonad) 'CxUniverse M)
+    (v/assert kb '(contextArgSubrelation CxPruFn 2 subintervalOf) 'CxUniverse M)
+    (v/with-deferred-settle kb
+      (doseq [i (range (inc n)) :let [mo (symbol (str "CxPruM" i))]]
+        (v/assert kb (list 'genlCx mo 'CxPerf) 'CxUniverse M)
+        (doseq [y (range 1990 2010)] (v/assert kb '(pruNote PruItem PruVal) (at mo (str y)) M))))
+    (doall (for [i (range 60)]
+             (do (v/assert kb (list 'pruElse (symbol (str "PruE" i)) 'PruVal) 'CxPruElse M)
+                 (nanos (v/ask? kb '(pruNote PruItem PruVal) (at 'CxPruM0 "2000-03"))))))))
+
+(defn- in-beside-declarations
+  "Four hundred `in?` reads between two writes, beside n forced-monotonic declarations and
+  one placed defeat.  Healthy 0.47x; with a reader frame built per read, 3.92x."
+  [n]
+  (let [kb (fresh-kb)
+        M  {:strength :monotonic}
+        h  (v/assert kb '(prf_note PrfItem) 'CxPerf)]
+    (v/with-deferred-settle kb
+      (doseq [i (range n)]
+        (v/assert kb (list 'forced_monotonic_predicate (symbol (str "prfForced" i))) 'CxUniverse M)))
+    (v/assert kb '(not (prf_note PrfItem)) 'CxPerf M)
+    (doall (for [_ (range 400)] (nanos (v/in? kb h))))))
+
+(defn- context-nat-instant-order-append
+  "n named intervals, each bounded by two named moments of one chain and holding a slice
+  along one monad, the chain stated first; then sixty times, the link past the chain's end
+  stated and retracted.  The link pairs the slices at or before its first moment with those
+  at or after its second, each pair's comparisons read off the link's two walks along the
+  chain.  Healthy 6.07x; with a breadth-first walk along the chain per pair, 17.7x."
+  [n]
+  (let [kb (fresh-kb)
+        M  {:strength :monotonic}
+        m  #(symbol (str "PioM" %))
+        link #(v/assert kb (list 'instantBefore (m %) (m (inc %))) 'CxUniverse M)]
+    (v/assert kb '(result CxPioFn context) 'CxUniverse M)
+    (v/assert kb '(contextArgSubrelation CxPioFn 1 genlMonad) 'CxUniverse M)
+    (v/assert kb '(contextArgSubrelation CxPioFn 2 subintervalOf) 'CxUniverse M)
+    (v/assert kb '(genlCx CxPioMonad CxPerf) 'CxUniverse M)
+    (run! link (range n))
+    (v/with-deferred-settle kb
+      (doseq [i (range (inc n))]
+        (let [I (symbol (str "PioI" i))]
+          (v/assert kb (list 'startOf I (m i)) 'CxUniverse M)
+          (v/assert kb (list 'endOf I (m (inc i))) 'CxUniverse M)
+          (v/assert kb '(pioNote PioItem PioVal) (list 'CxPioFn 'CxPioMonad I) M))))
+    (doall (for [_ (range 60)]
+             (let [h (volatile! nil)
+                   t (nanos (vreset! h (link n)))]
+               (v/retract! kb @h)
+               t)))))
 
 (defn- sign-chain-rebuild
   "A `qualitativeSum` chain grown one link at a time, and after each of the last sixty
@@ -7331,6 +7487,13 @@
     :max-ratio 2.0
     :run       defeasible-load}
 
+   {:name      :replace-facts-difference
+    :group     :chaining
+    :claim     "replace-facts! swapping 200 facts of a 2000-fact snapshot costs under 2x what swapping 200 of a 250-fact snapshot costs"
+    :sizes     [250 2000]
+    :max-ratio 2.0
+    :run       replace-facts-difference}
+
    {:name      :taxonomy-depth
     :group     :taxonomy
     :claim     "a genl edge costs the same 2000 deep in a chain as 250 deep"
@@ -7378,6 +7541,13 @@
     :sizes     [500 4000]
     :max-ratio 2.0
     :run       permuting-mark-defeat-flip}
+
+   {:name      :mention-flip-beside-unmoved-rows
+    :group     :tuples
+    :claim     "stating and retracting one quotedArg costs the same beside 4000 facts on its predicate holding no compound as beside 500"
+    :sizes     [500 4000]
+    :max-ratio 2.0
+    :run       mention-flip-beside-unmoved-rows}
 
    {:name      :arg-root-retrieval
     :group     :index
@@ -7796,7 +7966,7 @@
    ;; 100.8 ms (19x).
    {:name      :rule-reads-above-beside-rule-keys
     :group     :index
-    :claim     "special/rule-reads-above? of an edge no rule reads above is flat in how many antecedent keys the stored rules take"
+    :claim     "special/rule-reads-above of an edge no rule reads above is flat in how many antecedent keys the stored rules take"
     :sizes     [64 2048]
     :max-ratio 2.0
     :run       rule-reads-above-beside-rule-keys}
@@ -7810,6 +7980,13 @@
     :sizes     [64 2048]
     :max-ratio 2.0
     :run       negative-seeds-beside-rule-keys}
+
+   {:name      :batch-seeds-beside-rule-keys
+    :group     :index
+    :claim     "special/batch-subsumption-seeds of n edges against n antecedent keys on a KB declaring a genlInverse edge is flat per edge in n"
+    :sizes     [64 2048]
+    :max-ratio 2.0
+    :run       batch-seeds-beside-rule-keys}
 
    ;; Measured 2026-10-24 per batch of 500 calls, at load 43: 0.803 ms at 64 and 0.642 ms
    ;; at 2,048 (0.80x).  Reading every stored key per call, at load 58: 3.68 ms against
@@ -8135,16 +8312,6 @@
     :sizes     [64 4096]
     :max-ratio 2.0
     :run       membership-under-deep-type}
-
-   ;; Both ends measured 2026-10-01.  Healthy 1.32x and 1.09x (0.498 ms against 0.658,
-   ;; 0.545 against 0.596).  With a `sees?` per fact, the reading is 7.67x (1.764 ms
-   ;; against 13.529).  2x sits between.
-   {:name      :lift-rebuild
-    :group     :argtypes
-    :claim     "16x the contexts above the stating context costs under 2x per hundred facts the recover lift rebuild re-reads"
-    :sizes     [4 64]
-    :max-ratio 2.0
-    :run       lift-rebuild}
 
    {:name      :plan-scaling
     :group     :solvers
@@ -8839,6 +9006,13 @@
     :max-ratio 2.0
     :run       genlcx-edge-leaving-beside-distant-mints}
 
+   {:name      :genlcx-root-edge-beside-universe-facts
+    :group     :argtypes
+    :claim     "16x the facts in CxUniverse costs under 2x per (genlCx sub CxUniverse) stored and retracted"
+    :sizes     [64 1024]
+    :max-ratio 2.0
+    :run       genlcx-root-edge-beside-universe-facts}
+
    ;; The `except`s a `genlCx` edge re-checks.  Flat by construction: the edge's `super`
    ;; sees no context stating one and the edge reaches no reader at both n.  Calibrated
    ;; from both ends under a scratch driver's `run-check`: healthy 0.69x-1.01x alone and
@@ -9157,6 +9331,41 @@
     :max-ratio 2.0
     :run       context-nat-mint-beside-monads}
 
+   {:name      :context-nat-read-unwritten-slice
+    :group     :solvers
+    :claim     "16x the contexts along a monad costs under 2x per ask in a slice of it nobody wrote into"
+    :sizes     [16 256]
+    :max-ratio 2.0
+    :run       (partial context-nat-read-unwritten-slice false)}
+
+   {:name      :context-nat-read-unwritten-slice-after-write
+    :group     :solvers
+    :claim     "16x the contexts along a monad costs under 2x per ask after a write in a slice of it nobody wrote into"
+    :sizes     [16 256]
+    :max-ratio 2.0
+    :run       (partial context-nat-read-unwritten-slice true)}
+
+   {:name      :context-nat-read-unwritten-slice-beside-monads
+    :group     :solvers
+    :claim     "40x the other monads costs under 1.5x per first ask in a slice nobody wrote into along one monad"
+    :sizes     [10 400]
+    :max-ratio 1.5
+    :run       context-nat-read-unwritten-slice-beside-monads}
+
+   {:name      :in-beside-declarations
+    :group     :exceptions
+    :claim     "40x the forced-monotonic declarations costs under 1.5x per `in?` between two writes"
+    :sizes     [10 400]
+    :max-ratio 1.5
+    :run       in-beside-declarations}
+
+   {:name      :context-nat-instant-order-append
+    :group     :solvers
+    :claim     "8x the bounded intervals along one chain costs under 12x per order appended at its end"
+    :sizes     [20 160]
+    :max-ratio 12.0
+    :run       context-nat-instant-order-append}
+
    ;; Not flat: a rebuild reads every sign fact, so the reading grows with the chain.
    ;; Healthy 23.94x, 37.75x, 40.74x and 49.98x for 32x the links.  A round-robin fixpoint
    ;; with a copied support set reads 331.39x (0.25 ms against 83.12).  100x is twice the
@@ -9401,6 +9610,13 @@
     :sizes     [64 1024]
     :max-ratio 2.0
     :run       lazy-reader-load}
+
+   {:name      :computed-reader-load
+    :group     :chaining
+    :claim     "16x the conversionFactor facts, loaded in one settle beside 16x the firings of a rule the quantity prover answers, cost under 2x per fact"
+    :sizes     [64 1024]
+    :max-ratio 2.0
+    :run       computed-reader-load}
 
    {:name      :lazy-reader-rejoin-outside-a-batch
     :group     :chaining

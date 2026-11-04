@@ -206,14 +206,14 @@
                    (is (not (contains? @rendered foreign))))))))
 
 (deftest an-author-genlcx-edge-survives-the-sync
-  (tu/with-terms [CxAuthorAbove CxAuthorBelow]
+  (tu/with-terms [CxAuthorUnder CxAuthorBelow]
     (in-both-orders :edges
-                    [#(v/assert % (list 'genlCx 'CxUniverse CxAuthorAbove) 'CxUniverse)
+                    [#(v/assert % (list 'genlCx CxAuthorUnder 'CxUniverse) 'CxUniverse)
                      #(v/assert % (list 'genlCx CxAuthorBelow 'CxWell) CxAuthorBelow)]
                     (fn [kb]
                       (is (= in-sync (sync/plan kb @ships)))
                       (is (= {:added 0 :removed 0 :refused []} (sync/sync! kb @ships)))
-                      (is (some? (v/handle-of kb (list 'genlCx 'CxUniverse CxAuthorAbove) 'CxUniverse)))
+                      (is (some? (v/handle-of kb (list 'genlCx CxAuthorUnder 'CxUniverse) 'CxUniverse)))
                       (is (some? (v/handle-of kb (list 'genlCx CxAuthorBelow 'CxWell) 'CxUniverse)))))))
 
 (deftest a-lifted-copy-of-a-data-context-binding-survives-the-sync

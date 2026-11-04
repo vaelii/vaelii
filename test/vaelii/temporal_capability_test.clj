@@ -160,11 +160,10 @@
       (testing "the month's own fact is not visible from the year"
         (is (not (v/ask? kb (list q) year)))))))
 
-(tu/deftest-kb ^:red a-slice-nobody-wrote-into-still-inherits
-  ;; Today a read resolves the slot by dedup and never mints, so a slice with no fact of
-  ;; its own has no cx/ constant and the read is scoped to nothing (docs/context-nat.md,
-  ;; "Write and read are symmetric").  What a slice sees ought to follow from what it
-  ;; names, not from whether anybody has written into it.
+(tu/deftest-kb a-slice-nobody-wrote-into-still-inherits
+  ;; A read mints nothing, so the month slice has no cx/ constant; the read sees what the
+  ;; slices it would be ordered below see (docs/context-nat.md, "Write and read are
+  ;; symmetric").
   (declare-cxtimefn! kb)
   (tu/with-terms [p]
     (let [year (slice '(DatetimeFn "2000"))
@@ -174,7 +173,7 @@
         (is (true? (v/ask? kb (list p) jan)))
         (is (= :true (verdict kb (list p) jan)))))))
 
-(tu/deftest-kb ^:red a-named-slice-nobody-wrote-into-still-inherits
+(tu/deftest-kb a-named-slice-nobody-wrote-into-still-inherits
   ;; The reified twin of a-slice-nobody-wrote-into-still-inherits: the month is a named
   ;; interval with a stated subintervalOf, and nobody writes into its slice.
   (declare-cxtimefn! kb)
@@ -187,7 +186,7 @@
         (is (true? (v/ask? kb (list p) jan)))
         (is (= :true (verdict kb (list p) jan)))))))
 
-(tu/deftest-kb ^:red an-instant-slice-nobody-wrote-into-still-inherits-from-its-year
+(tu/deftest-kb an-instant-slice-nobody-wrote-into-still-inherits-from-its-year
   ;; The point twin of a-slice-nobody-wrote-into-still-inherits: the unwritten slice is
   ;; keyed by a moment of 2000 rather than by its January.
   (declare-cxtimefn! kb)
@@ -199,7 +198,7 @@
         (is (true? (v/ask? kb (list p) noon)))
         (is (= :true (verdict kb (list p) noon)))))))
 
-(tu/deftest-kb ^:red a-slice-along-a-sub-monad-nobody-wrote-into-still-inherits
+(tu/deftest-kb a-slice-along-a-sub-monad-nobody-wrote-into-still-inherits
   ;; The monad-dimension twin of a-slice-nobody-wrote-into-still-inherits: the unwritten
   ;; slice narrows the monad, not the time.
   (declare-cxtimefn! kb)
@@ -257,7 +256,7 @@
           (is (= :unknown (verdict kb (list p) y2001)))
           (is (not (v/ask? kb (list 'not (list p)) y2001))))))))
 
-(tu/deftest-kb ^:red a-fact-in-a-year-slice-holds-at-an-instant-inside-it-and-is-unknown-at-an-instant-of-the-next-year
+(tu/deftest-kb a-fact-in-a-year-slice-holds-at-an-instant-inside-it-and-is-unknown-at-an-instant-of-the-next-year
   ;; The point twin of a-fact-in-a-year-slice-holds-in-its-months-and-is-unknown-the-next-year:
   ;; a moment of 2000 in place of January, and a moment of 2001 in place of 2001.
   (declare-cxtimefn! kb)
@@ -297,11 +296,10 @@
           (is (= :unknown (verdict kb (list p) other)))
           (is (not (v/ask? kb (list 'not (list p)) other))))))))
 
-(tu/deftest-kb ^:red a-fact-stated-unsliced-holds-in-every-year-slice
+(tu/deftest-kb a-fact-stated-unsliced-holds-in-every-year-slice
   ;; The KB has no "eternal" context: `atemporal` is a type (core.txt). The nearest is a fact
-  ;; stated unsliced in CxUniverse, which every wired context sees. A cx/ slice is wired by
-  ;; nothing but the computed edges between slices (docs/contexts.md, "A context outside the
-  ;; topology"), so the year was reached by a hand-asserted genlCx on its cx/ constant.
+  ;; stated unsliced in CxUniverse, which every context sees, a cx/ slice no edge names
+  ;; included (docs/contexts.md, "CxUniverse is the implicit root").
   (declare-cxtimefn! kb)
   (tu/with-terms [p q r]
     (let [y2000 (slice '(DatetimeFn "2000"))
@@ -316,9 +314,8 @@
         (testing "and in January 2000, with nobody wiring either slice by hand"
           (is (true? (v/ask? kb (list p) jan))))))))
 
-(tu/deftest-kb ^:red a-fact-stated-unsliced-holds-in-every-year-slice-along-a-monad-placed-by-genlmonad
-  ;; The genlMonad twin of a-fact-stated-unsliced-holds-in-every-year-slice.  The original
-  ;; reaches CxUniverse through CxMonad's stated genlCx to CxWell; here the slices are
+(tu/deftest-kb a-fact-stated-unsliced-holds-in-every-year-slice-along-a-monad-placed-by-genlmonad
+  ;; The genlMonad twin of a-fact-stated-unsliced-holds-in-every-year-slice: the slices are
   ;; along a monad that genlMonad alone places under CxWell.
   (declare-cxtimefn! kb)
   (tu/with-terms [p q r CxStory]
@@ -335,7 +332,7 @@
         (testing "and in January 2000, with nobody wiring either slice by hand"
           (is (true? (v/ask? kb (list p) jan))))))))
 
-(tu/deftest-kb ^:red a-fact-in-cxwells-year-slice-holds-that-year-along-every-monad-below-cxwell
+(tu/deftest-kb a-fact-in-cxwells-year-slice-holds-that-year-along-every-monad-below-cxwell
   ;; The monad-dimension twin of a-fact-stated-unsliced-holds-in-every-year-slice.  The
   ;; original states a fact at no time in particular, along the root, and reads it at
   ;; years; this states one at a year along CxWell, the monad every other monad here sits
@@ -425,7 +422,7 @@
         (is (not (v/ask? kb (list p) feb)))
         (is (not (v/ask? kb (list q) jan)))))))
 
-(tu/deftest-kb ^:red two-instant-slices-in-one-year-each-see-the-year-and-not-each-other
+(tu/deftest-kb two-instant-slices-in-one-year-each-see-the-year-and-not-each-other
   ;; The point twin of sibling-month-slices-do-not-see-each-other: two moments of 2000 in
   ;; place of two of its months.  Two distinct moments are ordered, never nested, so
   ;; neither slice is under the other.
@@ -954,10 +951,10 @@
       (testing (str x " sees " y "'s fact exactly when it is below it in both dimensions")
         (is (= below? sees?))))))
 
-(tu/deftest-kb ^:red genlcx-between-slices-over-a-year-and-an-instant-in-it-is-genlmonad-times-time-containment
+(tu/deftest-kb genlcx-between-slices-over-a-year-and-an-instant-in-it-is-genlmonad-times-time-containment
   ;; The point twin of genlcx-between-slices-is-genlmonad-times-time-containment: a moment
-  ;; of 2000 in place of January, so the time half of the product is includesInstant
-  ;; rather than subintervalOf.
+  ;; of 2000 in place of January, so the time half of the product is subtimeOf rather
+  ;; than subintervalOf.
   (declare-cxtimefn! kb)
   (tu/with-terms [CxSuper CxSub]
     (monads! kb CxSuper CxSub)
@@ -1600,7 +1597,7 @@
     (testing "a later reading raises the bound to 49"
       (is (true? (v/query? kb (list 'ageAtLeast Ann 49) present {:max-depth 3}))))))
 
-(tu/deftest-kb ^:red a-distance-between-two-minute-starts-is-exact-and-between-two-unknown-instants-inside-them-is-bounded
+(tu/deftest-kb a-distance-between-two-minute-starts-is-exact-and-between-two-unknown-instants-inside-them-is-bounded
   ;; Precision shows up in temporalDistance's answer, in its width. A minute's StartFn is one
   ;; sharp point, so the distance between the start of 14:32 on 17 May 1990 and the start of
   ;; 09:15 on 21 October 2026 is exact: 1149619380 seconds. An instant only known to fall
@@ -1621,7 +1618,7 @@
       (is (= [{'?d '(QuantityIntervalFn 1149619320 1149619440 Second)}]
              (v/ask kb (list 'temporalDistance X Y '?d) U))))))
 
-(tu/deftest-kb ^:red a-distance-from-a-minute-start-to-a-lower-bound-on-w-is-a-lower-bound
+(tu/deftest-kb a-distance-from-a-minute-start-to-a-lower-bound-on-w-is-a-lower-bound
   ;; W reached only through lower-bound readings does not give an exact distance. The minute
   ;; is the control's, and the reading floor is 09:00 on 17 October 2026 (both made up). The
   ;; distance to the reading's own moment is exact and is a lower bound on the distance to W;
@@ -1640,7 +1637,7 @@
     (is (empty? (v/ask kb (list 'temporalDistance '(StartFn (DatetimeFn "1990-05-17T14:32")) W '?d)
                        present)))))
 
-(tu/deftest-kb ^:red a-distance-between-two-unknown-instants-is-exactly-as-bounded-as-the-coarser-of-the-two-containing-intervals
+(tu/deftest-kb a-distance-between-two-unknown-instants-is-exactly-as-bounded-as-the-coarser-of-the-two-containing-intervals
   ;; Varies the precision of each side's containing interval on its own, the other held at
   ;; the minute. Each side is an unknown instant stated only to fall inside a calendar
   ;; interval (includesInstant), so even the minute/minute row is bounded and not exact
@@ -1727,7 +1724,7 @@
         (is (not (v/ask? kb (list q) y2000)))
         (is (= :unknown (verdict kb (list q) y2000)))))))
 
-(tu/deftest-kb ^:red an-eternal-fact-is-visible-from-the-present-and-from-every-slice
+(tu/deftest-kb an-eternal-fact-is-visible-from-the-present-and-from-every-slice
   ;; The eternal case from every vantage, not one year: a fact stated unsliced in
   ;; CxUniverse holds in the present, in the past and the future, along the real world and
   ;; along a story, at a year and at a day.
@@ -1743,7 +1740,7 @@
       (testing (str "from " (pr-str ctx))
         (is (true? (v/ask? kb (list p) ctx)))))))
 
-(tu/deftest-kb ^:red an-eternal-fact-is-visible-from-every-slice-along-a-monad-placed-by-genlmonad
+(tu/deftest-kb an-eternal-fact-is-visible-from-every-slice-along-a-monad-placed-by-genlmonad
   ;; The genlMonad twin of an-eternal-fact-is-visible-from-the-present-and-from-every-slice: the
   ;; story is placed under CxWell by genlMonad, where the original places it by genlCx.
   (declare-cxtimefn! kb)
@@ -2033,11 +2030,11 @@
       (is (false? (:distinct? (two-spellings kb (slice CxA '(YearFn 2000))
                                              (slice CxB '(YearFn 2000)))))))))
 
-(tu/deftest-kb ^:red a-fact-in-a-year-slice-holds-in-a-slice-keyed-by-an-instant-inside-it
+(tu/deftest-kb a-fact-in-a-year-slice-holds-in-a-slice-keyed-by-an-instant-inside-it
   ;; Homogeneity, downward: a fact true throughout 2000 is true at each moment of 2000.
   ;; A slice keyed by an InstantFn moment is ordered under a slice keyed by an interval
-  ;; that includes the moment (includesInstant), which is not subintervalOf: a time_point
-  ;; is not a time_interval.  Upward it does not hold, by design: a fact stated at one
+  ;; that holds the moment (subtimeOf), which is not subintervalOf: a time_point is not a
+  ;; time_interval.  Upward it does not hold, by design: a fact stated at one
   ;; moment of 2000 is not thereby true throughout 2000.
   (declare-cxtimefn! kb)
   (tu/with-terms [p q]
@@ -2185,7 +2182,7 @@
   [(mapv #(get % '?i) (v/query kb (list 'startOf r '?i) U {:max-depth 3}))
    (mapv #(get % '?i) (v/query kb (list 'endOf r '?i) U {:max-depth 3}))])
 
-(tu/deftest-kb ^:red a-fact-in-a-range-is-visible-from-a-subrange-and-from-each-calendar-term-inside-it
+(tu/deftest-kb a-fact-in-a-range-is-visible-from-a-subrange-and-from-each-calendar-term-inside-it
   ;; The first quarter of 2000, and February to March inside it.
   (declare-cxtimefn! kb)
   (v/add-reasoner kb :calendar)
@@ -2201,7 +2198,7 @@
       (testing (str "and not from " (pr-str outside) ", which is not inside the range")
         (is (not (v/ask? kb (list p) outside)))))))
 
-(tu/deftest-kb ^:red a-fact-in-a-range-bounded-by-named-moments-is-visible-from-each-named-time-inside-it
+(tu/deftest-kb a-fact-in-a-range-bounded-by-named-moments-is-visible-from-each-named-time-inside-it
   ;; The reified twin of a-fact-in-a-range-is-visible-from-a-subrange-and-from-each-calendar-term-inside-it.
   ;; Every bound is a named moment, ordered by stated instantBefore facts in the order the
   ;; calendar gives the original's InstantFn bounds, and each calendar term the original
@@ -2224,7 +2221,7 @@
       (testing (str "and not from " outside ", which is not inside the range")
         (is (not (v/ask? kb (list p) (slice outside))))))))
 
-(tu/deftest-kb ^:red a-fact-in-a-datetime-range-is-visible-from-a-subrange-and-from-each-calendar-term-inside-it
+(tu/deftest-kb a-fact-in-a-datetime-range-is-visible-from-a-subrange-and-from-each-calendar-term-inside-it
   ;; The DatetimeRangeFn twin of a-fact-in-a-range-is-visible-from-a-subrange-and-from-each-calendar-term-inside-it:
   ;; the first quarter is (DatetimeRangeFn "2000-01" "2000-03") and February to March
   ;; (DatetimeRangeFn "2000-02" "2000-03"), with nothing stated of either.  The control
@@ -2246,7 +2243,7 @@
         (testing (str "and not from " (pr-str outside) ", which is not inside the range")
           (is (not (v/ask? kb (list p) outside))))))))
 
-(tu/deftest-kb ^:red a-fact-in-a-range-holds-at-each-instant-inside-it
+(tu/deftest-kb a-fact-in-a-range-holds-at-each-instant-inside-it
   ;; The point twin of a-fact-in-a-range-is-visible-from-a-subrange-and-from-each-calendar-term-inside-it:
   ;; moments in place of the subrange and the calendar terms.  Half-open: the range's
   ;; start is inside it and its end is not.
@@ -2263,7 +2260,7 @@
       (testing (str "and not at " (pr-str outside) ", which is not inside the range")
         (is (not (v/ask? kb (list p) (slice outside))))))))
 
-(tu/deftest-kb ^:red a-range-inside-a-month-sees-the-month-and-its-year
+(tu/deftest-kb a-range-inside-a-month-sees-the-month-and-its-year
   ;; The converse direction: a range is ordered under the calendar terms containing it.
   (declare-cxtimefn! kb)
   (v/add-reasoner kb :calendar)
@@ -2278,7 +2275,7 @@
     (testing "and not March's"
       (is (not (v/ask? kb (list r) (slice MidFeb)))))))
 
-(tu/deftest-kb ^:red a-range-bounded-by-named-moments-inside-a-named-month-sees-the-month-and-its-year
+(tu/deftest-kb a-range-bounded-by-named-moments-inside-a-named-month-sees-the-month-and-its-year
   ;; The reified twin of a-range-inside-a-month-sees-the-month-and-its-year.
   (declare-cxtimefn! kb)
   (v/add-reasoner kb :point)
@@ -2295,7 +2292,7 @@
     (testing "and not the named March's"
       (is (not (v/ask? kb (list r) (slice MidFeb)))))))
 
-(tu/deftest-kb ^:red a-datetime-range-inside-a-month-sees-the-month-and-its-year
+(tu/deftest-kb a-datetime-range-inside-a-month-sees-the-month-and-its-year
   ;; The DatetimeRangeFn twin of a-range-inside-a-month-sees-the-month-and-its-year: the
   ;; tenth to the nineteenth of February, which ends when the nineteenth ends, at the
   ;; original's stated end.
@@ -2315,7 +2312,7 @@
       (testing "and not March's"
         (is (not (v/ask? kb (list r) (slice midfeb))))))))
 
-(tu/deftest-kb ^:red an-instant-inside-a-month-sees-the-month-and-its-year
+(tu/deftest-kb an-instant-inside-a-month-sees-the-month-and-its-year
   ;; The point twin of a-range-inside-a-month-sees-the-month-and-its-year: a moment of
   ;; February in place of the range inside it.
   (declare-cxtimefn! kb)
@@ -2331,7 +2328,7 @@
       (testing "and not March's"
         (is (not (v/ask? kb (list r) noon)))))))
 
-(tu/deftest-kb ^:red two-partially-overlapping-ranges-and-their-intersection
+(tu/deftest-kb two-partially-overlapping-ranges-and-their-intersection
   ;; January to June 2000 and April to September
   ;; 2000 overlap, and April to June is their intersection.  Unlike
   ;; partially-overlapping-slices-and-their-intersection, no relation between the
@@ -2365,7 +2362,7 @@
         (doseq [s [p q r]]
           (is (true? (v/ask? kb (list s) (slice '(MonthFn 2000 5))))))))))
 
-(tu/deftest-kb ^:red two-partially-overlapping-ranges-bounded-by-named-moments-and-their-intersection
+(tu/deftest-kb two-partially-overlapping-ranges-bounded-by-named-moments-and-their-intersection
   ;; The reified twin of two-partially-overlapping-ranges-and-their-intersection: the six
   ;; bounds are named moments in the calendar's order, and no relation between the ranges
   ;; is stated.  The point prover takes the place of the calendar clock, with the interval
@@ -2399,7 +2396,7 @@
         (doseq [s [p q r]]
           (is (true? (v/ask? kb (list s) (slice May)))))))))
 
-(tu/deftest-kb ^:red two-partially-overlapping-datetime-ranges-and-their-intersection
+(tu/deftest-kb two-partially-overlapping-datetime-ranges-and-their-intersection
   ;; The DatetimeRangeFn twin of two-partially-overlapping-ranges-and-their-intersection,
   ;; written as DatetimeRangeFn terms: (DatetimeRangeFn "2000-01" "2000-06") and
   ;; (DatetimeRangeFn "2000-04" "2000-09") overlap, and (DatetimeRangeFn "2000-04"
@@ -2437,7 +2434,7 @@
         (doseq [s [p q r]]
           (is (true? (v/ask? kb (list s) (slice '(MonthFn 2000 5))))))))))
 
-(tu/deftest-kb ^:red an-instant-in-the-intersection-of-two-overlapping-ranges-sees-both
+(tu/deftest-kb an-instant-in-the-intersection-of-two-overlapping-ranges-sees-both
   ;; The point twin of two-partially-overlapping-ranges-and-their-intersection: moments
   ;; in place of the intersection.  A moment has no extent, so it is in both ranges, in
   ;; one, or in neither, and two moments never overlap; the intersection is the stretch
@@ -2783,9 +2780,9 @@
 ;; What the docs list as not reached, and ought to be
 ;; =========================================================================
 
-(tu/deftest-kb ^:red a-stated-allen-relation-constrains-the-points
-  ;; docs/time.md, "What it does not do": today the narrowing runs from points to
-  ;; intervals only.  (before A B) means A ends before B starts.
+(tu/deftest-kb a-stated-allen-relation-constrains-the-points
+  ;; docs/time.md, "An Allen fact orders the points".  (before A B) means A ends before B
+  ;; starts.
   (v/add-reasoner kb :allen :point)
   (tu/with-terms [A B]
     (v/assert kb (list 'before A B) U)
@@ -2795,12 +2792,10 @@
 
 (tu/deftest-kb a-stated-allen-relation-between-calendar-terms-constrains-their-points
   ;; The calendar twin of a-stated-allen-relation-constrains-the-points: the two intervals
-  ;; are January and March 2000, and the relation the original states is stated between
-  ;; them.  Green today, and not because the stated relation narrows the points: the
+  ;; are January and March 2000.  The stated relation does not decide this answer: the
   ;; instant network orders the calendar moments a goal mentions by their fields
   ;; (vaelii.impl.timepoint), so the end of January falls before the start of March with
-  ;; or without it.  Two named intervals have no such moments, which is the original's
-  ;; failure.
+  ;; or without it.
   (v/add-reasoner kb :allen :point :calendar)
   (let [jan '(MonthFn 2000 1)
         mar '(MonthFn 2000 3)]
@@ -2812,7 +2807,7 @@
 (tu/deftest-kb a-stated-point-order-constrains-the-intervals
   ;; The point twin of a-stated-allen-relation-constrains-the-points, which runs the other
   ;; way: the order between A's end and B's start is stated, and the Allen relation
-  ;; follows.  docs/time.md names this direction as the one that works today.
+  ;; follows.
   (v/add-reasoner kb :allen :point)
   (tu/with-terms [A B]
     (v/assert kb (list 'instantBefore (list 'EndFn A) (list 'StartFn B)) U)
@@ -2942,9 +2937,8 @@
              (map :sentence (v/sentexes-matching kb (list holidayBefore2001 '?t) CxCal)))))))
 
 (tu/deftest-kb ^:red metric-gap-and-length-for-calendar-terms
-  ;; docs/time.md: today the metric prover's nodes are atomic terms, so an InstantFn moment
-  ;; is not one, and nothing converts a field vector to a magnitude.  2000 is a leap year:
-  ;; 366 days of 86400 seconds.
+  ;; docs/time.md: the duration prover reads no length off a calendar term's fields.  2000
+  ;; is a leap year: 366 days of 86400 seconds.
   (v/add-reasoner kb :calendar :metric-time :duration)
   (doseq [s ['(dimensionOf Second Duration) '(dimensionOf Hour Duration)
              '(conversionFactor Second Second 1) '(conversionFactor Hour Second 3600)]]
@@ -2966,15 +2960,14 @@
 ;; =========================================================================
 ;; Time zones
 ;; =========================================================================
-;; Nothing in the time vocabulary names a zone or an offset: `InstantFn` is a wall-clock
-;; moment in no zone, and `DatetimeFn`'s reader (vaelii.impl.datetime) admits no offset or
-;; `Z`, so an ISO string with one is not a time term. The tests below ask for the classic
-;; cases: one moment in two offsets, the offset form against `Z`, a day boundary that moves
-;; with the offset, ordering across offsets, and a named zone's daylight-saving gap and
-;; repeated hour. `ZonedDatetimeFn` and `timezone` are the names this vocabulary takes;
-;; time.txt does not ship them.
+;; A `DatetimeFn` string with a UTC offset or `Z`, and a `ZonedDatetimeFn` time in a named
+;; zone, name an absolute interval; `InstantFn` is a wall-clock moment in no zone, and a
+;; time in no zone is not ordered against an absolute one (docs/time.md, "Absolute time").
+;; The tests below ask for the classic cases: one moment in two offsets, the offset form
+;; against `Z`, a day boundary that moves with the offset, ordering across offsets, and a
+;; named zone's daylight-saving gap and repeated hour.
 
-(tu/deftest-kb ^:red one-moment-written-in-two-offsets-is-one-moment
+(tu/deftest-kb one-moment-written-in-two-offsets-is-one-moment
   ;; 13:00 at UTC-07:00 and 01:30 the next day at UTC+05:30 are both 20:00 UTC.  The same
   ;; wall-clock time at two offsets is two moments.  The control is the zoneless
   ;; spelling, which the calendar already places.
@@ -2990,7 +2983,7 @@
     (is (= :false (verdict kb '(instantEqual (StartFn (DatetimeFn "2000-01-15T13:00-07:00"))
                                              (StartFn (DatetimeFn "2000-01-15T13:00+05:30"))) U)))))
 
-(tu/deftest-kb ^:red the-iso-offset-form-and-the-z-form-name-one-moment
+(tu/deftest-kb the-iso-offset-form-and-the-z-form-name-one-moment
   ;; ISO 8601's two spellings of an absolute moment: …T13:00-07:00 is …T20:00Z, and +00:00
   ;; is Z.
   (v/add-reasoner kb :point :calendar)
@@ -3004,7 +2997,7 @@
     (is (= :false (verdict kb '(intervalEqual (DatetimeFn "2000-01-15T13:00Z")
                                               (DatetimeFn "2000-01-15T13:00-07:00")) U)))))
 
-(tu/deftest-kb ^:red the-day-a-moment-falls-on-depends-on-the-offset
+(tu/deftest-kb the-day-a-moment-falls-on-depends-on-the-offset
   ;; 21:00 on 31 December 1999 at UTC-08:00 is 05:00 on 1 January 2000 UTC: one hour, on
   ;; the last day of 1999 at one offset and the first day of 2000 at the other.  A day at
   ;; an offset is written as the range of its first and last hours there.  A zoneless
@@ -3025,7 +3018,7 @@
     (testing "against a zoneless 1 January it is unknown, not read as UTC"
       (is (= :unknown (verdict kb (list 'subintervalOf hour '(DatetimeFn "2000-01-01")) U))))))
 
-(tu/deftest-kb ^:red moments-at-different-offsets-are-ordered-by-the-moment-not-the-wall-clock
+(tu/deftest-kb moments-at-different-offsets-are-ordered-by-the-moment-not-the-wall-clock
   ;; 13:00 at UTC+01:00 is 12:00 UTC, so it is before 12:30 UTC though its wall-clock
   ;; reading is later.
   (v/add-reasoner kb :allen :point :calendar)
@@ -3037,15 +3030,14 @@
     (testing "and not after it, as the wall-clock reading would have it"
       (is (= :false (verdict kb (list 'after paris london) U))))))
 
-(tu/deftest-kb ^:red the-kb-declares-a-named-time-zone-and-a-zoned-local-time
+(tu/deftest-kb the-kb-declares-a-named-time-zone-and-a-zoned-local-time
   ;; A UTC offset fixes a moment; a named zone (Europe/London) fixes an offset only per
-  ;; date, through its daylight-saving rules, and time.txt has no way to say one.  The
-  ;; two tests after this one need it.
+  ;; date, through its daylight-saving rules.  The two tests after this one need it.
   (testing "a type for a named time zone, and a constructor of a local time in one"
     (is (true? (v/ask? kb '(arg ZonedDatetimeFn 2 timezone) U)))
     (is (true? (v/ask? kb '(result ZonedDatetimeFn time_interval) U)))))
 
-(tu/deftest-kb ^:red a-local-time-a-daylight-saving-gap-skips-names-no-moment
+(tu/deftest-kb a-local-time-a-daylight-saving-gap-skips-names-no-moment
   ;; On 26 March 2000 London's clocks went from 01:00 GMT to 02:00 BST, so 01:30 that
   ;; night never happened there.  00:30 is 00:30 UTC and 02:30 is 01:30 UTC; 01:30 names
   ;; no moment, rather than being moved silently to either side of the gap.  This is the
@@ -3058,7 +3050,7 @@
     (testing "and the time in the gap has no start"
       (is (empty? (v/query kb (list 'startOf (at "2000-03-26T01:30") '?i) U {:max-depth 3}))))))
 
-(tu/deftest-kb ^:red a-local-time-a-daylight-saving-change-repeats-is-ambiguous-until-its-offset-is-given
+(tu/deftest-kb a-local-time-a-daylight-saving-change-repeats-is-ambiguous-until-its-offset-is-given
   ;; On 29 October 2000 London's clocks went from 02:00 BST back to 01:00 GMT, so 01:30
   ;; happened twice: at 00:30 UTC and at 01:30 UTC.  Without an offset which one is meant
   ;; is unknown, and neither is picked silently; the offset form resolves it.  This is

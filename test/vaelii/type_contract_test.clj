@@ -389,7 +389,7 @@
     :disjoint :disjunction-too-wide :disk-locked :duplicate-handle :duplicate-tokens :error
     :exception-not-closed :export-busy :forbidden-context :fork-base-overlap :frozen-base :functional
     :handle-ceiling
-    :incomplete-racer :inter-arg-type :internal-error :interrupted :irreflexive :job-busy
+    :incomplete-defining-contexts :incomplete-racer :inter-arg-type :internal-error :interrupted :irreflexive :job-busy
     :labeling-inconsistent :labeling-run-blocked :length-against-shape
     :length-against-spelling :lock-unsupported
     :malformed-entry :malformed-manifest :malformed-record :manifest-too-large
@@ -486,7 +486,7 @@
    :compaction-failed       #{:log}
    :definitional-clash      #{:clashes-with :detail :entailed-from :sentence :violation}
    ;; two arms of one condition: `checks/disjoint-problems` names the opposing
-   ;; membership's handle, and `checks/cascade-clash` reads a pair the cascade
+   ;; membership's handle, and `checks/write-clash` reads a pair the cascade
    ;; supplies both sides of, which no stored sentex witnesses — so the handle is
    ;; the key they do not share
    :disjoint                #{:message :sentence :types}
@@ -528,6 +528,7 @@
    ;; a rule's own quantifier names its kind (`:thereExists` / `:aggregate`) and an
    ;; exception's carries `:exception` instead
    :quantifier-not-local    #{:antecedents :leaked}
+   :record-edit-unsupported #{:functor :message :operation}
    :shape                   #{}
    :solver-failed           #{}
    ;; clasp's missing binary and its process killed at the deadline

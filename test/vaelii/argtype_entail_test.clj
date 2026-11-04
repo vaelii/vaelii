@@ -19,11 +19,16 @@
             [vaelii.impl.checks :as checks]
             [vaelii.impl.decide.argument :as argument]
             [vaelii.impl.except :as exc]
+            [vaelii.impl.graph :as graph]
             [vaelii.impl.inherit :as inherit]
+            [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.kv :as kv]
+            [vaelii.impl.observe :as observe]
+            [vaelii.impl.protocols :as p]
             [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
+            [vaelii.impl.sentex :as sx]
             [vaelii.impl.special :as special]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]
@@ -115,6 +120,72 @@
       (testing "and the second argument, which nothing constrains, is untouched"
         (is (not (believed? kb (list animal Mary) CxWorld)))))))
 
+(tu/deftest-kb a-premise-asserted-again-under-the-entailing-reading-draws-its-type
+  (tu/with-terms [animal parentOf Fred Mary CxWorld]
+    (a-context kb CxWorld)
+    (a-type kb animal CxWorld)
+    (v/assert kb (list 'arg parentOf 1 animal) CxWorld)
+    (let [h (without-entailing (v/assert kb (list parentOf Fred Mary) CxWorld))]
+      (is (not (believed? kb (list animal Fred) CxWorld)))
+      (with-entailing
+        (is (= h (v/assert kb (list parentOf Fred Mary) CxWorld)))
+        (is (believed? kb (list animal Fred) CxWorld))))))
+
+(tu/deftest-kb a-declaration-asserted-again-under-the-entailing-reading-draws-over-stored-facts
+  (tu/with-terms [animal parentOf Fred Mary CxWorld]
+    (a-context kb CxWorld)
+    (a-type kb animal CxWorld)
+    (without-entailing
+     (v/assert kb (list 'arg parentOf 1 animal) CxWorld)
+     (v/assert kb (list parentOf Fred Mary) CxWorld))
+    (is (not (believed? kb (list animal Fred) CxWorld)))
+    (with-entailing
+      (v/assert kb (list 'arg parentOf 1 animal) CxWorld)
+      (is (believed? kb (list animal Fred) CxWorld)))))
+
+(tu/deftest-kb a-predicate-edge-asserted-again-under-the-entailing-reading-draws-over-stored-facts
+  (tu/with-terms [animal parentOf motherOf Fred Mary CxWorld]
+    (a-context kb CxWorld)
+    (a-type kb animal CxWorld)
+    (with-entailing (v/assert kb (list 'arg parentOf 1 animal) CxWorld))
+    (without-entailing
+     (v/assert kb (list motherOf Fred Mary) CxWorld)
+     (v/assert kb (list 'genl motherOf parentOf) CxWorld))
+    (is (not (believed? kb (list animal Fred) CxWorld)))
+    (with-entailing
+      (v/assert kb (list 'genl motherOf parentOf) CxWorld)
+      (is (believed? kb (list animal Fred) CxWorld)))))
+
+(tu/deftest-kb a-fact-asserted-again-under-the-entailing-reading-draws-a-declaration-below-it
+  (tu/with-terms [animal parentOf Fred Mary CxWorld CxBelow]
+    (a-context kb CxWorld)
+    (v/assert kb (list 'genlCx CxBelow CxWorld) 'CxUniverse)
+    (a-type kb animal CxWorld)
+    (without-entailing
+     (v/assert kb (list parentOf Fred Mary) CxWorld)
+     (v/assert kb (list 'arg parentOf 1 animal) CxBelow))
+    (is (not (believed? kb (list animal Fred) CxBelow)))
+    (with-entailing
+      (v/assert kb (list parentOf Fred Mary) CxWorld)
+      (is (believed? kb (list animal Fred) CxBelow)))))
+
+(tu/deftest-kb record-arg-types-draws-what-the-constraint-only-reading-stored-without
+  (tu/with-terms [animal parentOf motherOf siblingOf Fred Mary Ann Bob Cy Dee CxWorld CxBelow]
+    (a-context kb CxWorld)
+    (v/assert kb (list 'genlCx CxBelow CxWorld) 'CxUniverse)
+    (a-type kb animal CxWorld)
+    (without-entailing
+     (v/assert kb (list 'arg parentOf 1 animal) CxWorld)
+     (v/assert kb (list parentOf Fred Mary) CxWorld)
+     (v/assert kb (list motherOf Ann Bob) CxWorld)
+     (v/assert kb (list 'genl motherOf parentOf) CxWorld)
+     (v/assert kb (list siblingOf Cy Dee) CxWorld)
+     (v/assert kb (list 'arg siblingOf 1 animal) CxBelow))
+    (with-entailing (v/record-arg-types kb))
+    (is (believed? kb (list animal Fred) CxWorld) "a fact under a declaration")
+    (is (believed? kb (list animal Ann) CxWorld) "a fact under a predicate edge")
+    (is (believed? kb (list animal Cy) CxBelow) "a fact above a declaration")))
+
 (tu/deftest-kb why-names-the-fact-and-the-declaration
   (tu/with-terms [animal parentOf Fred Mary CxWorld]
     (a-type kb animal CxWorld)
@@ -201,6 +272,25 @@
           (is (= :mint-rule (try (v/retract! kb h) nil
                                  (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))
               "and refuses its retraction, which the next mint would undo"))))))
+
+(tu/deftest-kb a-mint-rule-refuses-a-direction-edit-and-an-except-as-its-retraction
+  (tu/with-terms [animal parentOf Fred Mary CxWorld]
+    (a-context kb CxWorld)
+    (with-entailing
+      (v/assert kb (list 'arg parentOf 1 animal) CxWorld)
+      (v/assert kb (list parentOf Fred Mary) CxWorld)
+      (let [h       (get (kb/mint-rule-table kb) 'arg)
+            rule    (second (kv/mint-rules 'arg))
+            refused #(try (%) nil (catch clojure.lang.ExceptionInfo e (:type (ex-data e))))
+            forward [rule 'CxUniverse {:direction :forward}]
+            except  [(list 'except (list 'sentexHandle h)) 'CxUniverse]]
+        (doseq [[label write entry] [["a direction edit" #(apply v/assert kb forward) forward]
+                                     ["an except" #(apply v/assert kb except) except]
+                                     ["an edit! of either" #(v/edit! kb {:add [forward except]}) forward]]]
+          (is (= :mint-rule (:type (first (v/check-edit kb {:add [entry]})))) label)
+          (is (= :mint-rule (refused write)) label)
+          (is (= #{} (:engines (v/sentex kb h))) label)
+          (is (v/in? kb (v/handle-of kb (list animal Fred) CxWorld)) label))))))
 
 (tu/deftest-kb a-rule-stored-while-the-table-fills-stays-in-the-table
   ;; The reader's index read answers what the index held before the writer stored `arg`'s
@@ -331,6 +421,110 @@
             (is (= (filterv #(= dh (first (:because %))) es)
                    (checks/declaration-entailments kb s c dh))
                 (str s " under " (:sentence (v/sentex kb dh))))))))))
+
+(defn- edge-world!
+  "`ee_z0` with `n` members under `ee_z` under `ee_a` under `ee_top`, in CxEeW.  Below
+  `ee_top` stand `ee_d` under `ee_c`, and `ee_f` under `ee_b`, three levels down.
+  `ee_top` declares `ee_m0`, so the members hold it already; `ee_a`, `ee_b`, `ee_c` and
+  `ee_e` declare `thing`, which mints nothing; `ee_c` declares `ee_m1` in the child
+  CxEeD, placed below the facts; `ee_d` declares `ee_m2` and `ee_cc` `ee_m3`.  An `except` in CxEeS hides
+  `(genl ee_c ee_a)`, so every scoped read carries supporter visibility."
+  [kb n]
+  (let [m  {:strength :monotonic}
+        a! #(v/assert kb %1 %2 m)]
+    (a! '(genlCx CxEeW CxUniverse) 'CxUniverse)
+    (a! '(genlCx CxEeD CxEeW) 'CxUniverse)
+    (a! '(genlCx CxEeS CxEeW) 'CxUniverse)
+    (v/with-deferred-settle kb
+      (doseq [s '[(genl ee_top thing) (genl ee_a ee_top) (genl ee_b ee_top) (genl ee_c ee_a)
+                  (genl ee_c ee_b) (genl ee_cc ee_c) (genl ee_d ee_cc) (genl ee_m0 thing)
+                  (genl ee_m1 thing) (genl ee_m2 thing) (arg ee_top 1 ee_m0) (arg ee_a 1 thing)
+                  (arg ee_b 1 thing) (arg ee_c 1 thing) (arg ee_d 1 ee_m2) (genl ee_e ee_b)
+                  (genl ee_f ee_e) (arg ee_e 1 thing) (genl ee_m3 thing) (arg ee_cc 1 ee_m3)
+                  (genl ee_z ee_a) (genl ee_z0 ee_z)]]
+        (a! s 'CxEeW))
+      (a! '(arg ee_c 1 ee_m1) 'CxEeD)
+      (dotimes [i n]
+        (a! (list 'ee_z0 (symbol (str "EeZ" i))) 'CxEeW)))
+    (a! (list 'except (list 'sentexHandle (v/handle-of kb '(genl ee_c ee_a) 'CxEeW))) 'CxEeS)))
+
+(defn- lower-end-walks
+  "The walks up from `ee_z0` the edit `step` takes over `edge-world!` of `n`: scoped
+  `genl?` asks and closure walks starting there, and the records `ee_m0` holds."
+  [n step]
+  (let [kb (tu/isolated-fresh)]
+    (try
+      (tu/with-shipped-config
+        (with-mints-kept
+          (edge-world! kb n)
+          (let [walks (atom 0)
+                genl? @#'tax/genl?
+                reach @#'graph/reach-all]
+            (with-redefs [tax/genl?       (fn [t a b c] (when (= 'ee_z0 a) (swap! walks inc)) (genl? t a b c))
+                          graph/reach-all (fn [s adj] (when (some #{'ee_z0} s) (swap! walks inc)) (reach s adj))]
+              (v/edit! kb step))
+            [@walks (count (v/sentexes-with-functor kb 'ee_m0))])))
+      (finally (tu/clear-kb! kb)))))
+
+(deftest a-genl-edge-reads-its-lower-ends-closure-once-for-every-fact-under-it
+  (let [step {:add [['(genl ee_z0 ee_f) 'CxEeW {:strength :monotonic}]]}
+        [w4 m4]   (lower-end-walks 4 step)
+        [w16 m16] (lower-end-walks 16 step)]
+    (is (= w4 w16) (str "walks up from the lower end " [w4 w16]))
+    (is (= [4 16] [m4 m16]))))
+
+(defn- edge-digest
+  "Every stored sentex of `kb` by content: sentence, context, strength, belief, and each
+  justification's informant and antecedents."
+  [kb]
+  (let [recs (:records kb)
+        tms  (reasoning/tms kb)
+        ct   #(let [s (p/get-sentex recs %)] (pr-str [(sx/sentence-of s) (:context s)]))]
+    (sort (for [h (p/sentex-ids recs)
+                :let [s (p/get-sentex recs h)]]
+            (pr-str [(sx/sentence-of s) (:context s) (:strength s) (v/in? kb h)
+                     (sort (for [j (jtms/supports tms h)
+                                 :let [j (jtms/justification tms j)]]
+                             (pr-str [(if (integer? (:informant j)) (ct (:informant j)) (:informant j))
+                                      (sort (map ct (:antecedents j)))])))])))))
+
+(deftest a-genl-edge-draws-what-it-draws-with-every-read-taken-afresh
+  (let [m     {:strength :monotonic}
+        steps [{:add [['(genl ee_z0 ee_cc) 'CxEeD m]]}
+               {:add [['(genl ee_z ee_c) 'CxEeW m] ['(ee_z EeZa) 'CxEeD m]]}
+               {:add [['(genl ee_z0 ee_d) 'CxEeW m]]}
+               {:remove [['(genl ee_z ee_c) 'CxEeW]]}
+               {:add [['(genl ee_z ee_d) 'CxEeW] ['(arg ee_cc 1 ee_m1) 'CxEeW m]]}
+               {:add [['(genl ee_z ee_c) 'CxEeW] ['(except (sentexHandle 0)) 'CxEeS m]]}
+               {:remove [['(genl ee_z ee_a) 'CxEeW] ['(genl ee_z0 ee_d) 'CxEeW]]}]
+        run   (fn [redefs]
+                (let [kb (tu/isolated-fresh)]
+                  (try
+                    (tu/with-shipped-config
+                      (with-mints-kept
+                        (with-redefs-fn redefs
+                          (fn []
+                            (edge-world! kb 3)
+                            (let [edge (v/handle-of kb '(genl ee_z ee_d) 'CxEeW)]
+                              (mapv (fn [step]
+                                      (let [r (v/edit! kb (-> step
+                                                              (update :add (fn [as] (mapv #(update % 0 (partial walk/postwalk-replace
+                                                                                                                {0 (or edge (v/handle-of kb '(genl ee_z ee_d) 'CxEeW))}))
+                                                                                          as)))
+                                                              (update :remove (fn [rs] (mapv (fn [[s c]] (v/handle-of kb s c)) rs)))))]
+                                        [(edge-digest kb)
+                                         (sort (map pr-str (for [a (:added r), x (:violations a)]
+                                                             [(:violation x) (:sentence x) (:context x)])))]))
+                                    steps))))))
+                    (finally (tu/clear-kb! kb)))))
+        ensure @#'jtms/ensure-node
+        narrow (run {})]
+    (is (some #(re-find #"ee_m3 EeZ0\) CxEeD" %) (first (nth narrow 0))) "an edge stated below the facts places its mints there")
+    (is (some #(re-find #"ee_m1 EeZa\) CxEeD" %) (first (nth narrow 1))) "a declaration below the facts places its mints")
+    (is (some #(re-find #"ee_m2 EeZ" %) (first (nth narrow 2))) "an edge mints under the declaration it reaches")
+    (is (= narrow (run {#'special/sees-under? (fn [tax pred via fc] (tax/genl? tax pred via fc))
+                        #'jtms/ensure-node    (fn [tms d depth] (binding [observe/*chain-fast-paths* false]
+                                                                  (ensure tms d depth)))})))))
 
 ;; ---- whose declarations a membership reads -----------------------------
 
@@ -670,6 +864,36 @@
       (testing "retracting the specific membership draws it again"
         (v/retract! kb (v/handle-of kb (list dog Muffet) CxWorld))
         (is (believed? kb (list animal Muffet) CxWorld))))))
+
+(defn- both-cycle-mints-kept?
+  "In each of `orders`, CxWorld under CxUp sees `(genl animal beast)` there, and joins
+  `(genl beast animal)` in CxDown once `:join` adds the context edge.  Both mints are
+  believed after every order."
+  [kb orders]
+  (with-pruning
+    (doseq [order orders]
+      (tu/with-terms [animal beast parentOf childOf Fred Mary CxUp CxDown CxWorld]
+        (doseq [cx [CxUp CxDown]] (a-context kb cx))
+        (v/assert kb (list 'genlCx CxWorld CxUp) 'CxUniverse)
+        (doseq [t [animal beast]] (a-type kb t CxWorld))
+        (v/assert kb (list 'arg parentOf 1 animal) CxWorld)
+        (v/assert kb (list 'arg childOf 1 beast) CxWorld)
+        (let [writes {:up     #(v/assert kb (list 'genl animal beast) CxUp {:strength :monotonic})
+                      :down   #(v/assert kb (list 'genl beast animal) CxDown {:strength :monotonic})
+                      :join   #(v/assert kb (list 'genlCx CxWorld CxDown) 'CxUniverse)
+                      :parent #(v/assert kb (list parentOf Fred Mary) CxWorld)
+                      :child  #(v/assert kb (list childOf Fred Mary) CxWorld)}]
+          (doseq [w order] ((writes w)))
+          (is (= [true true] (mapv #(believed? kb (list % Fred) CxWorld) [animal beast]))
+              (str order)))))))
+
+(def ^:private cycle-orders (tu/orders [:up :down :join :parent :child]))
+
+(tu/deftest-kb ^:slow two-mints-into-a-genl-cycle-are-both-kept-in-every-order
+  (both-cycle-mints-kept? kb cycle-orders))
+
+(tu/deftest-kb two-mints-into-a-genl-cycle-are-both-kept-in-sampled-orders
+  (both-cycle-mints-kept? kb (take-nth 10 cycle-orders)))
 
 (tu/deftest-kb a-subsumer-resting-on-the-mint-does-not-keep-it
   ;; `(awake Fido)`, `(alert Fido)`, `(calm Fido)` and `(fed Fido)` are derived from the mint
@@ -1398,6 +1622,7 @@
                                          #'inherit/*memo*           no-memo}
                            (apply e args))))
                      #'exc/reader-state     @#'exc/build-reader-state
+                     #'exc/clock-frame      @#'exc/reader-frame
                      #'inherit/answers?     answers
                      #'checks/cover-problem (fn [kb sentence context keep?]
                                               (let [v (cover kb sentence context some?)]

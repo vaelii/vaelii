@@ -141,6 +141,26 @@
              [(catalog/released? kb1) (p/get-sentex (:records kb1) h) (catalog/active)
               (identical? kb2 (:kb (catalog/entry "starter")))])))))
 
+(deftest the-starter-dump-property-restores-the-starter-and-its-absence-loads-it
+  (tu/with-tmp
+    (fn [root]
+      (let [loads (atom 0)
+            where {:backend :memory :space [::dump-property]}]
+        (with-redefs [starter/load-into           (fn [kb]
+                                                    (swap! loads inc)
+                                                    (v/assert kb '(genl starter_probe thing)
+                                                              'CxUniverse))
+                      starter/edited-since-start? (constantly false)]
+          (web/fresh-starter-kb! where)
+          (is (= [1 0] [@loads (count (.list (io/file root)))]) "unset reads and writes no dump")
+          (System/setProperty "vaelii.starter.dump" (str root))
+          (try
+            (web/fresh-starter-kb! where)
+            (let [kb (web/fresh-starter-kb! where)]
+              (is (= 2 @loads) "the first start writes the dump and the second reads it")
+              (is (v/handle-of kb '(genl starter_probe thing) 'CxUniverse)))
+            (finally (System/clearProperty "vaelii.starter.dump"))))))))
+
 (deftest a-dev-repl-refused-by-a-job-writing-the-starter-leaves-the-running-server
   (with-redefs [starter/load-into    (fn [kb] (v/assert kb '(genl starter_probe thing) 'CxUniverse))
                 web/console-logging! (fn [])]

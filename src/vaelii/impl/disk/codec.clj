@@ -107,23 +107,32 @@
 
     sx))
 
+(defn- pooled-rule
+  "Rule record `r` with the symbols of its context, antecedent, consequent and varmap
+  pooled (`sx/intern-deep`)."
+  [r]
+  (assoc r :context (sx/intern-deep (:context r)) :antecedent (sx/intern-deep (:antecedent r))
+         :consequent (sx/intern-deep (:consequent r)) :varmap (sx/intern-deep (:varmap r))))
+
 (defn decode-sentex
-  "The inverse of `encode-sentex`: a positional vector back to its record (symbols
-  interned), a record nippy froze whole back without its `:polarity` and a rule's
-  `:sentence` keys, anything else as it thawed."
+  "The inverse of `encode-sentex`: a positional vector back to its record, a record nippy
+  froze whole back without its `:polarity` and a rule's `:sentence` keys, anything else as
+  it thawed.  A record's symbols are interned in both frame shapes."
   [v]
   (cond
     (instance? vaelii.impl.types.sentex.LiteralSentex v)
-    (dissoc v :polarity)
+    (assoc (dissoc v :polarity)
+           :sentence (sx/intern-deep (:sentence v)) :context (sx/intern-deep (:context v)))
 
     ;; a record thawed whole under the three-field wrapper keys carries them as extra
     ;; keys and nil `engines` / `effect`, so they are read into the two fields
     (instance? vaelii.impl.types.sentex.RuleSentex v)
-    (if (nil? (:effect v))
-      (let [[engines effect] (sx/fielded-rule-slots (:direction v) (:assumption v) (:constraint v))]
-        (assoc (dissoc v :polarity :sentence :direction :assumption :constraint)
-               :engines engines :effect effect))
-      (dissoc v :polarity :sentence))
+    (pooled-rule
+     (if (nil? (:effect v))
+       (let [[engines effect] (sx/fielded-rule-slots (:direction v) (:assumption v) (:constraint v))]
+         (assoc (dissoc v :polarity :sentence :direction :assumption :constraint)
+                :engines engines :effect effect))
+       (dissoc v :polarity :sentence)))
 
     (not (vector? v))
     v
@@ -194,8 +203,8 @@
                  (sx/intern-deep (nth v 4)) (nth v 5) (intern-pairs (nth v 6 nil)))
 
     (instance? vaelii.impl.types.tms.Justification v)
-    (jtms/->just (:id v) (:informant v) (:antecedents v) (:consequence v) (:bindings v)
-                 (:strength v) (intern-pairs (:subsumptions v)))
+    (jtms/->just (:id v) (sx/intern-deep (:informant v)) (:antecedents v) (:consequence v)
+                 (sx/intern-deep (:bindings v)) (:strength v) (intern-pairs (:subsumptions v)))
 
     :else v))
 

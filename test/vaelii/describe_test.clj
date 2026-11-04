@@ -267,18 +267,21 @@
 ;; ---- the scoping, which is the whole point ------------------------------
 
 (tu/deftest-kb an-argument-declaration-is-reported-only-where-the-reader-can-see-it
-  ;; `(arg parentOf 1 organism)` is stated in CxUniverse, which a context with no
-  ;; `genlCx` edge does not see.  A `describe` that read the whole KB would report the
-  ;; declaration to a reader for whom it does not bind, which is the failure this
-  ;; scoping exists to stop — and it is invisible from the answer, since a declaration
-  ;; reported is a declaration that looks like it applies.
+  ;; `(arg parentOf 1 organism)` is stated in CxUniverse, which every context sees.  A
+  ;; `describe` that read the whole KB would report a declaration to a reader for whom
+  ;; it does not bind, and a declaration reported looks like one that applies.
   (testing "a reader below the declaration sees it"
     (is (= 2 (count (:arg-declarations (v/describe kb 'parentOf W))))))
-  (testing "a reader that does not see CxUniverse does not"
+  (testing "a reader with no genlCx edge sees it through CxUniverse"
     (tu/with-terms [CxOutside]
-      (is (empty? (:arg-declarations (v/describe kb 'parentOf CxOutside))))))
+      (is (= 2 (count (:arg-declarations (v/describe kb 'parentOf CxOutside)))))))
   (testing "and the unscoped read sees every context's"
-    (is (= 2 (count (:arg-declarations (v/describe kb 'parentOf '?ctx)))))))
+    (is (= 2 (count (:arg-declarations (v/describe kb 'parentOf '?ctx))))))
+  (testing "a declaration in a sibling context is reported only to its readers"
+    (tu/with-terms [CxSide CxOutside]
+      (v/assert kb (list 'arg 'parentOf 1 'animal) CxSide)
+      (is (= 3 (count (:arg-declarations (v/describe kb 'parentOf CxSide)))))
+      (is (= 2 (count (:arg-declarations (v/describe kb 'parentOf CxOutside))))))))
 
 (tu/deftest-kb a-grant-is-a-policy-of-the-context-that-gives-it
   ;; `modal_predicate` and `abducible_predicate` are grants read up the genlCx ancestor set, so a

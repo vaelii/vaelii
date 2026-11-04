@@ -198,7 +198,7 @@ Both backward chainers thread one binding map down a derivation path and hand it
         (doseq [i (range 60)] (v/assert kb (list linkTo (nd i) (nd (inc i))) CxDeepChain))
         (v/assert kb (list reach (nd 0)) CxDeepChain)
         (is (= (set (map nd (range 61)))
-               (set (map #(get % '?w) (v/prove kb (list reach '?w) CxDeepChain)))))))))
+               (set (map #(get % '?w) (v/prove kb (list reach '?w) CxDeepChain {:max-depth 70})))))))))
 
 ;; ---- what a solution is a map over ---------------------------------------
 

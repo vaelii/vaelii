@@ -134,8 +134,8 @@
   ;; gains a term on purpose, and `vocabulary-audit` already fails a functor nobody
   ;; classified.  The bound catches the load going wrong in bulk: an empty classpath, or a file read twice.
   (let [n (v/sentex-count kb)]
-    (is (< 2000 n 4500)
-        (str "the upper layer loaded " n " sentexes; docs/kbs.md's vocabulary row says 3,000+."
+    (is (< 4000 n 6000)
+        (str "the upper layer loaded " n " sentexes; docs/kbs.md's vocabulary row says 4,500+."
              "  A number outside this band means the load is wrong, not that the"
              "  vocabulary grew: check the classpath before touching the row."))))
 

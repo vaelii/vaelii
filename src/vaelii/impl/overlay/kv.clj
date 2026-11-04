@@ -45,7 +45,7 @@
 
   `kv-count` answers the **merged** cardinality, never the overlay's.  The count-aware
   trie is a selectivity structure — `plan/order` costs every conjunct off `count-at`, and
-  `provers/est-bindings` off the predicate extent's count — so a base-blind count would
+  `provers/est-by-functor` off the predicate extent's count — so a base-blind count would
   not be a wrong answer, it would be a silently wrong *plan* for every query touching
   inherited content.  `kv-intersect` merges for the same reason: `sentexes-with-args` intersects
   the predicate-scoped argument roots, and it must see the base's postings

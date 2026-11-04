@@ -893,7 +893,7 @@
   ;; (dog Rex), dog ⊑ mammal ⊑ animal and (not (animal Rex)) cannot all hold, and no cover
   ;; is stored: a known-true pair is a `:supertype` conflict, and a default membership
   ;; loses to the known-true denial, taking the reached (animal Rex) with it.  A `:default`
-  ;; mammal ⊑ animal does not contrapose, so Rex is an atypical mammal and no nogood forms.
+  ;; mammal ⊑ animal does not contrapose: no nogood forms, and the denial undercuts (animal Rex).
   (doseq [[edge member expect] [[:monotonic :monotonic :conflict] [:monotonic :default :loses]
                                 [:default :monotonic :none] [:default :default :none]]
           order                (tu/permutations [:edge :member :deny])]
@@ -915,10 +915,11 @@
                 :loses    (is (= [false false true]
                                  (mapv #(v/ask? kb % 'CxUniverse)
                                        [(list dog Rex) (list animal Rex) denial])))
-                :none     (is (= [[] [] true true]
+                :none     (is (= [[] [] true true false]
                                  [(mine (v/conflicts kb)) (mine (v/contradictions kb))
                                   (v/ask? kb (list dog Rex) 'CxUniverse)
-                                  (v/ask? kb denial 'CxUniverse)]))))))))))
+                                  (v/ask? kb denial 'CxUniverse)
+                                  (v/ask? kb (list animal Rex) 'CxUniverse)]))))))))))
 
 (deftest a-denial-of-a-supertype-of-a-part-refutes-a-cover-through-a-monotonic-edge-only-in-every-order
   ;; (covering w p1 p2), p1 ⊑ q1, (w X), (not (q1 X)) and (not (p2 X)): a :monotonic edge
@@ -955,6 +956,67 @@
         (is (= [false true] (held)) "the monotonic supporter places it in CxSide")
         (v/retract! kb h)
         (is (= [true true] (held)) "and its retraction removes it")))))
+
+(deftest a-denial-of-either-strength-undercuts-a-default-edge-s-reading-in-every-order
+  (doseq [deny  [:monotonic :default]
+          order (tu/permutations [:edge :member :deny :rule])]
+    (tu/with-kb [kb]
+      (tu/with-terms [beast perishing doomed Hydra]
+        (let [reading (list perishing Hydra)
+              denial  (list 'not reading)
+              writes  {:edge   #(v/assert kb (list 'genl beast perishing) 'CxUniverse)
+                       :member #(v/assert kb (list beast Hydra) 'CxUniverse)
+                       :deny   #(v/assert kb denial 'CxUniverse {:strength deny})
+                       :rule   #(v/assert-rule kb [(list perishing '?x)] (list doomed '?x)
+                                               'CxUniverse {:direction :forward})}
+              names?  (fn [r] (some #{Hydra} (flatten (map :sentence (:sides r)))))]
+          (doseq [w order] ((writes w)))
+          (testing [deny order]
+            (is (= [false true true false false :false 0]
+                   [(v/ask? kb reading 'CxUniverse)
+                    (v/ask? kb denial 'CxUniverse)
+                    (v/ask? kb (list beast Hydra) 'CxUniverse)
+                    (v/ask? kb (list doomed Hydra) 'CxUniverse)
+                    (boolean (some #(= Hydra (get % '?x)) (v/query kb (list perishing '?x) 'CxUniverse)))
+                    (:verdict (v/argue kb reading 'CxUniverse))
+                    (count (filter names? (v/contradictions kb)))]))
+            (is (empty? (filter names? (v/conflicts kb))))))))))
+
+(deftest a-known-true-claim-beside-an-edge-s-reading-defeats-the-denial-in-every-order
+  (doseq [how   [:stated :derived]
+          order (tu/permutations [:edge :member :deny :claim])]
+    (tu/with-kb [kb]
+      (tu/with-terms [beast perishing mortal Hydra]
+        (let [reading (list perishing Hydra)
+              writes  {:edge   #(v/assert kb (list 'genl beast perishing) 'CxUniverse)
+                       :member #(v/assert kb (list beast Hydra) 'CxUniverse)
+                       :deny   #(v/assert kb (list 'not reading) 'CxUniverse)
+                       :claim  #(if (= :stated how)
+                                  (v/assert kb reading 'CxUniverse {:strength :monotonic})
+                                  (do (v/assert kb (list mortal Hydra) 'CxUniverse {:strength :monotonic})
+                                      (v/assert-rule kb [(list mortal '?x)] (list perishing '?x)
+                                                     'CxUniverse {:direction :forward})))}]
+          (doseq [w order] ((writes w)))
+          (is (= [true false] (mapv #(v/ask? kb % 'CxUniverse) [reading (list 'not reading)]))
+              (pr-str [how order])))))))
+
+(tu/deftest-kb a-denial-undercuts-a-default-edge-s-reading-at-the-readers-that-see-it
+  (tu/with-terms [beast perishing Hydra CxD]
+    (let [reading (list perishing Hydra)
+          at      (fn [] (mapv #(v/ask? kb reading %) ['CxUniverse CxD]))]
+      (v/assert kb (list 'genlCx CxD 'CxUniverse) 'CxUniverse)
+      (let [edge (v/assert kb (list 'genl beast perishing) 'CxUniverse)]
+        (v/assert kb (list beast Hydra) 'CxUniverse)
+        (let [d (v/assert kb (list 'not reading) CxD {:strength :monotonic})]
+          (is (= [true false] (at)))
+          (v/retract! kb d)
+          (is (= [true true] (at)) "the denial retracted")
+          (is (nil? (v/handle-of kb reading 'CxUniverse)) "and the reading with it"))
+        (v/assert kb (list 'not reading) CxD {:strength :monotonic})
+        (is (= [true false] (at)))
+        (v/retract! kb edge)
+        (is (= [false false] (at)) "the edge retracted")
+        (is (nil? (v/handle-of kb reading 'CxUniverse)) "and the reading with it")))))
 
 ;;; ── recomputed, never accumulated ─────────────────────────────────────
 

@@ -182,6 +182,18 @@
       (is (= 3 (count (v/sentexes-matching kb (list anc '?x '?y) CxDescent)))
           "the closure over a two-edge line is A-B, B-C and A-C"))))
 
+(tu/deftest-kb a-rule-re-deriving-a-genl-edge-from-a-member-converges
+  (tu/with-terms [poodle dog dog_breed pet Rex CxA]
+    (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+    (v/assert kb (tu/fwd [(list dog '?x)] (list pet '?x)) CxA {:chain? false})
+    (v/assert kb (tu/fwd [(list dog_breed '?t) (list poodle '?x)] (list 'genl '?t dog)) CxA {:chain? false})
+    (v/assert kb (list poodle Rex) CxA {:chain? false})
+    (v/assert kb (list dog_breed poodle) CxA {:chain? false})
+    (let [{:keys [derived truncated?]} (v/forward-chain kb {:max-derivations 500})]
+      (is (not truncated?))
+      (is (< derived 20))
+      (is (v/ask? kb (list pet Rex) CxA)))))
+
 ;; ---- :on-progress -------------------------------------------------------
 ;;
 ;; The fixpoint is the one phase of a bulk load that can run for minutes, so it reports

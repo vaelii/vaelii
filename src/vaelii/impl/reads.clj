@@ -678,6 +678,12 @@
   (when (pos? (long (p/family-child-count index :rule-antecedent-keys [])))
     (fn [k] (boolean (p/family-member? index :rule-antecedent-keys [] k)))))
 
+(defn stored-rule-key-count
+  "How many antecedent keys the **stored** rules take.  One read, the key count."
+  [index]
+  (prof/record-read :rule-index)
+  (long (p/family-child-count index :rule-antecedent-keys [])))
+
 (defn as-stored-rule-keys-deferred
   "`[n keys]`: how many antecedent keys the **stored** rules take, and `as-stored-rule-keys`
   as a delay, or nil when they take none.  One read, the key count, and the set read only
@@ -929,6 +935,12 @@
   (read-in! contexts)
   (prof/record-read :argument-root)
   (p/family-children index :argument-root [pred pos (sx/canon term)] contexts))
+
+(defn as-stored-contexts-with-arg-global
+  "`as-stored-contexts-with-arg-in` over every context: the argument node's children."
+  [index pred pos term]
+  (prof/record-read :argument-root)
+  (p/family-children index :argument-root [pred pos (sx/canon term)] p/every-context))
 
 (defn stored-census-with-arg-global
   "`[n k]`: how many facts with functor `pred` and `term` at argument `pos` are **stored**,

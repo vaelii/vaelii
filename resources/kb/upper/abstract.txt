@@ -194,7 +194,8 @@
 (positiveExampleComment made "a cloned sheep")
 ;; Every tangible is made or natural, and no tangible is both.  The partition installs
 ;; the genl edges from made and from natural to tangible, so neither edge is stated.  A
-;; tangible denied made is concluded natural.
+;; tangible denied made is concluded natural.  The partition is a default: a beaver's dam
+;; is listed under made, and a context that classes it natural excepts the partition.
 (partition tangible made natural)
 
 (comment mechanism "A physical object whose parts, in their arrangement, set up a characteristic causal operation: mechanical coupling, electronic circuitry, or both. Defined by its construction, not its use or whether it is running, so a stopped clock or an unplugged board is still one. Most mechanisms are made, but not all: a juvenile Issus planthopper grows interlocking gears on its hind legs.")

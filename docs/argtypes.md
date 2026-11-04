@@ -404,8 +404,9 @@ and the separation
 ;;                              :expected [string predicate] …} …}
 ```
 
-`violations` lists the rule as `:inert-rule`, with the conviction under `:detail`. `check`
-reports nothing. `try-assert` refuses the rule as `:definitional-clash` with `:violation
+`violations` lists the rule as `:inert-rule`, with the conviction under `:detail`. A rule
+that only a generator's firings conclude is held the same way and is not listed: no author
+wrote it ([generators.md](generators.md)). `check` reports nothing. `try-assert` refuses the rule as `:definitional-clash` with `:violation
 :arg-variable`, and refuses an `arg`, `genlArg` or `quotedArg` declaration that would
 convict a stored, believed rule, naming the rule in `:clashes-with`
 (`checks/rule-declaration-conflict`). Retracting a declaration or the separation the
@@ -511,13 +512,21 @@ under the declaring predicate's symbol counts as a mint of that kind.
 **A KB without the rules stores each with its first declaration of that kind.** The
 integration of a stored declaration (`special/store-declared-mint-rule!`, from
 `integrate-sentex`, `integrate-twin` and `derived-sentex-added`) stores the kind's rule in
-CxUniverse at `:monotonic` when the KB lacks it, under either reading of the
+CxUniverse at `:default` when the KB lacks it, under either reading of the
 declarations, and `entail-arg-type` does the same at a mint whose declaration arrived past
 those choke points (an import, a bulk load). So a bare KB mints as the starter does, the
 rule is stored in every arrival order of the same content, and a KB that loads `core.txt`
 holds the same eleven sentexes at the same content. A KB with no entailing declaration
-stores none. `retract!` and `edit!` refuse to remove one of these rules (`:mint-rule`):
-the mints of its kind rest on it, and the next mint would store it again.
+stores none. The mints of a kind rest on its rule, so three writes that move the rule are
+refused `:mint-rule` (`kb/mint-rule-refusal`):
+
+- a `retract!`, `edit!` or `edit-records!` removal of it, which the next mint would undo
+  by storing it again;
+- a restatement of it under another direction, which the engines join would move off
+  `:inert` (`assert-entry/check-rule-sentence`), and an `edit-records!` direction change;
+- an `except` naming it (`checks/check-except-target`).
+
+`check-edit` reports the `assert` and `edit!` forms of each, and `check` the last two.
 
 That is what makes it retractable. Drop the fact or drop the declaration and the type
 goes, through machinery that already exists; defeat the fact and the type goes OUT with
@@ -678,7 +687,10 @@ maximal common descendants of the ingredients' contexts, taken over each uncover
 (`tax/general-reach-supports`) and each trigger, keeping the most general, and each mint's
 justification names the route and the `genlCx` edges its placement sees the fact through.
 While an `except` hides an ingredient somewhere, each placement is the maximal context
-past it (`res/exception-aware-placements`).
+past it (`res/exception-aware-placements`). Whether the fact's context sees a route is
+membership of the declared predicate in the fact's predicate's scoped closure
+(`tax/genls`), the closure its declarations were read through, so the facts a `genl` edge
+reaches ask it once while the change clock stands.
 
 - With `(P a b)` in CxTop and `(arg P 1 T)` in CxMid below it, `(T a)` is stored in CxMid,
   believed at CxMid and below, and absent at CxTop.
@@ -783,7 +795,12 @@ mint is drawn. The membership, the edge that puts its type under the mint's, the
 the declaration in any of their twenty-four orders leave the same KB, which is what
 `every-arrival-order-prunes-the-same-way` asks, and
 `every-arrival-order-prunes-the-same-way-across-contexts` asks of the `genlCx` edge that
-lets the mint's context see the membership. The candidate subtypes are the predicates of
+lets the mint's context see the membership. "More specifically" means a **strict** subtype
+at the mint's context (`tax/strict-genl?`): two types on a `genl` cycle the context sees
+are coextensive, so a membership in one withholds no mint of the other. Both records are
+kept in every order of the two edges, the two facts and the `genlCx` edge that brings the
+second edge into the context's view
+(`two-mints-into-a-genl-cycle-are-both-kept-in-every-order`). The candidate subtypes are the predicates of
 the term's unary predicate set (`reads/as-stored-unary-predicates`), which a derived membership
 enters as a stated one does, so a predicate holding the term in a fact of another arity
 costs the check nothing.
@@ -886,6 +903,10 @@ subsumes what it did. The release is therefore a function of the store: a KB reb
 `recover` releases what the KB that withheld the mint releases, which
 `recovery_test/a-recovered-kb-releases-a-withheld-mint-as-the-live-one-does` asks of each
 of the five ways a subsumption ends.
+
+A `genl` edge that comes IN on a cycle releases as a departing edge does, by the same
+row: a membership that withheld a mint under a strict route is no longer strictly below
+it once the cycle closes (`special/closes-genl-cycle?`).
 
 One arrival re-derives too. A record takes the justification of everything that entails
 it, so a record a premise or a rule firing holds up coming IN while a believed record
@@ -1006,8 +1027,9 @@ the next one; the facts set aside; and whether the sweep over the functors has e
 with a directory keeps it there as `arg-types-owed.edn`, replaced whole through a temp
 file, an fsync and an atomic rename; a KB without one keeps it in memory. It names stored
 content and nothing else, so a pass stopped under one engine resumes under another.
-`edit-records!` makes the whole pass owed when its batch removes anything, since a removed
-membership or edge may have withheld a mint anywhere; `settle-record-edits!` under
+`edit-records!` makes the whole pass owed when its batch removes or redirects a stored
+record, since a removed membership or edge may have withheld a mint anywhere, and when it
+adds a `genl` edge, which brings stored facts under declarations; `settle-record-edits!` under
 `{:arg-types? false}` does when its sweep removed anything and nothing was owed.
 `record-arg-types`, a `record-arg-types!` run that ends with nothing set aside, and
 `clear!`, which deletes the records the position names, leave nothing owed. A run that
@@ -1056,7 +1078,7 @@ starts: `:arg-types`, facts drawn of every fact the declared functors hold; `:re
 once the sweep has ended, the withheld mints the settles of an open or a recover left owed
 (`release-withheld!`); `:deferred`, facts set aside drawn again; `:settle`; `:done`.
 `settle-record-edits!` reports `:reindex`, `:recover` (the recover's seven steps) and
-`:sweep` (its six) the same way.
+`:sweep` (its eight) the same way.
 
 The tests are `argtype_pass_test`: a pass stopped at every first, second, third and
 seventh boundary, from the progress report, and by a cancel thrown from it, and one whose

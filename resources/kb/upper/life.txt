@@ -29,7 +29,7 @@
 
 (comment birthDate
          "(birthDate ?organism ?date) means that ?organism was born within ?date, a calendar term naming the birth at whatever precision is known: a year as (YearFn 1990), a month as (MonthFn 1990 5), a day as (DayFn 1990 5 3), or a moment as (InstantFn 1990 5 3 14 0 0). A tree or a bacterium is born as an animal is. Every coarser term holding the birth is a true birthDate as well, so the day of one birth and its year are both its birthDate.")
-(implementationNote birthDate "Each rule below concludes the next coarser birthDate, from an InstantFn to its DayFn, a DayFn to its MonthFn and a MonthFn to its YearFn, and one rule concludes birthYearOf from the YearFn, so one rule alone concludes the functional birthYearOf. Two birth dates in different years clash on birthYearOf; two different days in one year clash with nothing, since birthDate is not functional. No rule reads the year out of a DatetimeFn or DatetimeRangeFn term, whose year is inside a string.")
+(implementationNote birthDate "Each rule below concludes the next coarser birthDate, from an InstantFn to its DayFn, a DayFn to its MonthFn and a MonthFn to its YearFn, and one rule concludes birthYearOf from the YearFn, so one rule alone concludes the functional birthYearOf. Two birth dates in different years clash on birthYearOf; two different days in one year clash with nothing, since birthDate is not functional. No rule reads the year out of a DatetimeFn or DatetimeRangeFn term, whose year is inside a string. The converse rule, from birthYearOf to the YearFn, is inert, so the clash on birthYearOf runs through the facts and not through a pair of rules concluding each other.")
 (positiveExampleComment birthDate "(birthDate Tom (DayFn 1970 3 14)) beside (birthDate Tom (YearFn 1970))")
 (set/monotonic (instance_relation_predicate birthDate))
 (arg birthDate 1 organism)
@@ -40,9 +40,8 @@
 (termsRelated birthDate birthYearOf)
 
 ;; birthYearOf is a birthDate at the precision of a year.  Each finer birthDate concludes
-;; the next coarser one, and the year's concludes birthYearOf; the converse is stated
-;; inert.  One rule concludes birthYearOf, so two birth dates in different years clash on
-;; the functional birthYearOf through the facts, not through a pair of rules.
+;; the next coarser one, and the year's concludes birthYearOf.  The implementationNote on
+;; birthDate says why the converse is inert.
 (set/forwardRule (implies (and (birthDate ?organism (InstantFn ?year ?month ?day ?hour ?minute ?second))) (birthDate ?organism (DayFn ?year ?month ?day))))
 (set/forwardRule (implies (and (birthDate ?organism (DayFn ?year ?month ?day))) (birthDate ?organism (MonthFn ?year ?month))))
 (set/forwardRule (implies (and (birthDate ?organism (MonthFn ?year ?month))) (birthDate ?organism (YearFn ?year))))

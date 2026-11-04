@@ -224,11 +224,12 @@
 
 (defn ^:daemon-op all-specified-violations
   "Audit every binary `predAllSpecified` and `predSpecifiedAll` declaration visible in
-  `context`, and every *Exists* declaration (`exists-violations`, keyed `[functor pred a
-  b]`), and return `{[functor pred indep] result…}`, each result `{:status :audited
-  :violations #{…}}` or a `{:status :gap …}` diagnostic (`:missing-slot-typing`, or
-  `:legacy-ternary-declaration` for a stored pre-migration ternary sentex, keyed by its
-  whole argument tuple)."
+  `context`, each stored one in every known reader seeing its GAF and an ordinary defining
+  home, and every *Exists* declaration (`exists-violations`, keyed `[functor pred a b]`),
+  and return `{[functor pred indep] result…}`, each result `{:status :audited :violations
+  #{…}}` or a `{:status :gap …}` diagnostic (`:missing-slot-typing`,
+  `:incomplete-defining-contexts`, or `:legacy-ternary-declaration` keyed by its whole
+  argument tuple)."
   [conn context]
   (call conn :all-specified-violations [context]))
 
@@ -439,6 +440,11 @@
   OUT — the effective strength of the belief after settling."
   [conn handle]
   (call conn :defeat-class [handle]))
+
+(defn ^:daemon-op defining-contexts
+  "The maximal contexts of ordinary believed assertions about term."
+  [conn term]
+  (call conn :defining-contexts [term]))
 
 (defn ^:daemon-op dependent-justifications
   "Justifications that use `handle` as an antecedent, in content order as
@@ -845,6 +851,13 @@
   ([conn term] (call conn :relation? [term]))
   ([conn term context] (call conn :relation? [term context])))
 
+(defn ^:daemon-op replace-facts!
+  "Make `facts`, a seq of ground literals, the ground literal premises `context` stores
+  that name no sentex, in one `edit!`: a fact not held so, or held weaker than requested,
+  is added under `opts`' `assert` keys, and each such premise no fact names is retracted."
+  ([conn context facts] (call conn :replace-facts [context facts]))
+  ([conn context facts opts] (call conn :replace-facts [context facts opts])))
+
 (defn ^:daemon-op representative
   "The term standing for `term`'s equivalence class — `term` itself when nothing has merged
   it, so this is total and never nil."
@@ -938,11 +951,12 @@
   (call conn :settle-stats []))
 
 (defn ^:daemon-op specified-violations
-  "The audit result for one binary `(predAllSpecified pred indep)` integrity requirement in
-  `context`, always carrying a `:status`: `{:status :audited :violations #{x…}}`, every
-  member x of `indep` for which no believed `(pred x y)` carries a **determinate** filler
-  y satisfying `pred`'s derived slot contract, or `{:status :gap :gap :missing-slot-typing
-  …}` where `pred` carries no visible slot typing at the audited position."
+  "The audit result for one binary `(predAllSpecified pred indep)` requirement in
+  `context`: `{:status :audited :violations #{x…}}`, every member x of `indep` that
+  `context` audits (it sees an ordinary defining home of x, or none is stored) with no
+  believed `(pred x y)` whose **determinate** filler y satisfies `pred`'s derived slot
+  contract, or a `{:status :gap …}` (`:missing-slot-typing`, or
+  `:incomplete-defining-contexts` naming unclassified support)."
   ([conn pred indep context] (call conn :specified-violations [pred indep context]))
   ([conn pred indep context arg-pos] (call conn :specified-violations [pred indep context arg-pos])))
 
@@ -1042,8 +1056,8 @@
 (defn ^:daemon-op why
   "Why does the KB believe `handle`? The justification graph reachable from `handle`, as
   data:"
-  [conn handle]
-  (call conn :why [handle]))
+  ([conn handle] (call conn :why [handle]))
+  ([conn handle opts] (call conn :why [handle opts])))
 
 (defn ^:daemon-op why-not
   "Why does the KB *not* believe `handle`? The complement of `why`, as data: `{:handle h

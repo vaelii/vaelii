@@ -423,6 +423,12 @@ denial's vantage. See [taxonomy.md](taxonomy.md).
 
 ## E
 
+**Edge reading** ![inference](../.github/badges/cat-inference.svg): A stored `(q x)`
+that a membership `(s x)` and a `genl` path from `s` to `q` with no `:monotonic` path
+beside it conclude under the informant `edgeReading`, stored only while a denial of
+`(q x)` is stored. A denial of either strength undercuts it where a reader sees the
+denial believed. See [inference.md](inference.md#an-edges-reading).
+
 **Edge solver** ![asp](../.github/badges/cat-asp.svg): A `Solver` that decides a
 `Program`'s contested assumptions, the defeasible members of its nogoods; known-true
 content is fixed background and gets no atom. `local-solver` is the deterministic greedy
@@ -651,8 +657,12 @@ applications, differing in whether the KB *believes* what it stores.
 - An **inert rule** — `set/inertRule`, or `{:direction :inert}` — is believed,
   indexed and browsable, and chains in neither direction. It is a rule kept as
   **documentation**, written down where a reader looks for it while the code is what
-  actually runs it. The shipped ontology holds none: `genl`'s transitivity and the
-  decontextualized-predicate lift are described in the `comment` on their predicate
+  actually runs it. The shipped ontology holds one for each computation the engine does
+  in code and names a rule for (the argument-type mints), and for each rule whose running
+  would form a cycle or store one fact per value. An `implementationNote` on the term such
+  a rule concludes states the reason, and the [sentex page](web.md) shows it. `genl`'s
+  transitivity and the decontextualized-predicate lift are not rules: the `comment` on
+  each predicate describes them
   ([defenses.md](defenses.md#an-inert-rule-records-transitivity-not-a-forward-rule)).
   Its own `:strength` is an ordinary class —
   there is no `:inert` strength, the two assertable classes being `:default`
@@ -1312,6 +1322,8 @@ See [taxonomy.md](taxonomy.md).
 its justification under `:subsumptions`; absent for a firing that matched every literal on
 its own key. Two firings that pair the same facts with different literals differ in them,
 so they are two justifications. See [nmtms.md](nmtms.md).
+
+**`successorTypeOrder`** ![kb](../.github/badges/cat-kb.svg): `(successorTypeOrder ?lower ?higher)` says that `?higher` is the next order up the metatype-order ladder from `?lower`, e.g. `(successorTypeOrder type metatype)`. `core.txt` states `(genlInverse successorTypeOrder typeGenl)`, so each fact answers the `typeGenl` goal with its arguments swapped. Inert like `typeGenl`. See [taxonomy.md](taxonomy.md).
 
 **Superseded** ![tms](../.github/badges/cat-tms.svg): The TMS state an equality
 merge puts a stale spelling in — stored but not believed and not matching,

@@ -301,9 +301,18 @@
            (trove/log! {:level :warn :id ::extension-start :error t
                         :msg (str "extension " (name n) " failed to start")})))))
 
+(def ^:private build
+  "This process's `{:version … :revision …}`, read from the Maven descriptor Leiningen
+  writes onto the classpath and into the jar, or nil when the classpath holds none."
+  (when-let [u (io/resource "META-INF/maven/com.vaelii/vaelii/pom.properties")]
+    (let [props (java.util.Properties.)]
+      (with-open [in (io/input-stream u)] (.load props in))
+      {:version (.getProperty props "version") :revision (.getProperty props "revision")})))
+
 (defn- header
-  "The site header: the vaelii logo and wordmark (a home link) at the left, the
-  menubar with the colour controls after its last item, and a term-search box.  The
+  "The site header.  The logo, wordmark and running version (a home link), the term-search
+  box, the KB link with the colour controls, and the menubar are four grid items, and
+  vaelii.css places them (docs/web.md).  The
   search is an htmx active-search — a debounced `hx-get` to /find swaps just the `#main` region out of
   the answer.  The palette dot (cycling the four accent pairs) and the theme dot
   (flipping light against dark) are wired by vaelii.js and persisted in localStorage
@@ -316,7 +325,9 @@
    [:div#page-indicator.htmx-indicator {:aria-hidden "true"}]
    [:a.brand {:href "/"}
     [:img.logo {:src "/logo.svg" :width 30 :height 30 :alt ""}]
-    [:span.wordmark "Vaelii"]]
+    [:span.wordmark "Vaelii"]
+    (when-some [{:keys [version revision]} build]
+      [:span.version {:title (some->> revision (str "revision "))} version])]
    ;; top-level tools; vaelii.js marks the one matching the current path active
    [:nav.menubar
     [:a {:href "/"} "Ontology"]
@@ -327,14 +338,19 @@
     [:a {:href "/removed" :title "the last sentexes removed from this KB, to put back"}
      "Removed"]
     [:a {:href "/network"} "Network"]
-    [:a {:href "/stats"} "Stats"]
-    [:a {:href "/lists" :title "whole-KB lists: defeats, contradictions, types without a genl, held facts and rules"}
-     "Lists"]
+    [:a {:href "/stats" :title "counts, reasoning health and the whole-KB lists: defeats, contradictions, types without a genl, held facts and rules"}
+     "Stats"]
     ;; long work runs on its own thread, so the way to it has to be in the chrome rather
     ;; than on the page that started it — the reader who wants it navigated away
     [:a {:href "/jobs" :title "long work: what is running, and how to stop it"}
      "Jobs" (jobs-badge)]
-    (extension-menu)
+    (extension-menu)]
+   [:input.search {:type "search" :name "q" :placeholder "regex search"
+                   :autocomplete "off" :aria-label "find terms by regex"
+                   :hx-get "/find" :hx-target "#main" :hx-select "#main"
+                   :hx-swap "outerHTML" :hx-push-url "true"
+                   :hx-trigger "keyup changed delay:400ms, search"}]
+   [:div.header-end
     ;; which KB every other page is about, and the way to change it
     ;; the label is its own element with an id because it changes without the header
     ;; being re-rendered: switching KBs swaps it out of band (`entries-panel`)
@@ -347,12 +363,7 @@
                                        :title "Switch colour palette"}]
      [:button#theme-dot.theme-btn {:type "button"
                                    :aria-label "toggle light or dark theme"
-                                   :title "Toggle light or dark theme"}]]]
-   [:input.search {:type "search" :name "q" :placeholder "regex search"
-                   :autocomplete "off" :aria-label "find terms by regex"
-                   :hx-get "/find" :hx-target "#main" :hx-select "#main"
-                   :hx-swap "outerHTML" :hx-push-url "true"
-                   :hx-trigger "keyup changed delay:400ms, search"}]])
+                                   :title "Toggle light or dark theme"}]]]])
 
 (defn- restart-notice
   "The notice every page carries while a held namespace, or a protocol, record or type,
@@ -365,6 +376,19 @@
      [:strong "Restart to load " (str/join ", " nss) "."]
      " The reloader does not redefine a protocol, record or type, or re-evaluate a held"
      " namespace, under a loaded KB (docs/web.md)."]))
+
+(def ^:private line-break-at
+  "The positions where a page's source takes a newline: before a block element's opening
+  tag and after its closing tag.  Whitespace at those positions renders nothing.  Hiccup
+  escapes every text node and attribute, and `theme-init-js`, the one raw node, holds no
+  tag, so each match is a real tag boundary.  The list omits inline elements because a
+  newline beside one renders as a space, cells and definition pairs so a table row or a
+  `dl` stays on one line, and `title` so no newline lands inside an `svg`."
+  (let [block (str "html|head|meta|link|script|body|header|nav|main|footer|section|"
+                   "aside|div|table|caption|thead|tbody|tr|ul|ol|li|dl|"
+                   "h1|h2|h3|h4|h5|h6|p|pre|hr|blockquote|details|summary|figure|"
+                   "figcaption|option")]
+    (re-pattern (str "(?<=>)(?=<)(?:(?=<(?:" block ")\\b)|(?<=</(?:" block ")>))"))))
 
 (defn- page
   "A whole HTML5 document.  `{:mode :html}` is what makes void elements render as
@@ -735,7 +759,7 @@
   (let [body (list (caveat-banner) body)]
     (if fragment?
       (frag (list [:title (str "vaelii · " title)] [:main#main body]))
-      (resp (page title body)))))
+      (resp (str/replace (page title body) line-break-at "\n")))))
 
 (defn- edges-of
   "The [sub super] edges of a transitivity relation, read as the believed sentexes
@@ -1106,67 +1130,76 @@
 
 (defn- justification-link [jid] [:a {:href (str "/justification/" jid)} "justification #" jid])
 
+(def ^:private rule-runs
+  "Per way a rule runs (`rule-run`): the badge's hue, the badge's word and what the sentex
+  page says of it."
+  {:forward-only {:hue "badge-forward" :word "forward rule"
+                  :says "Forward chaining fires it and stores each conclusion. Backward proof does not use it."}
+   :both         {:hue "badge-both" :word "rule, both ways"
+                  :says "Forward chaining fires it and stores each conclusion, and backward proof uses it to answer goals."}
+   :backward     {:hue "badge-backward" :word "backward rule"
+                  :says "Backward proof uses it to answer goals and stores no conclusion. Forward chaining does not fire it."}
+   :lazy-forward {:hue "badge-backward" :word "lazy-forward rule"
+                  :says "Backward proof uses it, and a forward rule's join proves its conclusion when the join needs one. It stores no conclusion."}
+   :inert        {:hue "badge-inert" :word "inert rule"
+                  :says "Neither forward chaining nor backward proof runs it. It stays believed, indexed and findable by its terms."}
+   :solve        {:hue "badge-solve" :word "solve rule"
+                  :says "It runs in a solve alone, which derives its head in every answer set satisfying its body. Forward chaining and backward proof do not run it."}
+   :choice       {:hue "badge-choice" :word "choice rule"
+                  :says "Its head is a choice offered to a solve, not a truth to derive. Forward chaining and backward proof do not run it."}
+   :constraint   {:hue "badge-constraint" :word "constraint rule"
+                  :says "Its body is a nogood a solve grounds: a hard constraint excludes each answer set the body holds in, and a soft one counts a violation against it. Forward chaining and backward proof do not run it."}})
+
+(defn- rule-run
+  "How the rule record `s` runs, as a key of `rule-runs`, read off its `:effect` and
+  `:engines`.  A choice or constraint head runs in a solve and nowhere else."
+  [s]
+  (let [e (set (:engines s))]
+    (cond (= :choose (:effect s))          :choice
+          (not= :derive (:effect s))       :constraint
+          (and (e :forward) (e :backward)) :both
+          (e :forward)                     :forward-only
+          (e :lazy)                        :lazy-forward
+          (e :backward)                    :backward
+          (e :solve)                       :solve
+          :else                            :inert)))
+
+(defn- badge-kind
+  "What the badge of record `s` says of its kind: `{:hue :word :run}`, `:run` the key of
+  `rule-runs` and nil for a fact.  A negation's hue outranks every other: a reader who
+  misses a `not` has the sentex backwards, and no other confusion costs that."
+  [s]
+  (let [rule?    (some? (:antecedent s))
+        neg?     (v/negative? s)
+        strength (:strength s)
+        run      (when rule? (rule-run s))
+        {:keys [hue word]} (rule-runs run)]
+    {:run  run
+     :hue  (cond neg?                    "badge-neg"
+                 rule?                   hue
+                 (= :monotonic strength) "badge-monotonic"
+                 (= :default strength)   "badge-default"
+                 :else                   "badge-derived")
+     :word (str (when neg? "negative ")
+                (cond rule?    (str word (when (:defeasible s) ", defeasible"))
+                      strength (str (name strength) " premise")
+                      :else    "derived"))}))
+
 (defn- badge
   "The circle that stands in for a sentex's bare handle before its sentence.  Its colour
-  carries every case:
-
-    red      a negation
-    white    a monotonic fact · yellow a default fact · green a derived one
-    blue     a forward rule · purple a backward rule · both halves for a rule running both ways
-    black    an inert rule — stored, and chaining in neither direction
-
-  Filled means asserted, a ring means derived, and a dimmed circle is stored and not
-  believed (OUT).  The `title` carries the reading, and `data-h`, the link and the `title`
-  carry the handle.  It links to the sentex page and keys only on the record `s` the
-  caller already fetched, plus belief (`state-tag`), so a remote-attached browser badges
-  identically."
+  says the kind (`badge-kind`, docs/web.md has the scale), a ring means derived, and a
+  dimmed circle is stored and not believed (OUT).  The `title` carries the reading, and the
+  link and the `title` carry the handle.  It links to the sentex page, which says the
+  same in sentences (`badge-reading`), and keys only on the record `s` the caller already
+  fetched, plus belief (`state-tag`), so a remote-attached browser badges identically."
   [env s]
-  (let [h         (:id s)
-        rule?     (some? (:antecedent s))
-        neg?      (v/negative? s)
-        strength  (:strength s)
-        asserted? (some? strength)
-        in?       (believed? env h)
-        ;; which engines run a rule (`:engines`); a choice or constraint rule runs in a
-        ;; solve alone
-        dir       (let [e (set (:engines s))]
-                    (cond (and rule? (not= :derive (:effect s))) :solve
-                          (and (e :forward) (e :backward))       :both
-                          (e :forward)                           :forward-only
-                          (e :lazy)                              :lazy-forward
-                          (e :backward)                          :backward
-                          :else                                  :inert))
-        ;; negation is read off the sentence, so it outranks every other case: a reader
-        ;; who misses a `not` has the sentex backwards, and no other confusion costs that
-        hue       (cond neg?  "badge-neg"
-                        rule? (case dir
-                                :forward-only "badge-forward"
-                                (:backward :lazy-forward) "badge-backward"
-                                (:inert :solve) "badge-inert"
-                                "badge-both")
-                        (= :monotonic strength) "badge-monotonic"
-                        (= :default strength)   "badge-default"
-                        :else                   "badge-derived")
-        classes   (cond-> ["badge" hue]
-                    (not asserted?) (conj "badge-open")
-                    (not in?)       (conj "badge-out"))
-        ;; the reading the circle stands for, in the order a reader asks it: what kind of
-        ;; sentex, how it got here, and whether the KB believes it now
-        kind      (str (when neg? "negative ")
-                       (cond rule?     (str (case dir
-                                              :forward-only "forward rule"
-                                              :backward     "backward rule"
-                                              :lazy-forward "lazy-forward rule"
-                                              :inert        "inert rule"
-                                              :solve        (if (= :choose (:effect s))
-                                                              "choice rule"
-                                                              "constraint rule")
-                                              "rule, both ways")
-                                            (when (:defeasible s) ", defeasible"))
-                             asserted? (str (name strength) " premise")
-                             :else     "derived"))
-        label     (str kind " · #" h (when-not in? " · out"))]
-    [:a.badge-link {:href (str "/sentex/" h) :title label}
+  (let [h             (:id s)
+        in?           (believed? env h)
+        {:keys [hue word]} (badge-kind s)
+        classes       (cond-> ["badge" hue]
+                        (nil? (:strength s)) (conj "badge-open")
+                        (not in?)            (conj "badge-out"))]
+    [:a.badge-link {:href (str "/sentex/" h) :title (str word " · #" h (when-not in? " · out"))}
      [:span {:class (str/join " " classes)}]]))
 
 (defn- belief-span
@@ -1369,20 +1402,20 @@
   "The most entries one history row holds: vaelii.js's `HISTORY_CAP`."
   50)
 
-(defn- history-literals
-  "The `Literals` row of the browsing history, each of the handles `hs` in the order given
-  as a `handle-ref` (its badge, its colours, its belief now) with its remove button.  The
-  server renders it because vaelii.js keeps only the handle of a visited literal and
-  builds no markup from localStorage."
-  [env hs]
-  (let [hs (take history-cap hs)]
-    (prime-belief! env hs)
-    (frag (for [h hs]
-            [:span.history-item
-             (handle-ref env h)
+(defn- history-sentexes
+  "The `Literals` or `Rules` row of the browsing history: each of the handles `hs` in the
+  order given, one clipped `sentex-line` with its remove button.  The server renders it
+  because vaelii.js keeps only the handle of a visited sentex and builds no markup from
+  localStorage."
+  [{:keys [kb] :as env} hs]
+  (let [ss (into [] (keep #(v/sentex kb %)) (take history-cap hs))]
+    (prime-belief! env (map :id ss))
+    (frag (for [{h :id :as s} ss]
+            [:div.sx-item.sx-clip.history-item
+             (sentex-line env s)
              [:button.history-x {:type       "button"
                                  :aria-label (str "remove sentex " h " from the history")
-                                 :data-kind  "literal"
+                                 :data-kind  (if (:antecedent s) "rule" "literal")
                                  :data-href  (str "/sentex/" h)} "×"]]))))
 
 (defn- sentex-list [env sentexes]
@@ -1392,22 +1425,29 @@
       (sx-list "sentexes" (for [s ss] (sentex-row env s)))
       [:p.muted "none"])))
 
-(defn- justification-list [env justifications]
-  (let [ds (sort-by :id justifications)]
-    (prime-belief! env (map :consequence ds))
+(defn- justification-list
+  "`justifications` as links, each with its rule and conclusion.  The sentex `self` the page
+  is about reads \"this sentex\": it would otherwise repeat on every row."
+  [env justifications self]
+  (let [ds  (sort-by :id justifications)
+        ref #(if (= self %) [:span.muted "this sentex"] (handle-ref env %))]
+    (prime-belief! env (into (mapv :consequence ds) (filter integer?) (map :informant ds)))
     (if (seq ds)
-      [:ul (for [d ds]
-             [:li (justification-link (:id d)) " — "
-              [:span.muted "via " (pr-str (:informant d))] " ⇒ "
-              (handle-ref env (:consequence d))])]
+      [:ul (for [{:keys [id informant consequence]} ds]
+             [:li (justification-link id) " — "
+              (if (integer? informant)
+                (list "via " (ref informant))
+                [:span.muted "via " (pr-str informant)])
+              " ⇒ " (ref consequence)])]
       [:p.muted "none"])))
 
 (def ^:private legend
   [:p.legend "Terms: "
-   [:a.sx.t-type "type"] " · " [:a.sx.t-ind "individual"] " · "
-   [:a.sx.t-pred "predicate"] " · " [:a.sx.t-pred.t-pred-n "ternary+ predicate"] " · "
+   [:a.sx.t-type "unary predicate"] " · "
+   [:a.sx.t-pred "binary predicate"] " · " [:a.sx.t-pred.t-pred-n "ternary+ predicate"] " · "
    [:a.sx.t-conn "connective"] " · " [:a.sx.t-context "context"] " · "
-   [:a.sx.t-num "literal"] " · " [:span.t-var "?variable"] "."])
+   [:a.sx.t-ind "individual"] " · " [:a.sx.t-num "literal"] " · "
+   [:span.t-var "?variable"] "."])
 
 (def ^:private badge-legend
   [:p.legend "The circle before a sentence: "
@@ -1417,7 +1457,11 @@
    [:span.badge.badge-derived.badge-open] "derived · "
    [:span.badge.badge-forward] "forward rule · "
    [:span.badge.badge-backward] "backward rule · "
+   [:span.badge.badge-both] "rule, both ways · "
    [:span.badge.badge-inert] "inert rule · "
+   [:span.badge.badge-choice] "choice rule · "
+   [:span.badge.badge-constraint] "constraint rule · "
+   [:span.badge.badge-solve] "solve rule · "
    [:span.badge.badge-default.badge-out] "not believed."])
 
 ;; ---- belief state (the sentex page) -------------------------------------
@@ -1426,13 +1470,12 @@
   [:span (term-link env old) " → " (term-link env rep)])
 
 (defn- belief-detail
-  "When a sentex is stored but OUT, render *why* from `why-not`: the restatement that
-  superseded it (an equality merge), the sentexes that contradict a defeated one, or
-  the exception that blocks an excepted one, or the missing antecedents of an unsupported
-  one.  Nothing for a believed sentex — its
-  proof is the \"Supported by\" section."
+  "When a sentex is stored but OUT, render *why* from `why-not`, one arm per `:reason`.  A
+  reason with no arm of its own prints its name, so no OUT sentex goes unexplained.
+  Nothing for a believed sentex: its proof is the \"Supported by\" section."
   [{:keys [kb] :as env} h]
-  (let [{:keys [reason superseded-by contradicted-by grounds binding support rule exception via]}
+  (let [{:keys [reason superseded-by contradicted-by grounds binding conviction support rule
+                exception via withdrawn-by convicted]}
         (v/why-not kb h)]
     (case reason
       :superseded
@@ -1465,7 +1508,10 @@
         (when-let [{:keys [length min via]} binding]
           (list ". Its length breaks " (if length (str "length " length) (str "floor " min))
                 ", bound through " (term-link env via)))
+        (when-not (or binding conviction)
+          ". An open application in it respells in no context it reaches")
         "."]
+       (when-let [m (:message conviction)] [:p m])
        (when (seq (:grounds binding))
          [:ul (for [g (:grounds binding)]
                 [:li "bound through " (handle-ref env g)])])]
@@ -1483,7 +1529,26 @@
          [:ul (for [j support]
                 [:li (justification-link (:justification j)) " — missing "
                  (interpose ", " (map #(handle-ref env %) (:missing j)))])])]
-      nil)))
+      :withdrawn
+      [:div.belief
+       [:p [:b "Withdrawn"] " — the network holds it IN, and its own context does not "
+        "believe it: every justification rests on a sentex a defeat in force here hides."]
+       [:ul (for [{:keys [handle context vantage defeat]} withdrawn-by]
+              [:li "hidden: " (handle-ref env handle) in-cx (term-link env context)
+               ", by " [:a {:href (str "/sentex/" defeat)} "the defeat"]
+               in-cx (term-link env vantage)])]]
+      :forced-conclusion
+      [:div.belief
+       [:p [:b "Forced conclusion"] " — not a premise, and a firing supporting it is held "
+        "void: the firing concludes a forced-monotonic literal from antecedents that are not "
+        "forced-monotonic."]
+       [:ul (for [{:keys [justification informant not-forced-monotonic]} convicted]
+              [:li (justification-link justification) " by " (handle-ref env informant)
+               (when (seq not-forced-monotonic)
+                 (list " — a " [:code "forced_monotonic_predicate"] " declaration on "
+                       (interpose ", " (map #(term-link env %) not-forced-monotonic))
+                       " would lift it"))])]]
+      (when reason [:div.belief [:p [:b (name reason)]]]))))
 
 ;; ---- index-organized term page --------------------------
 
@@ -1826,7 +1891,7 @@
   defeats, one it revives) keeps its handle either way, and that one links."
   [env {:keys [handle sentence context premise? justification reason]}]
   [:li
-   (render-form env sentence)
+   (if handle (handle-ref env handle) (render-form env sentence))
    in-cx (term-link env context)
    (when reason [:span {:class (str "tag tag-" (name reason))} (name reason)])
    (when-let [rule (:rule justification)]
@@ -1895,7 +1960,7 @@
          (for [{:keys [sides]} contradictions]
            [:li (interpose [:span.muted " ⟷ "]
                            (for [{:keys [handle sentence]} sides]
-                             [:span (render-form env sentence)
+                             [:span (if handle (handle-ref env handle) (render-form env sentence))
                               (when handle
                                 (list " " [:a.muted {:href (str "/why/" handle)} "why"]))]))])]])
      (consequence-group env {:class "p-cons-add" :glyph "+" :label "newly believed"
@@ -1965,7 +2030,7 @@
   "One consequence line: the claim, and the one-level `because` under it."
   [env {:keys [sentence handle justification type individual]}]
   [:li.callout-line
-   (render-form env sentence)
+   (if handle (handle-ref env handle) (render-form env sentence))
    (if justification
      [:span.muted.callout-why " because "
       (interpose ", " (map #(render-form env %) (:antecedents justification)))
@@ -2151,25 +2216,6 @@
   [shown total note]
   [:p.muted "showing " shown " of " total (when note (str " — " note))])
 
-(def ^:private gloss-cap
-  "How much of a term's comment the front page's list shows.  Fifty rows of a complete
-  first sentence is a page of prose with the terms buried in it; fifty rows of one clause
-  is a list.  The whole text hovers as a `title` and is on the term's own page."
-  72)
-
-(defn- first-sentence
-  "A scannable one-line gloss of a comment for a flat list — its first sentence, or a
-  hard-capped head when the first sentence runs long.  The whole text is a click away on
-  the term's own page (and hovers as a `title`), so the front page stays a list rather
-  than a wall of prose."
-  [text]
-  (let [t   (str/trim (str text))
-        dot (str/index-of t ". ")]
-    (cond
-      (and dot (<= (inc dot) gloss-cap)) (subs t 0 (inc dot))   ; a complete first sentence
-      (<= (count t) gloss-cap)           t                      ; a short comment, whole
-      :else                              (str (str/trimr (subs t 0 gloss-cap)) "…"))))
-
 (defn- comment-rows
   "One page of the core-predicate list, from `offset`, with the sentinel that fetches the
   next.
@@ -2196,11 +2242,10 @@
     (list
      (for [s     page
            :when (and (not (v/negative? s)) (believed? env (:id s)))
-           :let  [[_ term text] (:sentence s)]]
-       ;; name prominent, first-sentence gloss muted; the whole comment hovers as a
-       ;; title and is on the term's own page — the front page stays scannable
-       [:li {:title text} (term-link env term)
-        [:span.muted " — " (first-sentence text)]])
+           :let  [[_ _ text] (:sentence s)]]
+       ;; one clipped line; the whole comment hovers as a title and is on the term's
+       ;; own page, so the front page stays scannable
+       [:li.sx-item.sx-clip {:title text :data-h (:id s)} (sentex-line env s)])
      (when (> (count shown) front-cap)
        (more-rows (str "/front/rows?section=predicates&offset=" (+ offset front-cap))
                   (str "show " (- total offset front-cap) " more"))))))
@@ -2346,7 +2391,7 @@
             ;; vocabulary; on an imported corpus there are 105,882 of them and calling that
             ;; "core predicates" is a claim the page cannot make
             (panel 4 (if (> comments sortable-cap) "Documented terms" "Core predicates")
-                   [:ul (comment-rows env 0)]
+                   [:ul.sx-list (comment-rows env 0)]
                    (when (> comments sortable-cap)
                      [:p.muted (commas comments) " terms carry a " [:code "comment"]
                       " — index order, too many to sort. Search from the header for one."]))
@@ -2437,11 +2482,12 @@
   time."
   [env cs offset]
   (ledger-rows "conflicts" cs offset
-               (fn [c] [:li (render-form env (:sentence c))])))
+               (fn [c] [:li (interpose " ⇄ " (map #(handle-ref env (:handle %)) (:sides c)))])))
 
 (defn- violation-row
   "One `violations` entry as a list item: its kind, then whichever of its sentence,
-  context, run and message it carries."
+  context, run and message it carries.  A `:handle` a caller added draws the sentence with
+  its badge; the entry itself names none, so a `/stats` load reads no record for it."
   [env v]
   ;; **Not every entry is about a sentence.**  The cross-context reports and both sweep
   ;; notices carry a `:detail` and no `:sentence` or `:context`.  `:message` sits at the
@@ -2449,7 +2495,8 @@
   ;; present-field arms are seqs, not `[:span …]` wrappers, so an entry with a sentence
   ;; renders the same markup.
   [:li [:span.tag (name (:violation v))]
-   (when-let [s (:sentence v)] (list " " (render-form env s)))
+   (when-let [s (:sentence v)]
+     (list " " (if-let [h (:handle v)] (handle-ref env h) (render-form env s))))
    (when-let [c (:context v)] (list in-cx (term-link env c)))
    (when-let [r (:run v)] [:span.muted " · run " r])
    (when-let [m (or (:message (:detail v)) (:message v))]
@@ -2606,111 +2653,6 @@
          (if done "Count again" "Count the parts of every type's block")]
         [:span.muted " — one describe per type, run as a " [:a {:href "/jobs"} "job"]
          "; a finished tally is kept for an hour."]])]))
-
-(defn- held-section
-  "The control that lists the held facts and rules and the convicted firings: the
-  `:inert-argument`, `:inert-rule` and `:forced-conclusion` entries `violations` reads off
-  the stored state.  That read fetches every held sentex and every convicted firing from
-  the record store and sorts them by content, minutes on a corpus, so the button runs the
-  `held` list (`/lists/run`) as a read job and the page load reads none of it."
-  []
-  [:div
-   [:h3 "Held facts and rules"]
-   [:form {:method "post" :action "/lists/run"}
-    [:input {:type "hidden" :name "list" :value "held"}]
-    [:button.primary {:type "submit"} "Scan for held facts and rules"]
-    [:span.muted " — the stored facts and rules held out of belief for a failed argument "
-     "constraint, and the firings held void at a forced-monotonic conclusion. It reads "
-     "each one from the store, so it runs as a " [:a {:href "/jobs"} "job"] "."]]])
-
-(defn stats-page
-  "KB-wide statistics: the headline counts (contexts, types, stored sentexes, the placed
-  nogoods and the filed violations), what the last chaining run did and a control to run
-  another, a contexts-by-size table, and the filed ledger of dropped derivations
-  (`filed-violations`) when non-empty.  A page load reads no belief and fetches no record.
-  `clashes?` asks the standing disjointness question and `nogoods?` the contradictions the
-  placed nogoods come to (`nogoods-section`); each is computed, so neither runs unasked.
-  The held facts and rules and the convicted firings are a button that runs a job
-  (`held-section`).  `note` is what a just-finished forward-chaining run reported."
-  ([env] (stats-page env nil false false))
-  ([env note] (stats-page env note false false))
-  ([{:keys [kb types] :as env} note clashes? nogoods?]
-   (let [ctxs    (vec (v/contexts kb))
-         ;; the trie's own root count, not the sum of the table below it: a context the
-         ;; taxonomy does not know (nothing states a `genlCx` edge for it) holds
-         ;; sentexes all the same, and summing the table would quietly lose them
-         total   (v/sentex-count kb)
-         placed  (v/count-with-functor kb 'contradicts)
-         viols   (v/filed-violations kb)
-         chain   (v/chain-stats kb)]
-     (render env "stats"
-             [:h2 "Statistics"]
-             note
-             ;; size counts and health counts read alike as bare numbers, so split them:
-             ;; the health row reddens a non-zero count and an all-clear line says when
-             ;; there is nothing to look at
-             (let [warn (fn [n] (if (pos? n) "stat-warn" "stat-ok"))]
-               (list
-                [:div.stats-grid
-                 (stat-card "Contexts" (count ctxs))
-                 (stat-card "Types" (count @types))
-                 (stat-card "Sentexes" total)]
-                [:p.stat-caption "Reasoning health"]
-                [:div.stats-grid
-                 (stat-card "Placed nogoods" placed (warn placed))
-                 (stat-card "Violations" (count viols) (warn (count viols)))]
-                (when (and (zero? placed) (empty? viols))
-                  [:p.health-ok "No nogood is placed and no derivation was dropped."])))
-             [:p.muted "Readings about the content (rules that never fire, extent skew, "
-              "chain depth, taxonomy coverage, stranded declarations, covered rules and rule "
-              "pairs that would clash) are on " [:a {:href "/quality"} "the quality page"] "."]
-             ;; a reader who arrived here asking why something is slow wants the process
-             [:p.muted "The caches, heap and profiler are on "
-              [:a {:href "/caches"} "the caches page"] "."]
-             ;; what the rules have actually done, and the one control that makes them
-             ;; do more.  A load's derivations and its drops are the two halves of the
-             ;; same answer, so the trigger sits beside the ledgers it fills.
-             [:h3 "Forward chaining"]
-             [:p.muted (:runs chain 0) (if (= 1 (:runs chain 0)) " run" " runs")
-              " so far; the last derived " [:b (:derived (:last chain) 0)]
-              (when (:truncated? (:last chain)) " and was truncated at the depth bound")
-              ". " (count viols) " conclusion" (when (not= 1 (count viols)) "s")
-              " dropped for a definitional breach."]
-             [:p [:a {:href "/funnel"} "Which rules fired, which refused, and which never did →"]]
-             ;; a run over a corpus is minutes long, so it is a job: the cap is what bounds
-             ;; it (a fixpoint's agenda grows as it derives, so nothing else does), and a
-             ;; run that outlasts the fast path answers with the jobs screen instead
-             [:form.chain-form {:method "post" :action "/chain"
-                                :hx-post "/chain" :hx-target "#main" :hx-select "#main"
-                                :hx-swap "outerHTML"}
-              [:button.primary {:type "submit"} "Run forward chaining"]
-              [:label.kb-opt [:span " up to "]
-               [:input {:type "number" :name "max-derivations" :value 100000
-                        :min 1000 :max 100000000 :step 1000}]
-               [:span " derivations"]]
-              [:span.muted " — join every rule over everything stored, to a fixpoint. It "
-               "runs as a job you can watch and stop; a stopped run leaves the conclusions "
-               "it had already placed."]]
-             [:h3 "Contexts by size " [:span.muted "(stored sentexes per context)"]]
-             (if-let [ranked (contexts-by-size kb)]
-               [:table.stats-table
-                [:thead [:tr [:th "Context"] [:th.num "Sentexes"]]]
-                [:tbody (context-count-rows env ranked 0)]]
-               [:p.muted (commas (count ctxs)) " contexts — too many to size."])
-             ;; the filed ledger, a page at a time.  A row here is one or two whole
-             ;; sentences with every subterm linked, so the count that matters is on the
-             ;; card above and the list is for seeing what one looks like
-             (when (seq viols)
-               [:div
-                [:h3 "Violations " [:span.muted "(derived conclusions dropped for a definitional breach)"]]
-                [:p.muted "Newest first; the ledger itself caps at the most recent 1000."]
-                [:ul (violation-rows env 0)]])
-             ;; the standing disjointness question, behind a control because it is
-             ;; computed on demand rather than filed — see the section below
-             (nogoods-section env nogoods? placed)
-             (block-tally-section env)
-             (held-section)
-             (exposed-clashes-section env clashes?)))))
 
 ;; ---- the concept graph at the top of a term page ------------------------
 ;; The three type lines say a term's supertypes, subtypes and disjointness exactly; the
@@ -3538,7 +3480,11 @@
             (more-note (:total v) (count (:rows v)))))
     (map? v)                   (list (interpose ", " (map #(term-link env %) (:terms v)))
                                      (more-note (:total v) (count (:terms v))))
-    (= :arg-declarations part) (interpose " " (map #(render-form env (:sentence %)) v))
+    (= :arg-declarations part) (interpose " " (map (fn [{:keys [sentence context]}]
+                                                     (if-let [h (v/handle-of (:kb env) sentence context)]
+                                                       (handle-ref env h)
+                                                       (render-form env sentence)))
+                                                   v))
     (= :props part)            (interpose ", " (map name v))
     (coll? v)                  (interpose [:br] (map #(if (string? %) [:q %] (render-form env %)) v))
     :else                      (str v)))
@@ -3787,6 +3733,58 @@
                     (pr-str x))]))]
     [:p.muted "none"]))
 
+(defn- badge-reading
+  "The badge of record `s` in sentences, one row per thing it draws: the kind its colour
+  says, the origin its fill says and the belief its brightness says."
+  [env s]
+  (let [{:keys [run word]} (badge-kind s)
+        strength (:strength s)
+        also     (set (:engines s))]
+    [:dl.provenance
+     [:dt "Colour"]
+     [:dd [:b (str/capitalize word)] ". "
+      (when (v/negative? s) "It states that the sentence inside its `not` is false. ")
+      (cond run                     (:says (rule-runs run))
+            (= :monotonic strength) "Asserted as known true."
+            (= :default strength)   "Asserted as true unless something says otherwise."
+            :else                   "The engine concluded it.")
+      (when (and (:defeasible s) run) " Its conclusions are defaults.")
+      (when (and (also :solve) (#{:forward-only :both :backward :lazy-forward} run))
+        " It also runs in a solve.")]
+     [:dt "Fill"]
+     [:dd (if strength
+            (str "Filled: asserted, at strength " (name strength) ".")
+            "Ring: derived. \"Supported by\" lists what concluded it.")]
+     [:dt "Brightness"]
+     [:dd (if (believed? env (:id s))
+            "Full colour: believed."
+            "Dimmed: stored and not believed, for the reason below.")]]))
+
+(defn- inert-rule-why
+  "Why the inert rule `s` runs in neither engine, read from what the KB holds: a mint rule
+  is computed in code, a generator concluded a derived one, and an asserted one was
+  written inert.  An `implementationNote` on its consequent's functor, or on the antecedent
+  functors of the generator that concluded it, gives the author's reason."
+  [{:keys [kb] :as env} s]
+  (let [kind  (v/mint-rule-kind s)
+        gens  (into [] (keep #(when (integer? (:informant %)) (v/sentex kb (:informant %))))
+                    (v/supporting-justifications kb (:id s)))
+        terms (into [(first (:consequent s))]
+                    (comp (mapcat :antecedent) (map first)) gens)
+        terms (distinct (filter #(and (symbol? %) (not= :variable (v/term-role %))) terms))
+        notes (mapcat #(v/sentexes-matching kb (list 'implementationNote % '?text) '?ctx) terms)]
+    [:div.belief
+     (cond
+       kind [:p "It states what the engine computes: the " [:code (str kind)]
+             " declarations' mints run in code, each naming this rule in its justification."]
+       (seq gens) [:p "It is inert because "
+                   (interpose " and " (map #(sentex-ref env %) gens))
+                   " concluded it inside " [:code "set/inertRule"] "."]
+       :else [:p "It is inert because it was written inside " [:code "set/inertRule"]
+              " or asserted with " [:code "{:direction :inert}"] "."])
+     (cond (seq notes)  (sentex-list env notes)
+           (not kind)   [:p.muted "No " [:code "implementationNote"] " says why."])]))
+
 (defn sentex-page [{:keys [kb] :as env} h]
   (if-let [s (v/sentex kb h)]
     (let [premise? (v/premise? kb h)]
@@ -3805,19 +3803,20 @@
                             (when (:antecedent s) [:span.tag "rule"])
                             (when-let [st (:strength s)] [:span.tag (str "assumed " (name st))])
                             (when-let [dc (v/defeat-class kb h)] [:span.tag (str "class " (name dc))]))]
-              ;; when the sentex is stored but not believed, say why — the states
-              ;; docs/equality.md and docs/nmtms.md describe: superseded / defeated /
-              ;; unsupported.  A believed sentex's proof is the "Supported by" list below.
+              [:h3 "What its circle says"]
+              (badge-reading env s)
+              (when (= :inert (:run (badge-kind s))) (inert-rule-why env s))
               (when-not (believed? env h) (belief-detail env h))
               [:h3 "Supported by " [:span.muted "(justifications concluding it)"]]
               (if premise?
                 [:p.muted "asserted as a premise"]
-                (justification-list env (v/supporting-justifications kb h)))
+                (justification-list env (v/supporting-justifications kb h) h))
               ;; one hop up there; the whole way down to the premises is the why page
-              [:p [:a.action {:href (str "/why/" h)} "Why is this believed?"]
-               [:span.muted " — the full proof tree, not just the first hop."]]
+              (when (believed? env h)
+                [:p [:a.action {:href (str "/why/" h)} "Why is this believed?"]
+                 [:span.muted " — the full proof tree, not just the first hop."]])
               [:h3 "Dependents " [:span.muted "(justifications using it as an argument)"]]
-              (justification-list env (v/dependent-justifications kb h))
+              (justification-list env (v/dependent-justifications kb h) h)
               [:h3 "Metas naming it " [:span.muted "(sentexes holding (sentexHandle " h "))"]]
               (let [ms (into [] (take (inc group-cap)) (v/sentexes-naming kb h))]
                 (list (sentex-list env (take group-cap ms))
@@ -4136,12 +4135,7 @@
        (list (render-form env (:goal rewrite))
              [:span.muted " via "]
              (if-let [rh (:rule rewrite)]
-               ;; dim the link when the rule is OUT — a search that expanded an
-               ;; unbelieved rule reads as such (belief is primed for these handles)
-               [:a (cond-> {:href (str "/sentex/" rh)}
-                     (not (believed? env rh))
-                     (assoc :class "muted" :title "this rule is not currently believed"))
-                "rule #" rh]
+               (handle-ref env rh)
                [:span.muted "a rule"]))
        [:b "the query"])
      [:span.muted " · cost " (commas (:total estimate))]
@@ -4399,6 +4393,7 @@
   property of the stored facts, and `add-prover` only decides whether `ask` consults it."
   [{:keys [kb] :as env} ctx calc]
   (let [table    (v/calculi)
+        stated   #(reduce + (map (partial v/count-with-functor kb) (:predicates %)))
         sized    (when ctx
                    (for [{nm :calculus :as c} table]
                      (assoc c :net (v/qualitative-network kb nm ctx))))
@@ -4411,9 +4406,10 @@
             [:h2 "Qualitative constraint network"]
             [:p.muted "A relation algebra reads every fact of its own vocabulary in a "
              "context into one network and tightens it by composition, so a relation "
-             "nobody stated is entailed by the ones that were."]
+             "nobody stated is entailed by the ones that were. Name a context to read "
+             "its network."]
             [:form.q {:method "get" :action "/network"}
-             [:input {:type "text" :name "ctx" :size 24 :placeholder "CxWell"
+             [:input {:type "text" :name "ctx" :size 24 :placeholder "a context"
                       :value (when ctx (pr-str ctx))}]
              [:select {:name "calc"}
               (for [{nm :calculus} table]
@@ -4427,15 +4423,19 @@
                [:p.muted "Each is a set of jointly exhaustive, pairwise disjoint base "
                 "relations — exactly one holds of any two terms — plus the derived "
                 "predicates naming disjunctions of them."]
-               [:table.stats-table
-                [:thead [:tr [:th "calculus"] [:th.num "base"] [:th.num "predicates"]
-                         [:th "vocabulary"]]]
-                [:tbody
-                 (for [{nm :calculus b :base preds :predicates} table]
-                   [:tr [:th (name nm)]
-                    [:td.num (count b)] [:td.num (count preds)]
-                    [:td.muted (str/join ", " (map str (take 6 preds)))
-                     (when (> (count preds) 6) " …")]])]]]
+               (when (zero? (reduce + (map stated table)))
+                 [:p "This KB states no fact in any calculus's vocabulary, so every network "
+                  "in it is empty."])
+               [:div.table-scroll
+                [:table.stats-table
+                 [:thead [:tr [:th "calculus"] [:th.num "base"] [:th.num "predicates"]
+                          [:th.num "stored facts"] [:th "vocabulary"]]]
+                 [:tbody
+                  (for [{nm :calculus b :base preds :predicates :as c} table]
+                    [:tr [:th (name nm)]
+                     [:td.num (count b)] [:td.num (count preds)] [:td.num (commas (stated c))]
+                     [:td.muted (str/join ", " (map str (take 6 preds)))
+                      (when (> (count preds) 6) " …")]])]]]]
               [:div
                [:h3 "Contexts and calculi"]
                [:p.legend "How many terms each calculus relates in " (term-link env ctx)
@@ -4534,14 +4534,13 @@
               ;; is this justification currently carrying its conclusion?  It supports iff
               ;; every argument is IN *and* the JTMS has not blocked it.  The conclusion being
               ;; IN is a separate question — a second justification may carry it — so both are
-              ;; stated.  Handles are linked (not re-fetched with handle-ref) to avoid
-              ;; re-reading what the lists below read.
+              ;; stated.
               [:div.belief
                (cond
                  valid?
                  [:p [:span.tag.tag-in "valid"] " — every argument is believed, so this "
                   "justification currently supports its conclusion "
-                  [:a.ref {:href (str "/sentex/" conc)} "#" conc] " "
+                  (handle-ref env conc) " "
                   (if conc-in? [:span.tag.tag-in "IN"]
                       (list (state-tag env conc)
                             [:span.muted " (carried, if at all, by another justification)"])) "."]
@@ -4552,7 +4551,7 @@
                  (verdict-text verdict)
                  [:p [:span.tag.tag-out "not supporting"] " — " (verdict-text verdict)
                   ": it confers nothing even though its arguments may be believed. Its conclusion "
-                  [:a.ref {:href (str "/sentex/" conc)} "#" conc] " is "
+                  (handle-ref env conc) " is "
                   (if conc-in? [:span.tag.tag-in "IN"] (state-tag env conc))
                   (when conc-in? [:span.muted " (carried by another justification)"]) "."]
 
@@ -4563,10 +4562,10 @@
                      (str (count out) " of " (count grounds) " arguments are OUT")
                      "an argument is withdrawn at its conclusion's context")
                    ", so this justification confers nothing right now. Its conclusion "
-                   [:a.ref {:href (str "/sentex/" conc)} "#" conc] " is "
+                   (handle-ref env conc) " is "
                    (if conc-in? [:span.tag.tag-in "IN"] (state-tag env conc)) "."]
                   [:ul (for [h out]
-                         [:li [:a.ref {:href (str "/sentex/" h)} "#" h] " " (state-tag env h)])]))]
+                         [:li (handle-ref env h) " " (state-tag env h)])]))]
               [:h3 "Supports " [:span.muted "(arguments)"]]
               (sentex-list env (keep #(v/sentex kb %) antes))
               [:h3 "Dependent sentex " [:span.muted "(conclusion)"]]
@@ -4588,10 +4587,9 @@
   3)
 
 (defn- why-head
-  "One node's line: its handle, its sentence, and the context it holds in."
-  [env {:keys [handle sentence context]}]
-  (list [:a.ref {:href (str "/sentex/" handle)} "#" handle] " "
-        (render-form env sentence)
+  "One node's line: its badge, its sentence, and the context it holds in."
+  [env {:keys [handle context]}]
+  (list (handle-ref env handle)
         (when context (list in-cx (term-link env context)))))
 
 (defn- why-anchor
@@ -4644,7 +4642,7 @@
                  (map (fn [{:keys [justification informant rule strength verdict because]}]
                         [:li (justification-link justification) " "
                          (if rule
-                           [:span "via " (render-form env rule)]
+                           [:span "via " (handle-ref env informant)]
                            [:span.muted "via " (pr-str informant)])
                          " " [:span.tag (name (or strength :monotonic))] " "
                          (if (= :supports verdict)
@@ -7780,20 +7778,23 @@
     rs))
 
 (def ^:private kb-lists
-  "Each list by its name in a URL: what its button and its page call it, what it holds,
-  and the fn computing its rows from a KB and a progress fn."
+  "Each list by its name in a URL: what its row calls it, what it holds, and the fn
+  computing its rows from a KB and a progress fn.  `:stored` is the functor whose stored
+  count a page load shows, and `:button` a label other than \"Show\".
+  `:zero-empties?` says a stored zero proves the list empty.  Contradictions does not say
+  so: `conflicts` also reports inert tuples, which the `contradicts` count leaves out."
   (array-map
    "defeats"
-   {:title "Defeats" :rows defeat-list
+   {:title "Defeats" :rows defeat-list :stored 'defeat :zero-empties? true
     :about "Every believed defeat: the sentex contradiction resolution took out of belief, and the context the defeat holds in."}
    "contradictions"
-   {:title "Contradictions" :rows contradiction-list
+   {:title "Contradictions" :rows contradiction-list :stored 'contradicts
     :about "Every contradiction the last settle left standing: the represented dilemmas, then the clashes among known-true content that nothing could decide."}
    "orphan-types"
    {:title "Unary predicates without a genl" :rows orphan-type-list
     :about "Every believed unary predicate whose only direct genl is thing, or which has none."}
    "held"
-   {:title "Held facts and rules" :rows held-list
+   {:title "Held facts and rules" :rows held-list :button "Scan for held facts and rules"
     :about "Every stored fact and rule held out of belief for a failed argument constraint, and every firing held void at a forced-monotonic conclusion."}))
 
 (defn- list-job
@@ -7803,7 +7804,7 @@
   (let [{:keys [title rows]} (kb-lists which)
         id (promise)
         j  (jobs/submit {:label (str title " in " (kb-name kb)) :kind :list :list which
-                         :kb-name (kb-name kb) :kb-owner (job-owner kb) :result-url "/lists"}
+                         :kb-name (kb-name kb) :kb-owner (job-owner kb) :result-url "/stats"}
                         (fn [progress!]
                           (let [rs (rows kb progress!)]
                             (with-meta {:rows (count rs)
@@ -7827,7 +7828,7 @@
     [:li (term-link env (:term r))
      (when (:thing? r) [:span.muted " genl thing only"])]
     "held"
-    (violation-row env r)))
+    (violation-row env (assoc r :handle (v/handle-of (:kb env) (:sentence r) (:context r))))))
 
 (defn- list-rows
   "One page of a finished list job's rows from `offset`, ending in the continuation that
@@ -7855,28 +7856,44 @@
   (first (filter #(and (= :list (:kind %)) (= which (:list %)) (= (job-owner kb) (:kb-owner %)))
                  (jobs/jobs))))
 
-(defn- lists-page
-  "The lists: one card per list, its button, and the last run of it over this KB."
-  [{:keys [kb] :as env}]
-  (let [label (kb-name kb)]
-    (render env "lists"
-            [:h2 "Lists"]
-            [:p.muted "Each list holds one kind of thing across all of " [:b label]
-             ". Nothing is read until its button is pressed. On a large KB a list runs "
-             "for minutes, so it runs as a " [:a {:href "/jobs"} "job"]
-             " and its result is kept for an hour."]
-            (for [[which {:keys [title about]}] kb-lists
-                  :let [j (latest-list-job which kb)]]
-              [:section.list-card
-               [:h3 title]
-               [:p.muted about]
-               (when j
-                 [:p "Last run: "
-                  (case (:status j)
-                    :done [:a {:href (str "/lists/result?job=" (url-enc (:id j)))}
-                           (commas (:rows (:summary j))) " rows"]
-                    [:a {:href "/jobs"} (name (:status j))])])
-               (list-button which (if (= :done (:status j)) "Run again" "Show"))]))))
+(defn- list-last-run
+  "What the last run `j` of a list came to: a link to its rows, or to the jobs screen while
+  it runs.  An empty run has no rows to link."
+  [j]
+  [:p "Last run: "
+   (cond
+     (not= :done (:status j))    [:a {:href "/jobs"} (name (:status j))]
+     (zero? (:rows (:summary j))) "none"
+     :else [:a {:href (str "/lists/result?job=" (url-enc (:id j)))}
+            (commas (:rows (:summary j))) " rows"])])
+
+(defn- lists-section
+  "The whole-KB lists on `/stats`, one table row each.  A `:stored` count is one index read.
+  Reading a list fetches records and asks belief, minutes on a corpus, so a page load reads
+  none and each row's button runs `list-job`."
+  [{:keys [kb]}]
+  [:div
+   [:h3 "Lists"]
+   [:p.muted "Each list holds one kind of thing across the whole KB. On a large KB a list "
+    "runs for minutes, so it runs as a " [:a {:href "/jobs"} "job"]
+    " and its result is kept for an hour."]
+   [:table.stats-table.list-table
+    [:thead [:tr [:th "List"] [:th.num "Stored"] [:th "Holds"] [:th]]]
+    [:tbody
+     (for [[which {:keys [title about stored zero-empties? button]}] kb-lists
+           :let [n (some->> stored (v/count-with-functor kb))
+                 j (latest-list-job which kb)]]
+       [:tr
+        [:th title]
+        [:td.num (some-> n commas)]
+        [:td.muted about]
+        [:td
+         (if (and zero-empties? (zero? n))
+           [:span.muted "none"]
+           (list (some-> j list-last-run)
+                 (list-button which (cond (= :done (:status j)) "Run again"
+                                          button                button
+                                          :else                 "Show"))))]])]]])
 
 (defn- list-result-page
   "A list job's result: its rows when it has finished, else where it has got to."
@@ -7888,7 +7905,7 @@
             (case (:status j)
               :done
               (let [n (:rows (:summary j))]
-                (list [:p (commas n) " rows. " [:a {:href "/lists"} "All lists"]]
+                (list [:p (commas n) " rows. " [:a {:href "/stats"} "All lists"]]
                       (when (pos? n) [:ul.list-rows (list-rows env j 0)])))
               :failed    [:p.problem (:error j)]
               :cancelled [:p "Cancelled before it finished."]
@@ -7903,7 +7920,97 @@
   (render env "lists"
           [:h2 "Lists"]
           [:p "That list's result is gone: a finished job is kept for an hour. "
-           [:a {:href "/lists"} "Run it again."]]))
+           [:a {:href "/stats"} "Run it again."]]))
+
+(defn stats-page
+  "KB-wide statistics: the headline counts (contexts, types, stored sentexes, the placed
+  nogoods and the filed violations), what the last chaining run did and a control to run
+  another, a contexts-by-size table, and the filed ledger of dropped derivations
+  (`filed-violations`) when non-empty, and the whole-KB lists (`lists-section`).  A page
+  load reads no belief and fetches no record.  `clashes?` asks the standing disjointness
+  question and `nogoods?` the contradictions the placed nogoods come to
+  (`nogoods-section`); each is computed, so neither runs unasked.  `note` is what a
+  just-finished run reported."
+  ([env] (stats-page env nil false false))
+  ([env note] (stats-page env note false false))
+  ([{:keys [kb types] :as env} note clashes? nogoods?]
+   (let [ctxs    (vec (v/contexts kb))
+         ;; the trie's own root count, not the sum of the table below it: a context the
+         ;; taxonomy does not know (nothing states a `genlCx` edge for it) holds
+         ;; sentexes all the same, and summing the table would quietly lose them
+         total   (v/sentex-count kb)
+         placed  (v/count-with-functor kb 'contradicts)
+         viols   (v/filed-violations kb)
+         chain   (v/chain-stats kb)]
+     (render env "stats"
+             [:h2 "Statistics"]
+             note
+             ;; size counts and health counts read alike as bare numbers, so split them:
+             ;; the health row reddens a non-zero count and an all-clear line says when
+             ;; there is nothing to look at
+             (let [warn (fn [n] (if (pos? n) "stat-warn" "stat-ok"))]
+               (list
+                [:div.stats-grid
+                 (stat-card "Contexts" (count ctxs))
+                 (stat-card "Types" (count @types))
+                 (stat-card "Sentexes" total)]
+                [:p.stat-caption "Reasoning health"]
+                [:div.stats-grid
+                 (stat-card "Placed nogoods" placed (warn placed))
+                 (stat-card "Violations" (count viols) (warn (count viols)))]
+                (when (and (zero? placed) (empty? viols))
+                  [:p.health-ok "No nogood is placed and no derivation was dropped."])))
+             [:p.muted "Readings about the content (rules that never fire, extent skew, "
+              "chain depth, taxonomy coverage, stranded declarations, covered rules and rule "
+              "pairs that would clash) are on " [:a {:href "/quality"} "the quality page"] "."]
+             ;; a reader who arrived here asking why something is slow wants the process
+             [:p.muted "The caches, heap and profiler are on "
+              [:a {:href "/caches"} "the caches page"] "."]
+             (lists-section env)
+             ;; what the rules have actually done, and the one control that makes them
+             ;; do more.  A load's derivations and its drops are the two halves of the
+             ;; same answer, so the trigger sits beside the ledgers it fills.
+             [:h3 "Forward chaining"]
+             [:p.muted (:runs chain 0) (if (= 1 (:runs chain 0)) " run" " runs")
+              " so far; the last derived " [:b (:derived (:last chain) 0)]
+              (when (:truncated? (:last chain)) " and was truncated at the depth bound")
+              ". " (count viols) " conclusion" (when (not= 1 (count viols)) "s")
+              " dropped for a definitional breach."]
+             [:p [:a {:href "/funnel"} "Which rules fired, which refused, and which never did →"]]
+             ;; a run over a corpus is minutes long, so it is a job: the cap is what bounds
+             ;; it (a fixpoint's agenda grows as it derives, so nothing else does), and a
+             ;; run that outlasts the fast path answers with the jobs screen instead
+             [:form.chain-form {:method "post" :action "/chain"
+                                :hx-post "/chain" :hx-target "#main" :hx-select "#main"
+                                :hx-swap "outerHTML"}
+              [:button.primary {:type "submit"} "Run forward chaining"]
+              [:label.kb-opt [:span " up to "]
+               [:input {:type "number" :name "max-derivations" :value 100000
+                        :min 1000 :max 100000000 :step 1000}]
+               [:span " derivations"]]
+              [:span.muted " — join every rule over everything stored, to a fixpoint. It "
+               "runs as a job you can watch and stop; a stopped run leaves the conclusions "
+               "it had already placed."]]
+             [:h3 "Contexts by size " [:span.muted "(stored sentexes per context)"]]
+             (if-let [ranked (contexts-by-size kb)]
+               [:table.stats-table
+                [:thead [:tr [:th "Context"] [:th.num "Sentexes"]]]
+                [:tbody (context-count-rows env ranked 0)]]
+               [:p.muted (commas (count ctxs)) " contexts — too many to size."])
+             ;; the filed ledger, a page at a time.  A row here is one or two whole
+             ;; sentences with every subterm linked, so the count that matters is on the
+             ;; card above and the list is for seeing what one looks like
+             (when (seq viols)
+               [:div
+                [:h3 "Violations " [:span.muted "(derived conclusions dropped for a definitional breach)"]]
+                [:p.muted "Newest first; the ledger itself caps at the most recent 1000."]
+                [:ul (violation-rows env 0)]])
+             ;; the standing disjointness question, behind a control because it is
+             ;; computed on demand rather than filed — see the section below
+             (when (or nogoods? (pos? placed))
+               (nogoods-section env nogoods? placed))
+             (block-tally-section env)
+             (exposed-clashes-section env clashes?)))))
 
 ;; ---- the health report: `kb-quality` as a page (docs/web.md, "The health report") ----
 
@@ -8590,11 +8697,11 @@
                                      (history-known (env-of target req)
                                                     (if (string? t) [t] (vec t))
                                                     (if (= unreadable hs) [] hs))))}]
-         ["/history/literals" {:get (fn [req]
+         ["/history/sentexes" {:get (fn [req]
                                       (let [hs (param-handles (get-in req [:query-params "handles"]))]
                                         (if (= unreadable hs)
                                           (frag "")
-                                          (history-literals (env-of target req) hs))))}]
+                                          (history-sentexes (env-of target req) hs))))}]
          ["/stats/rows" (continued-route target stats-rows-page #(get-in % [:query-params "section"]))]
          ;; the context box can send a value the engine refuses (`CxEverything` is a reading, not a
          ;; place): checked before the read, or `:unsupported-context` reaches Jetty as a 500
@@ -8897,7 +9004,7 @@
                   (if-let [j (:running (quality-jobs (current target)))]
                     (frag (quality-progress j))
                     {:status 200 :headers {"HX-Refresh" "true"} :body ""}))}]
-         ["/lists" {:get (fn [req] (lists-page (env-of target req)))}]
+         ["/lists" {:get (fn [req] (stats-page (env-of target req)))}]
          ["/lists/run"
           {:post (origin-checked
                   (fn [req]
@@ -8909,11 +9016,15 @@
                         (bad-parameter env "list" which (str "one of " (str/join ", " (keys kb-lists))))
                         :else
                         (let [j (jobs/wait (list-job kb which) list-wait-ms)]
-                          (if (= :done (:status j))
+                          (cond
+                            (not= :done (:status j)) (jobs-page env)
+                            (zero? (:rows (:summary j)))
+                            (assoc-in (stats-page env [:p.health-ok (:title (kb-lists which)) ": none."])
+                                      [:headers "HX-Push-Url"] "/stats")
                             ;; the result has a URL of its own, so the address bar says it
+                            :else
                             (assoc-in (list-result-page env j) [:headers "HX-Push-Url"]
-                                      (str "/lists/result?job=" (url-enc (:id j))))
-                            (jobs-page env)))))))}]
+                                      (str "/lists/result?job=" (url-enc (:id j))))))))))}]
          ["/lists/result"
           {:get (fn [req]
                   (let [env (env-of target req)
@@ -8932,7 +9043,7 @@
                       (bad-parameter env "offset" raw "a count of rows, e.g. 200")
                       (not (and (= :list (:kind j)) (= :done (:status j))))
                       (frag [:li.muted "That list's result is gone: "
-                             [:a {:href "/lists"} "run it again"] "."])
+                             [:a {:href "/stats"} "run it again"] "."])
                       :else (frag (list-rows env j off)))))}]
          ;; the removals noted once they were written, newest first; putting one back
          ;; is an assert, so a job like every other write
@@ -9179,15 +9290,17 @@
   "A KB freshly loaded with the starter ontology.  Flushes the record + index
   stores first, so a repeated run (or one over data from an earlier code version)
   starts from a clean, deterministic state rather than re-asserting over stale
-  handles.  For a persistent KB, construct one and call `core/recover` instead."
+  handles.  The `vaelii.starter.dump` system property names a directory to restore the
+  starter from (`starter/load-through-dump`); a blank value is unset.  For a persistent
+  KB, construct one and call `core/recover` instead."
   ([] (fresh-starter-kb! {}))
   ([opts]
-   ;; :recover? false — the stores are cleared on the next two lines, so the
-   ;; unrecovered-store warning would fire about data this fn exists to discard
-   (let [kb (v/open-kb (merge {:recover? false} opts))]
-     (v/clear! kb)                                        ; empty the stores before reloading
-     (starter/load-into kb)
-     kb)))
+   ;; :recover? false — `open` clears the stores, so the unrecovered-store warning would
+   ;; fire about data this fn exists to discard
+   (let [open #(doto (v/open-kb (merge {:recover? false} opts)) v/clear!)]
+     (if-let [root (some-> (System/getProperty "vaelii.starter.dump") str/trim not-empty)]
+       (starter/load-through-dump open root)
+       (doto (open) starter/load-into)))))
 
 (defn- opening-kb
   "The KB the browser opens on, **registered with the catalog** and made active: the

@@ -683,6 +683,36 @@
                (map :sentence (v/sentexes-matching kb (list 'locatedIn (list CapitalFn France) '?where)
                                                    '?ctx))))))))
 
+(tu/deftest-kb a-rewrite-of-a-commuted-application-written-in-either-order-names-both
+  (doseq [unsorted? [false true]]
+    (tu/with-terms [PairFn Ada Bea Duo picked]
+      (let [[x y] (sort-by str [Ada Bea])]
+        (v/assert kb (list 'binary_function PairFn) 'CxUniverse)
+        (v/assert kb (list 'reifiable_function PairFn) 'CxUniverse)
+        (v/assert kb (list 'commutative PairFn) 'CxUniverse)
+        (v/assert kb (list 'rewriteOf Duo (if unsorted? (list PairFn y x) (list PairFn x y))) 'CxUniverse)
+        (is (= [(list picked Duo) (list picked Duo)]
+               (for [app [(list PairFn x y) (list PairFn y x)]]
+                 (:sentence (v/sentex kb (v/assert kb (list picked app) 'CxUniverse)))))
+            (str "the payload " (if unsorted? "unsorted" "sorted")))))))
+
+(tu/deftest-kb ^:red an-open-pattern-reads-a-commuted-application-in-either-order
+  ;; The mint states the map and the corresponding predicate's projection sorted, and a
+  ;; pattern over either is matched as positioned.
+  (tu/with-terms [PairFn pairOf Ada Bea picked]
+    (let [[x y] (sort-by str [Ada Bea])]
+      (v/assert kb (list 'binary_function PairFn) 'CxUniverse)
+      (v/assert kb (list 'reifiable_function PairFn) 'CxUniverse)
+      (v/assert kb (list 'commutative PairFn) 'CxUniverse)
+      (v/assert kb (list 'functionCorrespondingPredicate PairFn pairOf) 'CxUniverse)
+      (v/assert kb (list picked (list PairFn y x)) 'CxUniverse)
+      (is (= [[x] [x]]
+             (for [g [(list 'natFormula '?k (list PairFn '?x y)) (list 'natFormula '?k (list PairFn y '?x))]]
+               (mapv #(get % '?x) (v/query kb g 'CxUniverse)))))
+      (is (= [[x] [x]]
+             (for [g [(list picked (list PairFn '?x y)) (list picked (list PairFn y '?x))]]
+               (mapv #(get % '?x) (v/query kb g 'CxUniverse))))))))
+
 (tu/deftest-kb two-rewrite-declarations-mint-fresh-rather-than-electing-one
   (tu/with-terms [MotherFn Muffet Mary Maria]
     (v/assert kb (list 'reifiable_function MotherFn) 'CxUniverse)
@@ -1894,13 +1924,13 @@
 ;; ---- an application resolves under the reader's merges ---------------------
 
 (deftest an-application-resolves-under-the-merges-the-reader-sees
-  (testing "a merge in CxUniverse does not reach an application read in a context that does not see it"
+  (testing "a merge in a sibling does not reach an application read in a context that does not see it"
     (is (= [false false]
            (on-own-kb (fn [kb]
                         (v/assert kb '(reifiable_function FruitFn) 'CxUniverse)
                         (v/assert kb '(likes Tom (FruitFn Apple)) 'CxAgentAnn)
                         (v/assert kb '(likes Tom Apple) 'CxAgentAnn)
-                        (v/assert kb '(sameAs Apple Pomme) 'CxUniverse)
+                        (v/assert kb '(sameAs Apple Pomme) 'CxSide)
                         [(v/ask? kb '(likes Tom (FruitFn Pomme)) 'CxAgentAnn)
                          (v/ask? kb '(likes Tom Pomme) 'CxAgentAnn)])))))
   (testing "a merge in the reader's own context reaches the application as it reaches the symbol"
@@ -2004,11 +2034,12 @@
         (pr-str order))))
 
 (deftest a-constant-minted-where-a-merge-is-not-visible-is-merged-where-it-is
+  ;; the merge sits in `CxSide`, which `CxAgentAnn` does not see
   (is (= {:ann-pomme true :ann-apple false :universe true}
          (on-own-kb (fn [kb]
                       (v/assert kb '(reifiable_function FruitFn) 'CxUniverse)
-                      (v/assert kb '(color (FruitFn Apple) Red) 'CxUniverse)
-                      (v/assert kb '(sameAs Apple Pomme) 'CxUniverse)
+                      (v/assert kb '(color (FruitFn Apple) Red) 'CxSide)
+                      (v/assert kb '(sameAs Apple Pomme) 'CxSide)
                       (v/assert kb '(likes Tom (FruitFn Pomme)) 'CxAgentAnn)
                       {:ann-pomme (v/ask? kb '(likes Tom (FruitFn Pomme)) 'CxAgentAnn)
                        :ann-apple (v/ask? kb '(likes Tom (FruitFn Apple)) 'CxAgentAnn)

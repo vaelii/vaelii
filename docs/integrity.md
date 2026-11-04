@@ -138,10 +138,11 @@ be confused with that clean shape even when only one sparse category is present.
 specified category is exactly `all-specified-violations`, including its typed declaration
 gaps; it is composed, not reimplemented.
 
-Stored Specified obligations use each visible declaration's defining context, as
-described in [predall.md](predall.md). The result cap counts canonical declaration keys,
-not defining contexts. Completed source-context findings remain available if a later
-source-context audit exhausts the work or time limit. A native-only registry declaration
+Stored Specified obligations check every known reader seeing the requirement and an
+ordinary defining home, as described in [predall.md](predall.md). The result cap counts
+canonical declaration keys, not readers. Completed findings remain available if a later
+reader audit exhausts the work or time limit. Incomplete defining support is an explicit
+gap, not an exemption. A native-only registry declaration
 has no stored defining context and retains the querying-context audit.
 
 ## What a definition finding means
@@ -401,8 +402,9 @@ A candidate is declared by one of these:
 
 A candidate that no sentex the audit context sees uses in an argument position is not a
 finding: the position is an argument of a literal (`nm/applied-literals`), at any depth
-of a compound argument outside a `Quote` or `Quasiquote` form. A functor position is not
-an argument position. A `(comment T "…")` is a use, so a term only documentation names
+of a compound argument outside a `Quote` or `Quasiquote` form and outside every position
+a `quotedArg` or `quotedArgAndRest` declaration at the sentex's context types. A functor
+position is not an argument position. A `(comment T "…")` is a use, so a term only documentation names
 is a finding. The upper ontology declares every constant it uses: core.txt states each
 `set/` wrapper and `Quote` `syncategorematic`, the type reflection.txt declares for a
 symbol of the syntax that names nothing.
@@ -570,6 +572,11 @@ would not survive a reload. The suggestion is a function of the rule's sentence,
 record names the rule, and an edit to the rule that changes its shape changes the
 suggestion and brings the finding back. Retracting the record brings the finding back too.
 
+The shipped ontology states `acknowledgedFinding` directly. One `declined_rule_macro` fact in
+`CxBiology` took a starter load from 924 computed goals to 4,956, because the load solved
+`(wff_expression D)` for its one `D` 116 times in each reader context, and from 14.6 to 21.8 s
+of CPU, measured in paired runs on 2026-11-01.
+
 The further conditions are where a declaration reads differently from a rule:
 
 - **A relation mark is read from every context.** `symmetric`, `transitive`,
@@ -596,8 +603,8 @@ The further conditions are where a declaration reads differently from a rule:
   `genlInverse`, so such a rule is not reported.
 
 Three differences remain between a reported rule and its declaration, and the finding
-does not weigh them. `transitiveInArg` answers a ground goal only and leaves an open one
-to the fact and rule provers ([inherit.md](inherit.md#reading-it-back)), where a
+does not weigh them. `transitiveInArg` leaves a goal open at a preserved position to the
+fact and rule provers ([inherit.md](inherit.md#reading-it-back)), where a
 forward rule stores each conclusion and answers an open goal from the store. A more
 specific contrary claim undercuts a `:default` claim the declaration carries
 ([inherit.md](inherit.md#specificity-undercuts-and-does-not-arbitrate)), where the
@@ -1139,9 +1146,12 @@ stays visible with the reason beside it and no longer makes a default sweep `:ga
 Each rule is quoted on its own. A quoted term is opaque, so no inference or
 canonicalization reaches inside either one, and what the pair needs inferred — that
 `(RulePairFn R1 R2)` and `(RulePairFn R2 R1)` name the same pair — belongs to
-`RulePairFn`, outside both quotes. `core.txt` states `(commutative RulePairFn)`, so the
-store holds both orders as one sentex, sorted as a ground compound since a quoted form is
-a constant ([canonicalization.md](canonicalization.md#compounds-below-the-literal-sorted)).
+`RulePairFn`, outside both quotes. `core.txt` states `(commutative RulePairFn)`. The
+subject position is a mention, `(quotedArg acknowledgedFinding 2 expression)`, which the
+store keeps as written, so the two orders store as two sentexes
+([canonicalization.md](canonicalization.md#compounds-below-the-literal-sorted)). The sweep
+reads the subject as a bag of rules (`integrity/acknowledged-pair`), so either order names
+the pair.
 
 ```clojure
 ;; (acknowledgedFinding :rule-clash

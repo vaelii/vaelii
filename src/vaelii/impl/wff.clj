@@ -24,25 +24,21 @@
             [vaelii.impl.rewrite :as rewrite]
             [vaelii.impl.taxonomy :as tax]))
 
-;; The cycle check below reads the **global** closure deliberately.  A cycle is a
-;; property of the whole edge set: a check narrowed to some context's visible edges
-;; would admit an edge that is cyclic globally, and a `genl` cycle is something the
-;; taxonomy is entitled to assume it does not have.
+;; **The `genl` cycle check reads the asserting context; the `genlCx` one reads the global
+;; closure.**  A `genl` cycle claims two types are coextensive, and one stray edge from a
+;; general type down to a specific one would make every type between them coextensive, so
+;; an edge whose reverse path the asserting context sees is refused.  An edge whose reverse
+;; path only another context sees is stored: a context below both reads the cycle, and the
+;; taxonomy holds it over its condensation (docs/taxonomy.md).  A `genlCx` cycle changes
+;; what every reader sees, so its check reads every edge, and the refusal keeps the context
+;; hierarchy a partial order.  `recovery/recover` still replays a stored cycle an older or
+;; foreign writer left, past both checks, and the taxonomy condenses it.  See
+;; docs/contexts.md.
 ;;
 ;; No check here reads a `genl` edge to refuse a `disjoint` or a cover.  A declaration
 ;; over two `genl`-related types, or a cover naming a part disjoint from its whole, is
 ;; stored like any other declaration, and the clash it forms with the edge is `settle`'s
 ;; to report (docs/nmtms.md, "What a refusal may rest on").
-;;
-;; **`genl` and `genlCx` cycles are both refused, and read the global closure the
-;; same way.**  A `genl` cycle claims two types are coextensive — a claim about
-;; terms the equality partition owns, and one that would make a `disjoint` pair
-;; disjoint from itself.  A `genlCx` cycle claims two contexts see each other, which
-;; is well defined — the taxonomy holds one over its condensation, so a cycle costs a
-;; component rather than soundness — and is refused anyway, so the context hierarchy
-;; is a partial order like the type hierarchy.  `recovery/recover` still replays a
-;; stored cycle an older or foreign writer left, past this check, and the taxonomy
-;; condenses it.  See docs/contexts.md.
 
 (defn- name-problems
   "One problem per occupant of `xs`, a run of positions that name a type, a predicate or a
@@ -70,20 +66,28 @@
     (not arity-ok?) (conj arity-msg)
     :always         (into (name-problems why xs))))
 
+(defn- sees-genl-path?
+  "Does `context` see a `genl` path from `sub` up to `super` (`tax/genl?`)?  A scoped path
+  is a global one, and the global walk reads no index, so it runs first and the scoped
+  read runs only on a pair it admits."
+  [tax sub super context]
+  (and (tax/genl?-global tax sub super) (tax/genl? tax sub super context)))
+
 (defn genl-problems
-  "The refusals of the `genl` sentence `s`.  The cycle test reads the unscoped closure
-  (`tax/genl?-global`): a cycle is a property of the whole edge set, which no reader's
-  context changes."
-  [tax [_ sub super :as s] _context]
+  "The refusals of the `genl` sentence `s` asserted in `context`.  The cycle test reads the
+  edges `context` sees: an edge whose reverse path only another context sees is stored
+  (docs/taxonomy.md)."
+  [tax [_ sub super :as s] context]
   (cond-> (shaped-problems (= 3 (count s)) "genl takes two arguments" "genl relates types" [sub super])
     (= sub super)          (conj (str sub " genl itself"))
-    (and tax (not= sub super) (tax/genl?-global tax super sub))
+    (and tax (not= sub super) (sees-genl-path? tax super sub context))
     (conj (str "genl " sub " " super " creates a cycle (" super
-               " is already a subtype of " sub ")"))))
+               " is already a subtype of " sub " in " context ")"))))
 
 (defn genlCx-problems
   "The refusals of the `genlCx` sentence `s`.  The cycle test reads the unscoped closure
-  (`tax/genlCx?-global`), for `genl-problems`' reason."
+  (`tax/genlCx-stored?-global`): a cycle is a property of the whole edge set, which no
+  reader's context changes."
   [tax [_ sub super :as s] _context]
   (cond-> []
     (not= 3 (count s))        (conj "genlCx takes two arguments")
@@ -98,7 +102,10 @@
     ;; the edge was already true before it arrived.  A longer cycle is refused too, so
     ;; the context hierarchy is a partial order — the note above gives the reasoning.
     (= sub super)             (conj (str sub " genlCx itself"))
-    (and tax (not= sub super) (tax/genlCx?-global tax super sub))
+    (and (not= sub super) (tax/root-context? sub))
+    (conj (str "genlCx " sub " " super " places a context above " sub
+               ", which every context sees; state universal vocabulary in " sub " itself"))
+    (and tax (not= sub super) (tax/genlCx-stored?-global tax super sub))
     (conj (str "genlCx " sub " " super " creates a cycle (" super
                " already sees " sub ")"))))
 
@@ -113,15 +120,10 @@
   edge is not among it: the declaration states that edge rather than requiring one, so
   demanding it here would refuse every cover written before its parts and make the answer
   a function of assertion order.  What is refused is a shape no edge could be installed
-  for — a part that is the whole, and a part the closure already places above the whole,
-  where the edge would close a cycle `genl-problems` refuses in as many words.  A part
-  disjoint from the whole is stored, and the clash is reported (the header note).
-
-  The cycle read is global, as `genl-problems`' is (E17_ALLOW): the edge the cover
-  installs closes a cycle in the whole edge set whichever context holds the edge above
-  it, so a part a sibling context places above the whole is refused here as the bare
-  `genl` would be."
-  [tax [f whole & parts :as s] _context]
+  for: a part that is the whole, and a part `context` already sees above the whole, where
+  the edge would close a cycle `genl-problems` refuses in as many words.  A part disjoint
+  from the whole is stored, and the clash is reported (the header note)."
+  [tax [f whole & parts :as s] context]
   (cond-> []
     ;; four elements: the functor, the whole, and two parts.  One part covering a whole
     ;; says only that the two have the same instances, which `genl` in both directions
@@ -138,8 +140,8 @@
     (some #(= % whole) parts)
     (conj (str whole " is named as a part of itself"))
 
-    (and tax (some #(and (not= % whole) (tax/genl?-global tax whole %)) parts))
-    (conj (str (first (filter #(and (not= % whole) (tax/genl?-global tax whole %)) parts))
+    (and tax (some #(and (not= % whole) (sees-genl-path? tax whole % context)) parts))
+    (conj (str (first (filter #(and (not= % whole) (sees-genl-path? tax whole % context)) parts))
                " is already a supertype of " whole ", so it cannot be a part of it"))))
 
 (defn disjoint-metatype-problems [_ [_ m :as s] _context]

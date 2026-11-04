@@ -92,6 +92,22 @@
     (is (= :default ((:class v) '(alive Fido))))
     (is (not (contains? (:believed v) '(animal Fido))) "a subsumed membership is not stored")))
 
+(deftest a-believed-denial-undercuts-a-subtype-match-through-a-default-edge-only
+  (let [alive? (fn [edge deny]
+                 (let [denial (if (= :derived deny)
+                                [['(cursed Fido) 'CxA :monotonic]
+                                 ['(set/forwardRule (implies (cursed ?x) (not (animal ?x)))) 'CxA :monotonic]]
+                                [['(not (animal Fido)) 'CxA deny]])]
+                   (contains? (:believed (b/view (apply world ['(dog Fido) 'CxA :monotonic]
+                                                        ['(genl dog animal) 'CxA edge]
+                                                        ['(set/forwardRule (implies (animal ?x) (alive ?x))) 'CxA :monotonic]
+                                                        denial)
+                                                 'CxA []))
+                              '(alive Fido))))]
+    (is (= [false false false true]
+           [(alive? :default :default) (alive? :default :monotonic) (alive? :default :derived)
+            (alive? :monotonic :monotonic)]))))
+
 (deftest a-denial-pattern-is-met-by-the-denial-of-a-supertype-and-not-of-a-subtype
   ;; CxA: (genl dog animal) (not (animal Tom)) (not (dog Rex)) all :monotonic,
   ;;      a forward rule ¬dog ⇒ notDog; a forward rule ¬animal ⇒ notAnimal

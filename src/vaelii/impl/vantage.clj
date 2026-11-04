@@ -71,14 +71,14 @@
 
 (defn- witnessed
   "`by-binding` (`answer -> #{contexts that answered it}`) as one answer per maximal
-  witness (`tax/maximal-contexts`), witnesses in sorted order.  Both strategies call it.
+  witness (`tax/max-cxs`), witnesses in sorted order.  Both strategies call it.
   Under `:proof?` an answer is one derivation, so two proofs of one binding keep a witness
   each."
   [kb witness by-binding]
   (let [t      (reasoning/taxonomy kb)
         attach (attach-witness witness)]
     (vec (mapcat (fn [[b ws]]
-                   (keep (fn [w] (attach b w)) (sort (tax/maximal-contexts t ws))))
+                   (keep (fn [w] (attach b w)) (sort (tax/max-cxs t ws))))
                  by-binding))))
 
 (defn fan
@@ -231,7 +231,7 @@
         merged? (tax/merged-term-pred tax)
         base    (if (some #(or (exc/defeated-anywhere? kb %) (exc/closure-excepted-anywhere? kb %))
                           supporters)
-                  (tax/maximal-contexts
+                  (tax/max-cxs
                    tax (filterv (fn [c] (every? #(res/supporter-visible? kb % c) supporters))
                                 (tax/common-descendants tax ctxs)))
                   (tax/maximal-common-descendant-contexts tax ctxs))]

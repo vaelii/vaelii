@@ -32,7 +32,9 @@
             [clojure.string :as str]
             [vaelii.core :as v]
             [vaelii.impl.clashes :as clashes]
+            [vaelii.impl.except :as exc]
             [vaelii.impl.memory :as mem]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu])
   (:import [java.util ArrayList Collections Random]))
 
@@ -637,18 +639,19 @@
 
   - A stored literal sentence is read by `believed?` at `C` on its handle, when the
     handle's context is seen from `C` (`believed?` does not test visibility,
-    docs/api.md).  Rules, variables and handle-naming meta-sentences are left out
-    (`comparable-sentence?`).
+    docs/api.md).  Rules, variables, handle-naming meta-sentences
+    (`comparable-sentence?`) and edge readings (`exc/edge-read-only?`) are left out.
   - A sentence of `asks` `{C #{S}}` that no handle seen from `C` stores is read by
     `ask?` at `C`: an inherited claim, which the engine answers and never stores.
 
   A sentence neither stored nor asked is absent here, which reads as OUT."
   ([kb world] (engine-beliefs kb world {}))
   ([kb world asks]
-   (let [stored (into []
+   (let [tms    (reasoning/tms kb)
+         stored (into []
                       (keep (fn [h]
                               (let [sx (v/sentex kb h)]
-                                (when (and sx (nil? (:antecedent sx)))
+                                (when (and sx (nil? (:antecedent sx)) (not (exc/edge-read-only? tms h)))
                                   (let [s (v/sentence-of sx)]
                                     (when (comparable-sentence? s)
                                       [h s (:context sx)]))))))

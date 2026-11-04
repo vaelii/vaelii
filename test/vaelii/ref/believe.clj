@@ -49,15 +49,16 @@
           {} (:writes world)))
 
 (defn- up-with
-  "`up(C)`: `c` plus every context it reaches over the genlCx edges `edges` (`{sub
-  #{super}}` off `context-edges`), whatever context stores each edge (docs/reference.md,
-  item 1 of \"The function\")."
+  "`up(C)`: `c`, CxUniverse, and every context they reach over the genlCx edges `edges`
+  (`{sub #{super}}` off `context-edges`), whatever context stores each edge
+  (docs/reference.md, item 1 of \"The function\")."
   [edges c]
-  (loop [seen #{c} todo [c]]
-    (if-let [x (peek todo)]
-      (let [new (remove seen (get edges x))]
-        (recur (into seen new) (into (pop todo) new)))
-      seen)))
+  (let [start (conj #{c} 'CxUniverse)]
+    (loop [seen start todo (vec start)]
+      (if-let [x (peek todo)]
+        (let [new (remove seen (get edges x))]
+          (recur (into seen new) (into (pop todo) new)))
+        seen))))
 
 ;; ---- the prepared world -------------------------------------------------------
 
@@ -226,8 +227,9 @@
   as `{:bindings b :edges #{…}}`. A positive pattern on `p` is met by a fact of any
   sub-predicate of `p`; a denial pattern on `p` by the denial of any super-predicate of
   `p`; each path over the believed `genl` edges between the two functors is its own match
-  (docs/inference.md, \"Predicate subsumption in matching\"). Polarity never crosses."
-  [adj l s bindings]
+  (docs/inference.md, \"Predicate subsumption in matching\"). Polarity never crosses. A
+  positive match of a sub-predicate's fact is dropped where `(undercut? sub p args)`."
+  [adj undercut? l s bindings]
   (let [neg? (world/denial? l)]
     (when (= neg? (world/denial? s))
       (let [[pf & pargs] (if neg? (second l) l)
@@ -236,8 +238,9 @@
                    (not (world/genlCx-edge? (if neg? (second s) s)))
                    (not (world/declaration? (if neg? (second s) s))))
           (when-let [b (unify-args bindings pargs sargs)]
-            (for [path (if neg? (genl-paths adj pf sf) (genl-paths adj sf pf))]
-              {:bindings b :edges path})))))))
+            (when-not (and (not neg?) (undercut? sf pf sargs))
+              (for [path (if neg? (genl-paths adj pf sf) (genl-paths adj sf pf))]
+                {:bindings b :edges path}))))))))
 
 (defn- substitute
   "`form` with every variable `bindings` binds replaced."
@@ -249,18 +252,19 @@
 
 (defn- holds?
   "Is the ground literal `l` met by some sentence of `believed` (a positive literal
-  through its sub-predicates, docs/naf.md \"Evaluated over the registry\")."
-  [adj believed l]
-  (boolean (some #(seq (matches adj l % {})) believed)))
+  through its sub-predicates, docs/naf.md \"Evaluated over the registry\"). `match` is
+  `matches` over the adjacency and undercut of a context."
+  [match believed l]
+  (boolean (some #(seq (match l % {})) believed)))
 
 (defn- join
   "Every way the literals `lits` are met in sequence by sentences of `believed`, as
   `{:bindings b :facts #{S …} :edges #{E …}}`."
-  [adj believed lits]
+  [match believed lits]
   (reduce (fn [partials l]
             (for [{:keys [bindings facts edges]} partials
                   s believed
-                  m (matches adj l s bindings)]
+                  m (match l s bindings)]
               {:bindings (:bindings m) :facts (conj facts s) :edges (into edges (:edges m))}))
           [{:bindings {} :facts #{} :edges #{}}]
           lits))
@@ -280,8 +284,8 @@
   "Is the firing of rule sentex `r` under `bindings` blocked at the view `believed`: an
   `unknown` whose conjuncts all hold, or an exception whose conjuncts all hold. Both
   are asked at the reading context (docs/reference.md, decision 4)."
-  [adj believed r bindings]
-  (let [all-hold? (fn [conj] (every? #(holds? adj believed (substitute % bindings)) conj))]
+  [match believed r bindings]
+  (let [all-hold? (fn [conj] (every? #(holds? match believed (substitute % bindings)) conj))]
     (boolean (or (some all-hold? (:unknowns (:parsed r)))
                  (some all-hold? (:exceptions r))))))
 
@@ -289,7 +293,7 @@
   "The fixpoint of the rule sentexes `rs` over `state` `{:believed #{S} :justs {S #{j}}}`.
   A justification is `{:rule [R K] :facts #{S} :edges #{E}}`. A conclusion in `out` is
   never added."
-  [adj rs out state]
+  [match rs out state]
   (loop [state state]
     (let [next (reduce
                 (fn [st r]
@@ -300,13 +304,13 @@
                              j {:rule [(:rule r) (:context r)] :facts facts :edges edges}]
                          (if (or (contains? out c)
                                  (contains? (get-in st [:justs c]) j)
-                                 (blocked? adj (:believed state) r bindings))
+                                 (blocked? match (:believed state) r bindings))
                            st
                            (-> st
                                (update :believed conj c)
                                (update-in [:justs c] (fnil conj #{}) j)))))
                      st
-                     (join adj (:believed state) (:antecedents p)))))
+                     (join match (:believed state) (:antecedents p)))))
                 state rs)]
       (if (= next state) state (recur next)))))
 
@@ -323,13 +327,13 @@
 
 (defn derive-at
   "The believed sentences at `c` when `out` is taken OUT, before inheritance: `{:believed
-  #{S} :justs {S #{j}} :supports {S {home strength}} :sees up(c)}`.
-
-  Each stratum of the visible rules fires to a fixpoint before the next starts. No rule
-  reads an inherited claim (`world/check-world` refuses one), so derivation runs before
-  `inherit-at`. `:forced?` reads the forced-monotonic set at `c`: the baseline set
-  (`world/forced?`) and the predicates a forced-monotonic declaration visible at `c`
-  names. A rule concluding one fires there only as a forced-monotonic rule (`void-at?`)."
+  #{S} :justs {S #{j}} :supports {S {home strength}} :sees up(c)}`. Each stratum of the
+  visible rules fires to a fixpoint before the next. No rule reads an inherited claim
+  (`world/check-world`), so derivation runs before `inherit-at`. `:forced?` reads
+  `world/forced?` and the predicates a forced-monotonic declaration visible at `c` names,
+  which only a forced-monotonic rule concludes (`void-at?`). A believed denial undercuts a
+  subtype match with no `:monotonic` path, and the derivation repeats until the denials it
+  reads are the ones it believes (docs/inference.md, \"An edge's reading\")."
   [prep c out]
   (let [sees     (up-with (:edges prep) c)
         vis      (fn [homes] (select-keys homes sees))
@@ -345,13 +349,25 @@
                                 :when (seq v)]
                             [s v]))
         believed (set (keys supports))
-        adj      (genl-adjacency believed)]
-    (assoc (reduce (fn [st rs] (fire-stratum adj (remove #(void-at? forced? %) rs) out st))
-                   {:believed believed :justs {}}
-                   (visible-rules prep sees))
-           :supports supports
-           :sees sees
-           :forced? forced?)))
+        adj      (genl-adjacency believed)
+        strict?  (fn [sup] (= :monotonic (some->> (get supports sup) vals (apply strongest))))
+        derive   (fn [denied]
+                   (let [undercut? (fn [sf pf args]
+                                     (and (not= sf pf)
+                                          (contains? denied (list 'not (apply list pf args)))
+                                          (not-any? #(every? strict? %) (genl-paths adj sf pf))))
+                         match     #(matches adj undercut? %1 %2 %3)]
+                     (reduce (fn [st rs] (fire-stratum match (remove #(void-at? forced? %) rs) out st))
+                             {:believed believed :justs {}}
+                             (visible-rules prep sees))))
+        denials  #(into #{} (filter world/denial?) %)
+        d        (loop [denied (denials believed) n 0]
+                   (let [d (derive denied) ends (denials (:believed d))]
+                     (cond (= denied ends) d
+                           (< n 8)         (recur ends (inc n))
+                           :else           (throw (ex-info "the denials an undercut reads do not settle"
+                                                           {:type :unsupported})))))]
+    (assoc d :supports supports :sees sees :forced? forced?)))
 
 ;; ---- classes ------------------------------------------------------------------
 

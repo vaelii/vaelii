@@ -56,8 +56,11 @@
 ;; two frames of reference apart. See docs/space.md.
 ;;
 ;; Each converse pair is stated inert, as (set/inert (inverse P Q)), so the pair is
-;; written down where a reader looks. The algebra computes every converse itself, so a
-;; believed copy adds no answer, and the calculus prover still answers a goal alone.
+;; written down where a reader looks. Each of RCC-8's eight base relations states the
+;; rest of its algebra's properties inert too: (set/inert (asymmetric P)) for the four
+;; proper-part relations, and (set/inert (negates P Q)) for every pair. The algebra
+;; computes every converse itself, so a believed copy adds no answer, and the calculus
+;; prover still answers a goal alone.
 
 (comment atSomeDistanceFrom
          "(atSomeDistanceFrom ?thing1 ?thing2) means that ?thing1 and ?thing2 are some distance apart. Any class of the distance chain but the zero one, so it is the complement of coLocatedWith and holds of nothing and itself.")
@@ -120,6 +123,13 @@
 (set/monotonic (instance_relation_predicate externallyConnected))
 (arg externallyConnected 1 spatial)
 (arg externallyConnected 2 spatial)
+(set/inert (negates externallyConnected nonTangentialProperPart))
+(set/inert (negates externallyConnected nonTangentialProperPartInverse))
+(set/inert (negates externallyConnected partiallyOverlapping))
+(set/inert (negates externallyConnected spatiallyDisconnected))
+(set/inert (negates externallyConnected spatiallyEqual))
+(set/inert (negates externallyConnected tangentialProperPart))
+(set/inert (negates externallyConnected tangentialProperPartInverse))
 
 (comment farFrom
          "(farFrom ?thing1 ?thing2) means that ?thing1 and ?thing2 are far apart. The sixth class of the distance chain, one step in from veryFarFrom.")
@@ -195,6 +205,13 @@
 (arg nonTangentialProperPart 2 spatial)
 (set/inert (genl nonTangentialProperPart properPartOfRegion))
 (set/inert (inverse nonTangentialProperPart nonTangentialProperPartInverse))
+(set/inert (asymmetric nonTangentialProperPart))
+(set/inert (negates nonTangentialProperPart nonTangentialProperPartInverse))
+(set/inert (negates nonTangentialProperPart partiallyOverlapping))
+(set/inert (negates nonTangentialProperPart spatiallyDisconnected))
+(set/inert (negates nonTangentialProperPart spatiallyEqual))
+(set/inert (negates nonTangentialProperPart tangentialProperPart))
+(set/inert (negates nonTangentialProperPart tangentialProperPartInverse))
 
 (comment nonTangentialProperPartInverse
          "(nonTangentialProperPartInverse ?region1 ?region2) means that ?region2 lies strictly inside ?region1, touching no part of its boundary. RCC-8's NTPPi, a base relation.")
@@ -202,6 +219,12 @@
 (arg nonTangentialProperPartInverse 1 spatial)
 (arg nonTangentialProperPartInverse 2 spatial)
 (set/inert (genlInverse nonTangentialProperPartInverse partOf))
+(set/inert (asymmetric nonTangentialProperPartInverse))
+(set/inert (negates nonTangentialProperPartInverse partiallyOverlapping))
+(set/inert (negates nonTangentialProperPartInverse spatiallyDisconnected))
+(set/inert (negates nonTangentialProperPartInverse spatiallyEqual))
+(set/inert (negates nonTangentialProperPartInverse tangentialProperPart))
+(set/inert (negates nonTangentialProperPartInverse tangentialProperPartInverse))
 
 (comment northeastOf
          "(northeastOf ?place1 ?place2) means that ?place1 lies north and east of ?place2. Both axes at once, so it is the strongest thing a single direction fact can say.")
@@ -236,6 +259,10 @@
 (set/monotonic (instance_relation_predicate partiallyOverlapping))
 (arg partiallyOverlapping 1 spatial)
 (arg partiallyOverlapping 2 spatial)
+(set/inert (negates partiallyOverlapping spatiallyDisconnected))
+(set/inert (negates partiallyOverlapping spatiallyEqual))
+(set/inert (negates partiallyOverlapping tangentialProperPart))
+(set/inert (negates partiallyOverlapping tangentialProperPartInverse))
 
 (comment partOfRegion
          "(partOfRegion ?region1 ?region2) means that ?region1 is part of ?region2. RCC-8's P, which denotes TPP, NTPP or EQ. A derived relation: it is entailed by any of those three and asserts none of them in particular.")
@@ -334,6 +361,9 @@
 (set/monotonic (instance_relation_predicate spatiallyDisconnected))
 (arg spatiallyDisconnected 1 spatial)
 (arg spatiallyDisconnected 2 spatial)
+(set/inert (negates spatiallyDisconnected spatiallyEqual))
+(set/inert (negates spatiallyDisconnected tangentialProperPart))
+(set/inert (negates spatiallyDisconnected tangentialProperPartInverse))
 
 (comment spatiallyEqual
          "(spatiallyEqual ?region1 ?region2) means that ?region1 and ?region2 occupy exactly the same extent. RCC-8's EQ, and the identity of the algebra. A claim about extent rather than about the identity of the two terms, so it is not the equality closure's sameAs: two coextensive regions are still two regions.")
@@ -341,6 +371,8 @@
 (arg spatiallyEqual 1 spatial)
 (arg spatiallyEqual 2 spatial)
 (set/inert (genl spatiallyEqual partOfRegion))
+(set/inert (negates spatiallyEqual tangentialProperPart))
+(set/inert (negates spatiallyEqual tangentialProperPartInverse))
 
 (comment tangentialProperPart
          "(tangentialProperPart ?region1 ?region2) means that ?region1 lies inside ?region2 and touches its boundary. RCC-8's TPP, a base relation.")
@@ -349,6 +381,8 @@
 (arg tangentialProperPart 2 spatial)
 (set/inert (genl tangentialProperPart properPartOfRegion))
 (set/inert (inverse tangentialProperPart tangentialProperPartInverse))
+(set/inert (asymmetric tangentialProperPart))
+(set/inert (negates tangentialProperPart tangentialProperPartInverse))
 
 (comment tangentialProperPartInverse
          "(tangentialProperPartInverse ?region1 ?region2) means that ?region2 lies inside ?region1 and touches its boundary. RCC-8's TPPi, a base relation.")
@@ -356,6 +390,7 @@
 (arg tangentialProperPartInverse 1 spatial)
 (arg tangentialProperPartInverse 2 spatial)
 (set/inert (genlInverse tangentialProperPartInverse partOf))
+(set/inert (asymmetric tangentialProperPartInverse))
 
 (comment veryCloseTo
          "(veryCloseTo ?thing1 ?thing2) means that ?thing1 and ?thing2 are very close together. The nearest class of the distance chain above zero. The seven classes tile the whole range without overlapping, so exactly one of them holds of any pair.")

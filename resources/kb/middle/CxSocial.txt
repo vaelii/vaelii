@@ -1,8 +1,8 @@
 ;; CxSocial — theory over the social relations: what acquaintance follows from,
 ;; how employment relates to membership, and the general relationship and
 ;; dwelling vocabulary over two persons. Sees the shared upper ontology via
-;; CxUniverse; CxWell sees it. CxSocialExtension, an opt-in extension below it,
-;; states the relationship and plural-identity vocabulary narrower than this.
+;; CxUniverse; CxWell sees it. CxTra, an opt-in context below it, states the
+;; relationship and plural-identity vocabulary narrower than this.
 ;;
 ;; Every rule and genl edge here runs one way only. `knows` is deliberately not
 ;; symmetric — a great many people know someone who does not know them — so friendship

@@ -18,6 +18,7 @@
             [vaelii.impl.qcn-kb :as qkb]
             [vaelii.impl.scenario :as scen]
             [vaelii.impl.space :as sp]
+            [vaelii.impl.stp :as stp]
             [vaelii.test-util :as tu]))
 
 ;; One KB per namespace carrying two calculi's vocabularies, since what is being tested is
@@ -88,7 +89,7 @@
     (let [s (scen/scenario iv/allen kb C)]
       (is (complete? s 2))
       (is (consistent? iv/allen s))
-      (is (contains? (iv/interval-denotation 'sharesTimeWith) (first (get s [A B])))))))
+      (is (contains? (stp/interval-denotation 'sharesTimeWith) (first (get s [A B])))))))
 
 ;; ---- inconsistency -------------------------------------------------------
 

@@ -16,10 +16,15 @@
 
   The companion for the positive direction is `predicate-subsumption-test`; the
   antecedent index key a negation files under is `negated-antecedent-index-test`."
-  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+  (:require [clojure.set :as set]
+            [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.jtms :as jtms]
+            [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rules :as rules]
+            [vaelii.impl.sentex :as sx]
+            [vaelii.impl.special :as special]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
@@ -160,6 +165,63 @@
       (v/assert kb (list 'genl dog_t animal_t) 'CxUniverse {:strength :monotonic})
       (is (seq (v/sentexes-matching kb (list notADog A) 'CxUniverse))
           "the edge arriving last derives what it would have derived arriving first"))))
+
+(defn- negative-seeds-by-definition
+  "The negative half of `special/subsumption-seeds` of the `[sub super]` pairs `edges`, one
+  pair at a time and from its definition alone: for a pair whose `sub` reaches, down its
+  signed spec closure, a predicate some stored rule reads under a negation, the believed
+  negative facts on a predicate of `super`'s signed closure up."
+  [kb edges]
+  (let [idx  (:index kb)
+        tx   (reasoning/taxonomy kb)
+        negs (into #{} (comp (filter vector?) (map second)) (reads/as-stored-rule-keys idx))]
+    (into #{} (mapcat (fn [[sub super]]
+                        (when (some negs (rules/signed-reach tx :down sub))
+                          (for [f (rules/signed-reach tx :up super)
+                                h (reads/as-stored-with-functor idx f)
+                                :when (and (jtms/in? (reasoning/tms kb) h)
+                                           (sx/negative? (v/sentex kb h)))]
+                            h))))
+          edges)))
+
+(tu/deftest-kb a-batch-of-edges-seeds-what-its-edges-seed-one-at-a-time
+  (tu/with-terms [top_t animal_t dog_t puppy_t notPuppy seen relLow relHigh relTop notLow
+                  A B C]
+    (let [x     (symbol "?x")
+          y     (symbol "?y")
+          M     {:strength :monotonic}
+          kinds (vec (repeatedly 24 #(tu/tmp-type "kind")))
+          edges (into [(list 'genl puppy_t dog_t) (list 'genl dog_t animal_t)
+                       (list 'genl animal_t top_t) (list 'genl relHigh relTop)]
+                      (map #(list 'genl % animal_t))
+                      kinds)
+          agree (fn [label]
+                  (let [batch (special/batch-subsumption-seeds kb edges)
+                        each  (into #{} (mapcat #(special/subsumption-seeds kb %)) edges)
+                        named (negative-seeds-by-definition kb (mapcat special/sentence-edges edges))]
+                    (testing label
+                      (is (= (count batch) (count (set batch))) "each seed appears once")
+                      (is (= each (set batch)) "the batch seeds the union of its edges' seeds")
+                      (is (set/subset? named (set batch))
+                          "the batch seeds every negative fact the definition names"))
+                    (set batch)))]
+      (v/assert-rule kb [(negate (list puppy_t x))] (list notPuppy x) 'CxUniverse {:direction :forward})
+      (v/assert-rule kb [(list animal_t x)] (list seen x) 'CxUniverse {:direction :forward})
+      (v/assert-rule kb [(negate (list relLow x y))] (list notLow x y) 'CxUniverse {:direction :forward})
+      (v/assert kb (negate (list animal_t A)) 'CxUniverse M)
+      (v/assert kb (negate (list top_t C)) 'CxUniverse M)
+      (v/assert kb (negate (list relTop A B)) 'CxUniverse M)
+      (v/assert kb (list puppy_t B) 'CxUniverse M)
+      (doseq [k kinds] (v/assert kb (list k (tu/tmp-ind "Kid")) 'CxUniverse M))
+      (doseq [e edges] (v/assert kb e 'CxUniverse M))
+      (let [free (agree "on a KB declaring no genlInverse edge")]
+        (is (contains? free (v/handle-of kb (negate (list animal_t A)) 'CxUniverse)))
+        (is (contains? free (v/handle-of kb (negate (list top_t C)) 'CxUniverse)))
+        (is (not (contains? free (v/handle-of kb (negate (list relTop A B)) 'CxUniverse)))))
+      (v/assert kb (list 'genlInverse relLow relHigh) 'CxUniverse M)
+      (let [signed (agree "on a KB declaring one")]
+        (is (contains? signed (v/handle-of kb (negate (list animal_t A)) 'CxUniverse)))
+        (is (contains? signed (v/handle-of kb (negate (list relTop A B)) 'CxUniverse)))))))
 
 (tu/deftest-kb forward-chaining-does-not-fire-the-other-way
   (tu/with-terms [dog_t animal_t notAnAnimal A]

@@ -183,6 +183,11 @@
   []
   (* 60000 (v/switch-value "VAELII_SANDBOX_IDLE_MINUTES")))
 
+(defn- now
+  "The time the eviction table records, in epoch milliseconds."
+  []
+  (System/currentTimeMillis))
+
 (def ^:private empty-eviction-table {:level 0.0 :seq 0 :entries {}})
 
 (defn- value
@@ -283,7 +288,7 @@
   (or (eviction-table-of target)
       (locking eviction-tables
         (or (eviction-table-of target)
-            (let [a (atom (rebuilt target (System/currentTimeMillis)))]
+            (let [a (atom (rebuilt target (now)))]
               (swap! eviction-tables (fn [rs] (conj (filterv (fn [[^WeakReference r]] (.get r)) rs)
                                                     [(WeakReference. target) a])))
               a)))))
@@ -292,14 +297,14 @@
   "Record a request by the session whose sandbox is `ctx`."
   [target ctx]
   (when-let [a (and ctx (eviction-table-of target))]
-    (swap! a used ctx (System/currentTimeMillis))))
+    (swap! a used ctx (now))))
 
 (defn note-write!
   "Record a write request by the session whose sandbox is `ctx`, and its size after."
   [target ctx]
   (when-let [a (and ctx (eviction-table-of target))]
     (when (contains? (:entries @a) ctx)
-      (swap! a wrote ctx (v/count-in-context target ctx) (System/currentTimeMillis)))))
+      (swap! a wrote ctx (v/count-in-context target ctx) (now)))))
 
 (defn wrap-session
   "Give every request a session token, minting one into a cookie when the request
@@ -353,7 +358,7 @@
     (when (>= (count (:entries @a)) cap)
       (let [dead (remove #(live? target %) (keys (:entries @a)))
             _    (swap! a update :entries #(apply dissoc % dead))
-            [r gone] (room @a cap (System/currentTimeMillis) (idle-horizon-ms))]
+            [r gone] (room @a cap (now) (idle-horizon-ms))]
         (clojure.core/reset! a r)
         (doseq [c gone] (reset! target c))))))
 
@@ -366,7 +371,7 @@
     (when-not (live? target ctx)
       (make-room! target)
       (v/edit! target {:add [[(edge ctx) 'CxUniverse {:strength :monotonic}]]})
-      (swap! (eviction-table! target) enter ctx 0 (System/currentTimeMillis)))
+      (swap! (eviction-table! target) enter ctx 0 (now)))
     ctx))
 
 (defn extent

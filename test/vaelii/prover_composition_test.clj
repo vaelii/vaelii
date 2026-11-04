@@ -141,11 +141,13 @@
     (is (= #{:preserving}
            (provers/shadowing-channels kb (list largerThan dog_t animal_t) ctx)))
     (testing "and it is scoped like every other declaration read"
-      (tu/with-terms [CxOther]
-        ;; CxOther sits above CxUniverse, so it does not see the declaration
-        (v/assert kb (list 'genlCx 'CxUniverse CxOther) 'CxUniverse)
+      (tu/with-terms [CxOther CxSide largerThan2]
+        ;; a declaration in CxSide is invisible from its sibling CxOther
+        (v/assert kb (list 'transitiveInArgInverse largerThan2 1 'genl) CxSide)
+        (is (= #{:preserving}
+               (provers/shadowing-channels kb (list largerThan2 dog_t animal_t) CxSide)))
         (is (empty? (provers/shadowing-channels
-                     kb (list largerThan dog_t animal_t) CxOther))
+                     kb (list largerThan2 dog_t animal_t) CxOther))
             "a context that cannot see the declaration is not shadowed by it")))))
 
 ;; ---- what the planner reads ---------------------------------------------

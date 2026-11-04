@@ -235,8 +235,8 @@ folded.
 A mark is read from every context, so a mark leaving every reader at once is the case
 above. A placed `defeat` or an `except` of a mark's statement takes it away from the
 readers that see the defeat and from no other reader, and those readers read a fact on the
-predicate as written. The four permuting marks stay visible from every context ([A
-context outside the topology](contexts.md#a-context-outside-the-topology)), so whether a
+predicate as written. The four permuting marks stay visible from every context ([CxUniverse is the
+implicit root](contexts.md#cxuniverse-is-the-implicit-root)), so whether a
 reader believes one is read from the defeats and excepts it sees
 (`res/supporter-believed?`).
 
@@ -399,16 +399,56 @@ compound read that one list.
   entered. A ground compound inside a pattern is sorted, at the rule
   write by the same walk, and in a goal at the match entry points
   (`res/probe-spelling`), so a goal names it in either order.
-- **A pattern below the literal is matched as positioned.** `res/raw-match` fans the
-  literal's own arguments over their permitted arrangements and does not fan a compound
-  below it. `(holds (PairFn Bob ?x))` therefore matches a stored `(holds (PairFn Ann
-  Bob))` only when the store's order puts `Bob` first.
+- **A pattern below the literal is fanned per compound.** Each compound below the
+  literal that holds a variable is probed in every argument order its own functor's marks
+  let a stored fact hold it in (`sentex/nested-arrangements`, `res/nested-probes`), the
+  fan the literal's own arguments take, pruned the same way. So `(holds (PairFn Bob ?x))`
+  matches a stored `(holds (PairFn Ann Bob))` with `?x` bound to `Ann`. The probes per
+  literal are the product of each compound's `g!/(g-v)!` and the literal's own fan,
+  uncapped: 2 for one binary compound holding one variable, 4 for two of them.
+  `res/raw-match-with` (and so the rete alpha matcher), `res/matches-hierarchical` and
+  the forward trigger (`chain/trigger-bindings`) read the one fan. A firing over such a
+  read names the marks of each compound it read in another order
+  ([inference.md](inference.md#forward-chaining)),
+  and a mark arriving re-joins the forward rules applying its functor below an antecedent
+  literal (`chain/permuting-rejoin-rules`).
 - **Held as written.** The walk stops at a quoting function, so `(holds (Quote (PairFn
   Bob Ann)))` and `(holds (Quote (PairFn Ann Bob)))` are two sentexes. It stops at a
   `natFormula` or `rewriteOf` expression, which is a verbatim NAT payload, and at a
-  `reifiable_function` application, whose constant is named by the expression as written
-  ([nat.md](nat.md#write-path)). A reified NAT is minted before the sort, so
-  `(PairFn Ann Bob)` and `(PairFn Bob Ann)` under a reifiable `PairFn` mint two constants.
+  `reifiable_function` application, which the reify walk has already replaced with its
+  constant ([nat.md](nat.md#write-path)). The constant is named by the application with
+  its own arguments in the order its `symmetric` and commuting marks give them
+  (`nat-read/sorted-expression`), so `(PairFn Ann Bob)` and `(PairFn Bob Ann)` under a
+  reifiable, commutative `PairFn` name one constant. The row records the sentence as
+  written, unreified, and the mark's leaving hands it back the constant of the
+  application as written ([nat.md](nat.md#a-reifiable-mark-moving)).
+- **A mention position is held as written.** The walk does not descend a position a
+  believed `quotedArg` declaration types, or one at or after a believed
+  `quotedArgAndRest` declaration's start (`res/mention-at`). With `(quotedArg noteOf 1
+  expression)`, `(noteOf (PairFn Ann Bob) "n")` and `(noteOf (PairFn Bob Ann) "n")` are
+  two sentexes. The store reads the declarations unscoped, and only for a predicate the
+  taxonomy marks as declaring one. A declaration arriving or leaving queues its predicate
+  (`[:mention p]`), and `chain/reconcile-spellings!` splits or folds the rows naming the
+  predicate and a marked functor (`integrate/rows-a-mention-spells`, one posting
+  intersection per marked functor) from the spellings record.
+- **A reader the mention does not reach reads the compound under its marks.** A mention
+  position whose declaration is not stated in CxUniverse and held in every context is
+  read per reader. A read (`res/visible-matches`) also probes every order of each
+  compound at that position (`res/mention-probes`), and keeps a match only where the
+  stored row and the goal spell the position alike under the declarations the reader
+  sees and believes (`res/without-unread-mentions`). Only the arguments are compared, so
+  a `genl` sub-predicate's row is compared by its arguments and a `genlInverse` one with
+  its two exchanged. A sibling of the declaring context, and a reader that does not
+  believe the declaration, match `(noteOf (PairFn Bob ?x) "n")` against a stored `(noteOf
+  (PairFn Ann Bob) "n")`. A forward rule's trigger and join match the same probes
+  (`chain/trigger-bindings`, `chain/join-matches`), and a firing over a probed order names
+  the marks licensing that order (`chain/probed-read-marks`). The placement keeps a firing
+  only where its reader matches each such antecedent (`chain/mention-unread?`). Below the
+  placement, a context that sees a declaration and reads the antecedent as written takes
+  a guard defeat the declaration blocks (`chain/mention-guard-placements`). A declaration
+  arriving, leaving or moving in belief re-decides each rule applying its predicate to a
+  compound (`special/index-mention-rules`)
+  (`commutative_test/a-forward-rule-reads-a-compound-at-a-mention-as-its-placement-reads-it`).
 - **An `or` in an argument is a term.** The shipped ontology declares no mark on `or`,
   so `(believes Ann (or P Q))` and `(believes Ann (or Q P))` are two sentexes
   ([Where `or` cannot go](#where-or-cannot-go)). A KB stating `(commutative or)` folds
@@ -425,7 +465,10 @@ compound read that one list.
 
 A store written before compounds below the literal were sorted holds them as written, and
 a ground lookup of such a row by its written spelling misses it. `export-text!` then
-`load-text!` re-canonicalizes the store.
+`load-text!` re-canonicalizes the store. A store written before mention positions were
+held as written holds a compound there sorted, and a lookup by its written order misses
+it. Retracting the `quotedArg` declaration and stating it again respells those rows from
+the spellings record.
 
 ## A function's terms reshaped by declaration
 
@@ -446,7 +489,7 @@ from `meetFunctionOf`, so the one declaration gives all four arms.
 - **The order's registered comparator decides absorption.** `res/meet-order` reads
   `datetime/order-comparators`, a pure function of the two terms (`subintervalOf` reads
   the calendar fields, so `(MonthFn 2000 3)` and `(DatetimeFn "2000-03")` lie below each
-  other). A stored `(R a b)` fact is never read, so a stored form does not move with
+  other, and a range's extent; `subtimeOf` places a moment inside an interval). A stored `(R a b)` fact is never read, so a stored form does not move with
   belief: two named times are not absorbed whatever is stated between them, and an order
   with no registered comparator absorbs nothing.
 - **The arms keep the walk's limits.** They read the exact functor, unscoped. They

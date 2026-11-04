@@ -532,6 +532,26 @@
               (is (v/ask? kb late 'CxUniverse))
               (v/close! kb))))))))
 
+(deftest a-ram-space-keeps-its-reasoner-record-through-clear-and-close
+  (let [space [::reasoner-record (gensym)]
+        fresh [::reasoner-record (gensym)]
+        open  (fn [o] (try (v/open-kb (merge {:backend :memory :space space} o))
+                           (catch clojure.lang.ExceptionInfo e (ex-data e))))]
+    (try
+      (let [kb (v/open-kb {:backend :memory :space space})]
+        (v/add-reasoner kb :allen)
+        (v/clear! kb)
+        (v/close! kb))
+      (is (= :reasoner-mismatch (:type (open {}))))
+      (doseq [o [{:reasoners [:allen]} {:reasoners :stored}]]
+        (let [kb (open o)]
+          (is (nil? (:type kb)) (pr-str o))
+          (when-not (:type kb) (v/close! kb))))
+      (let [kb (open {:space fresh})]
+        (is (nil? (:type kb)) "a fresh space opens")
+        (when-not (:type kb) (v/close! kb)))
+      (finally (tu/drop-space! space) (tu/drop-space! fresh)))))
+
 (deftest a-durable-index-built-against-other-records-is-refused
   ;; A `:disk-log` index over records on a server is a directory and a database joined by
   ;; nothing but one opts map, so the directory records the database it describes
@@ -588,6 +608,30 @@
             (let [f (RandomAccessFile. (str dir "/index/kv.log") "rw")]
               (.setLength f (- (.length f) (long n)))
               (.close f)))
+          (last-frame-offset [path]
+            (with-open [raf (RandomAccessFile. ^String path "r")]
+              (let [len (.length raf)]
+                (loop [pos 0 last-pos 0]
+                  (if (> (+ pos 4) len)
+                    last-pos
+                    (do (.seek raf pos)
+                        (let [n (.readInt raf)]
+                          (if (or (<= n 0) (> (+ pos 4 n) len))
+                            last-pos
+                            (recur (+ pos 4 n) pos)))))))))
+          (cut-to! [path new-len]
+            (with-open [raf (RandomAccessFile. ^String path "rw")] (.setLength raf (long new-len))))
+          (build-uncompacted! [dir]
+            ;; the crash shape is an *append-mode* log — compaction runs on close, and a
+            ;; crashed process never closed — so build one: compaction off for the write,
+            ;; markers deleted for the crash
+            (let [prior (System/getProperty "vaelii.disk.auto-compact")]
+              (System/setProperty "vaelii.disk.auto-compact" "off")
+              (try (build! dir)
+                   (finally (if prior (System/setProperty "vaelii.disk.auto-compact" prior)
+                                (System/clearProperty "vaelii.disk.auto-compact")))))
+            (.delete (java.io.File. (str dir "/index/clean.nippy")))
+            (.delete (java.io.File. (str dir "/records/clean.nippy"))))
           (reopened-finds-all? [dir]
             (let [kb2 (v/open-kb {:backend :disk-log :dir dir :recover? :auto})]
               (try
@@ -603,17 +647,27 @@
                   (is (reopened-finds-all? dir)))))
     (testing "a torn tail with no marker loses a batch seal, and the open detects it"
       (with-tmp (fn [dir]
-                  ;; the crash shape is an *append-mode* log — compaction runs on
-                  ;; close, and a crashed process never closed — so build one:
-                  ;; compaction off for the write, marker deleted for the crash
-                  (let [prior (System/getProperty "vaelii.disk.auto-compact")]
-                    (System/setProperty "vaelii.disk.auto-compact" "off")
-                    (try (build! dir)
-                         (finally (if prior (System/setProperty "vaelii.disk.auto-compact" prior)
-                                      (System/clearProperty "vaelii.disk.auto-compact")))))
-                  (.delete (java.io.File. (str dir "/index/clean.nippy")))
+                  (build-uncompacted! dir)
                   (lop! dir 64)
-                  (is (reopened-finds-all? dir)))))))
+                  (is (reopened-finds-all? dir)))))
+    (testing "the last record lost with a prefix of its index batch kept: the seal and the record count agree, the root count is one ahead, and the open rebuilds"
+      (with-tmp (fn [dir]
+                  (build-uncompacted! dir)
+                  (let [sl (str dir "/records/sentexes.log")
+                        si (str dir "/records/sentexes.idx")
+                        kl (str dir "/index/kv.log")]
+                    (cut-to! sl (last-frame-offset sl))
+                    (cut-to! si (- (.length (java.io.File. si)) 24))
+                    (cut-to! kl (last-frame-offset kl)))
+                  (let [lost (list 'tmp_short_p 'TmpShort19)
+                        kb2  (v/open-kb {:backend :disk-log :dir dir :recover? :auto})]
+                    (try
+                      (is (nil? (v/handle-of kb2 lost 'CxUniverse)) "no posting names the lost record")
+                      (is (= 19 (count (v/sentexes-matching kb2 '(tmp_short_p ?x) 'CxUniverse))))
+                      (v/assert kb2 lost 'CxUniverse)
+                      (is (v/ask? kb2 lost 'CxUniverse) "the lost fact is stored again and read")
+                      (is (= 20 (count (v/sentexes-matching kb2 '(tmp_short_p ?x) 'CxUniverse))))
+                      (finally (v/close! kb2)))))))))
 
 ;; ---- the close hands the directory over, and waits until it can -------------
 

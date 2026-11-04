@@ -74,18 +74,18 @@
       (is (= before (content kb))))))
 
 (tu/deftest-kb the-antecedents-name-the-edges-the-placement-saw-across
-  (tu/with-terms [puppy dog mortal Muffet CxLow CxMid]
-    (let [mid  (v/assert kb (list 'genlCx CxMid 'CxUniverse) 'CxUniverse)
+  (tu/with-terms [puppy dog mortal Muffet CxLow CxMid CxTop]
+    (let [mid  (v/assert kb (list 'genlCx CxMid CxTop) 'CxUniverse)
           low  (list 'genlCx CxLow CxMid)
           genl (list 'genl puppy dog)
           rule (vr/rule-sentence [(list dog '?x)] (list mortal '?x))
           rh   (do (v/assert kb low 'CxUniverse)
-                   (v/assert kb genl 'CxUniverse)
+                   (v/assert kb genl CxTop)
                    (v/assert kb rule CxLow {:direction :forward}))
           r    (v/preview kb {:add [[(list puppy Muffet) CxMid]]})]
       (testing "every edge the firing rests on, in the stored content order"
         (is (= [{:informant rh :strength :monotonic :rule (v/readable-sentence (v/sentex kb rh))
-                 :antecedents [genl low (list 'genlCx CxMid 'CxUniverse) (list puppy Muffet)]}]
+                 :antecedents [genl low (list 'genlCx CxMid CxTop) (list puppy Muffet)]}]
                (keep :justification (:believed-added r)))))
       (let [ph     (v/assert kb (list puppy Muffet) CxMid)
             ch     (v/handle-of kb (list mortal Muffet) CxLow)
@@ -185,14 +185,14 @@
       (v/edit! kb {:remove [h]}))))
 
 (tu/deftest-kb a-suspended-edge-leaves-the-closures-during-the-preview
-  (tu/with-terms [puppy dog CxLow]
+  (tu/with-terms [puppy dog CxLow CxTop]
     (let [edge   (v/assert kb (list 'genl puppy dog) 'CxUniverse)
-          cxe    (v/assert kb (list 'genlCx CxLow 'CxUniverse) 'CxUniverse)
+          cxe    (v/assert kb (list 'genlCx CxLow CxTop) 'CxUniverse)
           before (content kb)
           orig   @#'settle/drain-recheck!
           seen   (atom [])
           read   #(vector (v/in? kb edge) (v/genl? kb puppy dog)
-                          (v/in? kb cxe) (v/sees? kb CxLow 'CxUniverse))]
+                          (v/in? kb cxe) (v/sees? kb CxLow CxTop))]
       ;; read in each pass, where the passes' re-chains read the closures too
       (with-redefs-fn {#'settle/drain-recheck! (fn [k] (swap! seen conj (read)) (orig k))}
         #(v/preview kb {:remove [edge cxe]}))

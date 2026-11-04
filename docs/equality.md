@@ -525,7 +525,10 @@ could reach, up to `tax/*exposure-instance-budget*` candidates (below), and hand
 to `special/derive-functional-equalities` **at its own storage context**, which sweeps
 every reader below that context (`context-down`), the joining context the edge connected
 among them. The readers are swept most general first (`special/merge-readers`), so a reader
-below one that holds the merge sees it and skips the pair. Two blind sibling contexts
+below one that holds the merge sees it and skips the pair. A fact stored in CxUniverse
+sweeps CxUniverse and every context storing a fact of a predicate related to its functor,
+since every context sees CxUniverse with no stored edge
+(`equality_test/a-fact-in-cxuniverse-merges-with-one-in-a-context-no-edge-names`). Two blind sibling contexts
 each holding one of two clashing fillers derive nothing until *both* of the edges wiring
 some context under both of them have landed — visibility is the union of every edge that
 grants it, not the effect of the latest one alone. Written the

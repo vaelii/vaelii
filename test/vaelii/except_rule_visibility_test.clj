@@ -73,6 +73,24 @@
         (testing "the rule is visible again and its conclusion is re-derived"
           (is (seq (v/sentexes-matching kb (list flies Tweety) CxBird))))))))
 
+(tu/deftest-kb retracting-the-except-re-joins-a-rule-derived-from-its-target
+  (tu/with-terms [marked relOf outOf Tom CxHid]
+    (let [U 'CxUniverse M {:strength :monotonic}]
+      (v/assert kb (list 'genlCx CxHid U) U)
+      (v/assert kb (list 'implies (list marked '?p)
+                         (list 'set/forwardRule (list 'implies (list '?p '?x '?y) (list outOf '?x '?y))))
+                U M)
+      (let [mh (v/assert kb (list marked relOf) U M)]
+        (doseq [late-fact? [false true]]
+          (let [fact #(v/assert kb (list relOf Tom 'Ann) CxHid)
+                fh   (when-not late-fact? (fact))
+                eh   (v/assert kb (list 'except (sx/sentex-handle mh)) CxHid M)
+                fh   (or fh (fact))]
+            (is (not (v/ask? kb (list outOf Tom 'Ann) CxHid)))
+            (v/retract! kb eh)
+            (is (v/ask? kb (list outOf Tom 'Ann) CxHid) (str "fact before the except: " (not late-fact?)))
+            (v/retract! kb fh)))))))
+
 ;; ---- 4. backward chaining ------------------------------------------------
 ;; `provers/candidate-rules` filters direction, belief, and context inheritance; a rule
 ;; hidden from the asking context by a believed except must not be a candidate either.

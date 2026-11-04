@@ -87,7 +87,7 @@
     (is (= '#{abduce add-evaluatable argue assert-many bulk-assert-facts! check clear-caches
               compare-tacticians conflicts contradictions digests edit! edit-with-consequences!
               export! export-text! fork import!
-              kb-quality load-foreign! load-text! preview query-status search-tree}
+              kb-quality load-foreign! load-text! preview query-status replace-facts! search-tree}
            gap)
         "the opts-taking publics `public-syms` does not reach — named in its docstring")))
 

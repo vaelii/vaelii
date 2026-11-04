@@ -43,6 +43,27 @@ all load. A path holding no KB is logged and the browser stays on the starter.
 and sets no variable. All three default `KB-DIR` to `checkouts/kb` beside the checkout,
 and set the heap from `VAELII_HEAP` (default half of physical memory, up to `31g`).
 
+### The starter dump
+
+`lein browser` restores the starter from an export dump instead of asserting it. The
+`:browser` profile sets the `vaelii.starter.dump` system property to `target/starter-dump`,
+and `fresh-starter-kb!` hands the directory to `starter/load-through-dump`. With the
+property unset, as under `lein run -m vaelii.web` and `/kbs`, the starter loads in full.
+
+The dump's directory name joins everything that decides what a load stores: the source
+identity's digest ([storage.md](storage.md#the-source-identity)), a hash of the loader
+namespaces outside that digest's walk, a hash of the starter's files, and the readings of
+`VAELII_ASSERTIVE_ARG_TYPES` and `VAELII_PRUNE_SUBSUMED_MINTS`. An engine change that moves
+the digest misses, the start loads the starter in full, and that KB replaces the older dump.
+A dump the import refuses is deleted and the starter loads. A KB built by a JVM whose source
+or shipped KB files changed after it started is written nowhere, since its code and the name
+read from the files describe different engines.
+
+`starter_copy_test` holds the restored KB equal to the loaded one on sentences, contexts,
+truth, strength, belief, justifications and the taxonomy closures. On 2026-10-31, on a box at
+load 50, a cold JVM imported the 5,120-sentex dump in 0.84 s, the name took 2.1 s, and the
+load it replaces took 40 to 55 s.
+
 `VAELII_WEB_PORT` is the default rather than an override: an explicit `--port` wins. Three
 sources are read in order — the variable, the `vaelii.web.port` system property (what a
 test sets, a JVM being unable to change its own environment), then 3000 — and a value that
@@ -171,11 +192,11 @@ request log either, which [operations.md](operations.md) states as the trade it 
 
 | Route | Shows |
 |-------|-------|
-| `/` | the **upper ontology**: the reader's browsing history (the terms, literals and rules whose pages they opened, each list in visit order and capped at 50, held in the browser's localStorage by vaelii.js, a literal drawn by `/history/literals` with its badge, its colours and its belief now, and an entry the active KB does not hold forgotten through `/history/known`), what the KB is in four numbers, then the genlCx context lattice, the genl type tree (from `thing`), the documented terms (the `comment` sentexes), and its disjointness. Every one of them is **bounded**, and where the whole is too long to read the page shows the top of a ranking rather than the first fifty of an order nobody chose — this is the first page opened against a KB whose size the reader did not choose (below) |
-| `/stats` (`?nogoods=1`, `?clashes=1`) | **statistics**: headline counts (contexts, types, stored sentexes, the placed `contradicts` count and the filed violation tally), a contexts-by-size table ranked largest-first, and the filed ledger of dropped derivations when non-empty (`filed-violations`), each entry naming the run that dropped it. Every count is a stored count and the ledger a deref, so a page load reads no belief and fetches no record. The held facts and rules and the convicted firings, the `:inert-argument`, `:inert-rule` and `:forced-conclusion` entries `violations` reads off the stored state, are behind **Scan for held facts and rules**, which runs the `held` list (`/lists/run`) as a job. `?nogoods=1` reads what the placed nogoods come to, the dilemmas and conflicts, each placement read at its own context: a belief read per placement, which is minutes on a corpus holding tens of thousands. The contexts table and the ledgers are one screen each and continue on scroll. `?clashes=1` additionally asks the **standing disjointness question** (below), which is computed on demand rather than filed; its clash list stops at 50 with a `showing 50 of N` line and does not continue. The newest finished tally of the [definitional blocks](#a-term-page-lists-its-definitional-block) over the KB, how many types hold each part, is shown under a button that runs another (`/stats/blocks`) |
+| `/` | the **upper ontology**: the reader's browsing history (the terms, literals and rules whose pages they opened, each list in visit order and capped at 50, held in the browser's localStorage by vaelii.js, a literal or a rule drawn by `/history/sentexes` as a one-line sentex row with its belief now, and an entry the active KB does not hold forgotten through `/history/known`), what the KB is in four numbers, then the genlCx context lattice, the genl type tree (from `thing`), the documented terms (the `comment` sentexes), and its disjointness. Every one of them is **bounded**, and where the whole is too long to read the page shows the top of a ranking rather than the first fifty of an order nobody chose — this is the first page opened against a KB whose size the reader did not choose (below) |
+| `/stats` (`?nogoods=1`, `?clashes=1`) | **statistics**: headline counts (contexts, types, stored sentexes, the placed `contradicts` count and the filed violation tally), a contexts-by-size table ranked largest-first, and the filed ledger of dropped derivations when non-empty (`filed-violations`), each entry naming the run that dropped it. Every count is a stored count and the ledger a deref, so a page load reads no belief and fetches no record. The page holds the [whole-KB lists](#whole-kb-lists), one row each. The held facts and rules and the convicted firings, the `:inert-argument`, `:inert-rule` and `:forced-conclusion` entries `violations` reads off the stored state, are the `held` list, behind **Scan for held facts and rules**. `?nogoods=1` reads what the placed nogoods come to, the dilemmas and conflicts, each placement read at its own context: a belief read per placement, which is minutes on a corpus holding tens of thousands. The contexts table and the ledgers are one screen each and continue on scroll. `?clashes=1` additionally asks the **standing disjointness question** (below), which is computed on demand rather than filed; its clash list stops at 50 with a `showing 50 of N` line and does not continue. The newest finished tally of the [definitional blocks](#a-term-page-lists-its-definitional-block) over the KB, how many types hold each part, is shown under a button that runs another (`/stats/blocks`) |
 | `/stats/blocks` (POST) | run the definitional block tally, one `describe` per type, as a read job, and answer with `/stats` when it finishes inside 5 s, else with `/jobs`. Origin-checked: it starts work |
-| `/lists` | the **lists**: whole-KB lists, each read only when its button is pressed — every believed **defeat** (the sentex it takes out of belief and its context), every **contradiction** the last settle left standing (the dilemmas, then the conflicts), every **unary predicate without a genl** but `thing`, and every **held fact and rule** with every convicted firing. A list runs as a read job (below) |
-| `/lists/run` (POST) | run one list (`list=defeats`, `contradictions`, `orphan-types` or `held`) as a job, and answer with its rows when it finishes inside 5 s, else with `/jobs`. Origin-checked: it starts work |
+| `/lists` | answers with the `/stats` page, whose **lists** section holds every believed **defeat** (the sentex it takes out of belief and its context), every **contradiction** the last settle left standing (the dilemmas, then the conflicts), every **unary predicate without a genl** but `thing`, and every **held fact and rule** with every convicted firing. A list runs as a read job (below) |
+| `/lists/run` (POST) | run one list (`list=defeats`, `contradictions`, `orphan-types` or `held`) as a job, and answer with its rows when it finishes inside 5 s, with `/stats` and a note when it finishes empty, else with `/jobs`. Origin-checked: it starts work |
 | `/lists/result?job=`, `/lists/rows?job=&offset=` | a finished list's rows, 200 at a time, continuing on scroll; a job the registry has dropped (after an hour) says so |
 | `/quality` | the **health report**: the newest finished `kb-quality` reading over the active KB, one framed region per reading in `quality-report`'s order, with the time it finished and the catalog entry it read, and the button that runs another (below) |
 | `/quality/run` (POST) | run `kb-quality` as a read job and answer with the page when it finishes inside 5 s, else with `/jobs`; with a reading already running over the KB, answer with the page and start nothing. Origin-checked: it starts work |
@@ -183,12 +204,12 @@ request log either, which [operations.md](operations.md) states as the trade it 
 | `/closure?dir=genls\|specs&q=<term>` | **every supertype or every subtype** of a type, drawn as a layered picture of the reduced order, the term on the bottom row for genls and the top row for specs (below). The term page links both under its graph |
 | `/find?q=<pattern>` | **term search** over the KB's vocabulary: every term whose name matches (a query with no regex metacharacter is a case-insensitive substring match, so `DOG` finds `dog`; a query carrying one is a regular expression under `re-find`, so `^parent` anchors), each linked to its term page — the header search box points here. A pattern resolving to a single term (the only match, or an exact-name match) **jumps straight to that term's page** (`HX-Push-Url`) |
 | `/term?q=<term>` | a **term**: a drawn picture of where it sits (below), its [definitional block](#a-term-page-lists-its-definitional-block), then every sentex containing it grouped by the **index root** that reaches it — functor `[:predicate-extent]`, argument-position `[:argument-slot pos]` (the slot predicate set the predicate-agnostic read unions the scoped roots over), context `[:context-root]`, and the term-index `[:term-index]` remainder (rules, deeper nestings) — each group carrying its cheap count (O(1) for the roots; one O(1) read per predicate at the slot for the argument groups) |
-| `/sentex/:id` | a **sentex** (atomic or rule): an action bar — Copy, Edit, Remove (below) — then its **belief state** (IN, or the `why-not` reason — superseded / defeated / inert / unsupported — with the restatement, contradictors, the declarations a placed defeat convicts through, the grounds of the length an inert tuple breaks, or missing antecedents that explain it), its supporting justifications (justifications concluding it), its dependents (justifications using it as an argument), the meta-sentexes naming it by `(sentexHandle id)` (`sentexes-naming`, the first 60), its provenance map, and its terms |
+| `/sentex/:id` | a **sentex** (atomic or rule): an action bar — Copy, Edit, Remove (below) — then **what its circle says** (the kind its colour draws and how that kind runs, the origin its fill draws, and the belief its brightness draws), then for an inert rule **why it is inert** (the declarations whose mints the engine computes in code, the generator that concluded it, or that it was written inert, followed by each `implementationNote` on the term it concludes and on the generator's antecedents), then its **belief state** (IN, or the `why-not` reason — superseded / defeated / withdrawn / forced conclusion / inert / unsupported — with the restatement, contradictors, the hidden sentexes and the defeats hiding them, the void firings, the declarations a placed defeat convicts through, the grounds of the length an inert tuple breaks, or missing antecedents that explain it), its supporting justifications (justifications concluding it), its dependents (justifications using it as an argument), the meta-sentexes naming it by `(sentexHandle id)` (`sentexes-naming`, the first 60), its provenance map, and its terms |
 | `/why/:id` | the **proof tree**: `vaelii.core/why` rendered whole — every justification down to the premises it rests on, collapsible, each derived node expanded once, with rule sentences in the author's variable names |
 | `/justification/:id` | a **justification**: its supports/arguments (antecedent sentexes) and its dependent sentex (the conclusion) |
 | `/levels?q=<goal>&ctx=<context>` | the **lookup-to-query stack**: what each of the eight levels answers for a goal, which level first does, and — above them — the **query plan**: the provers bearing on the goal with their estimates and which one runs. A **vector** goal is a conjunctive query and gets the join plan instead (below). Links across to `/inference` for the same goal |
 | `/inference?q=<goal>&ctx=<context>&d=<depth>` | the **inference debugger**: the run that plan predicted, one step past `/levels`. The **search tree** the node engine builds for a goal — every node the frontier reached (not only the path that answered), each with the itemized estimate that ordered it, the rewrite that produced it, and the answers that came off it — plus the same goal under several **tacticians side by side**, tabled by the work each did and the answers each found. The identity property (every complete tactician returns the same answer set) is **verified** on the page, not asserted: a differing row is marked. Reads through `search-tree` / `compare-tacticians`, both of which bound their own work (a node budget and a wall-clock), so the page holds no session and works under `--attach`. Needs a depth — the node engine's only termination |
-| `/network?ctx=<context>&calc=<calculus>` | the **constraint network** a qualitative calculus computes over a context: the tightened matrix (a cell is what still holds of row-to-column), whether the believed facts are satisfiable at all, and one scenario out of it. With no context, the six calculi and their vocabularies |
+| `/network?ctx=<context>&calc=<calculus>` | the **constraint network** a qualitative calculus computes over a context: the tightened matrix (a cell is what still holds of row-to-column), whether the believed facts are satisfiable at all, and one scenario out of it. With no context, the six calculi, their vocabularies and each one's stored fact count, and a line saying so when the KB states none |
 | `/demo` (GET/POST) | the **non-monotonicity walkthrough**: three stepped writes to the reader's sandbox in which `(hasCapability Pingu flying)` is believed, stops being believed, and comes back — at the same handle. GET renders where the sandbox stands, POST runs one step. Every step writes, so every step is origin-checked (below) |
 | `/reasoning` (GET/POST) | the **worked examples**: every kind of inference the shipped ontology performs, each a question with a live answer, the level that answered it, and links to the stored sentexes it reasoned from. GET renders every card at once and asks nothing; POST establishes one example's premises in the reader's sandbox (below) |
 | `/reasoning/verdict?id=&ms=` (GET) | one card's verdict, which the gallery asks for after it renders, one card at a time (`hx-sync` queued on `#main`). `ms` is the climb's deadline (`escalate`'s `:max-ms`), 10 s from the page and up to 2 min from a card's "Give it 2.0 min" button; a stopped climb says **No answer within**, which is not a verdict |
@@ -223,7 +244,7 @@ request log either, which [operations.md](operations.md) states as the trade it 
 | `/kbs/memory` | the **memory strip** heading that panel, collapsed or (`?detail=1`) expanded into the per-KB breakdown. A read of the *process*, not of a KB, so it takes no render env. Two requests reach it and they are different requests: the header line **toggles** (it asks for the state the panel is not in), while the panel **refreshes** at the state it is in, and only while a load is running — one element carrying both would poll the toggle and flip the breakdown open and shut every tick |
 | `/tree/rows?rel=<genl\|genlCx>&node=<term>` | one **level of a hierarchy**: that node's direct children, fetched the first time its disclosure is opened, and paged like any other list. `rel` reaches the index as a functor, so it is checked against the two transitivity relations rather than trusted |
 | `/history/known?t=&handles=` | which browsing-history entries the **active KB holds**, as JSON `{"terms": [q …], "handles": [h …]}`: of the `t` values (one per term, each a term page's `q`), those some stored sentex mentions, and of the handles, those naming a stored sentex. vaelii.js asks once per drawn front page and forgets what is left out, since the history was recorded against whichever KB was active at the visit. A `t` or `handles` that does not read is left out. While the active KB's load is running or stopped part-way the answer is `{"complete": false}` and nothing is forgotten; a load that is `:done` is judged, with belief built or not |
-| `/history/literals?handles=` | the browsing history's **literals**: one entry per handle, in the order given, each with its badge and remove button. vaelii.js keeps only the handles, so the panel builds no markup from localStorage. A `handles` that does not read is an empty row |
+| `/history/sentexes?handles=` | the browsing history's **literals and rules**: one sentex row per handle, clipped to one line, in the order given, each with its remove button. vaelii.js keeps only the handles, so the panel builds no markup from localStorage. A `handles` that does not read is an empty row |
 | `/term/rows`, `/find/rows`, `/levels/rows`, `/front/rows`, `/stats/rows`, `/funnel/rows` | **continuations**: one more page of rows for a capped list. Not pages — bare `<li>`s (the funnel's `<div>` cards) a list's sentinel fetches for itself (below). `/front/rows` and `/stats/rows` take a `?section=` naming which list on the page is continuing |
 | `/health`, `/op` (POST) | the **daemon protocol** over the active KB (above): a native client connects here as it would to `vaelii.serve` |
 | `/vaelii.css` | the stylesheet, re-read per request under the dev script and cached otherwise ([Chrome & typography](#chrome--typography)) |
@@ -855,9 +876,13 @@ A read still runs to its end. Restarting the browser is what stops one.
 
 ## Whole-KB lists
 
-`/lists` holds one kind of thing across the whole KB per list. On a corpus of millions
-of sentexes each is a walk of minutes, so the page reads nothing until a list's button is
-pressed, and the list then runs as a job:
+`/stats` holds one table row per list, and each list holds one kind of thing across the
+whole KB. On a corpus of millions of sentexes each is a walk of minutes, so a page load
+reads no list. Defeats and Contradictions show the stored `defeat` and `contradicts`
+counts, one index read each. A stored `defeat` count of zero proves that list empty, so
+its row offers no button. The `contradicts` count does not prove the same, because
+`conflicts` also reports inert tuples. A row's button runs its list as a job, and a run
+that comes back empty answers with `/stats` and a note, so the reader needs no way back:
 
 - **Defeats** reads the believed `defeat` sentexes (`sentexes-with-functor`), each naming
   the sentex it takes out of belief at its context.
@@ -874,15 +899,14 @@ pressed, and the list then runs as a job:
   `:forced-conclusion` entries of `violations`: every stored fact and rule held out of
   belief for a failed argument constraint, and every firing held void at a
   forced-monotonic conclusion, each fetched from the record store. It is one read and
-  reports no progress inside it, so a cancel lands when it returns. `/stats` offers it as
-  a button.
+  reports no progress inside it, so a cancel lands when it returns.
 
 A list job writes nothing, so it claims no writer and runs beside a write. It reports
 progress every 1,000 sentexes and stops at a report when cancelled; it is never
 interrupted, since an interrupt inside a disk store's read closes the store's file
 channel. Its rows ride in the job's summary metadata, so the jobs screen prints a count,
-and they are kept for the hour a finished job's report is. The lists page links each
-list's last run over the active KB.
+and they are kept for the hour a finished job's report is. Each row links its list's last
+run over the active KB. `/lists` answers with the `/stats` page.
 
 ## The health report
 
@@ -1760,7 +1784,7 @@ order and stays lazy. A ranking that costs more than the page is not a ranking t
 
 The front page also opens with **what the KB is** — sentexes, types, contexts, terms, four
 O(1) reads, the question a reader landing on an unfamiliar corpus asks before anything
-about its contents. The section titled "Core predicates" says "Documented terms" wherever the KB has more commented
+about its contents. A row of the section titled "Core predicates" is the term's `(comment …)` sentex, clipped to one line with the whole text in its `title`. The section says "Documented terms" wherever the KB has more commented
 terms than it can sort: on the shipped schema every one of them is engine vocabulary, and
 on an imported corpus there are of the order of a hundred thousand, and calling those core
 predicates is a claim the page cannot make.
@@ -1932,9 +1956,10 @@ A sentence is rendered structurally, not as one opaque string:
   reader learns once: **red** a negation, the page's title ink a monotonic fact (white on
   the dark theme, near-black on the light one), **yellow** a default
   fact, **green** one the engine derived rather than was told, **blue** a forward rule,
-  **purple** a backward rule, both halves for a rule running both ways, and **black** an
+  **purple** a backward rule, both halves for a rule running both ways, **black** an
   inert rule — stored, and chaining in neither direction; its muted border is what
-  separates it from a monotonic badge on the light theme. A **filled** circle is asserted
+  separates it from a monotonic badge on the light theme — **teal** a choice rule, **pink**
+  a constraint rule and **sky** a rule a solve alone runs. A **filled** circle is asserted
   and a **ring** is derived, which is what keeps a derived negation distinguishable from
   an asserted one; a **dimmed** one is stored and not believed. The sentence behind the
   badge dims with it (`.sx-out`), and each part keeps its role colour mixed toward the
@@ -2050,13 +2075,21 @@ accent pair, the term-role colours (`--t-*`) and the nine-step spectrum (`--rb1`
   it is the one that writes (`.primary`, accent outline filling on hover) or the one that
   tears down (`.danger`). The base rule is the whole of it and no page restates
   it, so a control added later takes the page's shape by being a button.
-- A **header** carries the vaelii logo and monospace wordmark (a home link) at the
-  left, then — pushed to the right — a **menubar** to the top-level tools (Ontology
+- A **header** carries the vaelii logo, monospace wordmark and running version (a home
+  link) at the upper left, the **search box** at the lower left, the KB link `/kbs`
+  (carrying the active KB's name) and the two round colour controls at the lower right,
+  and a **menubar** to the top-level tools (Ontology
   `/`, Reasoning `/reasoning`, Query `/levels`, Assert `/assert`, which writes into the
-  reader's sandbox, Network `/network`, Stats `/stats`, Jobs `/jobs` carrying the
-  running-job count, and KB `/kbs` carrying the active KB's name; vaelii.js marks the
-  one matching the current path active) ending in the two round colour controls, then a
-  **search box** and the request indicator. The search is an htmx *active search*: a debounced
+  reader's sandbox, Removed `/removed`, Network `/network`, Stats `/stats`, Jobs `/jobs` carrying the
+  running-job count; vaelii.js marks the one matching the current path active, the KB
+  link included). The menubar starts beside the logo and runs left to right. From 63rem it
+  runs along the top row, over the KB link and the dots. Between 57rem and 63rem it spans both rows between the corners, in a column
+  reserving 23rem, which holds the eight shipped links on two lines. Either way the header
+  is two lines tall while the menu fits, and it stays on screen as the page scrolls
+  (`position: sticky`). Below 57rem the menubar takes a row of its own between the brand
+  and the search, and the header scrolls away, since four or five lines of it would hold a
+  third of a phone screen. A long KB name truncates with an ellipsis before the menubar
+  loses width. The search is an htmx *active search*: a debounced
   `hx-get` to `/find` swaps just the
   `#main` region, so it stays focused and no full reload happens. What you type is
   matched against **term names**: a query with no regex metacharacter is a
@@ -2066,6 +2099,15 @@ accent pair, the term-role colours (`--t-*`) and the nine-step spectrum (`--rb1`
   resolves to a **single term** — the only match, or one it names exactly — jumps
   straight to that term's page (so `parentOf` lands on it even though it is a substring
   of `grandparentOf`), setting `HX-Push-Url` so the address bar follows.
+- The **running version** is the browser process's own, read once at namespace load from
+  `META-INF/maven/com.vaelii/vaelii/pom.properties`, and its tooltip gives the git
+  revision. Leiningen writes that file when it starts the JVM and the jar carries it, so
+  a source reload moves neither value. Under `--attach` the label names the browser's
+  build, not the daemon's. A classpath without the file renders no label.
+- A whole page's **HTML source** takes a newline before each block element's opening tag
+  and after its closing tag (`line-break-at`), so the source reads one element per line.
+  Inline elements and text stay as hiccup rendered them. A fragment htmx swaps carries no
+  added newline.
 - A **request indicator** — a hairline bar across the top of the viewport, which htmx
   marks `.htmx-request` for the life of a request (`hx-indicator`, set on the body and
   so inherited by every navigation, search, and continuation). It is `position: fixed`
@@ -2090,8 +2132,8 @@ accent pair, the term-role colours (`--t-*`) and the nine-step spectrum (`--rb1`
   scales it, and a mono span inside a mono span does not compound. Both are vendored
   under `resources/public/font/` and served self-hosted, and each ships its **regular
   only** — two files, 102K, the whole webfont budget. The heavier levels the sheet asks
-  for (`font-weight: 600` on a frame title, the wordmark, an active menubar
-  link, a table head) are **synthesized**. Declaring each family at 400 alone is
+  for (`font-weight: 600` on a frame title, the wordmark, a table head) are
+  **synthesized**. Declaring each family at 400 alone is
   what keeps synthesis available — a `400 700` range would claim the face covers bold
   and flatten emphasis instead.
 - **htmx** ([vendored](https://htmx.org), `resources/public/htmx.min.js`, 2.0.9) drives

@@ -452,7 +452,11 @@ question of every closed negative antecedent on a predicate the rule is posted u
 grant or no grant (`chain/redecided-negative-antecedents`). A firing made under the grant
 holds no support handle for the literal it withheld, so the level-6 question withdraws
 the firing, or keeps a refused one refused, once the grant leaves or is defeated and no
-stored negative answers the literal.
+stored negative answers the literal. `recheck/exception-candidates` narrows the queued
+firings by those literals beside the rule's `unknown`, `exceptWhen` and aggregate
+literals, so an arriving `(P a)` reaches the firings naming `a` whatever other block
+conditions the rule carries
+(`naf_test/a-closed-extent-antecedent-beside-another-block-condition-is-redecided-when-its-member-arrives`).
 
 A closed-extent negative **inside** an `unknown` antecedent, an aggregate's census body
 or an `exceptWhen` query is not withheld: the condition is evaluated through the
@@ -474,6 +478,23 @@ hidden, and the firing is believed there as `ask?` of the condition answers. A l
 prover other than `ClosedExtentProver` and `FactProver` answers names no handle, and its
 guard defeat rests on the rule and its antecedents alone. The guard defeat's `why` lists
 the grant among its `:because` entries.
+
+**A reader below the placement decides the literal at its own context.** When a
+closed-extent negative antecedent `(not (P a))` holds at the placement and fails at a
+context below it, the firing places a guard defeat there
+(`chain/closed-extent-guard-placements`), as an `unknown` antecedent's guard below the
+placement does. Two kinds of blocker place it. A `(P a)` member blocks as it blocks
+`(unknown (P a))`, through `chain/guard-solution-placements`, at each context where
+`(not (P a))` fails at level 6, so a stored `(not (P a))` visible there keeps the
+conclusion believed. A set of excepts and defeats holding one hider of each grant the
+placement sees (`provers/closed-extent-supports`) blocks at each context
+`chain/placements-over` gives the set where no other answer of `(not (P a))` is visible,
+so a `:monotonic` denial of the grant below the placement blocks through the defeat its
+nogood places. Both are read in the network with no defeat read
+(`tax/*network-belief*`). With the rule, `(kid K)` and the grant in CxA and `(asleep K)`
+in CxB below it, CxA believes `(conclf K)` and CxB does not, and `provable?` of the same
+rule written backward answers alike at both
+(`naf_test/a-closed-extent-antecedent-is-read-at-each-reader-below-its-placement`).
 
 ### Stratification, from both arrival orders
 

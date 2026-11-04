@@ -25,9 +25,11 @@
             [vaelii.impl.kb :as kb]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reasoning-image :as ri]
+            [vaelii.impl.solve :as solve]
             [vaelii.impl.special :as special]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]
+            [vaelii.impl.types.solve :as solve-types]
             [vaelii.test-util :as tu])
   (:import [java.io DataInputStream DataOutputStream File RandomAccessFile]
            [java.nio.file CopyOption Files StandardCopyOption]))
@@ -426,6 +428,47 @@
             (finally (v/close! kb))))
         (finally (tu/rm-rf! dir))))))
 
+(def ^:private other-solver
+  "A `Solver` value that is not the local one and solves as it does."
+  (reify solve-types/Solver
+    (solve [_ program] (solve-types/solve solve/local-solver program))))
+
+(deftest an-open-installs-the-image-before-set-solver-runs
+  (tu/with-snapshot-platform
+    (let [dir (tu/tmpdir "vaelii-reasoning-image-")]
+      (try
+        (let [kb (open dir)] (content! kb) (v/close! kb))
+        (let [kb (open dir)]
+          (try
+            (is (installed? kb) "every KB opens on the default solver")
+            (v/set-solver kb other-solver)
+            (is (= :solver-set (ri/refusal kb)))
+            (finally (v/close! kb))))
+        (finally (tu/rm-rf! dir))))))
+
+(deftest a-kb-holding-another-solver-writes-no-image-and-the-next-open-recovers
+  (tu/with-snapshot-platform
+    (let [dir (tu/tmpdir "vaelii-reasoning-image-")]
+      (try
+        (let [kb (open dir)] (content! kb) (v/close! kb))
+        (let [before (manifest-text dir)
+              kb     (open dir)]
+          (v/set-solver kb other-solver)
+          (v/assert kb '(dog Muffet) 'CxUniverse)
+          (v/close! kb)
+          (is (= before (manifest-text dir)) "the close wrote no image"))
+        (let [kb (v/open-kb {:backend :disk-snapshot :dir dir :recover? false})]
+          (try
+            (is (= :records-differ (:reason (ri/install! kb))))
+            (finally (v/close! kb))))
+        (let [a       (open dir)
+              [b ref] (recovered-copy dir)]
+          (try
+            (is (not (installed? a)) "the open recovered")
+            (same-as! (whole b) (whole a))
+            (finally (v/close! a) (v/close! b) (tu/rm-rf! ref))))
+        (finally (tu/rm-rf! dir))))))
+
 (deftest no-image-is-written-while-a-settle-decides-the-belief
   (tu/with-snapshot-platform
     ;; The writer's settle is parked before its discovery, and the image write on this
@@ -532,6 +575,22 @@
        (is (= :written (:reasoning-image ex)))
        (is (= {:reasoning :installed} (:reasoning-image im)))
        (same-as! (whole a) (whole b))))))
+
+(deftest an-import-into-a-kb-that-set-a-solver-declines-the-dump-s-image
+  (tu/with-snapshot-platform
+    (let [src  (tu/tmpdir "vaelii-reasoning-image-")
+          dump (str (tu/tmpdir "vaelii-reasoning-image-") "/dump")
+          dst  (tu/tmpdir "vaelii-reasoning-image-")]
+      (try
+        (let [a (open src)]
+          (content! a)
+          (v/export! a dump)
+          (let [b (doto (v/open-kb {:backend :disk-log :dir dst}) (v/set-solver other-solver))]
+            (try
+              (is (= {:reasoning :recovered :reason :solver-set} (:reasoning-image (v/import! b dump))))
+              (is (= (belief a) (belief b)) "the import recovered from the records")
+              (finally (v/close! a) (v/close! b)))))
+        (finally (tu/rm-rf! src) (tu/rm-rf! (.getParent (io/file dump))) (tu/rm-rf! dst))))))
 
 (deftest a-dump-image-under-another-source-is-installed-and-trusted
   (tu/with-snapshot-platform

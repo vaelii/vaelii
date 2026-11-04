@@ -650,6 +650,214 @@
     (is (v/ask? kb (list p (list PairFn A B)) U))
     (is (v/ask? kb (list p (list PairFn B A)) U))))
 
+(tu/deftest-kb a-pattern-reads-a-permuted-compound-in-every-order-its-mark-allows
+  (tu/with-terms [p PairFn A B]
+    (v/assert kb (list 'binary_function PairFn) U)
+    (v/assert kb (list 'commutative PairFn) U)
+    (v/assert kb (list p (list PairFn B A)) U)
+    (is (= [{'?x B}] (v/ask kb (list p (list PairFn A '?x)) U)))
+    (is (= [{'?x A}] (v/ask kb (list p (list PairFn B '?x)) U)))
+    (is (= #{{'?x A '?y B} {'?x B '?y A}}
+           (set (v/ask kb (list p (list PairFn '?x '?y)) U))))
+    (is (= 1 (count (handles kb (list p (list PairFn '?x '?y))))))))
+
+(tu/deftest-kb a-pattern-reads-a-symmetric-literal-inside-a-sentence-argument-either-way
+  (tu/with-terms [believes bordersOn Ann Bob Cid]
+    (v/assert kb (list 'symmetric bordersOn) U)
+    (v/assert kb (list believes Ann (list bordersOn Cid Bob)) U)
+    (is (= [{'?x Cid}] (v/ask kb (list believes Ann (list bordersOn Bob '?x)) U)))
+    (is (= [{'?x Bob}] (v/ask kb (list believes Ann (list bordersOn Cid '?x)) U)))))
+
+(defn- rule-over-permuted-compound
+  "Asserts `(commutative PairFn)`, `(p (PairFn lo hi))` with `lo` the term the store orders
+  first, and the forward rule `(implies (p (PairFn ?x lo)) (q ?x))`, whose antecedent names `lo` at the
+  position the store does not hold it at, in `order`.  Answers the mark's handle."
+  [kb order p q PairFn A B]
+  (let [[lo hi] (sort-by str [A B])
+        mark    (atom nil)
+        steps   {:mark #(reset! mark (v/assert kb (list 'commutative PairFn) U))
+                 :fact #(v/assert kb (list p (list PairFn lo hi)) U)
+                 :rule #(v/assert kb (list 'set/forwardRule (list 'implies (list p (list PairFn '?x lo)) (list q '?x))) U)}]
+    (v/assert kb (list 'binary_function PairFn) U)
+    (doseq [s order] ((steps s)))
+    @mark))
+
+(tu/deftest-kb a-rule-fires-over-a-permuted-compound-while-the-mark-holds
+  (doseq [order [[:mark :fact :rule] [:mark :rule :fact] [:rule :fact :mark]
+                 [:fact :rule :mark] [:rule :mark :fact] [:fact :mark :rule]]]
+    (tu/with-terms [p q PairFn A B]
+      (let [hi   (second (sort-by str [A B]))
+            mark (rule-over-permuted-compound kb order p q PairFn A B)]
+        (is (v/ask? kb (list q hi) U) (str order ": the firing holds"))
+        (v/retract! kb mark)
+        (is (not (v/ask? kb (list q hi) U)) (str order ": the firing leaves with the mark"))))))
+
+(tu/deftest-kb a-compound-at-a-quoted-position-keeps-its-written-order
+  (doseq [order [[:mark :decl :facts] [:mark :facts :decl] [:decl :facts :mark]
+                 [:facts :decl :mark] [:decl :mark :facts] [:facts :mark :decl]]]
+    (tu/with-terms [noteOf PairFn A B]
+      (let [written #{(list noteOf (list PairFn A B) "n") (list noteOf (list PairFn B A) "n")}
+            decl    (atom nil)
+            steps   {:mark  #(v/assert kb (list 'commutative PairFn) U)
+                     :decl  #(reset! decl (v/assert kb (list 'quotedArg noteOf 1 'expression) U))
+                     :facts #(run! (fn [s] (v/assert kb s U)) (sort-by str written))}]
+        (v/assert kb (list 'binary_function PairFn) U)
+        (doseq [s order] ((steps s)))
+        (is (= written (stored kb (list noteOf '?x "n"))) (str order ": two rows"))
+        (v/retract! kb @decl)
+        (is (= 1 (count (stored kb (list noteOf '?x "n")))) (str order ": one row after"))))))
+
+(defn- mention-reads
+  "What `context` answers, in order, to the sorted and the written spelling of
+  `(noteOf (PairFn B A) n)` and to `(noteOf (PairFn A ?x) n)`."
+  [kb context noteOf PairFn A B n]
+  [(v/ask? kb (list noteOf (list PairFn A B) n) context)
+   (v/ask? kb (list noteOf (list PairFn B A) n) context)
+   (vec (v/ask kb (list noteOf (list PairFn A '?x) n) context))])
+
+(tu/deftest-kb a-reader-the-mention-does-not-reach-reads-the-compound-under-its-marks
+  (tu/with-terms [noteOf PairFn A B CxA CxB]
+    (v/assert kb (list 'binary_function PairFn) U)
+    (v/assert kb (list 'commutative PairFn) U)
+    (doseq [c [CxA CxB]] (v/assert kb (list 'genlCx c U) U {:strength :monotonic}))
+    (v/assert kb (list 'quotedArg noteOf 1 'expression) CxA)
+    (doseq [c [CxA CxB]] (v/assert kb (list noteOf (list PairFn B A) "n") c))
+    (is (= [true true [{'?x B}]] (mention-reads kb CxB noteOf PairFn A B "n"))
+        "CxB, the declaring context's sibling, reads it under `(commutative PairFn)`")
+    (is (= [false true []] (mention-reads kb CxA noteOf PairFn A B "n"))
+        "CxA reads it as the store holds it, as written")))
+
+(defn- mention-firing-reading
+  "Over CxA and CxB under CxUniverse and CxW below both, with `(commutative PairFn)`, run
+  `order`'s writes (`:decl`, `(quotedArg noteOf 1 expression)` in CxA; `:rule`, a CxB rule
+  reading `(noteOf (PairFn A ?x) n)`, or under `ground?` the sorted spelling beside `(seed
+  ?x)`, concluding `(hit ?x)`; `:fact`, `(noteOf (PairFn B A) n)` in CxB), then `late`.
+  Answers `ask?` of the sorted spelling and of `(hit B)` at CxB, then the two at CxW.  CxB
+  does not see the declaration and reads the compound sorted; CxW sees it and reads the
+  compound as written."
+  [kb ground? order late]
+  (tu/with-terms [noteOf PairFn A B hit seed CxA CxB CxW]
+    (doseq [[c up] [[CxA U] [CxB U] [CxW CxA] [CxW CxB]]]
+      (v/assert kb (list 'genlCx c up) U {:strength :monotonic}))
+    (v/assert kb (list 'binary_function PairFn) U)
+    (v/assert kb (list seed B) CxB)
+    (let [mark   (v/assert kb (list 'commutative PairFn) U)
+          sorted (list noteOf (list PairFn A B) "n")
+          decl   (atom nil)
+          ops    {:decl #(reset! decl (v/assert kb (list 'quotedArg noteOf 1 'expression) CxA))
+                  :rule #(v/assert kb (list 'set/forwardRule
+                                            (list 'implies (if ground?
+                                                             (list 'and sorted (list seed '?x))
+                                                             (list noteOf (list PairFn A '?x) "n"))
+                                                  (list hit '?x)))
+                                   CxB)
+                  :fact #(v/assert kb (list noteOf (list PairFn B A) "n") CxB)}]
+      (run! #((ops %)) order)
+      (case late
+        nil       nil
+        :universe (v/assert kb (list 'quotedArg noteOf 1 'expression) U)
+        :edge     (v/assert kb (list 'genlCx CxB CxA) U {:strength :monotonic})
+        :unmark   (v/retract! kb mark)
+        :undecl   (v/retract! kb @decl)
+        :except   (v/assert kb (list 'except (list 'sentexHandle @decl)) CxW {:strength :monotonic}))
+      (vec (for [c [CxB CxW], s [sorted (list hit B)]] (v/ask? kb s c))))))
+
+(defn- mention-firings-agree [kb every]
+  (doseq [ground? [false true]
+          late    [:universe :edge :unmark :undecl :except]
+          order   (if every (tu/orders [:decl :rule :fact]) [[:decl :rule :fact]])
+          :let    [[ab hb aw hw] (mention-firing-reading kb ground? order late)]]
+    (is (= [ab aw] [hb hw]) (str "ground: " ground? ", " order ", then " late))))
+
+(tu/deftest-kb a-forward-rule-reads-a-compound-at-a-mention-as-its-placement-reads-it
+  (tu/with-neutral-kb [kb tu/isolated-fresh]
+    (doseq [ground? [false true] order [[:decl :rule :fact] [:decl :fact :rule]]]
+      (is (= [true true false false] (mention-firing-reading kb ground? order nil))
+          (str "ground: " ground? ", " order)))
+    (mention-firings-agree kb false)))
+
+(tu/deftest-kb ^:slow a-forward-rule-reads-a-compound-at-a-mention-as-its-placement-reads-it-in-every-order
+  (tu/with-neutral-kb [kb tu/isolated-fresh] (mention-firings-agree kb true)))
+
+(tu/deftest-kb a-sub-predicate-row-answers-a-mention-the-reader-does-not-reach
+  (doseq [edge ['genl 'genlInverse] declaration-first? [true false]]
+    (tu/with-terms [noteOf subNoteOf PairFn A B CxA CxB]
+      (let [declare #(v/assert kb (list 'quotedArg noteOf 1 'expression) CxA)
+            label   (str edge (if declaration-first? ", declaration first" ", declaration last"))]
+        (v/assert kb (list 'binary_function PairFn) U)
+        (v/assert kb (list 'commutative PairFn) U)
+        (doseq [c [CxA CxB]] (v/assert kb (list 'genlCx c U) U {:strength :monotonic}))
+        (v/assert kb (list edge subNoteOf noteOf) U)
+        (when declaration-first? (declare))
+        (v/assert kb (if (= 'genl edge)
+                       (list subNoteOf (list PairFn B A) "n")
+                       (list subNoteOf "n" (list PairFn B A)))
+                  CxB)
+        (let [before (mention-reads kb CxB noteOf PairFn A B "n")]
+          (when-not declaration-first? (declare))
+          (is (= [true true [{'?x B}]] before (mention-reads kb CxB noteOf PairFn A B "n"))
+              (str label ": CxB, which the declaration does not reach, reads the "
+                   subNoteOf " row as a KB with no declaration does")))))))
+
+(tu/deftest-kb a-super-predicate-reads-a-sub-predicate-row-kept-as-written-at-its-mention
+  (doseq [edge ['genl 'genlInverse] [declared-in row-in] [[U U] [:a :a] [:a :b]]]
+    (tu/with-terms [noteOf subNoteOf PairFn A B CxA CxB]
+      (let [cx  #(get {:a CxA :b CxB} % %)
+            row (if (= 'genl edge) (list subNoteOf (list PairFn B A) "n") (list subNoteOf "n" (list PairFn B A)))]
+        (v/assert kb (list 'binary_function PairFn) U)
+        (v/assert kb (list 'commutative PairFn) U)
+        (doseq [c [CxA CxB]] (v/assert kb (list 'genlCx c U) U {:strength :monotonic}))
+        (v/assert kb (list edge subNoteOf noteOf) U)
+        (v/assert kb (list 'quotedArg subNoteOf (if (= 'genl edge) 1 2) 'expression) (cx declared-in))
+        (v/assert kb row (cx row-in))
+        (is (= [true true [{'?x B}]] (mention-reads kb (cx row-in) noteOf PairFn A B "n"))
+            (str edge ", declared in " declared-in ", row in " row-in ": " noteOf
+                 " declares no mention, so it reads the row's compound under its marks"))))))
+
+(tu/deftest-kb a-reader-that-does-not-believe-the-mention-reads-the-compound-under-its-marks
+  (doseq [deny-first? [false true]]
+    (tu/with-terms [noteOf PairFn A B note_flag]
+      (let [deny #(v/assert kb (list 'not (list note_flag noteOf)) U {:strength :monotonic})]
+        (v/assert kb (list 'binary_function PairFn) U)
+        (v/assert kb (list 'commutative PairFn) U)
+        (v/assert kb (list 'set/forwardRule
+                           (list 'implies (list note_flag '?p) (list 'quotedArg '?p 1 'expression)))
+                  U)
+        (v/assert kb (list note_flag noteOf) U)
+        (when deny-first? (deny))
+        (v/assert kb (list noteOf (list PairFn B A) "n") U)
+        (when-not deny-first? (deny))
+        (is (= [true true [{'?x B}]] (mention-reads kb U noteOf PairFn A B "n"))
+            (str "the declaration rests on a default a monotonic denial defeats, so it stays"
+                 " JTMS IN and the store keeps the compound as written; denial first: "
+                 deny-first?))))))
+
+(tu/deftest-kb a-mention-leaving-beside-a-second-one-on-its-predicate-respells-its-rows
+  (doseq [shape [:retract-removes-the-position-2-declaration
+                 :deny-leaves-it-jtms-in-and-believed-by-no-reader]
+          facts-first? [true false]]
+    (tu/with-terms [noteOf PairFn A B C D note_flag]
+      (v/assert kb (list 'binary_function PairFn) U)
+      (v/assert kb (list 'commutative PairFn) U)
+      (v/assert kb (list 'quotedArg noteOf 1 'expression) U)
+      (v/assert kb (list 'set/forwardRule
+                         (list 'implies (list note_flag '?p) (list 'quotedArg '?p 2 'expression)))
+                U)
+      (let [flag     (v/assert kb (list note_flag noteOf) U)
+            facts    #(v/assert kb (list noteOf (list PairFn C D) (list PairFn B A)) U)
+            retract? (= shape :retract-removes-the-position-2-declaration)
+            off      #(if retract?
+                        (v/retract! kb flag)
+                        (v/assert kb (list 'not (list note_flag noteOf)) U {:strength :monotonic}))
+            label    (str shape (if facts-first? ", facts first" ", facts last"))]
+        (if facts-first? (do (facts) (off)) (do (off) (facts)))
+        (v/assert kb (list noteOf (list PairFn C D) (list PairFn A B)) U)
+        (is (= (if retract? 1 2)
+               (count (stored kb (list noteOf '?x '?y))))
+            label)
+        (is (= [{'?x B}] (vec (v/ask kb (list noteOf (list PairFn C D) (list PairFn A '?x)) U)))
+            label)))))
+
 ;; ---- the term marks: a meet function's applications ----------------------
 ;;
 ;; `(meetFunctionOf MeetFn subintervalOf)` concludes the commutative, associative and

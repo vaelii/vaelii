@@ -4,9 +4,7 @@
   "Gnarly `except` tests: cross-context exceptions, cross-context meta-exceptions,
   deep exception chains, excepting special-predicate sentexes, and the
   special-predicate sweep that verifies `except` blocks or does not block the
-  cached behaviour behind each interpreted functor.
-
-  PR #33 — meta-exception cascade."
+  cached behaviour behind each interpreted functor."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.sentex :as sx]
@@ -346,6 +344,13 @@
         hidden (special/context-move kb sub super)]
     (doseq [h (rseq @hs)] (when (v/sentex kb h) (v/retract! kb h)))
     [(diff 0) (diff 1) shown hidden]))
+
+(tu/deftest-kb an-edge-to-cxuniverse-moves-no-context-in-either-direction
+  (tu/with-terms [CxLeaf]
+    (let [h (v/assert kb (list 'genlCx CxLeaf 'CxUniverse) 'CxUniverse)]
+      (is (= [#{} #{}] ((juxt :raw :moved) (special/context-move kb CxLeaf 'CxUniverse))))
+      (v/retract! kb h)
+      (is (= [#{} #{}] ((juxt :raw :moved) (special/context-move kb CxLeaf 'CxUniverse)))))))
 
 (tu/deftest-kb context-move-names-what-each-reader-gains-through-the-edge
   ;; Each row: the effective `:shown` equals the per-reader diff of `context-up` and the

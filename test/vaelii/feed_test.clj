@@ -27,6 +27,7 @@
             [taoensso.trove :as trove]
             [vaelii.core :as v]
             [vaelii.impl.feed :as feed]
+            [vaelii.impl.kb :as kb]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rules :as vr]
@@ -236,6 +237,15 @@
         ;; so the teardown's premise sweep cannot find it
         (v/retract! kb h)
         (is (empty? @seen) "removing one is not news either")))))
+
+(tu/deftest-kb the-mint-rule-a-first-declaration-stores-arrives-with-it
+  (tu/with-terms [animal parentOf]
+    (let [[seen f] (recorder)]
+      (v/watch kb f)
+      (v/assert kb (list 'arg parentOf 1 animal) 'CxUniverse)
+      (let [h (get (kb/mint-rule-table kb) 'arg)]
+        (is (some? h))
+        (is (some #(= h (:handle %)) (mapcat :believed-added @seen)))))))
 
 (tu/deftest-kb forward-chain-delivers-what-it-derived
   ;; A second entry point into a settle, so it must feed too — `assert` is not the only

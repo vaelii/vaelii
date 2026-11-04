@@ -1002,6 +1002,46 @@
 (deftest ^:slow a-defeat-two-nogoods-share-is-in-force-through-either-one-in-every-order
   (shared-defeat-orders-agree (tu/orders [:cat :dog :not :disjoint])))
 
+(defn- conflicts-reading
+  "Over CxA, CxB and CxHide under CxUniverse and CxW below the three, write in `order`
+  `:cat` (`(cat Rex)` and the `:monotonic` rule `cat_src → cat` in CxA), `:hide` (a
+  `:monotonic` except of the `:monotonic` `(cat_src Rex)` in CxHide) and, per member type
+  `m` of `ms`, a `:monotonic` `(m Rex)` in CxB with `(disjoint m cat)`.  Each pair places a
+  conflict that decides against `(cat Rex)` at CxW.  Answers `[CxW believes (cat Rex), CxW
+  believes every member, CxA believes (cat Rex)]`."
+  [ms order]
+  (tu/with-neutral-kb [kb tu/fresh]
+    (tu/with-terms [CxA CxB CxHide CxW cat cat_src Rex]
+      (apply types! kb cat ms)
+      (doseq [[c up] [[CxA 'CxUniverse] [CxB 'CxUniverse] [CxHide 'CxUniverse]
+                      [CxW CxA] [CxW CxB] [CxW CxHide]]]
+        (v/assert kb (list 'genlCx c up) 'CxUniverse))
+      (let [src (v/assert kb (list cat_src Rex) CxA {:strength :monotonic})]
+        (doseq [w order]
+          (case w
+            :cat  (do (v/assert kb (list cat Rex) CxA)
+                      (v/assert kb (list 'set/forwardRule (list 'implies (list cat_src '?x) (list cat '?x)))
+                                CxA {:strength :monotonic}))
+            :hide (v/assert kb (list 'except (list 'sentexHandle src)) CxHide {:strength :monotonic})
+            (do (v/assert kb (list w Rex) CxB {:strength :monotonic})
+                (v/assert kb (list 'disjoint w cat) 'CxUniverse))))
+        [(v/ask? kb (list cat Rex) CxW) (every? #(v/ask? kb (list % Rex) CxW) ms)
+         (v/ask? kb (list cat Rex) CxA)]))))
+
+(defn- conflicts-orders-agree [every]
+  (tu/with-terms [dog fish bird]
+    (doseq [ms [[dog] [dog fish] [dog fish bird]]
+            :let [os (tu/orders (into [:cat :hide] ms))]]
+      (is (= #{[false true true]}
+             (into #{} (map #(conflicts-reading ms %)) (take-nth (if every 1 (quot (count os) 3)) os)))
+          (str (count ms) " conflicts")))))
+
+(deftest a-member-every-conflict-at-a-vantage-decides-against-is-defeated-there
+  (conflicts-orders-agree false))
+
+(deftest ^:slow a-member-every-conflict-at-a-vantage-decides-against-is-defeated-there-in-every-order
+  (conflicts-orders-agree true))
+
 (deftest a-sibling-exception-releases-the-pair-at-the-readers-that-see-it
   ;;   CxUniverse  (genl t1 col) (genl t2 col) (sibling_disjoint col)
   ;;     └─ CxB    (t1 Pip) default  (t2 Pip) monotonic

@@ -181,6 +181,10 @@ config_owed_for_path() {
     src/vaelii/impl/types/snapshot.clj \
     |src/vaelii/impl/reasoning_image.clj) printf 'disk-snapshot' ;;
     src/vaelii/impl/types/store.clj)     printf 'disk-log disk-memory disk-snapshot' ;;
+    # the durable record store's handle set, read by `disk/record_store.clj` alone
+    src/vaelii/impl/handle_set.clj)      printf 'disk-log disk-memory disk-snapshot' ;;
+    # the token table the dense, columnar and durable index stores key by
+    src/vaelii/impl/tokens.clj)          printf 'backends' ;;
     src/vaelii/impl/jtms.clj \
     |src/vaelii/impl/dense_jtms.clj \
     |src/vaelii/impl/jtms_protocol.clj \
@@ -247,6 +251,9 @@ config_owed_for_path() {
     # the public API every configuration's suite calls; `violations` there joins the
     # ledger to the `:forced-conclusion` entries read off the stored void firings
     src/vaelii/core.clj)                 printf 'routine' ;;
+    # the write entry point under `core`: it stores, indexes and unindexes through the
+    # protocol methods every backend implements, and settles under every sweep
+    src/vaelii/impl/assert_entry.clj)    printf 'routine' ;;
     # the configuration set itself, and the harness that installs the switches: a change here
     # changes what every other run MEANS, so it owes all of them
     scripts/lib/suite-configs.sh \

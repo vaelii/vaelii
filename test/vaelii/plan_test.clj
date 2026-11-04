@@ -848,6 +848,23 @@
         (is (= [e s] (binding [plan/*enabled* false]
                        (plan/order kb [e s] CxPlan {:end-vars ends}))))))))
 
+(tu/deftest-kb a-computed-literal-follows-its-binder-however-many-variables-it-shares-with-the-prefix
+  ;; `apart` shares five variables with `rowOf`, and its override summary counts no
+  ;; column, so its join onto `rowOf` divides `unbounded` by the guessed distinct count
+  ;; five times and estimates fewer rows than `mark`'s cross product.
+  (tu/with-terms [rowOf apart mark Node CxPlan]
+    (v/assert-many kb (concat (for [i (range 32)] (list rowOf (symbol (str Node "A" i)) Node Node Node Node))
+                              (for [j (range 40)] (list mark (symbol (str Node "E" j)))))
+                   CxPlan {:chain? false})
+    (let [r (list rowOf '?a '?b '?c '?d '?f)
+          a (list apart '?a '?b '?c '?d '?f '?e)
+          m (list mark '?e)
+          computed (fn [g bnd] (when (= apart (first g)) (if (every? bnd (rest g)) 1 plan/unbounded)))]
+      (doseq [ranked? [true false], written (permutations [r a m])]
+        (binding [plan/*enabled* ranked?]
+          (is (= a (last (plan/order kb written CxPlan {:est-override computed})))
+              (pr-str ranked? written)))))))
+
 ;; ---- the invariant: cost changes, meaning does not -----------------------
 
 (tu/deftest-kb planning-never-changes-the-answer-set

@@ -198,7 +198,7 @@
     (is (= :unknown-option
            (try (v/why-not kb (list goal A B) CxR {:nearset 3})
                 (catch clojure.lang.ExceptionInfo e (:type (ex-data e))))))
-    (is (= v/why-not-opt-keys #{:nearest :max-depth :max-ms}))))
+    (is (= v/why-not-opt-keys #{:nearest :max-depth :max-ms :content?}))))
 
 ;; ---- what a bound costs ---------------------------------------------------
 

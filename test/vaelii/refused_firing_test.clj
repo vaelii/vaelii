@@ -158,6 +158,33 @@
         (is (nil? (chain/refusals kb h))
             "nothing is recorded against a handle that is not a rule")))))
 
+(deftest a-refused-firing-is-one-entry-in-every-arrival-order
+  (let [step   {:rule   member-rule!
+                :member #(v/assert % '(rmember RM1) ctx {:strength :monotonic})
+                :mark   #(v/assert % '(rmark RM1) ctx)}
+        ledger (fn [order]
+                 (tu/with-cleared-kb [kb tu/isolated-fresh]
+                   (run! #((step %) kb) order)
+                   (v/forward-chain kb)
+                   [(recorded kb)
+                    (into #{} (comp (filter set?) cat (map :bindings)) (vals @(reasoning/refused kb)))]))
+        orders [[:rule :member :mark] [:member :mark :rule] [:mark :rule :member]]]
+    (is (= (repeat 3 [1 '#{{?var0 RM1}}]) (map ledger orders)))))
+
+(deftest a-firing-swept-and-refused-by-a-bounded-join-is-one-entry-under-the-wider-bound
+  (let [step   {:rule   member-rule!
+                :member #(v/assert % '(rmember RM1) ctx {:strength :monotonic})
+                :mark   #(v/assert % '(rmark RM1) ctx)
+                :chain  #(v/forward-chain % {:max-depth 7})}
+        ledger (fn [order]
+                 (tu/with-cleared-kb [kb tu/isolated-fresh]
+                   (run! #((step %) kb) order)
+                   [(recorded kb)
+                    (into #{} (comp (filter set?) cat (map :max-depth)) (vals @(reasoning/refused kb)))]))]
+    (testing "placed, swept with no bound when the member arrives, then refused by a bounded re-join"
+      (is (= [[1 #{nil}] [1 #{nil}]]
+             (map ledger [[:rule :mark :member :chain] [:mark :rule :member :chain]]))))))
+
 (deftest a-refusal-does-not-resurrect-a-firing-whose-support-left
   (testing "the bindings are a snapshot, so what they rest on is re-checked"
     ;; The antecedent fact is retracted while the member still refuses the firing, so the

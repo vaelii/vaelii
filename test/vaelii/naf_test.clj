@@ -1016,6 +1016,56 @@
            (mapv #(v/ask? kb (list concl K) %) [CxA CxB CxC])
            (mapv #(v/ask? kb (list 'unknown (list 'not (list asleep K))) %) [CxA CxB CxC])))))
 
+(tu/deftest-kb a-closed-extent-antecedent-is-read-at-each-reader-below-its-placement
+  ;; CxA holds the grant, both rules and (kid K).  Below it, CxB holds (asleep K), CxC the
+  ;; grant's denial, and CxD the denial beside a stored (not (asleep K)).  Under
+  ;; `neg-at-a?` CxA holds the stored negative too, which answers the literal at each reader.
+  (doseq [neg-at-a? [false true] below-first? [false true]]
+    (tu/with-terms [kid asleep conclf conclb K CxA CxB CxC CxD]
+      (let [neg    (list 'not (list asleep K))
+            below! #(do (when neg-at-a? (v/assert kb neg CxA))
+                        (v/assert kb (list asleep K) CxB)
+                        (doseq [c [CxC CxD]]
+                          (v/assert kb (list 'not (list 'closed_extent_predicate asleep)) c {:strength :monotonic}))
+                        (v/assert kb neg CxD))
+            rule   #(list 'implies (list 'and (list kid '?y) (list 'not (list asleep '?y))) (list % '?y))
+            at     (fn [f] (mapv f [CxA CxB CxC CxD]))]
+        (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+        (doseq [c [CxB CxC CxD]] (v/assert kb (list 'genlCx c CxA) 'CxUniverse))
+        (v/assert kb (list kid K) CxA)
+        (v/assert kb (list 'closed_extent_predicate asleep) CxA)
+        (when below-first? (below!))
+        (v/assert kb (rule conclf) CxA {:direction :forward})
+        (v/assert kb (rule conclb) CxA {:direction :backward})
+        (when-not below-first? (below!))
+        (is (= (if neg-at-a? [true true true true] [true false false true])
+               (at #(v/ask? kb neg %))
+               (at #(v/ask? kb (list conclf K) %))
+               (at #(v/provable? kb (list conclb K) %)))
+            (str "negative at CxA: " neg-at-a? ", below first: " below-first?))))))
+
+(tu/deftest-kb a-closed-extent-antecedent-beside-another-block-condition-is-redecided-when-its-member-arrives
+  ;; The rule carries an `unknown` antecedent or an `exceptWhen` beside the closed-extent
+  ;; negative; (asleep K) arrives at the placement CxA or at CxB below it.
+  (doseq [shape [:alone :unknown :exceptWhen] at-a? [true false] member-first? [false true]]
+    (tu/with-terms [kid asleep sick conc K CxA CxB]
+      (let [antes (cond-> [(list kid '?y) (list 'not (list asleep '?y))]
+                    (= shape :unknown) (conj (list 'unknown (list sick '?y))))
+            rule  (list 'set/forwardRule (list 'implies (apply list 'and antes) (list conc '?y)))
+            m!    #(v/assert kb (list asleep K) (if at-a? CxA CxB))
+            at    (fn [f] (mapv f [CxA CxB]))]
+        (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+        (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+        (v/assert kb (list 'closed_extent_predicate asleep) CxA)
+        (v/assert kb (list kid K) CxA)
+        (when member-first? (m!))
+        (v/assert kb (if (= shape :exceptWhen) (list 'exceptWhen (list sick '?y) rule) rule) CxA)
+        (when-not member-first? (m!))
+        (is (= (if at-a? [false false] [true false])
+               (at #(v/ask? kb (list 'not (list asleep K)) %))
+               (at #(v/ask? kb (list conc K) %)))
+            (str shape ", at CxA: " at-a? ", member first: " member-first?))))))
+
 ;; ---- forall: sugar for the nested NAF ----------------------------------
 
 (deftest forall-desugars-to-a-nested-unknown

@@ -462,7 +462,7 @@
               grouped)))))
 
 (defn- cardinality-constraints
-  "Ground every cardinality rule visible from `base` into `solve/Program` cardinality
+  "Ground every cardinality rule visible from `base` into `vaelii.impl.types.solve/Program` cardinality
   entries: its single antecedent matched against the atoms of `head->id`, the matches
   grouped by the bindings of its variables other than the counted one, one entry per
   group.  `(build ?c transport)` counted over `?c` is one group; `(ferry ?a ?t)` counted

@@ -13,7 +13,7 @@
   Two degenerate ends bracket it, and both are tested here rather than assumed:
 
   - `(functionalInArg P 2)` on a binary predicate must behave exactly as `(functional P)`
-    does today.  That is the regression half — the generalization is not allowed to move
+    does.  That is the regression half — the generalization is not allowed to move
     arity-2 behaviour.
   - `(functionalInArg P 1)` on a **unary** predicate has an *empty* determinant, which
     reads as \"at most one filler, full stop.\"  Every filler must reconcile with every
@@ -45,43 +45,19 @@
   assert that the verdict is a property of *what a context sees*, not of which context ran
   first or of state left behind by the first descent.
 
-  STATUS.  Written before the implementation existed.  Every row passes;
-  nothing here is pending.  Two rounds of closing got it there, and the second is the
-  one worth reading, because the first looked complete.
-
-  vaelii#43 closed the cross-context arrival-order gap this matrix was blocked on: rows
-  1, 2 and 4 unpended, alongside the five that never needed it (the arity-2 regression
-  half, the composite-determinant case this mark exists for, and both 212-arity rows).
-  Closing it took more than the accessor `functionalInArg` was missing from
-  `special/equate-under-context-edge`'s own predicate list — `derive-functional-
-  equalities` (and its antisymmetric twin) now sweep every reader below a fact's own
-  context on **every** arrival order, not only the genlCx-edge one, since these rows
-  wire their contexts before their facts and so exercise the plain fact-arrival
-  trigger; and `settle/could-clash?`, `partner-contexts` and `constraint-facts-in-
-  ancestor set` needed their own empty-determinant arm, since none of the three had ever read
-  past arity 2 for a `functional`-family mark.  Two of the two-argument rows also had
-  their own assertions corrected rather than the engine bent to fit them — row 1
-  checked `contradictions` where an unmergeable cross-context clash actually lands in
-  `violations` (the same entry point the arity-2 case already takes), and row 2's \"neither
-  side alone concludes anything\" used the unscoped whole-KB `same-class?` where a
-  scoped, per-context read was the question actually being asked.
+  The rows split by filler kind, since the two kinds take different lanes.  A pair of
+  symbol fillers takes the *merge* lane: `special/equate-existing`, `equate-under-edge`
+  and `equate-under-context-edge` when a declaration, a `genl` edge or a `genlCx` edge
+  arrives last, and `derive-functional-equalities` when a fact arrives last, reading
+  every context below the fact's own.  A pair no merge can reconcile takes the *clash*
+  lane: `vaelii.impl.decide.tuple` places the nogood, and when the mark arrives last
+  `special/offer-marked-existing` offers the stored tuples to `decide/offer!`.  The
+  declaration-last blocks at the end of this file assert both lanes.
 
   Row 3 (`an-asserted-difference-leaves-two-default-fillers-a-represented-dilemma`)
   asserts a represented dilemma at `:default` strength — belief order-independent,
   contradiction reported once, exactly `nixon-diamond-is-the-same-dilemma-every-time`'s
-  shape — because a represented dilemma is what \"the clash is not lost\" means.
-
-  vaelii#54 then closed what all of that had missed, and the structure of the miss is the
-  lesson.  Every row above turns on a pair of **symbol** fillers, so every one of them
-  exercises the *merge* lane — `special/equate-existing` and the `derive-*` family.  The
-  unmergeable pair takes an entirely different lane, `settle`'s arbitration sweep, and
-  `functionalInArg` had joined neither of that lane's two trigger lists: a declaration arriving
-  after two numbers convicted nothing, where `(functional P)` in the same order convicts.
-  A generalization weaker than the special case it generalizes, on an axis no row here
-  looked at, behind a docstring that argued the exclusion was correct.  The
-  declaration-last-over-an-unmergeable-pair block at the end of this file is the receipt,
-  and `exposure_test/every-functional-family-mark-is-in-both-of-settles-trigger-lists` states
-  it over the lists themselves so a fourth spelling cannot repeat it."
+  shape — because a represented dilemma is what \"the clash is not lost\" means."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.test-util :as tu]))
@@ -166,8 +142,7 @@
 ;; ---- the regression half: arity 2 must not move -------------------------
 
 (tu/deftest-kb functional-in-arg-2-on-a-binary-predicate-is-todays-functional
-  ;; The generalization earns nothing if it changes what already works.  Same fixture as
-  ;; the existing functional tests, spelled the new way.
+  ;; The fixture of the `functional` tests, spelled with `functionalInArg`.
   (tu/with-terms [parentOf Tom]
     (let [[lo hi] (sort [(tu/tmp-ind "Mary") (tu/tmp-ind "Mary")])]
       (v/assert kb (list 'functionalInArg parentOf 2) U)
@@ -187,23 +162,17 @@
 ;; the `genl` edge that puts the facts under the mark arrives LAST
 ;; (`special/equate-under-edge`).
 ;;
-;; It failed for the generalized spelling alone.  The entry point's body asks
-;; `derive-functional-equalities`, which reads both spellings — but its presence check
-;; asked `props :functional` and nothing else, so a KB whose only mark was
-;; `(functionalInArg P n)` took the "declares nothing functional, free" exit and merged
-;; nothing, where `(functional P)` over the identical shape merged.  The same omission as
-;; vaelii#52 and vaelii#54, in the third of the family's three entry points: each entry
-;; point spelled the presence check for itself, so joining the vocabulary to two of them
-;; left the third silently closed.
-;;
-;; The presence check is `tax/functional-family-declared?`, read by every entry point of
-;; the family, which is what makes this one test cover all three rather than one of them.
-;; **Two tests and not one parameterized over the spelling**, which is the trap this
-;; pair walked into first: the presence check under test is *global* (does the taxonomy
-;; hold any functional-family mark at all), so two arms sharing one KB cannot tell the
-;; spellings apart — the control arm's `(functional …)` makes the presence check answer
-;; true and the generalized arm then passes against the very bug it is meant to catch.
-;; `:each` gives each `deftest` its own fresh KB, so the isolation has to be at that grain.
+;; The entry point's body asks `derive-functional-equalities`, which reads both
+;; spellings, and its presence check is `tax/functional-family-declared?`, read by every
+;; entry point of the family.  A presence check reading `props :functional` alone would
+;; take the "declares nothing functional" exit for a KB whose only mark is
+;; `(functionalInArg P n)`, and merge nothing.
+;; **Two tests and not one parameterized over the spelling**: the presence check under
+;; test is *global* (does the taxonomy hold any functional-family mark at all), so two
+;; arms sharing one KB cannot tell the spellings apart.  The control arm's
+;; `(functional …)` makes the presence check answer true, and the generalized arm then
+;; passes whether or not its own spelling is read.  `:each` gives each `deftest` its own
+;; fresh KB, so the isolation has to be at that grain.
 (defn- merges-when-the-edge-arrives-last?
   "Assert `decl` on a super-predicate and two fillers on a sub-predicate, then the `genl`
   edge between them LAST.  True iff the fillers ended up merged.  Checks along the way
@@ -223,7 +192,7 @@
       (merged? kb lo hi))))
 
 (tu/deftest-kb a-genl-edge-arriving-last-merges-under-functional
-  ;; the control: the arity-2 spelling, which has always worked
+  ;; the control: the arity-2 spelling
   (check (merges-when-the-edge-arrives-last? kb #(list 'functional %))
          "(functional P): the edge arriving last reaches the facts already stored"))
 
@@ -237,16 +206,10 @@
 ;; `(functionalInArg P n)` names the **constrained** slot; the rest of the tuple is its
 ;; determinant.  On a binary predicate that gives two readings, not one: position 2 is
 ;; `functional` — argument 1 determines argument 2 — and position 1 is its mirror,
-;; argument 2 determining argument 1.  `checks/functional-clashes` has always convicted
-;; both (`nm/args` opened at `n`, never assumed binary).
-;;
-;; `settle/partner-contexts` had not: its binary arm filtered the mark to position 2 and
-;; derived one partner source, argument 1.  So a position-1 pair whose halves sat in two
-;; contexts was enforced wherever one context saw both and reported from nowhere — the
-;; arrival-order asymmetry the arbitration sweep exists to remove, surviving for one spelling
-;; of one mark.  `marked-at-final-arg?` names the rest of that shape and now says so:
-;; arity 2 is reached here, through the mirrored determinant read, and only a composite
-;; determinant above arity 2 is still undiscovered at settle time.
+;; argument 2 determining argument 1.  `checks/functional-clashes` convicts both
+;; (`nm/args` opened at `n`, never assumed binary), and the clash lane decides a
+;; position-1 pair split across two contexts at the reader that sees both halves, as it
+;; decides a position-2 pair.
 (tu/deftest-kb both-positions-of-a-binary-mark-are-enforced-in-one-context
   (doseq [[n facts label]
           [[2 '[(PTom PMaryA) (PTom PMaryB)] "position 2, determinant in argument 1"]
@@ -264,7 +227,7 @@
 (tu/deftest-kb a-position-1-clash-across-contexts-is-decided-like-a-position-2-one
   ;; Two unmergeable fillers, each fine where it stands, clashing only from below.  The
   ;; position-2 twin of this is `two-numbers-under-an-empty-determinant-contradict…`
-  ;; above; this is the same question with the determinant on the other side.
+  ;; below; this is the same question with the determinant on the other side.
   (tu/with-terms [pRel CxLeft CxRight CxBottom]
     (contexts! kb {:left CxLeft :right CxRight :bottoms [CxBottom]})
     (let [Tom (tu/tmp-ind "Tom")]
@@ -274,19 +237,14 @@
       (check (any-functional-clash? kb)
              "argument 2 is the determinant and shared, and no merge makes 1 and 2 one")
       (check (= #{CxBottom} (reading-contexts kb [CxLeft CxRight CxBottom]))
-             "decided at the vantage that sees both, as position 2 already was"))))
+             "decided at the vantage that sees both, as a position-2 pair is"))))
 
 ;; ---- the matrix, rows 1 and 2 -------------------------------------------
 
-;; vaelii#43 closed the gap: `special/equate-under-context-edge` (and the
-;; `derive-functional-equalities` sweep it now shares with the plain fact-arrival
-;; trigger) derives the merge from CxBottom, and `settle/could-clash?` /
-;; `partner-contexts` / `constraint-facts-in-ancestors` — none of which had ever read the
-;; `:functional-in-arg` table, only the arity-2 `:functional` one — now admit the
-;; empty-determinant shape too, so `clash-nogoods` finds the unmergeable pair.  Two
-;; numbers cannot be ranked, so the vantage below reports a dilemma and both fillers
-;; stand: the row reads `contradictions` from that vantage, which is the question the
-;; matrix asks.
+;; Two numbers in two sibling contexts take the clash lane: no merge reconciles them, so
+;; the pair is decided at CxBottom, the context that sees both.  Two numbers cannot be
+;; ranked, so the vantage below reports a dilemma and both fillers stand: the row reads
+;; `contradictions` from that vantage, which is the question the matrix asks.
 (tu/deftest-kb two-numbers-under-an-empty-determinant-contradict-in-the-context-below
   ;; Row 1.  `(p 1)` in CxLeft and `(p 2)` in CxRight are each fine where they stand;
   ;; CxBottom sees both and no merge can reconcile two numbers, so the clash is a
@@ -323,11 +281,10 @@
            "no context sees both fillers, so the clash does not exist to be had")
     (check (empty? (clash-contexts kb)) "and nothing is tagged with a vantage")))
 
-;; vaelii#43 closed the gap.  The two facts arrive into a topology `contexts!` wires
-;; before either one exists, so this is the *fact*-arrives-last shape rather than the
-;; *edge*-arrives-last one — which needed `derive-functional-equalities` itself to
-;; sweep every reader below a fact's own context (`tax/context-down`), not only
-;; `equate-under-context-edge`'s own genlCx-triggered sweep.
+;; The two facts arrive into a topology `contexts!` wires before either one exists, so
+;; this is the *fact*-arrives-last shape rather than the *edge*-arrives-last one:
+;; `derive-functional-equalities` reaches CxBottom by sweeping every reader below the
+;; fact's own context (`tax/context-down`), with no `genlCx` edge arriving.
 (tu/deftest-kb two-symbols-under-an-empty-determinant-merge-in-the-context-below
   ;; Row 2: the desired behaviour is
   ;; `(equals ThingOne ThingTwo)` in CxBottom.  This is where a functional clash is
@@ -444,10 +401,9 @@
 
 ;; ---- row 4: two bottoms, same verdict ------------------------------------
 
-;; vaelii#43 closed the gap, and this row asserts that the fix has no favorite
-;; reader: `equate-under-context-edge`'s candidate walk and `derive-functional-
-;; equalities`' own `context-down` sweep both reach every reader below a marked
-;; predicate's stored facts, not the first one asked.
+;; This row asserts that the merge lane favours no reader: `equate-under-context-edge`'s
+;; candidate walk and `derive-functional-equalities`' own `context-down` sweep both
+;; reach every reader below a marked predicate's stored facts, not the first one asked.
 (tu/deftest-kb both-contexts-below-reach-the-same-verdict
   ;; Row 4.  CxBottomOne and CxBottomTwo see exactly the same two facts and neither sees
   ;; the other.  A verdict that differs between them would mean the answer depends on
@@ -558,30 +514,21 @@
 
 ;; ---- declaration-last: the arrival order the settle sweep exists for ------
 
-;; `equate-existing`'s docstring states order-independence as an invariant, and vaelii#43
-;; found it holds for declaration-last and predicate-`genl`-edge-last while failing for
-;; context-`genlCx`-edge-last.  Declaration-last is the order `functional` gets RIGHT,
-;; and it gets it right through `settle`: `clash-declaration-functors` names the functors
-;; whose arrival implicates content already stored, and the dispatch beside it sweeps the
-;; marked predicate's subtree.
-;;
-;; `functionalInArg` was merged (#44) without reaching `settle.clj` at all, so it enforces
-;; at assert and is invisible to that sweep — a generalization weaker than the special
-;; case it generalizes, on the one axis the special case handles.  These two tests are
-;; the receipt for that, and the control is not optional: without it a red pair proves
-;; only that the fixture is wrong.
+;; These rows put the declaration LAST, after the facts it convicts.
+;; `special/equate-existing` sweeps the marked predicate's spec subtree when a
+;; `functional` or `functionalInArg` declaration arrives.  The control is not optional:
+;; without it a red pair proves only that the fixture is wrong.
 
 (tu/deftest-kb control-declaring-functional-after-the-facts-convicts
   ;; THE CONTROL.  Read this result first.  If this is red the fixture is broken and the
-  ;; test below measures nothing — the S175 lesson about a probe whose own known-good
-  ;; case never engaged the machinery it was aimed at.
+  ;; test below measures nothing.
   (tu/with-terms [parentOf Tom]
     (let [[lo hi] (sort [(tu/tmp-ind "Mary") (tu/tmp-ind "Mary")])]
       (v/assert kb (list parentOf Tom lo) U {:strength :monotonic})
       (v/assert kb (list parentOf Tom hi) U {:strength :monotonic})
       (v/assert kb (list 'functional parentOf) U)          ; declaration LAST
       (is (merged? kb lo hi)
-          "today's functional convicts a pair already stored when the mark arrives"))))
+          "functional convicts a pair already stored when the mark arrives"))))
 
 (tu/deftest-kb declaring-functional-in-arg-after-the-facts-convicts
   ;; Same fixture, same arrival order, spelled the generalized way.  Must behave exactly
@@ -596,28 +543,24 @@
           "(functionalInArg P 2) must convict retroactively exactly as (functional P) does"))))
 
 (tu/deftest-kb control-declaring-functional-in-arg-before-the-facts-still-convicts
-  ;; The already-passing order, restated here so a regression in the fix is visible
-  ;; beside the thing it fixes rather than in another test's file.
+  ;; The declaration-first order, beside the declaration-last rows so a regression in
+  ;; either order shows in this file.
   (tu/with-terms [parentOf Tom]
     (let [[lo hi] (sort [(tu/tmp-ind "Mary") (tu/tmp-ind "Mary")])]
       (v/assert kb (list 'functionalInArg parentOf 2) U)   ; declaration FIRST
       (v/assert kb (list parentOf Tom lo) U {:strength :monotonic})
       (v/assert kb (list parentOf Tom hi) U {:strength :monotonic})
       (is (merged? kb lo hi)
-          "declaration-first was never broken and must stay unbroken"))))
+          "declaration first convicts as declaration last does"))))
 
 ;; ---- declaration-last over an UNMERGEABLE pair ---------------------------
 
 ;; The declaration-last rows above test the *merge* lane: two symbol fillers, reconciled
-;; by `special/equate-existing`, which learned the `functionalInArg` entry point in #52.  The
-;; other half of the same arrival order is the pair no merge can reconcile, and it takes
-;; an entirely different lane — `settle`'s arbitration sweep, which `functionalInArg` had
-;; not joined (#54).  The generalization enforced at the entry point and went unswept behind it:
-;; a mark arriving after two numbers convicted nothing, where `(functional P)` in the
-;; same order convicts.
-;;
-;; Both halves of the lane map on `special/functional-family-declaration` are therefore
-;; asserted here, and the control is not optional for the reason the merge rows give.
+;; by `special/equate-existing`.  The other half of the same arrival order is the pair no
+;; merge can reconcile, and it takes the clash lane: `special/offer-marked-existing`
+;; offers the stored tuples beneath the marked predicate to `decide/offer!`, for
+;; `(functional P)` and `(functionalInArg P n)` alike.  The control is not optional, for
+;; the reason the merge rows give.
 
 (tu/deftest-kb control-functional-declared-after-unmergeable-facts-is-reported
   ;; THE CONTROL for the two rows below.  Read this result first.
@@ -630,7 +573,7 @@
 
 (tu/deftest-kb functional-in-arg-2-declared-after-unmergeable-facts-is-reported
   ;; The regression half of the generalization, applied to the clash lane: at arity 2
-  ;; this is `(functional P)` spelled the new way and must behave identically.
+  ;; this is `(functional P)` spelled with `functionalInArg` and must behave identically.
   (tu/with-terms [birthYearOf Tom]
     (v/assert kb (list birthYearOf Tom 1980) U)
     (v/assert kb (list birthYearOf Tom 1990) U)
@@ -653,13 +596,6 @@
   ;; read down the hierarchy rather than off the exact functor: the mark and the facts
   ;; are both already stored, and it is the `genl` edge between their predicates that
   ;; puts the pair under it.
-  ;;
-  ;; Green before #54 as well as after — `clash-marked-below` has read
-  ;; `tax/functional-in-arg-predicates` beside the `:props` sets since the mark existed,
-  ;; so `marks-above?` already answered for it and only the declaration's *own* functor
-  ;; was missing from the two trigger lists.  The row stays anyway: the fix widens what reaches
-  ;; `marks-above?`, and this is the row that says the widening did not cost the
-  ;; descension.
   (tu/with-terms [parentOf fatherOf Tom]
     (v/assert kb (list 'functionalInArg parentOf 2) U)
     (v/assert kb (list fatherOf Tom 1980) U)

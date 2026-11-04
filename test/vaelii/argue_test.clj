@@ -178,7 +178,7 @@
   ;; no-rule-expansion `ask` arm otherwise, so a key set checked downstream is not checked
   ;; at all for exactly the misspelling that matters: `{:max-deph 3}` would answer
   ;; `:unknown` for a sentence a rule derives, which is the failure the docstring says
-  ;; must not happen.  The check is `argue`'s own, and the key set is `query`'s.
+  ;; must not happen.  The check is `argue`'s own, and the key set is `query`'s plus `:content?`.
   (tu/with-terms [dog has_fur Muffet]
     (v/assert kb (list dog Muffet) 'CxUniverse)
     (v/assert-rule kb [(list dog '?x)] (list has_fur '?x) 'CxUniverse {:direction :backward})
@@ -190,11 +190,16 @@
         (doseq [opts [{:max-deph 3} {:max-depth 3 :max-deph 4} {:nonsense 1}]]
           (let [d (refusal opts)]
             (is (= :unknown-option (:type d)) (pr-str opts))
-            (is (= (vec (sort v/query-opt-keys)) (:options d)) "and the refusal names the key set")
+            (is (= (vec (sort v/argue-opt-keys)) (:options d)) "and the refusal names the key set")
             (is (seq (:unknown d))))))
       (testing "a non-map opts too"
         (is (= :unknown-option (:type (refusal :oops))))
         (is (= :unknown-option (:type (refusal [:max-depth 3])))))
+      (testing "a time bound, which argue does not read, as why does not"
+        (is (= [:unknown-option :unknown-option]
+               [(:type (refusal {:max-depth 3 :max-ms 50}))
+                (:type (try (v/why kb (v/handle-of kb (list dog Muffet) 'CxUniverse) {:max-ms 50}) nil
+                            (catch clojure.lang.ExceptionInfo e (ex-data e))))])))
       (testing "and every accepted key still answers"
         (is (= :true (:verdict (v/argue kb goal 'CxUniverse {:max-depth 3}))))
         (is (= :true (:verdict (v/argue kb goal 'CxUniverse

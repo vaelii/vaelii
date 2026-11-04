@@ -157,3 +157,19 @@
   (testing "a finer ISO field still nests under a calendar day"
     (is (dt/subinterval? (dtf "2000-01-15T13") '(DayFn 2000 1 15)))
     (is (not (dt/subinterval? '(DayFn 2000 1 15) (dtf "2000-01-15T13"))))))
+
+(deftest a-zoned-term-that-starts-or-ends-on-a-clock-change-spans-the-instants-its-clock-reads
+  (let [zoned (fn [local zone] (dt/utc-extent (list 'ZonedDatetimeFn local zone)))]
+    (doseq [[local zone clock extent]
+            [["2018-11-04" "America/Sao_Paulo" "00:00 skips to 01:00: 23 hours"
+              [[2018 11 4 3 0 0] [2018 11 5 2 0 0]]]
+             ["2019-02-16" "America/Sao_Paulo" "24:00 goes back to 23:00: 25 hours"
+              [[2019 2 16 2 0 0] [2019 2 17 3 0 0]]]
+             ["2018-11-05" "America/Sao_Paulo" "no change" [[2018 11 5 2 0 0] [2018 11 6 2 0 0]]]
+             ["2000-03-26" "Europe/London" "01:00 skips to 02:00: 23 hours"
+              [[2000 3 26 0 0 0] [2000 3 26 23 0 0]]]
+             ["2000-03-26T01" "Europe/London" "the hour is skipped" nil]
+             ["2000-03-26T01:30" "Europe/London" "the minute is skipped" nil]
+             ["2000-10-29T01" "Europe/London" "the hour repeats" nil]
+             ["2000-10-29T01:30" "Europe/London" "the minute repeats" nil]]]
+      (is (= extent (zoned local zone)) (str local " " zone ", " clock)))))

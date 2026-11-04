@@ -2008,13 +2008,17 @@
         "a stated membership and an arity statement declare a term")))
 
 (tu/deftest-kb a-value-an-unused-term-and-a-quoted-mention-are-not-undeclared
-  (tu/with-terms [noted_kind quoted_kind unused_kind]
+  (tu/with-terms [noted_kind quoted_kind unused_kind markedAs mention_kind]
     (v/assert kb (list 'comment noted_kind "A kind only documented.") 'CxUniverse)
     (v/assert kb (list 'unary_predicate noted_kind) 'CxUniverse)
     (v/assert kb (list 'negativeExample noted_kind (list 'Quote (list quoted_kind 7))) 'CxUniverse)
-    (is (= :audited (:status (v/kb-integrity kb #{7 "seven" quoted_kind unused_kind}
+    (v/assert kb (list 'arity markedAs 2) 'CxUniverse)
+    (v/assert kb (list 'quotedArg markedAs 1 'symbol) 'CxUniverse)
+    (v/assert kb (list markedAs mention_kind noted_kind) 'CxUniverse)
+    (is (= :audited (:status (v/kb-integrity kb #{7 "seven" quoted_kind unused_kind mention_kind}
                                              'CxUniverse {:categories #{:undeclared-term}})))
-        "a number, a string, a term inside a Quote and a term no sentence uses are not findings")))
+        "a number, a string, a term inside a Quote or at a quotedArg position, and a term no
+         sentence uses are not findings")))
 
 (tu/deftest-kb undeclared-term-reads-the-uses-and-memberships-a-context-sees
   (tu/with-terms [CxHidden owner_kind placed_kind Ann Bob]

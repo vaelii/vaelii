@@ -627,8 +627,8 @@
   reader that does not see one reads the pair separated.  `:visible-from` is the maximal
   common descendant contexts of the first disjointness witness that shares one with `c1`
   and `c2`, kept where the scoped `disjoint?` holds, or nil; it enumerates witnesses only
-  after the scoped `disjoint?` at some common descendant of `c1` and `c2` says one exists
-  (docs/contexts.md).
+  after the scoped `disjoint?` at some common descendant of `c1` and `c2` says one exists,
+  or when both are CxUniverse, whose descendants are every context (docs/contexts.md).
 
   `:disjoint?` reads the declarations unscoped, a superset that `:visible-from`
   narrows to the contexts where the scoped `disjoint?` holds."
@@ -641,8 +641,9 @@
      :visible-from
      (fn [t1 c1 t2 c2]
        (memo vis [t1 c1 t2 c2]
-             #(when (some (fn [k] (tax/disjoint? tax t1 t2 k))
-                          (tax/common-descendants tax [c1 c2]))
+             #(when (or (every? tax/root-context? [c1 c2])
+                        (some (fn [k] (tax/disjoint? tax t1 t2 k))
+                              (tax/common-descendants tax [c1 c2])))
                 (some (fn [w]
                         (let [m (into #{} (filter (fn [k] (tax/disjoint? tax t1 t2 k)))
                                       (tax/maximal-common-descendant-contexts

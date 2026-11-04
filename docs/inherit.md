@@ -495,12 +495,10 @@ unreported.
 **A sentence is not its own converse.** For a self tuple `(P a a)` the converse is the
 sentence, so a stored copy would convict a second assert of the same content. The checks
 exclude a stored sentex whose canonical sentence and **home** context (the sentence's own
-context, not the context of the asker) both equal the candidate's. `(P a a)` in two
-contexts is a real pair: each is the other's converse across the context boundary
-(`a-self-tuple-in-two-contexts-orders-on-the-context`). Keying self on the asker's context
-instead of `home` discards the twin stored in a vantage that `settle` asks from
-(`reads-clash?`), and then whether the pair is reported depends on which of the two was
-written last (`clash_oracle_test`'s streams measure that).
+context, not the context of the asker) both equal the candidate's. `(P a a)` stored in
+two contexts states one sentence twice, and the mark convicts neither copy in either
+arrival order
+(`exposure_test/a-self-tuple-in-two-contexts-forms-no-pair-in-either-arrival-order`).
 
 The mark is read for the sentence's predicate **and every super-predicate of it**
 (`tax/props-over`), because `(fatherOf a b)` beside `(parentOf b a)` is two `parentOf`
@@ -513,9 +511,15 @@ licenses does not.
 
 ## Reading it back
 
-`TransitiveInArgProver` answers a **ground** goal; an open argument is left to the fact
-and rule provers, in the shape `different` and the NAF operators already use
-([defenses.md](defenses.md#transitiveinargprover-answers-no-open-goal)). It answers
+`TransitiveInArgProver` answers a goal whose every preserved position holds a ground
+term. A goal open at a position no declaration names is answered per binding
+(`inherit/open-answers`): the prover walks `reach` of the term at the least preserved
+position, matches `(P … W … ?w …)` for each term `W` reached, and admits each binding
+whose ground instance `answers?` holds. `query`, `prove` and `ask` therefore return the
+bindings `ask?` confirms one by one. A goal open at a preserved position is left to the
+fact and rule provers, in the shape `different` and the NAF operators already use
+([defenses.md](defenses.md#transitiveinargprover-answers-no-goal-open-at-a-preserved-position)).
+On a ground goal the prover answers
 `(P a b)` where `verdict` is `:for` and `(not (P a b))` where it is `:against`
 (`inherit/goal-verdict`), so a surviving denial reached along the declared relations
 answers the negation under the same undercutting and strength rules a surviving claim
@@ -668,7 +672,7 @@ covers from the reader, which is the CxUniverse copy the engine lifts every `(sy
 into ([contexts.md](contexts.md#where-a-relation-property-is-read-from)), so the firing
 goes with the last statement of a mark stated in either of two siblings. The declaration
 joins the justification and not the placement, which the claim and the rule decide
-([contexts.md](contexts.md#a-context-outside-the-topology)). A firing the ordinary matcher makes over a mirror names the mark the same
+([contexts.md](contexts.md#cxuniverse-is-the-implicit-root)). A firing the ordinary matcher makes over a mirror names the mark the same
 way ([inference.md](inference.md#forward-chaining)).
 
 **A more specific contrary claim withdraws a conclusion with nothing retracted.**

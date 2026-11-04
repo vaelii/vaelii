@@ -260,7 +260,8 @@
    :assert-rule            {:fill ['CxUniverse] :option-arity 4}
    :assert-many            {:fill [] :option-arity 3}
    :edit                   {:fill [] :option-arity 2}
-   :edit-with-consequences {:fill [] :option-arity 2}})
+   :edit-with-consequences {:fill [] :option-arity 2}
+   :replace-facts          {:fill [] :option-arity 3}})
 
 (defn- with-write-opts
   "`args` padded out to `option-arity` with `fill`'s defaults and an empty map, or as sent
@@ -361,6 +362,7 @@
     :assert-rule  (op v/assert-rule)
     :assert-many  (op v/assert-many)
     :retract      (op v/retract!)
+    :replace-facts (op v/replace-facts!)
     :edit         (op v/edit!)
     ;; the same write, reporting what it turned out to mean — the *after* to `:preview`'s
     ;; *before*, and the one a caller wants when it has just committed rather than when it
@@ -424,6 +426,7 @@
     :handle-of    (op v/handle-of)
     :find-sentexes (op v/find-sentexes)
     :find-sentexes-all (op v/find-sentexes-all)
+    :defining-contexts (op v/defining-contexts)
     ;; the vocabulary — enumerate / count / search the terms themselves.  Served because
     ;; the alternative for a remote client is shipping every sentex over the wire to
     ;; collect the terms out of them.
@@ -795,7 +798,7 @@
   derive, `:abduce` its hypotheses in a scratch context (docs/operations.md, \"The token
   table\")."
   #{:assert :try-assert :assert-rule :assert-many :retract :edit :edit-with-consequences
-    :add-provenance :export})
+    :replace-facts :add-provenance :export})
 
 (defn- forbidden-context!
   "Throw `:forbidden-context` (403): `principal` may not write `context`, nil for a write
@@ -1226,6 +1229,17 @@
       (if (<= 2 n 3)
         (do (when (coll? (nth args 0))
               (doseq [s (nth args 0)] (put s (nth args 1))))
+            (if (or grant (= n 3))
+              [(nth args 0) (nth args 1) (with-identity op grant (get args 2))]
+              args))
+        args)
+
+      :replace-facts
+      (if (<= 2 n 3)
+        (do (when grant
+              (check-context! op grant [(nth args 0) "it retracts the facts stored there"])
+              (when (coll? (nth args 1))
+                (doseq [s (nth args 1)] (put s (nth args 0)))))
             (if (or grant (= n 3))
               [(nth args 0) (nth args 1) (with-identity op grant (get args 2))]
               args))
@@ -1712,7 +1726,7 @@
   order.  `dir` opens the store there under the backend its files were written by, or a new
   durable `:disk-log` store when it holds none (`dir-backend`), recovered on open; with no
   `dir` the KB is in-memory.  `--starter` loads the shipped starter schema
-  (`vaelii.host.starter/load-into`) before the port is bound.
+  (`vaelii.host.starter/load-sources`) before the port is bound.
 
     lein run -m vaelii.host.serve 4200 /var/lib/vaelii
     lein run -m vaelii.host.serve 4200 --starter                          ; in memory, with the schema
@@ -1761,7 +1775,7 @@
         kb    (cond-> (if dir
                         (v/open-kb {:backend (dir-backend dir) :dir dir :reasoners :stored})
                         (v/open-kb {}))
-                starter? starter/load-into)]
+                starter? (starter/load-sources [:starter]))]
     (trove/log! {:level :info :id ::start
                  :msg "vaelii daemon listening"
                  :data {:port port :host host :dir (or dir :memory)

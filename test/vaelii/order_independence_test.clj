@@ -1387,6 +1387,17 @@
               "the :default member is OUT in every ordering")))))
   (tu/clear-kb! (tu/test-kb)))
 
+(deftest a-revived-genl-edge-hands-its-subtree-to-a-rule-over-the-super-predicate
+  (let [U 'CxUniverse]
+    (is (true? (one-outcome! "a released genl edge under a rule over its super-predicate"
+                             [#(v/assert-rule % '[(aoSup ?x ?y)] '(aoSeen ?x ?y) U {:direction :forward})
+                              #(do (v/assert-rule % '[(aoLink ?x ?y)] '(genl ?x ?y) U {:direction :forward})
+                                   (v/assert % '(aoLink aoSub aoSup) U))
+                              #(v/assert % '(forced_monotonic_predicate aoLink) U)
+                              #(v/assert % '(aoSub AoA AoB) U)]
+                             #(v/ask? % '(aoSeen AoA AoB) U)))))
+  (tu/clear-kb! (tu/test-kb)))
+
 (deftest a-genl-edge-a-released-firing-concludes-merges-what-its-arrival-merges
   ;; `aoLink` is not forced-monotonic, so the firing concluding `(genl aoSub aoSup)` is held
   ;; void until the forced-monotonic declaration of `aoLink` releases it, inside that write's
@@ -1887,10 +1898,10 @@
   (tu/clear-kb! (tu/test-kb)))
 
 (defn- a-late-edge-withdraws-what-the-blocker-blocks!
-  "Walk every ordering of `rule` (stated in the unwired context `k`), `(le_p LeA)` in `k`
-  and `(le_q LeA)` in CxUniverse, first without and then with `(genlCx k CxUniverse)`.
-  Without the edge `k` cannot see the blocker, so `(le_r LeA)` is derived; with it the
-  blocker is visible and the conclusion is withdrawn, whichever of the four arrived last.
+  "Walk every ordering of `rule` and `(le_p LeA)` in `k` and `(le_q LeA)` in the sibling
+  `CxLeBlocker`, first without and then with `(genlCx k CxLeBlocker)`.  Without the edge
+  `k` cannot see the blocker, so `(le_r LeA)` is derived; with it the blocker is visible
+  and the conclusion is withdrawn, whichever of the four arrived last.
 
   Two `one-outcome!` walks, not `one-outcome-necessarily!`: the rule and the `le_p` fact
   are redundant for the withheld conclusion — dropping either keeps it absent — so the
@@ -1899,22 +1910,22 @@
   [label rule k]
   (let [base    [#(v/assert % rule k {:direction :forward})
                  #(v/assert % '(le_p LeA) k)
-                 #(v/assert % '(le_q LeA) 'CxUniverse)]
-        edge    #(v/assert % (list 'genlCx k 'CxUniverse) 'CxUniverse)
+                 #(v/assert % '(le_q LeA) 'CxLeBlocker)]
+        edge    #(v/assert % (list 'genlCx k 'CxLeBlocker) 'CxUniverse)
         observe (fn [kb]
                   (let [h (v/handle-of kb '(le_r LeA) k)]
                     {:derived (boolean (and h (v/in? kb h)))}))]
     (is (= {:derived true} (one-outcome! (str label ", no edge") base observe))
-        "the blocker is invisible from the unwired context, so the rule fires")
+        "the blocker in a sibling context is invisible, so the rule fires")
     (is (= {:derived false} (one-outcome! label (conj base edge) observe))
         "the edge makes the blocker visible, so the conclusion is withdrawn in every order"))
   (tu/clear-kb! (tu/test-kb)))
 
 (deftest an-unknown-antecedent-reads-a-blocker-a-late-context-edge-reveals
-  ;; A context with no `genlCx` edge sees nothing of CxUniverse, so an `(unknown S)`
-  ;; antecedent there holds over an `S` stored in CxUniverse.  Wiring the context under
-  ;; CxUniverse afterwards makes `S` visible, and the firing the edge-free state licensed
-  ;; has to be swept, exactly as when the edge arrived first.
+  ;; A context sees nothing of a sibling, so an `(unknown S)` antecedent there holds over
+  ;; an `S` stored in the sibling.  Wiring the context under the sibling afterwards makes
+  ;; `S` visible, and the firing the edge-free state licensed has to be swept, exactly as
+  ;; when the edge arrived first.
   (a-late-edge-withdraws-what-the-blocker-blocks!
    "unknown under a late edge"
    '(set/forwardRule (implies (and (le_p ?x) (unknown (le_q ?x))) (le_r ?x)))
@@ -2803,9 +2814,11 @@
 
 (defn- nested-spelled-ops
   "`spelled-ops` over `sn_holds`, whose argument is an application of `SnPairFn`, and the
-  `commutative` mark of `SnPairFn` when `mark?`."
-  [facts mark? h]
+  `commutative` mark of `SnPairFn` when `mark?`.  With `reifiable?`, `SnPairFn` is a
+  `reifiable_function`, so each application is stored as its constant."
+  [facts mark? h & [reifiable?]]
   (cond-> (into [#(do (v/assert % '(binary_function SnPairFn) 'CxUniverse)
+                      (when reifiable? (v/assert % '(reifiable_function SnPairFn) 'CxUniverse))
                       (v/assert % '(implies (sn_holds ?p) (sn_noted ?p)) 'CxUniverse
                                 {:direction :forward})
                       (v/assert % '(implies (snClaim ?x ?y) (sn_holds (SnPairFn ?y ?x))) 'CxUniverse
@@ -2838,6 +2851,43 @@
         (is (= 1 (count (:rows held))) "the mark holds the pair as one row")
         (is (every? true? (:drawn held)) "and both spellings of it are drawn from")
         (is (= never retract) "retracting it leaves what a KB that never held it holds"))))
+  (tu/clear-kb! (tu/test-kb)))
+
+(defn- reified-spelled-reading
+  "`nested-spelled-reading` and the `natFormula` maps of `SnPairFn`'s constants."
+  [kb]
+  (assoc (nested-spelled-reading kb)
+         :maps (into #{} (comp (map :sentence) (filter #(= 'SnPairFn (first (nth % 2)))))
+                     (v/sentexes-matching kb '(natFormula ?k ?e) 'CxUniverse))))
+
+(deftest a-commutative-reifiable-function-mints-one-constant-and-hands-each-back-in-every-order
+  (doseq [[shape facts] nested-spelled-shapes]
+    (testing (str shape)
+      (let [h       (atom nil)
+            never   (one-outcome! (str shape ", never stated")
+                                  (nested-spelled-ops facts false h true) reified-spelled-reading)
+            held    (one-outcome! (str shape ", held")
+                                  (nested-spelled-ops facts true h true) reified-spelled-reading)
+            retract (one-outcome! (str shape ", retracted")
+                                  (nested-spelled-ops facts true h true)
+                                  (fn [kb] (v/retract! kb @h) (reified-spelled-reading kb)))]
+        (is (= [1 1] [(count (:rows held)) (count (:maps held))]) "the mark mints the pair one constant")
+        (is (every? true? (:drawn held)) "and both spellings of it are drawn from")
+        (is (= never retract) "retracting it leaves what a KB that never held it holds"))))
+  (tu/clear-kb! (tu/test-kb)))
+
+(deftest a-recover-moves-the-uses-of-a-constant-minted-unsorted-to-the-sorted-one
+  (doseq [[shape facts] nested-spelled-shapes]
+    (testing (str shape)
+      (let [ops (nested-spelled-ops facts true (atom nil) true)
+            now (run-ops ops reified-spelled-reading)
+            kb  (tu/fresh)]
+        (with-redefs [nat-read/sorted-expression (fn [_ E] E)]
+          (doseq [op ops] (op kb)))
+        (is (not= (:maps now) (:maps (reified-spelled-reading kb)))
+            "with the sort bound to the identity, the store names the written order's constant")
+        (is (= now (reified-spelled-reading (doto (tu/test-kb) (v/recover))))
+            "and a restart over it reads what a KB written now reads"))))
   (tu/clear-kb! (tu/test-kb)))
 
 (deftest a-defeated-permuting-mark-leaves-each-spelling-as-written

@@ -1,7 +1,7 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.web-lists-test
-  "The lists (`/lists`): whole-KB lists of the defeats, the contradictions, the unary
+  "The lists on `/stats`: whole-KB lists of the defeats, the contradictions, the unary
   predicates with no genl but `thing` and the held facts and rules, each run as a read job
   from its button, and its rows paged."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
@@ -57,7 +57,38 @@
     (is (re-find #"Contradictions" b))
     (is (re-find #"Unary predicates without a genl" b))
     (is (empty? (jobs/jobs)) "no list ran")
-    (is (re-find #"href=\"/lists\"" (:body (GET "/"))) "the menubar links it")))
+    (is (re-find #"(?s)<nav class=\"menubar\">.*href=\"/stats\"" (:body (GET "/")))
+        "the menubar links the page holding them")))
+
+(deftest the-stats-page-counts-the-defeats-and-contradictions-stored
+  (let [b (:body (GET "/stats"))]
+    (doseq [[title f] {"Defeats" 'defeat "Contradictions" 'contradicts}]
+      (is (pos? (v/count-with-functor tu/*kb* f)))
+      (is (re-find (re-pattern (str "<th>" title "</th><td class=\"num\">"
+                                    (v/count-with-functor tu/*kb* f) "</td>"))
+                   b)))
+    (is (empty? (jobs/jobs)) "the counts run no list")))
+
+(deftest a-list-a-stored-zero-empties-offers-no-button
+  (let [other (v/open-kb tu/plain-memory-space)]
+    (try
+      (let [b (:body ((web/app other) {:request-method :get :uri "/stats"}))]
+        (is (re-find #"<th>Defeats</th><td class=\"num\">0</td>" b))
+        (is (not (re-find #"value=\"defeats\"" b)))
+        (is (re-find #"value=\"contradictions\"" b) "inert tuples are outside the count"))
+      (finally (v/clear! other)))))
+
+(deftest an-empty-run-answers-with-the-stats-page
+  (let [other (v/open-kb tu/plain-memory-space)]
+    (try
+      (let [r ((web/app other) {:request-method :post :uri "/lists/run" :scheme :http
+                                :params {"list" "contradictions"} :headers {}})]
+        (is (= 200 (:status r)))
+        (is (re-find #"Contradictions: none\." (:body r)))
+        (is (re-find #"<h2[^>]*>Statistics" (:body r)))
+        (is (= "/stats" (get-in r [:headers "HX-Push-Url"])))
+        (is (re-find #"Last run: none" (:body r)) "and the row links no empty result"))
+      (finally (v/clear! other)))))
 
 (deftest the-defeats-list-holds-the-defeated-sentex
   (let [r (run-list "defeats")

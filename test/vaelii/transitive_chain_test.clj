@@ -103,25 +103,22 @@
         "and the declaration brings the rule round over the chain already there")))
 
 (tu/deftest-kb a-walk-is-placed-where-its-declaration-is-seen
-  ;; The hops in one context and the declaration in another: the pair two hops apart
-  ;; holds only below both, so the firing lands there, and the hops' own context, which
-  ;; sees no declaration, holds nothing.  The support names the declaration, which is
-  ;; what places the firing and what lets retracting it withdraw the firing.
-  (tu/with-terms [causes traced Spark Fire Alarm CxHops CxDecl CxBoth]
-    (v/assert kb (list 'genlCx CxBoth CxHops) W)
-    (v/assert kb (list 'genlCx CxBoth CxDecl) W)
+  ;; The hops in one context and the declaration in a sibling.  `transitive` is lifted to
+  ;; CxUniverse, which the hops' context sees, so the forward rule fires there over the
+  ;; two hops.  The support names the declaration, which is what places the firing and
+  ;; what lets retracting it withdraw the firing.
+  (tu/with-terms [causes traced Spark Fire Alarm CxHops CxDecl]
     (let [decl (v/assert kb (list 'transitive causes) CxDecl {:strength :monotonic})]
       (v/assert kb (list causes Spark Fire) CxHops)
       (v/assert kb (list causes Fire Alarm) CxHops)
       (v/assert kb (list 'implies (list causes Spark '?c) (list traced '?c)) CxHops
                 {:direction :forward})
-      (testing "the far pair is derived below both, and not where the hops alone are"
-        (is (seq (v/sentexes-matching kb (list traced Alarm) CxBoth)))
-        (is (empty? (v/sentexes-matching kb (list traced Alarm) CxHops)))
+      (testing "the far pair is derived where the hops see the declaration"
+        (is (seq (v/sentexes-matching kb (list traced Alarm) CxHops)))
         (is (seq (v/sentexes-matching kb (list traced Fire) CxHops))
             "the one stored hop needs no declaration"))
       (testing "resting on the declaration it was walked under"
-        (let [h     (v/handle-of kb (list traced Alarm) CxBoth)
+        (let [h     (v/handle-of kb (list traced Alarm) CxHops)
               named (set (keys (:nodes (v/why kb h))))]
           (is (contains? named decl))))
       (testing "and withdrawn with it"

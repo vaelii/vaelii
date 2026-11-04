@@ -71,6 +71,26 @@
         (is (= [:definitional-clash :arg-variable] [(:type d) (:violation d)]))
         (is (nil? (v/handle-of kb form 'CxUniverse)))))))
 
+(tu/deftest-kb a-held-rule-a-generator-alone-concludes-is-no-violation-and-one-an-author-writes-is
+  (let [[a b] (disjoint-pair kb)
+        p (tu/tmp-pred) q (tu/tmp-pred) mark (tu/tmp-pred)
+        form (list 'implies (list p '?x) (list q '?x))
+        named? #(boolean (some (fn [v] (and (= :inert-rule (:violation v))
+                                            (= % (v/handle-of kb (:sentence v) (:context v)))))
+                               (v/violations kb)))]
+    (v/assert kb (list 'arg p 1 a) 'CxUniverse)
+    (v/assert kb (list 'arg q 1 b) 'CxUniverse)
+    (v/assert kb (list 'implies (list mark '?f '?g) '(set/forwardRule (implies (?f ?x) (?g ?x)))) 'CxUniverse)
+    (v/assert kb (list mark p q) 'CxUniverse)
+    (let [h (v/handle-of kb form 'CxUniverse)]
+      (testing "the generated rule is stored and held"
+        (is (integer? h))
+        (is (not (v/in? kb h))))
+      (is (false? (named? h)))
+      (testing "the same rule written by an author is reported"
+        (is (= h (v/assert kb form 'CxUniverse {:direction :forward})))
+        (is (true? (named? h)))))))
+
 (tu/deftest-kb a-rule-a-separation-convicts-is-held-in-every-arrival-order
   ;; all 24 orders of {arg p, arg q, disjoint, rule}: the stored set, the rule's belief
   ;; and the report are the same in every one

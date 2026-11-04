@@ -226,8 +226,8 @@ for?* (`vaelii.impl.provers/cost-tiers`):
   metadata read (genl/genlCx transitivity, disjointness, arg-type), or one index hit
   (facts, symmetric, inverse). All three are one bounded
   step, lazy to the first result, and no decision turns on which of the three it is, so
-  they fold into one tier. Twelve of the shipped provers sit here.
-- `:compute` — work over stored facts before the first answer, and eleven provers claim
+  they fold into one tier. Nineteen of the shipped provers sit here.
+- `:compute` — work over stored facts before the first answer, and thirteen provers claim
   it: a declared-`transitive` predicate walking its closure, `transitiveInArg`, `unknown`,
   `thereExists`, `forall`, a declared-complete extent's negation, the two
   definitional-membership provers (`defnSufficient` and the `defnNecessary` negation), the

@@ -705,17 +705,19 @@
 (defonce ^:private default-ram-space-opens (atom 0))
 
 (defn- note-default-ram-space!
-  "Warn the second time a KB opens on the default in-RAM space without naming it.  The space
+  "Warn the second time a KB opens on the default space without naming it.  The space
   number names the store and defaults to 0, so `(open-kb {})` twice in one process is one
-  store behind two KB values with two belief graphs.  A warning and never a refusal, since
-  sharing a space is how `recover` and the suite's fixtures work; naming the number silences
-  it.  Only in-RAM records are affected."
+  store behind two KB values with two belief graphs; a disk open naming neither `:dir` nor
+  `:space` resolves to the default directory's `space-0` the same way.  A warning and never
+  a refusal, since sharing a space is how `recover` and the suite's fixtures work; naming
+  the number silences it."
   [opts rkind]
-  (when (and (= :memory rkind)
+  (when (and (#{:memory :disk} rkind)
              (not (contains? opts :space))
+             (not (contains? opts :dir))
              (= 2 (swap! default-ram-space-opens inc)))
     (trove/log! {:level :warn :id ::default-ram-space-reused
-                 :msg (str "a second in-RAM KB opened on the default space (:space 0) "
+                 :msg (str "a second KB opened on the default space (:space 0) "
                            "— the number names the store, so this KB and the earlier "
                            "one are two belief graphs over one set of records, and a "
                            "write through either is invisible to the other until it is "
@@ -1012,8 +1014,7 @@
     :recheck   (atom {})
     ;; `{rule-handle -> #{refusal} | :overflow}`: the firings `chain/place-conseq` declined to place
     ;; because a re-checkable block condition already held (docs/exceptions.md, "A refused firing is
-    ;; remembered as bindings").  Derived state beside `jtms/blocked`, never labelled.  `:kinds` names
-    ;; the handles holding a `:lift` entry (`special/kind-entries`).
+    ;; remembered as bindings").  Derived state beside `jtms/blocked`, never labelled.
     :refused   (atom {})
     :settle-stats (atom {:iterations 0 :passes 0 :histogram {}})
     :chain-stats  (atom {:runs 0 :last nil})
@@ -1039,9 +1040,8 @@
     ;; moved since the last settle, each with its entry before the first
     ;; move, for the settle to publish (`special/take-supersession-moves!`)
     :supersessions (atom nil)
-    ;; `#{pred}`: the predicates whose permuting marks moved since the last settle
-    ;; (`special/note-permuting-moves!`), for `chain/reconcile-spellings!`; `[:reifiable f]` for a function
-    ;; whose reifiable mark moved, for `chain/reconcile-reified!`.  Empty at rest.
+    ;; `#{pred}`/`[:mention p]`: the predicates whose permuting/mention marks moved since the last settle,
+    ;; for `chain/reconcile-spellings!`; `[:reifiable f]`, for `chain/reconcile-reified!`.  Empty at rest.
     :respell   (atom #{})
     ;; `{:pending {handle #{context}} :whole #{handle} :scoped {handle #{[sub super]}} :extra [[datum
     ;; reason]] :region #{datum} :moved #{handle}}`: the handles a visibility `except` began or stopped
@@ -1292,6 +1292,29 @@
                                          (observe/live (res/supporter-believed? copy handle context false)))
                                        (fn [entries sv defeats?] (observe/live (supporter-reaches? copy entries sv defeats? reach)))
                                        (fn [handle] (some-> (p/get-sentex (:records copy) handle) sx/sentence-of)))))
+
+(defn with-context-edges
+  "`kb` read through a detached copy of its taxonomy that also holds a `genlCx` edge from
+  `sub` to each context of `supers`, `[[super supporter] …]`, the supporter a believed
+  handle stated in CxUniverse, and with every read cache empty, as `prior-kb` empties
+  them: the KB a read in a context nobody has written into runs against
+  (docs/context-nat.md).  Read-only; the live taxonomy and caches never hold the edges,
+  and the copy reads every supporter from the index fork the edges are posted to."
+  [kb sub supers]
+  (let [b  (reasoning/of kb)
+        tx (tax/detached-copy (:taxonomy b))
+        _  (doseq [[s h] supers] (tax/add-genlCx tx sub s h sx/root-context))
+        ix (:index @tx)
+        b' (assoc b
+                  :taxonomy tx
+                  :qcn (caches/tallied (atom {}) [:R3])
+                  :qcn-joined (atom {})
+                  :matches (caches/tallied (atom {}) [:R1])
+                  :closures (caches/tallied (atom {}) [:R2]))
+        rk (assoc kb :reasoning (volatile! b'))]
+    (attach-visibility! rk b')
+    (tax/install-index! tx ix)
+    rk))
 
 ;; ---- the KB before the write ------------------------------------------------------
 ;; While a write record is open (`observe/*write-record*`), `prior-kb` reads `kb` as it stood when the
@@ -1783,7 +1806,7 @@
           ;; batch-seal counter is the last op of every index batch, so a torn append-mode tail loses it first;
           ;; zero means the index predates the counter or arrived by `index-load` replay, and the root count
           ;; remains.  The damaged flag is the clean marker's length disagreeing with the file, which catches a
-          ;; lost tail of a compacted log whose seal and counts may still agree.
+          ;; lost tail of a compacted log whose seal and counts may still agree.  Both counts are compared: a lost last record beside a kept prefix of its index batch leaves the seal and the record count agreeing and the root count one ahead.
           (let [indexed  (long (reads/stored-count-at istore []))
                 sealed   (long (reads/stored-count-at istore kv/sealed-prefix))
                 damaged  (:damaged (:backend istore))
@@ -1791,7 +1814,8 @@
                 ;; against the whole table (`p/Tallying`).
                 stored   (cap/count-sentexes (:records kb))]
             (when (or damaged
-                      (if (pos? sealed) (not= sealed stored) (not= indexed stored)))
+                      (not= indexed stored)
+                      (and (pos? sealed) (not= sealed stored)))
               (dfiles/mark-index-rebuilding! root)
               (p/clear-index! istore)
               (let [t0 (System/nanoTime)
@@ -1835,7 +1859,8 @@
                 indexed  (long (reads/stored-count-at istore []))
                 damaged  (:damaged (:backend own-istore))]
             (when (or damaged
-                      (if (pos? sealed) (not= sealed stored) (not= indexed stored)))
+                      (not= indexed stored)
+                      (and (pos? sealed) (not= sealed stored)))
               (dfiles/mark-index-rebuilding! root)
               (let [{:keys [sentexes rules]} (reindex-fn kb)]
                 (dfiles/write-index-layout! root kv/index-layout-version)
@@ -2152,6 +2177,14 @@
               (when (= sentence (:sentence (p/get-sentex (:records kb) h))) h))
             handles))))
 
+(defn replaceable-premise?
+  "Is `sx`, stored at handle `h`, a ground literal premise whose sentence names no sentex?
+  `replace-facts!` replaces these premises of a context, and a restart's trim
+  (`vaelii.host.starter`) retracts only these."
+  [kb h sx]
+  (boolean (and sx (nil? (:antecedent sx)) (jtms/premise? (reasoning/tms kb) h) (sx/ground? sx)
+                (not (sx/names-a-handle? (:sentence sx))))))
+
 (defn find-sentex-handle
   "The handle of an existing sentex for `sentence` in `context`, or nil.  A sentence with
   variables is found by its stored sentence (`stored-at`), since the key alpha-renames.  Every
@@ -2322,6 +2355,17 @@
     (some (fn [[k h]] (when (= h informant) k)) (mint-rule-table kb))
     (when (contains? kv/mint-rules informant) informant)))
 
+(defn mint-rule-refusal
+  "The `:mint-rule` refusal of `operation` on the sentex at `handle`, as a value, or nil
+  when `kind` is nil: `kind` is the one whose rule of `kv/mint-rules` `handle` stores
+  (`mint-kind`).  The mints of the kind rest on the rule, so its removal, a direction edit
+  of it and an `except` of it are refused alike (docs/argtypes.md).  `what` ends the
+  message."
+  [kind handle operation what]
+  (when kind
+    {:type :mint-rule :handle handle :kind kind :operation operation
+     :message (str "the inert rule the " kind " mints are justified under " what)}))
+
 (defn mint-informant?
   "Is `informant` one an argument declaration's mint is justified under (`mint-kind`)?"
   [kb informant]
@@ -2471,10 +2515,17 @@
   an existing one keeps what it has until `mark-premise` says otherwise."
   ([kb sentence context] (find-or-create-sentex kb sentence context nil))
   ([kb sentence context strength]
-   (if-let [h (find-sentex-handle kb sentence context)]
-     [h (p/get-sentex (:records kb) h) false]
-     (let [[h s] (create-sentex kb sentence context strength)]
-       [h s true]))))
+   (let [h (find-sentex-handle kb sentence context)
+         s (when h (p/get-sentex (:records kb) h))]
+     (cond
+       s [h s false]
+       h (do (trove/log! {:level :warn :id ::record-less-posting-dropped
+                          :data {:handle h :context context}
+                          :msg (str "index posting " h " names no record; the sentence is stored anew (run reindex to verify the index)")})
+             (try (p/unindex-sentex! (:index kb) (assoc (res/kb-sentex kb sentence context) :id h) h)
+                  (catch Throwable _ nil))
+             (let [[h s] (create-sentex kb sentence context strength)] [h s true]))
+       :else (let [[h s] (create-sentex kb sentence context strength)] [h s true])))))
 
 (defn antecedent-order
   "`handles` as a justification's stored antecedent vector, ordered by what each antecedent
@@ -2585,11 +2636,10 @@
 ;; ---- matching ------------------------------------------------------------
 
 (defn- permuting-literal?
-  "Does `sentence` reach `res/raw-match`'s arrangement fan — a symmetric literal, or one
-  whose predicate declares a commuting group?  `stored-once-per-handle` builds its dedup
-  set only when this answers true, and `raw-match` asks itself the same question, so the
-  reader pays for the dedup set exactly where a fan can put one handle in the result
-  twice.
+  "Does `sentence` reach `res/raw-match`'s arrangement fan — a symmetric literal, one
+  whose predicate declares a commuting group, or one `res/nested-probes` fans?
+  `stored-once-per-handle` builds its dedup set only when this answers true, so the reader
+  pays for it exactly where a fan can put one handle in the result twice.
 
   Read unscoped, as `res/raw-match` reads it: the fan reaches every stored spelling,
   and `res/without-unbelieved-spellings` hides the one a reader's belief rules out."
@@ -2597,7 +2647,8 @@
   (let [tax (reasoning/taxonomy kb)
         f   (when (sequential? sentence) (first sentence))]
     (or (sx/symmetric-literal? sentence #(tax/has-prop? tax :symmetric %))
-        (boolean (and (symbol? f) (seq (tax/commuting-groups tax f)))))))
+        (boolean (and (symbol? f) (seq (tax/commuting-groups tax f))))
+        (boolean (next (res/nested-probes kb sentence))))))
 
 (defn- stored-once-per-handle
   "The stored sentex of each match, one per handle, keeping the first.  A symmetric literal
@@ -2670,4 +2721,4 @@
  {:id :R12 :label "Call-scoped memos" :kind :pass :keyed-by :value :reads [:index :T1]
   :holds-content? false
   :retired-by {} :computed :pass :imaged? false
-  :note "volatiles and memoized fns one call holds: `memberships`, `membership-reader` here; `checks/declaration-reader`, `stratification-readers` (held for a write or a settle in `rules/*stratification-memo*`, and the stored rules' negated antecedent keys in `rules/*negated-keys-memo*`, both emptied by a rule-index write); `except/reader-state`, held for a pass in `except/*reader-states*` while the change clock stands and its frame while `frames-hold?`; `plan/memoizing`, `plan-pairs`; `special/visibility-seeds`, `supersession-map`, `lift-statements`; `inherit/rejoin-rules`; `asp.label/local-analysis`, `component-classifier`"})
+  :note "volatiles and memoized fns one call holds: `memberships`, `membership-reader` here; `checks/declaration-reader`, `stratification-readers` (held for a write or a settle in `rules/*stratification-memo*`, and the stored rules' negated antecedent keys in `rules/*negated-keys-memo*` (`rules/stored-negated-keys`), both emptied by a rule-index write); `except/reader-state`, held for a pass in `except/*reader-states*` while the change clock stands and its frame while `frames-hold?`; `plan/memoizing`, `plan-pairs`; `special/visibility-seeds`, `edges-subsumption-seeds`, `supersession-map`, `lift-statements`; `inherit/rejoin-rules`; `asp.label/local-analysis`, `component-classifier`"})

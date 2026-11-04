@@ -6,7 +6,7 @@
   `supporting-justifications` gives one hop; `why` walks all the way down to premises,
   which is what \"why does the KB believe this?\" actually asks.  `why-not` is the
   complement — for a sentex that is stored but OUT, the reason it is OUT."
-  (:require [clojure.test :refer [is testing use-fixtures]]
+  (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.rules :as vr]
@@ -282,3 +282,98 @@
       ;; step, and they had already drifted on exactly the case above.
       (is (nil? (re-find #"\(defn-? +candidate-rules" (slurp "src/vaelii/core.clj")))
           "vaelii.core reads its candidates through provers/candidate-rules"))))
+
+(defn- seat-explanations
+  "`why`, `why-not` and `argue` in content form, for each `[sentence context]` of `goals`,
+  on a seat that writes `noise` and then runs `writes` in order."
+  [writes goals noise]
+  (tu/with-cleared-kb [kb tu/isolated-fresh]
+    (run! #(% kb) (cons noise writes))
+    (into {} (for [[s c] goals
+                   :let [h (v/handle-of kb s c)]]
+               [[s c] {:why     (when h (v/why kb h {:content? true}))
+                       :why-not (v/why-not kb s c {:content? true})
+                       :argue   (v/argue kb s c {:content? true})}]))))
+
+(deftest why-and-argue-answer-alike-on-two-seats-loaded-in-different-orders
+  (tu/with-terms [bird flies penguin parentOf friendOf relatedTo wren hasSkill gliding moving
+                  notedBy trusted vetted Opus Tweety Pingu Tom Bob Pip Ann Noise CxBird
+                  cat dog pet wild fish cat_src pet_src dog_src meows Rex CxA CxB CxHide CxW]
+    (let [in   (fn [s c & [o]] #(v/assert % s c o))
+          mono {:strength :monotonic}
+          note (fn [f s & [o]] #(v/assert % (f (list notedBy (list 'sentexHandle (v/assert % s CxBird)) Ann))
+                                          CxBird o))
+          rows {:defeat
+                [[(in (tu/default-rule [(list bird '?x)] (list flies '?x)) CxBird)
+                  (in (list bird Opus) CxBird)
+                  (in (list 'not (list flies Opus)) CxBird {:strength :monotonic})]
+                 [[(list flies Opus) CxBird] [(list 'not (list flies Opus)) CxBird]]
+                 #(= :false (get-in % [[(list flies Opus) CxBird] :argue :verdict]))]
+                :except
+                [[(in (tu/except-rule (list penguin '?x) [(list bird '?x)] (list flies '?x)) CxBird)
+                  (in (list bird Tweety) CxBird) (in (list bird Pingu) CxBird)
+                  (in (list penguin Pingu) CxBird)]
+                 [[(list flies Tweety) CxBird] [(list flies Pingu) CxBird]]
+                 #(= :excepted (get-in % [[(list flies Pingu) CxBird] :why-not :reason]))]
+                :transitive-in-arg
+                [[(in (list wren Pip) 'CxUniverse) (in (list hasSkill Pip gliding) 'CxUniverse)
+                  (in (list 'genl gliding moving) 'CxUniverse)
+                  (in (list 'transitiveInArg hasSkill 2 'genl) 'CxUniverse)]
+                 [[(list hasSkill Pip moving) 'CxUniverse]]
+                 #(= 3 (count (get-in % [[(list hasSkill Pip moving) 'CxUniverse]
+                                         :argue :for-derivation 0 :supports 0])))]
+                :two-justifications
+                [[(in (tu/fwd [(list parentOf '?x '?y)] (list relatedTo '?x '?y)) CxBird)
+                  (in (tu/fwd [(list friendOf '?x '?y)] (list relatedTo '?x '?y)) CxBird)
+                  (in (list parentOf Tom Bob) CxBird) (in (list friendOf Tom Bob) CxBird)]
+                 [[(list relatedTo Tom Bob) CxBird]]
+                 #(let [w (get-in % [[(list relatedTo Tom Bob) CxBird] :why])]
+                    (= 2 (count (:support (get (:nodes w) (:root w))))))]
+                :withdrawn
+                [[(note identity (list bird Tom)) (note identity (list wren Bob))
+                  (in (tu/fwd [(list notedBy '?s '?p) (list trusted '?p)] (list vetted '?p)) CxBird)
+                  (in (list trusted Ann) CxBird)
+                  (note #(list 'not %) (list bird Tom) {:strength :monotonic})
+                  (note #(list 'not %) (list wren Bob) {:strength :monotonic})]
+                 [[(list vetted Ann) CxBird]]
+                 #(= 2 (count (get-in % [[(list vetted Ann) CxBird] :why-not :withdrawn-by])))]
+                :withdrawn-by-conflicts
+                [(-> [(in (list 'disjoint dog cat) 'CxUniverse) (in (list 'disjoint wild pet) 'CxUniverse)
+                      (in (list dog_src Rex) CxB mono)
+                      (in (tu/fwd [(list cat '?x) (list pet '?x)] (list meows '?x)) CxW mono)]
+                     (into (mapcat (fn [[s t c]] [(in (list 'set/forwardRule (list 'implies (list s '?x) (list t '?x))) c mono)
+                                                  (in (list t Rex) c)])
+                                   [[cat_src cat CxA] [pet_src pet CxA] [dog_src dog CxB] [dog_src wild CxB]]))
+                     (into (for [s [cat_src pet_src]]
+                             #(v/assert % (list 'except (list 'sentexHandle (v/assert % (list s Rex) CxA mono))) CxHide mono)))
+                     (into (for [t [cat dog pet wild]] (in (list 'genl t 'thing) 'CxUniverse)))
+                     (into (for [[c up] [[CxA 'CxUniverse] [CxB 'CxUniverse] [CxHide 'CxUniverse]
+                                         [CxW CxA] [CxW CxB] [CxW CxHide]]]
+                             (in (list 'genlCx c up) 'CxUniverse))))
+                 [[(list meows Rex) CxW]]
+                 #(= 2 (count (get-in % [[(list meows Rex) CxW] :why-not :withdrawn-by])))]
+                :two-conflicts-against-one-member
+                [(-> [(in (list 'disjoint dog cat) 'CxUniverse) (in (list 'disjoint fish cat) 'CxUniverse)
+                      (in (list dog_src Rex) CxB mono)
+                      (in (tu/fwd [(list cat '?x)] (list meows '?x)) CxW mono)
+                      #(v/assert % (list 'except (list 'sentexHandle (v/assert % (list cat_src Rex) CxA mono))) CxHide mono)]
+                     (into (mapcat (fn [[s t c]] [(in (list 'set/forwardRule (list 'implies (list s '?x) (list t '?x))) c mono)
+                                                  (in (list t Rex) c)])
+                                   [[cat_src cat CxA] [dog_src dog CxB] [dog_src fish CxB]]))
+                     (into (for [t [cat dog fish]] (in (list 'genl t 'thing) 'CxUniverse)))
+                     (into (for [[c up] [[CxA 'CxUniverse] [CxB 'CxUniverse] [CxHide 'CxUniverse]
+                                         [CxW CxA] [CxW CxB] [CxW CxHide]]]
+                             (in (list 'genlCx c up) 'CxUniverse))))
+                 [[(list meows Rex) CxW]]
+                 #(= 2 (count (get-in % [[(list meows Rex) CxW] :why-not :withdrawn-by])))]}]
+      (doseq [[row [writes goals shaped?]] rows]
+        (let [a (seat-explanations writes goals (in (list bird Noise) CxBird))
+              b (seat-explanations (reverse writes) goals (in (list wren Noise) 'CxUniverse))]
+          (is (and (shaped? a) (= a b)) (str row)))))))
+
+(tu/deftest-kb why-not-s-content-form-orders-support-by-the-missing-antecedents
+  (tu/with-terms [seenA derivedQ Ann Bob CxMiss]
+    (let [r     (v/assert-rule kb [(list seenA '?x)] (list derivedQ '?x) CxMiss {:direction :forward})
+          [a b] (map #(v/assert kb (list seenA %) CxMiss) [Ann Bob])
+          reply (fn [ms] {:support (mapv (fn [m] {:informant r :verdict nil :missing [m]}) ms)})]
+      (is (= (#'v/content-form kb (reply [a b])) (#'v/content-form kb (reply [b a])))))))

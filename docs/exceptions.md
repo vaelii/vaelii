@@ -419,54 +419,23 @@ withdraws the defeat when the blocker goes OUT.
 | a `disjoint` antecedent the placement context does not read separated | yes | likewise, and the same evaluator |
 | a post-join literal had no answer | no | an aggregate is a *value* that moved, and a queued aggregate rule is re-joined whatever the blocked set did (`settle/rejoin-on-arrival-rules`) |
 | the settle blocks a placed firing, and the sweep deletes it | yes, by `chain/record-swept-firing!`, for a forward rule | the conclusion is gone from the store, so the record is what a trigger lifting the block re-derives it from, as for a firing refused at its placement. A release re-derives no firing of a rule that does not forward-chain (`chain/refusal-state`), so that firing has no entry |
-| a visibility `except` hides an antecedent | no | an `except` arriving or leaving, or a `genlCx` edge moving which contexts see it, re-joins from its target's consequence closure and the antecedents of the justifications resting on it (`special/drain-except-moves!`), and the refusal is re-derived there. An entry would be one nothing reads |
+| a visibility `except` hides an antecedent | no | an `except` arriving or leaving, or a `genlCx` edge moving which contexts see it, re-joins from its target's consequence closure and the antecedents of the justifications resting on it, and re-joins each rule of that closure over its extent (`special/drain-except-moves!`), and the refusal is re-derived there. An entry would be one nothing reads |
 
 A firing whose conclusion an argument conviction convicts is not a refusal and has no
 entry: the conclusion is stored with its justification and held OUT by the argument hold,
 as the same sentence asserted is ([argtypes.md](argtypes.md#an-argument-that-fails-its-declared-type-is-held-inert)).
 
-The record holds one more kind of entry, not a refusal by an exception. It is kept because
-later content can lift what refused it:
-
-| entry | kept under | refused because | re-asked when |
-|---|---|---|---|
-| `:lift` | the source fact | a `decontextualized_predicate` copy from a context that does not see CxUniverse failed the argument check there: the argument holds a type the taxonomy separates from the declared one, or for `quotedArg` its kind has no path to it | a `genl` or `genlCx` generation or a separation (`tax/separation-inputs`) moved since the entry was decided, or a settle relabelled or removed a sentex naming the convicted term (`integrate/*removed-sink*`) |
-
-The generations a `:lift` entry is decided under carry the taxonomy's rebuild epoch
-(`special/taxonomy-generations`, with the separations added by
-`special/conviction-generations`). A `recover` restarts each generation at 0 and replays
-the stored edges, so a generation can return to a number it held under another hierarchy.
-The recover moves the epoch, so generations read before the recover never compare equal
-after it.
-
-`settle` re-asks the entries each pass (`released-lifts`). A re-ask lifts the copy the
-moved generations admit, and what it creates goes on the agenda. An entry re-asked and
-still convicted is re-recorded under the current generations and with the term the
-conviction names **now** (`checks/conviction-watch`). An application can be convicted on
-more than one argument, and the conviction names the first; once that argument is lifted
-it names the next, so an entry that kept its first term would never be re-asked when the
-last one is lifted, and the order the arguments were lifted in would decide whether the
-copy is placed. Placed, an entry withdraws the ledger entry its drop filed
-(`violations/withdraw!`), since the order that brought the type first filed none. A mint
-withheld because the KB says it more specifically is the opposite case, a derivation
-withheld for something the KB has, and it has no entry: the settle re-derives it when that
-something leaves (docs/argtypes.md). A declaration whose type an arity statement binds to
-another length has no entry either: the stored declaration is the record, and the settle
-reads the declarations naming a type when that type's own bindings move
-(`special/mints-on-lengths`, [argtypes.md](argtypes.md)). A write beside n such
-declarations does not grow with n (perf checks `write-after-rolled-back-preview` and
-`genl-write-beside-waiting-declarations`).
-
-A pass finds the `:lift` entries through the record's **kind index**: its `:kinds` key
-names, per kind, the handles holding at least one entry of that kind, and every writer of such an
-entry keeps it (`special/note-kind`, `drop-kinds`, `forget-kinds`). The pass reads only
-those handles' sets (`special/kind-entries`), so the rules' own refusals, up to 4096 per
-rule, are read only when a trigger queues their rule. The kind index sits in the record's own
-map, so the batch rollback's snapshot, the reasoning image and a wipe carry it with the
-entries. `lein perf`'s `assert-beside-naf-refusals` bounds an unrelated assert beside
-32,000 `unknown` refusals.
-
-`recover` rebuilds the `:lift` entries (`special/rebuild-pending!`).
+A mint withheld because the KB says it more specifically is a derivation withheld for
+something the KB has, and it has no entry: the settle re-derives it when that something
+leaves (docs/argtypes.md). A declaration whose type an arity statement binds to another
+length has no entry either: the stored declaration is the record, and the settle reads the
+declarations naming a type when that type's own bindings move (`special/mints-on-lengths`,
+[argtypes.md](argtypes.md)). A write beside n such declarations does not grow with n (perf
+checks `write-after-rolled-back-preview` and `genl-write-beside-waiting-declarations`). A
+`decontextualized_predicate` copy has no entry: its source context sees CxUniverse, so the
+source assert's checks read what the copy meets there, and the copy is stored unchecked
+([contexts.md](contexts.md#cxuniverse-is-the-implicit-root)). `lein perf`'s
+`assert-beside-naf-refusals` bounds an unrelated assert beside 32,000 `unknown` refusals.
 
 Both unrecorded reasons are covered by a **re-join** rather than by nothing, and that is
 what makes the record an efficiency structure rather than a completeness one. The same
@@ -485,7 +454,8 @@ the shape an answer has:
 - **Nothing in it is a nogood**, and nothing in it reaches `contradictions`. Nothing was
   believed and nothing conflicts; the rule simply did not fire.
 - **It is keyed on content.** Two refusals of the same rule at the same bindings from
-  different passes are one entry, so arrival order cannot be read back out of it.
+  different passes are one entry, so arrival order cannot be read back out of it. The
+  entry keeps the wider of the two runs' `:max-depth` bounds, no bound over a number.
 - **A refusal that fires is re-derived from what it recorded** — `place-conclusion` with
   the recorded conclusion, placement and antecedents, and the depth recomputed from the
   antecedent facts. Never a fresh join: re-joining is the cost the record exists to

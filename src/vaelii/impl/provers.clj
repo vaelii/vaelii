@@ -76,6 +76,7 @@
   (:require [clojure.string :as str]
             [vaelii.impl.budget :as budget]
             [vaelii.impl.caches :as caches]
+            [vaelii.impl.capabilities :as cap]
             [vaelii.impl.datetime :as datetime]
             [vaelii.impl.decide.argument :as argument]
             [vaelii.impl.decide.arity :as arity]
@@ -181,9 +182,9 @@
     `P` owns `Q` and its converse table implies the pair (`unread-inverse?`).
   - `:negates`: a `(not (Q …))` goal with `Q` at or below a side of a `negates` declaration
     (`NegatesProver`).
-  - `:calendar`: an argument that is a calendar term (`(YearFn 2000)`, `DatetimeFn`,
-    `InstantFn`), which carries its ordering in its fields (`vaelii.impl.calendar`).  A pure
-    test on the goal's arguments.
+  - `:calendar`: an argument, of the goal or of the literal it negates, that is a calendar
+    term (`(YearFn 2000)`, `DatetimeFn`, `InstantFn`), which carries its ordering in its
+    fields (`vaelii.impl.calendar`).  A pure test on the arguments.
 
   Absorbed, so not a channel: a stored fact, a merged term (rewritten into the goal first),
   `symmetric` / `transitive` / `reflexive` over a calculus's own predicate, and `arg` type
@@ -204,7 +205,7 @@
         (and (= sx/not-functor pred) (sequential? (second goal))
              (seq (tax/negates-over (reasoning/taxonomy kb) (first (second goal)) context)))
         (conj :negates)
-        (some datetime/time-term? (nm/args goal))             (conj :calendar)))))
+        (some datetime/time-term? (nm/args (cond-> goal (sx/negation? goal) second))) (conj :calendar)))))
 
 (defn sole-prover
   "The prover that may answer `goal` **alone**, or nil for the union path.
@@ -676,19 +677,6 @@
       (recur p (conj seen n) (into out hs))
       (when (seq out) out))))
 
-(defn- declared-transitive-by
-  "The believed `(transitive pred)` statements `context` sees, as a set of handles —
-  every one, for `support-chain`'s reason: naming one of two would decide a
-  justification by arrival order."
-  [kb pred context]
-  (let [tx  (reasoning/taxonomy kb)
-        tms (reasoning/tms kb)
-        up  (when (and (symbol? context) (not (sx/variable? context)))
-              (set (tax/context-up tx context)))]
-    (into #{}
-          (keep (fn [[h c]] (when (and (or (nil? up) (nil? c) (contains? up c)) (jtms/in? tms h)) h)))
-          (tax/prop-supporter-contexts tx :transitive pred))))
-
 (def ^:dynamic *unenumerated*
   "nil, or a collector (`unenumerated-collector`) that `TransitivePredicateProver` adds a
   predicate to when it does not enumerate the closure for a goal asked with both arguments
@@ -824,7 +812,7 @@
   ;; shares `memo-neighbours`.  A cycle answer is walked per node, since the condensation
   ;; holds no edges.  Both arguments open answers nothing, as in `solve`.  A chain of more
   ;; than one handle also rests on the declaration, so the support names every believed
-  ;; `(transitive P)` that `context` sees (`declared-transitive-by`); a declaration stated
+  ;; `(transitive P)` that `context` sees (`res/declared-by`); a declaration stated
   ;; apart from the hops licenses the pair only below both.
   (solve-with-support [_ kb goal context]
     (unblocked
@@ -832,7 +820,7 @@
      (let [[pred a b] goal
            fwd   #(succs kb pred % context)
            back  #(preds-of kb pred % context)
-           decls (delay (declared-transitive-by kb pred context))
+           decls (delay (res/declared-by kb :transitive pred context))
            with  (fn [sup] (when sup (if (next sup) (into sup @decls) sup)))
            chain (fn [dir root node]
                    (with (support-chain (support-parents kb dir pred root context) node)))]
@@ -862,27 +850,32 @@
 (defrecord TransitiveInArgProver []       ; (transitiveInArg P n R) / (transitiveInArgInverse P n R)
   Prover
   (applicable? [_ kb goal context]
-    (boolean (when-let [[_ lit] (inherit/goal-verdict goal)]
-               (seq (inherit/positions kb (nm/functor lit) context)))))
-  ;; 1 is the answer count, not the cost (docs/inherit.md, "What one question costs")
-  (est-bindings [_ _ _ _] 1)
+    (boolean (if-let [[_ lit] (inherit/goal-verdict goal)]
+               (seq (inherit/positions kb (nm/functor lit) context))
+               (inherit/open-goal? kb goal context))))
+  ;; 1 is a ground goal's answer count, not the cost (docs/inherit.md, "What one question costs")
+  (est-bindings [_ kb goal _] (if (seq (sx/free-vars goal)) (est-by-functor kb goal) 1))
   (cost         [_ _ _ _] :compute)
   (completeness [_ _ _ _] 60)
   (solve [_ kb goal context]
     (inherit/with-memo
       ;; `:ambiguous` yields nothing; the claim walk stops at the `ask`'s deadline
       (binding [inherit/*deadline* budget/*deadline*]
-        (if (inherit/answers? kb goal context) [{}] []))))
+        (cond (seq (sx/free-vars goal))         (inherit/open-answers kb goal context)
+              (inherit/answers? kb goal context) [{}]
+              :else                             []))))
   SupportingProver
   (support-functors [_] #{})
   (support-sources  [_] #{})
   (solve-with-support [_ kb goal context]
     (inherit/with-memo
       (binding [inherit/*deadline* budget/*deadline*]
-        (if (inherit/answers? kb goal context)
-          (or (seq (map (fn [hs] [{} (set hs)]) (inherit/answer-readings kb goal context)))
-              [[{} #{}]])
-          [])))))
+        (let [read (fn [b g] (or (seq (map (fn [hs] [b (set hs)]) (inherit/answer-readings kb g context)))
+                                 [[b #{}]]))]
+          (cond (seq (sx/free-vars goal))
+                (into [] (mapcat #(read % (res/substitute goal %))) (inherit/open-answers kb goal context))
+                (inherit/answers? kb goal context) (vec (read {} goal))
+                :else                              []))))))
 
 (defrecord SymmetricProver []
   Prover
@@ -3544,7 +3537,7 @@
   answers}` pairing each source with the functors of the provers reading it, and the
   provers themselves.
 
-  A miss is an `instance?`-free `satisfies?` scan of the registry plus two set unions; a
+  A miss is a `cap/has?` scan of the registry plus two set unions; a
   hit is a deref and an identity compare.  Empty on both keys for the shipped registry
   minus nothing — `QuantityProver` is in `default-provers`, so the answers set is the
   measure comparisons even for a KB that registered no prover of its own."
@@ -3553,7 +3546,7 @@
         [reg answer] @registry-support]
     (if (identical? pv reg)
       answer
-      (let [ps (filterv #(satisfies? SupportingProver %) pv)
+      (let [ps (filterv #(cap/has? SupportingProver %) pv)
             v  {:answers (into #{} (mapcat support-functors) ps)
                 :sources (into #{} (mapcat support-sources) ps)
                 :reading (reduce (fn [m pr]
@@ -3824,10 +3817,10 @@
       (instance? EqualityProver pr)
       (held-contexts kb '#{sameAs equals rewriteOf} (map :handle (tax/rewrite-rules tx)))
 
-      (satisfies? SupportingProver pr) (held (support-sources pr))
       ;; a calculus prover (`qcn-kb/CalculusProver`):
       ;; the facts that put a node into its network
-      (map? (:calculus pr)) (held (:context-predicates (:calculus pr))))))
+      (map? (:calculus pr)) (held (:context-predicates (:calculus pr)))
+      (cap/has? SupportingProver pr) (held (support-sources pr)))))
 
 (defn ingredient-contexts
   "The contexts holding a stored fact some answer of a computed prover to `goal` rests on:
@@ -3897,7 +3890,7 @@
   `InverseProver`) gets an empty support too, which names none of the facts it read;
   `solve-goal-reporting-support` marks which answers a `SupportingProver` gave."
   [pr kb goal context]
-  (if (satisfies? SupportingProver pr)
+  (if (cap/has? SupportingProver pr)
     (solve-with-support pr kb goal context)
     (map (fn [b] [b #{}]) (solve pr kb goal context))))
 
@@ -3920,7 +3913,7 @@
   read, `FactProver`'s among them."
   [kb goal context]
   (dispatch-provers kb (registry kb) goal context
-                    (fn [pr] (let [r (satisfies? SupportingProver pr)]
+                    (fn [pr] (let [r (cap/has? SupportingProver pr)]
                                (map (fn [[b sup]] [b sup r])
                                     (answers-with-support pr kb goal context))))))
 

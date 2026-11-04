@@ -32,10 +32,10 @@
 (use-fixtures :each (tu/neutral))
 
 (def ^:private ask-ctx
-  "Where the asker stands.  An agent context carries no `genlCx` edge by default, so
-  nothing asserted here reaches an agent that has not opted in — which is the
+  "Where the asker stands.  An agent context carries no `genlCx` edge to CxWell by
+  default, so nothing asserted here reaches an agent that has not opted in — which is the
   configuration the unsoundness needed, and the one most of these tests hold."
-  'CxUniverse)
+  'CxWell)
 
 (defn- loser
   "Whichever of `a` / `b` the partition did **not** elect, as `ask-ctx` sees it.  The

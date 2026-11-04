@@ -194,6 +194,28 @@
 
 ;; ---- the reify walk: one walk, a mint leaf and a read leaf ---------------
 
+(defn- permuted-reifiable?
+  "Is `f` a `reifiable_function` a `symmetric` or commuting mark holds of: one whose
+  constant is named by its expression sorted (`nat-read/sorted-expression`), so a row
+  naming it keeps no written argument order?  Read unscoped, as the store spells."
+  [tax f]
+  (and (symbol? f) (tax/has-prop? tax :reifiable f)
+       (or (tax/has-prop? tax :symmetric f) (boolean (seq (tax/commuting-groups tax f))))))
+
+(defn permuted-reifiable-functions
+  "The `reifiable_function` functions `permuted-reifiable?` holds of, as a set."
+  [kb]
+  (let [tax (reasoning/taxonomy kb)]
+    (into #{} (filter #(permuted-reifiable? tax %)) (tax/props tax :reifiable))))
+
+(defn permutes-reified?
+  "Does `form` hold an application of a function `permuted-reifiable?` holds of, at any
+  nesting?"
+  [kb form]
+  (let [tax (reasoning/taxonomy kb)]
+    (boolean (some #(and (sequential? %) (seq %) (permuted-reifiable? tax (first %)))
+                   (tree-seq sequential? seq form)))))
+
 (defn names-reifiable-nat?
   "Does sentence `s` hold a ground reifiable NAT the write-mode reify would replace, at a
   position `nat-read/reify-in` visits?  False on a KB declaring no reifiable function, and
@@ -472,18 +494,20 @@
 (defn reify-or-mint-nat
   "Reify a ground NAT `form` to its term in reify namespace `ns` (default `nat/`) for a
   write stored in `context` (CxUniverse when nil): nested NAT arguments first, then the
-  existing term (`existing-term`), else a fresh mint (`mint-nat!`).  A quoting function's
-  argument is a mention and is not reified (docs/nat.md, Typing an application that is
-  never minted)."
+  existing term of the expression in its `nat-read/sorted-expression` order
+  (`existing-term`), else a fresh mint of that expression (`mint-nat!`).  A quoting
+  function's argument is a mention and is not reified (docs/nat.md, Typing an application
+  that is never minted)."
   ([kb form] (reify-or-mint-nat kb form nat-read/nat-namespace true nil))
   ([kb form ns chain? context]
    (let [E (if (sx/quoting-functor? (first form))
              (apply list form)
-             (apply list (first form)
-                    (map #(if (nat-read/reifiable-ground-nat? kb %)
-                            (reify-or-mint-nat kb % nat-read/nat-namespace chain? context)
-                            %)
-                         (rest form))))]
+             (nat-read/sorted-expression
+              kb (apply list (first form)
+                        (map #(if (nat-read/reifiable-ground-nat? kb %)
+                                (reify-or-mint-nat kb % nat-read/nat-namespace chain? context)
+                                %)
+                             (rest form)))))]
      (or (nat-read/existing-term kb E ns context) (mint-nat! kb E ns chain?)))))
 
 (defn maybe-reify-nats

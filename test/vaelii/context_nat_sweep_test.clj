@@ -70,27 +70,29 @@
   ;; The source a `nat/` constant does not have: nothing names the context, so the term
   ;; index alone would call it orphaned the moment it was minted.  What holds it up is
   ;; its extent, and what collects it is the last fact leaving.
-  (let [cxfn   (declare-dimension! kb)
-        expr   (list cxfn 'CxMonad (list 'DatetimeFn "2000"))
-        [h k]  (context-in kb '(likes Tom Ann) expr)]
-    (is (nat-read/reified-context-symbol? k) "a cx/ constant")
-    (is (= 1 (v/count-in-context kb k)))
-    (is (reified? kb k))
-    (v/retract! kb h)
-    (is (not (reified? kb k)) "emptied, so collected")
-    (is (zero? (v/count-in-context kb k)))))
+  (tu/with-terms [likes]
+    (let [cxfn   (declare-dimension! kb)
+          expr   (list cxfn 'CxMonad (list 'DatetimeFn "2000"))
+          [h k]  (context-in kb (list likes 'Tom 'Ann) expr)]
+      (is (nat-read/reified-context-symbol? k) "a cx/ constant")
+      (is (= 1 (v/count-in-context kb k)))
+      (is (reified? kb k))
+      (v/retract! kb h)
+      (is (not (reified? kb k)) "emptied, so collected")
+      (is (zero? (v/count-in-context kb k))))))
 
 (tu/deftest-kb a-context-still-holding-a-fact-is-not-collected
-  (let [cxfn  (declare-dimension! kb)
-        expr  (list cxfn 'CxMonad (list 'DatetimeFn "2001"))
-        [h k] (context-in kb '(likes Tom Ann) expr)
-        h2    (v/assert kb '(knows Tom Bob) expr)]
-    (is (= 2 (v/count-in-context kb k)))
-    (v/retract! kb h)
-    (is (reified? kb k) "one fact left, so the context stands")
-    (is (= [{'?x 'Bob}] (v/ask kb '(knows Tom ?x) expr)) "and still answers")
-    (v/retract! kb h2)
-    (is (not (reified? kb k)))))
+  (tu/with-terms [likes knows]
+    (let [cxfn  (declare-dimension! kb)
+          expr  (list cxfn 'CxMonad (list 'DatetimeFn "2001"))
+          [h k] (context-in kb (list likes 'Tom 'Ann) expr)
+          h2    (v/assert kb (list knows 'Tom 'Bob) expr)]
+      (is (= 2 (v/count-in-context kb k)))
+      (v/retract! kb h)
+      (is (reified? kb k) "one fact left, so the context stands")
+      (is (= [{'?x 'Bob}] (v/ask kb (list knows 'Tom '?x) expr)) "and still answers")
+      (v/retract! kb h2)
+      (is (not (reified? kb k))))))
 
 (tu/deftest-kb a-stored-genlcx-edge-keeps-an-emptied-context
   ;; An edge somebody asserted is content about the context, so it holds it up on its own
@@ -316,7 +318,8 @@
       (tu/load-core! base)
       (let [cxfn  (declare-dimension! base)
             expr  (list cxfn 'CxMonad (list 'DatetimeFn "2009"))
-            [h k] (context-in base '(likes Tom Ann) expr)
+            likes (tu/tmp-pred "likes")
+            [h k] (context-in base (list likes 'Tom 'Ann) expr)
             f     (v/fork base)]
         (is (reified? f k) "the fork inherits the mapping")
         (v/retract! f h)
@@ -324,7 +327,7 @@
         (is (zero? (v/count-in-context f k)))
         (is (reified? base k) "the base still maps it")
         (is (= 1 (v/count-in-context base k)) "and still holds the fact")
-        (is (= [{'?x 'Ann}] (v/ask base '(likes Tom ?x) expr))))
+        (is (= [{'?x 'Ann}] (v/ask base (list likes 'Tom '?x) expr))))
       (finally (tu/drop-space! [::sweep-base 1])))))
 
 ;; ---- durability ----------------------------------------------------------

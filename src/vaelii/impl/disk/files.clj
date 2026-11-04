@@ -250,6 +250,23 @@
   (spit-manifest! (str root "/" reasoners-file) {:reasoners (vec (sort names))})
   nil)
 
+(def ^:private load-key-file "load-key.edn")
+
+(defn recorded-load-key
+  "The load key recorded in the store directory `root` (`load-key.edn`), or nil when it
+  records none or the file does not read as a manifest."
+  [root]
+  (let [file (File. ^String (str root) ^String load-key-file)]
+    (when (.exists file)
+      (try (read-edn-manifest file)
+           (catch clojure.lang.ExceptionInfo _ nil)))))
+
+(defn write-load-key!
+  "Record `m` as the load key of the store directory `root`."
+  [root m]
+  (spit-manifest! (str root "/" load-key-file) m)
+  nil)
+
 (def ^:private records-identity-file "records.edn")
 
 (defn records-identity
@@ -747,6 +764,25 @@
            default))
        default))))
 
+(def ^:private load-stated-file "load-stated.nippy")
+
+(defn recorded-load-stated
+  "The handle sets the load key's sources stated, one per source in load order, recorded in
+  the store directory `root` under the records fingerprint `fp`; nil when `root` records
+  none under `fp`.  A nippy file, since a layer's statements outgrow `manifest-bytes`."
+  [root fp]
+  (let [m (read-nippy-file (str root "/" load-stated-file) nil)]
+    (when (and (map? m) (= fp (:records m)))
+      (mapv #(some->> % (into #{})) (:handles m)))))
+
+(defn write-load-stated!
+  "Record `handles`, a seq of handle sets or nils, under the records fingerprint `fp` in
+  the store directory `root`."
+  [root fp handles]
+  (write-nippy-atomic! (str root "/" load-stated-file)
+                       {:records fp :handles (mapv #(some->> % sort vec) handles)})
+  nil)
+
 (defn- frame-length-at
   "The payload length of the frame whose prefix starts at `pos`, or nil where
   `log-tail-offset`'s length chain ends: fewer than four bytes remain, the prefix is
@@ -924,6 +960,13 @@
       (.flush out)
       (.sync (.getFD fos))))
   (fsync-dir! marker))
+
+(defn delete-tree!
+  "Delete `f` and, when it is a directory and not a link to one, what it holds."
+  [^File f]
+  (when (and (.isDirectory f) (not (java.nio.file.Files/isSymbolicLink (.toPath f))))
+    (run! delete-tree! (.listFiles f)))
+  (.delete f))
 
 (defn delete-compact-temps!
   "Remove the commit marker then every temp in `temps` (marker first, so a crash

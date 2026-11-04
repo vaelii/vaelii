@@ -10,13 +10,12 @@
   (:require [vaelii.host.starter :as starter]))
 
 (defn load-into
-  "Load the starter ontology into `kb` and return it.
-
-    (load-into (v/open-kb {}))
-
-  Over 3,700 asserted sentexes — the upper ontology in CxUniverse and the middle
-  theories below it — which the rules take to 4,900+ stored once they have fired.  No
-  individuals: the starter is a schema to build on, not a world.  Loaded in any order the
-  same sentences build the same KB (`absent_type_order_test`)."
-  [kb]
-  (starter/load-into kb))
+  "Load the starter ontology into `kb`, then each text KB `{:layers [path …]}` names
+  (`vaelii.core/load-text!`), and return kb: `(load-into (v/open-kb {}))`.  Over a durable
+  store nothing has written to since the last call, the sources before the first whose
+  files changed are skipped, and the rest load once the contexts they wrote hold only the
+  facts the layers state (docs/operations.md, \"Restarting over a built store\").  The
+  starter is over 3,700 asserted sentexes, a schema with no individuals, and loaded in any
+  order the same sentences build the same KB (`absent_type_order_test`)."
+  ([kb] (load-into kb nil))
+  ([kb opts] (starter/load-starter-and-layers kb opts)))

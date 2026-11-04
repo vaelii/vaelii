@@ -463,16 +463,16 @@
   ;; choice is for: a conclusion resting on an edge belongs no higher than a context that
   ;; can see the supporter named, so a witness that moved with arrival order would move
   ;; the conclusion's context with it.
-  (let [above (tu/tmp-ctx "Above")]
-    (v/assert kb (list 'genlCx 'CxUniverse above) 'CxUniverse)
+  (let [above (tu/tmp-ctx "Mid") low (tu/tmp-ctx "Low")]
+    (v/assert kb (list 'genlCx low above) 'CxUniverse)
     (letfn [(witness [ctx-a ctx-b]
               (tu/with-terms [fatherOf parentOf ancestorOf Tom Bob]
                 (v/assert kb (list 'genl fatherOf parentOf) ctx-a)
                 (v/assert kb (list 'genl fatherOf parentOf) ctx-b)
                 (v/assert kb (list 'implies (list parentOf '?x '?y) (list ancestorOf '?x '?y))
-                          'CxUniverse {:direction :forward})
-                (v/assert kb (list fatherOf Tom Bob) 'CxUniverse)
-                (let [[concl & more] (v/sentexes-matching kb (list ancestorOf Tom Bob) 'CxUniverse)
+                          low {:direction :forward})
+                (v/assert kb (list fatherOf Tom Bob) low)
+                (let [[concl & more] (v/sentexes-matching kb (list ancestorOf Tom Bob) low)
                       derived        (:id concl)]
                   (is (nil? more) "one conclusion, so reading it is not a choice between several")
                   (is (some? derived))

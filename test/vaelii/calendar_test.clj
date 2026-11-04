@@ -8,10 +8,10 @@
             [vaelii.core :as v]
             [vaelii.impl.calendar :as cal]
             [vaelii.impl.datetime :as dt]
-            [vaelii.impl.interval :as interval]
             [vaelii.impl.plan :as plan]
             [vaelii.impl.point :as point]
             [vaelii.impl.provers :as provers]
+            [vaelii.impl.stp :as stp]
             [vaelii.impl.types.prover :as prover-types]
             [vaelii.test-util :as tu]))
 
@@ -118,7 +118,7 @@
                 (MonthFn 2000 1) (MonthFn 2000 3) (MonthFn 2000 12) (MonthFn 2001 1)
                 (DayFn 2000 1 1) (DayFn 2000 3 15) (DayFn 2000 12 31)
                 (DatetimeFn "2000") (DatetimeFn "2000-03") (DatetimeFn "2000-03-15")]
-        sub   (interval/interval-denotation 'subintervalOf)
+        sub   (stp/interval-denotation 'subintervalOf)
         wrong (for [a terms b terms
                     :when (not= (dt/subinterval? a b)
                                 (contains? sub (cal/relation a b)))]
@@ -180,13 +180,13 @@
     (is (nil? (dt/bounds '(YearFn 9999))))
     (is (empty? (v/ask kb '(endOf (YearFn 9999) ?i) C)))))
 
-(tu/deftest-kb the-clock-answers-only-where-its-vocabulary-is-visible
-  ;; A context with no `genlCx` edge does not see CxUniverse, so a reader there has no
-  ;; `startOf` to ask about and gets no answer to it.
+(tu/deftest-kb the-clock-answers-in-a-context-with-no-edge
+  ;; Every context sees CxUniverse, so a reader with no `genlCx` edge reads the clock's
+  ;; vocabulary there.
   (tu/with-terms [CxOutside]
     (is (v/ask? kb '(during (MonthFn 2000 3) (YearFn 2000)) 'CxUniverse))
-    (is (not (v/ask? kb '(during (MonthFn 2000 3) (YearFn 2000)) CxOutside)))
-    (is (empty? (v/ask kb '(startOf (YearFn 2000) ?i) CxOutside)))))
+    (is (v/ask? kb '(during (MonthFn 2000 3) (YearFn 2000)) CxOutside))
+    (is (seq (v/ask kb '(startOf (YearFn 2000) ?i) CxOutside)))))
 
 ;; ---- what the answer rests on, and what it does not displace ------------
 
@@ -278,9 +278,9 @@
     (testing "every one of the twenty interval predicates is claimed, and answered by its
               own denotation"
       (is (= (into #{} (keep (fn [[pred rels]] (when (rels :during) pred)))
-                   interval/interval-denotation)
+                   stp/interval-denotation)
              (into #{} (filter #(v/ask? kb (list % a b) C))
-                   (keys interval/interval-denotation)))))
+                   (keys stp/interval-denotation)))))
     (testing "and every one of the six instant predicates, the same way"
       (is (= (into #{} (keep (fn [[pred rels]] (when (rels :before) pred)))
                    point/instant-denotation)

@@ -128,15 +128,6 @@
                                   :spellings (when premise? (integrate/spellings kb h))})))))))
   (put-premise-mark kb h (strength/max (jtms/premise-strength (reasoning/tms kb) h) strength)))
 
-(defn check-rule-sentence
-  "Every pre-storage check a rule must pass, as a step that writes nothing —
-  `checks/check-rule!`, the list both storage entry points read (the other being a generator
-  firing, `chain/place-conclusion`).  A generator's own three are in that list rather
-  than beside it, because a *minted* rule can be a generator too (docs/generators.md)
-  and a check only this entry point ran would be one the fixpoint could store around."
-  [kb sentence context]
-  (checks/check-rule! kb sentence context))
-
 (defn- join-engines
   "The engines a rule stated two ways runs in: the **union** of the two spellings'.
 
@@ -147,6 +138,37 @@
   `#{:solve}` in every spelling, so the join leaves it there."
   [a b]
   (sx/canonical-engines (into a b)))
+
+(defn- mint-rule-direction-refusal
+  "The `:mint-rule` refusal of re-asserting the rule stored at `h` as `stored` in the
+  spelling `incoming`, as a value, or nil: `h` stores a rule of `kv/mint-rules` and the
+  join would move its engines (`kb/mint-rule-refusal`)."
+  [kb h stored incoming]
+  (when (not= (:engines stored) (join-engines (:engines stored) (:engines incoming)))
+    (kb/mint-rule-refusal (kb/mint-kind kb h) h "assert" "keeps its direction")))
+
+(defn- mint-rule-direction-problem
+  "`mint-rule-direction-refusal` of rule `sentence` written in `context`, as a value, or
+  nil."
+  [kb sentence context]
+  (when-let [h (kb/find-sentex-handle kb sentence context)]
+    (when-let [stored (p/get-sentex (:records kb) h)]
+      (mint-rule-direction-refusal kb h stored (res/kb-sentex kb sentence context)))))
+
+(defn check-rule-sentence
+  "Every pre-storage check a rule must pass, as a step that writes nothing —
+  `checks/check-rule!`, the list both storage entry points read (the other being a generator
+  firing, `chain/place-conclusion`).  A generator's own three are in that list rather
+  than beside it, because a *minted* rule can be a generator too (docs/generators.md)
+  and a check only this entry point ran would be one the fixpoint could store around.
+  A rule of `kv/mint-rules` restated under another direction, which those checks refuse,
+  is refused `:mint-rule` instead (`mint-rule-direction-problem`)."
+  [kb sentence context]
+  (try (checks/check-rule! kb sentence context)
+       (catch clojure.lang.ExceptionInfo e
+         (if-let [r (mint-rule-direction-problem kb sentence context)]
+           (throw (ex-info (:message r) (dissoc r :message) e))
+           (throw e)))))
 
 (defn- reconcile-rule-slots!
   "Bring a re-asserted rule's `:engines` / `:defeasible` to the value the two
@@ -184,6 +206,8 @@
         engines  (join-engines (:engines stored) (:engines incoming))
         def?     (when (and (:defeasible stored) (:defeasible incoming)) true)
         moved?   (not= engines (:engines stored))]
+    (when-let [r (and moved? (mint-rule-direction-refusal kb h stored incoming))]
+      (throw (ex-info (:message r) (dissoc r :message))))
     (when (or moved? (not= (boolean def?) (boolean (:defeasible stored))))
       (when-let [audit *premise-audit*]
         (swap! audit (fn [m] (if (contains? (get m h) :slots)
@@ -356,10 +380,14 @@
 (defn aligned-exception
   "The exception `exc`, in the author's variable names, in the canonical variables of the
   rule whose canonical→author varmap as written is `author-vm`: the query
-  `assert-exceptWhen-meta!` stores."
-  [exc author-vm]
-  (let [inv (set/map-invert author-vm)]                             ; {?x ?var0}
-    (sx/canonical-exception (map #(sx/canon (res/substitute % inv)) exc) (keys author-vm))))
+  `assert-exceptWhen-meta!` stores.  Each conjunct is put in the store's literal form
+  (`sx/normalize-literal`: comparison direction, symmetric and commuting argument order),
+  so two spellings of one exception are one meta-sentex."
+  [kb exc author-vm]
+  (let [inv   (set/map-invert author-vm)                             ; {?x ?var0}
+        marks (res/store-marks kb)]
+    (sx/canonical-exception (map #(sx/normalize-literal (sx/canon (res/substitute % inv)) marks) exc)
+                            (keys author-vm))))
 
 (defn assert-exceptWhen-meta!
   "Store one exceptWhen exception against the rule at `rule-handle` as a
@@ -384,7 +412,7 @@
                       {:type :not-well-formed :handle rule-handle :exception (vec exc)})))
     ;; the rule's author variables stand in for its antecedents: they are what binds
     (sx/check-exception-closed (vec (vals author-vm)) exc)
-    (let [aligned (aligned-exception exc author-vm)
+    (let [aligned (aligned-exception kb exc author-vm)
           meta-s  (sx/exceptWhen-meta aligned rule-handle)]
       ;; each conjunct is held to the naming invariants here: `check-rule-sentence`
       ;; checks `rules/inner-rule`, which has the query peeled off
@@ -445,7 +473,7 @@
                      (when-let [h (kb/find-sentex-handle kb form context)]
                        [h (:varmap (res/kb-sentex kb (rules/inner-rule form) context))]))))]
     (when vm
-      (kb/find-sentex-handle kb (sx/exceptWhen-meta (aligned-exception exc vm) h) context))))
+      (kb/find-sentex-handle kb (sx/exceptWhen-meta (aligned-exception kb exc vm) h) context))))
 
 (defn stored-handle
   "The handle of the sentex `assert` would find `sentence` stored as in `context`, or nil;
@@ -534,14 +562,14 @@
   per conjunct by `assert` before reaching here).  Returns the sentex handle.
 
   `from` carries what only the caller's entry point knows: `:assert-fn`, re-entered for
-  an `(ist Ctx S)` sentence and for nothing else, and `:bulk?`, the caller-guaranteed
-  bulk-load mode that turns off the per-fact machinery which only validates or dedups.
-  `:bulk?` is a value rather than a var read because the public knob is
-  `vaelii.core/*bulk-load?*`, and an engine namespace may not read `vaelii.core`.
+  an `(ist Ctx S)` sentence and for nothing else, `:written`, the fact before the reify,
+  recorded when `nat/permutes-reified?`, and `:bulk?`, the caller-guaranteed bulk-load
+  mode that turns off the per-fact machinery which only validates or dedups, a value
+  because an engine namespace may not read `vaelii.core/*bulk-load?*`.
 
   The bulk path reads the `symmetric` mark unscoped: the argument-order fold decides
   the stored key, which every reader shares (docs/canonicalization.md)."
-  [kb sentence context opts {:keys [assert-fn bulk?]}]
+  [kb sentence context opts {:keys [assert-fn bulk? written]}]
   (cond
     ;; A `do/` imperative is an instruction, not a fact: nothing is stored, and what
     ;; comes back is the action's result (docs/labeling.md).  First, so no naming or
@@ -631,14 +659,16 @@
             ;; what makes the bulk result identical to loading one-by-one
             ;; (`integrate/commute-existing`, vaelii#61).  The read is inside the `bulk?`
             ;; `and`, so the non-bulk path never reaches it.
-            [h s _]  (if (and bulk? (not (integrate/permuting-sentence? kb sentence)))
+            written  (when (and written (not= written sentence) (nat/permutes-reified? kb written))
+                       written)
+            [h s _]  (if (and bulk? (nil? written) (not (integrate/permuting-sentence? kb sentence)))
                        (let [[h s] (kb/create-sentex kb sentence context strength)] [h s true])
                        (kb/find-or-create-sentex kb sentence context strength))
             ;; a predicate a mark permutes may store this assertion under a spelling other
             ;; than the one written, and the row has to remember which, for the mark's
             ;; leaving to hand it back (`integrate/spellings-key`) — read before the mark
             ;; below moves the class the record starts from
-            permuted? (integrate/permuting-sentence? kb sentence)
+            permuted? (or (some? written) (integrate/permuting-sentence? kb sentence))
             prior    (when permuted? (jtms/premise-strength (reasoning/tms kb) h))]
         ;; the labeller's forced memberships go in before the mark, so a denial of a
         ;; forced-monotonic literal and a fact an argument declaration convicts are never IN
@@ -647,7 +677,7 @@
         (checks/force-sentex! kb s)
         (mark-premise kb h strength)
         (when permuted?
-          (integrate/note-premise-spelling! kb h (:sentence s) sentence strength prior))
+          (integrate/note-premise-spelling! kb h (:sentence s) (or written sentence) strength prior))
         ;; The add-side choke point: the sentex is reflected into every cache
         ;; through the special-predicate table and the exception re-check is queued
         ;; — one call, so no assert path can forget either half.  An equality
@@ -748,35 +778,39 @@
             ;; The seeds feed `chain-all` and nothing else, so an assert that does not
             ;; chain computes none.
             (when (:chain? opts true)
-              (chain/chain-all
-               kb
-               (-> [h]
-                   ;; a twin `genl` edge is an edge arriving, whichever merge restated it
-                   (into (special/minted-seeds kb (:new mig)))
-                   (into (:new lift))
-                   (into (special/minted-seeds kb (:new down)))
-                   ;; the companion rule goes on the agenda so it fires over the
-                   ;; facts already stored, the way a minted generator rule does
-                   (into (:new dfn))
-                   (into (:new cls))
-                   ;; a minted type makes this fact matchable at a type it did
-                   ;; not have, so it goes on the agenda for the same reason the
-                   ;; genl seeds below do — a rule on `(animal ?x)` must fire off
-                   ;; a type the entailment minted, within this same assert,
-                   ;; and a minted genl edge seeds what it brings under a rule
-                   (into (special/minted-seeds kb (:new args)))
-                   (into (special/minted-seeds kb (:new back)))
-                   ;; a new genl edge makes stored facts matchable at a
-                   ;; supertype they did not have — they go back on the agenda,
-                   ;; or the same knowledge would derive different things in
-                   ;; different arrival orders
-                   (into (special/subsumption-seeds kb sentence))
-                   ;; ...and a new link of a declared-transitive predicate extends
-                   ;; a closure that is answered rather than stored, so no pair of
-                   ;; it is ever a datum: the partner triggers of the rules joined
-                   ;; to it go back, or the same failure again through a third
-                   (into (special/transitive-seeds kb sentence)))
-               opts))
+              (let [owed  special/*owed-subsumption*
+                    owe?  (and owed (seq (special/sentence-edges sentence)))
+                    seeds
+                    (-> [h]
+                        ;; a twin `genl` edge is an edge arriving, whichever merge restated it
+                        (into (special/minted-seeds kb (:new mig)))
+                        (into (:new lift))
+                        (into (special/minted-seeds kb (:new down)))
+                        ;; the companion rule goes on the agenda so it fires over the
+                        ;; facts already stored, the way a minted generator rule does
+                        (into (:new dfn))
+                        (into (:new cls))
+                        ;; a minted type makes this fact matchable at a type it did
+                        ;; not have, so it goes on the agenda for the same reason the
+                        ;; genl seeds below do — a rule on `(animal ?x)` must fire off
+                        ;; a type the entailment minted, within this same assert,
+                        ;; and a minted genl edge seeds what it brings under a rule
+                        (into (special/minted-seeds kb (:new args)))
+                        (into (special/minted-seeds kb (:new back)))
+                        ;; a new genl edge makes stored facts matchable at a
+                        ;; supertype they did not have — they go back on the agenda,
+                        ;; or the same knowledge would derive different things in
+                        ;; different arrival orders
+                        (into (when-not owe? (special/subsumption-seeds kb sentence)))
+                        ;; ...and a new link of a declared-transitive predicate extends
+                        ;; a closure that is answered rather than stored, so no pair of
+                        ;; it is ever a datum: the partner triggers of the rules joined
+                        ;; to it go back, or the same failure again through a third
+                        (into (special/transitive-seeds kb sentence)))]
+                (when owe? (vswap! owed update opts (fnil conj []) sentence))
+                (if owed
+                  (binding [special/*owed-subsumption* nil] (chain/chain-all kb seeds opts))
+                  (chain/chain-all kb seeds opts))))
             ;; **After** the chain, so the entry carries the run that just ran: a
             ;; violation a merge created — the twin that would have made one individual
             ;; both a dog and a cat — is this assert's to report, and

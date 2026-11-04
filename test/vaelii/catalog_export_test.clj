@@ -61,7 +61,12 @@
         (v/assert kb '(genl tmp_export_type thing) 'CxUniverse)
         (cat/register! "mine" "My KB" kb {:where {:backend :memory}})
         (testing "the job runs on its own thread and reports where it went"
-          (is (= :running (:status (cat/export-entry! "mine" (.getPath dump) {:compression :none}))))
+          (let [walk-held (promise)
+                job       (cat/export-entry! "mine" (.getPath dump)
+                                             {:compression :none
+                                              :run-in      (fn [work] @walk-held (work))})]
+            (is (= :running (:status job)))
+            (deliver walk-held true))
           (is (wait-for-export))
           (let [j (jobs/latest :export)]
             (is (= :done (:status j)))

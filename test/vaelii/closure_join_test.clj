@@ -139,19 +139,19 @@
     (is (not (holds? kb (list 'genl pug mammal) U)))))
 
 (tu/deftest-kb a-genlCx-join-reads-the-reflexive-pair-and-the-far-pair
-  (tu/with-terms [pairOf qualifies CxMid CxLow]
-    (v/assert kb (list 'genlCx CxMid U) U)
+  (tu/with-terms [pairOf qualifies CxTop CxMid CxLow]
+    (v/assert kb (list 'genlCx CxMid CxTop) U)
     (let [low (v/assert kb (list 'genlCx CxLow CxMid) U)]
       (v/assert kb (list 'set/forwardRule
                          (list 'implies (list 'and (list pairOf '?a '?b) (list 'genlCx '?a '?b))
                                (list qualifies '?a '?b)))
                 U)
       (v/assert kb (list pairOf CxLow CxLow) U)
-      (v/assert kb (list pairOf CxLow U) U)
+      (v/assert kb (list pairOf CxLow CxTop) U)
       (is (holds? kb (list qualifies CxLow CxLow) U) "reflexive")
-      (is (holds? kb (list qualifies CxLow U) U) "two edges apart")
+      (is (holds? kb (list qualifies CxLow CxTop) U) "two edges apart")
       (testing "the far pair names the edges of the path"
-        (let [h (v/handle-of kb (list qualifies CxLow U) U)]
+        (let [h (v/handle-of kb (list qualifies CxLow CxTop) U)]
           (is (contains? (set (keys (:nodes (v/why kb h)))) low)))))))
 
 ;; ---- the planner runs the closure literal after a literal binding an end ----

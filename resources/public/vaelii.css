@@ -198,7 +198,9 @@ body {
   font-size-adjust: var(--x-height);
   max-width: 96rem;
   margin: 0 auto 2rem;
-  padding: 0 .75rem;
+  /* padding, not a header margin: a boosted swap's `show:window:top` scrolls to the body's
+     own top, and a top margin on its first child would collapse through and move it down */
+  padding: .6rem .75rem 0;
   background: var(--bg);
   color: var(--ink);
 }
@@ -346,19 +348,43 @@ button.panel-n:hover { background: none; color: var(--accent-2); }
 /* ---- header ---------------------------------------------------------- */
 /* btop's top bar: one framed strip across the page holding the brand, the tools, the
    two colour dots and search.  It is the first frame on every page, so it is drawn
-   as one rather than as a rule under a row of links. */
+   as one rather than as a rule under a row of links.
 
+   The brand sits upper left, search lower left, and the KB and dots lower right.  From
+   63rem the menubar runs along the top row, over the KB and dots.  Between 57rem and
+   63rem it spans both rows between the corners, in a column reserving 23rem, which holds
+   the nine shipped links on two lines.  Below 57rem it takes a row of its own.  A long KB
+   name truncates before the menubar loses width.
+
+   The two-line header stays on screen.  The narrow one scrolls away, since four or five
+   lines of it would hold a third of a phone screen. */
+
+html { scroll-padding-top: 6rem; scrollbar-gutter: stable; }
 header.site {
-  display: flex;
-  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) fit-content(30vw);
+  grid-template-areas:
+    "brand  menu menu"
+    "search .    end";
   align-items: center;
-  gap: .5rem .75rem;
+  gap: .3rem .75rem;
   padding: .4rem .6rem;
-  margin: .6rem 0 1.4rem;
+  margin: 0 0 1.4rem;
   border: 1px solid var(--edge);
   background: var(--panel);
 }
-.brand { display: inline-flex; align-items: center; gap: .45rem; color: var(--title); }
+.brand {
+  grid-area: brand;
+  justify-self: start;
+  align-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  color: var(--title);
+}
 .brand:hover { text-decoration: none; }
 .brand .logo { display: block; width: 18px; height: 18px; }
 .wordmark {
@@ -368,22 +394,27 @@ header.site {
   color: var(--brand);
   letter-spacing: -.01em;
 }
+.brand .version { font-family: var(--mono); font-size: .72rem; color: var(--muted); }
 
-/* the top menubar — links to the top-level tools, pushed to the right */
-.menubar { display: inline-flex; align-items: center; gap: .1rem; flex-wrap: wrap; margin-left: auto; }
-.menubar a {
+/* the top menubar — links to the top-level tools, from the left, beside the logo */
+.menubar { grid-area: menu; text-wrap: balance; }
+.menubar a { display: inline-block; margin: 0 .05rem; }
+.menubar a, a.kb-active {
   padding: .1em .5em;
   border: 1px solid transparent;
   color: var(--ink);
   font-size: .92rem;
 }
-.menubar a:hover { background: var(--btn-hover); text-decoration: none; }
-.menubar a.active {
+.menubar a:hover, a.kb-active:hover { background: var(--btn-hover); text-decoration: none; }
+/* no font-weight: a bold link is wider, and the links after it would move */
+.menubar a.active, a.kb-active.active {
   border-color: var(--accent);
   color: var(--accent);
-  font-weight: 600;
 }
 .search {
+  grid-area: search;
+  align-self: end;
+  width: 100%;
   font: inherit;
   font-family: var(--mono);
   font-size: .92rem;
@@ -393,11 +424,40 @@ header.site {
   background: var(--field-bg);
 }
 .search:focus { outline: none; border-color: var(--accent); }
+.header-end {
+  grid-area: end;
+  justify-self: end;
+  align-self: end;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+@media (max-width: 63rem) {
+  header.site {
+    grid-template-columns: auto minmax(23rem, 1fr) fit-content(30vw);
+    grid-template-areas:
+      "brand  menu ."
+      "search menu end";
+  }
+}
+@media (max-width: 57rem) {
+  html { scroll-padding-top: 0; }
+  header.site {
+    position: static;
+    grid-template-columns: minmax(8rem, 1fr) fit-content(60vw);
+    grid-template-areas:
+      "brand  brand"
+      "menu   menu"
+      "search end";
+  }
+  .search { min-width: 0; }
+}
 
 /* the two colour controls, dots rather than labels (vaelii.com's, so the two surfaces
    read as one): the palette dot cycles the accent pair and is painted in it, and the
    theme dot flips light against dark and shows both grounds. */
-.theme-controls { display: inline-flex; align-items: center; gap: .4rem; margin-left: .5rem; }
+.theme-controls { flex: none; display: inline-flex; align-items: center; gap: .4rem; margin-left: .5rem; }
 .palette-btn, .theme-btn {
   width: 13px;
   height: 13px;
@@ -421,17 +481,23 @@ header.site {
      green    a fact the engine derived rather than was told
      blue     a forward rule · purple a backward rule · both halves when it runs both ways
      black    an inert rule — stored, and chaining in neither direction
+     teal     a choice rule · pink a constraint rule · sky a rule run by a solve alone
 
    Filled means asserted; a ring means derived.  Dimmed means stored and not believed.
-   `title` carries the handle and a plain reading, so the number is a hover away. */
+   `title` carries the handle and a plain reading, so the number is a hover away.
+
+   The box is `border-box`, so a ring is as wide as a filled circle, and circle plus margin
+   is two monospace characters wherever it sits: the gap to the sentence is one width, and
+   a sentence nested in a meta-sentex keeps its counted indent (`web/badge-cols`). */
 
 .badge-link { text-decoration: none; }
 .badge-link:hover { text-decoration: none; }
 .badge {
   display: inline-block;
+  box-sizing: border-box;
   width: .68em;
   height: .68em;
-  margin-right: .45em;
+  margin-right: calc(2ch - .68em);
   border: 1px solid color-mix(in srgb, var(--badge-c, var(--muted)) var(--lit, 100%), var(--bg));
   border-radius: 50%;
   background: color-mix(in srgb, var(--badge-c, var(--muted)) var(--lit, 100%), var(--bg));
@@ -446,6 +512,9 @@ header.site {
 .badge-derived   { --badge-c: var(--rb4); }
 .badge-forward   { --badge-c: var(--rb7); }
 .badge-backward  { --badge-c: var(--rb8); }
+.badge-choice    { --badge-c: var(--rb5); }
+.badge-constraint { --badge-c: var(--rb9); }
+.badge-solve     { --badge-c: var(--rb6); }
 /* the one circle with no hue: an inert rule chains in neither direction, and the page
    says so by leaving it unlit.  Its border is what keeps it visible on either ground */
 .badge-inert     { --badge-c: #000; border-color: var(--muted); }
@@ -471,9 +540,6 @@ header.site {
    `.sx-body`'s doing: a newline returns to the left edge of the containing block, and
    that block is the sentence's rather than the row's (web/sentex-row). */
 .sx-rule { white-space: pre-wrap; }
-/* a badge inside a sentence (an expanded `(sentexHandle N)`) is two characters wide, so
-   the counted indent of the sentence behind it holds (`web/badge-cols`) */
-.sx .badge { box-sizing: border-box; margin-right: calc(2ch - .68em); }
 
 /* Depth-coloured parens (`web/paren`).  A sentence is a tree printed as a line, and the
    parens are the only thing saying where a subterm ends; every subterm is already
@@ -576,14 +642,17 @@ a.t-num     { --sx-c: var(--t-num); }                    /* 1970                
 
 /* the front page's browsing history (vaelii.js): one row per kind, each entry a link
    whose remove button shows while the pointer or the focus is on it */
-.history-row  { display: flex; flex-wrap: wrap; align-items: baseline; gap: .15rem .9rem;
+.history-row  { display: grid; grid-template-columns: 5rem minmax(0, 1fr); align-items: baseline;
                 margin: .2rem 0; }
-.history-kind { min-width: 5rem; font-size: .85em; }
+.history-kind { font-size: .85em; }
 .history-item { display: inline-flex; align-items: baseline; gap: .2em; max-width: 32rem; }
-/* an entry's label: a term link, or a literal the server draws (`web/history-literals`) */
-.history-item > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis;
-                               white-space: nowrap; }
-.history-items { display: contents; }   /* the literal row's items stay flex items of the row */
+/* an entry's label: a term link, clipped.  A sentex entry is a `.sx-clip` row instead */
+.history-item:not(.sx-item) > a:first-child { min-width: 0; overflow: hidden;
+                                              text-overflow: ellipsis; white-space: nowrap; }
+.history-items { display: flex; flex-wrap: wrap; gap: .15rem .9rem; min-width: 0; }
+/* the literals and the rules are one sentex per row, a dozen before the row scrolls */
+.history-items.history-sentexes { display: block; max-height: 15rem; overflow-y: auto; }
+.history-item.sx-item { display: flex; max-width: none; gap: 0; margin: 0; padding-inline: 0; }
 .history-x {
   visibility: hidden;
   padding: 0 .25em;
@@ -607,7 +676,7 @@ a.nat-paren:hover { color: var(--accent); text-decoration: none; }
 
 .legend   { font-size: .85em; color: var(--muted); margin: .2rem 0; }
 .legend b { font-weight: 600; }
-.legend .badge { margin: 0 .15em 0 .5em; }
+.legend .badge { margin: 0 .35em 0 .5em; }
 
 /* ---- the stats page -------------------------------------------------- */
 
@@ -716,9 +785,12 @@ a.stat:hover { border-color: var(--accent); text-decoration: none; }
      sentence starts, and the context after it stays on its last line (web/sentex-row) */
   display: flex;
   align-items: baseline;
-  gap: .45em;
 }
 .sx-body { min-width: 0; flex: 1 1 auto; }
+/* a row held to one line, for a list a reader scans: the formula is clipped, not edited,
+   and a rule's laid-out newlines fold into spaces */
+.sx-clip > .sx-body { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-clip .sx-rule { white-space: nowrap; }
 
 /* the row's way into the editor.  It is shown on hover or keyboard focus, so a page of
    rows reads as sentences rather than as a column of controls, and it holds its space
@@ -1025,7 +1097,13 @@ ul.why summary:focus-visible { outline: 2px solid var(--accent); outline-offset:
    actions.  The active KB is the one every other page is about, so it is the one
    the accent border points at. */
 
-.kb-active { font-family: var(--mono); font-size: .82em; }
+.kb-active {
+  font-family: var(--mono);
+  font-size: .82em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .kb-active .muted { font-weight: 400; }
 
 .kb-card {
@@ -1237,15 +1315,17 @@ ul.why summary:focus-visible { outline: 2px solid var(--accent); outline-offset:
 @media (max-width: 40rem) {
   .knob    { grid-template-columns: 1fr; }
   .knob-v  { text-align: left; }
-  /* nav: give the menubar the full row so items wrap horizontally rather than
-     stacking one-per-line, and drop the search onto its own full-width row */
-  .menubar   { margin-left: 0; }
   .menubar a { padding: .3em .55em; font-size: .9rem; }
-  .search    { flex: 1 1 100%; min-width: 0; }
   /* proof / search trees: relieve cumulative indent so deep branches stay on screen */
   ul.why                    { padding-left: .6rem; }
   .search-tree details.node { margin-left: 0; padding-left: .4rem; }
   .stats-table th, .stats-table td { padding-right: .6rem; }
+  /* the lists table has four columns and long prose: each row stacks */
+  .list-table thead { display: none; }
+  .list-table tr { display: block; padding: .4rem 0; border-bottom: 1px solid var(--edge); }
+  .list-table th, .list-table td { display: block; padding: .1rem 0; text-align: left; }
+  .list-table td.num::before { content: "stored: "; }
+  .list-table td.num:empty { display: none; }
 }
 
 /* ---- what a batch would do (the editor's lookahead) ------------------ */
@@ -1331,7 +1411,7 @@ ul.why summary:focus-visible { outline: 2px solid var(--accent); outline-offset:
     grid-template-areas: "head fig" "body fig";
     column-gap: 1.5rem;
   }
-  .with-graph .term-fig { position: sticky; top: .5rem; align-self: start; min-width: 20rem; }
+  .with-graph .term-fig { position: sticky; top: 5.5rem; align-self: start; min-width: 20rem; }
   .with-graph .term-fig figcaption { contain: inline-size; }
   .with-graph .kb-graph-box { max-height: calc(100vh - 7rem); }
 }

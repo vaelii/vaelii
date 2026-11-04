@@ -144,8 +144,7 @@
 
 (tu/deftest-kb a-disjointness-clash-is-a-disjoint-nogood
   ;; Everything in one context, like the arg test below: the constraint checks
-  ;; are context-scoped — disjointness included — and this KB is fresh, so a
-  ;; declaration in an unwired CxUniverse would simply be invisible here.
+  ;; are context-scoped, disjointness included.
   (tu/with-terms [dog cat Felix]
     (v/assert kb (list 'disjoint dog cat) 'CxNaturalWorld)
     (v/assert kb (list cat Felix) 'CxNaturalWorld)
@@ -155,9 +154,7 @@
 (tu/deftest-kb an-arg-violation-is-typed-arg-type
   ;; the constraint-only reading: the conviction is the subject
   (tu/without-entailing
-   ;; Everything in one context on purpose: the constraint checks are context-scoped,
-   ;; and this KB is fresh, so `CxNaturalWorld` has no genlCx edge to
-   ;; CxUniverse and a constraint declared there would simply be invisible.
+   ;; Everything in one context on purpose: the constraint checks are context-scoped.
    (tu/with-terms [parentOf person rock Muffet Boulder]
      ;; `checks/args-problem` is open-world: it only bites when the argument holds a type
      ;; the taxonomy separates from the declared one, so an untyped individual can never

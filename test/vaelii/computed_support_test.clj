@@ -25,6 +25,7 @@
     * and does the answer stay **local** — a constraint the chain never travelled must
       not withdraw anything."
   (:require [clojure.test :refer [is testing use-fixtures]]
+            [clojure.walk :as walk]
             [vaelii.core :as v]
             [vaelii.impl.chain :as chain]
             [vaelii.impl.duration :as dur]
@@ -484,12 +485,32 @@
       (is (<= k few (* 2 k)))
       (is (= few (solves 8))))))
 
+(tu/deftest-kb a-batch-re-joins-a-computed-rule-once-at-its-settle
+  (tu/with-shipped-config
+    (tu/with-terms [rankOf outranks above person Ann Bob Cy]
+      (v/add-prover kb (ranking-prover rankOf outranks))
+      (let [rule   (v/assert kb (tu/fwd [(list person '?x) (list outranks '?x '?y)]
+                                        (list above '?x '?y))
+                             C)
+            rejoin @#'chain/rejoin-in-full
+            joins  (atom 0)]
+        (doseq [p [Ann Bob Cy]] (v/assert kb (list person p) C))
+        (with-redefs-fn {#'chain/rejoin-in-full
+                         (fn [& a]
+                           (swap! joins + (count (filter #{rule} (second a))))
+                           (apply rejoin a))}
+          #(v/with-deferred-settle kb
+             (doseq [[i p] (map-indexed vector [Ann Bob Cy])]
+               (v/assert kb (list rankOf p i) C))))
+        (is (= 1 @joins))
+        (is (= #{(list above Bob Ann) (list above Cy Ann) (list above Cy Bob)}
+               (believed kb above)))))))
+
 ;; ---- and what a purely arithmetic comparison still rests on ---------------
 
 (tu/deftest-kb an-arithmetic-comparison-adds-no-supporter-of-its-own
-  ;; The other side of the contract: a prover that reads nothing stored reports nothing,
-  ;; so `(lessThan ?a ?b)` leaves the firing supported by the facts that bound it and the
-  ;; rule, exactly as before.
+  ;; A prover that reads nothing stored reports nothing, so `(lessThan ?a ?b)` leaves
+  ;; the firing supported by the facts that bound it and the rule.
   (tu/with-terms [ageOf youngerThan Ann Bob]
     (let [h1 (v/assert kb (list ageOf Ann 10) C {:chain? false})
           h2 (v/assert kb (list ageOf Bob 20) C {:chain? false})
@@ -502,3 +523,87 @@
       (is (= [[#{h1 h2} rh]]
              (mapv (juxt (comp set :antecedents) :informant)
                    (v/supporting-justifications kb ch)))))))
+
+;; ---- a literal a prover answers with no support (#226, test 5) ------------
+
+(defn- forward-reads
+  "What `ask?` and two forward rules make of the ground `literal` naming `x`, once `setup`
+  is stored: `{:asked … :trigger … :residual …}`.  The trigger rule has `literal` as its
+  only antecedent; the residual rule joins it over `x` after a membership arriving last.
+  The `^:red` tests below call it for provers that answer a literal at query time and are
+  no `SupportingProver`, where no arm of `chain/join-stored-shape` computes the literal:
+  a forward join reads the stored tuples alone."
+  [kb setup literal x]
+  (tu/with-terms [noted_t noted_r mark]
+    (v/assert kb (tu/fwd [literal] (list noted_t x)) C)
+    (v/assert kb (tu/fwd [(list mark '?x) (walk/postwalk-replace {x '?x} literal)]
+                         (list noted_r '?x))
+              C)
+    (doseq [s setup] (v/assert kb s C))
+    (v/assert kb (list mark x) C)
+    {:asked    (v/ask? kb literal C)
+     :trigger  (contains? (believed kb noted_t) (list noted_t x))
+     :residual (contains? (believed kb noted_r) (list noted_r x))}))
+
+(def ^:private read-all {:asked true :trigger true :residual true})
+
+(tu/deftest-kb ^:red a-forward-rule-reads-the-pair-a-reflexive-predicate-proves
+  (tu/with-terms [nearTo Dover]
+    (is (= read-all (forward-reads kb [(list 'arity nearTo 2) (list 'reflexive nearTo)]
+                                   (list nearTo Dover Dover) Dover)))))
+
+(tu/deftest-kb ^:red a-forward-rule-reads-the-allen-relation-two-calendar-terms-state
+  (v/add-reasoner kb :calendar)
+  (is (= read-all (forward-reads kb [] '(during (MonthFn 2000 3) (YearFn 2000))
+                                 '(MonthFn 2000 3)))))
+
+(tu/deftest-kb ^:red a-forward-rule-reads-the-part-a-covering-leaves
+  (tu/with-terms [pet dog cat Rex]
+    (is (= read-all (forward-reads kb [(list 'covering pet dog cat) (list pet Rex)
+                                       (list 'not (list dog Rex))]
+                                   (list cat Rex) Rex)))))
+
+(tu/deftest-kb ^:red a-forward-rule-reads-a-membership-a-computed-sufficient-condition-proves
+  (tu/with-terms [large]
+    (is (= read-all (forward-reads kb [(list 'defnSufficient large '(greaterThan ?x 10))]
+                                   (list large 12) 12)))))
+
+(tu/deftest-kb ^:red a-forward-rule-reads-the-denial-a-failed-necessary-condition-proves
+  (tu/with-terms [bachelor unmarried Tom]
+    (is (= read-all (forward-reads kb [(list 'defnNecessary bachelor (list unmarried '?x))
+                                       (list 'not (list unmarried Tom))]
+                                   (list 'not (list bachelor Tom)) Tom)))))
+
+(tu/deftest-kb ^:red a-forward-rule-reads-the-denial-a-negates-pair-proves
+  (tu/with-terms [scorns admires Ann Bob]
+    (is (= read-all (forward-reads kb [(list 'arity scorns 2) (list 'arity admires 2)
+                                       (list 'negates scorns admires) (list scorns Ann Bob)]
+                                   (list 'not (list admires Ann Bob)) Ann)))))
+
+(tu/deftest-kb ^:red a-forward-rule-reads-a-type-an-argument-declaration-states-under-constraints-only
+  (tu/with-terms [livesIn place Ann Dover]
+    (tu/without-entailing
+     (is (= read-all (forward-reads kb [(list 'arity livesIn 2) (list 'arg livesIn 2 place)
+                                        (list livesIn Ann Dover)]
+                                    (list place Dover) Dover))))))
+
+(tu/deftest-kb ^:red a-forward-rule-reads-the-position-a-relation-s-arity-admits
+  (tu/with-terms [between]
+    (is (= read-all (forward-reads kb [(list 'arity between 3)]
+                                   (list 'admitsArgnum between 3) between)))))
+
+(tu/deftest-kb ^:red a-forward-rule-reads-an-argument-declaration-a-narrower-one-implies
+  (tu/with-terms [feeds mammal animal]
+    (is (= read-all (forward-reads kb [(list 'arity feeds 2) (list 'genl mammal animal)
+                                       (list 'arg feeds 1 mammal)]
+                                   (list 'arg feeds 1 animal) feeds)))))
+
+(tu/deftest-kb ^:red a-forward-rule-reads-the-type-a-function-s-result-declaration-states
+  (tu/with-terms [CapitalFn city France]
+    (is (= read-all (forward-reads kb [(list 'arity CapitalFn 1) (list 'result CapitalFn city)]
+                                   (list city (list CapitalFn France)) France)))))
+
+(tu/deftest-kb ^:red a-forward-rule-reads-the-least-common-supertype-the-taxonomy-computes
+  (tu/with-terms [mammal dog cat]
+    (is (= read-all (forward-reads kb [(list 'genl dog mammal) (list 'genl cat mammal)]
+                                   (list 'minCommonGenl mammal dog cat) mammal)))))

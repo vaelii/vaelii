@@ -2,8 +2,7 @@
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.arity-vocabulary-test
   "The relation-wide exact/variable arity partition and its documentary floor vocabulary."
-  (:require [clojure.set :as set]
-            [clojure.test :refer [is testing use-fixtures]]
+  (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.host.seed :as seed]
             [vaelii.host.starter :as starter]
@@ -1601,12 +1600,10 @@
 (tu/deftest-kb every-starter-position-is-typed-but-the-open-ones
   ;; A middle context's relation and type carry their arity mark in CxUniverse, while the
   ;; declarations typing them stay in the context that states them.  The audit reads them
-  ;; from there, so CxUniverse reports what CxTra and CxSocialExtension, which between
-  ;; them see every middle context that declares one, both still report: the positions no
-  ;; declaration types.
+  ;; from there, so CxUniverse reports what CxTra, which sees every middle context that
+  ;; declares one, still reports: the positions no declaration types.
   (let [universe (missing-args kb 'CxUniverse)
-        open     (set/intersection (missing-args kb 'CxTra)
-                                   (missing-args kb 'CxSocialExtension))]
+        open     (missing-args kb 'CxTra)]
     (is (= open-positions open))
     (is (= open-positions universe)
         "no middle-context relation or type is reported from CxUniverse")))

@@ -38,6 +38,15 @@
       (is (re-find #"base" (:body r)))
       (is (re-find #"nonTangentialProperPart|partOfRegion" (:body r))))))
 
+(tu/deftest-kb the-calculi-table-counts-each-calculus-stored-facts
+  (let [none #"states no fact in any calculus"]
+    (is (re-find none (:body (GET kb "/network"))))
+    (tu/with-terms [RegA RegB CxSpaceStory]
+      (nest kb CxSpaceStory RegA RegB)
+      (let [b (:body (GET kb "/network"))]
+        (is (not (re-find none b)))
+        (is (re-find #"<th>rcc8</th>(<td class=\"num\">\d+</td>){2}<td class=\"num\">1</td>" b))))))
+
 (tu/deftest-kb the-matrix-shows-a-relation-nobody-asserted
   (tu/with-terms [RegA RegB RegC CxSpaceStory]
     (v/assert kb (list 'genlCx CxSpaceStory 'CxWell) 'CxUniverse

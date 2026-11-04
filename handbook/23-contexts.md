@@ -38,9 +38,9 @@ The shipped files give this layout:
 | `CxWell` | no content of its own | the seven middle theories that name it |
 | `CxRealWorld` | the real world's own restatements | `CxWell` |
 
-Three middle files are opt-in theories and state no `(genlCx CxWell …)` edge: `CxTra.txt`
-(computing and perception vocabulary), `CxSocialExtension.txt` (which sees `CxSocial`) and
-`CxNormalPhysicalConditions.txt` (which sees `CxRealWorld`). A context reads an opt-in
+Two middle files are opt-in theories and state no `(genlCx CxWell …)` edge: `CxTra.txt`
+(computing, perception and narrow relationship vocabulary, which sees `CxSocial` as well as
+`CxUniverse`) and `CxNormalPhysicalConditions.txt` (which sees `CxRealWorld`). A context reads an opt-in
 theory only by placing itself under it.
 
 **Why.**
@@ -76,13 +76,11 @@ theory and becomes a dataset every reader inherits.
 theory with two edges, or under `CxUniverse` as universal vocabulary with one edge.
 
 **Example.** A theory sees `CxUniverse` and is seen by `CxWell`, as each shipped middle file
-does. `CxSocialExtension.txt` shows the other pattern, a theory below another theory, and
-names it in its header: "`<Theory>Extension` names a theory that extends an existing
-starter theory with vocabulary most contexts under the base theory have no occasion to
-see".
+does. `CxTra.txt` shows the other pattern, a theory that also sees the theory its
+vocabulary builds on, since its relationship terms specialize `CxSocial`'s relations.
 
 ```clojure
-(genlCx CxSocialExtension CxSocial)
+(genlCx CxTra CxSocial)
 ```
 
 **Why.**

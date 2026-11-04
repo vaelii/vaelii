@@ -2,8 +2,8 @@
 
 - **Covers:** what a fork is — a private, writable KB layered over a frozen, read-only base
   — how reads, writes, counts and tombstones route between the two, how a newer dump
-  replaces a fork's base while the fork keeps its writes, and how a fork's writes travel
-  to another KB as a delta.
+  replaces a fork's base while the fork keeps its writes, how a fork's writes travel
+  to another KB as a delta, and what two seats' explanations share.
 - **Not here:** the record/index store protocols and the single-writer lock a base is opened
   through → [storage.md](storage.md); the dense backend internals (postings, the columnar
   trie) a KV decorator wraps → [density.md](density.md).
@@ -287,8 +287,8 @@ The rebase is five steps on the writer's thread:
    equal to the base record it copies, strength included, is the base's and is not kept.
    A durable fork writes these to its directory before step 2: the forms as a delta text
    KB under `rebase-delta/` (what `export-text! {:delta? true}` writes), each file fsynced,
-   then the marker `rebase-pending.nippy`, which holds the retracted premises' content keys
-   and each form's provenance and captured record.
+   then the marker `rebase-pending.nippy`, which holds the retracted premises' content keys,
+   each form's provenance and captured record, and the forms an earlier marker kept (below).
 2. **The own half is emptied**: its records, its bookkeeping and its index.
 3. **The dump is imported into the base's stores** through a second KB opened from the
    base's opts, under `:belief? :stored`: records, justifications, premise marks and index,
@@ -316,18 +316,21 @@ the fork wrote takes a new handle above the new base's range.
 
 Step 5 ends by deleting the marker and the delta. An `open-kb` of a durable fork whose
 directory holds the marker asserts the delta's forms again with their provenance and
-retracts the recorded base premises again, through step 5's code, then deletes the marker
-(`rebase/finish-pending!`). A crash between step 2 and the end of step 5, outside step 3,
-therefore loses none of the fork's writes. After a crash inside step 3 the base is partly
-imported, and the open asserts the writes over that base and deletes the marker whatever
-the result. It drops each form naming a record the partial base lacks, each form refused,
-and each retraction of a base premise the partial base does not hold. The
-`::pending-replayed` line at `:warn` counts the dropped forms, and no line names a dropped
-retraction. Importing the dump again with `:rebase? true` restores the base, and its
-capture reads only the fork's own records, so the dropped writes stay lost. An open whose KB refuses writes (`:recover? false`) keeps the
-marker, and the next rebase finishes it before step 1, calling that rebase's `:on-replayed`
-with each record the marker holds. A fork in RAM writes no delta and
-has nothing to recover after a crash.
+retracts the recorded base premises again, through step 5's code
+(`rebase/finish-pending!`). The marker then keeps the forms still refused, a form naming a
+record the base lacks included, and the retractions of a sentence the KB holds no premise
+of, a sentence a fork rule derived during the replay included; the open deletes the delta,
+and deletes the marker when it keeps nothing. A crash between step
+2 and the end of step 5 therefore loses none of the fork's writes. After a crash inside
+step 3 the base is partly imported, and the writes it cannot hold stay in the marker. The
+open logs `::pending-replayed` at `:warn`, counting the kept forms under `:refused` and
+`:unresolved` and naming the kept retractions under `:kept`. The next rebase adds what the
+marker keeps to step 1's capture, less a form the fork has since written again and a
+retraction of a sentence the fork's own records hold, and asserts it in step 5 against the
+complete base. An open whose KB refuses writes (`:recover? false`) keeps the marker, and
+the next rebase finishes it before step 1, calling that rebase's `:on-replayed` with each
+record the marker holds. A fork in RAM writes no delta and has nothing to recover after a
+crash.
 
 A read on another thread during a rebase answers from the fork before the rebase or after
 it. The rebase holds the write side of the fork's rebase lock from the replay of a marker
@@ -398,6 +401,36 @@ report's `:handles`) carries no content beside it, and a sentence a reply holds 
 digests each target by its content. Two seats whose equality facts differ (`rewriteOf`,
 `sameAs`) canonicalize one fact into two spellings, so the content finds nothing on the
 other seat or the digest check refuses it (`:canonical-mismatch`).
+
+## Two seats' explanations
+
+`why`, `why-not` and `argue` take `{:content? true}` and answer with no handle in the
+reply. Each sentex is named `(ist Cx S)`, `S` its stored sentence with each `(sentexHandle
+n)` inside it named the same way, and a map that named a sentex by `:handle` carries its
+`:digest` beside its stored `:sentence`. `why`'s `:nodes` are keyed by that name, a
+justification id is dropped, and a rule reads as stored, in its canonical variables: the
+author's variable names are the first writer's and differ between seats that wrote one
+rule twice. Every list is in content order: a node's justifications, a justification's
+antecedents, a leaf's `:supports`, the defeats, and `argue`'s answers by their bindings.
+Two seats that believe the same knowledge, loaded in any order, answer `=` replies
+(`why_test/why-and-argue-answer-alike-on-two-seats-loaded-in-different-orders`).
+
+The replies differ where the seats believe or derive differently, and five causes do that:
+
+- **A deadline.** `why`, `argue` and a plain `why-not` read no clock. Two clocks make
+  replies differ by the machine's speed and load: `why-not`'s `{:nearest n}` search stops
+  at its `:max-ms` with the near misses it reached, and a chaining write the daemon's
+  write ceiling ends is rolled back, so the slower seat stores less
+  ([inference.md](inference.md#stopping-a-run)).
+- **The heap mark.** A seat on a smaller heap rolls back a chaining write that a larger
+  heap stores ([operations.md](operations.md#a-seat-on-a-small-host)).
+- **An ASP round.** Under an installed `:asp` solver, a solve the time limit stops decides
+  nothing that round ([asp.md](asp.md#the-time-limit)).
+- **Equality facts.** Two seats whose `rewriteOf` or `sameAs` facts differ canonicalize one
+  fact into two spellings, so its name and digest differ (above).
+- **The justification set.** In the three cases
+  [defenses.md](defenses.md#where-the-five-properties-stop) lists for it, the stored routes
+  depend on arrival order, and `why` lists each stored route.
 
 ## Invariants
 

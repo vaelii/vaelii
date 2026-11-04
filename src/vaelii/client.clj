@@ -146,9 +146,10 @@
 
 (defn why
   "Why the sentex `handle` names is believed — the justification graph down to its
-  premises, as data (`core/why`)."
-  [conn handle]
-  (c/why conn handle))
+  premises, as data (`core/why`); `opts` takes `{:content? true}` to name every sentex by
+  content."
+  ([conn handle] (c/why conn handle))
+  ([conn handle opts] (c/why conn handle opts)))
 
 (defn why-not
   "Why a sentence is *not* believed, by handle or by sentence and context; `opts` takes

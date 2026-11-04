@@ -81,7 +81,7 @@
 
 ;; ---- reading the KB into a network --------------------------------------
 
-(defn- asserted-pairs
+(defn asserted-pairs
   "Every `[handles a b]` for which `(pred a b)` is believed and visible from `context`,
   through the matcher's spec fan.  `handles` is the fact, then for a sub-predicate fact
   the `genl` edges of one path up to `pred` that `context` sees (`tax/reach-support`)."
@@ -93,11 +93,11 @@
           :let [bnd (second m), a (get bnd '?a), b (get bnd '?b)]
           :when (and (node? a) (node? b))
           :let [s (or (nth m 2 nil) (p/get-sentex (:records kb) (first m)))
-                f (nm/functor (sx/sentence-of s))]
-          h (cons (first m)
-                  (when (not= f pred)
-                    (map first (tax/reach-support tx :genl f pred reader class))))]
-      [h a b])))
+                f (nm/functor (sx/sentence-of s))]]
+      [(into [(first m)]
+             (when (not= f pred)
+               (map first (tax/reach-support tx :genl f pred reader class))))
+       a b])))
 
 (defn- refuted-pairs
   "Every `[handle a b]` for which `(not (pred a b))` is believed and visible from
@@ -176,10 +176,11 @@
   (let [universe (:universe algebra)
         converse (:converse algebra)
         absorb   (fn [state rels [h a b]]
-                   (-> state
-                       (update :net narrow universe converse rels a b)
-                       (update :support support-pair h a b)
-                       (update :handles conj h)))
+                   (let [hs (if (coll? h) h [h])]
+                     (-> state
+                         (update :net narrow universe converse rels a b)
+                         (update :support #(reduce (fn [sup h] (support-pair sup h a b)) % hs))
+                         (update :handles into hs))))
         stated
         (reduce
          (fn [state pred]
@@ -243,6 +244,23 @@
   each pair."
   [kb calc context]
   (:support (read-network kb calc context)))
+
+(defn- node-statements
+  "`{node → #{#{handle}}}` over the facts of `calc` visible from `context`: per node, the
+  handles of each fact naming it (`asserted-pairs`, `refuted-pairs`).  A node only a
+  narrowing names has none.  Resident on the KB's `:qcn` atom under the change clock."
+  [kb calc context]
+  (observe/cached
+   (reasoning/qcn kb) [(:name calc) ::statements context]
+   (fn [_stale]
+     (let [node? (:node? calc)
+           rows  (mapcat #(concat (asserted-pairs kb node? % context)
+                                  (refuted-pairs kb node? % context))
+                         (:predicates calc))]
+       (reduce (fn [m [h a b]]
+                 (let [hs (set (if (coll? h) h [h]))]
+                   (-> m (update a (fnil conj #{}) hs) (update b (fnil conj #{}) hs))))
+               {} rows)))))
 
 (defn unsatisfiable-sources
   "The unsatisfiable sources a narrowing of `calc` read in `context`, each
@@ -662,9 +680,8 @@
                               (or (nil? admits?) (and (admits? x 0) (admits? y 1))))))
              answer (fn [x y] (cond-> {} (pvar? a) (assoc a x) (pvar? b) (assoc b y)))]
          (if pairs
-           ;; the diagonal is asked for by `(P ?x ?x)` alone, and its constraint is the
-           ;; algebra's identity whatever a pair records — so it never moves, and a
-           ;; narrowed run correctly answers it with nothing
+           ;; `(P ?x ?x)` reads only a diagonal pair, which `pairs` holds when the caller
+           ;; adds it (`solve-with-support`)
            (let [same-var? (and (pvar? a) (pvar? b) (= a b))]
              (for [[x y] pairs
                    :when (and (or (pvar? a) (= a x))
@@ -744,7 +761,31 @@
                     (solve-goal calculus kb g context)))]
       (if (and (= 1 (count goals)) (not (pvar? context)))
         (one (first goals))
-        (distinct (mapcat one goals))))))
+        (distinct (mapcat one goals)))))
+  prover-types/SupportingProver
+  ;; empty: a forward join reads a calculus through `qcn-kb/solve-with-support` instead
+  (support-functors [_] #{})
+  (support-sources  [_] #{})
+  (solve-with-support [_ kb goal context]
+    (let [tx    (reasoning/taxonomy kb)
+          class #(jtms/defeat-class (reasoning/tms kb) %)
+          one   (fn [g ctx]
+                  (let [[p a b] (claimed-literal calculus g)
+                        diag?   (nil? (negated-literal g))
+                        lift    (when (not= g goal)
+                                  (map first (tax/reach-support tx :genl p (first goal) ctx class)))]
+                    (for [bnd (solve-goal calculus kb g ctx)
+                          :let [x (if (pvar? a) (get bnd a) a)
+                                y (if (pvar? b) (get bnd b) b)
+                                s (support calculus kb ctx x y)]]
+                      [bnd (into (if (and diag? (= x y) (empty? s))
+                                   (res/declared-by kb :reflexive p ctx)
+                                   s)
+                                 lift)])))]
+      (distinct (for [g   (answered-goals calculus kb goal context)
+                      ctx (if (pvar? context) (reader-contexts kb calculus) [context])
+                      ans (one g ctx)]
+                  ans)))))
 
 (defn prover
   "The entailment prover for `calc`, to register with `vaelii.core/add-prover`."
@@ -1027,17 +1068,29 @@
 
 (defn solve-with-support
   "Entailed solutions for the positive literal `goal` in `context`, each paired with the
-  handles it rests on: a seq of `[bindings #{handle}]`.  A solution with empty support,
-  the diagonal of a reflexive denotation, is dropped.  `pairs` narrows the enumeration as
-  in `solve-goal`."
+  handles it rests on: a seq of `[bindings #{handle}]`.  The diagonal at a node rests on
+  the believed `(reflexive P)` statements `context` sees (`res/declared-by`) and a fact
+  naming the node, one solution per such fact (`node-statements`), so placement sees where
+  the node is.  A goal on two distinct variables answers the diagonal too, so the
+  antecedent that binds first decides no firing.  A solution with empty support is
+  dropped.  `pairs` narrows the enumeration as in `solve-goal`, with the diagonal of every
+  node it names."
   ([calc kb goal context] (solve-with-support calc kb goal context nil))
   ([calc kb goal context pairs]
-   (let [[_ a b] goal]
-     (for [bnd (solve-goal calc kb goal context pairs)
+   (let [[p a b] goal
+         decls  (res/declared-by kb :reflexive p context)
+         stated (delay (node-statements kb calc context))
+         pairs  (if (and pairs (seq decls)) (into pairs (comp cat (map #(vector % %))) pairs) pairs)
+         sols   (cond-> (solve-goal calc kb goal context pairs)
+                  (and (seq decls) (nil? pairs) (pvar? a) (pvar? b) (not= a b))
+                  (concat (map #(assoc % b (get % a)) (solve-goal calc kb (list p a a) context nil))))]
+     (for [bnd sols
            :let [x (if (pvar? a) (get bnd a) a)
                  y (if (pvar? b) (get bnd b) b)
-                 sup (support calc kb context x y)]
-           :when (seq sup)]
+                 s (support calc kb context x y)]
+           sup (cond (seq s)                     [s]
+                     (and (= x y) (seq decls))   (map #(into decls %) (get @stated x))
+                     :else                       nil)]
        [bnd sup]))))
 
 ;; ---- what the passes hold, declared -------------------------------------

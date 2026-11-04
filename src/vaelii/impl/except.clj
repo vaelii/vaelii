@@ -191,6 +191,32 @@
   placement, or its `different` that fails there."
   'guard)
 
+(def edge-reading-informant
+  "The informant of every justification an edge reading stores
+  (`chain/sync-edge-readings!`): a membership `(s x)` and the supporters of a `genl` path
+  from `s` to `q` that is not held at `:monotonic`, concluding `(q x)` while a denial of
+  `(q x)` is stored."
+  'edgeReading)
+
+(defn edge-read-only?
+  "Is the handle `h` no premise, with every justification concluding it as an edge reading
+  (`edge-reading-informant`)?  False for a handle with no justification."
+  [tms h]
+  (let [js (jtms/supports tms h)]
+    (boolean (and (seq js) (not (jtms/premise? tms h))
+                  (every? #(= edge-reading-informant (:informant (jtms/justification tms %))) js)))))
+
+(defn edge-read-functors
+  "The set of the functors of the edge readings resting on the membership `h`
+  (`edge-reading-informant`), read off `h`'s dependents."
+  [kb h]
+  (let [tms (reasoning/tms kb) recs (:records kb)]
+    (into #{} (keep (fn [jid]
+                      (let [j (jtms/justification tms jid)]
+                        (when (= edge-reading-informant (:informant j))
+                          (some-> (p/get-sentex recs (:consequence j)) :sentence first)))))
+          (jtms/dependents tms h))))
+
 (defn belief-only-antecedent
   "The antecedent justification `j` rests on for belief and not for visibility, or nil.
   A reader's copy has one: `[original equality except]` under informant `except`
@@ -978,10 +1004,28 @@
   (when frame
     (assoc frame :yielding? yielding? :memo (volatile! {}))))
 
-(defn- build-reader-state
-  "What the walk reads at `ctx`, with the one-read memo, or nil (`reader-frame`)."
+(def ^:private clock-frame-limit
+  "The most contexts a change-clock value keeps a frame for (`clock-frame`), cleared
+  wholesale past it, like the resident cache that holds them."
+  256)
+
+(defn- clock-frame
+  "`reader-frame` at `ctx`, kept in `kb`'s resident cache for one value of the change clock,
+  so the reads between two writes build one frame per context.  This reads `clocked` and
+  not `cached`, so a held-values scope reads what a rebuild reads.  The frames sit under one
+  key of the cache: a read across many contexts clears only each other."
   [kb ctx]
-  (when-let [fr (reader-frame kb ctx)]
+  (when-not (or tax/*network-belief* (sx/variable? ctx))
+    (caches/read-through (observe/clocked (reasoning/qcn kb) ::frames (fn [_] (atom {})))
+                         (caches/limit-of :resident clock-frame-limit)
+                         [ctx tax/*search*]
+                         #(reader-frame kb ctx))))
+
+(defn- build-reader-state
+  "What the walk reads at `ctx`, with a one-read memo of its own, or nil (`reader-frame`).
+  A memo holds the defeats its read has open, so no two reads share one."
+  [kb ctx]
+  (when-let [fr (clock-frame kb ctx)]
     (with-read-memo fr (yielding-reads? kb (:tax fr)))))
 
 ;; ---- a pass's reader states ----------------------------------------------------------
@@ -1318,20 +1362,21 @@
   this reader sees."
   [{:keys [tms recs tax forced] :as st} x]
   (let [on? (:on? forced)
-        s   (:sentence (p/get-sentex recs x))]
+        js  (into [] (comp (keep #(jtms/justification tms %))
+                           (filter #(and (integer? (:informant %)) (not (jtms/forced? tms :void (:id %))))))
+                  (jtms/supports tms x))
+        s   (when (seq js) (:sentence (p/get-sentex recs x)))]
     (when (and s (not (sx/negation? s)) (decide/forced-literal? tax s on?))
       (into #{}
-            (comp (keep #(jtms/justification tms %))
-                  (filter (fn [j]
-                            (and (not (jtms/forced? tms :void (:id j)))
-                                 (when-let [r (p/get-sentex recs (:informant j))]
-                                   (when-let [antes (seq (:antecedent r))]
-                                     (or (:defeasible r)
-                                         (some sx/unknown? antes)
-                                         (some #(not (decide/forced-literal? tax % on?)) antes)
-                                         (excepted-rule? st (:informant j))))))))
+            (comp (filter (fn [j]
+                            (when-let [r (p/get-sentex recs (:informant j))]
+                              (when-let [antes (seq (:antecedent r))]
+                                (or (:defeasible r)
+                                    (some sx/unknown? antes)
+                                    (some #(not (decide/forced-literal? tax % on?)) antes)
+                                    (excepted-rule? st (:informant j)))))))
                   (map :id))
-            (jtms/supports tms x)))))
+            js))))
 
 (defn- verdict-at
   "`decide/verdict` over `members` with the classes the reader reads: the network's, or,
@@ -1468,8 +1513,9 @@
   own loser at its label when nothing but its own reading hides the loser at the reader,
   so the nogood's conclusions do not rest on the handle they hide.  A `defeat`'s target is
   exempt when a defeat or a conflict hides it (`by-defeat`) and nothing else does
-  (`by-other`); a conflict's member is exempt when that conflict's placements alone hide
-  it (`by-conflict`, `{handle #{contradicts}}`)."
+  (`by-other`); a conflict's loser at the reader (`verdict-at` over its members) is exempt
+  when conflicts alone hide it (`by-conflict`, `{handle #{contradicts}}`), each of which
+  decides against it."
   [st by-defeat by-conflict by-other]
   (fn [j]
     (or (belief-only-antecedent j)
@@ -1478,13 +1524,12 @@
             :defeat   (when (and (or (contains? by-defeat x) (contains? by-conflict x))
                                  (not (contains? by-other x)))
                         x)
-            :conflict (let [same? (let [s (:sentence (p/get-sentex (:recs st) x))]
-                                    (fn [c] (= s (:sentence (p/get-sentex (:recs st) c)))))]
-                        (some (fn [[m cs]]
-                                (when (and (every? same? cs) (not (contains? by-defeat m))
-                                           (not (contains? by-other m)))
-                                  m))
-                              by-conflict)))))))
+            :conflict (let [m (kept (:memo st) [::conflict-loser x]
+                                    #(:defeat (verdict-at st (into #{} (map sx/handle-id)
+                                                                   (rest (:sentence (p/get-sentex (:recs st) x)))))))]
+                        (when (and m (contains? by-conflict m) (not (contains? by-defeat m))
+                                   (not (contains? by-other m)))
+                          m)))))))
 
 (defn- exempt-justifications
   "The `nogood` justifications of the placed `(contradicts …)` or `defeat` at `x` whose
@@ -1512,13 +1557,16 @@
   "The ids of the justifications among `js` the `guard` justification `g` belongs to: of
   those whose rule and antecedents `g`'s antecedents hold and whose bindings `g` carries
   (read off `recs`; a `g` with no bindings matches on its antecedents alone), each that
-  no other one of the same rule holds a proper superset of the antecedents of.  A guard
-  justification rests on its firing's antecedents, so a second firing of the rule with
-  equal bindings over a subset of them is not taken for its owner."
+  no other one of the same rule holds a proper superset of the antecedents of.  An edge
+  reading's justification has no rule handle, and is held on its antecedents alone.  A
+  guard justification rests on its firing's antecedents, so a second firing of the rule
+  with equal bindings over a subset of them is not taken for its owner."
   [recs g js]
   (let [ga   (set (:antecedents g))
         gb   (:bindings (p/get-justification recs (:id g)))
-        held (into [] (comp (filter #(every? ga (conj (:antecedents %) (:informant %))))
+        held (into [] (comp (filter #(every? ga (cond-> (:antecedents %)
+                                                  (not= edge-reading-informant (:informant %))
+                                                  (conj (:informant %)))))
                             (filter #(or (empty? gb)
                                          (= gb (:bindings (p/get-justification recs (:id %))))))
                             (map (fn [j] [j (set (:antecedents j))])))

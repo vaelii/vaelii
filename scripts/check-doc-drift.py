@@ -11,7 +11,11 @@ and those files describe the project around it.
   E1  defrecord/defprotocol snippets whose name or field list no longer
       matches the definition under src/ (the Atomic/Rule/Deduction class).
   E2  Backticked var refs — `vaelii.x.y/fn` or `alias/fn` for a known
-      alias — whose definition is missing from the resolved namespace.
+      alias — whose definition is missing from the resolved namespace.  Reads
+      every .clj under src/, test/ and bench/ as well as the docs, since a
+      comment cites a fn as a doc does and goes stale when the fn is renamed.
+      In a .clj the alias resolves through the file's own `:as` and through
+      `ALIASES`, and the ref passes when either namespace defines the name.
   E3  VAELII_* env vars that appear nowhere in src/, scripts/, resources/,
       or project.clj.
   E4  The link check: backticked repo paths (docs/x.md, scripts/x,
@@ -42,7 +46,10 @@ and those files describe the project around it.
       named as the source of a constraint, a pointer into review notes, a pull
       request as where a fact lives, chat (`REVIEW_TALK`), and `ruled` or
       `ruling` outside the logical sense, docs/defenses.md and koinii (`RULING`).
-      The text states the constraint.
+      The text states the constraint.  An issue number told as an event is E7
+      as well ("#59 closed …", "added in #14", "merged (#44)", "before #54"),
+      and so is "PR #33" (`ISSUE_EVENT`); an issue number beside a present-tense
+      claim passes.
   E8  `(requiring-resolve 'ns/var)` on a literal symbol anywhere under src/
       except vaelii.impl.wiring — a layering cut left at its call site, where
       nothing counts it and nothing stops the next one.  A computed symbol (a
@@ -157,6 +164,12 @@ and those files describe the project around it.
       new spelling the shipped KB or the API goldens hold.  In every file, a
       renamed-away, merged or retired symbol is absent from the shipped KB, and
       no rename lands on a symbol any file renames away or retires.
+  E23 A tracked file at the repository root that `ROOT_ENTRIES` does not list, or
+      a tracked .md outside `MD_DIRS`.  A proposal list, a review aid or a
+      handoff note committed beside the code ships in the public squash and
+      states the tree as it stood when the note was written.  Adding a top-level
+      entry is a row in `ROOT_ENTRIES`.  Reads `git ls-files`, so a tree that is
+      not a git checkout skips it.
 
   W1  Line-number citations into .clj files (`foo.clj:123`) — warned, not
       failed: cite the var name instead, line numbers always rot.
@@ -180,6 +193,7 @@ against the flagged token; # comments allowed).
 import itertools
 import os
 import re
+import subprocess
 import sys
 
 # Every path this script builds is spelled with `/`, which Python accepts on Windows
@@ -264,9 +278,12 @@ ALIASES = {
 # pattern anchored at `(def` sees only the minority of the tests and every
 # citation of the rest is indistinguishable from a missing definition.  `test-kb` precedes `test`
 # in the alternation so the longer name wins without backtracking.
+#
+# A `^{…}` metadata map is read before `^\S+`, and a string inside it is read whole, so
+# a `:doc` holding a brace (`#{functor}`) does not end the map early.
 DEF_RE = (r"\((?:[a-z][\w.-]*/)?"
           r"def(?:n|n-|macro|multi|method|protocol|record|type|once|test-kb|test|routes)?"
-          r"\s+(?:\^\S+\s+|\^\{[^}]*\}\s+)*")
+          r'\s+(?:\^\{(?:[^{}"]|"(?:[^"\\]|\\.)*"|\{[^{}]*\})*\}\s+|\^\S+\s+)*')
 
 # Namespaced KB SYMBOLS (performatives, work-state markers, aggregate operators,
 # answer-set cardinality forms) — not Clojure vars. Checked for existence against
@@ -498,6 +515,24 @@ def flag(kind, doc, token, msg):
 NS_STOP = {"docs", "scripts", "src", "resources", "test", "target", "logs",
            "checkouts", "bench", "vaelii"}
 
+VAR_REF = re.compile(r"`([A-Za-z][\w.-]*)/([\w*+!?<>=.'-]+)`")
+
+
+def not_a_var_ref(nsish, name):
+    """Is a backticked `nsish/name` a directory, a number, a placeholder, a pattern or a
+    file name, which E2 never resolves?"""
+    return bool(nsish in NS_STOP or name.isdigit() or "<" in name or ">" in name
+                or ("*" in name and not re.fullmatch(r"\*[^*]+\*", name))
+                or re.search(r"\.(md|sh|clj|cljs|cljc|edn|txt|py|svg|yml|yaml|json|csv|log|idx)$",
+                             name))
+
+
+def defines(text, name):
+    """Does namespace source `text` define `name`, as a def form or a protocol method?"""
+    return bool(re.search(DEF_RE + re.escape(name) + r"(?![\w*+!?<>=.'-])", text)
+                or ("defprotocol" in text
+                    and re.search(r"^\s+\(" + re.escape(name) + r"\s+\[", text, re.M)))
+
 # Docs whose markdown TABLE ROWS may carry `file.clj:NNN` citations without a W1
 # warning, because a test resolves each one (see the W1 loop below). Prose in the
 # same file is still warned about — the exemption is the checked citations.
@@ -534,12 +569,10 @@ for doc in md_files():
                      f"vs code {real_fields} ({prel(hits[0], ROOT)})")
 
     # E2: backticked var refs.
-    for m in re.finditer(r"`([A-Za-z][\w.-]*)/([\w*+!?<>=.'-]+)`", whole):
+    for m in VAR_REF.finditer(whole):
         nsish, name = m.groups()
         token = f"{nsish}/{name}"
-        if (nsish in NS_STOP or name.isdigit() or "<" in name or ">" in name
-                or ("*" in name and not re.fullmatch(r"\*[^*]+\*", name))
-                or re.search(r"\.(md|sh|clj|cljs|cljc|edn|txt|py|svg|yml|yaml|json|csv|log|idx)$", name)):
+        if not_a_var_ref(nsish, name):
             continue
         if "." in nsish and nsish.startswith("vaelii"):
             ns = nsish
@@ -550,10 +583,7 @@ for doc in md_files():
         if ns:
             path = ns_to_path(ns)
             if os.path.exists(path):
-                t = src_text.get(path, "")
-                defined = re.search(DEF_RE + re.escape(name) + r"(?![\w*+!?<>=.'-])", t) \
-                    or ("defprotocol" in t and re.search(r"^\s+\(" + re.escape(name) + r"\s+\[", t, re.M))
-                if not defined:
+                if not defines(src_text.get(path, ""), name):
                     flag("E2", doc, token,
                          f"`{token}` not defined in {prel(path, ROOT)}")
             # ns file absent: skip (nothing to verify against).
@@ -635,6 +665,97 @@ for doc in md_files():
         for m in re.finditer(r"[\w/-]+\.clj:\d+", pline):
             flag("W1", doc, m.group(0),
                  f"line-number citation `{m.group(0)}` — cite the var name instead")
+
+
+# ── E2 over the sources: a backticked var ref in a .clj comment or docstring ──
+# The alias resolves through the file's own `:as` and through ALIASES, and the ref
+# passes when either namespace defines the name: `v` is `vaelii.browser.access` in
+# the browser, whose wrappers a macro defines (`defreads`), so only `vaelii.core`'s
+# def is visible to DEF_RE.  A KB symbol, a MIME type and a non-vaelii dotted name
+# are not refs; a namespace with no file under src/, test/ or bench/ is not checked.
+REQUIRE_AS = re.compile(r"\[(vaelii[\w.-]*)\s+:as\s+([\w.-]+)")
+DEF_NAME = re.compile(DEF_RE + r"([\w*+!?<>=.'-]+)")
+METHOD_NAME = re.compile(r"^\s+\(([\w*+!?<>=.'-]+)\s+\[", re.M)
+_ns_defs = {}
+
+
+def ns_defs(ns):
+    """The names the .clj for `ns` under src/, test/ or bench/ defines, as `defines` reads
+    them, or None when no such file exists."""
+    if ns not in _ns_defs:
+        rel = ns.replace(".", "/").replace("-", "_") + ".clj"
+        path = next((p for p in (pjoin(top, rel) for top in (SRC, TEST_SRC, pjoin(ROOT, "bench")))
+                     if os.path.isfile(p)), None)
+        names = None
+        if path:
+            text = open(path, errors="replace").read()
+            names = {m.group(1) for m in DEF_NAME.finditer(text)}
+            if "defprotocol" in text:
+                names.update(METHOD_NAME.findall(text))
+        _ns_defs[ns] = names
+    return _ns_defs[ns]
+
+
+for top in (SRC, TEST_SRC, pjoin(ROOT, "bench")):
+    for dirpath, _, names in pwalk(top):
+        for n in sorted(names):
+            if not n.endswith(".clj"):
+                continue
+            path = pjoin(dirpath, n)
+            text = open(path, errors="replace").read()
+            local = {a: ns for ns, a in REQUIRE_AS.findall(text)}
+            for i, line in enumerate(text.split("\n"), 1):
+                for m in VAR_REF.finditer(line):
+                    nsish, name = m.groups()
+                    if not_a_var_ref(nsish, name) or nsish in KB_SYMBOL_PREFIXES \
+                       or nsish in MIME_PREFIXES:
+                        continue
+                    if "." in nsish:
+                        if not nsish.startswith("vaelii"):
+                            continue
+                        owners = [nsish]
+                    else:
+                        owners = list(dict.fromkeys(o for o in (local.get(nsish), ALIASES.get(nsish)) if o))
+                    known = [d for d in map(ns_defs, owners) if d is not None]
+                    if known and not any(name in d for d in known):
+                        token = f"{nsish}/{name}"
+                        flag("E2", path, token,
+                             f"{prel(path, ROOT)}:{i} `{token}` is not defined in "
+                             f"{' or '.join(owners)}; name the var the code has now")
+
+# ── E23: what the repository root and the markdown directories hold ─────────
+# A top-level entry is a decision, so it is a row here.  Read from the index rather
+# than the disk, so an untracked scratch file beside a checkout fails nobody's lint.
+ROOT_ENTRIES = {
+    ".clj-kondo", ".dockerignore", ".github", ".gitignore", "CHANGELOG.md",
+    "CONTRIBUTING.md", "CONTRIBUTORS.md", "DCO", "Dockerfile", "LICENSE", "README.md",
+    "bench", "docker-compose.yml", "docs", "handbook", "legal", "licenses",
+    "project-env.clj", "project.clj", "resources", "scripts", "src", "test"}
+MD_DIRS = ("docs/", "handbook/", ".github/", "legal/", "licenses/", "resources/")
+
+
+def tracked_paths():
+    """Every path `git ls-files` lists, or None where the tree is not a git checkout."""
+    if not os.path.exists(pjoin(ROOT, ".git")):
+        return None
+    try:
+        out = subprocess.run(["git", "-C", ROOT, "ls-files", "-z"],
+                             capture_output=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return [p for p in out.decode("utf-8", "replace").split("\0") if p]
+
+
+tracked = tracked_paths() or []
+for entry in sorted({p.split("/")[0] for p in tracked} - ROOT_ENTRIES):
+    flag("E23", pjoin(ROOT, entry), entry,
+         f"`{entry}` is a top-level entry ROOT_ENTRIES does not list; move what it "
+         f"states to its subsystem page or a commit message, or add a row")
+for p in tracked:
+    if p.endswith(".md") and "/" in p and not p.startswith(MD_DIRS):
+        flag("E23", pjoin(ROOT, p), p,
+             f"`{p}` is markdown outside {', '.join(MD_DIRS)}; move what it states to "
+             f"its subsystem page")
 
 
 # ── E5: no reference from inside the repo to an agent instruction file ──────
@@ -772,6 +893,14 @@ REVIEW_TALK = re.compile(
     r"|\b(?i:in the PR|the PR that|this PR|vocabulary-only PR)\b"
     r"|\bdo NOT delete\b"
     r"|\b(?:kinda|sorta|lol|tbh|fwiw|imho|skolems suck)\b")
+# An issue or pull-request number told as an event.  Every phrasing holds a `#`, so the
+# loop below runs this only on a line that does: in ARCHAEOLOGY's alternation the common
+# verbs it opens with ("added", "before") made every line's search four times slower.
+ISSUE_EVENT = re.compile(
+    r"(?i:#\d+ (?:then )?(?:closed|fixed|found|missed|landed|introduced|broke)\b"
+    r"|\b(?:added|merged|landed|introduced|fixed|closed) (?:in |\()(?:vaelii/)?(?:vaelii)?#\d+"
+    r"|\b(?:before|after|since|until) (?:vaelii/)?(?:vaelii)?#\d+\b)"
+    r"|\bPR #\d+\b")
 # `ruled` and `ruling` point at who decided, except in the logical sense ("ruled
 # out", "ruling two parts out", a phrase wrapped onto the next line).  The reasoning
 # behind a decision is stated as a defense in docs/defenses.md, without the word.
@@ -806,7 +935,8 @@ for path in itertools.chain(repo_text_files(), extra_md_files()):
                  or "koinii" in rel)
     lines = open(path, errors="replace").read().split("\n")
     for i, line in enumerate(lines, 1):
-        m = ARCHAEOLOGY.search(line) or REVIEW_TALK.search(line)
+        m = (ARCHAEOLOGY.search(line) or REVIEW_TALK.search(line)
+             or ("#" in line and ISSUE_EVENT.search(line)))
         if not m and not ruling_ok and "arbiter" not in line:
             # the next line's first word joins, so a wrapped "ruled / out" reads whole
             nxt = lines[i].lstrip(" \t;#*\"/") if i < len(lines) else ""
@@ -1548,6 +1678,11 @@ E16_FAMILY_CALL = re.compile(r"\bp/(" + "|".join(re.escape(r) for r in E16_FAMIL
 # allowlist names who calls one, as E17's does for `tax/…-global`. The reason lives in the
 # caller's docstring or beside the row.
 E16_GLOBAL_ALLOW = {
+    # A mark in CxUniverse is seen from every context, so its conflict reads every context.
+    ("src/vaelii/impl/checks.clj", "self-tuple-declaration-conflict"),
+    # A fact in CxUniverse is seen from every context, so its merge readers are the
+    # contexts storing a partner.
+    ("src/vaelii/impl/special.clj", "merge-readers"),
     # The taxonomy is keyed by edge, not by reader: an entry's supporters in every
     # context decide whether it is installed, and the scoped closures filter by context.
     ("src/vaelii/impl/taxonomy.clj", "supporters-of"),
@@ -1643,6 +1778,7 @@ E16_GLOBAL_ALLOW = {
     ("src/vaelii/impl/chain.clj", "permuting-rejoin-rules"),
     ("src/vaelii/impl/special.clj", "rules-taking"),
     ("src/vaelii/impl/chain.clj", "transitive-rejoin-rules"),
+    ("src/vaelii/impl/chain.clj", "reflexive-rejoin-rules"),
     ("src/vaelii/impl/chain.clj", "closure-rejoin-rules"),
     ("src/vaelii/impl/chain.clj", "lazy-table"),
     ("src/vaelii/impl/kb.clj", "stores-lazy-rule?"),
@@ -1775,6 +1911,9 @@ E17_FLAT = {
 }
 E17_PRESENCE_TESTS = ("seq", "empty?", "not-empty")
 E17_ALLOW = {
+    # A fact in CxUniverse merges with a partner in any context: the predicates above and
+    # below its functor in every context name where a partner may be stored.
+    ("src/vaelii/impl/special.clj", "merge-readers"),
     # The public API offers both readings, and its shorter arity IS the global one —
     # `vaelii.core/genls` documents the pair (docs/taxonomy.md).
     ("src/vaelii/core.clj", "genls"),
@@ -1794,22 +1933,13 @@ E17_ALLOW = {
     # separation and the overlap witnesses only.  The `:open-sibling-pair` pass passes
     # `scoped?` and reads the audit context's edges instead.
     ("src/vaelii/impl/integrity.clj", "subsumption-reading"),
-    # Assert-time refusals. A refusal is a claim about the KB and not about a vantage:
-    # a cycle refused when asked from one context and allowed from another is not a
-    # refusal, it is a coin toss.  `disjoint-problems` is the deliberate exception and
-    # reads the scoped `genl?` instead — its overlap refusal is meant to agree with the
-    # scoped `(genl a b)` query, so an `except` that hides the bridging edge admits the
-    # pair (#92, docs/taxonomy.md).  The genl-relatedness guards in `disjoint?` itself
-    # stay global; only the assert-time reading moved, which is why disjoint is not here.
-    ("src/vaelii/impl/wff.clj", "genl-problems"),
-    # `genlCx-problems` is `genl-problems`'s twin on the context side: it refuses a
-    # `genlCx` cycle, which is a property of the whole edge set, so it reads
-    # `genlCx?-global` for the same reason `genl-problems` reads `genl?-global`.
+    # Assert-time refusals.  `genlCx-problems` refuses a `genlCx` cycle, which changes what
+    # every reader sees, so it reads `genlCx?-global`.  `genl-problems`,
+    # `covering-problems` and `disjoint-problems` read the edges the asserting context
+    # sees (#92, #254, docs/taxonomy.md).  `sees-genl-path?` runs the global walk first as
+    # a filter: it reads no index, and the scoped read runs only on a pair it admits.
     ("src/vaelii/impl/wff.clj", "genlCx-problems"),
-    # `covering-problems` refuses a part already above the whole because the edge the
-    # cover installs would close a `genl` cycle, the refusal `genl-problems` makes, so
-    # its cycle arm reads globally too; its disjointness arm stays scoped.
-    ("src/vaelii/impl/wff.clj", "covering-problems"),
+    ("src/vaelii/impl/wff.clj", "sees-genl-path?"),
     ("src/vaelii/impl/wff.clj", "negation-walk"),
     ("src/vaelii/impl/wff.clj", "genl-negation-cycle"),
     ("src/vaelii/impl/checks.clj", "edge-negation-cycle"),
@@ -1834,14 +1964,21 @@ E17_ALLOW = {
     ("src/vaelii/impl/special.clj", "separation-moved-types"),
     ("src/vaelii/impl/special.clj", "nonempty-moved-types"),
     ("src/vaelii/impl/special.clj", "requeue-separation-denial-rules"),
+    # A candidate filter for the mints a cycle-closing `genl` edge releases; each released
+    # mint is asked again from its own placement.
+    ("src/vaelii/impl/special.clj", "closes-genl-cycle?"),
     # The structural genlCx producer's candidate reads: a superset of the pairs its oracle
     # then decides under the scoped closure (`r-evidence`).
     ("src/vaelii/impl/context_nat.clj", "comparable-terms"),
     ("src/vaelii/impl/context_nat.clj", "pairs-across"),
     ("src/vaelii/impl/inherit.clj", "moved-in"),
     ("src/vaelii/impl/inherit.clj", "witness?"),
+    # a preservation along genlCx is a claim about the context topology, read with no
+    # `except` holes (docs/inherit.md, "From whose vantage")
+    ("src/vaelii/impl/inherit.clj", "witness-terms"),
     ("src/vaelii/impl/inherit.clj", "licensing-functors"),
     ("src/vaelii/impl/inherit.clj", "crossings"),
+    ("src/vaelii/impl/inherit.clj", "crossing-hits"),
     ("src/vaelii/impl/inherit.clj", "self-positions"),
     ("src/vaelii/impl/inherit.clj", "joint-genl"),
     # The backward claim search weighs its two seeds by the unscoped reach, an upper
@@ -1895,7 +2032,7 @@ E17_ALLOW = {
     ("src/vaelii/impl/qcn_kb.clj", "held-contexts"),
     ("src/vaelii/impl/qcn_kb.clj", "calculi-triggered-by"),
     ("src/vaelii/impl/chain.clj", "answered-by-calculus?"),
-    ("src/vaelii/impl/special.clj", "rule-reads-above?"),
+    ("src/vaelii/impl/special.clj", "rule-reads-above"),
     ("src/vaelii/impl/special.clj", "rule-key-functors"),
     ("src/vaelii/impl/special.clj", "key-fan"),
     ("src/vaelii/impl/special.clj", "under-seen-edges"),
@@ -1905,7 +2042,9 @@ E17_ALLOW = {
     ("src/vaelii/impl/recheck.clj", "negates-reaches?"),
     ("src/vaelii/impl/discovery.clj", "separated-reach"),
     ("src/vaelii/impl/discovery.clj", "preserved-below"),
+    ("src/vaelii/impl/discovery.clj", "separated-under"),
     ("src/vaelii/impl/inherit.clj", "edge-reach"),
+    ("src/vaelii/impl/inherit.clj", "edge-terms"),
     # A predicate no stored claim states in any reader's fan states none in a scoped one.
     ("src/vaelii/impl/inherit.clj", "claims-stored?"),
     # A nogood family keeps its candidate rows, a superset over every reader, where no
@@ -2021,11 +2160,18 @@ E17_ALLOW = {
     ("src/vaelii/impl/decide.clj", "forced-monotonic?"),
     ("src/vaelii/impl/integrate.clj", "permuting?"),
     ("src/vaelii/impl/integrate.clj", "recanonicalizing-subject"),
+    ("src/vaelii/impl/integrate.clj", "rows-a-mention-spells"),
     ("src/vaelii/impl/kb.clj", "permuting-literal?"),
     ("src/vaelii/impl/nat_read.clj", "reifiable-function?"),
     ("src/vaelii/impl/quasiquote.clj", "ensure-quasiquote-functions"),
     ("src/vaelii/impl/resolution.clj", "opaque-fn"),
+    ("src/vaelii/impl/resolution.clj", "mention-declarations"),
     ("src/vaelii/impl/resolution.clj", "store-marks"),
+    ("src/vaelii/impl/nat_read.clj", "sorted-expression"),
+    ("src/vaelii/impl/nat_read.clj", "permuting-marks"),
+    ("src/vaelii/impl/nat.clj", "permuted-reifiable?"),
+    ("src/vaelii/impl/integrate.clj", "commute-existing"),
+    ("src/vaelii/impl/nat.clj", "permuted-reifiable-functions"),
     ("src/vaelii/impl/resolution.clj", "respell-walk"),
     ("src/vaelii/impl/resolution.clj", "formula-type?"),
     ("src/vaelii/impl/resolution.clj", "reference-positions"),
@@ -2042,6 +2188,8 @@ E17_ALLOW = {
     # or reifiable function a per-reader test admits.
     ("src/vaelii/impl/chain.clj", "reified-fns"),
     ("src/vaelii/impl/nat.clj", "queue-split-uses!"),
+    ("src/vaelii/impl/resolution.clj", "declares-mention?"),
+    ("src/vaelii/impl/resolution.clj", "fan-mention-probes"),
     ("src/vaelii/impl/clashes.clj", "exposure-probes"),
     ("src/vaelii/impl/decide/membership.clj", "term-nogoods"),
     ("src/vaelii/impl/decide/membership.clj", "separation-tests"),
@@ -2081,7 +2229,6 @@ E17_ALLOW = {
     ("src/vaelii/impl/resolution.clj", "spelling-opts"),
     ("src/vaelii/impl/resolution.clj", "matches-hierarchical-over"),
     ("src/vaelii/impl/special.clj", "permuting-marks"),
-    ("src/vaelii/impl/special.clj", "rebuild-pending!"),
     ("src/vaelii/impl/quasiquote.clj", "any-quasiquote?"),
     ("src/vaelii/impl/resolution.clj", "representative-term"),
     ("src/vaelii/impl/resolution.clj", "displaced-terms-in"),
@@ -2101,7 +2248,7 @@ E17_ALLOW = {
     ("src/vaelii/impl/decide/tuple.clj", "self-tuples-in"),
     ("src/vaelii/impl/decide/tuple.clj", "converse-family"),
     ("src/vaelii/impl/decide/tuple.clj", "marks-family"),
-    ("src/vaelii/impl/inherit.clj", "permuted-read-supports"),
+    ("src/vaelii/impl/inherit.clj", "licensing-sets"),
     ("src/vaelii/impl/integrate.clj", "mark-witness"),
     ("src/vaelii/impl/nat_read.clj", "withheld-at"),
     ("src/vaelii/impl/resolution.clj", "reified-reading"),

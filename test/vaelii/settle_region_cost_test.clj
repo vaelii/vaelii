@@ -34,17 +34,20 @@
     one closure per marked predicate, however many edges the settle relabels."
   (:require [clojure.set :as set]
             [clojure.test :refer [deftest is testing]]
+            [clojure.walk :as walk]
             [vaelii.core :as v]
             [vaelii.impl.caches :as caches]
             [vaelii.impl.chain :as chain]
             [vaelii.impl.decide :as decide]
             [vaelii.impl.decide.membership :as membership]
             [vaelii.impl.decide.negation :as negation]
+            [vaelii.impl.discovery :as discovery]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.progress :as progress]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reads :as reads]
+            [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.settle :as settle]
             [vaelii.impl.settle-phases :as phases]
@@ -674,6 +677,40 @@
         (is (<= @most 8) (str @most " nogoods planned and unwritten at once")))
       (finally (tu/clear-kb! kb)))))
 
+(defn- strict-ladder
+  "In one deferred settle, `depth` levels of three types between `<pre>_leaf` and
+  `<pre>_top` in CxUniverse, each type with `genl` edges at `strength` to two of the
+  level above, and SlX in `<pre>_leaf` denied `<pre>_top`: a `:supertype` nogood whose
+  one link is a strict one.  `[contradicts placed, holding-class reads]`."
+  [pre depth strength]
+  (let [kb    (tu/isolated-fresh)
+        reads (atom 0)
+        orig  @#'res/holding-class
+        n     #(symbol (str pre "_" %1 "_" %2))
+        e!    #(v/assert kb (list 'genl %1 %2) 'CxUniverse {:strength strength})]
+    (try
+      (tu/with-shipped-config
+        (with-redefs-fn {#'res/holding-class (fn [kb] (let [f (orig kb)] (fn [h] (swap! reads inc) (f h))))}
+          #(v/with-deferred-settle kb
+             (dotimes [j 3]
+               (e! (n 1 j) (symbol (str pre "_top")))
+               (e! (symbol (str pre "_leaf")) (n depth j)))
+             (doseq [i (range 2 (inc depth)) j (range 3)]
+               (e! (n i j) (n (dec i) j))
+               (e! (n i j) (n (dec i) (mod (inc j) 3))))
+             (v/assert kb (list (symbol (str pre "_leaf")) 'SlX) 'CxUniverse {})
+             (v/assert kb (list 'not (list (symbol (str pre "_top")) 'SlX)) 'CxUniverse {})))
+        [(count (v/sentexes-with-functor kb 'contradicts)) @reads])
+      (finally (tu/clear-kb! kb)))))
+
+(deftest a-strict-link-walks-no-default-edge
+  (let [[n4 r4]   (strict-ladder "slw" 4 :default)
+        [n16 r16] (strict-ladder "slw" 16 :default)
+        [m4 _]    (strict-ladder "slm" 4 :monotonic)
+        [m16 _]   (strict-ladder "slm" 16 :monotonic)]
+    (is (= [0 0 1 1] [n4 n16 m4 m16]))
+    (is (= r4 r16) (str r4 " holding-class reads at depth 4, " r16 " at 16"))))
+
 (defn- placement-digest
   "Every placed `contradicts` and `defeat` of `kb`: sentence, context, belief, and each
   justification's informant and antecedents, by content."
@@ -711,3 +748,211 @@
                       batch  (assoc batch Integer/MAX_VALUE)))]
     (is (= 36 (count plain)))
     (is (= plain (run (cond-> {} batch (assoc batch 4)))))))
+
+(defn- hub-world!
+  "In one deferred settle: `nl_a` and `nl_b` disjoint, `nl_z` under `nl_hub` with
+  `nl_zs` under it at `:monotonic`, and `nl_s1` under `nl_s0`.  Each of `n` terms NlX_i holds `nl_zs`
+  beside an `nl_a` and an `nl_b` membership, one `:disjoint` nogood that names no type
+  at or below `nl_z`.  NlW holds `nl_zs` and is denied `nl_hub`, a `:supertype` nogood
+  no `:monotonic` path places, and NlY holds `nl_zs` and is denied `nl_s0`."
+  [kb n]
+  (let [m {:strength :monotonic}]
+    (v/with-deferred-settle kb
+      (v/assert kb '(disjoint nl_a nl_b) 'CxUniverse m)
+      (doseq [[s t] '[[nl_a1 nl_a] [nl_b1 nl_b] [nl_s1 nl_s0] [nl_z nl_hub]]]
+        (v/assert kb (list 'genl s t) 'CxUniverse {}))
+      (v/assert kb '(genl nl_zs nl_z) 'CxUniverse m)
+      (dotimes [i n]
+        (let [x (symbol (str "NlX" i))]
+          (doseq [t '[nl_a1 nl_b1 nl_zs]] (v/assert kb (list t x) 'CxUniverse {}))))
+      (doseq [[x q] '[[NlW nl_hub] [NlY nl_s0]]]
+        (v/assert kb (list 'nl_zs x) 'CxUniverse {})
+        (v/assert kb (list 'not (list q x)) 'CxUniverse {})))))
+
+(defn- edge-placements
+  "The member sets `chain/route-placements` reads while `(genl nl_z nl_s1)` is added to
+  `hub-world!` over `n` terms, as `[sets contradicts]`."
+  [n]
+  (let [kb (tu/isolated-fresh)]
+    (try
+      (tu/with-shipped-config
+        (hub-world! kb n)
+        (let [sets (atom [])
+              orig @#'chain/route-placements
+              term #(into #{} (map (fn [h] (let [s (:sentence (p/get-sentex (:records kb) h))]
+                                             (second (if (sx/negation? s) (second s) s)))))
+                          %)]
+          (with-redefs-fn {#'chain/route-placements (fn [kb ms routes within]
+                                                      (swap! sets conj (term ms))
+                                                      (orig kb ms routes within))}
+            #(v/edit! kb {:add [['(genl nl_z nl_s1) 'CxUniverse]]}))
+          [(frequencies @sets) (count (v/sentexes-with-functor kb 'contradicts))]))
+      (finally (tu/clear-kb! kb)))))
+
+(deftest a-genl-edge-places-again-only-the-nogoods-under-its-lower-end
+  (let [[s8 c8]   (edge-placements 8)
+        [s16 c16] (edge-placements 16)]
+    (is (= '{#{NlW} 1 #{NlY} 1} s8 s16))
+    (is (= [8 16] [c8 c16]))))
+
+(defn- store-digest
+  "Every stored sentex of `kb` as `[sentence context strength in?]`, a `(sentexHandle h)`
+  in a sentence read as the sentence and context it names, sorted."
+  [kb]
+  (let [recs (:records kb)
+        named (fn named [s]
+                (walk/postwalk #(if-let [h (and (seq? %) (sx/handle-id %))]
+                                  (let [t (p/get-sentex recs h)] [(named (:sentence t)) (:context t)])
+                                  %)
+                               s))]
+    (sort (map (fn [h] (let [s (p/get-sentex recs h)]
+                         (pr-str [(named (:sentence s)) (:context s) (:strength s) (v/in? kb h)])))
+               (p/sentex-ids recs)))))
+
+(deftest a-genl-edge-narrowed-to-its-lower-end-places-what-every-nogood-placed-again-does
+  (let [ladder! (fn [kb pre strength]
+                  (let [n #(symbol (str pre "_" %1 "_" %2))
+                        e! #(v/assert kb (list 'genl %1 %2) 'CxUniverse {:strength strength})]
+                    (v/with-deferred-settle kb
+                      (dotimes [j 2]
+                        (e! (n 1 j) (symbol (str pre "_top")))
+                        (e! (symbol (str pre "_leaf")) (n 3 j)))
+                      (doseq [i [2 3] j (range 2)]
+                        (e! (n i j) (n (dec i) j))
+                        (e! (n i j) (n (dec i) (mod (inc j) 2))))
+                      (v/assert kb (list (symbol (str pre "_leaf")) 'NlX0) 'CxUniverse {})
+                      (v/assert kb (list 'not (list (symbol (str pre "_top")) 'NlX0)) 'CxUniverse {}))))
+        mono    {:strength :monotonic}
+        steps   [{:add [['(genl nl_z nl_s1) 'CxUniverse] ['(genl nld_3_0 nl_a) 'CxUniverse]]}
+                 {:add [['(genl nl_z nl_mid) 'CxUniverse mono] ['(genl nl_mid nl_hub) 'CxUniverse mono]]}
+                 {:add [['(genl nl_s0 nl_a) 'CxUniverse] ['(genl nlm_2_1 nl_b) 'CxUniverse]]}
+                 {:remove [['(genl nld_2_0 nld_1_0) 'CxUniverse] ['(genl nl_zs nl_z) 'CxUniverse]]}
+                 {:add [['(genl nl_zs nl_z) 'CxUniverse] ['(genl nlm_1_0 nl_hub) 'CxUniverse]
+                        ['(nl_s0 NlX2) 'CxUniverse]]}
+                 {:remove [['(genl nl_z nl_s1) 'CxUniverse]]}]
+        run     (fn [redefs]
+                  (let [kb (tu/isolated-fresh)]
+                    (try
+                      (tu/with-shipped-config
+                        (with-redefs-fn redefs
+                          (fn []
+                            (hub-world! kb 4)
+                            (ladder! kb "nld" :default)
+                            (ladder! kb "nlm" :monotonic)
+                            (let [h (v/handle-of kb '(nl_a1 NlX1) 'CxUniverse)]
+                              (v/assert kb (list 'except (list 'sentexHandle h)) 'CxUniverse {}))
+                            (mapv (fn [step]
+                                    (v/edit! kb (update step :remove
+                                                        (fn [rs] (mapv (fn [[s c]] (v/handle-of kb s c)) rs))))
+                                    [(store-digest kb) (placement-digest kb)])
+                                  steps))))
+                      (finally (tu/clear-kb! kb)))))
+        whole   (some-> (resolve 'vaelii.impl.decide.membership/reaches-lows?)
+                        (vector (constantly true)))
+        narrow  (run {})]
+    (is (some #(seq (second %)) narrow))
+    (is (= narrow (run (into {} (when whole [whole])))))))
+
+(defn- clash-world!
+  "In one deferred settle, every sentence `:monotonic`: `nr_red`, preserved along
+  `nrPartOf`, `disjoint` from `nr_wheel`, and the claim `(nr_red NrCar)` reaching each of
+  `n` members NrW_i of `nr_wheel` through `(nrPartOf NrW_i NrCar)`, `n` clashes of a
+  separated membership.  `nrCap` preserved at argument 1 against `genl` and `nr_up` along
+  it; `n` claims `(nrCap nr_s0 NrH_i)` above `nr_s1`, and `nr_zs` under `nr_z` under
+  `nr_hub`, holding `(not (nrCap nr_zs NrH0))`, `(nr_up nr_zs)` and the member `NrZm`,
+  part of `NrCar`.  `nr_s0` is denied `nr_up` at `:default`."
+  [kb n]
+  (let [m {:strength :monotonic}
+        a! #(v/assert kb %1 'CxUniverse (or %2 m))]
+    (v/with-deferred-settle kb
+      (doseq [s '[(transitive nrPartOf) (binary_predicate nrCap) (transitiveInArgInverse nr_red 1 nrPartOf)
+                  (transitiveInArgInverse nrCap 1 genl) (transitiveInArg nr_up 1 genl)
+                  (genl nr_wheel thing) (genl nr_hub thing) (genl nr_s0 thing) (genl nr_s1 nr_s0)
+                  (genl nr_z nr_hub) (genl nr_zs nr_z) (disjoint nr_red nr_wheel) (nr_red NrCar)
+                  (nr_up nr_zs) (nr_zs NrZm) (nrPartOf NrZm NrCar)]]
+        (a! s nil))
+      (a! '(not (nrCap nr_zs NrH0)) {})
+      (a! '(not (nr_up nr_s0)) {})
+      (dotimes [i n]
+        (let [w (symbol (str "NrW" i))]
+          (a! (list 'nrPartOf w 'NrCar) nil)
+          (a! (list 'nr_wheel w) nil)
+          (a! (list 'nrCap 'nr_s0 (symbol (str "NrH" i))) nil))))))
+
+(defn- edge-questions
+  "The `preserving-entry` calls the settle of `(genl nr_z nr_s1)` makes over `clash-world!`
+  of `n`, and the `contradicts` stored before and after it."
+  [n]
+  (let [kb    (tu/isolated-fresh)
+        calls (atom 0)
+        orig  @#'discovery/preserving-entry
+        ct    #(count (v/sentexes-with-functor kb 'contradicts))]
+    (try
+      (tu/with-shipped-config
+        (clash-world! kb n)
+        (let [before (ct)]
+          (with-redefs [discovery/preserving-entry (fn [kb s] (swap! calls inc) (orig kb s))]
+            (v/edit! kb {:add [['(genl nr_z nr_s1) 'CxUniverse {:strength :monotonic}]]}))
+          [@calls before (ct)]))
+      (finally (tu/clear-kb! kb)))))
+
+(deftest a-genl-edge-asks-no-clash-whose-reach-it-does-not-cross
+  (let [[q8 b8 a8]    (edge-questions 8)
+        [q32 b32 a32] (edge-questions 32)]
+    (is (= q8 q32) (str "questions per settle " [q8 q32]))
+    (is (= [8 32] [b8 b32]))
+    (is (= [10 34] [a8 a32]))))
+
+(defn- preserved-digest
+  "Every inherited clash `kb`'s memo holds, by content: the stored claim, the members,
+  the vantages and the priority."
+  [kb]
+  (let [ct #(let [s (p/get-sentex (:records kb) %)] (pr-str [(:sentence s) (:context s)]))]
+    (sort (for [[h e] (:entries @(reasoning/preserved-clashes kb)), ng (:nogoods e)]
+            (pr-str [(ct h) (sort (map ct (:nogood ng))) (sort (:vantages ng)) (:priority ng)])))))
+
+(deftest a-genl-edge-narrowed-by-its-crossing-finds-the-clashes-every-question-asked-again-finds
+  (let [m     {:strength :monotonic}
+        steps [{:add [['(genl nr_z nr_s1) 'CxUniverse m] ['(nrCap nrl_d_2 NrH1) 'CxUniverse m]]}
+               {:add [['(genl nr_hub nr_wheel) 'CxUniverse m] ['(genl nrl_m_2 nr_s1) 'CxUniverse m]]}
+               {:add [['(genl nrl_d_0 nr_zs) 'CxUniverse] ['(nr_up nrl_m_0) 'CxUniverse m]]}
+               {:remove [['(genl nr_hub nr_wheel) 'CxUniverse] ['(genl nrl_d_1 nrl_d_2) 'CxUniverse]]}
+               {:remove [['(genl nr_z nr_s1) 'CxUniverse]]}
+               {:add [['(genl nr_hub nr_wheel) 'CxUniverse m] ['(except (sentexHandle 0)) 'CxUniverse m]]}
+               {:add [['(genl nr_z nr_s1) 'CxUniverse m] ['(genl nrl_d_1 nrl_d_2) 'CxUniverse]]}
+               {:remove [['(genl nrl_m_1 nrl_m_2) 'CxUniverse]]}]
+        run   (fn [redefs]
+                (let [kb (tu/isolated-fresh)]
+                  (try
+                    (tu/with-shipped-config
+                      (with-redefs-fn redefs
+                        (fn []
+                          (clash-world! kb 3)
+                          (doseq [[pre strength] [["nrl_d" :default] ["nrl_m" :monotonic]]
+                                  :let [t #(symbol (str pre "_" %))]]
+                            (v/with-deferred-settle kb
+                              (dotimes [i 2]
+                                (v/assert kb (list 'genl (t i) (t (inc i))) 'CxUniverse {:strength strength}))
+                              (v/assert kb (list 'genl (t 2) 'nr_s0) 'CxUniverse {:strength strength})
+                              (v/assert kb (list 'nrCap (t 2) 'NrH2) 'CxUniverse {:strength strength})
+                              (v/assert kb (list 'not (list 'nrCap (t 0) 'NrH2)) 'CxUniverse {})
+                              (v/assert kb (list 'not (list 'nr_up (t 2))) 'CxUniverse {})))
+                          (let [claim (v/handle-of kb '(nr_red NrCar) 'CxUniverse)]
+                            (mapv (fn [step]
+                                    (v/edit! kb (-> step
+                                                    (update :add (fn [as] (mapv #(update % 0 (partial walk/postwalk-replace {0 claim})) as)))
+                                                    (update :remove (fn [rs] (mapv (fn [[s c]] (v/handle-of kb s c)) rs)))))
+                                    [(store-digest kb) (placement-digest kb) (preserved-digest kb)])
+                                  steps)))))
+                    (finally (tu/clear-kb! kb)))))
+        off   (into {} (keep (fn [[sym f]] (some-> (resolve sym) (vector f))))
+                    {'vaelii.impl.inherit/edge-terms
+                     (fn [kb a b _ _ ns]
+                       (let [tax (reasoning/taxonomy kb)
+                             ts  (into (tax/specs-global tax a) (tax/genls-global tax b))]
+                         (zipmap ns (repeat ts))))
+                     'vaelii.impl.discovery/separated-under
+                     (fn [_ _ _ sep _] sep)})
+        narrow (run {})]
+    (is (some #(seq (nth % 2)) narrow))
+    (is (= narrow (run off)))))

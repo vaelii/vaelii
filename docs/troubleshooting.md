@@ -573,6 +573,7 @@ so one vocabulary reads both.
 | `:functional` | a second value for a predicate declared `functional`, or for the position a `functionalInArg` declaration names — see [`assert` refused it](#assert-refused-it) | [equality.md](equality.md) |
 | `:handle-ceiling` | a handle past the dense TMS's int-keyed ceiling | [density.md](density.md) |
 | `:argument-family-ceiling` | more distinct `(predicate, position)` pairs than the packed root key's 24-bit scope field holds; take `:index :memory` | [indexing.md](indexing.md) |
+| `:incomplete-defining-contexts` | a believed term assertion has a support whose defining role cannot be established; the exception names the term and handles, not a partial home set | [api.md](api.md) |
 | `:incomplete-racer` | a portfolio was handed a strategy with `:first-result?` on, which stops the search rather than steering it | [inference.md](inference.md) |
 | `:inter-arg-type` | under the constraint-only reading, an `interArg`, `interArgs` or `interArgAndRest` constraint convicted an input of a function application inside an argument because of what another input is; a convicted fact is stored and held inert | [argtypes.md](argtypes.md) |
 | `:internal-error` | the daemon caught a throwable carrying no `:type` of its own | [operations.md](operations.md) |
@@ -588,7 +589,7 @@ so one vocabulary reads both.
 | `:malformed-manifest` | a `meta.edn` / `format.edn` / `catalog.edn` / an index's `records.edn` the EDN reader cannot parse — cut mid-form, or never EDN | [storage.md](storage.md) |
 | `:malformed-record` | a tokenized record body holds a code this codec does not write; the open's walk tombstones the record | [storage.md](storage.md) |
 | `:manifest-too-large` | a manifest file longer than the bound the reader allows; a manifest is a handful of keys | [storage.md](storage.md) |
-| `:mint-rule` | a `retract!` or `edit!` named the inert rule one argument declaration kind's mints are justified under (`:kind`); the mints rest on it and the next mint would store it again | [argtypes.md](argtypes.md#the-entailment-as-a-justified-datum) |
+| `:mint-rule` | a removal, a direction change or an `except` named the inert rule one argument declaration kind's mints are justified under (`:kind`); the mints rest on it | [argtypes.md](argtypes.md#the-entailment-as-a-justified-datum) |
 | `:missing-adapter` | a **legal** `:sqlite` or `:pg` records axis whose Apache-2.0 sibling is not on the classpath — `:coordinate` names the dependency to add, and the backend is not the thing to change | [storage.md](storage.md) |
 | `:missing-resource` | a KB file, ontology layer or text KB is not where it was looked for | [kbs.md](kbs.md) |
 | `:naf-justification` | a dump names a justification with a non-empty `:out`, and a justification here has no out-list | [naf.md](naf.md) |
@@ -626,8 +627,7 @@ so one vocabulary reads both.
 | `:quantifier-not-local` | a bound existential or universal variable appears outside its own quantifier | [aggregate.md](aggregate.md) |
 | `:quoted-arg-type` | a `quotedArg` constraint convicted an input of a function application inside an argument on its EDN kind as a term; a convicted fact is stored and held inert | [argtypes.md](argtypes.md) |
 | `:reasoner-mismatch` | a store or a dump records one reasoner set and the open or import names another, and two sets derive two beliefs from the same records; name the recorded set or pass `:reasoners :stored` | [storage.md](storage.md#the-reasoner-set) |
-| `:record-edit-unsupported` | an `edit-records!` batch removes an `except`, `defeat` or `exceptWhen` record, whose departure re-posts what the remaining ones name; remove it with `edit!` | [storage.md](storage.md#editing-the-records-of-a-kb-without-belief) |
-| `:reserved-family` | a packed index key names the reserved family, which nothing packs | [indexing.md](indexing.md) |
+| `:record-edit-unsupported` | an `edit-records!` batch removes an `except`, `defeat` or `exceptWhen` record, whose departure re-posts what the remaining ones name; remove it with `edit!`.  Or an `:add` entry `edit-records!` does not write at record level: a functor other than `genl`, `sense` and `comment`, another arity, a compound argument, a `genl` between predicates, a predicate the store marks symmetric, commutative or forced-decontextualized, a context the index does not name, or a sentence stored as an inert record; add it with `edit!` once belief is built | [storage.md](storage.md#editing-the-records-of-a-kb-without-belief) |
 | `:reset` | the sandbox page's row saying how much a reset discarded | [web.md](web.md) |
 | `:shape` | not an s-expression at all — see [`assert` refused it](#assert-refused-it) | [api.md](api.md) |
 | `:short-transfer` | a file copy stalled before the byte count it was told to move | [storage.md](storage.md) |
@@ -669,7 +669,7 @@ so one vocabulary reads both.
 | `:unminted-nat` | `assert-inert` was handed a reifiable NAT this KB never minted; it never mints, so assert the NAT-bearing fact first | [nat.md](nat.md) |
 | `:unreadable` | a line of an edit batch, or a form of a text KB file, does not read as EDN; `:line` places it, and a text KB's refusal names the `:file` | [web.md](web.md), [kbs.md](kbs.md) |
 | `:unreadable-store` | the records in that store do not thaw as sentexes — it was written by a build whose record classes differ | [storage.md](storage.md) |
-| `:unrecovered-kb` | the KB is open over a store whose belief was never built, so writes are refused until `recover` runs; with `:hazards [:stale-belief]`, a `:recover? :background` open is rebuilding belief behind an earlier build's image, and writes resume when the rebuild finishes | [storage.md](storage.md) |
+| `:unrecovered-kb` | the KB is open over a store whose belief was never built, so writes are refused until `recover` runs; with `:hazards [:stale-belief]`, a `:recover? :background` open is rebuilding belief behind an earlier build's image, and writes resume when the rebuild finishes; from `edit-records!` with `:repair reindex`, an `:add` on a store whose index was never built, which its deduplication reads | [storage.md](storage.md) |
 | `:unrecovered-premise` | a retract named a premise this KB never recovered, so the dedup walk that would find its twin has not run | [storage.md](storage.md) |
 | `:unreleased` | an unload's release did not finish cleanly; the entry is still listed and unloading again retries it | [catalog.md](catalog.md) |
 | `:unresolved-reference` | a reference (`(ist Cx S)` or a bare `S`) names no stored sentex in its context, or a rule stored as several (`:reference`, `:context`); assert the sentence it names first | [canonicalization.md](canonicalization.md#a-reference-to-a-stored-sentex) |

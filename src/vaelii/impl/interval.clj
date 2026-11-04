@@ -5,7 +5,8 @@
   calculus: thirteen base relations, seven derived predicates, the transcribed composition
   table, and the two narrowings, metric (`stp`) and point (`points-narrowing-with-support`).
   See docs/time.md and docs/qcn.md."
-  (:require [vaelii.impl.naming :as nm]
+  (:require [clojure.set :as set]
+            [vaelii.impl.naming :as nm]
             [vaelii.impl.point :as pt]
             [vaelii.impl.qcn :as qcn]
             [vaelii.impl.qcn-kb :as qkb]
@@ -50,9 +51,8 @@
 (def ^:private holds-c-start "a-start < c-start < a-end"   #{:overlaps :contains :finished-by})
 (def ^:private holds-c-end   "a-start < c-end   < a-end"   #{:overlapped-by :contains :started-by})
 (def ^:private concurrent
-  "The nine relations under which two intervals share some time — the complement of
-  `:before`, `:after`, `:meets` and `:met-by`."
-  #{:overlaps :overlapped-by :starts :started-by :during :contains :finishes :finished-by :equal})
+  "The nine relations under which two intervals share some time."
+  (stp/interval-denotation 'sharesTimeWith))
 
 (def allen-composition
   "The Allen composition table: `(get-in allen-composition [r1 r2])` is the set of base
@@ -138,66 +138,44 @@
 
 ;; ---- the vocabulary -----------------------------------------------------
 
-(def base-relation-predicate
-  "Base relation keyword → the binary predicate a fact about it is stored under."
-  '{:before        before
-    :after         after
-    :meets         meets
-    :met-by        metBy
-    :overlaps      overlaps
-    :overlapped-by overlappedBy
-    :starts        starts
-    :started-by    startedBy
-    :during        during
-    :contains      contains
-    :finishes      finishes
-    :finished-by   finishedBy
-    :equal         intervalEqual})
-
-(def interval-denotation
-  "Every interval predicate — the thirteen base ones and the seven derived ones — mapped
-  to the set of base relations it denotes.  A goal `(P i j)` is entailed exactly when the
-  relations still possible between i and j are a subset of P's denotation."
-  (merge
-   (into {} (map (fn [[rel pred]] [pred #{rel}])) base-relation-predicate)
-   {'precedes            #{:before :meets}
-    'precededBy          #{:after :met-by}
-    'subintervalOf       #{:during :starts :finishes :equal}
-    'properSubintervalOf #{:during :starts :finishes}
-    'hasSubinterval      #{:contains :started-by :finished-by :equal}
-    'sharesTimeWith      concurrent
-    'temporallyDisjoint  #{:before :after :meets :met-by}}))
-
 ;; ---- the second readers: metric bounds and point facts ------------------
 
 (defn- points-narrowing-with-support
   "What the point network determines about the interval relations, as
-  `{:net {[i j] → #{base relations}} :support {[i j] → #{handle}}}`.  A thing is read when
-  its `(StartFn X)` is a node of the point network and X is a symbol; a pair's relations
-  are those whose `stp/endpoint-signature` every one of the four endpoint comparisons
-  still admits, and its support is the four comparisons' support.  Only narrowed pairs
-  are recorded.  Each unsatisfiable component of the point network
-  (`qcn-kb/unsatisfiable-components`) answers `stp/unsatisfiable-narrowing` over the things
-  whose points it holds, supported by its culprits, its `:point` source naming its pairs
-  unsatisfiable as written and those culprits.  The comparisons are read off the closed
-  satisfiable components (`qcn-kb/closed-network`) and the support off one
-  `qcn-kb/closure-with-support` pass."
+  `{:net {[i j] → #{base relations}} :support {[i j] → #{handle}}}`, over each thing X whose
+  `(StartFn X)` is a node, X a symbol, or whose stated `startOf` and `endOf` name two symbol
+  nodes (`stp/intervals-with-endpoints`), which then stand for its points beside its point
+  terms and support its pairs.  An endpoint comparison intersects every reading of the two
+  endpoints; a pair's relations are those whose `stp/endpoint-signature` the four admit,
+  supported by their support, and only narrowed pairs are recorded.  Each unsatisfiable
+  component (`qcn-kb/unsatisfiable-components`) answers `stp/unsatisfiable-narrowing` over
+  the things whose points it holds, supported by its culprits, its `:point` source naming
+  them and its pairs as written.  The comparisons are read off `qcn-kb/closed-network` and
+  the support off one `qcn-kb/closure-with-support` pass."
   [kb context]
   (let [calc    pt/instants
         net     (qkb/network kb calc context)
-        things  (into #{} (comp (keep tp/thing-of) (filter symbol?)) (qkb/nodes net))
+        on-net  (qkb/nodes net)
+        pointed (into #{} (comp (keep tp/thing-of) (filter symbol?)) on-net)
+        stated  (into {} (filter (fn [[_ [[s e]]]] (and (on-net s) (on-net e))))
+                      (stp/intervals-with-endpoints kb context (filter symbol? on-net)))
+        things  (into pointed (keys stated))
         bad     (qkb/unsatisfiable-components calc kb context)
         gone    (into #{} (mapcat :nodes) bad)
         closed  (qkb/closed-network calc kb context)
         pass    (delay (qkb/closure-with-support calc kb context))
-        ends    (into {} (map (fn [x] [x {:start (tp/point :start x) :end (tp/point :end x)}]))
+        ends    (into {} (map (fn [x] (let [[s e] (get-in stated [x 0])
+                                            own   (pointed x)]
+                                        [x {:start (cond-> [] own (conj (tp/point :start x)) s (conj s))
+                                            :end   (cond-> [] own (conj (tp/point :end x)) e (conj e))}])))
                       things)
-        free    (into #{} (remove (fn [x] (some #(contains? gone %) (vals (ends x))))) things)
+        nodes-of (fn [x] (mapcat val (ends x)))
+        free    (into #{} (remove (fn [x] (some #(contains? gone %) (nodes-of x)))) things)
         between (fn [x y] (for [ex [:start :end] ey [:start :end]]
-                            [[ex ey] [(get-in ends [x ex]) (get-in ends [y ey])]]))
+                            [[ex ey] (for [a (get-in ends [x ex]) b (get-in ends [y ey])] [a b])]))
         stand-ins (for [{:keys [nodes pairs culprits]} bad]
                     (stp/unsatisfiable-narrowing
-                     (filter (fn [x] (some #(contains? nodes %) (vals (ends x)))) things)
+                     (filter (fn [x] (some #(contains? nodes %) (nodes-of x))) things)
                      culprits
                      {:source  :point
                       :pairs   (nm/by-print-key pairs)
@@ -208,7 +186,10 @@
         (reduce
          (fn [acc [x y]]
            (let [pts  (between x y)
-                 cmp  (into {} (map (fn [[k [a b]]] [k (qkb/constraint calc closed a b)])) pts)
+                 cmp  (into {} (map (fn [[k abs]]
+                                      [k (reduce set/intersection
+                                                 (map (fn [[a b]] (qkb/constraint calc closed a b)) abs))]))
+                            pts)
                  rels (into #{} (keep (fn [[rel sig]]
                                         (when (every? (fn [[k r]] (contains? (cmp k) r)) sig)
                                           rel)))
@@ -219,7 +200,10 @@
                  (-> acc
                      (assoc-in [:net [x y]] rels)
                      (assoc-in [:support [x y]]
-                               (into #{} (mapcat (fn [[_ ab]] (get support ab #{}))) pts)))))))
+                               (-> #{}
+                                   (into (mapcat (fn [[_ abs]] (mapcat #(get support % #{}) abs))) pts)
+                                   (into (get-in stated [x 1]))
+                                   (into (get-in stated [y 1])))))))))
          {:net {} :support {}}
          (for [x free y free :when (not= x y)] [x y])))
       stand-ins))))
@@ -238,11 +222,11 @@
   `both-narrowings` (`:sources` and `:contexts`: docs/stp.md).  `subintervalOf` and
   `properSubintervalOf` are typed: the network answers them only over arguments their
   declared types admit."
-  (qkb/calculus :allen allen-algebra interval-denotation
+  (qkb/calculus :allen allen-algebra stp/interval-denotation
                 {:fn       both-narrowings
                  :bindings stp/allen-narrowing-bindings
                  :sources  (into stp/allen-narrowing-sources (keys pt/instant-denotation))
-                 :contexts (-> stp/stp-predicates
+                 :contexts (-> stp/network-predicates
                                (into stp/endpoint-predicates)
                                (into (keys pt/instant-denotation)))}
                 '#{subintervalOf properSubintervalOf}))

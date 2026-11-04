@@ -60,6 +60,13 @@ own square, where both sides of every law move together. Associativity is delibe
 not among the laws, because `distance` composes weakly and is not associative, which
 costs path consistency nothing.
 
+`time.txt` and `space.txt` state each Allen and RCC-8 base relation's properties inert:
+`(set/inert (inverse P Q))` per converse pair, `(set/inert (asymmetric P))` per relation
+whose converse is another, and `(set/inert (negates P Q))` per pair of base relations.
+They form no nogood and change no belief. `qcn_algebra_test` reads every such stored
+sentence, the cardinal and relative calculi's `inverse` pairs included, and fails on one
+its calculus's algebra contradicts.
+
 Two things nearby are deliberately *not* calculi. `vaelii.impl.stp` is metric time —
 numeric bounds closed by shortest paths, not a relation algebra, and forcing it through
 one would be a category error ([stp.md](stp.md)). `vaelii.impl.scenario` is the search
@@ -617,6 +624,11 @@ point narrowing reads 4n² comparisons and their support off it for n things
 (qkb/support space/rcc8 kb 'CxUniverse 'A 'D)   ; => #{h1 h2}, the chain behind A ⊏ D
 ```
 
+The calculus prover is a `SupportingProver`, so an `argue` leaf it answers names that
+support ([inference.md](inference.md#an-answer-no-record-holds)), with the `genl` edges a
+lifted goal climbs and, on a positive diagonal, the `(reflexive P)` statements the context
+sees.
+
 Two things it is **not**, and both matter.
 
 It is not **minimal**. Support accumulates on every narrowing, so a pair narrowed twice
@@ -911,10 +923,22 @@ Three things follow, and each needed its own wiring:
   ([exceptions.md](exceptions.md#two-withdrawals-a-firing-carries)), so an arrival over a
   satisfiable network re-decides none of them.
 
-Two things are deliberately left. The **diagonal** entails but supports nothing — the
-algebra's identity makes `(partOfRegion ?x ?x)` true of every region with no stored fact
-behind it — so it is dropped rather than answered with a groundless justification. And
-support names *a* witness rather than every witness (above), so a relation reachable two
+The **diagonal** rests on the `(reflexive P)` statements the reader sees
+(`res/declared-by`). With `(reflexive partOfRegion)` visible, a forward rule over
+`(partOfRegion ?x ?x)` fires once per node of the network. The firing rests on every visible
+declaration and on a fact naming the node, one justification per such fact
+(`qcn-kb/node-statements`), so it is placed where the node is, and retracting the
+declaration withdraws every one. In the join two distinct variables answer the diagonal too,
+unlike a query's four goal shapes ([above](#what-every-algebra-does-with-it)), so the
+antecedent that binds first decides no firing. A term no fact names, a node only a narrowing
+names included, gets no diagonal firing, even where an earlier antecedent binds it. A
+diagonal the algebra alone gives, on a predicate holding the identity with no declaration
+(`hasRegionPart`), supports nothing and is dropped rather than answered with a groundless
+justification. An arriving `(reflexive P)` re-joins every rule with an antecedent on `P` in
+full (`chain/reflexive-rejoin-rules`), and a delta re-join adds the diagonal of each node
+its moved pairs name.
+
+Support names *a* witness rather than every witness (above), so a relation reachable two
 ways gets one justification; the second route is re-derived after a retraction rather than
 having been recorded in advance.
 

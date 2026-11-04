@@ -175,6 +175,20 @@
       (is (= 100 (count off)))
       (is (= off on) "and turning the setting on changes nothing"))))
 
+(defprotocol InlineOnly (inline-op [x]))
+(defprotocol Extended (extended-op [x]))
+(extend-type String Extended (extended-op [_] :string))
+
+(deftest has-answers-as-satisfies-with-and-without-an-extend
+  (let [both (reify InlineOnly (inline-op [_] 1) Extended (extended-op [_] 2))
+        xs   [both "s" (Object.) nil]]
+    (is (= [true false false false]
+           (mapv #(cap/has? InlineOnly %) xs)
+           (mapv #(satisfies? InlineOnly %) xs)))
+    (is (= [true true false false]
+           (mapv #(cap/has? Extended %) xs)
+           (mapv #(satisfies? Extended %) xs)))))
+
 (deftest off-is-the-default
   (is (false? res/*prefetch-candidates*)
       "a hint is issued only when something asks for it"))

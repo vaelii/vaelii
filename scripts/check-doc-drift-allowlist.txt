@@ -16,6 +16,16 @@ src/main/clojure
 # surface form in a sentence (docs/naming.md), so there is no var to resolve it to.
 lex/fool's_gold
 
+# Symbols in the KB's `nat/` namespace, which `nat` also names as the alias of
+# vaelii.impl.nat: the symbol a never-minted NAT reads as (`sentex/no-match` holds it),
+# the placeholder the entry-point check writes for a constant it has not minted yet,
+# and the spellings of an opaque minted constant.  A comment naming one cites a symbol.
+nat/no-match
+nat/minted
+nat/g17
+nat/k
+nat/a
+
 # The weighted cardinality bounds docs/solving.md names as the extension the
 # surface does NOT carry ("Every head weighs one, today").  A spelling the tree
 # states as an absence resolves to nothing by design.

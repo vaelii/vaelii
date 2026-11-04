@@ -358,8 +358,9 @@
 ;; an exported-but-empty variable with a sweep they never asked for.  The harness
 ;; switches take the same vocabulary as the engine's, so a spelling learned once works
 ;; everywhere.
-(when (config/prop-bool "VAELII_RETE" false)
-  ((requiring-resolve 'vaelii.impl.rete/enable!)))
+(defn- install-rete! []
+  (when (config/prop-bool "VAELII_RETE" false)
+    ((requiring-resolve 'vaelii.impl.rete/enable!))))
 
 ;; And the same shape for the backward half: `VAELII_QUERY_ENGINE=inference` runs every
 ;; test's `prove` on the node engine (`vaelii.impl.inference`) instead of the goal-stack
@@ -374,12 +375,12 @@
   (some? (find-ns 'cloverage.coverage)))
 
 (defn load-budget-ms
-  "How long a test waits on an asynchronous KB load or export: 120 s, and 1200 s under
-  `scripts/coverage.sh`, where 203 tests of `ontology-test` and `order-independence-test`
-  take 1361 s against 133 s.  A wait ends when the work does, so a long budget costs a
-  passing test nothing."
+  "How long a test waits on an asynchronous KB load, export or block tally: 600 s, and
+  1200 s under `scripts/coverage.sh`, where 203 tests of `ontology-test` and
+  `order-independence-test` take 1361 s against 133 s.  A wait ends when the work does, so
+  a long budget costs a passing test nothing."
   []
-  (if (instrumented?) 1200000 120000))
+  (if (instrumented?) 1200000 600000))
 
 (defn query-engine-override
   "The engine `VAELII_QUERY_ENGINE` names, or nil.  Read by tests that assert a
@@ -394,14 +395,15 @@
                     nil
                     "dfs, inference, or hybrid"))
 
-(when-let [e (query-engine-override)]
-  (alter-var-root #'v/*query-engine* (constantly e))
-  ;; The node engine has no default depth bound and refuses to start without one — the
-  ;; depth a query needs is a property of the data, so the *caller* chooses.  For a sweep
-  ;; the caller is the suite, and 8 is what the fixtures' derivations reach.  `prove`
-  ;; reads it and `query` does not, so a depthless `query` answers the same here as in
-  ;; every other configuration.
-  (alter-var-root (requiring-resolve 'vaelii.impl.inference/*max-depth*) (constantly 8)))
+(defn- install-query-engine! []
+  (when-let [e (query-engine-override)]
+    (alter-var-root #'v/*query-engine* (constantly e))
+    ;; The node engine has no default depth bound and refuses to start without one — the
+    ;; depth a query needs is a property of the data, so the *caller* chooses.  For a sweep
+    ;; the caller is the suite, and 8 is what the fixtures' derivations reach.  `prove`
+    ;; reads it and `query` does not, so a depthless `query` answers the same here as in
+    ;; every other configuration.
+    (alter-var-root (requiring-resolve 'vaelii.impl.inference/*max-depth*) (constantly 8))))
 
 ;; `VAELII_QUERY_STRATEGY=breadth-first` runs the whole suite under one of the node
 ;; engine's tacticians (`vaelii.impl.tactics`).  Ordering is a cost decision and never a
@@ -423,8 +425,9 @@
     (config/prop-enum "VAELII_QUERY_STRATEGY" spellings nil
                       (str "one of " (str/join ", " (sort (keys spellings)))))))
 
-(when-let [s (query-strategy-override)]
-  (alter-var-root #'v/*query-options* (constantly s)))
+(defn- install-query-strategy! []
+  (when-let [s (query-strategy-override)]
+    (alter-var-root #'v/*query-options* (constantly s))))
 
 ;; The set-algebra retrieval (`res/matches-hierarchical`) is the default; set
 ;; `VAELII_HIER=0` to route every context-scoped match through the reference nested
@@ -432,9 +435,10 @@
 ;; positively, so the value says what it selects: a switch whose name carries the
 ;; negation reads `=0` as *on*, which is the one thing a reader must not have to work
 ;; out at a glance.
-(when-not (config/prop-bool "VAELII_HIER" true)
-  (alter-var-root (requiring-resolve 'vaelii.impl.resolution/*hierarchical-retrieval*)
-                  (constantly false)))
+(defn- install-hier! []
+  (when-not (config/prop-bool "VAELII_HIER" true)
+    (alter-var-root (requiring-resolve 'vaelii.impl.resolution/*hierarchical-retrieval*)
+                    (constantly false))))
 
 ;; `VAELII_PLAN=0` runs a conjunction's generators in the order they were written — the
 ;; cost ranking off, the readiness discipline still on — which is the ranking's own claim
@@ -449,8 +453,23 @@
 ;; the ranking is required", carries it with its witness.
 ;;
 ;; Spelled positively for `VAELII_HIER`'s reason — the value says what it selects.
-(when-not (config/prop-bool "VAELII_PLAN" true)
-  (alter-var-root (requiring-resolve 'vaelii.impl.plan/*enabled*) (constantly false)))
+(defn- install-plan! []
+  (when-not (config/prop-bool "VAELII_PLAN" true)
+    (alter-var-root (requiring-resolve 'vaelii.impl.plan/*enabled*) (constantly false))))
+
+(defn install-sweeps!
+  "Install the implementation each variable of `sweeps` names over its var's root: at this
+  namespace's load, and after an engine reload, which evaluates every `def` again and so
+  resets those roots (`reload-test`).  A reload with no second call leaves each later test
+  in the JVM on the shipped implementation, reporting a pass for the sweep."
+  []
+  (install-rete!)
+  (install-query-engine!)
+  (install-query-strategy!)
+  (install-hier!)
+  (install-plan!))
+
+(install-sweeps!)
 
 ;; ---- KBs on the scratch databases ---------------------------------------
 ;;

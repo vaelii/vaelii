@@ -26,14 +26,14 @@
 
 (comment closedExtentForArg
          "(closedExtentForArg ?predicate ?position ?value) means that ?predicate's believed extent is complete for the sentences whose argument ?position is ?value: nothing answering a ground (?predicate …) with ?value at ?position is what answers its (not (?predicate …)). The grant closed_extent_predicate makes, narrowed to one argument value. (closedExtentForArg accountOn 2 HostA) says the accounts on HostA are exactly the believed ones, and (accountOn ?x HostB) stays open-world beside it. A goal whose argument ?position is not ground is not closed. Read from the asking context's genlCx ancestor set, and belief-following, as closed_extent_predicate is.")
+(implementationNote closedExtentForArg "The rule concluding this grant from closed_extent_predicate is inert: a forward rule would store one grant per value. The closed-extent prover reads closed_extent_predicate itself, so the grant holds at every value with no grant stored.")
 (ternary_predicate closedExtentForArg)
 (arg closedExtentForArg 1 predicate)
 (arg closedExtentForArg 2 positive_integer)
 (arg closedExtentForArg 3 thing)   ;; the argument value a closed extent is granted for: a term of any kind
 ;; A whole-predicate closure entails the per-argument closure at every admitted position and
-;; every value.  Inert: a forward rule would store one grant per value.  (thing ?value) binds
-;; ?value, which range restriction requires of a consequent variable, and is true of every
-;; term.
+;; every value.  (thing ?value) binds ?value, which range restriction requires of a
+;; consequent variable, and is true of every term.
 (set/inertRule (implies (and (closed_extent_predicate ?pred) (admitsArgnum ?pred ?position) (thing ?value)) (closedExtentForArg ?pred ?position ?value)))
 
 ;; A grant at argument N names a predicate with N or more arguments.  Under assertive
@@ -45,7 +45,8 @@
 (interArgEqual closedExtentForArg 2 5 1 at_least_quinary)
 
 (comment closedExtentForArg1
-         "(closedExtentForArg1 ?predicate ?value) is the binary spelling of (closedExtentForArg ?predicate 1 ?value). The two rules below state the equivalence. The rule deriving the ternary is a forward rule, so the engine reads only the ternary; the rule deriving the binary spelling is inert, so a ternary grant mints no binary twin.")
+         "(closedExtentForArg1 ?predicate ?value) is the binary spelling of (closedExtentForArg ?predicate 1 ?value). The two rules below state the equivalence.")
+(implementationNote closedExtentForArg1 "The rule deriving the ternary is a forward rule, so the engine reads only the ternary. The rule deriving this binary spelling is inert, so a ternary grant mints no binary twin.")
 (binary_predicate closedExtentForArg1)
 (arg closedExtentForArg1 1 predicate)
 (arg closedExtentForArg1 2 thing)   ;; the argument value: a term of any kind
@@ -54,6 +55,7 @@
 
 (comment closedExtentForArg2
          "(closedExtentForArg2 ?predicate ?value) is the binary spelling of (closedExtentForArg ?predicate 2 ?value).")
+(implementationNote closedExtentForArg2 "The rule deriving the ternary is a forward rule, so the engine reads only the ternary. The rule deriving this binary spelling is inert, so a ternary grant mints no binary twin.")
 (binary_predicate closedExtentForArg2)
 (arg closedExtentForArg2 1 predicate)
 (arg closedExtentForArg2 2 thing)   ;; the argument value: a term of any kind
@@ -62,6 +64,7 @@
 
 (comment closedExtentForArg3
          "(closedExtentForArg3 ?predicate ?value) is the binary spelling of (closedExtentForArg ?predicate 3 ?value).")
+(implementationNote closedExtentForArg3 "The rule deriving the ternary is a forward rule, so the engine reads only the ternary. The rule deriving this binary spelling is inert, so a ternary grant mints no binary twin.")
 (binary_predicate closedExtentForArg3)
 (arg closedExtentForArg3 1 predicate)
 (arg closedExtentForArg3 2 thing)   ;; the argument value: a term of any kind
@@ -70,6 +73,7 @@
 
 (comment closedExtentForArg4
          "(closedExtentForArg4 ?predicate ?value) is the binary spelling of (closedExtentForArg ?predicate 4 ?value).")
+(implementationNote closedExtentForArg4 "The rule deriving the ternary is a forward rule, so the engine reads only the ternary. The rule deriving this binary spelling is inert, so a ternary grant mints no binary twin.")
 (binary_predicate closedExtentForArg4)
 (arg closedExtentForArg4 1 predicate)
 (arg closedExtentForArg4 2 thing)   ;; the argument value: a term of any kind
@@ -78,6 +82,7 @@
 
 (comment closedExtentForArg5
          "(closedExtentForArg5 ?predicate ?value) is the binary spelling of (closedExtentForArg ?predicate 5 ?value).")
+(implementationNote closedExtentForArg5 "The rule deriving the ternary is a forward rule, so the engine reads only the ternary. The rule deriving this binary spelling is inert, so a ternary grant mints no binary twin.")
 (binary_predicate closedExtentForArg5)
 (arg closedExtentForArg5 1 predicate)
 (arg closedExtentForArg5 2 thing)   ;; the argument value: a term of any kind
@@ -544,7 +549,7 @@
 (genl keyword unrepresented_term)
 (genl number unrepresented_term)
 (genl string unrepresented_term)
-(partition unrepresented_term boolean character keyword number string)
+(set/monotonic (partition unrepresented_term boolean character keyword number string))
 
 (comment Quote "Syncategorematic: part of vaelii's syntax, like a parenthesis, though written like a function. (Quote X) is X taken as a form, e.g. (Quote Muffet) names the symbol Muffet, not the dog. Quote takes no arg, result or metatype declaration; what kind of expression (Quote X) is follows from X's shape. X is a mention, held opaque to identity congruence: an equality merge rewrites it by a rewriteOf spelling rename only, never by a sameAs or equals coreference, so a quoted term does not fold onto its referent's class. Quote and Quasiquote are the quoting functions, fixed by the engine rather than declared. See docs/equality.md.")
 (positiveExampleComment Quote "(Quote Muffet), which names the symbol Muffet and not the dog")
@@ -683,7 +688,7 @@
 (positiveExample unbounded_arity (Quote (unbounded_arity different)))
 (positiveExample unbounded_arity (Quote (unbounded_arity greaterThan)))
 (unary_predicate unbounded_arity)
-(partition relation bounded_arity unbounded_arity)
+(set/monotonic (partition relation bounded_arity unbounded_arity))
 (genl fixed_arity bounded_arity)
 (genl unbounded_arity variable_arity)
 (comment unbounded_arity_predicate "An unbounded_arity relation that is a predicate.")
@@ -753,12 +758,14 @@
 
 (comment predicateTypeByArity
          "(predicateTypeByArity ?type ?arity) maps a predicate exact-arity type to its arity. Related to relationTypeByArity (termsRelated) and not a specialization of it: a predicate mapping classifies a predicate only.")
+(implementationNote predicateTypeByArity "The rule each fact generates is inert: believed and documented, run on no write and no query. Run backward, it reaches (binary ?r) through the genl edge from binary_predicate to binary while the converse proves (arity ?r 2) from (binary ?r), a cycle every (binary ?r) and (arity ?p ?n) query would pay for. kb-integrity's implicit-arity-class pass reports each relation whose kind and arity the rule would classify and whose class is not stated, and the starter states every class that pass finds.")
 (set/monotonic (instance_relation_predicate predicateTypeByArity))
 (arg predicateTypeByArity 1 unary_predicate)
 (arg predicateTypeByArity 2 non_negative_integer)
 
 (comment functionTypeByArity
          "(functionTypeByArity ?type ?arity) maps a function exact-arity type to its arity. Related to relationTypeByArity (termsRelated) and not a specialization of it: a function mapping classifies a function only.")
+(implementationNote functionTypeByArity "The rule each fact generates is inert, for the cycle the implementationNote on predicateTypeByArity describes. kb-integrity's implicit-arity-class pass reports each function the rule would classify and whose class is not stated.")
 (set/monotonic (instance_relation_predicate functionTypeByArity))
 (arg functionTypeByArity 1 unary_predicate)
 (arg functionTypeByArity 2 non_negative_integer)
@@ -980,13 +987,8 @@
 ;; The predicate and function mappings are generators of their own, each guarding the
 ;; rule it generates with its kind: (predicateTypeByArity binary_predicate 2) classifies a
 ;; relation of arity 2 as binary_predicate only when it is a predicate, so a binary
-;; function never reaches it.  The generated rules are INERT: believed and documented, run
-;; on no write and no query.  Run backward, one reached (binary ?r) through the genl edge
-;; from binary_predicate to binary while the converse above proves (arity ?r 2) from
-;; (binary ?r), a cycle every (binary ?r) and (arity ?p ?n) query paid for.  The argument
-;; they state is swept instead: kb-integrity's implicit-arity-class pass reports each
-;; relation whose kind and arity the rule would classify and whose class is not stated,
-;; and the starter states every class that pass finds (docs/integrity.md).
+;; function never reaches it.  The generated rules are inert, and the implementationNote on
+;; each mapping says why.
 (implies (predicateTypeByArity ?type ?arity)
          (set/inertRule
           (implies (and (predicate ?relation) (arity ?relation ?arity)) (?type ?relation))))
@@ -1900,7 +1902,6 @@
 (context CxRealWorld)
 (context CxSize)
 (context CxSocial)
-(context CxSocialExtension)
 (context CxTra)
 (context CxUniverse)
 (context CxWell)
@@ -2162,6 +2163,7 @@
 (comment commutative
          "(commutative ?relation) means that every argument of ?relation may be permuted without changing the proposition, at each arity the relation is applied at. The generalization of symmetric off its two fixed argument positions: symmetric commutes the two arguments of a binary predicate, this commutes all of them at any arity. Declarative sugar and a queryable classification rather than a second mechanism — a rule below derives (commutativeInArgAndRest ?relation 1), the tail-from-a-position spelling the engine canonicalizes with, so all-argument commutativity and the tail beginning at argument 1 are one licence written two ways. A one-argument relation marked commutative permutes nothing: one position is no permutation, and the mark stays queryable. See docs/canonicalization.md.")
 (positiveExampleComment commutative "a relation such as intersection")
+(implementationNote commutative "The rules between this mark and (commutativeInArgAndRest ?p 1) are inert. Each mark installs the commuting group at its own arm in special/arms, so neither spelling needs deriving from the other. A derivation between them is a cycle, each conclusion justifying the other, and set/forwardRule adds forward chaining without taking the backward use away. Forward chaining survives a cycle: the pair is unfounded and the JTMS labels it so. Backward search has no ancestor-goal guard, so (commutative ?p) expands to (commutativeInArgAndRest ?p 1) and back until the depth bound stops it, an exponential frontier inside that depth, and (genl commutative relation) puts the goal under every open (relation ?x) query.")
 (unary_predicate commutative)
 (decontextualized_predicate commutative)
 (genl commutative relation)
@@ -2178,6 +2180,7 @@
 (comment commutativeInArgAndRest
          "(commutativeInArgAndRest ?relation ?position) means that the arguments of ?relation from ?position through the end of an application may be permuted without changing the proposition, while every earlier argument stays where it was written. The canonical runtime spelling of commutativity: the other two marks reduce to it, and the assert entry point sorts the arguments inside the component it names, so every permitted permutation of a ground fact is one sentex and one handle. Variable arity is respected rather than flattened — the component is closed by the application's own arity, so a relation applied at three arguments and at four states two claims and no permutation moves an argument between them. Repeated argument values keep their multiplicity: commutativity changes order, never content. See docs/canonicalization.md.")
 (positiveExampleComment commutativeInArgAndRest "a whole-and-parts relation at position 2, so the whole stays in position 1 and only the parts commute")
+(implementationNote commutativeInArgAndRest "The rules between this mark at position 1 and commutative are inert: the two form a cycle under backward search, and each mark installs the commuting group itself. The implementationNote on commutative has the detail.")
 (decontextualized_predicate commutativeInArgAndRest)
 (set/monotonic (instance_relation_predicate commutativeInArgAndRest))
 (arg commutativeInArgAndRest 1 relation)
@@ -2191,16 +2194,7 @@
 ;; neither spelling has to be derived from the other. The two directions stay here as
 ;; set/inertRule: believed, indexed and queryable, run by neither engine.
 ;;
-;; They are inert rather than forward rules because a derivation between them is a cycle —
-;; each conclusion justifies the other — and set/forwardRule adds forward chaining without
-;; taking the backward use away. Forward chaining survives a cycle: the pair is unfounded
-;; and the JTMS labels it so (docs/nmtms.md). Backward search does not.
-;; provers/candidate-rules carries no ancestor-goal guard, so (commutative ?p) expands to
-;; (commutativeInArgAndRest ?p 1) and back with no binding arriving to close it off. The
-;; depth bound stops the descent, which makes the cycle an exponential frontier inside
-;; that depth rather than a refusal, and (genl commutative relation) puts the goal under
-;; every open (relation ?x) query — which is what made vaelii.arity-vocabulary-test never
-;; finish under VAELII_QUERY_ENGINE=inference.
+;; The implementationNote on commutative says why they are inert rather than forward rules.
 (set/inertRule (implies (and (commutative ?p)) (commutativeInArgAndRest ?p 1)))
 (set/inertRule (implies (and (commutativeInArgAndRest ?p 1)) (commutative ?p)))
 
@@ -2554,8 +2548,9 @@
 ;; RulePairFn: the unordered pair a :rule-clash acknowledgment's subject names two rules
 ;; under.  Each rule is written (Quote ?ruleN), and a quoted term is opaque, so the one
 ;; piece of inference the pair needs — the two orders are one pair — is stated outside
-;; both quotes, of the function holding them, by (commutative RulePairFn): the store
-;; holds both orders as one sentex, and nothing is sorted inside either quote.
+;; both quotes, of the function holding them, by (commutative RulePairFn).  The subject
+;; position is a mention, which the store keeps as written, so kb-integrity reads the
+;; pair as a bag of rules.
 (comment RulePairFn
          "(RulePairFn ?rule1 ?rule2) names the unordered pair of ?rule1 and ?rule2: an acknowledgedFinding :rule-clash subject names a rule-clash pair this way, each rule written (Quote ?ruleN) so the pair is about the rules' syntax and not their truth. (RulePairFn ?rule1 ?rule2) and (RulePairFn ?rule2 ?rule1) name the same pair: RulePairFn is commutative. See docs/integrity.md.")
 (binary_function RulePairFn)
@@ -2602,6 +2597,17 @@
 (arg typeGenl 1 at_least_metatype)
 (arg typeGenl 2 unary_predicate)
 (comment typeGenl "Higher-order genl: (typeGenl ?classifier ?genl) means every instance of ?classifier is a genl of ?genl.")
+
+;; successorTypeOrder steps up the metatype-order ladder one order at a time, lower order
+;; first.  Its genlInverse edge to typeGenl reads each fact as the typeGenl fact with the
+;; two arguments swapped, so (successorTypeOrder type metatype) answers
+;; (typeGenl metatype type).
+(comment successorTypeOrder "(successorTypeOrder ?lower ?higher) means that ?higher is the order of type directly above ?lower: every instance of ?higher is a spec of ?lower, e.g. (successorTypeOrder type metatype) says that the instances of a metatype are first-order types.")
+(binary_predicate successorTypeOrder)
+(arg successorTypeOrder 1 type_type_by_order)
+(arg successorTypeOrder 2 type_type_by_order)
+(genlInverse successorTypeOrder typeGenl)
+(set/monotonic (asymmetric successorTypeOrder))
 
 ;; typeOrthogonal is typeGenl's orthogonal twin, with the classifier first as typeGenl
 ;; has it.  A generator generates one membership rule per fact.  The generated rule is strict,
@@ -2696,8 +2702,10 @@
 (set/monotonic (genl metatype fixed_order_type))
 (set/monotonic (genl meta_metatype fixed_order_type))
 (typeGenl disjoint_metatype at_least_metatype)
-(typeGenl meta_metatype metatype)
-(typeGenl metatype type)
+;; The two steps of the ladder.  Through the genlInverse edge they answer
+;; (typeGenl metatype type) and (typeGenl meta_metatype metatype), which are not stated.
+(successorTypeOrder type metatype)
+(successorTypeOrder metatype meta_metatype)
 ;; type is under at_least_metatype too: every first-order type is a spec of thing.
 (typeGenl type thing)
 (typeGenl relation_kind binary_predicate)

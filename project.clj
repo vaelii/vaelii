@@ -1,7 +1,7 @@
 ;; Defines `jdk-major`, `bash` and `test-jvm-opts`, which the `~` forms below read.
 (load-file (str (.getParent (java.io.File. *file*)) "/project-env.clj"))
 
-(defproject com.vaelii/vaelii "0.31.0"
+(defproject com.vaelii/vaelii "0.32.0"
   :description "Vaelii — a contextualized common-sense knowledge base with a
                 count-aware trie index, forward/backward inference,
                 and JTMS truth maintenance, over an in-memory or on-disk store."
@@ -284,8 +284,10 @@
                        (keyword (or (some-> (System/getenv "VAELII_BENCH_LOG_LEVEL") .trim not-empty) "error")))]}
              ;; `lein browser`: the browser running inside a repl with a reload channel
              ;; into it. Both halves bind loopback — a write route with no auth beside
-             ;; an nREPL is a remote shell (CONTRIBUTING.md §6).
-             :browser {:repl-options
+             ;; an nREPL is a remote shell (CONTRIBUTING.md §6). The starter is restored
+             ;; from a dump under target/ when one matches this engine (docs/web.md).
+             :browser {:jvm-opts ["-Dvaelii.starter.dump=target/starter-dump"]
+                       :repl-options
                        {:host "127.0.0.1"
                         :init (do ((requiring-resolve 'vaelii.browser.web/dev-repl)) nil)}}
              ;; generational ZGC, asked for per task: `lein with-profile +zgc <task>`.
@@ -397,9 +399,8 @@
             ;; export scripts/derived-state-graph.py draws (docs/caches.md, "The
             ;; derived-state register")
             "derived-state"   ["run" "-m" "vaelii.derived-state-test"]
-            ;; the suite across JVMs — what `lein gate`'s test stage runs.  Memory stores
-            ;; only: a durable half is one lock and three usable space blocks, so the
-            ;; script refuses one rather than sharding into it.
+            ;; the suite across JVMs — what `lein gate`'s test stage runs and what each
+            ;; leg of deep.yml runs
             "test-parallel"   ["shell" ~bash "scripts/test-parallel.sh"]
             ;; the cross-process tests, which run only when named — `:multi-jvm` is
             ;; opt-in, so `lein test`, `lein test :all` and `lein gate` all pass over

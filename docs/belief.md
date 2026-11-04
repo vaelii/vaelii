@@ -6,8 +6,8 @@
   machinery to `knows`, `desires`, `intends`. The **opacity** of `P`: which party's
   equality merges may rewrite a term inside a belief.
 - **Not here:** a modal *logic* — no K/T/4/5 schema, and a nested `(believes A (believes B P))`
-  projects only where the marker is visible — nothing by default, since an independent
-  agent context cannot see the grant (see below); hypothetical worlds → [abduction.md](abduction.md).
+  projects only where the marker is visible (see below); hypothetical worlds →
+  [abduction.md](abduction.md).
   The de re reading of a belief, and any operator for a *group* of agents. Nor the *other*
   belief this engine has a word for: whether the KB itself holds a stored sentex true is
   the JTMS label, and it is [nmtms.md](nmtms.md). Nothing here moves it — an agent's
@@ -65,24 +65,29 @@ modal goal and sub-queries the inner sentence in the agent's context. Four decis
 (v/contradictions kb)  ; => []
 ```
 
-Alice's `CxAgentAlice` and Bob's `CxAgentBob` share no `genlCx` ancestor, so no context
-sees both the claim and its negation and no contradiction is raised. This is the property
+Alice's `CxAgentAlice` and Bob's `CxAgentBob` share no `genlCx` ancestor but CxUniverse,
+so no context sees both the claim and its negation and no contradiction is raised. This is the property
 no Datalog / SPARQL / DL rival can field, and it falls out of the lattice by construction
 rather than being engineered here.
 
 ## Independence, and inheriting base
 
-An agent context has **no `genlCx` edge** by default, so it is independent: the agent
-believes exactly what is asserted in its context, and nothing true in base leaks in. That
-is the default for modal use — an agent who believes a falsehood should not thereby
-contradict base. To let an agent see base too, add the edge yourself:
+An agent context has **no `genlCx` edge** by default. It sees CxUniverse, as every
+context does ([contexts.md](contexts.md#cxuniverse-is-the-implicit-root)), so the agent
+reads the definitional layer: the types, the relation declarations and the upper rules.
+Contingent facts belong in CxWell or below, which an agent context does not see, so an
+agent who believes a falsehood does not contradict them. To let an agent see the
+contingent facts too, add the edge yourself:
 
 ```clojure
-(v/assert kb '(green Grass) 'CxUniverse)                 ; a base fact
-(v/ask? kb '(believes Alice (green Grass)) 'CxWell)      ; => false — Alice is independent
-(v/assert kb '(genlCx CxAgentBob CxUniverse) 'CxUniverse); Bob opts in
+(v/assert kb '(green Grass) 'CxWell)                     ; a contingent fact
+(v/ask? kb '(believes Alice (green Grass)) 'CxWell)      ; => false — Alice has no edge
+(v/assert kb '(genlCx CxAgentBob CxWell) 'CxUniverse)    ; Bob opts in
 (v/ask? kb '(believes Bob (green Grass)) 'CxWell)        ; => true
 ```
+
+A fact stated in CxUniverse reaches every agent context, and so can contradict what an
+agent believes.
 
 ## Opacity: the proposition is a mention
 
@@ -94,10 +99,10 @@ sentence the reader may normalize.
 
 ```clojure
 (v/assert kb '(marriedTo Oedipus Jocasta) 'CxAgentOedipus)   ; what he believes
-(v/assert kb '(sameAs Jocasta MotherOfOedipus) 'CxUniverse)  ; what the ASKER knows
+(v/assert kb '(sameAs Jocasta MotherOfOedipus) 'CxWell)      ; what the ASKER knows
 
-(v/ask? kb '(believes Oedipus (marriedTo Oedipus Jocasta))         'CxUniverse) ; => true
-(v/ask? kb '(believes Oedipus (marriedTo Oedipus MotherOfOedipus)) 'CxUniverse) ; => false
+(v/ask? kb '(believes Oedipus (marriedTo Oedipus Jocasta))         'CxWell) ; => true
+(v/ask? kb '(believes Oedipus (marriedTo Oedipus MotherOfOedipus)) 'CxWell) ; => false
 ```
 
 The merge is real and the asker holds it: asked *outside* the quotation, either spelling
@@ -115,9 +120,9 @@ projection actually has:
 (v/assert kb '(sameAs Jocasta MotherOfOedipus) 'CxAgentOedipus)   ; HE holds the identity
 (v/assert kb '(marriedTo Creon Jocasta)        'CxAgentCreon)     ; Creon does not
 
-(v/ask? kb '(believes Oedipus (marriedTo Oedipus MotherOfOedipus)) 'CxUniverse) ; => true
-(v/ask? kb '(believes Oedipus (marriedTo Oedipus Jocasta))         'CxUniverse) ; => true
-(v/ask? kb '(believes Creon   (marriedTo Creon  MotherOfOedipus))  'CxUniverse) ; => false
+(v/ask? kb '(believes Oedipus (marriedTo Oedipus MotherOfOedipus)) 'CxWell) ; => true
+(v/ask? kb '(believes Oedipus (marriedTo Oedipus Jocasta))         'CxWell) ; => true
+(v/ask? kb '(believes Creon   (marriedTo Creon  MotherOfOedipus))  'CxWell) ; => false
 ```
 
 That is the *de dicto* reading: the substitution goes through exactly when the agent holds
@@ -173,7 +178,7 @@ the write path and the read entry points, so a stored `(believes A P)` keeps the
 application, and a merge the asker sees folds neither the stored belief nor the question.
 The projection reifies the proposition in the agent's context, under the merges that
 context sees ([nat.md](nat.md#a-nat-resolves-under-the-readers-merges)). With
-`(sameAs Apple Pomme)` in `CxUniverse` and `(likes Tom (FruitFn Apple))` in `CxAgentAnn`,
+`(sameAs Apple Pomme)` in `CxWell` and `(likes Tom (FruitFn Apple))` in `CxAgentAnn`,
 `(believes Ann (likes Tom (FruitFn Pomme)))` is false, and with the merge in `CxAgentAnn`
 it is true.
 
@@ -197,10 +202,10 @@ default.
 
 This scoping is also what governs **nested** belief. `(believes A (believes B P))` proves
 `(believes B P)` in `A`'s context, and the inner `believes` projects only if the grant is
-visible *there*. An independent `CxAgentA` cannot see the `CxUniverse` grant, so by default the
-inner `believes` is an ordinary literal and the nested query is simply false — there is no
-recursion to speak of. Give `A` a `genlCx` edge that reaches the grant and the nesting
-projects through. That is the whole of the nesting story: a consequence of where the marker
+visible *there*. `CxAgentA` sees the shipped `believes` grant in CxUniverse, so a nested
+`believes` projects through by default. A grant stated in a theory, `CxPsychology` above,
+is invisible from `CxAgentA`, so the inner literal is read plainly and the nested query is
+false. Give `A` a `genlCx` edge that reaches the grant and the nesting projects through. That is the whole of the nesting story: a consequence of where the marker
 is visible, not a modal-logic schema.
 
 ## What is out of scope
@@ -208,9 +213,8 @@ is visible, not a modal-logic schema.
 It is **query-only**: the caller asserts an agent's beliefs into the agent
 context directly, and the projector reads them back — consistent with how `unknown` /
 `thereExists` are query-only operators. A belief that happens to match a base forward rule
-fires it like any other fact; an independent agent context may then have nowhere to place
-the conclusion, which surfaces as a harmless no-placement notice in `violations`, not a
-contradiction.
+fires it like any other fact, and a rule in CxUniverse places its conclusion in the agent
+context.
 
 Out of scope: assertion routing (asserting `(believes Alice P)` to store `P` in Alice's
 context — a write that lands a *different* sentence elsewhere, for which no

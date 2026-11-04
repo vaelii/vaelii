@@ -36,9 +36,11 @@
             [vaelii.impl.checks :as checks]
             [vaelii.impl.clashes :as clashes]
             [vaelii.impl.config :as config]
+            [vaelii.impl.context-nat :as context-nat]
             [vaelii.impl.decide :as decide]
             [vaelii.impl.decide.argument :as argument]
             [vaelii.impl.decide.arity :as arity]
+            [vaelii.impl.defining :as defining]
             [vaelii.impl.disk.backend :as disk]
             [vaelii.impl.disk.durability :as dur]
             [vaelii.impl.except :as exc]
@@ -54,6 +56,7 @@
             [vaelii.impl.io.text :as text]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
+            [vaelii.impl.kv :as kv]
             [vaelii.impl.levels :as lvl]
             [vaelii.impl.logging :as logging]
             [vaelii.impl.memory :as mem]
@@ -221,6 +224,13 @@
   "Every stored sentex that contains all of `terms`."
   [kb terms]
   (kb/find-sentexes-all kb terms))
+
+(defn defining-contexts
+  "The maximal contexts of ordinary believed assertions about term. Literal Quote,
+  nested-sentence mentions and skeletal-only assertions do not define a term. Throws
+  :incomplete-defining-contexts when a believed support cannot be classified."
+  [kb term]
+  (defining/defining-contexts kb term))
 
 ;; ---- the vocabulary: enumerate and search the terms themselves ----------
 ;; `find-sentexes` goes from a term to the sentexes mentioning it; these answer *which
@@ -1459,18 +1469,14 @@
   "The derived state a batch writes and `rollback-batch!` puts back — the violations
   ledger, the calculi's report markers, the program, the refusal record and the mint
   queues — snapshotted before the batch runs, plus `:filed`, the identity set the batch
-  binds `viol/*batch-entries*` to, and the taxonomy value and generations the refusal
-  record's entries were decided under."
+  binds `viol/*batch-entries*` to."
   [kb]
   {:violations @(reasoning/violations kb)
    :seen       (some-> (reasoning/qcn kb) deref)
    :program    @(reasoning/program kb)
    :refused    @(reasoning/refused kb)
    :queues     (select-keys @(reasoning/mint-queues kb) [:owed :defer-next])
-   :filed      (viol/batch-entries)
-   :taxonomy   @(reasoning/taxonomy kb)
-   :gens       (special/taxonomy-generations kb)
-   :conviction (special/conviction-generations kb)})
+   :filed      (viol/batch-entries)})
 
 (defn- recheck-suspended
   "Queue the re-checks that suspending or restoring the premise `h` owes: the sentence's
@@ -1504,8 +1510,7 @@
 
 (defn- rollback-batch-unbounded!
   "`rollback-batch!`'s body, run under `chain/call-unbounded`."
-  [kb {:keys [audit suspended violations seen program refused sink filed mark queues]
-       :as baseline}]
+  [kb {:keys [audit suspended violations seen program refused sink filed mark queues]}]
   (let [tms     (reasoning/tms kb)
         records (:records kb)]
     ;; both bindings file the rollback's own entries into the batch's set, so the restore
@@ -1555,8 +1560,7 @@
     ;; the refusal record: an entry the batch's content wrote names handles the rollback
     ;; took away (docs/preview.md, "What the rollback restores")
     (reset! (reasoning/refused kb) refused)
-    (swap! (reasoning/mint-queues kb) #(merge (dissoc % :owed :defer-next) queues))
-    (special/advance-refusal-generations! kb baseline)))
+    (swap! (reasoning/mint-queues kb) #(merge (dissoc % :owed :defer-next) queues))))
 
 (defn- rollback-batch!
   "Restore the KB to the state the batch found it in, at the handles it wrote (the handle
@@ -1797,7 +1801,8 @@
                           ;; so the whole rule is asserted or none of it.
                           (do (run! #(entry/check-rule-sentence kb % context) forms)
                               (mapv #(entry/assert-one kb % context opts {:assert-fn assert :bulk? *bulk-load?*}) forms))
-                          (entry/assert-one kb (first forms) context opts {:assert-fn assert :bulk? *bulk-load?*}))]
+                          (entry/assert-one kb (first forms) context opts
+                                            {:assert-fn assert :bulk? *bulk-load?* :written written}))]
               (after-the-write
                h
                (fn []
@@ -2249,7 +2254,7 @@
   nil.  A batch written under `*bulk-load?*` draws no argument types over the `genlCx`
   moves it settles (`special/*entail-moves?*`), and a batch none of whose writes chained
   seeds no chaining from them (`special/*seed-moves?*`), as a settle per write would not.
-  The lazy-forward re-joins the batch owed run first (`chain/run-batch-rejoins`), and the
+  The re-joins the batch owed run first (`chain/run-batch-rejoins`), and the
   structural genlCx edges the settle's belief moves call for are built last
   (`nat-maint/reconcile-moves!`)."
   [kb in]
@@ -2658,16 +2663,27 @@
                         (str "  Write one sentence as a list: " (pr-str as-list))
                         "  Write each conjunct as a list."))}))))
 
+(defn- read-context
+  "`[context kb]` a read names `ctx` by: the context reified in read mode (dedup, never
+  mint), and `kb`.  A context application nobody has written into reifies to `no-match`,
+  which answers empty, unless the producer would order it below a minted context: then
+  it is the `cx/` constant its content names, read in a KB holding those edges
+  (`context-nat/unwritten-read`).  See docs/context-nat.md."
+  [kb ctx]
+  (let [k (nat/maybe-reify-context kb ctx false)]
+    (or (when (and (= nat-read/no-match k)
+                   (not-any? #(nat-read/reifiable-ground-nat? kb %) (rest ctx)))
+          (context-nat/unwritten-read kb (apply list ctx)))
+        [k kb])))
+
 (defn- ist-goal
-  "`[goal context]` for a read whose goal may be an `(ist Ctx S)`: the sentence to ask and
-  the context to ask it in.  The named context wins over `context`, as at `assert`
-  (docs/contexts.md#ist-find-or-create-in-a-context).  Refuses a wrong-arity `ist` with
-  `ist-shape-problem`'s `:shape`, and an `(ist …)` conjunct of a vector goal with
-  `:not-well-formed`.  The context is reified in read mode (dedup, never mint): a
-  never-seen `(CxTimeFn …)` resolves to the `no-match` symbol, which answers empty
-  (docs/context-nat.md)."
+  "`[goal context kb]` for a read whose goal may be an `(ist Ctx S)`: the sentence to ask,
+  the context to ask it in, and the KB to read it in (`read-context`).  The named context
+  wins over `context`, as at `assert` (docs/contexts.md#ist-find-or-create-in-a-context).
+  Refuses a wrong-arity `ist` with `ist-shape-problem`'s `:shape`, and an `(ist …)`
+  conjunct of a vector goal with `:not-well-formed`."
   [kb goal context]
-  (letfn [(reic [ctx] (nat/maybe-reify-context kb ctx false))]
+  (letfn [(reic [ctx] (read-context kb ctx))]
     (cond
       (vector? goal)
       (do (when-let [bad (first (filter #(and (sequential? %) (seq %)
@@ -2678,14 +2694,14 @@
                                  " conjunction in Ctx instead, or make S visible where it"
                                  " is asked")
                             {:type :not-well-formed :sentence bad :goal goal})))
-          [goal (reic context)])
+          (into [goal] (reic context)))
 
       (and (sequential? goal) (seq goal) (= sx/ist-functor (first goal)))
       (if-let [[ctx s] (entry/ist-parts goal)]
-        [s (reic ctx)]
+        (into [s] (reic ctx))
         (check-shape! (entry/ist-shape-problem goal)))
 
-      :else [goal (reic context)])))
+      :else (into [goal] (reic context)))))
 
 (defn- checked-ist-goal
   "`ist-goal`, refusing a query context left after the `ist` resolution with
@@ -2806,17 +2822,17 @@
   subtype expansion); use `ask` for full inference.  `find-sentexes` is the raw read.
 
   Returns a lazy seq of **sentex maps** over live state (`vec` it for a snapshot) with
-  keys `:id` (the handle), `:sentence` (a negative literal's is `(not S)`), `:context`,
-  and for a rule `:antecedent` / `:consequent` / `:engines` / `:effect`.  Beside a writer
-  thread the answer is not one state's (docs/storage.md, \"The single-writer contract\").
-  A ground reifiable NAT reifies to its existing constant (never mints); an `(ist Ctx S)`
-  sentence asks S in Ctx.  A vector pattern is refused (`:shape`)."
+  keys `:id` (the handle), `:context`, a literal's `:sentence` (`(not S)` for a negative
+  one), and a rule's `:antecedent` / `:consequent` / `:engines` / `:effect` (no `:sentence`).
+  Beside a writer thread the answer is not one state's (docs/storage.md, \"The
+  single-writer contract\").  A ground reifiable NAT reifies to its existing constant (never
+  mints); an `(ist Ctx S)` sentence asks S in Ctx.  A vector pattern is refused (`:shape`)."
   ([kb sentence] (sentexes-matching kb sentence '?ctx))
   ([kb sentence context]
    (check-shape! (sentence-goal-problem sentence))
-   (let [[sentence context] (ist-goal kb sentence context)
-         sentence           (nat-read/maybe-reify-for-read kb sentence context)
-         context            (stored-context kb sentence context)]
+   (let [[sentence context kb] (ist-goal kb sentence context)
+         sentence              (nat-read/maybe-reify-for-read kb sentence context)
+         context               (stored-context kb sentence context)]
      (read-in-context kb (fn [_] [sentence]) context
                       #(kb/sentexes-matching kb sentence %)
                       {:records? true}))))
@@ -3241,7 +3257,7 @@
   [kb goal context opts max-results]
   (check-shape! (conjunction-goal-problem goal))
   (check-opts! :search opts prove-opt-keys "prove")
-  (let [[goal context] (ist-goal kb goal context)
+  (let [[goal context kb] (ist-goal kb goal context)
         cap #(cond-> % max-results (assoc :max-results max-results))]
     (read-alternatives
      kb goal context max-results
@@ -3298,7 +3314,7 @@
    (check-opts! :search opts prove-opt-keys "provable?")
    (if (seq opts)
      (do (check-shape! (conjunction-goal-problem goal))
-         (let [[goal context] (ist-goal kb goal context)
+         (let [[goal context kb] (ist-goal kb goal context)
                ;; the cap is this entry point's, not the caller's: it is what makes an existence
                ;; question cost one answer rather than the whole space
                budget   (assoc opts :max-results 1)]
@@ -3329,7 +3345,7 @@
   ([kb goal context opts]
    (check-shape! (sentence-goal-problem goal))
    (check-opts! :search opts ask-opt-keys "ask")
-   (let [[goal context] (ist-goal kb goal context)]
+   (let [[goal context kb] (ist-goal kb goal context)]
      (read-in-context kb #(vector (quasiquote/prepare-goal-for-read kb goal %)) context
                       (fn [ctx]
                         (let [answers #(quasiquote/ask-prepared kb goal ctx)]
@@ -3353,7 +3369,7 @@
    (check-opts! :search opts ask-opt-keys "ask?")
    (if (seq opts)
      (do (check-shape! (sentence-goal-problem goal))
-         (let [[goal context] (ist-goal kb goal context)]
+         (let [[goal context kb] (ist-goal kb goal context)]
            (boolean
             (seq (read-in-context
                   kb #(vector (quasiquote/prepare-goal-for-read kb goal %)) context
@@ -3409,7 +3425,7 @@
   "`query`'s body, with `query-at`'s `max-results`."
   [kb goal context opts max-results]
   (check-shape! (conjunction-goal-problem goal))
-  (let [[goal context] (ist-goal kb goal context)
+  (let [[goal context kb] (ist-goal kb goal context)
         d (query-depth opts query-opt-keys "query")]
     (read-alternatives
      kb goal context max-results
@@ -3518,7 +3534,7 @@
   ([kb goal context] (query-status kb goal context nil))
   ([kb goal context opts]
    (check-shape! (conjunction-goal-problem goal))
-   (let [[goal context] (ist-goal kb goal context)]
+   (let [[goal context kb] (ist-goal kb goal context)]
      (when (or (sx/variable? context) (nm/query-context? context))
        (throw (ex-info (str context " is a query or variable context, and query-status runs"
                             " in one concrete context — a report is one search over one"
@@ -3575,19 +3591,28 @@
   [kb result]
   (abduce/discard! kb (if (map? result) (:context result) result) abduce-ops))
 
+(def ^:private holds-limit
+  "The most ground goals `instance-reads` keeps per context for a change-clock value, cleared
+  wholesale past it."
+  4096)
+
 (defn- instance-reads
   "The three facts-only reads `integrity/subsumption-reading` makes, through `query` at
   `context` with `{:max-depth 0}`: `:members`, the terms a `(t ?x)` query answers for type
   `t`; `:isa?`, whether term `x` is an instance of type `t`; and `:holds?`, whether a
-  ground goal is answered.  Memoized per argument for one audit, which writes nothing
-  between its pairs.  The depth is forced so no rule is expanded under a caller's
-  `*query-options*` depth: a node-engine search of `(a ?x)` over the whole starter, once
-  per taxonomy-open pair, hangs."
+  ground goal is answered.  The first two are memoized per argument for one audit, which
+  writes nothing between its pairs.  `:holds?` is kept per context for one value of the
+  change clock, so every audit and `describe` between two writes asks a ground goal once.
+  The depth is forced so no rule is expanded under a caller's `*query-options*` depth: a
+  node-engine search of `(a ?x)` over the whole starter, once per taxonomy-open pair, hangs."
   [kb context]
-  {:members (memoize (fn [t] (into [] (map #(get % '?x))
-                                   (query kb (list t '?x) context {:max-depth 0}))))
-   :isa?    (memoize (fn [x t] (isa? kb x t context)))
-   :holds?  (memoize (fn [goal] (boolean (seq (query kb goal context {:max-depth 0})))))})
+  (let [held (observe/clocked (reasoning/qcn kb) [::holds context] (fn [_] (atom {})))]
+    {:members (memoize (fn [t] (into [] (map #(get % '?x))
+                                     (query kb (list t '?x) context {:max-depth 0}))))
+     :isa?    (memoize (fn [x t] (isa? kb x t context)))
+     :holds?  (fn [goal]
+                (caches-impl/read-through held (caches-impl/limit-of :resident holds-limit) goal
+                                          #(boolean (seq (query kb goal context {:max-depth 0})))))}))
 
 (defn subsumption-statuses
   "The set of applicable subsumption relationships between types `a` and `b`: any subset
@@ -3676,7 +3701,7 @@
   ([kb goal] (query-plan kb goal '?ctx))
   ([kb goal context]
    (check-shape! (conjunction-goal-problem goal))
-   (let [[goal context] (checked-ist-goal kb goal context)]
+   (let [[goal context kb] (checked-ist-goal kb goal context)]
      (if (vector? goal)
        (plan/explain kb goal context)
        (provers/plan kb goal context)))))
@@ -3686,7 +3711,7 @@
   `opts` against `opt-keys`, prepare the conjunction, and run the node-engine fn `run`."
   [run kb goal context opts opt-keys fn-name]
   (check-shape! (conjunction-goal-problem goal))
-  (let [[goal context] (checked-ist-goal kb goal context)
+  (let [[goal context kb] (checked-ist-goal kb goal context)
         d     (query-depth opts opt-keys fn-name)
         goals (quasiquote/prepare-conjunction-for-read kb goal context)]
     (run kb goals context (query-node-opts kb context d opts))))
@@ -3987,7 +4012,7 @@
    ;; `collect` re-checks against the union, so a `resume` under either entry point still
    ;; passes.  Value checks ride along, so a string `:max-ms` is `:unknown-option`.
    (budget/check-budget! budget budget/ask-budget-keys "ask-within")
-   (let [[goal context] (checked-ist-goal kb goal context)
+   (let [[goal context kb] (checked-ist-goal kb goal context)
          goal    (quasiquote/prepare-goal-for-read kb goal context)
          ;; a variable context reads each handle at its own context, as `ask` does
          ;; the stream is lazy, so the collector is bound per pull (`collecting-seq`), and
@@ -4033,7 +4058,7 @@
    ;; `(long max-depth)`, so a string depth is a bare cast unless the value check has
    ;; already refused it.
    (budget/check-budget! budget budget/prove-budget-keys "prove-within")
-   (let [[goal context] (checked-ist-goal kb goal context)
+   (let [[goal context kb] (checked-ist-goal kb goal context)
          goals (quasiquote/prepare-conjunction-for-read kb goal context)]
      (if (inference-engine? (:max-depth budget))
        ;; The node engine's continuation is the session itself, and the bounds are checked
@@ -4085,7 +4110,7 @@
   a vector goal is an index path; elsewhere the goal is a sentence.  docs/levels.md."
   ([kb level goal] (lookup kb level goal '?ctx))
   ([kb level goal context]
-   (let [[goal context] (checked-ist-goal kb goal context)]
+   (let [[goal context kb] (checked-ist-goal kb goal context)]
      (lvl/lookup kb level goal context))))
 
 (defn escalate
@@ -4097,14 +4122,14 @@
   climb stopped before any level answered returns `{:level nil :status :timeout}`."
   ([kb goal] (escalate kb goal '?ctx))
   ([kb goal context]
-   (let [[goal context] (checked-ist-goal kb goal context)]
+   (let [[goal context kb] (checked-ist-goal kb goal context)]
      (lvl/escalate kb goal context)))                ; `levels/query-floor` owns the default
   ([kb goal context floor]
-   (let [[goal context] (checked-ist-goal kb goal context)]
+   (let [[goal context kb] (checked-ist-goal kb goal context)]
      (lvl/escalate kb goal context floor)))
   ([kb goal context floor opts]
    (check-opts! :search opts escalate-opt-keys "escalate")
-   (let [[goal context] (checked-ist-goal kb goal context)]
+   (let [[goal context kb] (checked-ist-goal kb goal context)]
      (lvl/escalate kb goal context (if (nil? floor) lvl/query-floor floor) opts))))
 
 (defn explain-levels
@@ -4115,7 +4140,7 @@
   explains the retrieval stack, not belief; `why` / `why-not` explain belief."
   ([kb goal] (explain-levels kb goal '?ctx))
   ([kb goal context]
-   (let [[goal context] (checked-ist-goal kb goal context)]
+   (let [[goal context kb] (checked-ist-goal kb goal context)]
      (lvl/explain kb goal context))))
 
 (defn levels
@@ -4352,25 +4377,27 @@
   (clashes/exposed-clashes kb))
 
 (defn specified-violations
-  "The audit result for one binary `(predAllSpecified pred indep)` integrity requirement in
-  `context`, always carrying a `:status`: `{:status :audited :violations #{x…}}`, every
-  member x of `indep` for which no believed `(pred x y)` carries a **determinate** filler
-  y satisfying `pred`'s derived slot contract, or `{:status :gap :gap :missing-slot-typing
-  …}` where `pred` carries no visible slot typing at the audited position.
-  `arg-pos` selects the twin: `:second` (the default) is `predAllSpecified`; `:first` is
-  `predSpecifiedAll`.  Computed on demand and not filed (docs/predall.md)."
+  "The audit result for one binary `(predAllSpecified pred indep)` requirement in `context`:
+  `{:status :audited :violations #{x…}}`, every member x of `indep` that `context` audits
+  (it sees an ordinary defining home of x, or none is stored) with no believed `(pred x y)`
+  whose **determinate** filler y satisfies `pred`'s derived slot contract, or a `{:status
+  :gap …}` (`:missing-slot-typing`, or `:incomplete-defining-contexts` naming unclassified
+  support).  A proved skeletal-only instance is exempt.  `arg-pos` selects the twin:
+  `:second` (the default) is `predAllSpecified`; `:first` is `predSpecifiedAll`.
+  Computed on demand and not filed (docs/predall.md)."
   ([kb pred indep context] (specified-violations kb pred indep context :second))
   ([kb pred indep context arg-pos]
    (predall/specified-violations kb pred indep context arg-pos)))
 
 (defn all-specified-violations
   "Audit every binary `predAllSpecified` and `predSpecifiedAll` declaration visible in
-  `context`, and every *Exists* declaration (`exists-violations`, keyed `[functor pred a
-  b]`), and return `{[functor pred indep] result…}`, each result `{:status :audited
-  :violations #{…}}` or a `{:status :gap …}` diagnostic (`:missing-slot-typing`, or
-  `:legacy-ternary-declaration` for a stored pre-migration ternary sentex, keyed by its
-  whole argument tuple).  Declarations that hold are omitted and gaps never are, so an empty
-  map is a clean sweep.  `kb-integrity` consumes the same per-declaration audit stream."
+  `context`, each stored one in every known reader seeing its GAF and an ordinary defining
+  home, and every *Exists* declaration (`exists-violations`, keyed `[functor pred a b]`),
+  and return `{[functor pred indep] result…}`, each result `{:status :audited :violations
+  #{…}}` or a `{:status :gap …}` diagnostic (`:missing-slot-typing`,
+  `:incomplete-defining-contexts`, or `:legacy-ternary-declaration` keyed by its whole
+  argument tuple).  Declarations that hold are omitted and gaps never are, so an empty map
+  is a clean sweep.  `kb-integrity` consumes the same per-declaration audit stream."
   [kb context]
   (predall/all-specified-violations kb context))
 
@@ -4525,14 +4552,12 @@
   "The removal record `retract!` and `edit!` bind for their duration: every sentex that
   leaves the store while they run (`integrate/*removed-sink*`).  Built only when something
   reads one: a reified constant (`nat/any-reified-constants?`), a
-  `target_following_predicate`, or a refusal waiting on an argument conviction
-  (`special/argument-refusals?`).  Otherwise the presence check answers nil and nothing is
+  `target_following_predicate`, or a placed read (`exc/placed-reads?`).  Otherwise the presence check answers nil and nothing is
   collected."
   [kb]
   (integrate/removal-sink (or (nat/any-reified-constants? kb)
                               (seq (props kb :target-following))
-                              (exc/placed-reads? kb)
-                              (special/argument-refusals? kb))))
+                              (exc/placed-reads? kb))))
 
 (defn- finish-teardown!
   "The four sweeps a teardown owes once its settle has run, run by both write entry points
@@ -4704,6 +4729,7 @@
                   special/*producer-moves* (or special/*producer-moves* (special/producer-moves))]
           (let [audit    (atom {})
                 mark     (volatile! nil)
+                owed     (volatile! {})
                 baseline (batch-baseline kb)
                 ;; where the batch is, for the refusal to name once it has been undone
                 at       (volatile! nil)
@@ -4723,7 +4749,8 @@
                             rules/*negated-keys-memo*
                             (or rules/*negated-keys-memo* (volatile! nil))
                             exc/*reader-states*
-                            (or exc/*reader-states* (volatile! nil))]
+                            (or exc/*reader-states* (volatile! nil))
+                            special/*owed-subsumption* owed]
                     ;; a shutdown may stop this phase, which the catch takes back whole
                     (dur/as-unit
                      (fn []
@@ -4733,6 +4760,10 @@
                                                (let [[sentence context opts] entry]
                                                  (assert kb sentence context (or opts {})))))
                                          add)]
+                         (binding [special/*owed-subsumption* nil]
+                           (doseq [[opts sentences] @owed]
+                             (let [seeds (special/batch-subsumption-seeds kb sentences)]
+                               (when (seq seeds) (chain/chain-all kb seeds opts)))))
                          (doseq [[i h] (map-indexed vector remove)]
                            (vreset! at [:remove i h])
                            (when-some [h (the-handle h "edit")]
@@ -4789,6 +4820,65 @@
    (check-opts! :bound opts edit-opt-keys "edit!")
    (opts/check-values! opts "edit!")
    (chain/call-with-stop opts #(apply-edit! kb batch))))
+
+(defn- snapshot-fact
+  "`[sentence strength]` for `fact` of `context`'s `replace-facts!` snapshot: the literal
+  under its `(set/monotonic …)` and `(ist Ctx …)` wrappers, and the strength `opts` and
+  the wrapper request.  Refuses (`:shape`) a rule, a fact holding a variable, which the held
+  set does not count, a fact `assert` stores outside `context`, and a fact naming a
+  stored sentex by handle or by reference."
+  [kb fact context opts]
+  (let [[s c o] (loop [s fact, c context, o (select-keys opts [:strength])]
+                  (let [[s o] (sx/peel-strength s o)]
+                    (if-let [[c' s'] (entry/ist-parts s)] (recur s' c' o) [s c o])))
+        placed  (stored-context kb s c)
+        refusal (cond
+                  (rules/rule-sentence? (rules/inner-rule s)) "is a rule"
+                  (sx/some-symbol? sx/variable? s) "holds a variable"
+                  (not= context placed) (str "is stored in " (pr-str placed))
+                  (or (sx/names-a-handle? s) (seq (entry/references kb s c))) "names a stored sentex")]
+    (when refusal
+      (throw (ex-info (str "replace-facts!: " (pr-str fact) " " refusal "; the facts replaced are"
+                           " the ground literals " context " stores that name no sentex")
+                      {:type :shape :sentence fact :context context})))
+    [s (:strength o :default)]))
+
+(defn replace-facts!
+  "Make `facts`, a seq of ground literals, the ground literal premises `context` stores that
+  name no sentex, in one `edit!`: a fact not held so, or held weaker than requested, is
+  added under `opts`' `assert` keys, and each such premise no fact names is retracted.
+  `opts`' `edit-opt-keys` bound the edit.  A fact names the row `handle-of` finds, so either
+  order of a symmetric literal names one.  A rule, a fact holding a variable, a fact stored
+  outside `context` and a fact naming a sentex are refused (`:shape`).  Returns `{:added
+  n :removed n :edit <edit!'s result>}`, `:added` counting the rows the adds name; equal
+  sets write nothing and give `:edit nil` (docs/storage.md)."
+  ([kb context facts] (replace-facts! kb context facts {}))
+  ([kb context facts opts]
+   (check-writable! kb "replace-facts!")
+   (check-shape! (lookup-context-shape-problem context))
+   (let [recs  (:records kb)
+         held  (into {} (keep (fn [h]
+                                (let [sx (p/get-sentex recs h)]
+                                  (when (kb/replaceable-premise? kb h sx)
+                                    [h (or (:strength sx) :default)]))))
+                     (reads/as-stored-in-context (:index kb) context))
+         named (volatile! #{})
+         fopts (not-empty (apply dissoc opts edit-opt-keys))
+         add   (into []
+                     (comp (distinct)
+                           (remove (fn [fact]
+                                     (let [[_ strength] (snapshot-fact kb fact context opts)
+                                           h            (handle-of kb fact context)]
+                                       (when-let [stored (get held h)]
+                                         (vswap! named conj h)
+                                         (<= (strength/rank-of strength) (strength/rank-of stored))))))
+                           (map #(cond-> [% context] fopts (conj fopts))))
+                     facts)
+         gone  (into [] (remove @named) (keys held))]
+     (if (and (empty? add) (empty? gone))
+       {:added 0 :removed 0 :edit nil}
+       (let [edit (edit! kb {:add add :remove gone} (select-keys opts edit-opt-keys))]
+         {:added (count (set (:added edit))) :removed (count gone) :edit edit})))))
 
 (defn in?
   "Is the sentex handle believed as the context it is stored in reads it: JTMS IN, and
@@ -4874,8 +4964,9 @@
 
 (defn sentex
   "The sentex for a handle as a **map**, or nil.  Same shape contract as `sentexes-matching`'s
-  elements: `:id` (the handle), `:sentence`, `:context`, and for a rule
-  `:antecedent` / `:consequent` / `:engines` / `:defeasible` / `:effect`.  Key into it; the
+  elements: `:id` (the handle), `:context`, for a literal `:sentence`, and for a rule
+  `:antecedent` / `:consequent` / `:engines` / `:defeasible` / `:effect` and no `:sentence`
+  (`sentence-of` builds either one's sentence).  Key into it; the
   concrete `vaelii.impl.types.sentex/LiteralSentex` / `RuleSentex` record class is internal and not
   part of the contract.  nil (`handle-of` of an absent sentence) answers nil; a
   non-handle (a vector of handles included) is refused (`:bad-handle`)."
@@ -4945,6 +5036,13 @@
   and `supporting-justifications` is what shows why.  False for a handle the TMS has
   no node for."
   [kb handle] (jtms/premise? (reasoning/tms kb) (the-handle handle "premise?")))
+
+(defn mint-rule-kind
+  "The declaring kind (`arg`, `genlArg`, `resultArg`, …) whose mints are justified under
+  the stored rule `s`, or nil for any other sentex.  Takes the record `sentex` answers.
+  Neither engine runs such a rule: the engine computes the mints in code and names the
+  rule in each mint's justification (docs/argtypes.md)."
+  [s] (kv/mint-rule-kind s))
 
 (defn defeat-class
   "The current defeat-class of a believed handle (:monotonic / :default), or nil when
@@ -5465,6 +5563,97 @@
                            (integer? inf) (assoc :rule (readable-sentence (sentex kb inf))))))
                      (supporting-justifications kb handle)))))))
 
+(defn- content-namer
+  "A fn from a handle of `kb` to its content name `(ist C S)`, `S` the stored sentence with
+  each `(sentexHandle n)` in it named the same way, or nil for a handle naming no record.
+  A record its own chain of references re-enters is named by its digest (`dg`)."
+  [kb dg]
+  (let [recs (:records kb)
+        memo (volatile! {})]
+    (letfn [(spell [seen x]
+              (cond (sx/sentex-handle? x) (or (named seen (sx/handle-id x)) x)
+                    (not (sequential? x)) x
+                    (not-any? sx/sentex-handle? (tree-seq sequential? seq x)) x
+                    (vector? x) (mapv #(spell seen %) x)
+                    :else (apply list (map #(spell seen %) x))))
+            (named [seen h]
+              (cond (contains? seen h) (dg h)
+                    (and (empty? seen) (contains? @memo h)) (@memo h)
+                    :else (when-let [sx (p/get-sentex recs h)]
+                            (let [n (list sx/ist-functor (:context sx)
+                                          (spell (conj seen h) (sx/sentence-of sx)))]
+                              (when (empty? seen) (vswap! memo assoc h n))
+                              n))))]
+      (fn [h] (named #{} h)))))
+
+(defn- name-order
+  "The content order of a content name: its sentence, then its context."
+  [n]
+  (if (seq? n) [(nth n 2) (second n)] [n]))
+
+(def ^:private named-keys
+  "The keys of a `why`, `why-not` or `argue` answer whose value is a handle or a collection of
+  handles.  The content form names each handle, and re-sorts the collections under
+  `sorted-named-keys` by `name-order`."
+  #{:root :informant :rule :defeat :via :missing :handles :nogood :consequence :grounds
+    :because :antecedents :defeats})
+
+(def ^:private sorted-named-keys #{:because :antecedents :defeats :missing :grounds})
+
+(defn- support-order
+  "The content order of a content-form `:support` entry, `why`'s or `why-not`'s."
+  [e]
+  [(name-order (:informant e)) (mapv name-order (:because e)) (mapv name-order (:missing e))
+   (:strength e) (:verdict e)])
+
+(def ^:private entry-order
+  "The content order of a content-form `:withdrawn-by` or `:contradicted-by` entry.  A
+  conflict's entry has no `:sentence` or `:context`, and its `:defeat` orders it."
+  (juxt :sentence :context :vantage :defeat))
+
+(defn- content-form
+  "`x`, an answer of `why`, `why-not` or `argue`, with no handle in it (docs/overlay.md,
+  \"Two seats' explanations\"): a map's `:handle` becomes the record's `:digest` beside its
+  stored `:sentence`, a handle under `named-keys` and a `(sentexHandle n)` anywhere become
+  `content-namer`'s `(ist C S)`, a justification id is dropped, a rule beside its handle
+  reads as stored, and `:support`, `:withdrawn-by` and `:contradicted-by` are re-sorted by
+  content."
+  [kb x]
+  (let [dg       (digest/digester kb)
+        named    (content-namer kb dg)
+        stored   #(some-> (named %) (nth 2))
+        handles? #(and (coll? %) (not (map? %)) (seq %) (every? integer? %))]
+    (letfn [(value [k v]
+              (cond (integer? v)  (named v)
+                    (handles? v)  (cond (set? v)              (into #{} (map named) v)
+                                        (sorted-named-keys k) (nm/sort-by-content-key name-order (map named v))
+                                        :else                 (mapv named v))
+                    :else         (form v)))
+            (entry [m k v]
+              (cond (and (= :nodes k) (map? v)) (assoc m k (into {} (map (fn [[h n]] [(named h) (form n)])) v))
+                    (named-keys k)              (assoc m k (value k v))
+                    :else                       (assoc m k (form v))))
+            (node [m]
+              (let [h (:handle m), r (:rule m), i (:informant m)]
+                (cond-> (reduce-kv entry {} (cond-> (dissoc m :handle)
+                                              (integer? (:justification m)) (dissoc :justification)
+                                              (contains? m :antecedents)    (dissoc :id)))
+                  (contains? m :handle)                           (assoc :digest (when (integer? h) (dg h)))
+                  (and (integer? h) (stored h))                   (assoc :sentence (stored h))
+                  (and (integer? i) (contains? m :rule))          (assoc :rule (stored i))
+                  (and (integer? r) (contains? m :rule-sentence)) (assoc :rule-sentence (stored r))
+                  (and (integer? r) (= :rule (:via m)))           (assoc :sentence (stored r))
+                  (vector? (:support m)) (update :support #(nm/sort-by-content-key support-order %))
+                  (:withdrawn-by m)      (update :withdrawn-by #(nm/sort-by-content-key entry-order %))
+                  (:contradicted-by m)   (update :contradicted-by #(nm/sort-by-content-key entry-order %)))))
+            (form [x]
+              (cond (map? x)              (node x)
+                    (sx/sentex-handle? x) (or (named (sx/handle-id x)) x)
+                    (seq? x)              (apply list (map form x))
+                    (coll? x)             (into (empty x) (map form) x)
+                    :else                 x))]
+      (form x))))
+
 (defn why
   "Why does the KB believe `handle`?  The justification graph reachable from `handle`, as
   data:
@@ -5477,25 +5666,28 @@
                             :verdict :supports :because [h1 h2 …]}]}
              h1 {…} h2 {…} …}}
 
-  `:nodes` holds one node per reachable handle and `:because` names antecedents by handle.
-  A premise is `:premise? true` with its `:strength` and no `:support`.  A derived node's
-  `:support` is its justifications in content order.  Each `:verdict` is the reason the
-  node's context reads on that justification; a believed node can list one a guard defeat
-  (`:guard`) or an exception (`:blocked`) covers.  Belief is read at each node's own
-  context.  A stored node not believed there is a leaf `{:believed? false}`; ask `why-not`
-  (docs/nmtms.md).  An unknown handle (nil included) is a node `{:stored? false}`."
-  [kb handle]
-  (let [root   (the-handle handle "why")
-        reader (exc/verdict-reader kb)]
-    (loop [work [root] nodes {}]
-      (if (empty? work)
-        {:root root :nodes nodes}
-        (let [h (peek work), work (pop work)]
-          (if (contains? nodes h)
-            (recur work nodes)
-            (let [node (why-node kb reader h)]
-              (recur (into work (mapcat :because) (:support node))
-                     (assoc nodes h node)))))))))
+  One node per reachable handle.  A premise is `:premise? true` with its `:strength` and no
+  `:support`.  A derived node's `:support` is its justifications in content order.  Each
+  `:verdict` is the reason the node's context reads on that justification; a believed node
+  can list one a guard defeat (`:guard`) or an exception (`:blocked`) covers.  Belief is
+  read at each node's own context.  A stored node not believed there is a leaf `{:believed?
+  false}`; ask `why-not` (docs/nmtms.md).  An unknown handle (nil included) is a node
+  `{:stored? false}`.  `{:content? true}` names every sentex by content (docs/overlay.md)."
+  ([kb handle]
+   (let [root   (the-handle handle "why")
+         reader (exc/verdict-reader kb)]
+     (loop [work [root] nodes {}]
+       (if (empty? work)
+         {:root root :nodes nodes}
+         (let [h (peek work), work (pop work)]
+           (if (contains? nodes h)
+             (recur work nodes)
+             (let [node (why-node kb reader h)]
+               (recur (into work (mapcat :because) (:support node))
+                      (assoc nodes h node)))))))))
+  ([kb handle opts]
+   (opts/check! opts #{:content?} "why")
+   (cond->> (why kb handle) (:content? opts) (content-form kb))))
 
 (defn- contradicted-by-entries
   "`why-not`'s `:contradicted-by` entries for the sentex maps `sxs`, in content order.
@@ -5637,8 +5829,8 @@
   closest and is the switch that runs a search at all; `:max-depth` and `:max-ms` are that
   search's bounds.  A key off the key set is refused (`:unknown-option`) — a misspelt
   `:nearset` would answer the ordinary `why-not` and read exactly like a goal no rule
-  concludes."
-  #{:nearest :max-depth :max-ms})
+  concludes.  `:content?` names every sentex by content, as `why`'s does."
+  #{:nearest :max-depth :max-ms :content?})
 
 (def default-nearest-depth
   "How many rule rewrites `{:nearest n}` searches through when the caller names no
@@ -5778,7 +5970,7 @@
   (`why-not-opt-keys`).  docs/api.md, \"Contract notes: `why-not`\"."
   ([kb handle] (why-not-handle kb (the-handle handle "why-not")))
   ([kb sentence context]
-   (let [[sentence context] (checked-ist-goal kb sentence context)
+   (let [[sentence context kb] (checked-ist-goal kb sentence context)
          ;; the stored spelling of a ground reifiable NAT is its constant, looked up where
          ;; `assert` stores it (`handle-of`)
          s (nat-read/maybe-reify-for-read kb sentence context)
@@ -5811,11 +6003,12 @@
                        {:type :unknown-option :mismatch :bad-value :nearest n}))))
    (let [base (why-not kb sentence context)
          n    (:nearest opts)]
-     (if (and (number? n) (pos? (long n)) (= :not-stored (:reason base)))
-       (merge base (nearest-misses kb (:sentence base) (:context base) (long n)
-                                   (or (:max-depth opts) default-nearest-depth)
-                                   (or (:max-ms opts) default-nearest-ms)))
-       base))))
+     (cond->> (if (and (number? n) (pos? (long n)) (= :not-stored (:reason base)))
+                (merge base (nearest-misses kb (:sentence base) (:context base) (long n)
+                                            (or (:max-depth opts) default-nearest-depth)
+                                            (or (:max-ms opts) default-nearest-ms)))
+                base)
+       (:content? opts) (content-form kb)))))
 
 ;; ---- preview: what a batch would do, without leaving it done -------------
 ;; docs/preview.md.
@@ -6319,53 +6512,48 @@
 ;; docs/storage.md, "Editing the records of a KB without belief".
 
 (defn edit-records!
-  "Apply a batch of premise removals and rule direction changes to the records of a KB
-  **without belief**, and return what it did.  No check, dependency sweep or settle runs;
-  `settle-record-edits!` settles any number of batches with one rebuild.
+  "Apply a batch of premise additions, premise removals and rule direction changes to the
+  records of a KB **without belief**, and return what it did.  No belief read, sweep or
+  settle runs; `settle-record-edits!` settles any number of batches with one rebuild.
 
-    `:remove`    — a seq of handles.  A record is deleted with its postings, unless a
-                   justification the batch leaves standing concludes it, which then only
+    `:add`       — a seq of `[sentence context]`, ground `genl`, `sense` or `comment`
+                   facts: a new one is stored as a premise with its postings, a stored
+                   derived one gains the premise mark;
+    `:remove`    — a seq of handles; a record a surviving justification concludes only
                    loses its premise mark;
-    `:direction` — `{handle direction}`, a rule's new `:forward` / `:backward` /
-                   `:forward-only` / `:inert` / `:both`.
+    `:direction` — `{handle direction}` over stored derive rules.
 
-  Justifications resting on a deleted record and firings of a rule taken off `:forward` are
-  deleted.  A removal naming no stored record counts under `:absent`, so a rerun after a
-  crash completes the batch.  Returns `{:removed n :unpremised n :absent n :redirected n
-  :justifications-removed n :seeds [h …]}`; `:seeds` names where the settle sweeps from.
-  Refuses, before writing, a KB with belief (`:belief-built`); an `except`, `defeat` or
-  `exceptWhen` removal (`:record-edit-unsupported`); and a direction on a handle that is
-  not a stored derive rule or onto or off `:lazy-forward` (`:unknown-option`,
-  `:unknown-handle`).  docs/storage.md, \"Editing the records of a KB without belief\"."
+  Returns `{:added n :present n :removed n :unpremised n :absent n :redirected n
+  :justifications-removed n :seeds [h …]}`; the same batch run again completes a crashed
+  one.  Refuses before writing: `:belief-built`, `:unrecovered-kb`, `:shape`,
+  `:not-ground`, `:naming`, `:not-well-formed`, `:record-edit-unsupported`,
+  `:unknown-option`, `:unknown-handle`, `:mint-rule`.  A `genl` cycle, a negation cycle
+  and a disjointness or argument clash go unchecked: screen them with `check` while the KB
+  has belief.  docs/storage.md, \"Editing the records of a KB without belief\"."
   [kb batch]
-  (let [h   #(the-handle % "edit-records!")
-        res (record-edit/apply! kb (cond-> batch
-                                     (contains? batch :remove)
-                                     (update :remove #(into [] (map h) %))
-                                     (contains? batch :direction)
-                                     (update :direction #(into {} (map (fn [[k d]] [(h k) d])) %))))]
-    ;; a removed membership or edge may have withheld a general mint anywhere, so the
-    ;; argument-type pass is owed from the start (`arg-types-owed`)
-    (when (some #(pos? (long (get res % 0))) [:removed :unpremised :redirected :justifications-removed])
-      (argpass/owe-all! kb))
-    res))
+  (let [h #(the-handle % "edit-records!")]
+    (record-edit/apply! kb (cond-> batch
+                             (contains? batch :remove)
+                             (update :remove #(into [] (map h) %))
+                             (contains? batch :direction)
+                             (update :direction #(into {} (map (fn [[k d]] [(h k) d])) %))))))
 
 (defn settle-record-edits!
   "Settle what `edit-records!` batches left: build belief over the edited records (`reindex`
   when the index was never built, else `recover` when belief was not), delete the stored
   justifications resting on a record the store does not hold, sweep the consequence closure
-  of their conclusions and of `:seeds` as a retraction does, and re-chain the affected
-  rules.  Unless `:arg-types? false`, `record-arg-types` then draws the argument-type
-  mints a removal released.
+  of their conclusions and of `:seeds` as a retraction does, re-chain the affected rules,
+  and bring each seed that is a stored premise fact in as `assert` brings one in.  Unless
+  `:arg-types? false`, `record-arg-types` then draws the argument-type mints a batch owes.
 
   `opts`: `:seeds`, the union of the batches' `:seeds`; `:arg-types?`, default true (when
-  false the pass is owed, `arg-types-owed`, whenever anything was removed); `:on-progress`,
+  false, a pass a batch or the sweep owes stays owed, `arg-types-owed`); `:on-progress`,
   called with `{:phase :done :total}` as each step begins, `:phase` being `:reindex`,
   `:recover`, `:sweep` or `:arg-types`.  A throw from it is rethrown at the next phase
   boundary, and a second call finishes.  Returns `{:rebuilt :reindex|:recover|nil
   :unrooted n :removed-sentexes n :removed-justifications n :rules-chained n :rechained n
-  :arg-types {…}}`, or `:arg-types-owed? bool` in place of `:arg-types`.  docs/storage.md,
-  \"Editing the records of a KB without belief\"."
+  :arrived n :arg-types {…}}`, or `:arg-types-owed? bool` in place of `:arg-types`.
+  docs/storage.md, \"Editing the records of a KB without belief\"."
   ([kb] (settle-record-edits! kb nil))
   ([kb opts]
    (opts/check! opts #{:seeds :arg-types? :on-progress} "settle-record-edits!"
@@ -6945,6 +7133,11 @@
       (and (= pos :default) (= neg :monotonic)) :false
       :else nil)))
 
+(def argue-opt-keys
+  "Every key `argue` reads: `query-opt-keys`, and `:content?`, which names every sentex in
+  the answer by content as `why`'s does and orders `:for` and `:against` by their bindings."
+  (conj query-opt-keys :content?))
+
 (defn argue
   "Four-valued epistemic status of a ground assertion.  Queries both `asent` and its
   explicit negation `(not asent)` and returns a map:
@@ -6962,46 +7155,52 @@
   A side carries at most one of `:for-why` and `:for-derivation`, and a derivation leaf a
   `SupportingProver` answered names the sentexes it was read from (`:supports`).  Without
   opts it uses `ask`; pass `{:max-depth N}` for rules to fire.  `opts` is
-  `query-opt-keys`; another key is refused (`:unknown-option`).  When both sides are
+  `argue-opt-keys`; another key is refused (`:unknown-option`).  When both sides are
   provable the verdict is `:contradiction` unless a `:monotonic` justification beats a
   `:default` one (docs/nmtms.md, \"Observation beats expectation\")."
   ([kb asent context] (argue kb asent context nil))
   ([kb asent context opts]
-   (opts/check! opts query-opt-keys "argue"
+   (opts/check! opts argue-opt-keys "argue"
                 (str "An option nothing reads takes the default in silence, which here is"
                      " the no-rule-expansion read — a misspelt depth answers :unknown for"
                      " a sentence a rule derives."))
-   (let [neg       (list 'not asent)
-         for-r     (argue-results kb asent context opts)
-         against-r (argue-results kb neg context opts)
-         pos?      (boolean (seq for-r))
-         neg?      (boolean (seq against-r))
-         ;; the JTMS's answer: a stored, believed side only
-         for-j     (argue-justification kb asent context)
-         against-j (argue-justification kb neg context)
-         ;; and the search's, for a side a rule answered rather than the store.  A
-         ;; fallback rather than a second opinion: where the JTMS has a justification it
-         ;; is the better answer, and asking for a tree nobody reads costs a whole query
-         for-d     (when (and pos? (not for-j))
-                     (argue-derivation kb asent context opts for-r))
-         against-d (when (and neg? (not against-j))
-                     (argue-derivation kb neg context opts against-r))
-         defeats   (when-not pos? (not-empty (clashes/defeats-against kb asent context)))
-         base      (cond-> {}
-                     pos?      (assoc :for for-r)
-                     neg?      (assoc :against against-r)
-                     for-j     (assoc :for-why for-j)
-                     against-j (assoc :against-why against-j)
-                     for-d     (assoc :for-derivation for-d)
-                     against-d (assoc :against-derivation against-d)
-                     defeats   (assoc :defeated-by defeats))]
-     (cond
-       (and pos? (not neg?)) (assoc base :verdict :true)
-       (or defeats (and neg? (not pos?))) (assoc base :verdict :false)
-       (and (not pos?) (not neg?)) (assoc base :verdict :unknown)
-       :else (if-let [resolved (argue-resolve-contradiction kb asent context)]
-               (assoc base :verdict resolved)
-               (assoc base :verdict :contradiction))))))
+   (if (:content? opts)
+     (let [r     (content-form kb (argue kb asent context (dissoc opts :content?)))
+           order (fn [a] (vec (nm/sort-by-content-key first (:bindings a a))))]
+       (cond-> r
+         (:for r)     (update :for #(nm/sort-by-content-key order %))
+         (:against r) (update :against #(nm/sort-by-content-key order %))))
+     (let [neg       (list 'not asent)
+           for-r     (argue-results kb asent context opts)
+           against-r (argue-results kb neg context opts)
+           pos?      (boolean (seq for-r))
+           neg?      (boolean (seq against-r))
+           ;; the JTMS's answer: a stored, believed side only
+           for-j     (argue-justification kb asent context)
+           against-j (argue-justification kb neg context)
+           ;; and the search's, for a side a rule answered rather than the store.  A
+           ;; fallback rather than a second opinion: where the JTMS has a justification it
+           ;; is the better answer, and asking for a tree nobody reads costs a whole query
+           for-d     (when (and pos? (not for-j))
+                       (argue-derivation kb asent context opts for-r))
+           against-d (when (and neg? (not against-j))
+                       (argue-derivation kb neg context opts against-r))
+           defeats   (when-not pos? (not-empty (clashes/defeats-against kb asent context)))
+           base      (cond-> {}
+                       pos?      (assoc :for for-r)
+                       neg?      (assoc :against against-r)
+                       for-j     (assoc :for-why for-j)
+                       against-j (assoc :against-why against-j)
+                       for-d     (assoc :for-derivation for-d)
+                       against-d (assoc :against-derivation against-d)
+                       defeats   (assoc :defeated-by defeats))]
+       (cond
+         (and pos? (not neg?)) (assoc base :verdict :true)
+         (or defeats (and neg? (not pos?))) (assoc base :verdict :false)
+         (and (not pos?) (not neg?)) (assoc base :verdict :unknown)
+         :else (if-let [resolved (argue-resolve-contradiction kb asent context)]
+                 (assoc base :verdict resolved)
+                 (assoc base :verdict :contradiction)))))))
 
 ;; ---- the operation log ----------------------------------------------------
 ;; Every public write entry point above is routed through `vaelii.impl.oplog/run-op`, so a
@@ -7026,7 +7225,7 @@
     (= :abduce op) (assoc :token (abduce/new-token))))
 
 (defn- replayed-batch-rejoins
-  "The map a frame recorded with `inputs` owes its lazy-forward re-joins to: under
+  "The map a frame recorded with `inputs` owes its re-joins to: under
   `oplog/replay!`, the replay's map for the batch `(:batch inputs)` names, emptied when that
   batch is not the previous frame's, and nil for a frame outside a batch; else
   `chain/*batch-rejoins*`."
@@ -7114,6 +7313,7 @@
    :settle-record-edits!     [:settle-record-edits :seal]
    :edit!                    [:edit :replay]
    :edit-with-consequences!  [:edit-with-consequences :replay]
+   :replace-facts!           [:replace-facts :replay]
    :preview                  [:preview :replay]
    :abduce                   [:abduce :replay]
    :abduce-discard!          [:abduce-discard :replay]
@@ -7188,7 +7388,7 @@
     :canonical-sentex :chain-report :chain-stats :check :check-edit :common-genls :common-specs
     :compare-tacticians :conflicts :context-down :context-up :contexts :contexts-of
     :contradictions :count-in-context :count-with-arg :count-with-functor
-    :defeat-class :dependent-justifications :deprecated? :describe :digest :digests
+    :defeat-class :defining-contexts :dependent-justifications :deprecated? :describe :digest :digests
     :direct-genls :direct-specs :disjoint-metatypes :disjoint? :disjointness-audit :equiv-class :escalate
     :exists-violations :filed-violations
     :explain-levels :export! :export-text! :exposed-clashes :find-sentexes

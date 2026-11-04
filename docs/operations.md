@@ -2,8 +2,9 @@
 
 - **Covers:** the five surfaces that drive a KB — CLI, daemon, client, access facade
   and the browser's launch path — the single-writer contract across them, what to do
-  after a crash, the mesh of seats, a seat on a phone-sized host, and every environment
-  variable or system property with where it is read.
+  after a crash, restarting over a built store, the mesh of seats, a seat on a
+  phone-sized host, and every environment variable or system property with where it is
+  read.
 - **Not here:** the browser's own pages, panels and editing UI → [web.md](web.md); which
   KB a process has loaded, and how one is found → [catalog.md](catalog.md).
 - **Assumes:** sentex, context, handle → [glossary.md](glossary.md).
@@ -74,10 +75,10 @@ a `:disk-locked` refusal names a process that is still running.
 - **A crash inside a seat's pull** (`import!` with `:rebase?`) leaves the seat's writes in
   its own directory, and the next open asserts them again
   ([overlay.md](overlay.md#replacing-the-base)). A crash inside the import of the dump
-  leaves the base partly imported, and that open drops each write the partial base cannot
-  hold: a form naming a record not yet imported, a form refused, and a retraction of a base
-  premise not yet imported. Pulling the commit again restores the base and none of those
-  writes.
+  leaves the base partly imported, and that open keeps in the marker each write the partial
+  base cannot hold: a form naming a record not yet imported, a form refused, and a
+  retraction of a sentence the partial base holds no premise of. The open logs them at `:warn`, and pulling
+  the commit again restores the base and asserts them over it.
 - **A declined restore** logs at `:warn`: `opened <dir> from its records and sealed it in
   t ms: the restore declined, <reason>`. The KB holds what the records hold, and its log
   starts again at a new generation. The reason says which write the log could not
@@ -93,6 +94,59 @@ a `:disk-locked` refusal names a process that is still running.
   | `[:unusable [:damaged-frame offset]]` | a frame inside the log does not decode | check the disk; the records are intact |
   | `[:index r]`, `[:reasoning r]` | the crash came inside a seal, or an image was changed | nothing |
   | `[:diverged …]`, `:extra-records` | a replayed write differs from the record stored at its handle, or a record has no frame | under `:tick` after a machine crash, nothing; otherwise report it, with the directory |
+
+## Restarting over a built store
+
+A process that loads the starter and its own text KBs at every start opens the store it
+built before and calls `(vaelii.starter/load-into kb {:layers [path …]})`. The call loads the
+starter, then each path through `load-text!`, in order. Over a store with a directory whose
+records answer a fingerprint (`:disk` and `:pg` records), it writes a **load key** to
+`load-key.edn` at the directory's root once the load returns:
+
+- the source identity's digest ([storage.md](storage.md#the-source-identity));
+- for each source in load order, a SHA-256 over its files' names, byte counts and bytes:
+  the starter's upper and middle files, a layer directory's `Cx….txt` files and its
+  `digests.edn`, or the one file a layer path names;
+- the records fingerprint after the load (`p/belief-fingerprint`), which moves on every
+  record added, deleted or re-stored, a premise mark included.
+
+Beside the key, `load-stated.nippy` holds, for each layer, the handles of the sentences it
+states, under the same fingerprint.
+
+The next call reads the key. When the running engine's digest and the store's fingerprint
+equal the recorded ones, the call skips each source before the first whose hash differs
+from the recorded source at that position, and loads that source and every later one over
+the store. Before the load it trims the premises the recorded sources from that position
+stated: one `edit!` retracts each such ground literal premise no current source states in
+its context at its stored strength. A fact a changed layer dropped, a premise it restates
+at another strength and every fact of a layer dropped from the end of the list are
+retracted. A retracted sentence another source still states is asserted again at the
+strongest strength stated, and the load adds the changed layers' facts at their stated
+strengths. A premise no recorded source stated, such as a caller's write into a layer's
+context, stays. So do CxUniverse, the middle contexts, every rule, every non-ground premise
+and every premise naming a handle (an exceptWhen meta), so a rule or an exception a
+changed layer no longer states stays stored. A key with no `load-stated.nippy` under its
+fingerprint trims nothing. A write since the load moves
+the fingerprint, and then every source loads again over the store, which only adds, and
+each sentence it states dedups to its stored handle. A call that loads and trims nothing
+leaves the key as it was. A store in RAM, a fork and a store whose records answer no fingerprint
+keep no key, so every call loads every source. The daemon's and the CLI's `--starter` take
+the same path with no layers.
+
+The start recipe:
+
+1. Open the store's directory: `(v/open-kb {:backend :disk-log :dir d})`, or the backend its
+   files were written by (`v/store-backend`).
+2. Call `load-into` with the same `:layers` list at every start, before serving.
+3. Write into a fork over the store ([overlay.md](overlay.md)) and not into the store
+   itself, so the fingerprint stays and the next start skips the load.
+
+The key lives beside the store it describes, and so does a `:disk-snapshot` store's
+reasoning image: a second server has its own records, and its first write moves their
+fingerprint. `starter_test/a-restart-over-an-unwritten-store-loads-only-the-sources-from-the-first-changed-one`
+counts the asserts each start makes, and the `^:slow`
+`starter_test/a-restart-the-load-key-skips-takes-under-a-fifth-of-a-build-or-a-reload` times a
+skipped start against a build into an empty store and a reload over the built one.
 
 ## CLI — `vaelii.cli`
 
@@ -249,11 +303,11 @@ lein serve 4200 --starter                                   # in memory, with th
 VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-machine (opt-in)
 ```
 
-- **`--starter` loads the shipped starter schema** (`vaelii.host.starter/load-into`) into
+- **`--starter` loads the shipped starter schema** (`vaelii.host.starter/load-sources`) into
   the KB after it opens and before the port is bound, so `GET /health` answers only once
   the schema is in. The flag takes no value and sits anywhere among the arguments. Over a
-  directory that already holds the schema, every starter sentence dedups to its stored
-  handle, and the load still reads every starter file.
+  directory whose load key matches, it loads nothing
+  ([Restarting over a built store](#restarting-over-a-built-store)).
 
 - **It binds loopback**, and exposing it is an explicit choice. `POST /op` is the write
   route of the *single writer*, so the default answers only the machine it runs on — the
@@ -376,14 +430,14 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   `:max-work` and `:max-results`, held the same way under `VAELII_INTEGRITY_MAX_WORK`
   (**10000**) and `VAELII_INTEGRITY_MAX_RESULTS` (**1000**), `0` lifting either, and filled
   with the ceiling when a request omits them or sends no option map, so a served sweep always
-  runs under all three ([integrity.md](integrity.md)). Eight writes bound their chaining:
-  `:assert`, `:try-assert`, `:assert-many`, `:assert-rule` and `:forward-chain` read
-  `:max-depth`, `:max-term-depth` and `:max-derivations`, and `:edit`,
+  runs under all three ([integrity.md](integrity.md)). Nine writes bound their chaining:
+  `:assert`, `:try-assert`, `:assert-many`, `:assert-rule`, `:replace-facts` and
+  `:forward-chain` read `:max-depth`, `:max-term-depth` and `:max-derivations`, and `:edit`,
   `:edit-with-consequences` and `:preview` read the same three keys off each batch entry's
   opts. A request may name any of the three at any size, and the run holds the write
   monitor for its whole length; when it names none, only the term-nesting bound of 8 is in
-  force. Every one of the eight but `:preview` also reads `:max-ms`. **`VAELII_MAX_WRITE_MS`
-  is the write ceiling, off (0) by default.** Once an operator sets it, the six writes
+  force. Every one of the nine but `:preview` also reads `:max-ms`. **`VAELII_MAX_WRITE_MS`
+  is the write ceiling, off (0) by default.** Once an operator sets it, the seven writes
   `serve/write-bounds` names (all but `:forward-chain` and `:preview`) are held to it as
   a read is held to `VAELII_MAX_QUERY_MS`, and a write the clock ends is refused **400**
   `{:type :interrupted}` and rolled back ([inference.md](inference.md#stopping-a-run)).
@@ -426,6 +480,7 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   |---|---|
   | `:assert`, `:try-assert`, `:assert-many`, `:assert-rule` | the same handles, and nothing new is stored: a sentence dedups to its canonical form's handle ([canonicalization.md](canonicalization.md)) |
   | `:edit`, `:edit-with-consequences` | with `:add` alone, the same handles; with a `:remove`, refused `:unknown-handle`, and the KB stays as the first send left it |
+  | `:replace-facts` | `{:added 0 :removed 0 :edit nil}`, the context holding the facts the first send wrote |
   | `:retract` | `{:removed-sentexes 0 :removed-justifications 0}` |
   | `:forward-chain` | `{:derived 0}`, the fixpoint being reached |
   | `:add-provenance` | the same merged map |
@@ -639,7 +694,7 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   | `record-arg-types` | 2, 4 | It completes a store its opener loaded around `assert`, once, after the load; a daemon serves a KB already loaded. It reads every stored fact of every functor an argument declaration reaches, with no bound a request can set |
   | `record-arg-types!`, `request-stop!`, `arg-types-owed` | 2, 4 | The same pass as `record-arg-types`, run by its opener as a job it can stop and resume, with a callback for its progress and its cancel; `request-stop!` reaches it from another thread. `arg-types-owed` reads what it owes |
   | `release-withheld!` | 2, 4 | It drains what an open or a bulk load left owed, once, at the opener's choice of time. It re-derives the facts naming every term an owed row releases, with no bound a request can set. `:owed-releases` reads the count |
-  | `edit-records!`, `settle-record-edits!` | 2, 3 | They edit and then rebuild a KB opened without belief, which a daemon does not serve. `edit-records!` writes with no check, no dependency sweep and no settle; `settle-record-edits!` is the `recover` (and `reindex`) above with a sweep after it ([storage.md](storage.md#editing-the-records-of-a-kb-without-belief)) |
+  | `edit-records!`, `settle-record-edits!` | 2, 3 | They edit and then rebuild a KB opened without belief, which a daemon does not serve. `edit-records!` writes with no check that reads belief, no dependency sweep and no settle; `settle-record-edits!` is the `recover` (and `reindex`) above with a sweep after it ([storage.md](storage.md#editing-the-records-of-a-kb-without-belief)) |
   | `remove-unsupported!`, `mark-inert!` | 2 | Each repairs a record a failed write left, which the open reported, on evidence the opener holds: the handles its own record of its writes marks failed. `:unsupported` reads the report |
   | `disjointness-audit` | 4 | It runs a subsumption read for every pair of the n types, n(n−1)/2 of them, with no bound a request can set. `:subsumption-status` answers one pair |
   | `ist` | — | It is `assert` with its arguments reordered: `:assert` of `(ist Ctx S)` stores the same sentex |
@@ -762,6 +817,8 @@ again after the write:
 - `:edit` and `:edit-with-consequences` hold every `:add` entry to the same check and
   every `:remove` handle to the next one; one entry out of bounds refuses the batch, and
   nothing in it is applied.
+- `:replace-facts` writes only when `:writes` names its context, which it retracts from,
+  and every context each fact's storage writes.
 - `:retract` removes, and `:add-provenance` annotates, a sentex only when its stored
   context is in `:writes`. `:add-provenance` on a handle naming no stored sentex is
   refused too, since provenance written there first would read as the sentex's own.
@@ -1021,8 +1078,9 @@ and each one publishes its own writes and merges every peer's.
   refused `:canonical-mismatch` ([overlay.md](overlay.md#a-delta)).
 - **A seat may take a peer's dump as its base** with `deref/pull!`, which asserts the
   seat's writes again over the new base. A seat killed after the pull imported the dump
-  holds its writes again at its next open, and one killed inside the import loses the
-  writes the partial base cannot hold ([After a crash](#after-a-crash)).
+  holds its writes again at its next open. One killed inside the import holds the writes
+  the partial base can hold, and the next pull asserts the rest
+  ([After a crash](#after-a-crash)).
 - **Once every seat has merged every peer's delta, the seats believe one set** over the
   shared contexts, when no merge refused a form and no seat retracted a shared premise. A
   delta writes no retraction ([overlay.md](overlay.md#a-delta)). A form one merge refuses
@@ -1042,9 +1100,8 @@ and the test asserts which seats hold it. `lein test-multi-jvm` runs it.
 ## A seat on a small host
 
 A phone-sized host, such as an Android phone under Termux or a small ARM virtual machine,
-runs a seat as a server does, with a smaller heap and slower storage. No configuration of
-the suite has run on Android, Termux or Linux on aarch64, and the suite runs at a 4 GB
-heap (`VAELII_TEST_HEAP`). At a 1 GB heap, `_JAVA_OPTIONS=-Xmx1g lein perf --only
+runs a seat as a server does, with a smaller heap and slower storage. The suite is tested
+on macOS and Linux at a 4 GB heap (`VAELII_TEST_HEAP`). At a 1 GB heap, `_JAVA_OPTIONS=-Xmx1g lein perf --only
 membership,recover` passes 24 of its 26 growth checks on a development machine
 (2026-10-30, load average about 30). The other two read below its noise floor, which
 leaves them unjudged.
@@ -1068,8 +1125,10 @@ leaves them unjudged.
   image into the dump by default, and `import!` with `{:belief? true}` on the seat installs
   it in place of the recover. `:recover? false` is not a faster open: every query on it
   answers empty.
-- **Give no `--starter` on a restart.** A store that already holds the schema dedups each
-  starter sentence to its stored handle, and the load still reads every starter file.
+- **Give no `--starter` on a restart of a store the seat writes into.** A write since the
+  load moves the store's fingerprint, so the next `--starter` loads every starter file
+  again; over an unwritten store it loads nothing
+  ([Restarting over a built store](#restarting-over-a-built-store)).
 - **Keep the store under `$HOME`.** Termux's home directory is app-private storage on the
   device's own filesystem. Android's shared storage (`/sdcard`) is a FUSE mount, and the
   engine's file lock, rename and fsync have not been run over one
@@ -1291,6 +1350,7 @@ the read still found one of them. Set a new floor by rounding the first mention 
 | `VAELII_WEB_PORT` | `src/vaelii/browser/web.clj:5830+` | a port number | `3000` | The port the browser binds. An unparseable value, or a number outside 0–65535, is logged at `:warn` and falls through to the property rather than failing the start. |
 | `vaelii.web.port` | `src/vaelii/browser/web.clj:5830+` | a port number | `3000` | The same port, read after the variable, and logged the same way when unusable. |
 | `VAELII_KB_DIR` | `src/vaelii/browser/web.clj:6930+` | a KB directory: a store, a dump or a corpus; blank is unset | unset | The directory the browser loads at startup, as a catalog job with belief recovered, while it serves the starter. The KB becomes the active one when the load finishes. A path holding no KB is logged and the browser stays on the starter. The three `scripts/start-vaelii*.sh` set it. |
+| `vaelii.starter.dump` | `src/vaelii/browser/web.clj:9170+` | a directory; blank is unset | unset | The directory `fresh-starter-kb!` restores the starter from and writes its dump to ([web.md](web.md#the-starter-dump)). Set only by the `:browser` profile, to `target/starter-dump`. |
 | `VAELII_HEAP` | `scripts/lib/start.sh:20+` | a JVM heap size (`40g`, `24g`) | half of physical memory, up to `31g` | The `-Xmx` the three `scripts/start-vaelii*.sh` add to `JVM_OPTS`, beside `-XX:+ExitOnOutOfMemoryError`. A value above physical memory is refused, exit 1. |
 | `VAELII_DEV` | `src/vaelii/impl/config.clj:240+` | the boolean vocabulary | `false` | Whether `lein browser` hot-reloads source edits and syncs shipped KB file edits into its loaded KBs and the starter's writes back into the files (`docs/web.md`), and re-reads its stylesheet per request, serving it uncached. Set only by `scripts/start-vaelii-dev.sh`; `-main` never hot-reloads. |
 | `VAELII_PROFILER` | `src/vaelii/impl/config.clj:240+` | the boolean vocabulary | `false` | Whether the browser starts the sampling profiler's UI. Off unless asked for: it attaches an agent to the JVM and serves on a port of its own with no authentication. The dependency ships in the `:repl` profile, so `lein browser` has it and `lein run -m vaelii.web` does not — with it absent the start logs a line and `/caches` says so rather than linking to nothing. |
@@ -1409,7 +1469,7 @@ CI sets these too; nothing in a deployment does.
 | `VAELII_GATE_OUT` | `scripts/test-parallel.sh:40+` | a directory | `logs/gate` | Where the parallel test stage writes its per-shard logs, `test.assign` (each shard's namespaces with their predicted seconds) and each shard's `test.timing-<n>.tsv`. `lein gate` sets it to that run's own directory, so the shard logs land beside the stage logs rather than in a directory two `lein gate` runs share. |
 | `VAELII_GATE_TIMINGS` | `scripts/test-parallel.sh:40+` | a file | `logs/test-timings.tsv` | The per-namespace timings the test stage bin-packs its shards from, a moving average each run moves 0.3 of the way to its own figures. **Per checkout, not per run**: they are feedback for the *next* `lein gate` run, so every run shares them, outside `target/`, which `lein clean`, `lein jar` and `lein install` empty. A namespace the file lacks takes its CI weight scaled to local time. |
 | `GATE_JOBS` | `scripts/gate.sh:60+` | a whole number | unset | The test stage's shard count. **Not frozen** — see below. |
-| `TEST_MIN_JOBS` | `scripts/test-parallel.sh:30+` | a whole number | `3` | The fewest shards `lein test-parallel` (and so `lein gate`'s test stage) starts when no `--jobs` or `GATE_JOBS` names a count. The load-aware count subtracts every vaelii JVM running, an idle REPL or server included, and at one shard the suite takes over 50 minutes. Under `GATE_MAX_CONCURRENT`'s default of 2, two `lein gate` runs at this floor start six test JVMs. **Not frozen.** |
+| `TEST_MIN_JOBS` | `scripts/test-parallel.sh:20+` | a whole number | `3` | The fewest shards `lein test-parallel` (and so `lein gate`'s test stage) starts when no `--jobs` or `GATE_JOBS` names a count. The load-aware count subtracts every vaelii JVM running, an idle REPL or server included, and at one shard the suite takes over 50 minutes. Under `GATE_MAX_CONCURRENT`'s default of 2, two `lein gate` runs at this floor start six test JVMs. **Not frozen.** |
 | `PERF_TOLERANCE` | `scripts/gate.sh:60+` | a multiplier (`1.5`) | unset | Passed through to `lein perf --tolerance`, for a loaded box. **Not frozen.** |
 | `GATE_MAX_CONCURRENT` | `scripts/lib/slots.sh:280+` | a whole number; `0` disables | `2` | How many `lein gate` test stages run at once on the box, from any worktree: each holds one `gate-lock.<i>` file in the shared git directory's `vaelii-matrix/`. A `lein gate` run over the cap runs lint and waits for a slot, naming the holders once a minute, and its test stage reads its shard count after admission. **Not frozen.** |
 | `GATE_NO_WAIT` | `scripts/lib/slots.sh:280+` | any non-empty value | unset | Makes `lein gate` exit 75 instead of waiting when every gate slot is held. **Not frozen.** |

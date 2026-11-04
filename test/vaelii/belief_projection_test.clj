@@ -141,13 +141,15 @@
 
 ;; ---- independence vs. inheritance opt-in ---------------------------------
 
-(tu/deftest-kb independence-is-the-default-inheritance-is-opt-in
-  ;; a fact true in "base" — CxUniverse, which every ordinary context sees
-  (v/assert kb '(green Grass) 'CxUniverse)
-  (testing "an independent agent (no genlCx edge) does not believe a base fact"
+(tu/deftest-kb an-agent-sees-the-definitional-layer-and-opts-into-contingent-facts
+  ;; a contingent fact sits in CxWell, which an agent context sees only through an edge
+  (v/assert kb '(green Grass) 'CxWell)
+  (testing "an agent with no genlCx edge reads CxUniverse"
+    (is (v/ask? kb '(believes Alice (genl dog mammal)) ask-ctx)))
+  (testing "and does not believe a fact stated in CxWell"
     (is (not (v/ask? kb '(believes Alice (green Grass)) ask-ctx))))
-  (testing "an agent that opts in (genlCx to CxUniverse) does"
-    (v/assert kb '(genlCx CxAgentBob CxUniverse) 'CxUniverse)
+  (testing "an agent that opts in (genlCx to CxWell) does"
+    (v/assert kb '(genlCx CxAgentBob CxWell) 'CxUniverse)
     (is (v/ask? kb '(believes Bob (green Grass)) ask-ctx))))
 
 ;; ---- believes stays an ordinary, assertible relation ---------------------
@@ -226,13 +228,19 @@
 
 (tu/deftest-kb nested-belief-projects-only-where-the-grant-is-visible
   (v/assert kb '(purrs Cat) (modal/context-of-agent 'Bob))
-  (let [nested '(believes Alice (believes Bob (purrs Cat)))]
-    (testing "by default Alice's context is independent and cannot see the CxUniverse grant,
-              so the inner (believes …) is read as a plain literal — false, no recursion"
-      (is (not (v/ask? kb nested ask-ctx))))
-    (testing "once Alice's context sees the grant, the nesting projects through"
-      (v/assert kb (list 'genlCx (modal/context-of-agent 'Alice) 'CxUniverse) 'CxUniverse)
-      (is (v/ask? kb nested ask-ctx)))))
+  (testing "the shipped believes grant is in CxUniverse, which Alice's context sees, so the
+            nesting projects through"
+    (is (v/ask? kb '(believes Alice (believes Bob (purrs Cat))) ask-ctx)))
+  (tu/with-terms [thinks]
+    (v/assert kb (list 'binary_predicate thinks) 'CxUniverse)
+    (v/assert kb (list 'modal_predicate thinks) ask-ctx)
+    (let [nested (list thinks 'Alice (list thinks 'Bob '(purrs Cat)))]
+      (testing "a grant in CxWell is invisible from Alice's context, so the inner literal
+                is read plainly — false, no recursion"
+        (is (not (v/ask? kb nested ask-ctx))))
+      (testing "once Alice's context sees the grant, the nesting projects through"
+        (v/assert kb (list 'genlCx (modal/context-of-agent 'Alice) ask-ctx) 'CxUniverse)
+        (is (v/ask? kb nested ask-ctx))))))
 
 ;; ---- the prover's declared cost, and graceful non-claims ----------------
 

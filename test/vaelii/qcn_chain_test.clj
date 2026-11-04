@@ -129,9 +129,10 @@
       (v/assert kb (list 'genlCx CxDiagonalSpace 'CxWell) 'CxUniverse
                 {:strength :monotonic})
       (v/assert kb (list 'arg reflexive 1 'thing) 'CxUniverse {:strength :monotonic})
-      ;; partOfRegion contains the identity, so (partOfRegion ?x ?x) is entailed of every
-      ;; region by the algebra alone — with no stored fact behind it
-      (v/assert-rule kb [(list 'partOfRegion '?x '?x)] (list reflexive '?x)
+      ;; hasRegionPart contains the identity and has no `reflexive` declaration, so
+      ;; (hasRegionPart ?x ?x) is entailed of every region by the algebra alone — with no
+      ;; stored fact behind it
+      (v/assert-rule kb [(list 'hasRegionPart '?x '?x)] (list reflexive '?x)
                      CxDiagonalSpace {:direction :forward})
       (v/assert kb (list 'nonTangentialProperPart RegA RegB) CxDiagonalSpace
                 {:strength :monotonic})
@@ -140,6 +141,23 @@
         (is (empty? (v/sentexes-matching kb (list reflexive RegA) '?ctx)))
         (is (= #{:eq} (v/possible-relations kb :rcc8 CxDiagonalSpace RegA RegA))
             "the diagonal is still entailed — it is only unusable as support")))))
+
+(tu/deftest-kb the-diagonal-of-a-declared-reflexive-predicate-rests-on-the-declaration
+  ;; `(reflexive partOfRegion)` ships in CxUniverse
+  (tu/with-terms [RegA RegB selfPart CxDiagonalSpace]
+    (with-spatial kb
+      (v/assert kb (list 'genlCx CxDiagonalSpace 'CxWell) 'CxUniverse
+                {:strength :monotonic})
+      (v/assert kb (list 'arg selfPart 1 'thing) 'CxUniverse {:strength :monotonic})
+      (v/assert-rule kb [(list 'partOfRegion '?x '?x)] (list selfPart '?x)
+                     CxDiagonalSpace {:direction :forward})
+      (v/assert kb (list 'nonTangentialProperPart RegA RegB) CxDiagonalSpace
+                {:strength :monotonic})
+      (let [decl (v/handle-of kb '(reflexive partOfRegion) 'CxUniverse)
+            h    (v/handle-of kb (list selfPart RegA) CxDiagonalSpace)]
+        (is (= #{(list selfPart RegA) (list selfPart RegB)}
+               (set (map :sentence (v/sentexes-matching kb (list selfPart '?x) '?ctx)))))
+        (is (contains? (set (keys (:nodes (v/why kb h)))) decl))))))
 
 (tu/deftest-kb an-entailment-in-an-unsatisfiable-network-concludes-nothing
   (tu/with-terms [RegA RegB RegC contained CxClashChain]

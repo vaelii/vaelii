@@ -70,7 +70,7 @@
         ? "Theme: " + chosen + " (click to flip)"
         : "Theme: " + osTheme() + ", following the system (click to choose one)";
     }
-    $$(".menubar a").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === location.pathname));
+    $$(".menubar a, a.kb-active").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === location.pathname));
   }
 
   // data-palette picks the accent pair, data-theme sets light or dark over the OS
@@ -299,13 +299,14 @@
       head.className = "history-kind muted";
       head.textContent = title;
       row.appendChild(head);
-      // a literal is drawn by the server (`/history/literals`), with its badge, its
-      // colours and its belief now; the text entries below stand until it answers
-      let items = row;
-      if (kind === "literal") {
-        items = document.createElement("span");
-        items.className = "history-items";
-        items.setAttribute("hx-get", "/history/literals?handles=" +
+      // a literal or a rule is drawn by the server (`/history/sentexes`), with its badge,
+      // its colours and its belief now; the text entries below stand until it answers
+      const items = document.createElement("div");
+      items.className = "history-items";
+      row.appendChild(items);
+      if (kind !== "term") {
+        items.classList.add("history-sentexes");
+        items.setAttribute("hx-get", "/history/sentexes?handles=" +
           h[kind].map((e) => e.href.slice("/sentex/".length)).join(","));
         items.setAttribute("hx-trigger", "load");
         // the body's boosted-navigation target, select and swap would put the fragment
@@ -313,7 +314,6 @@
         items.setAttribute("hx-target", "this");
         items.setAttribute("hx-select", "unset");
         items.setAttribute("hx-swap", "innerHTML");
-        row.appendChild(items);
       }
       h[kind].forEach((e) => {
         const item = document.createElement("span");

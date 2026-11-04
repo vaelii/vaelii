@@ -3,8 +3,9 @@
 - **Covers:** Allen's thirteen interval relations and the three-relation point
   algebra, the two qualitative temporal algebras, their composition tables, the three
   calendar constructors that *name* an interval for them to relate, the clock that reads a
-  calendar term's two bounding **instants** out of its fields, and the shipped event
-  calculus that says what holds when.
+  calendar term's two bounding **instants** out of its fields, the UTC offsets and named
+  zones that make a term absolute, and the shipped event calculus that says what holds
+  when.
 - **Not here:** the generic path-consistency engine both algebras run on →
   [qcn.md](qcn.md); how long an interval lasts, and how long two overlap →
   [duration.md](duration.md); the numeric gap between two instants →
@@ -247,8 +248,12 @@ before the start or at or after the end. `IncludesInstantProver` answers both of
 network (`add-reasoner :includes-instant`) and answers a stored `includesInstant` fact as
 well, so `argue` answers `:true`, `:false`, or `:unknown` for a moment inside a range a bound
 leaves open: 1450 is inside a Renaissance that began by 1400 and unknown for one that began
-sometime between 1400 and 1450. An open argument ranges over what the network names: `?x`
-over the things with a point in it, `?t` over its nodes. A calendar moment no fact names can
+sometime between 1400 and 1450. A believed `startOf` or `endOf` of X naming a node is a
+second reading of that side, and the answer's support names the fact. A thing holds its
+start, so a stated start alone places its own moment inside X with no end known. An open
+argument ranges over what the network names: `?x`
+over the things with a point in it or a stated bound visible from the context, `?t` over
+its nodes. A calendar moment no fact names can
 still fall inside a thing, so the prover reports an open argument as maximally unselective,
 and a conjunction or a forward rule binds it first ([inference.md](inference.md),
 "Conjunctive query planning").
@@ -256,7 +261,12 @@ and a conjunction or a forward rule binds it first ([inference.md](inference.md)
 **Allen relations follow.** The interval network's second narrowing reads, for every pair of
 things with points in the point network, which of the four endpoint comparisons the network
 still allows, and keeps the Allen relations whose endpoint signature fits
-(`stp/endpoint-signature`). A pair's support is the four comparisons'. Each comparison is
+(`stp/endpoint-signature`). A pair's support is the four comparisons'. A thing is read
+too when its stated `startOf` and `endOf` name two named moments that are nodes of the
+network, as an interval between two moments a stated `instantBefore` chain orders does:
+those nodes are readings of its start and end beside its own point terms, an endpoint
+comparison is the intersection of the comparisons of every reading, and a pair's support
+adds the stated endpoint facts. Each comparison is
 read on its own, so the reading is sound but not sharp, as the metric one is. All of them
 are read off one closed point network and one support-carrying pass
 ([defenses.md](defenses.md#the-point-narrowing-reads-one-closed-network-not-a-goal-per-comparison)).
@@ -269,10 +279,24 @@ the component's point pairs and those culprits. A cycle of instants that bounds 
 leaves the Allen network satisfiable
 ([qcn.md](qcn.md#unsatisfiability-is-per-component)).
 
+**An Allen fact orders the points.** The point network's stated-fact reader
+(`point/allen-fact-constraints`) reads each believed Allen fact between two symbols visible
+from the context. `(P A B)` narrows each of the four endpoint comparisons of A and B to the
+union, over P's denotation, of the ordering `stp/endpoint-signature` gives it, and each
+narrowed comparison rests on the fact. So `(before A B)` and `(instantBefore (StartFn B)
+(StartFn C))` entail `(instantBefore (EndFn A) (StartFn C))`. The reading is exact for a
+base relation and sound for any denotation. An Allen fact moves both networks
+(`qkb/calculi-triggered-by` names both calculi), so it re-joins the rules on either. Allen
+facts that contradict each other leave the point network over their endpoints unsatisfiable
+too, and the violations ledger holds an entry for each network.
+
 What it does not do:
 
-- **An Allen fact does not constrain the points.** The narrowing runs from points to
-  intervals only; `(before A B)` stated outright says nothing about `(EndFn A)`.
+- **A composed Allen relation does not reach the points.** The reader takes stored Allen
+  facts and not the interval network, which reads the point network, so building one never
+  builds the other. The point network composes the stated facts' endpoint comparisons
+  itself; what the interval network composes beyond what four comparisons express stays
+  on the interval side.
 - **A calendar term is not an Allen node.** The narrowing reads things named by a symbol, so
   the relation between a thing and `(YearFn 2013)` is asked through their points.
 - **No durations.** "After seven years" is metric, and point facts do not reach the
@@ -322,9 +346,11 @@ the first one's interval begins and ending when the second one's ends. Calendar 
 or are disjoint, so a range is how two stretches that partially overlap are written as
 terms. It is `unreifiable_function` like `DatetimeFn`, and two backward rules in `time.txt`
 give it its endpoints from the two `DatetimeFn` intervals, so `startOf` and `endOf` answer
-for a range wherever the calendar clock answers for a `DatetimeFn` term. Nothing yet reads
-a range's strings as fields, so the interval relations and the context ordering do not see
-it the way they see a calendar term.
+for a range wherever the calendar clock answers for a `DatetimeFn` term. `datetime/extent`
+reads the two strings as the range's half-open bounds, so the calendar clock relates a
+range to a calendar term or to another range, and a slice at a range is ordered against a
+slice at either. A range whose start is not before its end has no extent, and neither
+reads it.
 
 The time **before** and the time **after** a moment W are `(IntervalBeforeFn W)` and
 `(IntervalAfterFn W)`. Every interval includes its start and excludes its end, so
@@ -347,6 +373,10 @@ and its **time**. `(CxTimeFn CxStory (YearFn 2000))` is the year 2000 of `CxStor
 context)`, so an application written in a sentex's context slot reifies to a `cx/`
 constant, and `(contextArgSubrelation CxTimeFn 2 subintervalOf)`, so the application at
 the narrower time is a subcontext of the one at the wider time with the same monad.
+`(contextArgSubrelation CxTimeFn 2 subtimeOf)` orders the slice at an `InstantFn` moment
+below the slice at each interval holding the moment. A read of a slice nobody wrote into
+sees what the slices it would be ordered below see
+([context-nat.md](context-nat.md#write-and-read-are-symmetric)).
 `(contextArgSubrelation CxTimeFn 1 genlMonad)` orders the other way round: with
 `(genlMonad CxSubStory CxStory)` stated, the application along `CxSubStory` is a
 subcontext of the one along `CxStory` at the same time. Two applications that differ in
@@ -395,8 +425,8 @@ over `subtimeOf`: an `unreifiable_function` from two times to a time, with
 `timeIntersectionOf` as its corresponding predicate. Two times that share no time have no
 intersection. Backward rules make the intersection a `subtimeOf` each argument when both
 are believed times, and a `subintervalOf` each when both are believed `time_interval`s. A
-query asks and gets that answer; the genlCx producer reads only a comparator or a stored
-fact
+query asks and gets that answer; the genlCx producer reads only a comparator, a stated
+bound or a stored fact
 ([context-nat.md](context-nat.md#the-bounded-r-oracle--no-proof-inside-the-relabel-loop)),
 so the slice at an intersection is not ordered under the slice at each argument.
 
@@ -576,7 +606,8 @@ network takes one from its own node terms; the other four calculi read stored fa
 For a **calendar** term the endpoints come from arithmetic: `(YearFn 2000)` says which year
 it is, and a year has a first moment whatever anybody wrote down. `vaelii.impl.calendar` is
 the prover that reads them, registered by name (`add-reasoner kb :calendar`) and answering
-three families:
+three families, and the negation of an instant ordering or an interval relation between two
+terms it reads:
 
 ```clojure
 (startOf (YearFn 2000) ?i)      ; ?i = (InstantFn 2000 1 1 0 0 0)
@@ -618,21 +649,35 @@ and requires a gap, and there is no gap between 1999 and 2000. `precedes` is the
 
 **The relation is read from the fields, not through the endpoints.** Two calendar terms'
 bounds fix which of the thirteen holds, so `calendar/relation` classifies it with four
-comparisons of two six-field vectors, and builds no network. Two of the thirteen never come
-out: calendar terms are aligned, so two of them nest, coincide, touch or are disjoint, and
-neither `overlaps` nor `overlappedBy` holds between a year, a month and a day.
+comparisons of two six-field vectors, and builds no network. Between two calendar terms two
+of the thirteen never come out: calendar terms are aligned, so two of them nest, coincide,
+touch or are disjoint, and neither `overlaps` nor `overlappedBy` holds between a year, a
+month and a day. A range is not aligned, so `overlaps` holds between January through June
+and April through September.
+
+**A named interval is read through its stated bounds.** For an interval relation with a
+named interval on either side, the clock reads the believed `startOf` and `endOf` facts
+visible in the goal's context, one `InstantFn` moment each (`stp/endpoints-with-support`),
+and classifies the relation from those fields as it does for two terms. So an interval
+stated to run from `(InstantFn 2000 1 1 0 0 0)` to `(InstantFn 2000 7 1 0 0 0)` `overlaps`
+one stated to run from April to October, with no relation between the two stated. A named
+interval with two stated starts, or with a start not before its end, has no extent here.
+The clock answers the negation of an interval relation only between two terms.
 
 **Answered, never stored.** No sentex, no handle, no justification, no minted constant: a
 computed endpoint is not a belief, needs no retraction, and leaves no orphan for the NAT
-sweep ([nat.md](nat.md)). The prover implements `Prover` and *not* `SupportingProver`, the
-claim that its answer reads nothing stored and no retraction can invalidate it
-([inference.md](inference.md), "What a computed answer rests on"). So `why` has no handle to
+sweep ([nat.md](nat.md)). The prover implements `Prover` and *not* `SupportingProver`.
+Between two terms that is the claim that its answer reads nothing stored and no retraction
+can invalidate it ([inference.md](inference.md), "What a computed answer rests on"). An
+answer read through a named interval's stated bounds is a query-time answer, which the
+forward join drops for its empty support (below). So `why` has no handle to
 show; `query … {:proof? true}` shows a computed relation as a `:leaf`. Order independence
 and locality hold for the same reason: there is no state to accumulate and nothing to
 relabel.
 
 **Cost, and what it claims.** `:lookup`: a bounded ground computation on at most six
-integers per term, with no closure, no network and no index read. `est-bindings` is 1: a
+integers per term, with no closure and no network. A pair of terms reads no index, and a
+named interval adds one visible-match read per stated bound. `est-bindings` is 1: a
 check has the one empty solution or none, and an endpoint is a function of its interval.
 `completeness` is **50**. A KB may state `startOf` facts about a calendar term or interval
 relations between two of them, and the calculus provers entail more from those than the
@@ -660,7 +705,8 @@ written in can be seen.
 time-keyed **contexts** by field nesting; the clock answers **sentences** about the terms.
 `datetime/subinterval?` holds of `a` and `b` exactly when the Allen relation between them
 is one of `subintervalOf`'s four, because `b`'s fields being a prefix of `a`'s is the same
-claim as `a`'s bounds lying inside `b`'s. The context producer never asks the clock, the
+claim as `a`'s bounds lying inside `b`'s. For a range the comparator tests that bound
+containment directly. The context producer never asks the clock, the
 clock never materializes a `genlCx` edge, and the two share the field reader in
 `vaelii.impl.datetime`.
 
@@ -683,17 +729,51 @@ clock never materializes a `genlCx` edge, and the two share the field reader in
   no network. So a stated `(before Breakfast (MonthFn 2000 1))` does not compose with the
   clock's `(before (MonthFn 2000 1) (MonthFn 2000 3))` to answer `(before Breakfast
   (MonthFn 2000 3))`.
+- **With the interval calculus registered, a relation between two named intervals is the
+  calculus's alone.** The Allen calculus claims completeness over its literals, and the
+  `:calendar` channel tests the goal's arguments for calendar terms, which a named interval
+  is not. So with `:allen` beside `:calendar`, `(overlaps JanJun AprSep)` over two
+  intervals with stated `InstantFn` bounds answers what the interval network entails, and
+  that network reads a stated bound only when it is a named moment a point fact names.
 - **A forward join cannot reach it.** A prover answers a forward antecedent only through
   `chain/solve-computed`, which drops an answer with **empty** support rather than building
   a justification that names the rule alone. The clock's support is empty by construction.
   So a calendar relation discharges a rule antecedent under `query` at a `:max-depth`, where
   the leaf is the registry, and derives nothing forward.
-- **`temporalDistance` does not follow.** The metric prover's nodes are atomic terms
-  (`stp/node-term?`), and a calendar term and an `InstantFn` moment are both structural, so
-  neither is a node in a metric network. Nothing here converts a field vector to a
-  magnitude ([stp.md](stp.md), [duration.md](duration.md)).
+- **`totalDuration` does not follow.** The duration prover reads a stated length, and
+  nothing gives it one off a calendar term's fields ([duration.md](duration.md)).
+  `temporalDistance` does follow: the metric network places a calendar moment at an offset
+  from an epoch node ([stp.md](stp.md#calendar-moments)).
 - **Three edges of the calendar itself.** A term whose end would leave the four-digit year
   has no endpoints, so `(endOf (YearFn 9999) ?i)` answers nothing. A date the calendar does
   not have is stricter here than in the containment reader, which bounds a day at 31
   whatever the month: `(DayFn 2000 2 30)` nests inside February by fields and has no
   endpoints. Leap seconds are not represented: a minute is sixty seconds.
+
+### Absolute time: UTC offsets and named zones
+
+A `DatetimeFn` string with a time may end in a UTC offset, `Z` or `±hh:mm`, so
+`(DatetimeFn "2000-01-15T13:00-07:00")` is the minute that begins at 20:00 UTC and is the
+interval `(DatetimeFn "2000-01-16T01:30+05:30")` names. `(ZonedDatetimeFn
+"2000-03-26T02:30" "Europe/London")` writes a wall-clock time in a named zone, whose second
+argument is a `timezone`, an IANA identifier string. `datetime/utc-extent` reads either
+form, and a range of two such strings, to its half-open UTC bounds, taking a named zone's
+offset at each bound from the zone's `java.time` rules.
+
+- **Two frames.** A term with no offset is wall-clock time in no zone. The calendar
+  prover, the point network's calendar moments and the context ordering relate it only to
+  another term in no zone, and an absolute term only to another absolute one
+  (`datetime/paired-extents`). So whether `(DatetimeFn "1999-12-31T21-08:00")` lies inside
+  `(DatetimeFn "2000-01-01")` is unknown, and the day is not read as UTC.
+- **No endpoint terms.** An `InstantFn` moment is in no zone, so the clock answers no
+  `startOf` or `endOf` for an absolute term. Its `StartFn` and `EndFn` are moments of the
+  point network, ordered against the points of other absolute terms.
+- **A term inside a skipped or repeated hour names no interval.** London's clocks skip
+  01:30 on 26 March 2000 and repeat 01:30 on 29 October 2000, so neither `ZonedDatetimeFn`
+  term relates to anything. Written with its offset as a `DatetimeFn` string, each
+  occurrence of the repeated time is an interval. A term that starts or ends on a clock
+  change spans the instants the zone's clock reads inside it: São Paulo's clocks went from
+  00:00 to 01:00 on 4 November 2018, so that day is 23 hours from 03:00 UTC, and from 24:00
+  back to 23:00 on 16 February 2019, so that day is 25 hours. An identifier the zone
+  database does not hold names no interval either.
+- Precision ends at the second, as for a term in no zone.

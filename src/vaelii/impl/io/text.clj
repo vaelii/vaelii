@@ -258,20 +258,20 @@
 
 (defn- exception-form
   "The `(exceptWhen <query> <rule>)` wrapper an exceptWhen meta-sentex was written as, under
-  whichever strength wrappers reproduce the pair. The stored meta's query is in the rule's
-  canonical variables, so the rule's varmap restores it. An outer `(set/monotonic …)` is
-  written only when both halves are known-true; a known-true exception on a default rule
-  carries its wrapper on the query (`sentex/peel-exception-strength`). A known-true rule
-  under a default exception is written again on a line of its own (`context-forms`)."
+  whichever strength wrappers reproduce the pair, the query in the rule's own variables. An
+  outer `(set/monotonic …)` only when both halves are known-true, else on the query. A rule
+  another context stores is written `(ist Cx <rule>)`, and on its own line there."
   [meta-sx rule-sx]
   (let [q      (nth (:sentence meta-sx) 1)
         q      (if-let [vm (:varmap rule-sx)] (sx/originalize q vm) q)
+        there? (not= (:context meta-sx) (:context rule-sx))
         exc?   (= :monotonic (:strength meta-sx))
-        rule?  (= :monotonic (:strength rule-sx))
+        rule?  (and (not there?) (= :monotonic (:strength rule-sx)))
         query? (and exc? (not rule?))]
     (cond-> (list sx/except-wrapper
                   (cond-> q query? (->> (list sx/strength-wrapper)))
-                  (authored rule-sx))
+                  (cond->> (authored rule-sx)
+                    there? (list sx/ist-functor (:context rule-sx))))
       (and exc? rule?) (->> (list sx/strength-wrapper)))))
 
 (defn- with-strength
@@ -279,19 +279,6 @@
   which is why no shipped file carries one."
   [form strength]
   (cond-> form (= :monotonic strength) (->> (list sx/strength-wrapper))))
-
-(defn- names-a-handle?
-  "Does `sentence` name a stored sentex by handle?  Such a sentence is written through
-  `reference-writer`.
-
-  Two spellings, and the second is why this is not one `tree-seq`.  A `(sentexHandle N)`
-  term anywhere inside — what an exceptWhen meta and a target-following meta carry — is a
-  handle **by shape**.  An `(except N)` carries a bare integer, a handle **by position**,
-  indistinguishable from the `86400` in `(conversionFactor Day Second 86400)`; so it is
-  recognised by its functor instead."
-  [sentence]
-  (boolean (or (and (sequential? sentence) (= sx/except-functor (first sentence)))
-               (some sx/sentex-handle? (tree-seq sequential? seq sentence)))))
 
 (defn- reference-writer
   "A fn from a sentence of `kb` to `[sentence digests]`: the sentence a text KB writes, each
@@ -376,20 +363,24 @@
   what to retract; `:digests` are `reference-writer`'s, on a form holding references.
   An ordinary fact or rule is `authored` under its strength wrapper, an inert sentex under
   `(set/inert …)`. An exceptWhen meta-sentex is written as the `(exceptWhen <query> <rule>)`
-  wrapper (`exception-form`), and its target rule is not written again unless it is
+  wrapper (`exception-form`), and a target rule in its context is not written again unless
   known-true under a default exception. Anything else naming a handle is written through
-  `reference-writer` (`names-a-handle?`), and skipped and counted when it has no text."
+  `reference-writer` (`sx/names-a-handle?`), and skipped and counted when it has no text."
   [kb records]
   (let [ids      (into #{} (map :id) records)
         meta?    #(sx/exceptWhen-meta? (:sentence %))
         write    (reference-writer kb)
+        rule-of  #(p/get-sentex (:records kb) (sx/exceptWhen-rule-handle (:sentence %)))
         by-rule  (into {} (comp (filter meta?)
-                                (map #(sx/exceptWhen-rule-handle (:sentence %)))
-                                (filter ids)
-                                (keep #(p/get-sentex (:records kb) %))
+                                (keep (fn [m] (when-let [r (rule-of m)]
+                                                (when (= (:context r) (:context m)) r))))
+                                (filter (comp ids :id))
                                 (filter #(some? (:strength %)))
                                 (map (juxt :id identity)))
-                       records)]
+                       records)
+        elsewhere (fn [m] (when-let [r (rule-of m)]
+                            (when (and (some? (:strength r)) (not= (:context r) (:context m)))
+                              r)))]
     (with-open [r (progress/start ::premise-entries "text: build the text forms"
                                   (when (counted? records) (count records)))]
       (reduce
@@ -401,11 +392,15 @@
                         skipped])
                drop! (fn [] [written (conj skipped sx)])]
            (cond
-             (and (meta? sx) (by-rule (sx/exceptWhen-rule-handle (:sentence sx))))
+             (and (meta? sx) (by-rule (sx/exceptWhen-rule-handle (:sentence sx)))
+                  (= (:context sx) (:context (by-rule (sx/exceptWhen-rule-handle (:sentence sx))))))
              (let [rule (by-rule (sx/exceptWhen-rule-handle (:sentence sx)))]
                (keep! (exception-form sx rule) [(:id sx) (:id rule)]))
 
-             (names-a-handle? (:sentence sx))
+             (and (meta? sx) (elsewhere sx))
+             (keep! (exception-form sx (elsewhere sx)) [(:id sx)])
+
+             (sx/names-a-handle? (:sentence sx))
              (if-let [[s ds] (write (authored sx))]
                (keep! (if (nil? (:strength sx))
                         (list sx/inert-wrapper s)

@@ -13,11 +13,13 @@
   believed stored `(R a b)` fact."
   (:require [vaelii.impl.datetime :as datetime]
             [vaelii.impl.except :as exc]
+            [vaelii.impl.graph :as graph]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.nat :as nat]
             [vaelii.impl.nat-read :as nat-read]
+            [vaelii.impl.observe :as observe]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reads :as reads]
             [vaelii.impl.sentex :as sx]
@@ -42,14 +44,148 @@
   genlMonad-below it."
   #{'genlMonad})
 
+(def ^:private bound-heads
+  "The functors of a stated bound: the facts `bounds-routes` reads."
+  '#{startOf endOf})
+
+(def ^:private order-heads
+  "The functors of a stated strict order between two moments, `instantBefore` and its
+  converse `instantAfter`: the facts `instant-path` reads."
+  '#{instantBefore instantAfter})
+
+(defn- named? [x] (and (symbol? x) (not (sx/variable? x))))
+
+(defn- ordered-from
+  "Each believed stated order placing a moment after the moment `n` (`later?`) or before it,
+  as `[moment handle]` in content order: `(instantBefore n m)` and `(instantAfter m n)` for
+  a later `m`, `(instantBefore m n)` and `(instantAfter n m)` for an earlier one."
+  [kb later? n]
+  (->> [['instantBefore (if later? [n '?x] ['?x n]) (if later? 2 1)]
+        ['instantAfter  (if later? ['?x n] [n '?x]) (if later? 1 2)]]
+       (mapcat (fn [[h args i]] (map #(vector (nth (:sentence %) i) %)
+                                     (kb/sentexes-matching kb (cons h args) '?ctx))))
+       (nm/sort-by-content-key (fn [[_ sx]] [(:context sx) (:sentence sx)]))
+       (map (fn [[m sx]] [m (:id sx)]))))
+
+(defn- instant-path
+  "The handles of the believed stated orders along the path from the moment `a` to the
+  moment `b` that a breadth-first walk from `a` reaches first, each moment's later moments
+  read in content order (`ordered-from`, `graph/bfs-tree`); nil when none reaches `b`."
+  [kb a b]
+  (when (seq (ordered-from kb false b))
+    (let [step (fn [n tree] (keep (fn [[m h]] (when-not (contains? tree m) [m [n h]]))
+                                  (ordered-from kb true n)))
+          {:keys [found tree]} (graph/bfs-tree [[a nil]] step #(= b %))]
+      (when found
+        (loop [n b hs ()]
+          (if-let [[m h] (get tree n)] (recur m (conj hs h)) (vec hs)))))))
+
+(def ^:private ^:dynamic *walked*
+  "nil, or inside `reconcile-order` of the moment `a` before `b`, `[a lm b hm]`: `lm` a delay
+  of the moments at or before `a`, `hm` of those at or after `b` (`moments-along`)."
+  nil)
+
+(defn- reaches?
+  "Does a chain of believed stated orders lead from the moment `a` to the distinct moment
+  `b`?  True without a walk when `*walked*` shows `a` at or before its `a` and `b` at or
+  after its `b`, or one of the two equal to its moment; else `graph/reaches?`."
+  [kb a b]
+  (or (when-let [[x lm y hm] *walked*]
+        (let [lo? (contains? @lm a)]
+          (or (and lo? (= b x)) (and (= a y) (contains? @hm b)) (and lo? (contains? @hm b)))))
+      (graph/reaches? #(map first (ordered-from kb true %)) #(map first (ordered-from kb false %)) a b)))
+
+(defn- before
+  "A delay of the facts showing the bound `a` falls before `b`, or at or before it unless
+  `strict?`, each bound six fields or a named moment: `[]` when the fields order them, or
+  one bound is both and `strict?` is false; else `instant-path`'s.  nil when neither shows
+  it, which `reaches?` answers before any path is read."
+  [kb strict? a b]
+  (let [term #(if (vector? %) (apply list 'InstantFn %) %)]
+    (cond
+      (and (vector? a) (vector? b)) (when ((if strict? neg? (complement pos?)) (compare a b)) (delay []))
+      (= a b)                       (when-not strict? (delay []))
+      :else                         (let [ta (term a) tb (term b)]
+                                      (when (reaches? kb ta tb) (delay (instant-path kb ta tb)))))))
+
+(def ^:private bounds-orders
+  "The sub-relations a time's stated bounds decide, `{R (fn [lower-extent upper-extent])}`
+  answering the comparisons `[strict? x y]` (`before`) the order needs past the bounds, nil
+  when the extents' shape refuses it, over the half-open extents `bounds-routes` reads:
+  `subintervalOf` between two intervals, and `subtimeOf` from a moment, whose extent is
+  `[t t]`, into an interval, or into an extent with no end at its start."
+  {'subintervalOf (fn [[as ae] [bs be]]
+                    (when (and ae be (not= as ae) (not= bs be))
+                      [[false bs as] [false ae be]]))
+   'subtimeOf     (fn [[t u] [bs be]]
+                    (cond
+                      (not= t u) nil
+                      (nil? be)  (when (= t bs) [])
+                      :else      [[false bs t] [true t be]]))})
+
+(defn- stated-bounds
+  "Each believed `(P x t)` fact, `P` `startOf` or `endOf`, as `[bound handle]` in content
+  order: `t`'s six fields for an `InstantFn` moment, `t` itself for a named moment."
+  [kb p x]
+  (->> (kb/sentexes-matching kb (list p x '?i) '?ctx)
+       (keep #(let [t (nth (:sentence %) 2)]
+                (when-let [b (or (datetime/instant-fields t) (when (named? t) t))] [b (:id %) %])))
+       (nm/sort-by-content-key (fn [[_ _ sx]] [(:context sx) (:sentence sx)]))
+       (map pop)))
+
+(defn- own-extent
+  "The half-open extent the term `x` names by its spelling (`datetime/extent`, an
+  `InstantFn` moment `[t t]`), or nil."
+  [x]
+  (or (datetime/extent x) (some-> (datetime/instant-fields x) (#(vector % %)))))
+
+(defn- extents
+  "Each half-open extent the time `x` can be read as, `[[start end] handles]`: a term's own
+  (`own-extent`), resting on nothing stored; else one per pair of a believed stated
+  `startOf` and `endOf` of `x` (`stated-bounds`), the start before the end when both are
+  fields, resting on the two facts, and one per stated start with no end, `[s nil]`; else,
+  for a symbol with no stated bound, the named moment `[x x]`, resting on nothing."
+  [kb x]
+  (if-let [e (own-extent x)]
+    [[e []]]
+    (when (symbol? x)
+      (let [ss (stated-bounds kb 'startOf x)
+            es (stated-bounds kb 'endOf x)]
+        (if (and (empty? ss) (empty? es))
+          [[[x x] []]]
+          (concat
+           (for [[s hs] ss
+                 [e he] es
+                 :when (if (and (vector? s) (vector? e)) (neg? (compare s e)) (not= s e))]
+             [[s e] [hs he]])
+           (for [[s hs] ss] [[s nil] [hs]])))))))
+
+(defn- bounds-routes
+  "The routes ordering `a` `R`-below `b` by the two times' extents (`extents`), one vector
+  of the stated bounds and the `instantBefore` facts each rests on, for an `R` in
+  `bounds-orders` and two times of which at least one has stated bounds: a pair of terms is
+  the comparator's alone."
+  [kb r a b]
+  (when-let [holds? (get bounds-orders r)]
+    (when (or (symbol? a) (symbol? b))
+      (for [[ea ha] (extents kb a)
+            [eb hb] (extents kb b)
+            :when (seq (concat ha hb))
+            :let  [ds (some->> (holds? ea eb) (map (fn [[s x y]] (before kb s x y))))]
+            :when (and ds (every? some? ds))
+            :let  [evs (mapv deref ds)]
+            :when (every? some? evs)]
+        (reduce into (-> ha (into hb)) evs)))))
+
 (defn- r-evidence
   "The beliefs the relationship `a` `R`-below `b` rests on, one vector of handles per route
   that holds, empty when none does: `[[]]` when a comparator answers it (a pure function of
   the two expressions, already carried by the `natFormula` antecedents); else, for an `R`
   in `closure-orders`, one supporter per edge along a path from `a` up to `b` that `a` sees
-  (`tax/reach-support`, a content-ordered walk), and the handle of each believed `(R a b)`
-  fact, in context order.  Every route holding is a justification, so which arrived first
-  decides none of them."
+  (`tax/reach-support`, a content-ordered walk), for an `R` in `bounds-orders`, the stated
+  bounds of each reading of the two extents that holds (`bounds-routes`), and the handle
+  of each believed `(R a b)` fact, in context order.  Every route holding is a
+  justification, so which arrived first decides none of them."
   [kb r a b]
   (if (comparator-holds? r a b)
     [[]]
@@ -58,6 +194,7 @@
        (let [tx (reasoning/taxonomy kb)]
          (when (and (not= a b) (tax/sees? tx a b))
            (some->> (tax/reach-support tx :genlCx a b a) (mapv first) not-empty vector))))
+     (bounds-routes kb r a b)
      (->> (kb/sentexes-matching kb (list r a b) '?ctx)
           (sort-by :context)
           (map #(vector (:id %)))))))
@@ -222,7 +359,7 @@
 (defn- comparable-terms
   "The terms the oracle can find `R`-below or `R`-above `a`, `a` among them, or nil when a
   comparator answers `R`, whose terms no index enumerates: for an `R` in
-  `closure-orders`, the contexts above and below `a` in the unscoped `genlCx` closure, a
+  `closure-orders`, the contexts `tax/context-routed-global` gives above and below `a`, a
   superset of the scoped closure `r-evidence` decides a pair under; and the other end of
   every believed stored `(R a x)` and `(R x a)`."
   [kb r a]
@@ -232,37 +369,137 @@
                   (into (map #(nth (:sentence %) 2)) (kb/sentexes-matching kb (list r a '?x) '?ctx))
                   (into (map #(nth (:sentence %) 1)) (kb/sentexes-matching kb (list r '?x a) '?ctx)))
         (and (symbol? a) (contains? closure-orders r))
-        (-> (into (tax/context-up-global tx a)) (into (tax/context-down-global tx a)))))))
+        (-> (into (tax/context-routed-global tx :fwd a))
+            (into (tax/context-routed-global tx :rev a)))))))
+
+(defn- declared-in
+  "The positions of `decls` inside the expression `e`'s arity whose declarations pass
+  `ok?`, least first."
+  [e decls ok?]
+  (sort (for [[pos ds] decls :when (and (integer? pos) (< 0 (long pos) (count e)) (ok? ds))] pos)))
+
+(defn- comparator? [[r]] (contains? datetime/order-comparators r))
+
+(defn- comparable-read
+  "`[p ts]`: the least declared position of `e`'s arity whose sub-relations no comparator
+  answers, and the terms `comparable-terms` gives there; nil with no such position."
+  [kb e decls]
+  (when-let [p (first (declared-in e decls #(not-any? comparator? %)))]
+    [p (into #{} (mapcat #(comparable-terms kb (first %) (nth e p))) (decls p))]))
+
+(defn- agreeing
+  "The context NATs of `cands` other than one of `e` that agree with `e` on every
+  argument `decls` declares no position for (`product-key`)."
+  [e decls cands]
+  (let [ks (keys decls) key (product-key e ks)]
+    (filter #(and (not= e (second %)) (= key (product-key (second %) ks))) cands)))
+
+(defn- candidates
+  "Every context of `f` other than one of expression `e` that agrees with `e` on every
+  undeclared argument and could be ordered against it: at `comparable-read`'s position, a
+  context holding one of its terms, read by term (`context-nats-naming`); with no such
+  position, every context of `f`."
+  [kb f e decls]
+  (agreeing e decls
+            (if-let [[p ts] (comparable-read kb e decls)]
+              (filter #(contains? ts (nth (second %) p nil)) (context-nats-naming kb f ts))
+              (context-nats-of kb f))))
+
+(defn- context-nats-keyed
+  "The believed context NATs of `f` whose expression names one of `terms`, read by each
+  term's own term-index key beside `f`'s (`reads/as-stored-with-terms`): for a ground
+  compound in the expression, a key a store indexed at `sx/*min-indexed-depth*` 2 or
+  less holds."
+  [kb f terms]
+  (->> terms
+       (mapcat #(reads/as-stored-with-terms (:index kb) [f (sx/canon %)]))
+       distinct
+       (keep #(some->> (p/get-sentex (:records kb) %) (context-nat-entry kb f)))))
+
+(defn- range-term? [x] (and (sequential? x) (= datetime/range-function (first x))))
+
+(defn- containing-read
+  "`[q ts]` for a read of `e`'s unwritten context, or nil: the least declared position `q`
+  all of whose declarations a comparator answers and where `e` holds a time with
+  `datetime/containing-terms`, and the terms a context ordered above `e`'s holds there
+  unless it holds a range: those, each symbol with a stated bound (`bounds-routes`) and
+  the other end of each believed stored `(R t x)`.  Nil also when the postings beside `f`
+  at those terms and the range function, with the stated bounds, number `n` or more."
+  [kb f e decls n]
+  (let [ix (:index kb)]
+    (when (<= (long sx/*min-indexed-depth*) 2)
+      (when-let [[q cs] (some #(some->> (datetime/containing-terms (nth e %)) (vector %))
+                              (declared-in e decls #(every? comparator? %)))]
+        (when (< (+ (transduce (map #(count (reads/as-stored-with-terms ix [f (sx/canon %)]))) + 0
+                               (conj cs datetime/range-function))
+                    (transduce (map #(reads/stored-count-with-functor ix %)) + 0 bound-heads))
+                 n)
+          [q (-> cs
+                 (into (for [h bound-heads, sx (kb/sentexes-matching kb (list h '?x '?t) '?ctx)
+                             :let [x (nth (:sentence sx) 1)] :when (named? x)] x))
+                 (into (for [[r] (decls q), sx (kb/sentexes-matching kb (list r (nth e q) '?x) '?ctx)]
+                         (nth (:sentence sx) 2))))])))))
+
+(defn- above-candidates
+  "The `candidates` a read of `e`'s unwritten context needs, those its context could be
+  ordered below: at `containing-read`'s position, a context holding one of its terms or a
+  range (`context-nats-keyed`), when it reads fewer postings than `candidates`; else
+  `candidates`."
+  [kb f e decls]
+  (let [ix (:index kb)
+        n  (if-let [[_ ts] (comparable-read kb e decls)]
+             (transduce (map #(count (reads/as-stored-with-terms ix [f %]))) + 0 ts)
+             (count (reads/as-stored-with-term ix f)))]
+    (if-let [[q ts] (containing-read kb f e decls n)]
+      (agreeing e decls (filter #(let [x (nth (second %) q nil)] (or (contains? ts x) (range-term? x)))
+                                (context-nats-keyed kb f (conj ts datetime/range-function))))
+      (candidates kb f e decls))))
 
 (defn- pairs-with
-  "The pairs, each way, of the context NAT `k` with every other context of `f` that
-  agrees with it on every undeclared argument and could be ordered against it: at the
-  least declared position of `k`'s arity whose sub-relations no comparator answers, a
-  context holding a term `comparable-terms` gives, read by term (`context-nats-naming`);
-  with no such position, every context of `f`."
+  "The pairs, each way, of the context NAT `k` with each of its `candidates`."
   [kb f k]
   (fn [decls]
     (when-let [[_ e _ :as m] (context-nat-of kb k)]
-      (let [ks    (keys decls)
-            key   (product-key e ks)
-            p     (first (sort (for [[pos ds] decls
-                                     :when (and (integer? pos) (< 0 (long pos) (count e))
-                                                (not-any? #(contains? datetime/order-comparators (first %)) ds))]
-                                 pos)))
-            cands (if p
-                    (let [ts (into #{} (mapcat #(comparable-terms kb (first %) (nth e p))) (decls p))]
-                      (filter #(contains? ts (nth (second %) p nil)) (context-nats-naming kb f ts)))
-                    (context-nats-of kb f))]
-        (for [o cands
-              :when (and (not= k (first o)) (= key (product-key (second o) ks)))
-              pr [[m o] [o m]]]
-          pr)))))
+      (for [o (candidates kb f e decls)
+            :when (not= k (first o))
+            pr [[m o] [o m]]]
+        pr))))
+
+(defn- unminted-supers
+  "The context NATs the producer would order the context of `expr` below, were it minted,
+  as `[k natFormula-handle]` in `k` order: each of `expr`'s `above-candidates` with a
+  route (`pair-routes`).  For a read of a context nobody has written into, which sees what
+  these contexts see (docs/context-nat.md).  Reads the declarations and the oracle and
+  writes nothing; nil on a KB declaring no `contextArgSubrelation`."
+  [kb expr]
+  (when (and (sequential? expr) (any-context-subrelations? kb))
+    (let [f     (first expr)
+          decls (declarations-by-position kb f)]
+      (when (seq decls)
+        (->> (above-candidates kb f expr decls)
+             (filter (fn [[_ e _]] (seq (pair-routes kb decls expr e))))
+             (map (fn [[k _ th]] [k th]))
+             (sort-by (comp nm/name-key first)))))))
+
+(defn unwritten-read
+  "`[k read-kb]` for a read of the context of `expr` nobody has written into: `k` the
+  `cx/` constant its content names, `read-kb` `kb` with a `genlCx` edge from `k` to each
+  of `unminted-supers` (`kb/with-context-edges`); nil when there are none.  Held among the
+  resident values under the change clock (`observe/cached`), so the reads between two
+  writes share one read copy and its caches."
+  [kb expr]
+  (observe/cached (reasoning/qcn kb) [::unwritten-read expr tax/*search* tax/*network-belief*]
+                  (fn [_]
+                    (when-let [supers (seq (unminted-supers kb expr))]
+                      (let [k (nat/constant-for nat-read/context-namespace expr)]
+                        [k (kb/with-context-edges kb k supers)])))))
 
 (defn- pairs-across
   "The pairs of `f`'s contexts that agree on every undeclared argument, whose sub holds, at a
   position `decls` orders by `r`, a term at or below `x`, and whose super holds one at or
-  above `y` there: equal, or for an `r` in `closure-orders`, reached through the unscoped
-  `genlCx` closure, a superset of the scoped closure `r-evidence` decides a pair under.  Each side is read by term (`context-nats-naming`), the sub side first,
+  above `y` there: equal, or for an `r` in `closure-orders`, a context
+  `tax/context-routed-global` gives, a superset of the scoped closure `r-evidence` decides
+  a pair under.  Each side is read by term (`context-nats-naming`), the sub side first,
   and an empty sub side reads no super side."
   [kb f r x y]
   (fn [decls]
@@ -271,11 +508,11 @@
           closed (and (contains? closure-orders r) (symbol? x) (symbol? y))
           side   (fn [ts] (filter (fn [[_ e]] (some #(contains? ts (nth e % nil)) ps))
                                   (context-nats-naming kb f ts)))
-          subs   (side (cond-> #{x} closed (into (tax/context-down-global tx x))))]
+          subs   (side (cond-> #{x} closed (into (tax/context-routed-global tx :rev x))))]
       (when (seq subs)
         (let [ks   (keys decls)
               sups (group-by #(product-key (second %) ks)
-                             (side (cond-> #{y} closed (into (tax/context-up-global tx y)))))]
+                             (side (cond-> #{y} closed (into (tax/context-routed-global tx :fwd y)))))]
           (for [s subs
                 t (get sups (product-key (second s) ks))
                 :when (not= (first s) (first t))]
@@ -291,19 +528,78 @@
                     :when (= r r')]
                 f))))
 
+(defn- reconcile-bounded
+  "The pairs of each context naming one of the times `xs`, in the functions a `bounds-orders`
+  relation orders (`pairs-with`).  Returns true when an edge gained a justification."
+  [kb xs]
+  (any-built?
+   (for [f (distinct (mapcat #(functions-ordered-by kb %) (keys bounds-orders)))
+         [k _ _] (context-nats-naming kb f xs)]
+     (reconcile-pairs kb f (pairs-with kb f k)))))
+
+(defn- moments-along
+  "The moment `a` and each moment a believed chain of stated orders places after it
+  (`later?`) or before it."
+  [kb later? a]
+  (graph/reach-all [a] #(map first (ordered-from kb later? %))))
+
+(defn- bounded-along
+  "The moments `ms` and each time with a stated bound among them, in content order: one side
+  of every pair of times an order between two moments arriving can order."
+  [kb ms]
+  (nm/sort-by-content-key identity
+                          (into ms (for [m ms h bound-heads
+                                         sx (kb/sentexes-matching kb (list h '?x m) '?ctx)]
+                                     (nth (:sentence sx) 1)))))
+
+(defn- contexts-at
+  "The contexts of `f` holding, at one of the positions `ps`, one of the times `ts`, or a
+  term whose own extent (`own-extent`) starts or ends at the fields of an `InstantFn` moment
+  among `ts`, which reads every context of `f`."
+  [kb f ps ts]
+  (let [ts  (set ts)
+        fs  (into #{} (keep datetime/instant-fields) ts)
+        at? (fn [[_ e]] (some #(let [t (nth e % nil)]
+                                 (or (contains? ts t) (some fs (own-extent t))))
+                              ps))]
+    (filter at? (if (seq fs) (context-nats-of kb f) (context-nats-naming kb f ts)))))
+
+(defn- reconcile-order
+  "The pairs a stated order of the moment `a` before `b` arriving can order, in the
+  functions a `bounds-orders` relation orders: each context holding a time at or before `a`
+  (`bounded-along`) against each holding one at or after `b`, both ways, at a position such
+  a relation orders, every comparison reading the two walks through `*walked*`.  An empty
+  first side reads no second.  Returns true when an edge gained a justification."
+  [kb a b]
+  (let [lm    (delay (moments-along kb false a))
+        hm    (delay (moments-along kb true b))
+        lo    (delay (bounded-along kb @lm))
+        hi    (delay (bounded-along kb @hm))
+        pairs (fn [f decls]
+                (let [ps  (for [[pos ds] decls :when (some #(contains? bounds-orders (first %)) ds)] pos)
+                      ks  (keys decls)
+                      los (contexts-at kb f ps @lo)]
+                  (when (seq los)
+                    (let [his (group-by #(product-key (second %) ks) (contexts-at kb f ps @hi))]
+                      (for [l  los
+                            h  (get his (product-key (second l) ks))
+                            :when (not= (first l) (first h))
+                            pr [[l h] [h l]]]
+                        pr)))))]
+    (binding [*walked* [a lm b hm]]
+      (any-built?
+       (for [f (distinct (mapcat #(functions-ordered-by kb %) (keys bounds-orders)))]
+         (reconcile-pairs kb f (partial pairs f)))))))
+
 (defn- reconcile-arrival
-  "The pairs a believed `sentence` arriving can order:
-
-  - a `(contextArgSubrelation F …)` declaration, every pair of `F`'s contexts;
-  - a `(natFormula K E)` map with `K` a `cx/` constant, the mint of a context, the pairs
-    `K` is in (`pairs-with`);
-  - an `(R a b)` fact on a declared sub-relation, the pairs across `a` and `b`
-    (`pairs-across`) in the functions declared to order by `R`; a `(genlCx a b)` edge,
-    the same for each sub-relation in `closure-orders`.
-
-  Any other sentence, including a fact stored into a `cx/` context that already exists,
-  creates no pair and reconciles nothing.  Returns true when an edge gained a
-  justification."
+  "The pairs a believed `sentence` arriving can order: for a `(contextArgSubrelation F …)`
+  declaration, every pair of `F`'s contexts; for a `(natFormula K E)` map with `K` a `cx/`
+  constant, the pairs `K` is in (`pairs-with`); for a stated `(startOf x t)` or `(endOf x
+  t)`, `reconcile-bounded` over `x`, and for a stated order between two moments,
+  `reconcile-order`; for an `(R a b)` fact on a declared sub-relation, the pairs
+  across `a` and `b` (`pairs-across`) in the functions declared to order by `R`, and for a
+  `(genlCx a b)` edge, the same per sub-relation in `closure-orders`.  Any other sentence
+  creates no pair and reconciles nothing.  Returns true when an edge gained a justification."
   [kb sentence]
   (when (and (sequential? sentence) (seq sentence))
     (let [[head x y] sentence]
@@ -313,6 +609,12 @@
 
         (and (= 'natFormula head) (nat-read/reified-context-symbol? x) (sequential? y) (seq y))
         (reconcile-pairs kb (first y) (pairs-with kb (first y) x))
+
+        (contains? bound-heads head)
+        (reconcile-bounded kb [x])
+
+        (contains? order-heads head)
+        (if (= 'instantBefore head) (reconcile-order kb x y) (reconcile-order kb y x))
 
         :else
         (any-built?
@@ -340,10 +642,12 @@
 
 (defn- declared-heads
   "The functors whose sentences `reconcile-arrival` reads: `contextArgSubrelation`,
-  `natFormula`, and every sub-relation a believed declaration names."
+  `natFormula`, every sub-relation a believed declaration names, and the `bound-heads` and
+  `order-heads` when one of those is in `bounds-orders`."
   [kb]
-  (into '#{contextArgSubrelation natFormula}
-        (map #(nth % 2)) (subrelation-declarations kb (constantly true))))
+  (let [rs (into #{} (map #(nth % 2)) (subrelation-declarations kb (constantly true)))]
+    (cond-> (into '#{contextArgSubrelation natFormula} rs)
+      (some bounds-orders rs) (into (into bound-heads order-heads)))))
 
 (defn- reconcile-moves*
   "`reconcile-moves` past its presence checks."

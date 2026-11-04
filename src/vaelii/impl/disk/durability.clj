@@ -215,7 +215,7 @@
   is probed at most once per interval, and a finished rewrite records its time, so detection
   latency is bounded by the same interval.  A probe reads no file content.  The record
   store answers from the live frame bytes it maintains per kind as it writes
-  (`record-store/dead-ratio`), and the KV store from its frame count (`kv/dead-ratio`)."
+  (`drs/dead-ratio`), and the KV store from its frame count (`dkv/dead-ratio`)."
   []
   (when (and (auto-compact?) (zero? (long @compaction-paused)))
     (let [now       (System/currentTimeMillis)

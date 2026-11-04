@@ -516,6 +516,8 @@
                          ["an edit removing" (as h "tok-a" :edit {:remove [b-claim]})]
                          ["an edit adding" (as h "tok-a" :edit {:add [[(list animal Rex) CxA] [(list dog Rex) CxB]]})]
                          ["edit-with-consequences" (as h "tok-a" :edit-with-consequences {:add [[(list dog Rex) CxB]]})]
+                         ["replace-facts of another context" (as h "tok-a" :replace-facts CxB [(list dog Rex)])]
+                         ["replace-facts with a fact the store places in CxUniverse" (as h "tok-a" :replace-facts CxA [(list dog Rex) (list ownerOf Rex Fido)])]
                          ["add-provenance" (as h "tok-a" :add-provenance b-claim {:note 1})]
                          ["add-provenance ahead of a sentex" (as h "tok-a" :add-provenance 999999 {:note 1})]
                          ["a do/ imperative" (as h "tok-a" :assert (list 'do/labeling CxA) CxA)]]]
@@ -533,13 +535,19 @@
                          ["a provenance :creator" (as h "tok-a" :assert (list animal Rex) CxA {:provenance {:creator 'AgentB}})]
                          ["a provenance :principal" (as h "tok-a" :assert (list animal Rex) CxA {:provenance {:principal 'AgentB}})]
                          ["an edit entry's :creator" (as h "tok-a" :edit {:add [[(list animal Rex) CxA {:creator 'AgentB}]]})]
+                         ["a replace-facts :creator" (as h "tok-a" :replace-facts CxA [(list dog Rex) (list animal Rex)] {:creator 'AgentB})]
                          ["an add-provenance :principal" (as h "tok-a" :add-provenance a-claim {:principal 'AgentB})]]]
           (is (= [403 :creator-mismatch] (status-type r)) why))
         (is (nil? (v/handle-of kb (list animal Rex) CxA))))
       (testing "naming the grant's own principal is redundant and allowed"
         (is (:ok (as h "tok-a" :assert-many [(list animal Rex)] CxA {:creator 'AgentA})))
         (is (:ok (as h "tok-a" :edit {:add [[(list animal Fido) CxA]] :remove [a-claim]})))
-        (is (= 'AgentA (:principal (v/provenance kb (v/handle-of kb (list animal Fido) CxA))))))
+        (is (= 'AgentA (:principal (v/provenance kb (v/handle-of kb (list animal Fido) CxA)))))
+        (is (= {:added 1 :removed 0}
+               (select-keys (:result (as h "tok-a" :replace-facts CxA
+                                         [(list animal Rex) (list animal Fido) (list parentOf Rex Fido)]))
+                            [:added :removed])))
+        (is (= 'AgentA (:principal (v/provenance kb (v/handle-of kb (list parentOf Rex Fido) CxA))))))
       (testing "reads stay open: one principal reads the other's context"
         (is (true? (:result (as h "tok-a" :query? (list dog Fido) CxB))))))))
 
@@ -1301,6 +1309,9 @@
             (is (nat-int? (client/assert conn (list bird Tweety) CxWire)))
             (let [rs (client/sentexes-matching conn (list bird '?x) CxWire)]
               (is (= (list bird Tweety) (:sentence (first rs))))))
+          (testing "ordinary defining contexts cross the real client boundary"
+            (is (= #{CxWire} (client/defining-contexts conn Tweety)))
+            (is (= #{CxWire} (vc/defining-contexts conn Tweety))))
           (testing "explicit nil integrity options match local and daemon defaults"
             (is (= (dissoc (v/kb-integrity kb #{} CxWire nil) :work :elapsed-ms)
                    (dissoc (client/kb-integrity conn #{} CxWire nil) :work :elapsed-ms))))

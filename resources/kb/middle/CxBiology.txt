@@ -91,7 +91,9 @@
 ;; particular penguin cannot fly — which an application can query and argue from. The
 ;; kind-level (not (capabilityType penguin flying)) says it of the kind; this says it of
 ;; the member, and neither follows from the other for the reason typeToInstancePred's own
-;; comment gives.
+;; comment gives.  The denial is about the penguin's own body: CxTra, whose tool
+;; vocabulary this context does not see, excepts it for a penguin that has something
+;; that enables flying.
 (set/forwardRule (implies (and (penguin ?x)) (not (hasCapability ?x flying))))
 
 ;; ---- where an animal lives is where it is --------------------------------
@@ -101,10 +103,9 @@
 (genl livesIn locatedIn)
 
 (set/defaultRule (set/forwardRule (implies (and (organism ?x)) (mortal ?x))))
-;; The rule is a default on purpose (life.txt's mortal comment): something known not to
-;; die defeats it.  kb-integrity suggests (genl organism mortal) for it; beside life.txt's
-;; (genl mortal organism) that edge makes the two types one, so the record keeps the rule.
-(declined_rule_macro (genl organism mortal))
+;; kb-integrity suggests (genl organism mortal) for the rule, and this keeps the rule.
+(acknowledgedFinding :rule-macro (genl organism mortal)
+                     "The rule is a default on purpose (life.txt's mortal comment): something known not to die defeats it, and the edge beside life.txt's (genl mortal organism) makes the two types one.")
 
 ;; ---- warm-bloodedness, read off the class --------------------------------
 ;; Never asserted of any particular animal: the five vertebrate classes are pairwise

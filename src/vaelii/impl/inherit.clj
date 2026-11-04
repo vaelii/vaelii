@@ -246,7 +246,7 @@
                                   (scoped #(if along?
                                              (tax/specs tx x context)
                                              (tax/genls tx x context))))
-                  genlCx (if along? (tax/context-down tx x) (tax/context-up tx x)) ; global on purpose
+                  genlCx (if along? (tax/context-down-global tx x) (tax/context-up-global tx x)) ; global on purpose
                   (fact-reach kb rel along? x context))))))
 
 (defn- relation-keys
@@ -316,7 +316,7 @@
   edges `context` sees (`tax/genl?`, `tax/genl?-global` unscoped), memoized, so the
   closure is never built.  A term asked more than `walks-before-reach` such memberships
   has its reach read whole once (`whole-reach`) when it holds few enough terms.  Every
-  other relation reads `witness-terms`."
+  other relation reads `witness-terms`, and `genlCx` the lower end's ancestor set."
   [kb {:keys [rel along?] :as pos} x t context]
   (if (= 'genl rel)
     (if-some [r (bounded-reach kb along? x context)]
@@ -332,7 +332,10 @@
                        (if cx
                          (scoped (fn [] (tax/genl? tx sub super cx)))
                          (tax/genl?-global tx sub super)))))))
-    (contains? (witness-terms kb pos x context) t)))
+    (if (= 'genlCx rel)
+      (let [[lo hi] (if along? [t x] [x t])]
+        (contains? (tax/context-up-global (reasoning/taxonomy kb) lo) hi))
+      (contains? (witness-terms kb pos x context) t))))
 
 (defn- held-reach
   "`reach` of `x` over the declarations `poss` as a set, when they walk one relation and
@@ -853,6 +856,35 @@
             (or (= :for holds)
                 (some #(and (= :against (:polarity %)) (not (:separated? %)))
                       (surviving kb lit context))))))))
+
+(defn open-goal?
+  "Is `goal` a positive literal with an open argument whose every position `positions`
+  declares holds a ground term?"
+  [kb goal context]
+  (and (sequential? goal) (symbol? (nm/functor goal)) (not= 'not (nm/functor goal))
+       (seq (sx/free-vars goal))
+       (let [args (vec (nm/args goal))
+             poss (by-position (positions kb (nm/functor goal) context) (count args))]
+         (and (seq poss) (every? #(sx/ground-term? (nth args (dec %))) (keys poss))))))
+
+(defn open-answers
+  "The bindings of `goal`'s variables (`open-goal?`) under which `answers?` holds of the
+  ground instance, in content order.  The candidates are the believed `(P … W …)` claims
+  visible from `context` with `W` in `reach` of the term at the least declared position;
+  each other declared position is matched open.  See docs/inherit.md, \"Reading it back\"."
+  [kb goal context]
+  (with-memo
+    (let [args (vec (nm/args goal))
+          poss (sort-by key (by-position (positions kb (nm/functor goal) context) (count args)))
+          [n ps] (first poss)
+          free (sx/free-vars goal)
+          open (reduce (fn [a [m _]] (assoc a (dec m) (symbol (str "?inheritArg" m)))) args (rest poss))]
+      (->> (reach kb ps (nth args (dec n)) context)
+           (mapcat #(res/matches-visible kb (apply list (nm/functor goal) (assoc open (dec n) %)) context))
+           (map #(select-keys (second %) free))
+           (distinct)
+           (filter #(answers? kb (res/substitute goal %) context))
+           (nm/sort-by-content-key (fn [b] (mapv b (sort free))))))))
 
 ;; ---- what an inherited claim rests on ------------------------------------
 ;; docs/inherit.md, "Forward chaining on a claim nobody stored"
@@ -1423,8 +1455,11 @@
             (into (when (and (not neg?) (= 2 (count body)))
                     (let [[s x] body]
                       (for [pred (separated-preserved kb s '?ctx)
+                            :let [rs (reads (list pred x) :for)]
+                            ;; the separation's witnesses are read only under a reading
+                            :when (seq rs)
                             :let [sups (separation-supports kb s pred)]
-                            r    (reads (list pred x) :for)
+                            r    rs
                             w    sups]
                         (-> (update r :handles into (:handles w))
                             (update :contexts into (:contexts w))))))))))))
@@ -1602,6 +1637,58 @@
   subsets of.  Past it the reading names every statement it found as one conjunction."
   8)
 
+(defn- licensing-sets
+  "The alternative sets of mark sentexes that license reading the arguments `s` of an
+  application of `f` as `tuple`, each a vector of handles, or nil when `tuple` is `s` or no
+  believed mark licenses it.  `permuted-read-supports` states the rest."
+  [kb f s tuple context]
+  (when (and (symbol? f) (not= s tuple) (= (count s) (count tuple)))
+    (let [tx    (reasoning/taxonomy kb)
+          tms   (reasoning/tms kb)
+          recs  (:records kb)
+          up    (when-not (sx/variable? context) (tax/context-up tx context))
+          ;; `[sentence group [[handle ctx] …]]` per statement, in content order
+          marks (->> (concat (when (= 2 (count s)) (tax/prop-supporters tx :symmetric f))
+                             (mapcat #(tax/commuting-supporters tx f %)
+                                     (tax/commuting-groups tx f)))
+                     distinct
+                     (keep (fn [h]
+                             (when (jtms/in? tms h)
+                               (let [sxr (p/get-sentex recs h)
+                                     sen (:sentence sxr)
+                                     g   (when (sequential? sen) (mark-group sen))]
+                                 (when (and g (or (nil? up) (contains? up (:context sxr))))
+                                   [sen g [h (:context sxr)]])))))
+                     (group-by (juxt first second))
+                     (map (fn [[[sen g] rows]]
+                            [sen g (->> (let [rs (mapv #(nth % 2) rows)
+                                              u  (filterv #(= universal-context (second %)) rs)]
+                                          (if (seq u) u rs))
+                                        (sort-by (comp nm/print-key second))
+                                        (tax/uncovered tx (fn [[_ c]] [nil (if (nil? c) #{} #{c})])))]))
+                     (sort-by (comp nm/print-key first))
+                     vec)
+          n     (count marks)
+          ok?   (fn [idx] (rearranges? (map #(second (nth marks %)) idx) s tuple))
+          sets  (if (> n permuted-mark-cap)
+                  (let [all (range n)] (when (ok? all) [all]))
+                  ;; by size, so a set holding one already found is not minimal
+                  (reduce (fn [found mask]
+                            (let [idx (filter #(bit-test mask %) (range n))]
+                              (if (or (some (fn [fs] (every? (set idx) fs)) found)
+                                      (not (ok? idx)))
+                                found
+                                (conj found (vec idx)))))
+                          []
+                          (sort-by #(Long/bitCount %) (range 1 (bit-shift-left 1 n)))))
+          alts  (for [idx sets
+                      alt (reduce (fn [alts i]
+                                    (for [a alts, [h _] (nth (nth marks i) 2)] (conj a h)))
+                                  [[]]
+                                  idx)]
+                  alt)]
+      (not-empty (into [] (distinct) alts)))))
+
 (defn permuted-read-supports
   "The alternative sets of mark sentexes a read of the stored `sentence` at the argument
   list `tuple` rests on, each a vector of handles, or nil when `tuple` is the stored
@@ -1609,59 +1696,27 @@
   \"A fact read in another argument order names the mark that licenses the order\").
 
   One alternative per minimal set of statements licensing the rearrangement, read off the
-  marks stored on the fact's own functor (`tax/prop-supporters`,
-  `tax/commuting-supporters`), with no index read (`firing_cost_test`).  Each statement is
-  named by the believed sentexes stating it that `context` sees and no other covers, the
-  CxUniverse copy where it is believed.  The groups are read unscoped, a superset."
+  marks on the fact's own functor and on each compound `tuple` holds in another order, with
+  no index read but a `quotedArg` functor's declarations (`firing_cost_test`).  Each
+  statement is named by the believed sentexes stating it that `context` sees and no other
+  covers, the CxUniverse copy where believed.  The groups are read unscoped, a superset."
   [kb sentence tuple context]
-  (let [s (vec (rest sentence))
-        f (nm/functor sentence)]
-    (when (and (symbol? f) (not= s tuple) (= (count s) (count tuple)))
-      (let [tx    (reasoning/taxonomy kb)
-            tms   (reasoning/tms kb)
-            recs  (:records kb)
-            up    (when-not (sx/variable? context) (tax/context-up tx context))
-            ;; `[sentence group [[handle ctx] …]]` per statement, in content order
-            marks (->> (concat (when (= 2 (count s)) (tax/prop-supporters tx :symmetric f))
-                               (mapcat #(tax/commuting-supporters tx f %)
-                                       (tax/commuting-groups tx f)))
-                       distinct
-                       (keep (fn [h]
-                               (when (jtms/in? tms h)
-                                 (let [sxr (p/get-sentex recs h)
-                                       sen (:sentence sxr)
-                                       g   (when (sequential? sen) (mark-group sen))]
-                                   (when (and g (or (nil? up) (contains? up (:context sxr))))
-                                     [sen g [h (:context sxr)]])))))
-                       (group-by (juxt first second))
-                       (map (fn [[[sen g] rows]]
-                              [sen g (->> (let [rs (mapv #(nth % 2) rows)
-                                                u  (filterv #(= universal-context (second %)) rs)]
-                                            (if (seq u) u rs))
-                                          (sort-by (comp nm/print-key second))
-                                          (tax/uncovered tx (fn [[_ c]] [nil (if (nil? c) #{} #{c})])))]))
-                       (sort-by (comp nm/print-key first))
-                       vec)
-            n     (count marks)
-            ok?   (fn [idx] (rearranges? (map #(second (nth marks %)) idx) s tuple))
-            sets  (if (> n permuted-mark-cap)
-                    (let [all (range n)] (when (ok? all) [all]))
-                    ;; by size, so a set holding one already found is not minimal
-                    (reduce (fn [found mask]
-                              (let [idx (filter #(bit-test mask %) (range n))]
-                                (if (or (some (fn [fs] (every? (set idx) fs)) found)
-                                        (not (ok? idx)))
-                                  found
-                                  (conj found (vec idx)))))
-                            []
-                            (sort-by #(Long/bitCount %) (range 1 (bit-shift-left 1 n)))))
-            alts  (for [idx sets
-                        alt (reduce (fn [alts i]
-                                      (for [a alts, [h _] (nth (nth marks i) 2)] (conj a h)))
-                                    [[]]
-                                    idx)]
-                    alt)]
-        (not-empty (into [] (distinct) alts))))))
+  (let [s (vec (rest sentence))]
+    (if-not (some #(and (seq? %) (seq %)) tuple)
+      (licensing-sets kb (nm/functor sentence) s tuple context)
+      (let [marks    (res/store-marks kb)
+            mention? (:mention-at? marks)
+            walk     (fn walk [f s tuple]
+                       (let [ct   (into [] (map-indexed #(if (and (seq? %2) (not (mention? f (inc %1))))
+                                                           (sx/canonical-subterm %2 marks) %2))
+                                        tuple)
+                             own  (or (licensing-sets kb f s ct context) [[]])
+                             kids (for [[t c] (map vector tuple ct)
+                                        :when (and (seq? t) (not= t c) (= (count t) (count c)))]
+                                    (walk (first t) (vec (rest c)) (vec (rest t))))]
+                         (reduce (fn [alts ks] (for [a alts, k ks] (into a k))) own kids)))
+            alts     (walk (nm/functor sentence) s (vec tuple))]
+        (when-not (= [[]] alts) (into [] (distinct) alts))))))
 
 (defonce ^:private crossing-reads
   ;; `{kb-key -> {:decls postings :derived {k value} :read-under s :marks {q #{group}}}}`, one
@@ -1800,56 +1855,74 @@
         :any
         (into (set ns) cat comps)))))
 
+(defn- crossing-hits
+  "`{:below hits :above hits :marked m :any ps :along a}` for the `genl` edge `a → b`,
+  where `hits` is `{q #{n …}}`, the positions each predicate holds a stored claim at, in
+  either polarity, with a term of `specs-global` of `a` (`:below`) or of `genls-global` of
+  `b` (`:above`) at a position some declaration preserves along `genl` or a permuting mark
+  widens it to; `:marked` is `{P {q positions-or-:any}}` for each marked sub-predicate `q`
+  of a declared `P`, `:any` the predicates every edge moves, and `:along`
+  `positions-along`'s `:preds`.  nil past `crossing-closure-cap` or on an index store with
+  no slot predicate set.  Memoized per edge; the closures are unscoped, a superset over
+  every reader."
+  [kb a b]
+  (memoized
+   [:crossing-hits a b]
+   (fn []
+     (let [tax   (reasoning/taxonomy kb)
+           cap   (long crossing-closure-cap)
+           below (tax/specs-global-within tax a cap)
+           above (when below (tax/genls-global-within tax b (- cap (count below))))]
+       (when above
+         (let [idx    (:index kb)
+               {along :preds poss0 :positions both :both} (positions-along kb 'genl)
+               marked (reduce-kv (fn [m q gs]
+                                   (reduce (fn [m pr]
+                                             (if-let [ns (get along pr)]
+                                               (assoc-in m [pr q] (reach-positions ns gs))
+                                               m))
+                                           m
+                                           (tax/genls-global tax q)))
+                                 {}
+                                 (commuting-marks kb))
+               any    (into both (keep (fn [[pr qs]] (when (some #{:any} (vals qs)) pr))) marked)
+               poss   (into poss0 (comp (mapcat vals) (remove keyword?) cat) (vals marked))
+               hits   (fn [ts]
+                        (reduce (fn [m t]
+                                  (reduce (fn [m n]
+                                            (let [qs (reads/as-stored-predicates-at-arg idx n t)]
+                                              (if (nil? qs)
+                                                (reduced (reduced nil))
+                                                (reduce #(update %1 %2 (fnil conj #{}) n) m qs))))
+                                          m
+                                          poss))
+                                {}
+                                ts))
+               hb     (hits below)
+               ha     (when hb (hits above))]
+           (when ha
+             {:below hb :above ha :marked marked :any any :along along})))))))
+
 (defn- crossings
   "The set of predicates preserved along `genl` that the edge `a → b` moves, or nil where
-  no narrowing is read: a closure past `crossing-closure-cap`, or an index store with no
-  slot predicate set.  `crossing-claim?` states what it computes.
+  no narrowing is read (`crossing-hits`).  `crossing-claim?` states what it computes.
 
   The closures are unscoped: the moved set is a trigger over every reader, and each
   re-join reads its rule from the rule's own context."
   [kb a b]
-  (let [tax   (reasoning/taxonomy kb)
-        cap   (long crossing-closure-cap)
-        below (tax/specs-global-within tax a cap)
-        above (when below (tax/genls-global-within tax b (- cap (count below))))]
-    (when above
-      (let [idx    (:index kb)
-            {along :preds poss0 :positions both :both} (positions-along kb 'genl)
-            ;; {P {q positions-or-:any}}, for each marked sub-predicate q of a declared P
-            marked (reduce-kv (fn [m q gs]
-                                (reduce (fn [m pr]
-                                          (if-let [ns (get along pr)]
-                                            (assoc-in m [pr q] (reach-positions ns gs))
-                                            m))
-                                        m
-                                        (tax/genls-global tax q)))
-                              {}
-                              (commuting-marks kb))
-            any    (into both (keep (fn [[pr qs]] (when (some #{:any} (vals qs)) pr))) marked)
-            poss   (into poss0 (comp (mapcat vals) (remove keyword?) cat) (vals marked))
-            ;; {q #{n …}}: the positions each predicate holds a closure term at
-            hits   (reduce (fn [m t]
-                             (reduce (fn [m n]
-                                       (let [qs (reads/as-stored-predicates-at-arg idx n t)]
-                                         (if (nil? qs)
-                                           (reduced (reduced nil))
-                                           (reduce #(update %1 %2 (fnil conj #{}) n) m qs))))
-                                     m
-                                     poss))
-                           {}
-                           (into below above))]
-        (when hits
-          (reduce-kv
-           (fn [acc q ns]
-             (reduce (fn [acc pr]
-                       (let [ok (or (get-in marked [pr q]) (get along pr))]
-                         (if (and ok (or (= :any ok) (some ok ns)))
-                           (conj acc pr)
-                           acc)))
-                     acc
-                     (tax/genls-global tax q)))
-           any
-           hits))))))
+  (when-let [{hb :below ha :above :keys [marked any along]} (crossing-hits kb a b)]
+    (let [tax (reasoning/taxonomy kb)]
+      (reduce-kv
+       (fn [acc q ns]
+         (reduce (fn [acc pr]
+                   (let [ok (or (get-in marked [pr q]) (get along pr))]
+                     (if (and ok (or (= :any ok) (some ok ns)))
+                       (conj acc pr)
+                       acc)))
+                 acc
+                 (tax/genls-global tax q)))
+       any
+       (merge-with into hb ha)))))
 
 (defn- crossing-claim?
   "For the `genl` edge in `body` (`(genl a b)`, or the body under a `not`), the set of
@@ -2058,20 +2131,21 @@
                           (fn [t] (boolean (some #(contains? % t) sets)))))]
           (when-not (and (= 'genl f)
                          (some #(seq (among (tax/genls-global tx %) by-p)) args))
-            (let [every-t (when (seq claimed) (reached claimed any?))
+            ;; the reaches are read at the first goal the separation arms leave open
+            (let [every-t (when (seq claimed) (delay (reached claimed any?)))
                   some-t  (when (seq rels)
-                            (reached (into (set selfs) (mapcat by-r) rels)
-                                     #(contains? rels (:rel %))))
+                            (delay (reached (into (set selfs) (mapcat by-r) rels)
+                                            #(contains? rels (:rel %)))))
                   [member any] (separation-moved kb sen (keys by-p))]
               (when (or every-t some-t (seq member) (seq any))
                 (fn [goal]
                   (let [gs (nm/args goal)
                         g  (nm/functor goal)]
                     (boolean (or (not-every? symbol? gs)
-                                 (and every-t (every? every-t gs))
-                                 (and some-t (some some-t gs))
                                  (contains? any g)
-                                 (and (contains? member g) (= args gs))))))))))))))
+                                 (and (contains? member g) (= args gs))
+                                 (and every-t (every? @every-t gs))
+                                 (and some-t (some @some-t gs))))))))))))))
 
 (defn claim-reach-extent
   "The stored facts of the preserved predicate `pred`, in either polarity, whose tuple the
@@ -2141,17 +2215,47 @@
                   (mapcat #(reads/as-stored-unary-with-arg-global idx %) terms))
             (into #{} (mapcat #(reads/as-stored-with-functor idx %)) types)))))))
 
+(defn- edge-terms
+  "`{n terms}`: for each position `n` of `ns` where `pred` is preserved along `genl`
+  (`by-n` its declarations by position), the goal terms whose reach the edge `a → b`
+  moves.  A walk against `genl` crosses the edge from `a` to `b` and one along it from `b`
+  to `a`, so over `genl` alone those are `specs-global` of `a` at a position preserved
+  against it and `genls-global` of `b` at one preserved along it, each only while a claim
+  of `pred` or below it holds a term of the other side there (`crossing-hits`).  A position
+  walking a second relation reads the joint reaches of both ends.  The closures are
+  unscoped, a superset over every reader, since each asker re-reads its own."
+  [kb a b pred by-n ns]
+  (let [tax (reasoning/taxonomy kb)]
+    (if (some #(next (relation-keys (by-n %))) ns)
+      (let [ts (into #{}
+                     (for [n ns, {:keys [rel along?]} (relation-keys (by-n n))
+                           :when (= 'genl rel)
+                           :let  [[from to] (if along? [b a] [a b])]
+                           t     (concat (licensed-reach kb (by-n n) from '?ctx)
+                                         (reach kb (by-n n) to '?ctx))]
+                       t))]
+        (zipmap ns (repeat ts)))
+      (let [hs    (crossing-hits kb a b)
+            from? (fn [hits n]
+                    (or (nil? hs)
+                        (some (fn [[q qn]] (and (contains? qn n)
+                                                (contains? (tax/genls-global tax q) pred)))
+                              hits)))]
+        (into {} (for [n ns]
+                   [n (into #{} (mapcat #(if (:along? %)
+                                           (when (from? (:below hs) n) (tax/genls-global tax b))
+                                           (when (from? (:above hs) n) (tax/specs-global tax a))))
+                            (relation-keys (by-n n)))]))))))
+
 (defn edge-reach
   "The stored facts whose questions the `genl` edge `(genl a b)` can move for `pred`, a
   predicate preserved along `genl`, as a superset: the facts of `pred`, in either
-  polarity, holding a term of the edge's closure (`specs-global` of `a` with
-  `genls-global` of `b`, the joint reaches at a position walking a second relation) at a
-  position `pred` is preserved at along `genl` or at the other position of a binary
-  converse, and, when a claim of `pred` is stored (`claims-stored?`), the unary facts at
-  such a term whose type is one of `separated-types`.  The facts of `pred` are its stored
-  extent when the closure reads would outnumber it.  nil when `pred` names no position
-  along `genl` or a commuting mark stands on `pred` or below it, for the caller to
-  re-open the extent.  Read unscoped."
+  polarity, holding a term `edge-terms` names at its position or at the other position of
+  a binary converse, and, when a claim of `pred` is stored (`claims-stored?`), the unary
+  facts at such a term of position 1 whose type is one of `separated-types`.  The facts
+  of `pred` are its stored extent when the closure reads would outnumber it.  nil when
+  `pred` names no position along `genl` or a commuting mark stands on `pred` or below it,
+  for the caller to re-open the extent.  Read unscoped."
   [kb a b pred]
   (with-memo
     (let [tax  (reasoning/taxonomy kb)
@@ -2162,26 +2266,20 @@
                  (not-any? #(contains? (tax/genls-global tax %) pred) (keys (commuting-marks kb))))
         (let [idx   (:index kb)
               recs  (:records kb)
-              ;; a walk against `genl` crosses the edge from `a` to `b`, one along it from
-              ;; `b` to `a`
-              terms (if (some #(next (relation-keys (by-n %))) ns)
-                      (into #{}
-                            (for [n ns, {:keys [rel along?]} (relation-keys (by-n n))
-                                  :when (= 'genl rel)
-                                  :let  [[from to] (if along? [b a] [a b])]
-                                  t     (concat (licensed-reach kb (by-n n) from '?ctx)
-                                                (reach kb (by-n n) to '?ctx))]
-                              t))
-                      (into (tax/specs-global tax a) (tax/genls-global tax b)))
-              at    (into ns (comp (filter #{1 2}) (map #(- 3 %))) ns)
+              by-t  (edge-terms kb a b pred by-n ns)
+              at    (reduce-kv (fn [m n ts]
+                                 (cond-> (update m n (fnil into #{}) ts)
+                                   (#{1 2} n) (update (- 3 n) (fnil into #{}) ts)))
+                               {} by-t)
               types (when (claims-stored? kb pred) (separated-types kb pred))]
-          (cond-> (if (> (* (count terms) (count at)) (reads/stored-count-with-functor idx pred))
+          (cond-> (if (> (reduce + (map count (vals at))) (reads/stored-count-with-functor idx pred))
                     (set (reads/as-stored-with-functor idx pred))
-                    (into #{} (for [t terms, n at, h (reads/as-stored-with-args idx pred {n t})] h)))
+                    (into #{} (for [[n ts] at, t ts, h (reads/as-stored-with-args idx pred {n t})] h)))
             (seq types)
             (into (filter #(let [s (some-> (p/get-sentex recs %) :sentence)]
                              (and (seq? s) (= 2 (count s)) (contains? types (first s)))))
-                  (mapcat #(reads/as-stored-unary-with-arg-global idx %) terms))))))))
+                  (mapcat #(reads/as-stored-unary-with-arg-global idx %)
+                          (get by-t 1 (into #{} cat (vals by-t)))))))))))
 
 (defn moved-predicates
   "The preserved predicates whose licensed claims `sen` may have moved, over five

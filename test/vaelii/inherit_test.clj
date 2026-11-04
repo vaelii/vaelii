@@ -308,10 +308,8 @@
         "the stored fact still answers, by the ordinary matcher")))
 
 (tu/deftest-kb an-open-goal-returns-the-stored-tuples-and-only-those
-  ;; docs/inherit.md's ground-only contract, asserted: `TransitiveInArgProver` answers a
-  ;; ground goal, and an open one is left to the fact and rule provers — so a query
-  ;; enumerates the stored extent while `ask?` answers each licensed tuple.  A future
-  ;; enumerator changes this test deliberately or not at all.
+  ;; docs/inherit.md, "Reading it back": a goal open at a preserved position reads the
+  ;; stored extent alone, while `ask?` answers each licensed tuple.
   (tu/with-terms [dog_t cat_t golden_retriever_t maine_coon_t largerThan]
     (v/with-deferred-settle kb
       (v/assert kb (list 'genl golden_retriever_t dog_t) 'CxUniverse)
@@ -326,6 +324,29 @@
         "the open goal enumerates the stored extent and no licensed tuple")
     (is (empty? (v/ask kb (list largerThan '?x maine_coon_t) 'CxUniverse))
         "a half-open goal bound off the stored extent enumerates nothing")))
+
+(tu/deftest-kb an-open-goal-bound-at-every-preserved-position-answers-each-licensed-binding
+  ;; Two parthood steps down, query, prove and ask? return the bindings ask? confirms per
+  ;; ground instance; the binding a stated denial undercuts is in none of the three.
+  (tu/with-terms [tangiblePartOf locatedIn owns Bolt Nut Mount Car Desk Shelf Ann Bob Cid CxT]
+    (v/with-deferred-settle kb
+      (v/assert kb (list 'genlCx CxT 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'transitive tangiblePartOf) CxT)
+      (v/assert kb (list 'transitiveInArgInverse locatedIn 1 tangiblePartOf) CxT)
+      (v/assert kb (list 'transitiveInArgInverse owns 2 tangiblePartOf) CxT)
+      (doseq [s [(list tangiblePartOf Bolt Nut) (list tangiblePartOf Nut Mount)
+                 (list locatedIn Mount Desk) (list locatedIn Nut Shelf)
+                 (list 'not (list locatedIn Bolt Shelf))
+                 (list owns Ann Mount) (list owns Cid Nut) (list 'not (list owns Cid Bolt))
+                 (list owns Bob Car)]]
+        (v/assert kb s CxT)))
+    (doseq [[goal want denied] [[(list locatedIn Bolt '?w) #{{'?w Desk}} {'?w Shelf}]
+                                [(list owns '?who Bolt) #{{'?who Ann}} {'?who Cid}]]]
+      (testing (str goal)
+        (is (= [want want want]
+               [(set (v/query kb goal CxT)) (set (v/prove kb goal CxT)) (set (v/ask kb goal CxT))]))
+        (is (every? #(v/ask? kb (res/substitute goal %) CxT) want))
+        (is (not (v/ask? kb (res/substitute goal denied) CxT)))))))
 
 (tu/deftest-kb the-licence-stays-with-the-predicate-it-names
   ;; docs/inherit.md, opening section: facts travel up the predicate hierarchy, and
@@ -460,34 +481,29 @@
           (when kind
             (is (v/has-prop? kb kind bondedTo reader) "and so is the property")))))))
 
-(tu/deftest-kb a-permuting-mark-is-read-from-a-context-with-no-edge
-  ;; CxI is named by no `genlCx` edge, so it sees no statement of a mark stated in CxA,
-  ;; nor the copy in CxUniverse.  The store sorts CxI's fact under the mark all the same,
-  ;; so `has-prop?` reads the property from CxI as the store does, while the mark asked as
-  ;; a sentence is answered where a statement is visible, as any sentence is.  A mark
-  ;; stated in CxI is lifted, so CxUniverse and both siblings read it.  Each in either order.
+(tu/deftest-kb a-permuting-mark-stated-in-any-context-is-read-from-every-context
+  ;; The mark is lifted to CxUniverse, which every context sees, so the mirror, the mark
+  ;; asked as a sentence and `has-prop?` answer alike at CxUniverse, at two siblings and at
+  ;; a context no edge names.  Each in either order.
   (doseq [[kind mark] [[:symmetric #(list 'symmetric %)]
                        [:commutative #(list 'commutative %)]
                        [nil #(list 'commutativeInArgs % 1 2)]
                        [nil #(list 'commutativeInArgAndRest % 1)]]
-          mark-in-ci? [false true]
+          [mark-cx fact-cx] [[:a :i] [:i 'CxUniverse]]
           mark-first? [true false]]
     (tu/with-terms [bondedTo Ann Bob CxA CxB CxI]
-      (let [[mark-cx fact-cx readers] (if mark-in-ci?
-                                        [CxI 'CxUniverse ['CxUniverse CxA CxB]]
-                                        [CxA CxI [CxI]])]
-        (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
-        (v/assert kb (list 'genlCx CxB 'CxUniverse) 'CxUniverse)
+      (let [cx       #(get {:a CxA :i CxI} % %)
+            mark-cx  (cx mark-cx)
+            fact-cx  (cx fact-cx)]
         (v/assert kb (list 'arity bondedTo 2) 'CxUniverse)
         (when mark-first? (v/assert kb (mark bondedTo) mark-cx))
         (v/assert kb (list bondedTo Ann Bob) fact-cx)
         (when-not mark-first? (v/assert kb (mark bondedTo) mark-cx))
-        (doseq [reader readers]
+        (doseq [reader (if (= fact-cx CxI) [CxI] ['CxUniverse CxA CxB CxI])]
           (testing (str (first (mark bondedTo)) " stated in " mark-cx ", read from " reader
                         (if mark-first? ", mark first" ", mark last"))
             (is (v/ask? kb (list bondedTo Bob Ann) reader) "the store answers the mirror")
-            (is (= (not= CxI reader) (v/ask? kb (mark bondedTo) reader))
-                "the statement answers where it is visible")
+            (is (v/ask? kb (mark bondedTo) reader) "the statement is visible")
             (when kind
               (is (v/has-prop? kb kind bondedTo reader) "and the property holds"))))))))
 
@@ -1276,3 +1292,18 @@
                           #(binding [budget/*deadline* (System/nanoTime)]
                              (count (inherit/claims kb (list largerThan dog_t cat_t)
                                                     'CxUniverse)))))))))
+
+(tu/deftest-kb a-preservation-along-genlCx-reads-the-context-topology-with-no-except-holes
+  (tu/with-terms [CxP CxC CxS theme War]
+    (v/assert kb (list 'genlCx CxP 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxS 'CxUniverse) 'CxUniverse)
+    (let [edge (v/assert kb (list 'genlCx CxC CxP) 'CxUniverse)]
+      (v/assert kb (list 'transitiveInArgInverse theme 1 'genlCx) 'CxUniverse)
+      (v/assert kb (list theme CxP War) 'CxUniverse)
+      (is (seq (v/ask kb (list theme CxC War) CxS)) "the claim about CxP reaches CxC")
+      (let [x (v/assert kb (list 'except (v/sentex-handle edge)) CxC)]
+        (is (not (v/sees? kb CxC CxP)) "the except hides the edge from CxC")
+        (testing "and the preserved claim stands where the except is not visible (docs/inherit.md, \"From whose vantage\")"
+          (is (seq (v/ask kb (list theme CxC War) 'CxUniverse)))
+          (is (seq (v/ask kb (list theme CxC War) CxS))))
+        (v/retract! kb x)))))

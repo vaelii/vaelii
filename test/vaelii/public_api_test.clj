@@ -40,7 +40,7 @@
     (v/assert kb (list 'genlCx CxLeaf CxMid) 'CxUniverse)
     (v/assert kb (list 'genlCx CxMid CxTop)  'CxUniverse)
     (testing "context-up is what a context sees; context-down who sees it"
-      (is (= #{CxLeaf CxMid CxTop} (v/context-up kb CxLeaf)))
+      (is (= #{CxLeaf CxMid CxTop 'CxUniverse} (v/context-up kb CxLeaf)))
       (is (= #{CxLeaf CxMid} (v/context-down kb CxMid))))
     (testing "sees? is the up-closure membership test, reflexively"
       (is (v/sees? kb CxLeaf CxTop))

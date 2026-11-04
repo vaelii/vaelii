@@ -1157,7 +1157,15 @@
   (note-moved! tms (concat (map first (:removed-supports result)) (:removed-sentexes result)))
   result)
 
-(defn ensure-node [tms datum depth] (moving (-ensure-node tms datum depth)) datum)
+(defn ensure-node
+  "Create `datum`'s node if absent, at `depth` or lower (`-ensure-node`).  A node already
+  present at a depth no higher than `depth` is what the write would leave, so under
+  `observe/*chain-fast-paths*` it moves neither the network nor the change clock."
+  [tms datum depth]
+  (when-not (and observe/*chain-fast-paths* (integer? datum) (-node? tms datum)
+                 (<= (long (-depth tms datum)) (long depth)))
+    (moving (-ensure-node tms datum depth)))
+  datum)
 
 (defn add-premise
   "Add `datum` as a premise at `strength` (default :default)."

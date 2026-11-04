@@ -99,6 +99,12 @@ checks**:
 - every **ground, reifiable** NAT subterm `(F a…)` is replaced by its constant `K`
   (an existing one via dedup, else a fresh mint) — inner args reified first, then the
   outer NAT;
+- the expression `E` a constant is named and found by has its own arguments in the order
+  `F`'s `symmetric` and commuting marks give them (`nat-read/sorted-expression`), so both
+  spellings of a commuted application reify to one constant. The associative, idempotent
+  and meet arms are not applied, since they can collapse an application to one argument.
+  A row naming such a constant records the sentence as written, unreified
+  (`integrate/spellings-key`), and a rule firing records its conclusion unreified too;
 - the walk descends into nested non-NAT literals (rule bodies, conjuncts) but leaves
   the head predicate, every quoting-predicate argument and a `modal_predicate`'s
   proposition opaque. A stored `(believes Ann (likes Tom (FruitFn Apple)))` keeps the
@@ -849,7 +855,10 @@ sentences with the mark already in place holds:
 | is defeated or excepted below a use's context, so the use's readers disagree | the use stays as written, and the reified use is stored beside it, justified `respell` by the use and the mark |
 
 The move is noted where the mark changes in the taxonomy (`special/note-permuting-moves!`,
-beside the permuting marks), on the `:respell` queue the settle drains. The region is read
+beside the permuting marks), on the `:respell` queue the settle drains. A `symmetric` or
+commuting mark on a reifiable `F` is noted the same way, at its arrival
+(`integrate/commute-existing`) as at a leaving or a relabel, since `F`'s constants are named
+by their expressions sorted. The region is read
 off the inverted term index (`nat/respell-region`): every stored sentex holding an
 application of `F`, and every use of a constant whose expression holds one, at any
 nesting. A constant's own bookkeeping is not a use and does not move. A quoting
@@ -869,6 +878,12 @@ consequent holds one fires again
   function was undeclared names the constant of the raw inner application. When the inner
   mark arrives, that use moves to the constant of the re-keyed expression, and the first
   constant is left with its bookkeeping alone.
+- **A row is split by its recorded spellings.** When the written spelling an assertion or
+  a firing recorded reifies to another constant than the row's own spelling does, as an
+  application of `F` written unsorted does once `F`'s commuting mark leaves, each piece
+  goes to the row its written spelling reifies to (`chain/reconcile-recorded-fact!`,
+  `split-row!`). A row left holding no piece is retracted, and its conclusions are drawn
+  again from the rows its pieces moved to.
 - **The constants the moved rows stop naming are collected** by the orphan rule of
   [Rename and remove](#rename-and-remove--keeping-the-11-invariant), over the spellings
   the rows moved off. A settle has no teardown entry point, so each bookkeeping handle is
@@ -896,8 +911,11 @@ naming such an application queues the function for the settle (`nat/queue-split-
 The settle reaches stored rows, believed or not, so a use sitting OUT is spelled as the KB
 spells it when its defeat lifts. A declaration written before any application finds only
 its own declarations about `F`, and a KB declaring no reifiable function queues nothing.
-A store recovered from rows written before this re-spelling existed keeps them: `recover`
-re-spells nothing, and retracting the declaration and asserting it again runs the sweep.
+A store recovered from rows written before this re-spelling existed keeps them, and
+retracting the declaration and asserting it again runs the sweep. `recover` runs the sweep
+for each reifiable function a `symmetric` or commuting mark holds of
+(`nat/permuted-reifiable-functions`), so a use a store holds under the constant of an
+application's written order moves to the sorted one's.
 
 A `(result F T)` or `(genlResult F T)` asserted after constants were minted for `F`
 materializes `(T K)` or `(genl K T)` on each of them, as the mint does when the declaration
@@ -955,6 +973,20 @@ comes first (`nat/reconcile-nats!`).
 
 ## What reification does not cover
 
+- **A commuted application's lookup reads a `natFormula` map at the sorted expression
+  alone.** A `rewriteOf` payload is read in every order the marks allow
+  (`nat-read/map-rows`), and a `natFormula` map is not, so a constant minted before the
+  mark arrived is moved off rather than reused, and a map stated by hand unsorted names a
+  constant no lookup finds. A corresponding fact is read at the sorted expression too, so
+  under a corresponding predicate that does not commute a fact written unsorted names no
+  value. An open pattern matches the sorted order alone: `(natFormula ?k (PairFn Bea ?x))`
+  misses the map of `(PairFn Ada Bea)`, and so does a goal `(holds (PairFn Bea ?x))`,
+  which reads the corresponding predicate's projection, stated sorted (nat_test's `^:red`
+  `an-open-pattern-reads-a-commuted-application-in-either-order`).
+- **A reader that does not believe a reifiable function's `symmetric` or commuting mark
+  reads its applications under the sorted constant.** The marks are read unscoped
+  (`nat-read/sorted-expression`), and the readers a reconcile plans for are those of the
+  `reifiable_function` mark (`chain/reified-plan`).
 - **An unreified or open NAT is not structurally indexed.** Reification is what makes a
   NAT findable, so a NAT that cannot be reified is reachable only through the coarser
   keys ([indexing.md](indexing.md)).

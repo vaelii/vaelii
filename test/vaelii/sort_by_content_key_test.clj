@@ -262,7 +262,7 @@
   "Every `[path line-number line]` in `src/vaelii` that hands a bare `pr-str` to an
   ordering call, with the three ways of being guarded taken out: the printer is
   `nm/print-key`; a `*print-length*` binding frame is open within the twelve lines above
-  (the shape `solve/content-key` and `settle/content-order` use, one binding around a
+  (the shape `solve/content-key` uses, one binding around a
   whole sort rather than one per element); or the line is allowlisted above.
 
   `naming.clj` itself is skipped — it is where the guard is defined and where the hazard

@@ -1108,8 +1108,7 @@
   or nil — `nested-input-problem` reported against the sentence being checked.
 
   The arm's `:type`, `:arg`, `:expected` and `:position` are kept, so a caller reads a
-  nested `:arg-type` exactly as it reads a top-level one and `conviction-watch` watches
-  the convicted input.  `:position` is the position in the application's function, and
+  nested `:arg-type` exactly as it reads a top-level one.  `:position` is the position in the application's function, and
   `:application` names that application; the message says where it sits."
   [kb sentence context types decls]
   (when-let [p (nested-input-problem kb sentence context types decls)]
@@ -2272,7 +2271,7 @@
   (let [tax (reasoning/taxonomy kb)]
     (first
      (for [p    (reads/as-stored-unary-predicates (:index kb) x)
-           :when (and (symbol? p) (not= p t) (tax/genl? tax p t context))
+           :when (and (symbol? p) (tax/strict-genl? tax p t context))
            h    (reads/as-stored-with-args (:index kb) p {1 x})
            :let [sx (p/get-sentex (:records kb) h)]
            :when (and sx (= (list p x) (:sentence sx))
@@ -2286,8 +2285,8 @@
   redundant, or nil: `S` a strict subtype of `t` reaching it through the edges `context`
   sees, so `x` reaches `t` over a route of two edges or more.
 
-  Removing every redundant edge of a directed acyclic graph leaves the same closure, and the
-  taxonomy refuses a `genl` cycle (`edge-stratification-violation`).  An edge out of `x` that a
+  Removing every redundant edge leaves the same closure when each route reaches `t` through
+  a strict subtype (`tax/strict-genl?`).  An edge out of `x` that a
   `covering`, `separating` or `partition` declaration installs (`tax/installed-edges`) is a
   route like a stated one, and its handle is read off the edge's supporters
   (`tax/genl-edge-supporters`).  Without it, a type whose only parent edge comes from a
@@ -2304,12 +2303,12 @@
             :let [sx (p/get-sentex (:records kb) h)
                   s  (when sx (nth (:sentence sx) 2 nil))]
             :when (and sx (= 3 (count (:sentence sx))) (symbol? s)
-                       (not= s t) (tax/genl? tax s t context)
+                       (tax/strict-genl? tax s t context)
                        (fits? h sx))]
         h))
      (first
       (for [s    (sort-by nm/name-key (tax/direct-genls tax x context))
-            :when (and (symbol? s) (not= s t) (tax/genl? tax s t context))
+            :when (and (symbol? s) (tax/strict-genl? tax s t context))
             h    (sort (tax/genl-edge-supporters tax x s context))
             :let [sx (p/get-sentex (:records kb) h)]
             :when (and sx (not= 'genl (nm/functor (:sentence sx))) (fits? h sx))]
@@ -2898,7 +2897,7 @@
           recs    (:records kb)
           tms     (reasoning/tms kb)
           up      (set (tax/context-up tax context))
-          seen    (into up (tax/context-down tax context))
+          seen    (when-not (tax/root-context? context) (into up (tax/context-down tax context)))
           memo    (volatile! {})
           readers (fn [v] (or (get @memo v)
                               (let [r (kb/membership-reader kb v)] (vswap! memo assoc v r) r)))
@@ -2921,7 +2920,9 @@
                                                       (filter sx/indexable-term?
                                                               (reads/as-stored-atoms-at-global idx p pos)))
                         c     (nm/sort-by-content-key nm/name-key compare
-                                                      (reads/as-stored-contexts-with-arg-in idx p pos x seen))
+                                                      (if seen
+                                                        (reads/as-stored-contexts-with-arg-in idx p pos x seen)
+                                                        (reads/as-stored-contexts-with-arg-global idx p pos x)))
                         :let  [v     (vantage c)
                                types (readers v)]
                         :when (and (under? p v) (breaks-demand? kb dm tax types x v))
@@ -2972,12 +2973,12 @@
                                        (when (= :arg-type (:kind c)) c)))]
     (let [tax  (reasoning/taxonomy kb)
           recs (:records kb)
-          down (set (tax/context-down tax context))]
+          down (if (tax/root-context? context) (constantly true) (set (tax/context-down tax context)))]
       (first
        (for [rsx   (->> (for [p    (tax/specs-global tax pred)
                               rsx  (keep #(p/get-sentex recs %) (rules-on kb [p]))
                               :let [c (:context rsx)]
-                              :when (and (contains? down c)
+                              :when (and (down c)
                                          (or (= p pred) (tax/genl? tax p pred c)))]
                           rsx)
                         distinct
@@ -3011,9 +3012,10 @@
   [kb chk context]
   (let [tax  (reasoning/taxonomy kb)
         pred (nm/functor chk)
-        down (disj (set (tax/context-down tax context)) context)
+        root? (tax/root-context? context)
+        down (when-not root? (disj (set (tax/context-down tax context)) context))
         up   (set (tax/context-up tax context))]
-    (when (and (symbol? pred) (seq down))
+    (when (and (symbol? pred) (or root? (seq down)))
       (let [idx  (:index kb)
             recs (:records kb)
             cs   (into (sorted-set-by #(compare (nm/name-key %1) (nm/name-key %2)))
@@ -3022,9 +3024,11 @@
                              ;; edge stated below `context` puts `pred` under a declared one
                              ;; there, and `argument-problem` reads each context's own
                              p (cons pred (tax/genls-global tax pred))
-                             h (reads/as-stored-with-args-in idx k {1 p} down)
+                             h (if root?
+                                 (reads/as-stored-with-args idx k {1 p})
+                                 (reads/as-stored-with-args-in idx k {1 p} down))
                              :let [dsx (p/get-sentex recs h)]
-                             :when dsx]
+                             :when (and dsx (not= context (:context dsx)))]
                          (:context dsx)))]
         (some (fn [c]
                 (let [decls (declaration-reader kb pred c)
@@ -3240,16 +3244,20 @@
       (let [recs    (:records kb)
             idx     (:index kb)
             tms     (reasoning/tms kb)
-            seen    (into (set (tax/context-up tax context)) (tax/context-down tax context))
+            seen    (when-not (tax/root-context? context)
+                      (into (set (tax/context-up tax context)) (tax/context-down tax context)))
+            in-seen (fn [pred m] (if seen
+                                   (reads/as-stored-with-args-in idx pred m seen)
+                                   (reads/as-stored-with-args idx pred m)))
             stored  (fn [hs keep?]
                       (for [h hs
                             :let [sx (p/get-sentex recs h)]
                             :when (and (sx/positive-fact? sx)
                                        (keep? (:sentence sx)) (jtms/in? tms h))]
                         {:handle h :sentence (:sentence sx) :context (:context sx)}))
-            decls   (fn [q] (stored (reads/as-stored-with-args-in idx 'genlArg {1 q} seen)
+            decls   (fn [q] (stored (in-seen 'genlArg {1 q})
                                     (fn [[_ _ n]] (pos-int? n))))
-            members (fn [q] (stored (reads/as-stored-with-args-in idx nil {1 q} seen)
+            members (fn [q] (stored (in-seen nil {1 q})
                                     #(and (= 1 (nm/arity %)) (sym? (nm/functor %)))))
             under?  (if (= :edge write)
                       (fn [t v] (and (or (= a t) (tax/genl? tax t a v))
@@ -3321,8 +3329,9 @@
   "The `:irreflexive` violation for the mark `(irreflexive P)` written in `context` over
   the believed self tuples (`reads/as-stored-self-tuples`) of `P` and of each predicate
   below it as seen from the tuple's vantage, stated in a context `context` sees or one
-  that sees `context`.  The predicates below are read over every context
-  (`tax/specs-global`), since a `genl` edge stated below `context` relates them there.  It names up to ten of them in `:clashes-with` and their number in `:count`.
+  that sees `context`, every context for a mark in CxUniverse.  The predicates below are
+  read over every context (`tax/specs-global`), since a `genl` edge stated below `context`
+  relates them there.  It names up to ten in `:clashes-with` and their number in `:count`.
   Else nil.  `assert` stores the mark, and the settle places each tuple as a one-member
   nogood."
   [kb chk context _strength]
@@ -3333,11 +3342,13 @@
           tms  (reasoning/tms kb)
           idx  (:index kb)
           up   (set (tax/context-up tax context))
-          seen (into up (tax/context-down tax context))
+          seen (when-not (tax/root-context? context) (into up (tax/context-down tax context)))
           recs (:records kb)
           ;; a tuple's predicate is tested below `q` from its vantage, as
           ;; `declaration-conflict` tests it
-          hs   (into #{} (comp (mapcat #(reads/as-stored-self-tuples idx % seen))
+          hs   (into #{} (comp (mapcat #(if seen
+                                          (reads/as-stored-self-tuples idx % seen)
+                                          (reads/as-stored-self-tuples-global idx %)))
                                (filter #(jtms/in? tms %))
                                (filter #(let [sx (p/get-sentex recs %)
                                               f  (nm/functor (:sentence sx))
@@ -3495,21 +3506,6 @@
                                      refuses-assert?)]
       {:violation (:type p) :detail (dissoc p :type :sentence)})))
 
-(defn conviction-watch
-  "The term whose memberships can lift the argument conviction `v` (a `{:violation
-  :detail}` map), as the `{:term}` field a waiting entry carries: the convicted argument,
-  whose separating membership leaving, or whose membership arriving under `quotedArg`'s
-  kind lattice, can lift the conviction.
-
-  Read off the conviction the entry is decided under, every time it is decided.  A
-  re-ask that is still convicted can be convicted on a different argument — an
-  application with two targets outside the type names the first, and once that one is
-  lifted it names the second — and an entry left watching the first would never be
-  re-asked when the second is lifted, so the lifting order would decide whether the
-  firing is ever placed."
-  [v]
-  {:term (get-in v [:detail :arg])})
-
 (defn constraint-violation
   "The definitional checks as a value alone: nil when `sentence` is admissible in
   `context`, else `{:violation :arg-type|:arg-genl|:arg-position
@@ -3576,7 +3572,8 @@
 
 (defn check-except-target
   "Refuse a visibility `(except (sentexHandle H))` when no sentex is stored under H
-  (`:unknown-handle`).  Handles are allocated in assertion order, so every except this
+  (`:unknown-handle`), and when H stores a rule of `kv/mint-rules` (`:mint-rule`,
+  `kb/mint-rule-refusal`).  Handles are allocated in assertion order, so every except this
   admits names a handle below its own, and the except graph `assert` builds is acyclic.
   A target retracted after its except leaves the except naming nothing, and a handle is
   never reissued (docs/contexts.md, except)."
@@ -3584,7 +3581,9 @@
   (when-let [h (kb/except-target sentence)]
     (when (nil? (p/get-sentex (:records kb) h))
       (throw (ex-info (str "except names handle " h ", and no sentex is stored under it")
-                      {:type :unknown-handle :handle h :sentence sentence})))))
+                      {:type :unknown-handle :handle h :sentence sentence})))
+    (when-let [r (kb/mint-rule-refusal (kb/mint-kind kb h) h "except" "is not excepted")]
+      (throw (ex-info (:message r) (assoc (dissoc r :message) :sentence sentence))))))
 
 ;; ---- the forced-monotonic set ------------------------------------------
 
@@ -3963,9 +3962,21 @@
   (when (and sx (argument/held? kb (:id sx)))
     (argument-conviction kb sx)))
 
+(defn- generated-only?
+  "Is the stored rule `h` no premise, with every justification a generator's firing
+  (`rules/generator-sentex?` of its informant)?"
+  [kb h]
+  (let [tms (reasoning/tms kb)
+        js  (jtms/supports tms h)]
+    (and (seq js) (not (jtms/premise? tms h))
+         (every? #(let [inf (:informant (jtms/justification tms %))]
+                    (and (integer? inf) (rules/generator-sentex? (p/get-sentex (:records kb) inf))))
+                 js))))
+
 (defn held-argument-entries
   "The violations of the stored sentexes the argument family holds, read off the stored
-  state: `:inert-argument` for a fact and `:inert-rule` for a rule, `:sentence` the
+  state: `:inert-argument` for a fact and `:inert-rule` for a rule a generator alone did not
+  conclude (`generated-only?`), `:sentence` the
   stored spelling, `:context` its context and `:detail` its conviction
   (`held-conviction`).  The order is content order of the sentence and context, never a
   handle's.  The records are hinted a chunk ahead, and the convictions share one
@@ -3977,7 +3988,8 @@
       (->> (cap/hinting (cap/prefetcher recs) cap/recovery-hint-chunk (sort (keys (argument/held kb))))
            (into [] (keep (fn [h]
                             (let [sx (p/get-sentex recs h)]
-                              (when-let [v (held-conviction kb sx)]
+                              (when-let [v (and (not (and (rules/rule? sx) (generated-only? kb h)))
+                                                (held-conviction kb sx))]
                                 (if (rules/rule? sx)
                                   {:violation :inert-rule :sentence (sx/sentence-of sx)
                                    :context (:context sx) :detail v}
@@ -4121,7 +4133,8 @@
   (let [tax   (reasoning/taxonomy kb)
         idx   (:index kb)
         preds (filterv #(pos? (long (reads/stored-count-with-functor idx %))) preds)
-        seen  (pass-read [::context-down (:context d)] #(set (tax/context-down-global tax (:context d))))
+        seen  (when-not (tax/root-context? (:context d))
+                (pass-read [::context-down (:context d)] #(set (tax/context-down-global tax (:context d)))))
         chk   (:sentence d)]
     (when (seq preds)
       (if-let [dm (or (declaration-demand chk) (covering-demands chk))]
@@ -4149,14 +4162,18 @@
                        ;; an atom's contexts and the functor are read only when a test
                        ;; convicts some term there from a context stating `p`, and the
                        ;; compounds only when one stands at `pos`
-                       cs  (delay (first (reads/as-stored-contexts-with-functor idx p seen)))
+                       cs  (delay (first (if seen
+                                           (reads/as-stored-contexts-with-functor idx p seen)
+                                           (reads/as-stored-contexts-with-functor-global idx p))))
                        as  (filterv #(and (sx/indexable-term? %) (atom? %)) xs)
                        as? (or (nil? atoms-convict?) (and (seq as) (atoms-convict? readers as @cs)))
                        vs? (and (seq vs) (values-convict? readers vs @cs))
                        cs? (and compounds? (boolean (some sx/subterm-mark? ts)))]
                 h     (concat
                        (for [x     (when as? as)
-                             c     (reads/as-stored-contexts-with-arg-in idx p pos x seen)
+                             c     (if seen
+                                     (reads/as-stored-contexts-with-arg-in idx p pos x seen)
+                                     (reads/as-stored-contexts-with-arg-global idx p pos x))
                              :when (test (readers c) x c)
                              h     (reads/as-stored-with-args-in idx p {pos x} #{c})]
                          h)
