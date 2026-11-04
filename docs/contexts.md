@@ -252,6 +252,35 @@ Data hangs below CxWell.
     `agentClaims` is, so it does not outlive H, and records where a claim came from,
     not that it is true. `(nameString ?thing ?name)` takes a thing of any kind and
     a string, and a thing can have more than one name string.
+  - **Discord channel permissions** — a `communication_channel` is an established
+    logical route or shared venue for transmitting messages. Channels are aspatial,
+    temporal and acausal, and therefore intangible. An empty available venue is still
+    a channel. A physical carrier,
+    bare frequency, address or message content is not itself such a channel.
+    `discord_channel` specializes this kind. `DiscordChannelFn` names a channel or thread by
+    its decimal-string snowflake, with `discordChannelOf` as its corresponding predicate.
+    `ChannelViewFn` names the happening kind of accessing that channel under
+    `VIEW_CHANNEL`, with `channelViewOf` as its corresponding predicate. A
+    `(hasCapability ?person (ChannelViewFn ?channel))` grant does not imply reading
+    message history, sending messages, connector delivery or authorization to disclose
+    content. `discordChannelName` records a human-readable label; names need not be
+    unique and can change. `discordAccountId` links a person to the decimal-string ID
+    of a Discord account that person is authorized to use. Neither position is
+    functional: a person can use several accounts and an account can be shared.
+    Account use alone concludes no channel permission. These GAFs take their time
+    from the context, for example:
+
+    ```clojure
+    (ist (CxTimeFn CxDesk (InstantFn 2026 11 3 15 30 0))
+         (hasCapability ExamplePerson (ChannelViewFn (DiscordChannelFn "42"))))
+    ```
+
+    The instant states the permission observation's as-of time, not a persistence
+    interval. A non-atomic permission scan does not establish continuous permission
+    throughout its read interval. An unknown or omitted account produces neither a
+    grant nor a denial. A denial for one account does not establish that a person
+    lacks permission through another account. This vocabulary performs no Discord
+    reads or automatic account-to-capability projection.
   - **perception** — `perceives` is the general relation and `sees` specializes it.
     `seeImage` and `watchVideo` conclude `sees` by a rule guarded by its `spatial`
     second argument, since an image or a video need not be located.

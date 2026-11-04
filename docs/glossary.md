@@ -194,6 +194,12 @@ sentence is stored in so logically identical knowledge stores once — canonical
 variables, canonical literal order, symmetric- and commuting-argument sorting, and
 comparison folding. See [canonicalization.md](canonicalization.md).
 
+**`channel_view` / `ChannelViewFn` / `channelViewOf`** ![kb](../.github/badges/cat-kb.svg):
+`VIEW_CHANNEL` access is a happening kind below `resource_access`. `ChannelViewFn`
+names the kind over one Discord channel; `channelViewOf` relates that channel to
+the kind. A capability does not entail reading history, sending messages or
+connector delivery. See [contexts.md](contexts.md#the-context-topology).
+
 **Closed predication** ![kb](../.github/badges/cat-kb.svg): A **Predication** with no free variable. What a
 stored `LiteralSentex` holds in its `:sentence` slot, since `checks/check-ground` refuses
 an open one. A `reflection.txt` collection too, `closed_predication`. See
@@ -216,6 +222,13 @@ spellings. See [naf.md](naf.md#a-closed-extent-for-one-argument-value).
 `(comment <term> "…")` — that lets the shipped vocabulary document itself in
 its own representation, read back by `core-context/comment-of`. See
 [inference.md](inference.md).
+
+**`communication_channel`** ![kb](../.github/badges/cat-kb.svg): An established
+logical route or shared venue for transmitting messages. The kind is aspatial,
+temporal and acausal, and therefore intangible. A channel can be one-way or
+reciprocal and can remain available
+without messages. A physical carrier, bare frequency, address or message content
+is not itself a channel. See [contexts.md](contexts.md#the-context-topology).
 
 **Commuting component** ![kb](../.github/badges/cat-kb.svg): The set of argument
 positions one literal may permute, reduced from the commutativity marks a relation
@@ -414,6 +427,23 @@ engines a direction names, in its `:engines` field (`#{:forward :backward}` for
 `:forward`, `#{}` for `:inert`); a bare `implies` needs no wrapper and holds
 `#{:backward}`, the tractable default, since forward chaining materializes a conclusion
 per match. The chainers read the field. See [inference.md](inference.md).
+
+**`discord_channel` / `DiscordChannelFn` / `discordChannelOf`** ![kb](../.github/badges/cat-kb.svg):
+A Discord channel or thread is a `communication_channel` identified by its decimal-string snowflake.
+`DiscordChannelFn` names the channel and `discordChannelOf` relates its snowflake
+to the channel. A channel's identity does not establish its existence or
+readability. See [contexts.md](contexts.md#the-context-topology).
+
+**`discordAccountId`** ![kb](../.github/badges/cat-kb.svg):
+`(discordAccountId P S)` states that person P is authorized to use the Discord
+account whose ID is string S. A person can use several accounts, and an account
+can be shared. The association grants no channel permission by itself. See
+[contexts.md](contexts.md#the-context-topology).
+
+**`discordChannelName`** ![kb](../.github/badges/cat-kb.svg):
+`(discordChannelName C N)` states an observed name string N for Discord channel C.
+Names can change and need not be unique. The GAF's context supplies its time.
+See [contexts.md](contexts.md#the-context-topology).
 
 **`disjoint` / `disjoint_metatype`** ![kb](../.github/badges/cat-kb.svg): Declare
 types share no instance, closed under genl. A metatype's members are pairwise

@@ -664,6 +664,63 @@
 (quotedArg agentClaims 2 sentex_handle_term)
 (target_following_predicate agentClaims)
 
+;; ---- Discord channels and permissions ---------------------------------------
+(comment communication_channel "A logical route or shared venue established for transmitting messages. The channel has no spatial location and cannot itself be a cause. A channel may be one-way or reciprocal and may remain available without messages. A physical carrier, message content, or a bare frequency or address is not itself a communication channel.")
+(genl communication_channel aspatial)
+(genl communication_channel temporal)
+(genl communication_channel acausal)
+(positiveExampleComment communication_channel "an established mailing list through which subscribers exchange messages")
+(positiveExampleComment communication_channel "an empty chat room that remains available for conversation")
+(positiveExampleComment communication_channel "a configured one-way logical link carrying telemetry")
+(negativeExampleComment communication_channel "a fiber-optic cable, which is a physical carrier")
+(negativeExampleComment communication_channel "a radio frequency without an established message route")
+(negativeExampleComment communication_channel "the content of one transmitted message")
+
+(comment discord_channel "A communication space managed by Discord and fixed by its snowflake ID. Includes threads. It is not its messages, audience, or a connector subscription.")
+(genl discord_channel communication_channel)
+
+(comment DiscordChannelFn "(DiscordChannelFn ?snowflake) means the Discord channel or thread whose ID is the decimal string ?snowflake. Does not imply that it exists now or is readable.")
+(reifiable_function DiscordChannelFn)
+(unary_function DiscordChannelFn)
+(quotedArg DiscordChannelFn 1 string)
+(result DiscordChannelFn discord_channel)
+(functionCorrespondingPredicate DiscordChannelFn discordChannelOf)
+
+(comment discordChannelOf "(discordChannelOf ?snowflake ?channel) means that ?channel is the Discord channel whose ID is the decimal string ?snowflake: (DiscordChannelFn ?snowflake) is ?channel.")
+(binary_predicate discordChannelOf)
+(quotedArg discordChannelOf 1 string)
+(arg discordChannelOf 2 discord_channel)
+(set/monotonic (functional discordChannelOf))
+
+(comment channel_view "Access to a Discord channel under its effective VIEW_CHANNEL permission. Does not imply READ_MESSAGE_HISTORY, SEND_MESSAGES, connector delivery, or permission to disclose content there.")
+(genl channel_view resource_access)
+
+(comment ChannelViewFn "(ChannelViewFn ?channel) means the happening kind of accessing Discord channel ?channel under VIEW_CHANNEL permission, a kind below channel_view. A grant is (hasCapability ?principal (ChannelViewFn ?channel)).")
+(reifiable_function ChannelViewFn)
+(unary_function ChannelViewFn)
+(arg ChannelViewFn 1 discord_channel)
+(genlResult ChannelViewFn channel_view)
+(functionCorrespondingPredicate ChannelViewFn channelViewOf)
+
+(comment channelViewOf "(channelViewOf ?channel ?kind) means that ?kind is the happening kind of accessing Discord channel ?channel under VIEW_CHANNEL permission: (ChannelViewFn ?channel) is ?kind.")
+(binary_predicate channelViewOf)
+(arg channelViewOf 1 discord_channel)
+(genlArg channelViewOf 2 channel_view)
+(set/monotonic (functional channelViewOf))
+(comment discordChannelName "(discordChannelName ?channel ?name) means that ?name is an observed human-readable name of Discord channel ?channel in the stated context and time. A label, not identity: channels can be renamed and names need not be unique.")
+(set/monotonic (instance_relation_predicate discordChannelName))
+(arg discordChannelName 1 discord_channel)
+(quotedArg discordChannelName 2 string)
+(not (functional discordChannelName))
+(not (functionalInArg discordChannelName 1))
+
+(comment discordAccountId "(discordAccountId ?person ?snowflake) means that ?person is authorized to use the Discord account whose stable user ID is the decimal string ?snowflake, in the stated context and time. It does not equate the person with the account, require a unique account per person, or exclude shared accounts.")
+(set/monotonic (instance_relation_predicate discordAccountId))
+(arg discordAccountId 1 person)
+(quotedArg discordAccountId 2 string)
+(not (functional discordAccountId))
+(not (functionalInArg discordAccountId 1))
+
 ;; ---- the message a claim came from ------------------------------------------
 ;; discordMessageClaims records where a stored claim came from, as agentClaims records
 ;; who presents it, and is typed and marked as agentClaims is: position 2 holds a sentex
