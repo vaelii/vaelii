@@ -2238,6 +2238,62 @@
       (is (true? (:excepted e)))
       (is (not (contains? e :inert))))))
 
+(tu/deftest-kb quantified-exceptions-read-literals-but-not-quoted-predicates
+  (tu/with-terms [bird_kind penguin_kind flies guardLink]
+    (doseq [[label guard excepted?]
+            [["the other case occurs inside an existential conjunction"
+              (list 'thereExists '?w
+                    (list 'and (list penguin_kind '?x) (list guardLink '?x '?w))) true]
+             ["an unrelated existential does not handle the clash"
+              (list 'thereExists '?w (list guardLink '?x '?w)) false]
+             ["a predicate mentioned in quoted data is not queried"
+              (list 'thereExists '?w
+                    (list 'and (list guardLink '?x '?w)
+                          (list guardLink '?w (list 'Quote (list penguin_kind '?x))))) false]]]
+      (testing label
+        (let [probe (v/fork kb)]
+          (try
+            (v/assert probe
+                      (list 'exceptWhen guard
+                            (list 'set/defaultRule
+                                  (list 'set/forwardRule
+                                        (list 'implies (list bird_kind '?x) (list flies '?x)))))
+                      'CxUniverse)
+            (v/assert-rule probe [(list penguin_kind '?x)] (list 'not (list flies '?x))
+                           'CxUniverse {:direction :forward})
+            (let [report (clash-sweep probe #{:rule-clash :rule-clash-review})
+                  live   (about [flies] (:rule-clash report))
+                  review (about [flies] (:rule-clash-review report))]
+              (is (= (if excepted? 0 1) (count live)))
+              (is (= (if excepted? 1 0) (count review)))
+              (is (= excepted? (:excepted (first (concat live review))))))
+            (finally (v/close! probe))))))))
+
+(tu/deftest-kb a-quantified-exception-handles-only-readers-that-see-it
+  (tu/with-terms [bird_kind penguin_kind flies guardLink CxVisible CxHidden]
+    (doseq [cx [CxVisible CxHidden]]
+      (v/assert kb (list 'genlCx cx 'CxUniverse) 'CxUniverse))
+    (let [yes (list 'set/defaultRule
+                    (list 'set/forwardRule
+                          (list 'implies (list bird_kind '?x) (list flies '?x))))]
+      (v/assert kb yes 'CxUniverse)
+      (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x))
+                     'CxUniverse {:direction :forward})
+      (v/assert kb
+                (list 'exceptWhen
+                      (list 'thereExists '?w
+                            (list 'and (list penguin_kind '?x) (list guardLink '?x '?w)))
+                      (list 'ist 'CxUniverse yes))
+                CxHidden)
+      (doseq [[cx excepted?] [[CxVisible false] [CxHidden true]]]
+        (testing (str "the exception's visibility at " cx)
+          (let [report (clash-sweep kb #{:rule-clash :rule-clash-review} cx)
+                live   (about [flies] (:rule-clash report))
+                review (about [flies] (:rule-clash-review report))]
+            (is (= (if excepted? 0 1) (count live)))
+            (is (= (if excepted? 1 0) (count review)))
+            (is (= excepted? (:excepted (first (concat live review)))))))))))
+
 (tu/deftest-kb an-acknowledged-rule-clash-is-review-only
   ;; The subject names the pair as (RulePairFn (Quote R1) (Quote R2)), each rule quoted on
   ;; its own, in either order and under any variable names: the pair is matched by the
