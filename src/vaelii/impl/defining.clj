@@ -221,7 +221,9 @@
     (when (seq unresolved)
       (throw (ex-info "Defining-context support is incomplete."
                       {:type :incomplete-defining-contexts :term term :handles unresolved})))
-    (let [homes (into #{} (keep #(when (live? %) (:context (get mentions %))))
+    ;; a premise an equality merge superseded stays the leaf its respelled twin reads
+    (let [homes (into #{} (keep #(when (or (live? %) (jtms/superseded? tms %))
+                                   (:context (get mentions %))))
                       (budget/checked-seq leaves))]
       {:contexts (budget/checked-call
                   #(tax/max-cxs (reasoning/taxonomy kb) homes))
