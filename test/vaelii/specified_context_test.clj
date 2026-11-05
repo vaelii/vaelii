@@ -206,7 +206,7 @@
     (is (= {:status :audited :violations #{}}
            (result kb 'predAllSpecified notes item_kind CxRequirement)))))
 
-(tu/deftest-kb unclassified-defining-support-is-a-gap-when-the-filler-is-missing
+(tu/deftest-kb mixed-defining-support-is-audited-as-ordinary
   (tu/with-terms [CxOrigin Subject Marker Other liftedTrigger prerequisite notes item_kind]
     (schema kb 'predAllSpecified notes item_kind)
     (v/assert kb (list 'genlCx CxOrigin 'CxUniverse) 'CxUniverse)
@@ -219,23 +219,26 @@
                              (list item_kind Subject))) 'CxUniverse)
     (v/assert kb (list 'predAllSpecified notes item_kind) 'CxUniverse)
     (is (true? (v/ask? kb (list item_kind Subject) 'CxUniverse)))
-    (let [audit (result kb 'predAllSpecified notes item_kind 'CxUniverse)]
-      (is (= :gap (:status audit)))
-      (is (= :incomplete-defining-contexts (:gap audit)))
-      (is (= Subject (:term audit)))
-      (is (seq (:handles audit)))
-      (is (not (contains? audit :violations))))
-    (v/add-prover kb
-                  (v/prover {:applicable? (fn [_ goal _]
-                                            (and (= notes (first goal))
-                                                 (= Subject (second goal))))
-                             :solve (fn [_ goal _]
-                                      (if (sx/variable? (nth goal 2))
-                                        [{(nth goal 2) "A native filler."}]
-                                        (if (= "A native filler." (nth goal 2)) [{}] [])))}))
-    (is (true? (v/ask? kb (list notes Subject "A native filler.") 'CxUniverse)))
-    (is (= {:status :audited :violations #{}}
+    (is (= {:status :audited :violations #{Subject}}
            (result kb 'predAllSpecified notes item_kind 'CxUniverse)))
-    (let [failure (try (v/defining-contexts kb Subject) nil
-                       (catch clojure.lang.ExceptionInfo e (ex-data e)))]
-      (is (= :incomplete-defining-contexts (:type failure))))))
+    (v/assert kb (note 'predAllSpecified notes Subject) 'CxUniverse)
+    (is (= {:status :audited :violations #{}}
+           (result kb 'predAllSpecified notes item_kind 'CxUniverse)))))
+
+(tu/deftest-kb a-computed-only-firing-under-an-asserted-rule-is-audited-as-ordinary
+  ;; A forward firing whose antecedents are all computed names no antecedent, only its
+  ;; rule as informant.  The asserted rule is an ordinary leaf, so the subject has an
+  ;; ordinary home and must carry the specified comment.
+  (tu/with-terms [Subject notes item_kind]
+    (schema kb 'predAllSpecified notes item_kind)
+    (v/assert kb (tu/fwd [(list 'evaluate '?s (list '+ 1 2))] (list item_kind Subject))
+              'CxUniverse)
+    (v/assert kb (list 'predAllSpecified notes item_kind) 'CxUniverse)
+    (is (true? (v/ask? kb (list item_kind Subject) 'CxUniverse)))
+    (is (= {:contexts #{'CxUniverse} :skeletal-only? false}
+           (defining/definition-evidence kb Subject)))
+    (is (= {:status :audited :violations #{Subject}}
+           (result kb 'predAllSpecified notes item_kind 'CxUniverse)))
+    (v/assert kb (note 'predAllSpecified notes Subject) 'CxUniverse)
+    (is (= {:status :audited :violations #{}}
+           (result kb 'predAllSpecified notes item_kind 'CxUniverse)))))
