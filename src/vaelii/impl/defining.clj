@@ -199,13 +199,22 @@
   (let [{:keys [leaves marks]} (defining-walk kb (if (coll? h-or-hs) h-or-hs [h-or-hs]))]
     {:leaves leaves :computed? (contains? marks :computed)}))
 
+(declare ^:private definition-evidence*)
+
 (defn definition-evidence
   "`{:contexts #{c} :skeletal-only? b}`: the maximal contexts of the ordinary asserted
   leaves that mention `term`, read in one walk (`asserted-defining-leaves`) down from all
   its believed mentions, and whether it has such mentions but no such leaf, every way in
   being skeletal.  A believed derived mention with no supporting justification throws
   :incomplete-defining-contexts.  An absent assertion is not evidence of skeletal-only
-  definition."
+  definition.  An unrepresented term, one the term index does not post (a number, a string:
+  `sx/indexable-term?`), is defined in CxUniverse, as a context is."
+  [kb term]
+  (if (not (sx/indexable-term? (sx/canon term)))
+    {:contexts #{'CxUniverse} :skeletal-only? false}
+    (definition-evidence* kb term)))
+
+(defn- definition-evidence*
   [kb term]
   (let [term (sx/canon term)
         tms (reasoning/tms kb)

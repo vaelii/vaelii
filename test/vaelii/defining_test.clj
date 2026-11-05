@@ -275,16 +275,17 @@
     (is (= {:contexts #{'CxUniverse} :skeletal-only? false}
            (defining/definition-evidence kb Subject)))))
 
-(tu/deftest-kb a-term-entering-only-through-a-computed-binding-is-unrepresented
-  ;; `3` in `(theSum 3)` enters only through `evaluate`'s binding, and a number is not
-  ;; posted in the term index.  An unrepresented term's defining context has no meaning,
-  ;; so this test pins that the sentence holds and the term is unrepresented, and asserts
-  ;; nothing about its definition evidence.
+(tu/deftest-kb an-unrepresented-term-is-defined-in-the-universe
+  ;; `3` in `(theSum 3)` enters only through `evaluate`'s binding, and a number or string is
+  ;; not posted in the term index.  An unrepresented term is defined in CxUniverse, as a
+  ;; context is (Iris, 2026-11-05).
   (tu/with-terms [CxHome theSum]
     (contexts kb [CxHome])
     (v/assert kb (tu/fwd [(list 'evaluate '?s (list '+ 1 2))] (list theSum '?s)) CxHome)
     (is (v/ask? kb (list theSum 3) CxHome))
-    (is (= [] (vec (v/find-sentexes kb 3))) "a number has no posting")))
+    (is (= [] (vec (v/find-sentexes kb 3))) "a number has no posting")
+    (is (= {:contexts #{'CxUniverse} :skeletal-only? false} (defining/definition-evidence kb 3)))
+    (is (= #{'CxUniverse} (v/defining-contexts kb "a string")))))
 
 (tu/deftest-kb a-computed-literal-and-skeletal-trigger-under-an-asserted-rule-is-ordinary
   (tu/with-terms [CxOrigin Subject Marker liftedTrigger target]
