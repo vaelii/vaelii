@@ -12,6 +12,53 @@ call; 0.8.0 through 0.13.0 keep a subset. The full entry prose for a
 released version is in this file's git history, at the tag of the release that shipped
 it — `git show v0.16.0:CHANGELOG.md`.
 
+## Unreleased
+
+### Additive: canonicalization
+
+- **`distinctInArgAndRest` drops a repeated argument of a function's ground applications
+  below the literal.** Under `(commutativeInArgAndRest F 1)` and `(distinctInArgAndRest F
+  1)`, `(p (F B A A))` and `(p (F A B))` store as one sentex `(p (F A B))`, and `(p (F A
+  A))` stores as `(p (F A))`: the application keeps its functor at any count and is never
+  flattened. A declaration arriving after the facts merges their rows, and its retraction
+  splits them back.
+  [canonicalization.md](docs/canonicalization.md#a-functions-terms-reshaped-by-declaration)
+  *Migration:* none.
+
+### Additive: shipped ontology
+
+- **structure.txt ships lists, multisets, finite sets and maps as structural terms.**
+  `ListFn`, `MultisetFn`, `SetFn` and `MapFn` are unreifiable and variadic, `(SetFn)` is
+  the empty set, and the term marks spell each kind canonically: `(SetFn b a a)` stores
+  as `(SetFn a b)`, and `(ListFn b a)` stays apart from `(ListFn a b)`. `elementOf`,
+  `cardinalityOf`, `multiplicityOf` and `valueAt` read a ground structure, with the
+  structure last, and `listOf`, `multisetOf`, `setOf`, `mapOf` and `entryOf`, the
+  constructors' corresponding predicates, build one or read one back, with the structure
+  first. `provers/StructureProver` answers the nine, comparing elements in the asking
+  context's normal form; each is deferred in a forward join and refused as a stored fact.
+  A `MapFn` term giving one key two values is refused `:not-well-formed`, and one whose
+  argument is not an `EntryFn` term, a `map_entry`, is refused `:arg-type`. Elements,
+  entries and keys compare in the asking context's normal form: an open element binds one
+  of each, and a map counts its entries, so a context that merges two of its keys reads
+  both values and both entries. An open
+  structure application in a rule's antecedent or a `prove` or `query` goal is read
+  through its corresponding predicate, so `(holds ?k (SetFn 1 2 ?x))` binds `?x` to 1
+  and 2 over a stored `(SetFn 1 2)`; `ask` matches it as written, and a deferred literal
+  such as `elementOf` computes from the structure its bindings build. The four kinds
+  are separated under `data_structure`, which is disjoint from `logical`, `linguistic`,
+  `quantitative` and `syncategorematic`.
+  So `(implies (and (intersection ?c . ?types) (elementOf ?t (SetFn . ?types))) (genl ?c
+  ?t))` reaches every type of an intersection at any arity.
+  [nat.md](docs/nat.md#a-data-structure-is-a-structural-term)
+  *Migration:* none; every name structure.txt declares is new.
+
+### Fix: inference
+
+- **A dotted literal with a concrete functor matches stored facts of every length.** The
+  trie and the argument roots read the `.` of `(p ?c . ?xs)` as an argument, so a goal or
+  a rule arriving after its facts matched nothing. The match reads the functor's extent
+  and `unify` binds the rest. [nat.md](docs/nat.md#a-data-structure-is-a-structural-term)
+
 ## 0.32.0 — 2026-11-03 — "Every context sees CxUniverse, a denial undercutting a `:default` edge's reading, a `genl` cycle refused where its context sees it, `CxTimeFn` slices at ranges and moments, time zones and calendar distances, `replace-facts!`, explanations in content form"
 
 | Area | Change |

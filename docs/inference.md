@@ -3001,6 +3001,11 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   predicate the declaration sets against it, or by `Q` lying at or below both sides.
   Open-world: it fires on a stated tuple, never on an unprovable one. Ground only.
   `:lookup`, partial (50). See [taxonomy.md](taxonomy.md#predicate-metadata).
+- **StructureProver** — the four structure relations (`elementOf`, `cardinalityOf`,
+  `multiplicityOf`, `valueAt`) over a ground structure, and the five corresponding
+  predicates (`listOf`, `multisetOf`, `setOf`, `mapOf`, `entryOf`) in both directions.
+  Reads no stored fact: elements compare in the asking context's normal form. `:lookup`,
+  complete (100). See [nat.md](nat.md#a-data-structure-is-a-structural-term).
 - **CoveringProver** — a ground unary membership goal `(Part a)` for a `Part` some visible
   `(covering W …)` names: with `(W a)` believed and every other part believed **not** to
   hold of `a`, the remaining part holds. Explicit negation only, never an unprovable part.
@@ -3040,7 +3045,7 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   open is answered by the rules, and each answer's proof cites its rule.
 - **FactProver** — index matches (`matches-visible`). Partial (50).
 
-Thirty-two in all (`provers/default-provers`), and `provers/registry` is the live list — an application's own
+Thirty-three in all (`provers/default-provers`), and `provers/registry` is the live list — an application's own
 provers sit beside them in the same atom.
 
 **No prover expands a rule.** Rule search is `core/query`'s, at a depth the caller

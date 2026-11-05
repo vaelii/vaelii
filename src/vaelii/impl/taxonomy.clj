@@ -357,7 +357,7 @@
           :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
           :sibling-disjoint #{} :sib-exception-index {}
           :covers {} :cover-parts {} :partitions #{}
-          :props {} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {}
+          :props {} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
           :cache-dirty #{} :cache-ctxs {}
           ;; The supporter cache (`supporters-of`), over the index's supporter families
           :supporters empty-supporters
@@ -1238,7 +1238,8 @@
     :commuting (update-in t [:commuting a] (fnil conj #{}) b)                     ; a = pred, b = group
     ;; `:meet` holds the orders a `(meetFunctionOf F R)` names for `F`, the shape
     ;; `:arity` has: one function may be declared the meet of two orders.
-    :meet      (update-in t [:meet a] (fnil conj #{}) b)))                        ; a = fn, b = order
+    :meet      (update-in t [:meet a] (fnil conj #{}) b)                          ; a = fn, b = order
+    :distinct  (update-in t [:distinct a] (fnil conj #{}) b)))                    ; a = fn, b = n
 
 (defn- cache-uninstall
   "Remove the derived cache entry for support key `k` — the exact inverse of
@@ -1302,7 +1303,12 @@
     (let [rs' (disj (get-in t [:meet a] #{}) b)]
       (if (seq rs')
         (assoc-in t [:meet a] rs')
-        (update t :meet dissoc a)))))
+        (update t :meet dissoc a)))
+    :distinct
+    (let [ns' (disj (get-in t [:distinct a] #{}) b)]
+      (if (seq ns')
+        (assoc-in t [:distinct a] ns')
+        (update t :distinct dissoc a)))))
 
 (defn- named-ops
   "`op` (`:post` or `:retire`) for each stored positive `except` and `defeat` naming
@@ -2445,7 +2451,7 @@
   [[kind a b]]
   (case kind
     (:disjoint :sib-exception :inverse) (some nm/value? a)      ; a = #{x y}
-    (:metatype :sib-disjoint)           (nm/value? a)
+    (:metatype :sib-disjoint :distinct) (nm/value? a)
     :prop                               (nm/value? b)           ; b = pred
     (:genl-inverse :meet)               (or (nm/value? a) (nm/value? b))
     :cover                              (let [[whole parts] a]
@@ -2524,7 +2530,7 @@
          :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
          :sibling-disjoint #{} :sib-exception-index {}
          :covers {} :cover-parts {} :partitions #{}
-         :props {} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {}
+         :props {} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
          :cache-dirty #{} :cache-ctxs {}
          :supporters empty-supporters
          :cache-moves (journal/restart nil)
@@ -5624,6 +5630,23 @@
   included."
   [tax f order] (cache-supporters tax [:meet f order]))
 
+(defn add-distinct
+  "Install `(distinctInArgAndRest f n)`: `f`'s arguments from position `n` on are distinct."
+  ([tax f n handle] (add-distinct tax f n handle nil))
+  ([tax f n handle ctx] (add-supported tax [:distinct f n] handle ctx)))
+
+(defn del-distinct! [tax f n handle] (del-supported! tax [:distinct f n] handle))
+
+(defn distinct-positions
+  "The positions `f` is declared distinct from, as a set; empty for nearly every function.
+  The exact functor, and global, for `commuting-groups`' reasons."
+  [tax f] (get (:distinct @tax) f #{}))
+
+(defn distinct-supporters
+  "The handles of the sentexes stating `(distinctInArgAndRest f n)`, defeated members
+  included."
+  [tax f n] (cache-supporters tax [:distinct f n]))
+
 (defn commuting-predicates-among
   "The members of `specs` carrying any commutativity group, as a set, or nil when none do:
   `commuting-groups` mirrored for a caller holding a spec closure.  Iterates the table's
@@ -5985,7 +6008,7 @@
 (def ^:private flat-keys
   [:disjoint :disjoint-index :disjoint-metatypes :metatype-members :sibling-disjoint
    :sib-exception-index :covers :cover-parts :partitions :props :inverse :negates :genl-inverse-down :genl-inverse-up :arity
-   :functional-in-arg :commuting :meet :cache-dirty :cache-ctxs])
+   :functional-in-arg :commuting :meet :distinct :cache-dirty :cache-ctxs])
 
 (caches/register-derived
  {:id :T1 :label "genl and genlCx relations" :kind :index :keyed-by :node

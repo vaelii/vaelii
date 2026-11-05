@@ -101,8 +101,8 @@ checks**:
   outer NAT;
 - the expression `E` a constant is named and found by has its own arguments in the order
   `F`'s `symmetric` and commuting marks give them (`nat-read/sorted-expression`), so both
-  spellings of a commuted application reify to one constant. The associative, idempotent
-  and meet arms are not applied, since they can collapse an application to one argument.
+  spellings of a commuted application reify to one constant. The associative, idempotent,
+  meet and distinct arms are not applied, since they can change an application's arity.
   A row naming such a constant records the sentence as written, unreified
   (`integrate/spellings-key`), and a rule firing records its conclusion unreified too;
 - the walk descends into nested non-NAT literals (rule bodies, conjuncts) but leaves
@@ -562,7 +562,8 @@ function's application is a raw compound the reify pass never visits.
 
 The engine does not pattern-match a function application in an antecedent or a goal.
 `res/kb-sentex`, the constructor every store and lookup builds a sentex through, respells a
-rule whose antecedents hold an open application `(F a…)` of a `reifiable_function`
+rule whose antecedents hold an open application `(F a…)` of a `reifiable_function`, or of
+a data-structure constructor ([A data structure is a structural term](#a-data-structure-is-a-structural-term))
 (`res/respell-applications`). The application becomes a variable `?v`, and the literal
 the correspondence makes equivalent to it, `(P a… ?v)` with `?v` at the declared position,
 joins the antecedents. Inner applications are respelled first, and one application
@@ -714,6 +715,115 @@ target the KB holds for it; with a correspondence the respell reaches the same t
 through the projection or the value's fact. `ask` reads one sentence and expands no rule,
 and a stored fact holds a constant rather than an application, so an open application in
 an `ask` goal finds nothing.
+
+## A data structure is a structural term
+
+`resources/kb/upper/structure.txt` declares four collection constructors. Each is an
+`unreifiable_function` and an `unbounded_arity_function` with `arityMin` 0, so a ground
+application stays a structural term whose elements a reader sees, and `(ListFn)`,
+`(SetFn)` and the others are the empty structures. The term marks
+([canonicalization.md](canonicalization.md)) give each kind its canonical spelling:
+
+| kind (type) | term | order | repeats | marks |
+|---|---|---|---|---|
+| list (`list`) | `(ListFn a b b)` | content | kept | none |
+| multiset (`multiset`) | `(MultisetFn a b b)` | sorted | kept | `commutativeInArgAndRest` |
+| set (`finite_set`) | `(SetFn a b)` | sorted | dropped | `commutativeInArgAndRest`, `distinctInArgAndRest` |
+| map (`map`) | `(MapFn (EntryFn k v) …)` | sorted | dropped | as a set |
+
+So `(SetFn b a a)` and `(SetFn a b)` are one sentex, `(ListFn b a)` and `(ListFn a b)` are
+two, and `(SetFn a (SetFn b c))` keeps its inner set as one element. `EntryFn` is binary,
+keeps its order and builds a `map_entry`, and `(argAndRest MapFn 1 map_entry)` refuses a
+`MapFn` argument that is not one, so `(MapFn 1 2)` is refused `:arg-type`. An entry is a
+pair rather than a collection, so `map_entry` is disjoint from `data_structure` and the
+four types below. The four types sit under `data_structure`, under `nowhere_never`, and
+a `separating` declaration holds them apart: `(SetFn 1 2)` and `(MultisetFn 1 2)` are two
+structures with the same elements. `data_structure` is disjoint from `logical`,
+`linguistic`, `quantitative` and `syncategorematic`: the structure is a value a term
+denotes, and the written term is linguistic.
+
+Four relations read a structure, with the structure last and the outputs first, as
+`evaluate`'s are:
+
+| relation | holds when |
+|---|---|
+| `(elementOf ?x ?s)` | `?x` is an item of a list, an element of a multiset or set, or an entry of a map |
+| `(cardinalityOf ?n ?s)` | `?s` has `?n` elements, a multiset counting each repeat |
+| `(multiplicityOf ?n ?x ?s)` | `?x` occurs `?n` times: counted in a list or multiset, 1 or 0 in a set or map |
+| `(valueAt ?v ?k ?s)` | `?v` is a map's value for key `?k`, or a list's item at position `?k`, counted from 1 |
+
+Each constructor declares a corresponding predicate at position 1, so the structure comes
+first, since a variadic tail has no fixed last position: `(listOf ?list . ?items)`,
+`(multisetOf ?m . ?elements)`, `(setOf ?set . ?elements)`, `(mapOf ?map . ?entries)` and
+`(entryOf ?entry ?key ?value)`. Each states its argument 1's type, `list` to
+`map_entry`, though core.txt's correspondence rule derives it from the constructor's
+`result`: a stated constraint holds if the rule or the `result` moves
+([oe-principles.md](oe-principles.md#no-silent-side-effects)).
+
+`provers/StructureProver` answers all nine, authoritative, and `wff` refuses each as a
+stored fact (`wff/structure-problems`), so a structure's elements are read from its term
+and never materialized:
+
+- **A relation needs its structure ground.** An open `?x` binds one element of each
+  equality class the asking context reads, in the order the term holds them; a map's
+  elements are its `EntryFn` entries.
+- **A map gives each key one value.** A ground `MapFn` term with two entries under one
+  key and different values is refused at the write (`:not-well-formed`,
+  `checks/term-shape-problem`). The check compares by identity, so two keys a later
+  `sameAs` merges stay stored. A context that sees the merge reads a map giving that key
+  both values: `valueAt` answers each, and `cardinalityOf` counts both entries.
+- **Equality is read in the asking context.** A ground element, key or value is compared
+  in that context's normal form, as `different` is (docs/equality.md). A set's
+  cardinality counts its elements' equality classes and a map's its entries', and a
+  multiset's multiplicity counts `A` twice in `(MultisetFn A B)` where `(sameAs A B)`
+  holds. The term marks compare by identity, since one
+  sentex serves every context, so `(SetFn A B)` stays two arguments after `(sameAs A B)`
+  and `cardinalityOf` reads 1 for it from a context that sees the merge.
+- **A corresponding predicate reads both ways.** Ground elements bind the structure to the
+  canonical term: `(setOf ?s 2 1 2)` binds `(SetFn 1 2)`. Over a ground structure the
+  element arguments are patterns, ground, open or compound, matched by the kind's own
+  equality: a list's and an entry's in order; a multiset's each taking one occurrence; a
+  set's or a map's each naming an element, two of them the same one if they unify with it.
+  Without a dotted rest the patterns name every element; with one the rest binds the
+  elements none names, in canonical order. So `(setOf (SetFn 1 2) 1 2 ?x)` binds `?x` to 1
+  and to 2, `(setOf (SetFn 1 2 3) 2 . ?r)` binds `?r` to `(1 3)`, and
+  `(multisetOf (MultisetFn 1 2 2) 2 ?x ?y)` binds `1 2` and `2 1`. `v` open patterns
+  answer up to `m^v` ways over `m` elements.
+- **A pattern inside a structure is read through its corresponding predicate.** An open
+  application of the five constructors (`sx/structure-functions`) in a rule's antecedent
+  or in a `prove` or `query` goal is respelled as a `reifiable_function`'s is
+  ([A rule or a goal that names an open application](#a-rule-or-a-goal-that-names-an-open-application)):
+  `(implies (holds ?k (SetFn 1 2 ?x)) (outOf ?k ?x))` is stored as
+  `(implies (and (holds ?k ?set) (setOf ?set 1 2 ?x)) (outOf ?k ?x))`, so it answers `?x`
+  1 and 2 over a stored `(SetFn 1 2)`, and 3 over `(SetFn 1 2 3)`. The added literals run
+  ahead of the rule's own deferred literals, a structure's before the structure inside
+  it, so `(SetFn (SetFn ?a) ?b)` reads the outer set first and a `(lessThan ?x 5)` after
+  the pattern tests the `?x` it bound. A deferred literal keeps its structure as written:
+  `(elementOf ?x (SetFn . ?xs))` matches nothing, and computes from the set its bindings
+  build. A backward rule's head
+  stays as written, so the goal `(qq (SetFn Bx Pp ?x))` reads `[(qq ?set) (setOf ?set Bx
+  Pp ?x)]` against a head `(qq (SetFn ?y Qq Bx))` in any argument order. `ask` reads one
+  sentence, so it matches an open structure application as written, over the argument
+  arrangements a stored fact can hold at the length written
+  ([canonicalization.md](canonicalization.md#compounds-below-the-literal-sorted)):
+  `(SetFn 2 ?x)` finds a stored `(SetFn 1 2)`, and `(SetFn 1 2 ?x)` does not.
+
+All nine are in `sentex/deferred-predicates`, so a forward rule computes them after the
+antecedents that bind their inputs (`chain/solve-deferred`). A relation's inputs are its
+structure. A corresponding predicate's are its elements, or its structure where the other
+antecedents bind the structure and not every element (`sentex/deferred-input-vars` under
+the bound variables), so a rule builds a structure from a rest variable:
+
+```clojure
+(implies (and (intersection ?c . ?types) (elementOf ?t (SetFn . ?types)))
+         (genl ?c ?t))
+```
+
+concludes a `genl` edge for each type of an intersection at any arity, and a rule that
+binds a structure reads its elements through the corresponding predicate. A dotted
+literal with a concrete functor
+matches stored facts of every length: `candidate-handles` reads the functor's extent and
+`unify` binds the rest (`structure_test/a-dotted-pattern-matches-stored-facts-of-every-length`).
 
 ## Display / export
 
@@ -987,9 +1097,10 @@ comes first (`nat/reconcile-nats!`).
   reads its applications under the sorted constant.** The marks are read unscoped
   (`nat-read/sorted-expression`), and the readers a reconcile plans for are those of the
   `reifiable_function` mark (`chain/reified-plan`).
-- **An unreified or open NAT is not structurally indexed.** Reification is what makes a
-  NAT findable, so a NAT that cannot be reified is reachable only through the coarser
-  keys ([indexing.md](indexing.md)).
+- **An unreified NAT is indexed as written.** The structural trie walks into a stored
+  application, and the term index keys a ground one whole beside each symbol and ground
+  compound inside it ([indexing.md](indexing.md)), so `find-sentexes` on `(SetFn 1 2)`
+  finds the facts holding that set. No index keys a number or a string inside one.
 - **An existential rule head is not skolemized here** ([skolem.md](skolem.md)).
 - **A rule's open application in an antecedent is read only through a correspondence.**
   With no believed `functionCorrespondingPredicate`, a rule whose antecedents apply the

@@ -472,7 +472,7 @@ the spellings record.
 
 ## A function's terms reshaped by declaration
 
-Three marks reshape a ground application of a function below the literal, beside the
+Four marks reshape a ground application of a function below the literal, beside the
 sorts. `sentex/canonical-term` applies them, in the walk above, to the compound whose
 functor carries them:
 
@@ -481,9 +481,11 @@ functor carries them:
 | `(associative F)` | an argument applying `F` has its arguments spliced in, before the sort | `(F A (F B C))` → `(F A B C)` |
 | `(idempotent F)` | an argument equal to its neighbour after the sort is dropped when `F` is also associative; otherwise only an application whose arguments are all one term collapses | `(F A B A)` → `(F A B)` |
 | `(meetFunctionOf F R)` | an argument another argument lies below by `R` is dropped; of two arguments below each other, the `cmp-term`-least stays | `(F (DatetimeFn "2000") (DatetimeFn "2000-03"))` → `(DatetimeFn "2000-03")` |
+| `(distinctInArgAndRest F n)` | an argument from position `n` on that repeats an earlier one is dropped, after the sort, with no associative mark needed | `(F A B A)` → `(F A B)`, `(F A A)` → `(F A)` |
 
 An application of an idempotent or meet function left with one argument is that
-argument. Core.txt's forward rules conclude `commutative`, `associative` and `idempotent`
+argument. A distinct one keeps its functor at any count, so `(SetFn A)` stays a term, and
+it never flattens: `(SetFn A (SetFn B C))` holds a set as an element. Core.txt's forward rules conclude `commutative`, `associative` and `idempotent`
 from `meetFunctionOf`, so the one declaration gives all four arms.
 
 - **The order's registered comparator decides absorption.** `res/meet-order` reads

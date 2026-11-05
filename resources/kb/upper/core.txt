@@ -2226,7 +2226,7 @@
 ;; does not.
 (set/forwardOnlyRule (implies (and (commutative ?p) (predicate ?p) (arity ?p 2)) (symmetric ?p)))
 
-;; ---- the term marks: associative, idempotent and the meet of an order ----------------
+;; ---- the term marks: associative, idempotent, distinct and the meet of an order -------
 
 (comment associative
          "(associative ?relation) means that ?relation applied to an application of itself denotes what ?relation applied to the arguments of both denotes: (F a (F b c)), (F (F a b) c) and (F a b c) are one term. The assert entry point splices the inner application's arguments into the outer one's, for a ground application below the literal, so a fact stating any of the three spellings is one sentex. The spliced application takes the arguments of both, which is why the mark classifies a variable_arity relation. See docs/canonicalization.md.")
@@ -2249,7 +2249,15 @@
 (set/monotonic (instance_relation_predicate meetFunctionOf))
 (arg meetFunctionOf 1 function)
 (arg meetFunctionOf 2 binary_predicate)
-(termsRelated commutative associative idempotent meetFunctionOf)   ;; the marks that decide a term's canonical form
+
+(comment distinctInArgAndRest
+         "(distinctInArgAndRest ?relation ?position) means that an argument of ?relation from ?position through the end of an application that repeats an earlier one adds nothing: (F a b a) and (F a b) are one term, while every argument before ?position stays as written. The assert entry point drops each such repeat from a ground application below the literal, after the commutativity sort, and the application keeps its functor at any count, so (F a) stays a term. Unlike idempotent it reads no associative mark and never unwraps an application, which is what a set constructor needs. See docs/canonicalization.md.")
+(positiveExampleComment distinctInArgAndRest "a set constructor at position 1, so (SetFn a b a) and (SetFn a b) are one set")
+(decontextualized_predicate distinctInArgAndRest)
+(set/monotonic (instance_relation_predicate distinctInArgAndRest))
+(arg distinctInArgAndRest 1 relation)
+(arg distinctInArgAndRest 2 positive_integer)
+(termsRelated commutative associative idempotent meetFunctionOf distinctInArgAndRest)   ;; the marks that decide a term's canonical form
 
 ;; A meet is commutative, associative and idempotent. The declaration is stated once and the
 ;; three marks are concluded from it. forwardOnlyRule, as the symmetric bridge above is:

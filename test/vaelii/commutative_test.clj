@@ -350,7 +350,8 @@
     (testing "positions are one-based positive integers"
       (is (= :not-well-formed (tu/refusal-type #(v/assert kb (list 'commutativeInArgAndRest p 0) U))))
       (is (= :not-well-formed (tu/refusal-type #(v/assert kb (list 'commutativeInArgAndRest p -1) U))))
-      (is (= :not-well-formed (tu/refusal-type #(v/assert kb (list 'commutativeInArgs p 1 0) U)))))
+      (is (= :not-well-formed (tu/refusal-type #(v/assert kb (list 'commutativeInArgs p 1 0) U))))
+      (is (= :not-well-formed (tu/refusal-type #(v/assert kb (list 'distinctInArgAndRest p 0) U)))))
     (testing "a named set names at least two distinct positions, or it licences nothing"
       (is (= :not-well-formed (tu/refusal-type #(v/assert kb (list 'commutativeInArgs p 1) U))))
       (is (= :not-well-formed (tu/refusal-type #(v/assert kb (list 'commutativeInArgs p 1 1) U)))))))
@@ -939,3 +940,52 @@
       (is (= #{(list p (list MeetFn A (list MeetFn B C)))
                (list p (list MeetFn (list MeetFn A B) C))}
              (stored-under kb p))))))
+
+(defn- distinct-rows
+  "`[name declarations written stored]` rows over `F`, a `distinctInArgAndRest` function,
+  with `p` the predicate each fact applies to the term: the declarations, the spellings a
+  fact is written in, and the one sentence the store holds."
+  [p F A B C]
+  (let [set-decls [(list 'commutativeInArgAndRest F 1) (list 'distinctInArgAndRest F 1)]
+        [a b]     (sort-by str [A B])]
+    [["a repeat dropped after the sort" set-decls
+      [(list p (list F B A A)) (list p (list F A B))]
+      (list p (list F a b))]
+     ["one argument stays an application" set-decls
+      [(list p (list F A A)) (list p (list F A))]
+      (list p (list F A))]
+     ["a set holding a set is not flattened" set-decls
+      [(list p (list F A (list F C B) A))]
+      (list p (sx/canonical-subterm (list F A (list F B C))
+                                    {:symmetric? (constantly false) :opaque? (constantly false)
+                                     :groups-of  (fn [_ _] #{[:rest 1]})}))]
+     ["an argument before the position stays a repeat" [(list 'distinctInArgAndRest F 2)]
+      [(list p (list F A B A B))]
+      (list p (list F A B A))]
+     ["without commutativity the first occurrence keeps its place" [(list 'distinctInArgAndRest F 1)]
+      [(list p (list F B A B))]
+      (list p (list F B A))]
+     ["a Quote holds its argument as written" set-decls
+      [(list p (list 'Quote (list F B A A)))]
+      (list p (list 'Quote (list F B A A)))]]))
+
+(tu/deftest-kb a-distinct-function-s-applications-canonicalize-in-either-arrival-order
+  (doseq [decl-first? [true false]
+          i (range 6)]
+    (tu/with-terms [p SetFn A B C]
+      (let [[name decls written want] (nth (distinct-rows p SetFn A B C) i)]
+        (when decl-first? (doseq [d decls] (v/assert kb d U)))
+        (doseq [w written] (v/assert kb w U))
+        (when-not decl-first? (doseq [d decls] (v/assert kb d U)))
+        (is (= #{want} (stored-under kb p))
+            (str name (if decl-first? ", declarations first" ", facts first")))))))
+
+(tu/deftest-kb a-retracted-distinct-declaration-splits-the-merged-row-back
+  (tu/with-terms [p SetFn A B]
+    (let [d  (v/assert kb (list 'distinctInArgAndRest SetFn 1) U)
+          h1 (v/assert kb (list p (list SetFn A B A)) U)
+          h2 (v/assert kb (list p (list SetFn A B)) U)]
+      (is (= h1 h2))
+      (v/retract! kb d)
+      (is (= #{(list p (list SetFn A B A)) (list p (list SetFn A B))} (stored-under kb p))))))
+

@@ -715,5 +715,5 @@
               (str t " at " ctx)))))))
 
 (deftest the-shipped-prover-census-matches-the-docs
-  (is (= 32 (count provers/default-provers))
-      "docs/inference.md (\"Thirty-two in all\") and docs/anytime.md's tier counts state this number"))
+  (is (= 33 (count provers/default-provers))
+      "docs/inference.md (\"Thirty-three in all\") and docs/anytime.md's tier counts state this number"))

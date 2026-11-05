@@ -4702,24 +4702,41 @@
                            " log (nippy) — a sentence's values must be serializable"))
                     {:type :not-encodable :sentence sentence :value v}))))
 
-(defn quantity-shape-problem
-  "The `:not-well-formed` problem a non-finite measure magnitude is refused with, or
-  nil.  `##Inf` and `##NaN` are `number?`s, and a stored `(QuantityIntervalFn 0 ##Inf
-  Second)` makes every duration and metric goal in its context throw a
-  NumberFormatException out of the magnitude arithmetic, with no `:type`.  A variable
-  magnitude stays legal, since a rule antecedent binds it.  `assert`, `check` and an
-  import read it."
+(defn- clashing-keys?
+  "Does map term `form` name one key with two values: two ground `(EntryFn k v)` entries,
+  identical keys, different values?"
+  [form]
+  (let [kvs (keep (fn [e] (when (and (seq? e) (= 'EntryFn (first e)) (= 3 (count e))
+                                     (sx/ground-term? e))
+                            (rest e)))
+                  (rest form))]
+    (some (fn [[_ vs]] (< 1 (count (distinct (map second vs))))) (group-by first kvs))))
+
+(defn term-shape-problem
+  "The `:not-well-formed` problem a structural term with malformed content is refused
+  with, or nil: a non-finite measure magnitude, or a `MapFn` term giving one key two values.
+  `##Inf` and `##NaN` are `number?`s, and a stored `(QuantityIntervalFn 0 ##Inf Second)`
+  makes every duration and metric goal in its context throw a NumberFormatException out
+  of the magnitude arithmetic, with no `:type`.  A variable magnitude or entry stays
+  legal, since a rule antecedent binds it.  `assert`, `check` and an import read it."
   [sentence]
   (when (sequential? sentence)
     (let [bad (fn [x] (and (number? x) (not (Double/isFinite (double x)))))
           q?  #{'QuantityFn 'QuantityIntervalFn}]
-      (when-some [t (sx/some-form (fn [form]
-                                    (and (sequential? form) (seq form)
-                                         (q? (first form)) (some bad (rest form))))
-                                  sentence)]
+      (if-some [t (sx/some-form (fn [form]
+                                  (and (sequential? form) (seq form)
+                                       (q? (first form)) (some bad (rest form))))
+                                sentence)]
         {:type :not-well-formed :sentence sentence
          :message (str "not well-formed: a measure magnitude must be finite, got "
-                       (pr-str t))}))))
+                       (pr-str t))}
+        (when-some [m (sx/some-form (fn [form]
+                                      (and (seq? form) (= 'MapFn (first form))
+                                           (clashing-keys? form)))
+                                    sentence)]
+          {:type :not-well-formed :sentence sentence
+           :message (str "not well-formed: a map gives each key one value, and "
+                         (pr-str m) " gives one key two")})))))
 
 ;; ---- stratification -----------------------------------------------------
 ;; The rule-set half of well-formedness: a rule whose `exceptWhen` exception closes

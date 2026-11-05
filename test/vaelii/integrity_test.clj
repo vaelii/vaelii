@@ -2049,7 +2049,7 @@
   open pair raises it."
   '{acausal 1 animal 12 aspatial 1 at_least_metatype 4 binary_predicate 17 body_part 27
     causal 1 closed_expression 3 context 1 denotational_term 2 event 2 expression 1
-    fixed_order_type 3 fluent 1 formula 4 function 9 intangible 1 integer 4
+    fixed_order_type 3 fluent 1 formula 4 function 7 intangible 1 integer 4
     lepidopteran 1 literal 2 made 12 non_atomic_term 3 nowhere_never 1 organism 6
     predicate 39 quantitative 6 relation 8 sentence 4 spatiotemporal 1 substance 15
     tangible 5 temporal 6 thing 5 type 14 unary_predicate 26 variable_arity 3
@@ -2063,12 +2063,13 @@
   '#{actor admitsArgnum adultFormOf after arg1 arg2 arg3 arg4 arg5 args argsGenl
      arityMax arityMin atSomeDistanceFrom before behind behindLeftOf behindRightOf
      believes beyondFarDistanceFrom borderlineExample borderlineExampleComment
-     calendarYear capabilityType childOf clippedBefore closeTo closedExtentForArg1
-     closedExtentForArg2 closedExtentForArg3 closedExtentForArg4 closedExtentForArg5
-     coLocatedWith comment commutativeInArgAndRest contains cxMonadOf cxTimeOf
-     datetimeOf defnIff defnNecessary defnSufficient denotes derivativeOf
-     destroyedInput dimensionOf disjoint doneBy during earliestEndOf earliestStartOf
-     eastOf eastwardOf eats endOf equals evaluate exceptWhen exists expresses
+     calendarYear capabilityType cardinalityOf childOf clippedBefore closeTo
+     closedExtentForArg1 closedExtentForArg2 closedExtentForArg3 closedExtentForArg4
+     closedExtentForArg5 coLocatedWith comment commutativeInArgAndRest contains cxMonadOf
+     cxTimeOf datetimeOf defnIff defnNecessary defnSufficient denotes derivativeOf
+     destroyedInput dimensionOf disjoint distinctInArgAndRest doneBy during earliestEndOf
+     earliestStartOf eastOf eastwardOf eats elementOf endOf equals evaluate exceptWhen
+     exists expresses
      externallyConnected farFrom finishedBy finishes forall frontLeftOf frontRightOf
      frontwardOf functionTypeByArity functionalInArg genlInverse genlMonad
      genlResult grandparentOf happens hasCapability hasRegionPart hasSubinterval

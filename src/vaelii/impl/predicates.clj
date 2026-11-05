@@ -326,6 +326,16 @@
   [spec why]
   (assoc spec :facets #{:inert} :inert why))
 
+(def ^:private structure-relation
+  "The note on each structure relation of structure.txt."
+  (str "computed by provers/StructureProver from the ground structure term in the last"
+       " argument, and deferred in a forward join (sx/structure-relations)."))
+
+(def ^:private structure-predicate
+  "The note on each constructor's corresponding predicate."
+  (str "a constructor's corresponding predicate, computed by provers/StructureProver in"
+       " either direction, and deferred in a forward join (sx/structure-predicates)."))
+
 (def ^:private length-clash-checks
   "The `:clash-checks` of every length binding: a fact after the binding is asked
   `checks/fact-clash-checks`' `:arity`, and the binding after facts
@@ -503,6 +513,20 @@
                                   " core.txt's forward rules."))
                 (str "taxonomy/add-meet — read by sentex/canonical-term through res/meet-order,"
                      " and integrate/commute-existing for the facts already stored"))]
+     ['distinctInArgAndRest
+      (enforced {:shape   {:args [:relation :position]}
+                 :storage [:pred-position :distinct]
+                 :checked true
+                 :facets  #{:cached :derived :reach}
+                 :family  nil
+                 :notes   (str "a canonicalization mark on the applications below the literal:"
+                               " an argument from the position on that repeats an earlier one is"
+                               " dropped, and the application keeps its functor at any count,"
+                               " so (SetFn a) stays a term. The mark a set constructor carries"
+                               " beside its commutativity.")}
+                (str "taxonomy/add-distinct — read by sentex/canonical-term through"
+                     " res/distinct-from, and integrate/commute-existing for the facts already"
+                     " stored"))]
      ['asymmetric  (enforced (assoc (prop :asymmetric :facets #{:reach :convicts :arbitrable
                                                                 :answers})
                                     :opposing-read
@@ -1157,6 +1181,24 @@
                                (str "provers/CommonGenlProver — taxonomy/max-common-specs of"
                                     " arguments 2 and up, read through the edges the asking"
                                     " context sees"))]
+     ['elementOf      (operator {:args [:term :term]}
+                                :notes structure-relation)]
+     ['cardinalityOf  (operator {:args [:integer :term]}
+                                :notes structure-relation)]
+     ['multiplicityOf (operator {:args [:integer :term :term]}
+                                :notes structure-relation)]
+     ['valueAt        (operator {:args [:term :term :term]}
+                                :notes structure-relation)]
+     ['listOf         (operator {:args [:term] :variadic :term}
+                                :notes structure-predicate)]
+     ['multisetOf     (operator {:args [:term] :variadic :term}
+                                :notes structure-predicate)]
+     ['setOf          (operator {:args [:term] :variadic :term}
+                                :notes structure-predicate)]
+     ['mapOf          (operator {:args [:term] :variadic :term}
+                                :notes structure-predicate)]
+     ['entryOf        (operator {:args [:term :term :term]}
+                                :notes structure-predicate)]
      ['unknown     (operator {:args [:sentence]})]
      ['thereExists (enforced (operator {:args [:term :sentence]})
                              "provers/ThereExistsProver — a ground existential, binding its variable(s) against the body and projecting the binder out")]

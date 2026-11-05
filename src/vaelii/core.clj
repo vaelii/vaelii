@@ -1230,7 +1230,7 @@
 (defn- check-sentence-shape!
   "The five refusals a would-be assertion earns before any check reads the KB: an
   s-expression that is a list rather than a vector, whole connective frames, every `or`
-  expandable by the polycanonicalization, a finite measure magnitude, and every leaf
+  expandable by the polycanonicalization, a well-formed structural term, and every leaf
   surviving the durable log.  In `shape-problems`' order, which is `assert`'s.  Both
   `assert` and `assert-inert` run all five, so neither stores what the other refuses.  The
   context guard stays at the call sites."
@@ -1238,7 +1238,7 @@
   (check-shape! (sentence-shape-problem sentence))
   (check-shape! (sx/connective-problem sentence))
   (check-shape! (disjunction-shape-problem sentence))
-  (check-shape! (checks/quantity-shape-problem sentence))
+  (check-shape! (checks/term-shape-problem sentence))
   ;; Every leaf must survive the durable log: a non-serializable value (a function, an
   ;; atom) stores in memory and throws at write time on the first disk backend, so the
   ;; same assert would succeed or fail by backend.  Refused here, before anything is
@@ -1929,7 +1929,7 @@
       (some-> (problem (fn [] (rules/normalize-solve-surface sentence))) vector)
       (some-> (sx/connective-problem sentence) vector)
       (some-> (disjunction-shape-problem sentence) vector)
-      (some-> (checks/quantity-shape-problem sentence) vector)
+      (some-> (checks/term-shape-problem sentence) vector)
       (some-> (problem (fn [] (checks/check-encodable sentence))) vector)))
 
 (defn- fact-problems

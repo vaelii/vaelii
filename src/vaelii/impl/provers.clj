@@ -1425,6 +1425,199 @@
         (ground? a) (map (fn [t] {b t}) (sort (scoped-equiv-class kb vis a)))
         :else       (map (fn [t] {a t}) (sort (scoped-equiv-class kb vis b)))))))
 
+(defn- structure-kind
+  "The kind `sx/structure-constructors` names for `t`, a ground undotted application of a
+  structure constructor, else nil (docs/nat.md, \"A data structure is a structural term\")."
+  [t]
+  (when (and (seq? t) (seq t) (ground? t) (not-any? #(= sx/dot-marker %) t))
+    (get sx/structure-constructors (first t))))
+
+(defn- entry-parts
+  "The key and value of `(EntryFn k v)`, else nil."
+  [e]
+  (when (and (seq? e) (= 'EntryFn (first e)) (= 3 (count e))) (rest e)))
+
+(defn- structure-items
+  "The arguments of a structure of `kind` as the store spells it, a set's or map's repeats
+  dropped by identity, so a KB that declares no mark on the constructor still reads one."
+  [kb kind s]
+  (let [items (rest (sx/canonical-subterm s (res/store-marks kb)))]
+    (if (#{:set :map} kind) (distinct items) items)))
+
+(defn- same-term-fn
+  "`terms-equal-in?` over one read of the rewrite rules, each side's normal form computed
+  once."
+  [kb context]
+  (let [vis   (res/visible-supporter-fn kb context)
+        rules (delay (res/rewrite-rules-in kb vis))
+        nf    (memoize #(rewrite/normalize @rules (res/representative-term kb vis %)))]
+    (fn [a b] (or (= a b) (= (nf a) (nf b))))))
+
+(defn- same-classes
+  "`xs` grouped into classes of `same?` items, each a vector in the order `xs` holds them."
+  [same? xs]
+  (reduce (fn [cs t] (if-let [i (first (keep-indexed #(when (same? t (first %2)) %1) cs))]
+                       (update cs i conj t)
+                       (conj cs [t])))
+          [] xs))
+
+(defn- match-item
+  "Bindings extending `b` under which goal argument `x` is item `t`: by `same?` when `x` is
+  ground, by unification otherwise."
+  [same? x t b]
+  (if (ground? x) (when (same? x t) b) (res/unify x t b)))
+
+(defn- count-binding
+  "Bindings extending `b` under which goal argument `n` is the count `c`."
+  [n c b]
+  (cond (pvar? n)                 (assoc b n c)
+        (and (number? n) (== n c)) b))
+
+(defn- solve-structure-relation
+  "The answers to a structure relation over a ground structure, every element, entry or key
+  read in `context`'s normal form: an open element binds one of each class, a set's and a
+  map's count is its classes, and a map whose keys merge there answers each value."
+  [kb [f :as goal] context]
+  (let [s     (last goal)
+        kind  (structure-kind s)
+        items (structure-items kb kind s)
+        same? (same-term-fn kb context)
+        reps  (delay (map first (same-classes same? items)))
+        times (fn [e] (if (#{:list :multiset} kind)
+                        (count (filter #(same? e %) items))
+                        (if (some #(same? e %) items) 1 0)))]
+    (case f
+      elementOf
+      (let [[_ x] goal]
+        (if (ground? x)
+          (if (some #(same? x %) items) [{}] [])
+          (keep #(res/unify x % {}) @reps)))
+      cardinalityOf
+      (let [c (if (#{:list :multiset} kind) (count items) (count @reps))]
+        (if-let [b (count-binding (second goal) c {})] [b] []))
+      multiplicityOf
+      (let [[_ n x] goal]
+        (if (ground? x)
+          (if-let [b (count-binding n (times x) {})] [b] [])
+          (keep (fn [e] (when-let [b (res/unify x e {})]
+                          (count-binding (res/substitute n b) (times e) b)))
+                @reps)))
+      valueAt
+      (let [[_ v k] goal
+            pairs   (case kind
+                      :map  (keep entry-parts @reps)
+                      :list (map-indexed (fn [i t] [(inc i) t]) items)
+                      nil)]
+        (for [[pk pv] pairs
+              :let  [b (match-item same? k pk {})]
+              :when b
+              :let  [b (match-item same? (res/substitute v b) pv b)]
+              :when b]
+          b)))))
+
+(defn- split-rest
+  "`[explicit rest-var]` of a corresponding predicate's element arguments: the arguments
+  before a dot and the variable after it, or all of them and nil."
+  [args]
+  (let [[xs tail] (split-with #(not= sx/dot-marker %) args)]
+    [xs (second tail)]))
+
+(defn- positional-matches
+  "Bindings under which patterns `xs`, then rest variable `r` if any, are a list's or an
+  entry's `items` in order, a ground pattern compared by `same?`."
+  [same? items xs r]
+  (let [n (count xs)]
+    (or (when (if r (<= n (count items)) (= n (count items)))
+          (when-let [b (reduce (fn [b [x t]] (or (match-item same? (res/substitute x b) t b) (reduced nil)))
+                               {} (map vector xs items))]
+            (if r (some-> (res/unify r (apply list (drop n items)) b) vector) [b])))
+        [])))
+
+(defn- commuting-matches
+  "Bindings under which patterns `xs` name items of a multiset, set or map, compared by
+  `same?`: a multiset's patterns take one occurrence each, and a set's or map's may name one
+  element twice.  Without rest variable `r` they name every item; with it, `r` binds the
+  items none names, in the store's order.  `v` open patterns answer up to `m^v` ways."
+  [same? kind items xs r]
+  (let [set?    (#{:set :map} kind)
+        classes (if set? (same-classes same? items) (mapv vector items))
+        go      (fn go [ps used b]
+                  (if (empty? ps)
+                    [[used b]]
+                    (let [p (res/substitute (first ps) b)]
+                      (mapcat (fn [i]
+                                (when (or set? (not (used i)))
+                                  (let [c (nth classes i)]
+                                    (if (ground? p)
+                                      (when (same? p (first c)) (go (rest ps) (conj used i) b))
+                                      (mapcat #(some->> (res/unify p % b) (go (rest ps) (conj used i)))
+                                              (distinct c))))))
+                              (range (count classes))))))]
+    (distinct
+     (for [[used b] (go (sort-by (complement ground?) xs) #{} {})
+           :let  [left (remove used (range (count classes)))]
+           :when (or r (empty? left))
+           :let  [b (if r (res/unify r (apply list (map #(first (nth classes %)) left)) b) b)]
+           :when b]
+       b))))
+
+(defn- solve-structure-predicate
+  "The answers to a corresponding predicate: the canonical structure its ground elements
+  build, or each way its element patterns, a rest after them binding what they leave, name
+  the elements of its ground structure in `context`'s normal form."
+  [kb [f s & args] context]
+  (let [ctor   (get sx/structure-predicates f)
+        marks  (res/store-marks kb)
+        [xs r] (split-rest args)
+        xs     (map #(if (ground? %) (sx/canonical-subterm % marks) %) xs)]
+    (cond
+      (pvar? s)
+      [{s (sx/canonical-subterm (apply list ctor args) marks)}]
+
+      (not (and (seq? s) (= ctor (first s))))
+      []
+
+      :else
+      (let [same? (same-term-fn kb context)
+            kind  (structure-kind s)]
+        (if (or (= 'EntryFn ctor) (= :list kind))
+          (positional-matches same? (rest (sx/canonical-subterm s marks)) xs r)
+          (commuting-matches same? kind (structure-items kb kind s) xs r))))))
+
+(defn- structure-goal?
+  "Is `goal` one `StructureProver` answers: a structure relation of its arity over a ground
+  structure, or a corresponding predicate whose structure is ground, or whose elements are
+  ground and undotted?"
+  [goal]
+  (and (seq? goal) (symbol? (first goal))
+       (let [[f & args] goal]
+         (cond
+           (contains? sx/structure-relations f)
+           (and (= ({'elementOf 2 'cardinalityOf 2} f 3) (count args))
+                (some? (structure-kind (last args))))
+
+           (contains? sx/structure-predicates f)
+           (let [[s & es] args
+                 [_ r]    (split-rest es)]
+             (and (some? s)
+                  (or (not= 'entryOf f) (= 3 (count args)))
+                  (if (pvar? s)
+                    (and (nil? r) (not-any? #(= sx/dot-marker %) es) (every? ground? es))
+                    (and (ground? s) (or (nil? r) (pvar? r))))))
+           :else false))))
+
+(defrecord StructureProver []
+  Prover
+  (applicable? [_ _ goal _] (structure-goal? goal))
+  (est-bindings [_ _ goal _]
+    (if (contains? sx/structure-relations (first goal)) (max 1 (dec (count (last goal)))) 1))
+  (cost         [_ _ _ _] :lookup)
+  (completeness [_ _ _ _] 100)
+  (solve [_ kb goal context]
+    (if (contains? sx/structure-relations (first goal))
+      (solve-structure-relation kb goal context)
+      (solve-structure-predicate kb goal context))))
+
 ;; ---- evaluate: symbolic computation -------------------------------------
 ;; (evaluate ?result <expr>) binds ?result to the value of a symbolic expression,
 ;; e.g. (evaluate ?sum (+ 1 2)) => ?sum=3.  A safe whitelist evaluator, not `eval`.
@@ -2223,13 +2416,13 @@
       out
       (let [i (or (first (keep-indexed
                           (fn [i c] (when (or (not (or (conjunct-computed? c) (contains? tests c)))
-                                              (every? bound (sx/deferred-input-vars c)))
+                                              (every? bound (sx/deferred-input-vars c bound)))
                                       i))
                           pending))
                   0)
             c (nth pending i)]
         (recur (into (subvec pending 0 i) (subvec pending (inc i)))
-               (into bound (concat (sx/free-vars c) (sx/deferred-output-vars c)))
+               (into bound (concat (sx/free-vars c) (sx/deferred-output-vars c bound)))
                (conj out c))))))
 
 (defn conjunction-solutions
@@ -3416,6 +3609,7 @@
    (->UnknownProver) (->ThereExistsProver) (->ForallProver) (->ClosedExtentProver)
    (->DefnSufficientProver) (->DefnNecessaryNegationProver) (->DisjointnessNegationProver)
    (->NegatesProver)
+   (->StructureProver)
    (->CoveringProver)
    (->AggregateProver) (->BeliefProjectionProver)
    ;; FactProver before ArgTypeProver: both are :lookup / completeness 50, so vector

@@ -265,8 +265,9 @@ bare variable, a `(not A B)` whose record and index disagree about what it says,
 predicate's declaration in a shape its `:wff` arm refuses (`:not-well-formed`,
 `special/wff-problems`) puts an individual or a self-loop into the taxonomy, or an `arg`
 position that is not an integer into the argument constraints. A non-finite measure
-magnitude (`:not-well-formed`, `checks/quantity-shape-problem`) throws out of every
-duration and metric goal in its context. An inline `exceptWhen` over a fact
+magnitude (`:not-well-formed`, `checks/term-shape-problem`) throws out of every
+duration and metric goal in its context, and a `MapFn` term giving one key two values
+(the same check) makes `valueAt` answer both. An inline `exceptWhen` over a fact
 (`:not-well-formed`, `rules/exceptWhen-not-a-rule`) qualifies nothing a rule concludes. A sentex in a query context, or in a context
 that is not a symbol (`:shape`), is in no context a read reaches. An import skips each of
 these and counts it in `:refused` under that `:type`, as it does for the structural

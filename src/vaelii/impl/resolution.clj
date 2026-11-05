@@ -250,6 +250,8 @@
                          (not (sx/variable? (:context pat))))
             path
             (cond
+              (and pred (some #(= sx/dot-marker %) args)) :functor-extent
+
               ;; A negative key holds its whole body as one token, so the trie matches a negative only exactly
               ;; and `p/lookup` answers `#{}` for every open negative. The secondary indexes (predicate extent,
               ;; argument roots) see inside a negative. Unconditional: the trie is no reference for this shape.
@@ -858,6 +860,12 @@
         (when-let [cs (seq (keep datetime/order-comparators (sort-by nm/name-key rs)))]
           (fn [a b] (boolean (some #(% a b) cs))))))))
 
+(defn distinct-from
+  "`sx/sentex`'s `:distinct-from` read: for a function `f` some `(distinctInArgAndRest f n)`
+  declares, the least such `n`, or nil."
+  [tax]
+  (fn [f] (let [ns (tax/distinct-positions tax f)] (when (seq ns) (apply min ns)))))
+
 (defn mention-declarations
   "The JTMS-IN `quotedArg` and `quotedArgAndRest` declarations on `f` typing position `n`,
   as stored sentexes: a `(quotedArg f n T)`, or a `(quotedArgAndRest f k T)` with `k` at
@@ -888,13 +896,14 @@
   every reader shares."
   [kb]
   (let [tax (reasoning/taxonomy kb)]
-    {:symmetric?   #(tax/has-prop? tax :symmetric %)
-     :groups-of    (fn [f _arity] (tax/commuting-groups tax f))
-     :opaque?      (opaque-fn tax)
-     :mention-at?  (mention-at kb tax)
-     :associative? #(tax/has-prop? tax :associative %)
-     :idempotent?  #(tax/has-prop? tax :idempotent %)
-     :meet-order   (meet-order tax)}))
+    {:symmetric?    #(tax/has-prop? tax :symmetric %)
+     :groups-of     (fn [f _arity] (tax/commuting-groups tax f))
+     :opaque?       (opaque-fn tax)
+     :mention-at?   (mention-at kb tax)
+     :associative?  #(tax/has-prop? tax :associative %)
+     :idempotent?   #(tax/has-prop? tax :idempotent %)
+     :meet-order    (meet-order tax)
+     :distinct-from (distinct-from tax)}))
 
 (defn probe-spelling
   "Literal `sentence` with every ground compound below it in the order the store holds
@@ -1124,13 +1133,17 @@
 
 (defn- respell-walk
   "The tests a respell in `kb` reads: `fixed?`, an open application of a
-  `reifiable_function` (the mark read unscoped); `app?`, that or a variable-functor
+  `reifiable_function` (the mark read unscoped) or of a data-structure constructor
+  (`built?`, `sx/structure-functions`); `app?`, that or a variable-functor
   application; `formula?`, `formula-position?` memoized for one respell; `modal`, the
   `modal_predicate`s, read unscoped (`tax/mention-marks`)."
   [kb]
   (let [tax    (reasoning/taxonomy kb)
-        fixed? (fn [t] (application-of? #(tax/has-prop? tax :reifiable %) t))]
+        fixed? (fn [t] (application-of? #(or (tax/has-prop? tax :reifiable %)
+                                             (contains? sx/structure-functions %))
+                                        t))]
     {:modal    (:modal (tax/mention-marks tax))
+     :built?   #(application-of? sx/structure-functions %)
      :fixed?   fixed?
      :app?     #(or (variable-application? %) (fixed? %))
      :formula? (memoize #(formula-position? kb %1 %2))}))
@@ -1305,8 +1318,8 @@
   vector of literals, or nil when it cannot be: an application with no reading, or a
   construct holding a reifiable one.  `(equals x (F a…))`, either way round, is the
   reading's own literals with `x` the value, and `x` is the application's value in
-  `state`.  A rule `l` is returned as it is
-  (`rule-form?`)."
+  `state`.  A rule `l` is returned as it is (`rule-form?`), and a deferred `l` keeps a
+  data structure as written: it computes from the value its bindings build."
   [walk readings state l]
   (cond
     (or (not (and (seq? l) (seq l))) (rule-form? l) (contains? nat-quoting-predicates (first l)))
@@ -1317,7 +1330,8 @@
     :else
     (let [pr  (first l)
           as  (vec (rest l))
-          a?s (vec (map-indexed #(arg-app? walk l %1 %2) as))
+          a?s (cond->> (vec (map-indexed #(arg-app? walk l %1 %2) as))
+                (sx/deferred-literal? l) (mapv (fn [a?] #(and (a? %) (not ((:built? walk) %))))))
           app (:app? walk)
           rt  (partial respell-term (:modal walk))]
       (cond
@@ -1373,19 +1387,35 @@
       (get-in @state [:vars f'] f'))
     form))
 
+(defn- hoisted-order
+  "The literals a respell `hoisted` from antecedents `antes`, in the order they can run
+  once the generators have bound their variables: a structure's corresponding-predicate
+  literal reads it before the one that reads a structure inside it.  A literal that never
+  can stays last, for `sx/check-naf-closed` to name."
+  [antes hoisted]
+  (loop [pending (vec hoisted)
+         bound   (into #{} (mapcat sx/form-variables) (remove sx/deferred-literal? (concat antes hoisted)))
+         acc     []]
+    (if-let [l (first (filter #(every? bound (sx/deferred-input-vars % bound)) pending))]
+      (recur (let [i (.indexOf ^java.util.List pending l)] (into (subvec pending 0 i) (subvec pending (inc i))))
+             (into bound (sx/form-variables l))
+             (conj acc l))
+      (into acc pending))))
+
 (defn- respell-rule
   "The `implies` form `r` with every open application in its antecedents respelled under
-  `state`'s choice, the literals stating the values added to its antecedents; `r` itself
-  when nothing changed, nil when one cannot be respelled.  The consequent stays as
-  written, except that an application the antecedents give a value takes it
-  (`substitute-bound`): a firing mints the rest (docs/nat.md, The corresponding
-  predicate).  A generator's consequent rule is left whole (`rule-form?`)."
+  `state`'s choice, the literals stating the values added ahead of its deferred ones
+  (`hoisted-order`); `r` itself when nothing changed, nil when one cannot be respelled.
+  The consequent stays as written, except that an application the antecedents give a
+  value takes it (`substitute-bound`): a firing mints the rest (docs/nat.md, The
+  corresponding predicate).  A generator's consequent rule is left whole (`rule-form?`)."
   [walk readings state r]
   (let [antes0 (vec (sx/rule-antecedents r))
         conseq (sx/rule-consequent r)
         antes  (mapv #(respell-literal walk readings state %) antes0)]
     (when (every? some? antes)
-      (let [antes' (into (into [] cat antes) (:hoisted @state))
+      (let [antes  (into [] cat antes)
+            antes' (into (hoisted-order antes (:hoisted @state)) antes)
             c      (if (rule-form? conseq) conseq (substitute-bound (:modal walk) state conseq))]
         (if (and (= antes' antes0) (= c conseq))
           r
@@ -1462,15 +1492,16 @@
   false)
 
 (defn rule-respellings
-  "Every spelling of rule `sentence` its antecedents' open `reifiable_function`
-  applications read through the believed correspondences, as `[[spelling handle-sets] …]`
-  (`respell-rule`; the consequent stays as written).  The first takes each function's
-  content-least correspondence and is the one `kb-sentex` stores;
-  `chain/sync-rule-respellings!` stores the rest.  Nil when `sentence` is no rule or no
-  antecedent has a reading (docs/nat.md, The corresponding predicate)."
+  "Every spelling of rule `sentence` its antecedents' open `reifiable_function` and
+  data-structure applications read through the believed correspondences, as
+  `[[spelling handle-sets] …]` (`respell-rule`; the consequent stays as written).  The
+  first takes each function's content-least correspondence and is the one `kb-sentex`
+  stores; `chain/sync-rule-respellings!` stores the rest.  Nil when `sentence` is no rule
+  or no antecedent has a reading (docs/nat.md, The corresponding predicate)."
   [kb sentence context]
   (when (and (not *as-written*) (seq? sentence)
-             (seq (tax/props (reasoning/taxonomy kb) :reifiable)))
+             (or (seq (tax/props (reasoning/taxonomy kb) :reifiable))
+                 (sx/some-symbol? sx/structure-functions sentence)))
     (let [inner (volatile! nil)]
       (map-inner-rule #(vreset! inner %) sentence)
       (when-let [r @inner]
@@ -1480,7 +1511,11 @@
               (some->> (readings-of (sx/form-variables r)
                                     #(respell-rule walk (fn [f m] (rule-readings @decls f m)) % r))
                        (mapv (fn [[r' ds]]
-                               [(map-inner-rule (constantly r') sentence) (justification-sets ds)]))))))))))
+                               [(map-inner-rule (constantly r') sentence) (justification-sets ds)]))
+                       ;; a deferred literal's data structure alone leaves the rule as written
+                       (remove (fn [[r' _]] (= r' sentence)))
+                       not-empty
+                       vec))))))))
 
 (defn respell-applications
   "Rule `sentence` as `kb-sentex` stores it in `context`: the first of

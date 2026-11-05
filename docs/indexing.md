@@ -1252,7 +1252,11 @@ than failing:
   hands it to `matches-visible`. What `res/candidate-handles` chooses between is seven
   named access paths — `:trie`, `:structural`, `:arg-roots`, `:context-extent`,
   `:functor-extent`, `:negative-roots`, `:negative-fan` — each of which answers a
-  **superset** that `unify` then filters exact; there is no eighth for a dotted shape.
+  **superset** that `unify` then filters exact; there is no eighth for a dotted shape. A
+  dotted pattern with a concrete functor, `(p ?c . ?xs)`, reads `:functor-extent`, and
+  `unify` binds the rest against each fact of `p` at every length. A dotted pattern under
+  a variable functor matches no stored fact, since the trie and the argument roots both
+  read its `.` as an argument.
 - **The rule indexes are keyed by predicate**, not by full antecedent shape, so two rules
   whose antecedents differ below the predicate share a bucket.  A predicate is what the
   key *is*, so a variable in functor position turns on *where* it sits.  In an

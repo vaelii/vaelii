@@ -28,7 +28,7 @@
   ;; the point of layer discovery: a KB is added by dropping a file, no code change
   (testing "upper holds the domain files, sorted, and the loader reads core.txt first"
     (is (= ["abstract.txt" "core.txt" "life.txt" "measure.txt" "organism.txt"
-            "reflection.txt" "society.txt" "space.txt" "time.txt"]
+            "reflection.txt" "society.txt" "space.txt" "structure.txt" "time.txt"]
            (seed/layer-files "upper")))
     (is (= "core.txt" (first (core-context/upper-files)))))
   (testing "middle holds the theory contexts"

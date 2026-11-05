@@ -1266,16 +1266,17 @@
 (defn- permuting-marks
   "What the store spells sentences by: the `symmetric` predicates, the commuting-group
   table, the `reifiable_function` functions, the term marks (the `associative` and
-  `idempotent` functions, the `meetFunctionOf` table), and the predicates declaring a
-  `quotedArg` or `quotedArgAndRest` mention (`res/mention-at`).  Eight persistent values,
-  compared by identity first.
+  `idempotent` functions, the `meetFunctionOf` and `distinctInArgAndRest` tables), and the
+  predicates declaring a `quotedArg` or `quotedArgAndRest` mention (`res/mention-at`).  Nine
+  persistent values, compared by identity first.
 
   The marks are read unscoped: they decide the stored spelling, which every reader
   shares."
   [tax]
   [(tax/props tax :symmetric) (get @tax :commuting {}) (tax/props tax :reifiable)
    (tax/props tax :associative) (tax/props tax :idempotent) (get @tax :meet {})
-   (tax/props tax :declares-quoted-arg) (tax/props tax :declares-quoted-arg-and-rest)])
+   (tax/props tax :declares-quoted-arg) (tax/props tax :declares-quoted-arg-and-rest)
+   (get @tax :distinct {})])
 
 (defn- note-permuting-moves!
   "Queue on `:respell` every predicate whose permuting marks differ between `before` (a
@@ -1285,12 +1286,12 @@
   mark that stops holding leaves rows spelled by it, and one that starts holding leaves rows
   it would have folded, with no sentex arriving, so `chain/reconcile-spellings!` and
   `chain/reconcile-reified!` are told here: at a record leaving, a relabel, and for the
-  reifiable mark a record arriving (`reifiable-entry`).  Nearly always eight `identical?` tests."
-  [kb [sym0 com0 rf0 as0 id0 mt0 qa0 qr0]]
-  (let [[sym1 com1 rf1 as1 id1 mt1 qa1 qr1] (permuting-marks (reasoning/taxonomy kb))]
+  reifiable mark a record arriving (`reifiable-entry`).  Nearly always nine `identical?` tests."
+  [kb [sym0 com0 rf0 as0 id0 mt0 qa0 qr0 ds0]]
+  (let [[sym1 com1 rf1 as1 id1 mt1 qa1 qr1 ds1] (permuting-marks (reasoning/taxonomy kb))]
     (when-not (and (identical? sym0 sym1) (identical? com0 com1) (identical? rf0 rf1)
                    (identical? as0 as1) (identical? id0 id1) (identical? mt0 mt1)
-                   (identical? qa0 qa1) (identical? qr0 qr1))
+                   (identical? qa0 qa1) (identical? qr0 qr1) (identical? ds0 ds1))
       (let [moved (-> #{}
                       (into (remove #(contains? sym1 %)) sym0)
                       (into (remove #(contains? sym0 %)) sym1)
@@ -1306,6 +1307,8 @@
                       (into (remove #(contains? id0 %)) id1)
                       (into (filter #(not= (get mt0 %) (get mt1 %)))
                             (concat (keys mt0) (keys mt1)))
+                      (into (filter #(not= (get ds0 %) (get ds1 %)))
+                            (concat (keys ds0) (keys ds1)))
                       (into (comp (remove #(contains? rf1 %)) (map #(vector :reifiable %))) rf0)
                       (into (comp (remove #(contains? rf0 %)) (map #(vector :reifiable %))) rf1)
                       (into (comp (filter #(or (contains? rf0 %) (contains? rf1 %)))
@@ -6827,6 +6830,19 @@
                      (when (and (symbol? f) (symbol? r))
                        (tax/add-meet tax f r id ctx)))
      :wff          wff/meet-function-problems}
+    'distinctInArgAndRest
+    {:integrate    (fn [kb sx h]
+                     (let [[_ f n] (:sentence sx)]
+                       (when (and (symbol? f) (integer? n) (pos? n))
+                         (tax/add-distinct (reasoning/taxonomy kb) f n h (:context sx)))))
+     :disintegrate (fn [kb sx]
+                     (let [[_ f n] (:sentence sx)]
+                       (when (and (symbol? f) (integer? n) (pos? n))
+                         (tax/del-distinct! (reasoning/taxonomy kb) f n (:id sx)))))
+     :rebuild      (fn [tax {[_ f n] :sentence id :id ctx :context}]
+                     (when (and (symbol? f) (integer? n) (pos? n))
+                       (tax/add-distinct tax f n id ctx)))
+     :wff          wff/commutative-in-arg-and-rest-problems}
     'inverse {:integrate    (fn [kb sx h]
                               (let [[_ p q] (:sentence sx)]
                                 (tax/add-inverse (reasoning/taxonomy kb) p q h (:context sx))))
@@ -6961,7 +6977,9 @@
            anti_symmetric anti_transitive])
    ;; the three equality relations share one entry-shape
    (into {} (map (fn [f] [f equality-entry])) kb/equality-predicates)
-   (into {} (map (fn [f] [f {:wff wff/naf-problems}])) (keys sx/aggregate-functors))))
+   (into {} (map (fn [f] [f {:wff wff/naf-problems}])) (keys sx/aggregate-functors))
+   (into {} (map (fn [f] [f {:wff wff/structure-problems}]))
+         (concat (keys sx/structure-relations) (keys sx/structure-predicates)))))
 
 (defn- declared-half
   "The half of a table entry `vaelii.impl.predicates` owns: the `:props` kind a mark

@@ -7,8 +7,7 @@
 
     * upper (`kb/upper/`, every file in CxUniverse): what things *are*, always true, like
       `genl`.  Split by domain, one file each:
-        - core.txt       — the vocabulary the engine interprets and the top of the
-                                ontology.
+        - core.txt       — the vocabulary the engine interprets and the ontology's top.
         - abstract.txt   — the abstract type skeleton (physical/intangible and
                                 their kinds) + the structural relations tangiblePartOf/locatedIn.
         - organism.txt   — the biological taxonomy + its disjointness.
@@ -29,6 +28,8 @@
                                 (nine + four), relative direction over a frame's own axes
                                 (nine + four, the frame being the context), and
                                 qualitative distance (seven + three).
+        - structure.txt  — the data structures (lists, multisets, finite sets, maps),
+                                the relations that read one and the corresponding predicates.
         - time.txt       — qualitative time: Allen's interval relations (thirteen
                                 base + seven derived), the point algebra over instants,
                                 the three calendar constructors and the InstantFn moment
@@ -77,9 +78,8 @@
   contexts, and an opt-in theory sees the middle context its vocabulary builds on (CxTra
   sees CxSocial); and CxWell sees every middle context but the opt-in ones.  Each middle file wires itself in
   with its own `genlCx` edges, so the topology is data.  **No cast and no contingent facts
-  ship**: the starter is a schema, and
-  contingent data (a cast, worked examples, the Aesop fables) belongs below CxWell
-  and lives in the tests that need it.
+  ship**: the starter is a schema, and contingent data (a cast, worked examples, the
+  Aesop fables) belongs below CxWell and lives in the tests that need it.
 
   The unit table is the one place individuals ship, and it applies that rule rather
   than excepting itself from it: a minute is sixty seconds by stipulation, so the

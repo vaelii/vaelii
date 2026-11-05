@@ -622,7 +622,7 @@
                      (if (and (not (deferred? l)) (computed? l))
                        (or (every? bnd (sx/form-variables l))
                            (let [e (est-override l bnd)] (or (nil? e) (< e unbounded))))
-                       (every? bnd (sx/deferred-input-vars l))))
+                       (every? bnd (sx/deferred-input-vars l bnd))))
             [gens held] (hold-computed gens recs bound computed? runs?)
             defs   (if (seq held) (vec (sort-by first (into defs held))) defs)
             [gens waits] (split-waits gens recs bound end-vars)

@@ -939,7 +939,7 @@ Two boundaries, both deliberate:
 Every shipped declaration is a claim about a **predicate** rather than about a world.
 `functional`, `functionalInArg`, `inverse`, `reflexive`, `irreflexive`, `symmetric`, `commutative`,
 `commutativeInArgs`, `commutativeInArgAndRest`, `associative`, `idempotent`,
-`meetFunctionOf`, `anti_symmetric`, `asymmetric`, `transitive`, `anti_transitive`, `equivalence_relation`, `injection`, `surjection` and
+`meetFunctionOf`, `distinctInArgAndRest`, `anti_symmetric`, `asymmetric`, `transitive`, `anti_transitive`, `equivalence_relation`, `injection`, `surjection` and
 `bijection` carry the mark — so a `(symmetric P)` stated in one theory is the KB's
 claim about `P` and not that theory's — and `genlCx` carries the forced variant below.
 The fourteen length bindings (`sx/arity-binding-functors`: `arity`, `arityMin`, the nine

@@ -164,13 +164,13 @@
   ;; that moves a *spelling* re-spells the records already stored, which neither convicts
   ;; nor mints.  `commutative` reaches at one remove the way `arg1` does, the CxUniverse
   ;; rule's `(commutativeInArgAndRest P 1)` conclusion being what the re-spelling fires on.
-  ;; The term marks `associative`, `idempotent` and `meetFunctionOf` reach through the same
-  ;; sweep, over the rows applying the function below the literal.
+  ;; The term marks `associative`, `idempotent`, `meetFunctionOf` and `distinctInArgAndRest`
+  ;; reach through the same sweep, over the rows applying the function below the literal.
   (is (= (into '#{genl genlCx disjoint disjoint_metatype sibling_disjoint
                   covering separating partition
                   arity arityMin arg argArg genlArg interArg interArgEqual arg1 arg2 arg3 arg4 arg5
                   commutative commutativeInArgs commutativeInArgAndRest
-                  associative idempotent meetFunctionOf
+                  associative idempotent meetFunctionOf distinctInArgAndRest
                   irreflexive anti_symmetric functional functionalInArg asymmetric
                   anti_transitive negates}
                (keys tax/exact-arity-classes))

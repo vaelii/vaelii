@@ -564,6 +564,15 @@
   [(str f " is not assertible: it is computed from the genl closure and never stored —"
         " assert the genl edges and ask it, e.g. (ask? kb '(" f " " (str/join " " args) "))")])
 
+(defn structure-problems
+  "The structure relations and the constructors' corresponding predicates are **not
+  assertible**.  Each is computed from the structure term it names by
+  `provers/StructureProver`, which reads no stored fact, so a stored one would be a fact no
+  read returns (docs/nat.md, \"A data structure is a structural term\")."
+  [_ [f & args] _context]
+  [(str f " is not assertible: it is computed from the structure term it names and never"
+        " stored — ask it instead, e.g. (ask? kb '(" f " " (str/join " " args) "))")])
+
 (defn brave-cautious-problems
   "`bravely` and `cautiously` are **not assertible**.  Each is a *read* on the current
   dilemmas — `(cautiously S)` is S in every optimal labeling, `(bravely S)` in some —

@@ -149,8 +149,8 @@
 
 (defn permuting?
   "Does a stored mark permute `pred`'s arguments — `symmetric`, or a commuting group — or
-  reshape its applications below the literal — `associative`, `idempotent`, or a
-  `meetFunctionOf` order?
+  reshape its applications below the literal — `associative`, `idempotent`, a
+  `meetFunctionOf` order, or a `distinctInArgAndRest` position?
 
   Read unscoped: the fold decides the stored key, which every reader shares."
   [kb pred]
@@ -159,7 +159,8 @@
                            (seq (tax/commuting-groups tax pred))
                            (tax/has-prop? tax :associative pred)
                            (tax/has-prop? tax :idempotent pred)
-                           (seq (tax/meet-orders tax pred)))))))
+                           (seq (tax/meet-orders tax pred))
+                           (seq (tax/distinct-positions tax pred)))))))
 
 (defn permuting-sentence?
   "Does a stored mark permute the arguments of `sentence`'s literal, or of a compound
@@ -245,7 +246,9 @@
                               (tax/prop-supporters tax :associative pred)
                               (tax/prop-supporters tax :idempotent pred)
                               (mapcat #(tax/meet-supporters tax pred %)
-                                      (tax/meet-orders tax pred))))))
+                                      (tax/meet-orders tax pred))
+                              (mapcat #(tax/distinct-supporters tax pred %)
+                                      (tax/distinct-positions tax pred))))))
 
 (defn- rule-justification?
   "Is `jid` a rule firing — a justification whose informant is a rule handle other than
@@ -539,10 +542,11 @@
 
 (defn- recanonicalizing-subject
   "The predicate whose stored facts a declaration re-spells, or nil when `sentence` moves no
-  spelling. Seven spellings reach one sweep: `(symmetric P)`; `(commutativeInArgAndRest P
+  spelling. Eight spellings reach one sweep: `(symmetric P)`; `(commutativeInArgAndRest P
   f)`, `(commutativeInArgs P p …)` and `(commutative P)`, which sort the arguments of the
-  named component; and `(associative F)`, `(idempotent F)` and `(meetFunctionOf F R)`, which
-  reshape a ground application of `F` below the literal (`sx/canonical-term`). The mark must
+  named component; and `(associative F)`, `(idempotent F)`, `(meetFunctionOf F R)` and
+  `(distinctInArgAndRest F n)`, which reshape a ground application of `F` below the literal
+  (`sx/canonical-term`). The mark must
   be installed, and is read unscoped because the fold decides the stored key every reader
   shares."
   [kb sentence]
@@ -561,6 +565,7 @@
           associative              (when (tax/has-prop? tax :associative p) p)
           idempotent               (when (tax/has-prop? tax :idempotent p) p)
           meetFunctionOf           (when (seq (tax/meet-orders tax p)) p)
+          distinctInArgAndRest     (when (seq (tax/distinct-positions tax p)) p)
           nil)))))
 
 (defn rows-spelled-by
@@ -588,7 +593,7 @@
                (mapcat #(reads/as-stored-with-terms idx [pred %]))
                (distinct (concat (tax/props tax :symmetric) (keys (:commuting t))
                                  (tax/props tax :associative) (tax/props tax :idempotent)
-                                 (keys (:meet t))))))))
+                                 (keys (:meet t)) (keys (:distinct t))))))))
 
 (defn commute-predicate
   "Bring `pred`'s stored rows into the spelling its marks now give them, folding mirrored

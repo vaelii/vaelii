@@ -369,12 +369,12 @@
         unknown    (get by-status :unknown 0)
         disjoint-% (* 100.0 (/ disjoint pairs))
         unknown-%  (* 100.0 (/ unknown pairs))]
-    (is (>= disjoint 25373)
-        (format "disjoint pairs must not fall below 25373 (got %d)" disjoint))
-    (is (>= disjoint-% 83.51)
-        (format "disjoint coverage must not regress below 83.51%% (got %.2f%%)" disjoint-%))
-    (is (<= unknown-% 6.82)
-        (format "unknown pairs must not grow above 6.82%% (got %.2f%%)" unknown-%))))
+    (is (>= disjoint 30251)
+        (format "disjoint pairs must not fall below 30251 (got %d)" disjoint))
+    (is (>= disjoint-% 84.55)
+        (format "disjoint coverage must not regress below 84.55%% (got %.2f%%)" disjoint-%))
+    (is (<= unknown-% 6.06)
+        (format "unknown pairs must not grow above 6.06%% (got %.2f%%)" unknown-%))))
 
 (tu/deftest-kb the-audits-between-two-writes-ask-a-ground-goal-once
   (tu/with-terms [a_kind b_kind]

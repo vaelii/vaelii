@@ -1268,15 +1268,15 @@
     ;; a sentex has one key, so whether a predicate sorts its arguments cannot vary by
     ;; reader.  A context-scoped declaration behind a global read would be a mark
     ;; visible from one context and acted on from every one.
-    ;; The term marks (`associative`, `idempotent`, `meetFunctionOf`) are read globally by
-    ;; the same key, below the literal.
+    ;; The term marks (`associative`, `idempotent`, `meetFunctionOf`, `distinctInArgAndRest`)
+    ;; are read globally by the same key, below the literal.
     ;; `functionalInArg` is `functional` read at another position, and lifted with it.
     ;; The length bindings are lifted so a relation's length reads the same everywhere.
     (is (= (into '#{functional functionalInArg inverse reflexive symmetric asymmetric transitive
                     irreflexive anti_symmetric anti_transitive equivalence_relation
                     injection surjection bijection
                     commutative commutativeInArgs commutativeInArgAndRest
-                    associative idempotent meetFunctionOf}
+                    associative idempotent meetFunctionOf distinctInArgAndRest}
                  sx/arity-binding-functors)
            (v/props kb :decontextualized)))
     (is (= '#{genlCx} (v/props kb :forced-decontextualized))))
