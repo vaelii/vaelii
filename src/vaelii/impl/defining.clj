@@ -15,19 +15,6 @@
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]))
 
-(declare mentions-in-sentence?)
-
-(defn- mentions-term?
-  "Does `record` name `term` as content?  A literal answers for its own sentence; a rule
-  answers for each of its antecedent literals and its consequent, each read as a sentence
-  of its own, so a rule that names `term` in its body mentions it."
-  [kb term record]
-  (if-let [antecedent (:antecedent record)]
-    (boolean (some #(mentions-in-sentence? kb term %)
-                   (cons (:consequent record)
-                         (if (sequential? (first antecedent)) antecedent [antecedent]))))
-    (mentions-in-sentence? kb term (sx/sentence-of record))))
-
 (defn- mentions-in-sentence?
   [kb term sentence]
   (letfn [(visit [form root?]
@@ -47,6 +34,17 @@
                          (map-indexed (fn [i arg] [(inc i) arg]) (rest form)))))
               :else false))]
     (visit (sx/underlying-body sentence) true)))
+
+(defn- mentions-term?
+  "Does `record` name `term` as content?  A literal answers for its own sentence; a rule
+  answers for each of its antecedent literals and its consequent, each read as a sentence
+  of its own, so a rule that names `term` in its body mentions it."
+  [kb term record]
+  (if-let [antecedent (:antecedent record)]
+    (boolean (some #(mentions-in-sentence? kb term %)
+                   (cons (:consequent record)
+                         (if (sequential? (first antecedent)) antecedent [antecedent]))))
+    (mentions-in-sentence? kb term (sx/sentence-of record))))
 
 (defn- bookkeeping-test
   [kb]
@@ -82,8 +80,7 @@
   node the walk meets (a handle, a justification, a mark of `step`'s) before it is used:
   a rejected node halts the walk there, neither descended nor kept.  A kept premise is a
   leaf; a kept mark is collected; a non-premise with no such justification is
-  `:unsupported`.  Each node is visited once, so many starts share the work and a cycle
-  is safe."
+  `:unsupported`.  Each node is visited once: many starts share the work, cycles are safe."
   [kb keep? step hs]
   (let [tms (reasoning/tms kb)
         records (:records kb)
@@ -118,16 +115,15 @@
                      (cond-> unsupported (and record (empty? js)) (conj x))))))
         {:leaves leaves :marks marks :unsupported unsupported}))))
 
+;; A guard-covered or blocked alternative contributes nothing, because only justifications
+;; the handle's own context reads as `:supports` (`exc/justification-verdicts`) are walked.
+;; A firing's rule is a node like its antecedents: an asserted rule is a leaf, a deduced one
+;; is walked.  `:computed` stands for the literals of a firing that names no antecedent.
 (defn asserted-leaves-such-that
-  "`{:leaves #{h} :computed? b}`: the premises the support of `h-or-hs` (a handle or a
-  collection of them, walked together) bottoms out in, read through the justifications
-  that are valid and that each handle's own context reads as `:supports`
-  (`exc/justification-verdicts`), so a guard-covered or blocked alternative contributes
-  nothing.  `keep?` is a unary filter on every node the walk meets — a handle, a
-  justification, or the mark `:computed` that stands for the literals of a firing that
-  names no antecedent — defaulting to keeping all; a rejected node halts the walk there
-  and contributes nothing.  A premise is its own leaf.  A firing's rule is a node like its
-  antecedents: an asserted rule is a leaf, a deduced one is walked.  `:computed?` is true
+  "`{:leaves #{h} :computed? b}`: the premises the valid, supporting justifications of
+  `h-or-hs` (a handle or a collection, walked together) bottom out in.  `keep?` filters
+  every node met (a handle, a justification, or the mark `:computed`), default all; a
+  rejected node halts the walk there.  A premise is its own leaf.  `:computed?` is true
   when a kept `:computed` mark is met.  Cycle-safe; each handle is read once."
   ([kb h-or-hs] (asserted-leaves-such-that kb (constantly true) h-or-hs))
   ([kb keep? h-or-hs]
@@ -159,13 +155,11 @@
       [(first (:antecedents j))]
       (walked-handles j))))
 
+;; An equation mentions its arguments rather than using them: read as a use, every equation
+;; would define `A` by `(equals A A)`.  So it is skeletal for defining.  Skeletality reads the
+;; literal's predicate whatever its polarity (`sx/underlying-body`).
 (defn- equation?
-  "Is `record` an equation, a sentence of an equality relation (`kb/equality-predicates`:
-  `rewriteOf`, `sameAs`, `equals`)?  An equation mentions its arguments rather than using
-  them, though they are not quoted: read as a use, every equation would define `A` by
-  `(equals A A)` (Iris, 2026-11-03).  So it is skeletal for defining, never defining
-  either argument.  Skeletality reads the literal's predicate, whatever its polarity
-  (`sx/underlying-body`), so a negated equation is skeletal too (Iris, 2026-11-03)."
+  "Is `record` an equation (`kb/equality-predicates`), of either polarity?"
   [record]
   (boolean (some-> record sx/sentence-of sx/underlying-body kb/equality-sentence?)))
 
@@ -199,21 +193,6 @@
   (let [{:keys [leaves marks]} (defining-walk kb (if (coll? h-or-hs) h-or-hs [h-or-hs]))]
     {:leaves leaves :computed? (contains? marks :computed)}))
 
-(declare ^:private definition-evidence*)
-
-(defn definition-evidence
-  "`{:contexts #{c} :skeletal-only? b}`: the maximal contexts of the ordinary asserted
-  leaves that mention `term`, read in one walk (`asserted-defining-leaves`) down from all
-  its believed mentions, and whether it has such mentions but no such leaf, every way in
-  being skeletal.  A believed derived mention with no supporting justification throws
-  :incomplete-defining-contexts.  An absent assertion is not evidence of skeletal-only
-  definition.  An unrepresented term, one the term index does not post (a number, a string:
-  `sx/indexable-term?`), is defined in CxUniverse, as a context is."
-  [kb term]
-  (if (not (sx/indexable-term? (sx/canon term)))
-    {:contexts #{'CxUniverse} :skeletal-only? false}
-    (definition-evidence* kb term)))
-
 (defn- definition-evidence*
   [kb term]
   (let [term (sx/canon term)
@@ -237,6 +216,18 @@
       {:contexts (budget/checked-call
                   #(tax/max-cxs (reasoning/taxonomy kb) homes))
        :skeletal-only? (boolean (and (seq relevant) (empty? homes)))})))
+
+(defn definition-evidence
+  "`{:contexts #{c} :skeletal-only? b}`: the maximal contexts of the ordinary asserted
+  leaves that mention `term`, read in one walk (`asserted-defining-leaves`) down from all
+  its believed mentions, and whether it has such mentions but no such leaf, every way in
+  being skeletal.  A believed derived mention with no supporting justification throws
+  :incomplete-defining-contexts.  An absent assertion is not evidence of skeletal-only
+  definition.  An unrepresented term (`sx/indexable-term?` false) is defined in CxUniverse."
+  [kb term]
+  (if (not (sx/indexable-term? (sx/canon term)))
+    {:contexts #{'CxUniverse} :skeletal-only? false}
+    (definition-evidence* kb term)))
 
 (defn defining-contexts
   "The maximal ordinary defining contexts. Unsupported believed mentions throw

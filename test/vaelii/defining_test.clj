@@ -208,7 +208,7 @@
       (is (= #{} (v/defining-contexts kb Subject))))))
 
 (tu/deftest-kb a-grounded-rule-that-names-a-constant-defines-it-in-the-rules-context
-  ;; Iris, 2026-11-03: a rule naming Subject in its body is a mention of Subject, so its
+  ;; A rule naming Subject in its body is a mention of Subject, so its
   ;; context defines Subject whether or not the rule has fired.
   (tu/with-terms [CxHome Subject Marker trigger target]
     (contexts kb [CxHome])
@@ -222,7 +222,7 @@
       (is (= #{CxHome} (v/defining-contexts kb Subject))))))
 
 (tu/deftest-kb a-rule-that-does-not-name-a-constant-leaves-it-to-the-leaf-that-does
-  ;; Iris, 2026-11-03: the variant where the rule does not name Subject.  The derived
+  ;; The variant where the rule does not name Subject.  The derived
   ;; conclusion is stored in the rule's context, but its defining context comes from
   ;; the leaf that names Subject, and goes with that leaf.
   (tu/with-terms [CxHome CxTrig Subject trigger target]
@@ -278,7 +278,7 @@
 (tu/deftest-kb an-unrepresented-term-is-defined-in-the-universe
   ;; `3` in `(theSum 3)` enters only through `evaluate`'s binding, and a number or string is
   ;; not posted in the term index.  An unrepresented term is defined in CxUniverse, as a
-  ;; context is (Iris, 2026-11-05).
+  ;; context is.
   (tu/with-terms [CxHome theSum]
     (contexts kb [CxHome])
     (v/assert kb (tu/fwd [(list 'evaluate '?s (list '+ 1 2))] (list theSum '?s)) CxHome)
@@ -420,7 +420,7 @@
       (is (= {:leaves #{bh dh} :computed? false} (leaves kb h))))))
 
 (tu/deftest-kb the-leaf-that-names-the-subject-defines-it-not-the-rule-or-the-other-premise
-  ;; Iris, 2026-11-03: a generic rule and a premise that doesn't name Subject help derive
+  ;; A generic rule and a premise that doesn't name Subject help derive
   ;; (r Subject Object) but don't define Subject; the premise that names it does.
   (tu/with-terms [CxRule CxP CxQ CxJoin Subject Intermediate Object p q r]
     (contexts kb [CxRule CxP CxQ])
@@ -442,7 +442,7 @@
       (is (= #{CxP} (v/defining-contexts kb Subject))))))
 
 (tu/deftest-kb a-rule-that-names-the-subject-defines-it-beside-the-premise-that-does
-  ;; Iris, 2026-11-03: when the rule names Subject too, its context defines Subject
+  ;; When the rule names Subject too, its context defines Subject
   ;; alongside the premise's, reduced to the maximal ones via genlCx.
   (tu/with-terms [CxRule2 CxP2 CxQ2 CxJoin2 Subject Intermediate Object p q r]
     (contexts kb [CxRule2 CxP2 CxQ2])
@@ -473,7 +473,7 @@
   `rewriteOf`, asserted with `first-term` as the first argument when `first-arg-first?`),
   and each is named by a fact in a context of its own.  The equation is stated in `CxEq`,
   a context of its own below `CxUniverse` alone, so context maximization cannot fold it
-  into either fact context.  An equation is a mention, not a use (Iris, 2026-11-03), so
+  into either fact context.  An equation is a mention, not a use, so
   it defines neither name: each term's defining contexts are its own fact's context alone."
   [kb pred first-term second-term first-arg-first? [tagFirst tagSecond] CxFirst CxSecond CxEq]
   (contexts kb [CxFirst CxSecond CxEq])
@@ -489,7 +489,7 @@
   (is (= #{CxSecond} (v/defining-contexts kb second-term))))
 
 (tu/deftest-kb an-equal-name-mentioned-elsewhere-does-not-define-the-other
-  ;; Iris, 2026-11-03: a fact about MorningStar and one about EveningStar in different
+  ;; A fact about MorningStar and one about EveningStar in different
   ;; contexts are mentions of each name alone, equality notwithstanding.  Both pairs and
   ;; both argument orders, so no choice of representative (first argument, least name)
   ;; passes by luck: MorningStar sorts after EveningStar, Alpha before Zeta.  Each
@@ -505,7 +505,7 @@
         (equal-names-define-apart kb pred Alpha Zeta first-arg-first? [tagA tagZ] CxA CxZ CxEq)))))
 
 (tu/deftest-kb a-term-named-only-in-an-equation-is-skeletal-only
-  ;; Iris, 2026-11-03: sameAs, equals and rewriteOf are mention rather than use, so an
+  ;; SameAs, equals and rewriteOf are mention rather than use, so an
   ;; equation is skeletal for defining.  A term named in nothing else has believed
   ;; mentions but no ordinary leaf: no defining context, and skeletal-only.
   (doseq [pred '[sameAs equals rewriteOf]]
@@ -518,7 +518,7 @@
         (is (= {:contexts #{} :skeletal-only? true} (defining/definition-evidence kb Other)))))))
 
 (tu/deftest-kb a-negated-equation-is-skeletal-like-the-equation
-  ;; Iris, 2026-11-03: skeletality respects the literal's predicate, not the atom's
+  ;; Skeletality respects the literal's predicate, not the atom's
   ;; polarity, so (not P) is treated identically to P.  A negated equation defines
   ;; neither name, and a term named only in one is skeletal-only.
   (doseq [pred '[sameAs equals rewriteOf]]
@@ -544,7 +544,7 @@
 ;; ---- contexts: genlCx is decontextualized, so a context is defined in CxUniverse ----
 
 (tu/deftest-kb a-contexts-defining-context-is-the-universe
-  ;; Iris, 2026-11-03: the genlCx links mention the context they relate, and genlCx is
+  ;; The genlCx links mention the context they relate, and genlCx is
   ;; decontextualized (forced_decontextualized_predicate), so every context is defined
   ;; in CxUniverse wherever its link was asserted, and a mention in a context below it
   ;; maximizes into CxUniverse too.
@@ -590,8 +590,8 @@
           reads (atom {})
           verdicts exc/justification-verdicts]
       (with-redefs [exc/justification-verdicts (fn [kb h ctx]
-                                                  (swap! reads update h (fnil inc 0))
-                                                  (verdicts kb h ctx))]
+                                                 (swap! reads update h (fnil inc 0))
+                                                 (verdicts kb h ctx))]
         (is (= {:leaves #{a rb rc} :computed? false} (such-that kb (constantly true) [b c b]))))
       (is (every? #{1} (vals @reads)) "each handle's support is read once")
       (is (= #{b c} (set (keys @reads))) "and premises are not read at all"))))
