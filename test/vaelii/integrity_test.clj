@@ -1613,6 +1613,45 @@
     (is (= #{(list 'genl bird_kind warm_blooded_kind) (list 'genl fatherX parentX)}
            (set (map #(nth % 2) (rule-macros kb)))))))
 
+(defn- intersection-of
+  "An `(intersection C . types)` declaration as `[C #{types}]`, since the sweep may name
+  the intersected types in either order."
+  [decl]
+  (when (and (seq? decl) (= 'intersection (first decl)))
+    [(second decl) (set (nnext decl))]))
+
+(tu/deftest-kb a-conjunction-rule-is-reported-as-intersection
+  (tu/with-terms [swimmer_kind diver_kind both_kind third_kind all_kind ableX mayX canX]
+    (doseq [p [ableX mayX canX]]
+      (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+    (v/assert kb (list 'set/forwardRule
+                       (list 'implies (list 'and (list swimmer_kind '?x) (list diver_kind '?x))
+                             (list both_kind '?x)))
+              'CxUniverse)
+    (v/assert kb (list 'set/forwardRule
+                       (list 'implies (list 'and (list swimmer_kind '?x) (list diver_kind '?x)
+                                            (list third_kind '?x))
+                             (list all_kind '?x)))
+              'CxUniverse)
+    (v/assert kb (list 'set/forwardRule
+                       (list 'implies (list 'and (list ableX '?a '?k) (list mayX '?a '?k))
+                             (list canX '?a '?k)))
+              'CxUniverse)
+    (is (= #{[both_kind #{swimmer_kind diver_kind}]
+             [all_kind #{swimmer_kind diver_kind third_kind}]
+             [canX #{ableX mayX}]}
+           (set (keep #(intersection-of (nth % 2)) (rule-macros kb)))))))
+
+(tu/deftest-kb a-conjunction-over-crossed-arguments-is-not-an-intersection
+  (tu/with-terms [ableX mayX canX]
+    (doseq [p [ableX mayX canX]]
+      (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+    (v/assert kb (list 'set/forwardRule
+                       (list 'implies (list 'and (list ableX '?a '?k) (list mayX '?k '?a))
+                             (list canX '?a '?k)))
+              'CxUniverse)
+    (is (empty? (keep #(intersection-of (nth % 2)) (rule-macros kb))))))
+
 (defn- default-rule
   "The `set/defaultRule` `(implies (antecedent) (consequent))`, forward and backward."
   [ante conseq]
