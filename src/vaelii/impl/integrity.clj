@@ -1134,6 +1134,14 @@
             :meta        '#{?mP ?mC}
             :defeasible  false
             :declaration (fn [b] (list 'arg (b '?mP) (inc i) (b '?mC)))})))
+     (when (<= 1 n 2)
+       (for [types [['?mA '?mB] ['?mA '?mB '?mC]]]
+         {:macro       'intersection
+          :antecedent  (mapv #(list* % os) types)
+          :consequent  (list* '?mP os)
+          :meta        (into #{'?mP} types)
+          :defeasible  false
+          :declaration (fn [b] (list* 'intersection (b '?mP) (map b types)))}))
      [{:macro       'genl
        :antecedent  [(list* '?mP os)]
        :consequent  (list* '?mQ os)
@@ -1273,7 +1281,13 @@
              (and (symbol? C) (universal? kb ctx)
                   (<= 2 k)
                   (arity-is? kb P k ctx false)
-                  (nil? (predicates/entry C))))))))
+                  (nil? (predicates/entry C))))
+
+           intersection
+           (let [types (keep b '[?mA ?mB ?mC])]
+             (and (every? symbol? types) (apply distinct? P types)
+                  (every? #(nil? (predicates/entry %)) (cons P types))
+                  (every? #(arity-is? kb % n ctx true) (cons P types))))))))
 
 (defn- macro-candidate?
   "May the stored rule `rsx` at handle `h` be read as a macro's spelling: a believed

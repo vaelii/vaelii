@@ -627,6 +627,7 @@ shapes, with `?o…` standing for the free arguments of a predicate of arity `n`
 | `(inverse P Q)` | `(P ?a ?b)` ⇒ `(Q ?b ?a)`, and a second rule `(Q ?a ?b)` ⇒ `(P ?b ?a)` | `P` and `Q` declared with arity 2; both rules are visible from CxUniverse |
 | `(genl P Q)` | `(P ?o1 … ?on)` ⇒ `(Q ?o1 … ?on)` | `Q` is not a term the engine interprets; neither `P` nor `Q` is declared with another arity or with variable arity |
 | `(arg P i C)` | `(P ?o1 … ?on)` ⇒ `(C ?oi)` | `P` declared with arity `n ≥ 2` (a unary `P` gives a type, so `(P ?x)` ⇒ `(C ?x)` is the `genl` row); `C` is not a term the engine interprets; the rule is visible from CxUniverse |
+| `(intersection P A B)` | `(A ?o1 … ?on)`, `(B ?o1 … ?on)` ⇒ `(P ?o1 … ?on)`, `n` 1 or 2, and the same with a third component `C` for `(intersection P A B C)` | `P` and the components are distinct and none is a term the engine interprets; none is declared with another arity or with variable arity |
 | `(predAllInstance P C K)` | `(C ?x)` ⇒ `(P ?x K)`, `K` ground | the rule is a `set/defaultRule`, and `P` is not declared with another arity |
 | `(predInstanceAll P K C)` | `(C ?y)` ⇒ `(P K ?y)`, `K` ground | as `predAllInstance` |
 
