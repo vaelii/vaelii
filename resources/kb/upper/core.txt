@@ -1223,7 +1223,7 @@
 (arg defnIff 2 formula)
 
 (comment intersection
-         "(intersection ?combined . ?types) means ?combined is definitionally the intersection of ?types: a thing is a ?combined exactly when it is each of ?types. A definitional collection relation over kinds, like the defn* family above, and the twin of disjoint, which states that kinds do NOT overlap. Variable-arity; (intersection causal_event causal event) names a two-way intersection and further ?types extend it. arityMin is three: the combined kind plus at least two types, since the intersection of a single type is that type and drives no rule.")
+         "(intersection ?combined . ?types) means ?combined is definitionally the intersection of ?types: a thing is a ?combined exactly when it is each of ?types. Applies to unary kinds and to binary predicates: over binary predicates a tuple is a ?combined tuple exactly when it is a tuple of each of ?types, so (intersection can able may) says that whoever is able and permitted to do a kind of thing can do it. The combined predicate's declared arity chooses the membership rule: a ?combined declared binary takes the binary rule, and every ?combined takes the unary one, which concludes nothing of a binary predicate. A definitional relation, like the defn* family above, and the twin of disjoint, which states that kinds do NOT overlap. Variable-arity; (intersection causal_event causal event) names a two-way intersection and further ?types extend it. arityMin is three: the combined kind plus at least two types, since the intersection of a single type is that type and drives no rule.")
 (variable_arity_predicate intersection)
 (unbounded_arity_predicate intersection)
 (genlArg intersection 1 thing)
@@ -1236,7 +1236,7 @@
 
 ;; --- defining rules. A combined kind is genl each type it intersects, and anything
 ;;     that is each type is a member of the combined kind. ---------------------------
-(implementationNote intersection "The defining rules are stated for two and for three intersected types. A rule for any number of types needs list membership (vaelii/vaelii#79), so an intersection of four or more types derives neither its genl edges nor its memberships.")
+(implementationNote intersection "The defining rules are stated for two and for three intersected types, and the membership rule for a unary ?combined and for a binary one. A rule for any number of types needs list membership (vaelii/vaelii#79), so an intersection of four or more types derives neither its genl edges nor its memberships.")
 ;; Forward rules: an intersection fact materializes the genl edges when it is asserted,
 ;; so the derived edge reaches the taxonomy closure and answers a variable-free genl
 ;; goal at every read entry point. A bare (implies …) defaults to :backward, which the
@@ -1253,10 +1253,23 @@
 ;; a type at :default is a :default member.  An intersection is a definition, and what
 ;; is each type is the combined kind without exception, so the rule adds no
 ;; defeasibility of its own.
+;;
+;; The binary rule is guarded by (arity ?combined 2), which holds of a predicate declared
+;; binary_predicate or given arity 2, through the lazy-forward converse
+;; relationTypeByArity generates.  The unary rule is not guarded.  A kind carries no arity
+;; declaration (a type is unary by being a type, not by a stated arity), so
+;; (arity ?combined 1) would guard it off for every kind, and (unknown (arity ?combined 2))
+;; would make every membership it concludes defeasible.  So a binary ?combined also
+;; generates the unary rule, which no fact of a binary predicate can satisfy: it
+;; concludes nothing.
 (implies (intersection ?combined ?type1 ?type2)
          (implies (and (?type1 ?x) (?type2 ?x)) (?combined ?x)))
 (implies (intersection ?combined ?type1 ?type2 ?type3)
          (implies (and (?type1 ?x) (?type2 ?x) (?type3 ?x)) (?combined ?x)))
+(implies (and (intersection ?combined ?type1 ?type2) (arity ?combined 2))
+         (implies (and (?type1 ?x ?y) (?type2 ?x ?y)) (?combined ?x ?y)))
+(implies (and (intersection ?combined ?type1 ?type2 ?type3) (arity ?combined 2))
+         (implies (and (?type1 ?x ?y) (?type2 ?x ?y) (?type3 ?x ?y)) (?combined ?x ?y)))
 
 ;; ---- the predAll / predExists / predInstance / predSpecified matrix -------
 ;; A family of ternary relations that quantify one binary ?pred's two argument positions
