@@ -2060,10 +2060,10 @@
   denial decides, as `:undecided-relation-property` reads them from CxUniverse.  A
   predicate a change decides leaves the set; a new binary predicate the change leaves
   undecided joins it."
-  '#{actor admitsArgnum adultFormOf after arg1 arg2 arg3 arg4 arg5 args argsGenl
-     arityMax arityMin atSomeDistanceFrom before behind behindLeftOf behindRightOf
+  '#{abilityType able actor admitsArgnum adultFormOf after arg1 arg2 arg3 arg4 arg5 args
+     argsGenl arityMax arityMin atSomeDistanceFrom before behind behindLeftOf behindRightOf
      believes beyondFarDistanceFrom borderlineExample borderlineExampleComment
-     calendarYear capabilityType cardinalityOf childOf clippedBefore closeTo
+     calendarYear cardinalityOf childOf clippedBefore closeTo
      closedExtentForArg1 closedExtentForArg2 closedExtentForArg3 closedExtentForArg4
      closedExtentForArg5 coLocatedWith comment commutativeInArgAndRest contains cxMonadOf
      cxTimeOf datetimeOf defnIff defnNecessary defnSufficient denotes derivativeOf
@@ -2072,7 +2072,7 @@
      exists expresses
      externallyConnected farFrom finishedBy finishes forall frontLeftOf frontRightOf
      frontwardOf functionTypeByArity functionalInArg genlInverse genlMonad
-     genlResult grandparentOf happens hasCapability hasRegionPart hasSubinterval
+     genlResult grandparentOf happens hasRegionPart hasSubinterval
      holdsAt implementationNote implies inFrontOf includesInstant input instantEqual
      instantNotAfter instantNotBefore instantNotEqual intangibleOutput interArgs
      intervalAfterOf intervalBeforeOf intervalEqual ist knows larvalFormOf

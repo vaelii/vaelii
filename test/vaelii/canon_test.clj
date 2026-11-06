@@ -816,7 +816,7 @@
     (testing "facts, negation, rules, and derivations all survive"
       (is (seq (v/sentexes-matching kb '(grandparentOf Tom Ann) 'CxNaturalWorld)))
       (is (empty? (v/sentexes-matching kb '(flies Tweety) 'CxNaturalWorld)))
-      (is (seq (v/sentexes-matching kb '(not (hasCapability Tweety flying)) 'CxNaturalWorld)))
+      (is (seq (v/sentexes-matching kb '(not (able Tweety flying)) 'CxNaturalWorld)))
       (is (v/ask? kb '(ancestorOf Tom Ann)))
       (is (empty? (v/conflicts kb))))))
 

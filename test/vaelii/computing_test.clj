@@ -9,7 +9,7 @@
   The eleven relations, their argument declarations and the sixteen kinds the relations
   are typed over are all stated in CxTra, so a context reads a kind's `genl` edges and
   its disjointness only where it sees the theory: CxUniverse and CxWell read none.
-  One default rule reads a causal agent's `hasCapability` from its tools; no rule
+  One default rule reads a causal agent's `able` from its tools; no rule
   concludes an invocation causal or acausal from its tool."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
@@ -22,7 +22,7 @@
 
 (def ^:private binary-relations
   '[toolName toolInvoked resourceUrl receipt probesPredicate dnsResolvesTo agentHasTool
-    toolEnablesCapability])
+    toolEnablesAbility])
 
 (def ^:private ternary-relations
   '[toolInvocationArg toolArgType toolArgComment])
@@ -204,22 +204,22 @@
     (v/assert kb (list 'genlCx CxDesk 'CxWell) 'CxUniverse)
     (v/assert kb (list 'genlCx CxDesk CPT) 'CxUniverse)
     (v/assert kb (list 'read_only_software_tool Viewer) CxDesk)
-    (v/assert kb (list 'toolEnablesCapability Viewer 'image_viewing) CxDesk)
+    (v/assert kb (list 'toolEnablesAbility Viewer 'image_viewing) CxDesk)
     (v/assert kb (list 'dog Rover) CxDesk)
     (v/assert kb (list 'agentHasTool Rover Viewer) CxDesk)
     (v/assert kb (list 'agentHasTool Ghost Viewer) CxDesk)
     (testing "a causal agent that has the tool can be the doer of the kind"
-      (is (tu/holds-ask (list 'hasCapability Rover 'image_viewing) CxDesk)))
-    (testing "the rule is guarded, so an agent not known causal is concluded neither capable nor causal"
-      (is (not (tu/holds-ask (list 'hasCapability Ghost 'image_viewing) CxDesk)))
+      (is (tu/holds-ask (list 'able Rover 'image_viewing) CxDesk)))
+    (testing "the rule is guarded, so an agent not known causal is concluded neither able nor causal"
+      (is (not (tu/holds-ask (list 'able Ghost 'image_viewing) CxDesk)))
       (is (not (v/isa? kb Ghost 'causal CxDesk))))
-    (testing "the tool itself is not concluded capable"
-      (is (not (tu/holds-ask (list 'hasCapability Viewer 'image_viewing) CxDesk))))
+    (testing "the tool itself is not concluded able"
+      (is (not (tu/holds-ask (list 'able Viewer 'image_viewing) CxDesk))))
     (testing "a context that does not see the theory concludes nothing"
       (v/assert kb (list 'agentHasTool Rover Viewer) 'CxWell)
-      (v/assert kb (list 'toolEnablesCapability Viewer 'image_viewing) 'CxWell)
-      (is (not (tu/holds-ask (list 'hasCapability Rover 'image_viewing) 'CxWell))))
+      (v/assert kb (list 'toolEnablesAbility Viewer 'image_viewing) 'CxWell)
+      (is (not (tu/holds-ask (list 'able Rover 'image_viewing) 'CxWell))))
     (testing "the conclusion is a default, so a monotonic denial defeats it"
-      (v/assert kb (list 'not (list 'hasCapability Rover 'image_viewing)) CxDesk
+      (v/assert kb (list 'not (list 'able Rover 'image_viewing)) CxDesk
                 {:strength :monotonic})
-      (is (not (tu/holds-ask (list 'hasCapability Rover 'image_viewing) CxDesk))))))
+      (is (not (tu/holds-ask (list 'able Rover 'image_viewing) CxDesk))))))

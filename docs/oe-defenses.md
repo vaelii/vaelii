@@ -48,11 +48,11 @@ An entry names the alternative, says what the KB states instead, and gives the r
 
 ## Kinds and properties
 
-### Abilities are event kinds, not a `capability` type
+### Abilities are event kinds, not an `ability` type
 
-**Alternative:** a `capability` type whose instances are abilities (flying, swimming), related to their holders by `hasCapability`.
+**Alternative:** an `ability` type whose instances are abilities (flying, swimming), related to their holders by `able`.
 
-**Instead:** no `capability` type. The second argument of `hasCapability` and `capabilityType` is an event kind: flying and travelling are kinds of event.
+**Instead:** no `ability` type. The second argument of `able` and `abilityType` is an event kind: flying and travelling are kinds of event.
 
 **Why:** an ability is an ability to take part in a kind of event, and the event vocabulary already carries the structure abilities need. `(genl flying travelling)` makes "can fly implies can travel" fall out of the event hierarchy with no parallel ability hierarchy to keep in step, and travelling being a `causal_event` is stated once, for the events and the abilities together.
 

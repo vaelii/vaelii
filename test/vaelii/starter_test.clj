@@ -107,7 +107,7 @@
   ;; ontology can go wrong quietly.  `seed/load-sentences` asserts in file order and
   ;; retries, so a sentence is judged against whatever had arrived when its turn came —
   ;; and the argument checks are open-world, abstaining on a term the KB cannot yet place.
-  ;; `(hasCapability bird flying)` was admitted exactly that way: `arg … 1 animal` had
+  ;; `(able bird flying)` was admitted exactly that way: `arg … 1 animal` had
   ;; nothing to say about `bird` before `(genl bird animal)` landed, and once it landed
   ;; nothing went back to look.  There is no retroactive `:arg-type` report, so
   ;; `violations` stayed empty and the KB shipped seven facts its own checker convicts.
@@ -241,9 +241,9 @@
 
 (tu/deftest-kb starter-common-sense-reasoning
   (testing "defeasible flight: eagles fly by default, penguins (flightless birds) do not"
-    (is (seq   (v/sentexes-matching kb '(hasCapability Sam flying) 'CxNaturalWorld)))
-    (is (empty? (v/sentexes-matching kb '(hasCapability Tweety flying) 'CxNaturalWorld)))
-    (is (seq   (v/sentexes-matching kb '(not (hasCapability Tweety flying)) 'CxNaturalWorld)))
+    (is (seq   (v/sentexes-matching kb '(able Sam flying) 'CxNaturalWorld)))
+    (is (empty? (v/sentexes-matching kb '(able Tweety flying) 'CxNaturalWorld)))
+    (is (seq   (v/sentexes-matching kb '(not (able Tweety flying)) 'CxNaturalWorld)))
     (is (empty? (v/conflicts kb))))                   ; the strict exception resolves cleanly
   (testing "the mortality default reaches every living individual"
     (is (seq (v/sentexes-matching kb '(mortal Tom) 'CxNaturalWorld)))
@@ -292,7 +292,7 @@
   (testing "every domain relation is documented"
     (doseq [p '[parentOf grandparentOf childOf ancestorOf siblingOf marriedTo
                 motherOf fatherOf
-                likes eats owns tangiblePartOf locatedIn hasCapability capabilityType
+                likes eats owns tangiblePartOf locatedIn able abilityType
                 mortal birthYearOf olderThan
                 weightOf heightOf heavierThan tallerThan
                 signOf trendOf derivativeOf greaterInMagnitudeThan

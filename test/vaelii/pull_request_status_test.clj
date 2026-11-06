@@ -53,24 +53,24 @@
     (desk! kb CxDesk)
     (doseq [s [(list 'forge_repository Repo) (list 'forge_repository OtherRepo)
                (list 'human Maintainer) (list 'human Writer)
-               (list 'hasCapability Maintainer (list 'MergeAccessFn Repo))
-               (list 'hasCapability Writer (list 'WriteAccessFn Repo))]]
+               (list 'able Maintainer (list 'MergeAccessFn Repo))
+               (list 'able Writer (list 'WriteAccessFn Repo))]]
       (v/assert kb s CxDesk))
     (let [mergers (fn [repo]
                     (set (map #(get % '?p)
-                              (v/query kb [(list 'mergeAccessOf repo '?k) '(hasCapability ?p ?k)]
+                              (v/query kb [(list 'mergeAccessOf repo '?k) '(able ?p ?k)]
                                        CxDesk))))]
       (is (= #{Maintainer} (mergers Repo))
           "the grant holder answers; a write grant is not a merge grant")
       (is (= #{} (mergers OtherRepo)) "a grant keeps its repository"))
-    (is (holds-ask (list 'hasCapability Maintainer (list 'MergeAccessFn Repo)) CxDesk)
+    (is (holds-ask (list 'able Maintainer (list 'MergeAccessFn Repo)) CxDesk)
         "asked back through the function term")
-    (is (holds-ask (list 'hasCapability Maintainer 'merge_access) CxDesk))
+    (is (holds-ask (list 'able Maintainer 'merge_access) CxDesk))
     (testing "merge access entails write access over the same repository only"
-      (is (holds-ask (list 'hasCapability Maintainer (list 'WriteAccessFn Repo)) CxDesk))
-      (is (not (holds-ask (list 'hasCapability Maintainer (list 'WriteAccessFn OtherRepo)) CxDesk))))
+      (is (holds-ask (list 'able Maintainer (list 'WriteAccessFn Repo)) CxDesk))
+      (is (not (holds-ask (list 'able Maintainer (list 'WriteAccessFn OtherRepo)) CxDesk))))
     (testing "write access does not entail merge access"
-      (is (not (holds-ask (list 'hasCapability Writer 'merge_access) CxDesk))))))
+      (is (not (holds-ask (list 'able Writer 'merge_access) CxDesk))))))
 
 (defn- waiting-on
   [kb holder ctx]
@@ -107,10 +107,10 @@
   (tu/with-terms [CxDesk Repo Merger]
     (desk! kb CxDesk)
     (doseq [s [(list 'forge_repository Repo) (list 'human Merger)
-               (list 'hasCapability Merger (list 'MergeAccessFn Repo))
-               (list 'set/monotonic (list 'not (list 'hasCapability Merger (list 'WriteAccessFn Repo))))]]
+               (list 'able Merger (list 'MergeAccessFn Repo))
+               (list 'set/monotonic (list 'not (list 'able Merger (list 'WriteAccessFn Repo))))]]
       (v/assert kb s CxDesk))
     (testing "a monotonic exception defeats the merge-to-write default for that repository"
-      (is (not (holds-ask (list 'hasCapability Merger (list 'WriteAccessFn Repo)) CxDesk))))
-    (is (holds-ask (list 'hasCapability Merger (list 'MergeAccessFn Repo)) CxDesk)
+      (is (not (holds-ask (list 'able Merger (list 'WriteAccessFn Repo)) CxDesk))))
+    (is (holds-ask (list 'able Merger (list 'MergeAccessFn Repo)) CxDesk)
         "the merge grant itself stands")))

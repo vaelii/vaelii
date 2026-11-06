@@ -65,8 +65,8 @@ licences do not travel down it.
 
 ## Four predicates ship with one
 
-`largerThan` and `partType` are in `resources/kb/upper/abstract.txt`, `capabilityType`
-and `hasCapability` in `resources/kb/upper/life.txt`. The first two are worth comparing
+`largerThan` and `partType` are in `resources/kb/upper/abstract.txt`, `abilityType`
+and `able` in `resources/kb/upper/life.txt`. The first two are worth comparing
 because they are declared **differently on purpose**:
 
 ```clojure
@@ -81,19 +81,19 @@ so `(partType bird wing)` answers `(partType penguin wing)` — but birds having
 nothing about which *kinds of wing* they have, so position 2 preserves nothing. Each
 position is a separate claim about the relation.
 
-The capability pair is where `transitiveInArg` ships, and one predicate carries both
+The ability pair is where `transitiveInArg` ships, and one predicate carries both
 directions at once:
 
 ```clojure
-(transitiveInArgInverse capabilityType 1 genl)   (transitiveInArg capabilityType 2 genl)
-(transitiveInArg        hasCapability  2 genl)
+(transitiveInArgInverse abilityType 1 genl)   (transitiveInArg abilityType 2 genl)
+(transitiveInArg        able         2 genl)
 ```
 
-Position 1 of `capabilityType` carries a claim about a kind *down* to its subkinds — a
+Position 1 of `abilityType` carries a claim about a kind *down* to its subkinds — a
 kind of bird flies with nothing written about it — while position 2 of both predicates
 carries it *up* the `genl` hierarchy of happening kinds: `flying` is a kind of `travelling`,
 so whatever can fly can travel. The second position of both predicates is a happening kind,
-`(genlArg hasCapability 2 happening)`, so `(hasCapability Tweety flying)` says Tweety can be
+`(genlArg able 2 happening)`, so `(able Tweety flying)` says Tweety can be
 the doer of a flying event.
 
 The size claims also show a limit of the declaration. Preservation runs downward, so
@@ -231,8 +231,8 @@ argument to be marked, and a marked predicate takes one argument-check family fo
 position — `arg` throughout for an instance relation, `genlArg` throughout for a type
 one. A predicate relating one individual to a *kind* satisfies neither and is left
 unmarked, which `relation_kind`'s own comment says of `result` and
-`functionCorrespondingPredicate`. `hasCapability` is the third: one causal thing, one event
-kind. So `capabilityType`/`hasCapability` are named as a pair in their comments and not by
+`functionCorrespondingPredicate`. `able` is the third: one causal thing, one event
+kind. So `abilityType`/`able` are named as a pair in their comments and not by
 the predicate that exists to name pairs — declaring the mark to satisfy it would trade an
 argument check that convicts for a link nothing reads. `partType`/`tangiblePartOf` is the pair the
 link does state, both halves relating individuals to individuals.

@@ -2288,7 +2288,7 @@
 (arg transitiveInArgInverse 3 predicate)
 
 (comment transitiveInArg
-         "(transitiveInArg ?predicate ?position ?relation) means that argument ?position of ?predicate is preserved along the arrow of the transitive ?relation, the direction of Cyc's transitiveViaArg. A stored (?predicate … W …) licenses the same claim about A whenever (?relation W A) holds, so with genl this is upward inheritance: (capabilityType bird flying) with (genl flying travelling) reaches (capabilityType bird travelling). transitiveInArgInverse is the other direction, and the two names exist so neither direction requires declaring an inverse predicate with no other use. The same restriction on ?relation applies.")
+         "(transitiveInArg ?predicate ?position ?relation) means that argument ?position of ?predicate is preserved along the arrow of the transitive ?relation, the direction of Cyc's transitiveViaArg. A stored (?predicate … W …) licenses the same claim about A whenever (?relation W A) holds, so with genl this is upward inheritance: (abilityType bird flying) with (genl flying travelling) reaches (abilityType bird travelling). transitiveInArgInverse is the other direction, and the two names exist so neither direction requires declaring an inverse predicate with no other use. The same restriction on ?relation applies.")
 (ternary_predicate transitiveInArg)
 (arg transitiveInArg 1 predicate)
 (arg transitiveInArg 2 positive_integer)

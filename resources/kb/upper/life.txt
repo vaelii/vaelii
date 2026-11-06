@@ -1,6 +1,6 @@
 ;; life.txt — relations about organisms: kinship (parentOf/childOf/siblingOf/
 ;; ancestorOf/grandparentOf), age (birthDate/birthYearOf/olderThan/mortal), and behaviour
-;; (eats, and the capabilityType/hasCapability pair, whose second argument is a
+;; (eats, and the abilityType/able pair, whose second argument is a
 ;; happening kind such as abstract.txt's flying or travelling). Loaded into CxUniverse with
 ;; the rest of kb/upper/.
 
@@ -102,24 +102,24 @@
 (arg grandparentOf 1 organism)
 (arg grandparentOf 2 organism)
 
-(comment capabilityType
-         "(capabilityType ?kind ?happeningKind) means that a ?kind can be the doer of a happening of kind ?happeningKind. The type-level reading of hasCapability: (capabilityType bird flying) says the kind flies, where (hasCapability Tweety flying) says one bird does. Two predicates rather than one because they are two claims — a claim about a kind and a claim about a member — and one symbol read at both levels has to declare one position's argument check for both, which is a choice that mistypes whichever half it was not written for. Declared transitiveInArgInverse along genl on the FIRST position, which carries a claim about a kind down to its subkinds: a kind of bird flies with nothing written about it. Declared transitiveInArg along genl on the second, which carries it UP the genl hierarchy of happening kinds: flying is a kind of travelling, so a kind that can fly can travel. Paired with hasCapability, and the pairing moves no claim between the two: going from the kind to its members needs a quantifier reading (every bird, or some bird) that nothing here fixes, so the descent is a rule written where the kinds are. The comment below hasCapability says why that pairing is prose rather than a typeToInstancePred sentex.")
-(set/monotonic (type_relation_predicate capabilityType))
-(genlArg capabilityType 1 animal)
-(genlArg capabilityType 2 happening)
-(set/monotonic (transitiveInArgInverse capabilityType 1 genl))
-(transitiveInArg capabilityType 2 genl)
+(comment abilityType
+         "(abilityType ?kind ?happeningKind) means that a ?kind can be the doer of a happening of kind ?happeningKind. The type-level reading of able: (abilityType bird flying) says the kind flies, where (able Tweety flying) says one bird does. Two predicates rather than one because they are two claims — a claim about a kind and a claim about a member — and one symbol read at both levels has to declare one position's argument check for both, which is a choice that mistypes whichever half it was not written for. Declared transitiveInArgInverse along genl on the FIRST position, which carries a claim about a kind down to its subkinds: a kind of bird flies with nothing written about it. Declared transitiveInArg along genl on the second, which carries it UP the genl hierarchy of happening kinds: flying is a kind of travelling, so a kind that can fly can travel. Paired with able, and the pairing moves no claim between the two: going from the kind to its members needs a quantifier reading (every bird, or some bird) that nothing here fixes, so the descent is a rule written where the kinds are. The comment below able says why that pairing is prose rather than a typeToInstancePred sentex.")
+(set/monotonic (type_relation_predicate abilityType))
+(genlArg abilityType 1 animal)
+(genlArg abilityType 2 happening)
+(set/monotonic (transitiveInArgInverse abilityType 1 genl))
+(transitiveInArg abilityType 2 genl)
 
-(comment hasCapability
-         "(hasCapability ?doer ?happeningKind) means that ?doer can be the doer of a happening of kind ?happeningKind, the doer being the one doneBy names. The first position holds anything causal that can be such a doer: an animal, a machine, an organization. An instrument is not thereby a doer: a pencil is used in writing and does not write, so being usable in a kind of event is not a capability. The instance-level reading: (hasCapability Tweety flying) says this bird can fly and says nothing about birds, where the claim about the kind is capabilityType. The descent from the one to the other is a rule written where the kinds are, never an inference from the pairing. Carries no relation_kind because it is MIXED — the first position holds one causal thing and takes arg, the second names a happening KIND and takes genlArg — and the metatype classifies a predicate whose two ends sit at one level, so result and functionCorrespondingPredicate are left unmarked for the same reason. Declared transitiveInArg along genl on the second position, which carries a claim up the genl hierarchy of happening kinds: flying is a kind of travelling, so whatever can fly can travel.")
-(binary_predicate hasCapability)
-(arg hasCapability 1 causal)
-(genlArg hasCapability 2 happening)
-(transitiveInArg hasCapability 2 genl)
+(comment able
+         "(able ?doer ?happeningKind) means that ?doer can be the doer of a happening of kind ?happeningKind, the doer being the one doneBy names. The first position holds anything causal that can be such a doer: an animal, a machine, an organization. An instrument is not thereby a doer: a pencil is used in writing and does not write, so being usable in a kind of event is not an ability. The instance-level reading: (able Tweety flying) says this bird can fly and says nothing about birds, where the claim about the kind is abilityType. The descent from the one to the other is a rule written where the kinds are, never an inference from the pairing. Carries no relation_kind because it is MIXED — the first position holds one causal thing and takes arg, the second names a happening KIND and takes genlArg — and the metatype classifies a predicate whose two ends sit at one level, so result and functionCorrespondingPredicate are left unmarked for the same reason. Declared transitiveInArg along genl on the second position, which carries a claim up the genl hierarchy of happening kinds: flying is a kind of travelling, so whatever can fly can travel.")
+(binary_predicate able)
+(arg able 1 causal)
+(genlArg able 2 happening)
+(transitiveInArg able 2 genl)
 
 ;; The pairing is stated in both comments above and NOT as (typeToInstancePred
-;; capabilityType hasCapability): that predicate types its second argument an
-;; instance_relation_predicate, so the link would derive that mark of hasCapability,
+;; abilityType able): that predicate types its second argument an
+;; instance_relation_predicate, so the link would derive that mark of able,
 ;; which carries no relation_kind because it is mixed.  So the one link that records a
 ;; type/instance pair cannot record a pair whose instance half is mixed without
 ;; mislabelling it, to gain a link the engine reads nothing from (vocabulary/classification

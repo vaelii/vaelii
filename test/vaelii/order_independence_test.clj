@@ -753,15 +753,15 @@
 
 ;; ---- a reifiable_function mark moving -------------------------------------
 
-(def ^:private skill-use '(hasCapability Rex (SkillFn Rex)))
+(def ^:private skill-use '(able Rex (SkillFn Rex)))
 
 (defn- skill-reading
   "What a KB told some of vaelii#100's forms holds and answers about `(SkillFn Rex)`."
   [kb]
-  {:rows     (sort-by pr-str (map :sentence (v/sentexes-with-functor kb 'hasCapability)))
+  {:rows     (sort-by pr-str (map :sentence (v/sentexes-with-functor kb 'able)))
    :minted   (count (v/sentexes-matching kb '(natFormula ?k (SkillFn Rex)) 'CxUniverse))
    :compound (v/ask? kb skill-use 'CxUniverse)
-   :genl     (v/ask? kb '(genl (SkillFn Rex) capability) 'CxUniverse)})
+   :genl     (v/ask? kb '(genl (SkillFn Rex) ability) 'CxUniverse)})
 
 (defn- assert-op [s & [opts]] #(v/assert % s 'CxUniverse opts))
 
@@ -772,10 +772,10 @@
   (let [ops    [[(assert-op skill-use) (assert-op skill-use)]
                 [(assert-op '(unary_function SkillFn))]
                 [(assert-op '(reifiable_function SkillFn))]
-                [(assert-op '(genlResult SkillFn capability))]]
+                [(assert-op '(genlResult SkillFn ability))]]
         result (one-outcome-under! "vaelii#100's forms" ops skill-reading)]
     (is (= {:minted 1 :compound true :genl true} (dissoc result :rows)))
-    (is (= [(list 'hasCapability 'Rex (nat/constant-for nat-read/nat-namespace '(SkillFn Rex)))] (:rows result))))
+    (is (= [(list 'able 'Rex (nat/constant-for nat-read/nat-namespace '(SkillFn Rex)))] (:rows result))))
   (tu/clear-kb! (tu/test-kb)))
 
 (deftest a-late-inner-declaration-names-the-outer-constant-as-a-first-one-does
@@ -810,10 +810,10 @@
                               (assert-op '(likes Bob (SkillFn Rex)))
                               (assert-op '(reifiable_function SkillFn))]
                              #(v/ask? % '(fan Bob) 'CxUniverse))
-        fire   [(rule '[(dog ?x)] '(hasCapability ?x (SkillFn ?x)))
+        fire   [(rule '[(dog ?x)] '(able ?x (SkillFn ?x)))
                 (assert-op '(dog Rex))
                 (assert-op '(reifiable_function SkillFn))]
-        minted {:rows     [(list 'hasCapability 'Rex (nat/constant-for nat-read/nat-namespace '(SkillFn Rex)))]
+        minted {:rows     [(list 'able 'Rex (nat/constant-for nat-read/nat-namespace '(SkillFn Rex)))]
                 :minted   1
                 :compound true}
         bare   (one-outcome! "a firing with no correspondence" fire #(dissoc (skill-reading %) :genl))
@@ -830,11 +830,11 @@
   ;; the mark, and the KB reads as one told the declaration first.
   (let [decl     (assert-op '(reifiable_function SkillFn))
         h        (atom nil)
-        never    (run-ops [(assert-op '(genlResult SkillFn capability)) (assert-op skill-use)]
+        never    (run-ops [(assert-op '(genlResult SkillFn ability)) (assert-op skill-use)]
                           skill-reading)
-        first-in (run-ops [decl (assert-op '(genlResult SkillFn capability)) (assert-op skill-use)]
+        first-in (run-ops [decl (assert-op '(genlResult SkillFn ability)) (assert-op skill-use)]
                           skill-reading)
-        rest-ops [[(assert-op '(genlResult SkillFn capability))] [(assert-op skill-use)]]
+        rest-ops [[(assert-op '(genlResult SkillFn ability))] [(assert-op skill-use)]]
         leaving  (fn [label ops] (one-outcome-under! label (into [ops] rest-ops) skill-reading))]
     (is (= {:minted 0 :compound true :genl false} (dissoc never :rows)))
     (is (= never (leaving "retracted"
@@ -877,10 +877,10 @@
   #(doto (tu/fresh) (tu/load-core!)))
 
 (defn- core-skill-reading
-  "`skill-reading`, for a KB that loads core.txt: `hasCapability`'s arg 2 constraint
+  "`skill-reading`, for a KB that loads core.txt: `able`'s arg 2 constraint
   (resources/kb/upper/life.txt) names a `happening` kind, so the result type is `happening`."
   [kb]
-  {:rows     (sort-by pr-str (map :sentence (v/sentexes-with-functor kb 'hasCapability)))
+  {:rows     (sort-by pr-str (map :sentence (v/sentexes-with-functor kb 'able)))
    :minted   (count (v/sentexes-matching kb '(natFormula ?k (SkillFn Rex)) 'CxUniverse))
    :compound (v/ask? kb skill-use 'CxUniverse)
    :genl     (v/ask? kb '(genl (SkillFn Rex) happening) 'CxUniverse)})
@@ -912,11 +912,11 @@
                   (into {} (for [r '[CxUniverse CxSkillD]]
                              [r {:minted   (count (v/sentexes-matching kb '(natFormula ?k (SkillFn Rex)) r))
                                  :compound (v/ask? kb skill-use r)
-                                 :genl     (v/ask? kb '(genl (SkillFn Rex) capability) r)}])))
+                                 :genl     (v/ask? kb '(genl (SkillFn Rex) ability) r)}])))
         result  (one-outcome! "a declaration denied below the use"
                               [(assert-op '(genlCx CxSkillD CxUniverse) {:strength :monotonic})
                                (assert-op '(reifiable_function SkillFn))
-                               (assert-op '(genlResult SkillFn capability))
+                               (assert-op '(genlResult SkillFn ability))
                                (assert-op skill-use)
                                #(v/assert % '(not (reifiable_function SkillFn)) 'CxSkillD
                                           {:strength :monotonic})]
@@ -955,12 +955,12 @@
     (try
       (spit (java.io.File. dir "CxAlpha.txt") (str (pr-str skill-use) "\n"))
       (spit (java.io.File. dir "CxBeta.txt")
-            "(reifiable_function SkillFn)\n(genlResult SkillFn capability)\n")
+            "(reifiable_function SkillFn)\n(genlResult SkillFn ability)\n")
       (let [kb (tu/fresh)]
         (v/load-text! kb (.getPath dir))
-        (is (= [[(list 'hasCapability 'Rex (nat/constant-for nat-read/nat-namespace '(SkillFn Rex))) 'CxAlpha]]
-               (mapv (juxt :sentence :context) (v/sentexes-with-functor kb 'hasCapability))))
-        (is (v/ask? kb '(genl (SkillFn Rex) capability) 'CxUniverse)))
+        (is (= [[(list 'able 'Rex (nat/constant-for nat-read/nat-namespace '(SkillFn Rex))) 'CxAlpha]]
+               (mapv (juxt :sentence :context) (v/sentexes-with-functor kb 'able))))
+        (is (v/ask? kb '(genl (SkillFn Rex) ability) 'CxUniverse)))
       (finally
         (run! #(.delete ^java.io.File %) (reverse (file-seq dir))))))
   (tu/clear-kb! (tu/test-kb)))

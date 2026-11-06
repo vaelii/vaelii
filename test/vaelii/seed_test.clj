@@ -87,8 +87,8 @@
   (tu/load-core! kb)
   (seed/load-context kb 'CxBiology "middle")
   (testing "its sentences land in the context the file names"
-    (is (seq (v/sentexes-matching kb '(capabilityType bird flying) 'CxBiology)))
-    (is (empty? (v/sentexes-matching kb '(capabilityType bird flying) 'CxUniverse))))
+    (is (seq (v/sentexes-matching kb '(abilityType bird flying) 'CxBiology)))
+    (is (empty? (v/sentexes-matching kb '(abilityType bird flying) 'CxUniverse))))
   (testing "and its edges are stored in CxUniverse, where every edge is"
     (is (seq (v/sentexes-matching kb '(genlCx CxBiology CxUniverse) 'CxUniverse))))
   (testing "and its rules read the upper layer's genl closure"

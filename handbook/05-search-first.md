@@ -99,12 +99,12 @@ on each near match the change names, and compares their `:genls`, `:specs` and c
 4. **Mint.** Nothing found means the same thing or a broader thing. Mint the term, and
    state in the change why the near matches do not fit.
 
-**Example.** The search for a `capability` type finds `hasCapability` and the event kinds
+**Example.** The search for an `ability` type finds `able` and the event kinds
 in abstract.txt, and the outcome is reuse: an ability is an event kind, so the change
 writes no new type and states the ability with the existing relation (CxBiology.txt):
 
 ```clojure
-(capabilityType bird flying)
+(abilityType bird flying)
 ```
 
 A word read from text with two meanings takes the third outcome: `abandonment-romantic`

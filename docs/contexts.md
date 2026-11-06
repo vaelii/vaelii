@@ -187,9 +187,9 @@ Data hangs below CxWell.
     receipts, media resources and DNS names, and the sixteen kinds the relations are
     typed over (`computational_system`, `software_tool`, `tool_invocation`,
     `media_resource`, `ip_address` and the kinds below them), each with its comment,
-    its `genl` edges and its disjointness. `(toolEnablesCapability ?tool ?kind)` says
+    its `genl` edges and its disjointness. `(toolEnablesAbility ?tool ?kind)` says
     that whoever has `?tool` can be the doer of a happening of kind `?kind`, and the
-    one computing rule, a default guarded by `causal`, reads `hasCapability` from it and
+    one computing rule, a default guarded by `causal`, reads `able` from it and
     `agentHasTool`. Both relations take a `temporal` in the tool position, the nearest kind
     software and a hammer or a jetpack share, and CxTra excepts CxBiology's
     penguin denial, through `(ist CxBiology …)`, for a penguin that has something that
@@ -206,7 +206,7 @@ Data hangs below CxWell.
     operating system install, a computational system that runs on a computer or a
     hypervisor), `onNetwork` and `kubernetesNamespaceOf`. `(hostnameOf ?thing ?name)` is functional in neither
     position, so two systems that share a name are not thereby equal.
-  - **access** — a grant is a capability: `(hasCapability ?principal (ShellAccessFn
+  - **access** — a grant is an ability: `(able ?principal (ShellAccessFn
     ?resource))`. Five reifiable functions, `ReadAccessFn`, `WriteAccessFn`,
     `ShellAccessFn`, `AdminAccessFn` and `DeployAccessFn`, map a resource to a happening
     kind below one of the five kinds under `resource_access`, and each has a functional
@@ -218,7 +218,7 @@ Data hangs below CxWell.
     `filesystem_namespace`, so a `file_path_reference` is the pair, built by the
     reifiable `FilePathRefFn` and read back through `filePathRefOf`, `pathNamespace`
     and `pathText`. `file_lookup`, resolving paths in a namespace, is an access kind
-    below `resource_access`, and `(hasCapability ?principal (FileLookupFn ?namespace))`
+    below `resource_access`, and `(able ?principal (FileLookupFn ?namespace))`
     states a grant of it, with `fileLookupOf` its corresponding predicate. Lookup
     entails no read access.
   - **pull requests** — a `pull_request` of a `forge_repository` (both below
@@ -228,7 +228,7 @@ Data hangs below CxWell.
     `PullRequestDraft`, `PullRequestReady`, `PullRequestMerged` and
     `PullRequestClosed`, and no time argument. `(holdsReadyLatch ?person ?repository)`
     says whose call it is that a repository's drafts are ready, and is not a grant.
-    `merge_access` is below `write_access`, `(hasCapability ?principal (MergeAccessFn
+    `merge_access` is below `write_access`, `(able ?principal (MergeAccessFn
     ?repository))` states a grant of it, with `mergeAccessOf` its functional
     corresponding predicate, and a default rule concludes write access over the same
     repository.
@@ -261,7 +261,7 @@ Data hangs below CxWell.
     its decimal-string snowflake, with `discordChannelOf` as its corresponding predicate.
     `ChannelViewFn` names the happening kind of accessing that channel under
     `VIEW_CHANNEL`, with `channelViewOf` as its corresponding predicate. A
-    `(hasCapability ?person (ChannelViewFn ?channel))` grant does not imply reading
+    `(able ?person (ChannelViewFn ?channel))` grant does not imply reading
     message history, sending messages, connector delivery or authorization to disclose
     content. `discordChannelName` records a human-readable label; names need not be
     unique and can change. `discordAccountId` links a person to the decimal-string ID
@@ -272,7 +272,7 @@ Data hangs below CxWell.
 
     ```clojure
     (ist (CxTimeFn CxDesk (InstantFn 2026 11 3 15 30 0))
-         (hasCapability ExamplePerson (ChannelViewFn (DiscordChannelFn "42"))))
+         (able ExamplePerson (ChannelViewFn (DiscordChannelFn "42"))))
     ```
 
     The instant states the permission observation's as-of time, not a persistence
@@ -280,7 +280,7 @@ Data hangs below CxWell.
     throughout its read interval. An unknown or omitted account produces neither a
     grant nor a denial. A denial for one account does not establish that a person
     lacks permission through another account. This vocabulary performs no Discord
-    reads or automatic account-to-capability projection.
+    reads or automatic account-to-ability projection.
   - **perception** — `perceives` is the general relation and `sees` specializes it.
     `seeImage` and `watchVideo` conclude `sees` by a rule guarded by its `spatial`
     second argument, since an image or a video need not be located.

@@ -54,49 +54,49 @@
   (testing "and no one-place flight predicate survives beside it"
     (is (empty? (v/sentexes-matching kb '(arity flies ?n) '?ctx)))
     (is (empty? (v/sentexes-matching kb '(arity can_travel ?n) '?ctx))))
-  (testing "and the starter KB has no capability type beside the event kinds"
-    (is (not (contains? (set (v/terms kb)) 'capability)))
-    (is (empty? (v/find-sentexes kb 'capability)))))
+  (testing "and the starter KB has no ability type beside the event kinds"
+    (is (not (contains? (set (v/terms kb)) 'ability)))
+    (is (empty? (v/find-sentexes kb 'ability)))))
 
 (tu/deftest-kb all-dogs-have-shell-access
-  ;; Asserts that argument 2 of capabilityType and of hasCapability is a happening kind, not
+  ;; Asserts that argument 2 of abilityType and of able is a happening kind, not
   ;; only an event kind.  Shell access comes and goes: a dog logs in, wanders off, and logs
   ;; in again, so shell_access lies under happening and intermittent, never under event.
   ;; Both predicates take it with no clash, and neither places it under event.
   (tu/with-terms [shell_access Rex]
     (v/assert kb (list 'genl shell_access 'happening) 'CxUniverse)
     (v/assert kb (list 'genl shell_access 'intermittent) 'CxUniverse)
-    (v/assert kb (list 'capabilityType 'dog shell_access) 'CxUniverse)
-    (is (true? (v/ask? kb (list 'capabilityType 'dog shell_access) 'CxUniverse))
+    (v/assert kb (list 'abilityType 'dog shell_access) 'CxUniverse)
+    (is (true? (v/ask? kb (list 'abilityType 'dog shell_access) 'CxUniverse))
         "every dog may have shell access")
     (v/assert kb (list 'dog Rex) 'CxUniverse)
-    (v/assert kb (list 'hasCapability Rex shell_access) 'CxUniverse)
-    (is (true? (v/ask? kb (list 'hasCapability Rex shell_access) 'CxUniverse))
+    (v/assert kb (list 'able Rex shell_access) 'CxUniverse)
+    (is (true? (v/ask? kb (list 'able Rex shell_access) 'CxUniverse))
         "and this one does")
     (is (not (v/genl? kb shell_access 'event)) "a happening with a gap is no event")
     (is (empty? (v/conflicts kb)) "and nothing clashes")))
 
 (tu/deftest-kb both-ability-predicates-type-their-second-argument-as-a-happening-kind
   (testing "the declarations"
-    (is (v/ask? kb '(genlArg hasCapability 2 happening)))
-    (is (v/ask? kb '(genlArg capabilityType 2 happening))))
+    (is (v/ask? kb '(genlArg able 2 happening)))
+    (is (v/ask? kb '(genlArg abilityType 2 happening))))
   (testing "an event kind nobody listed as an ability is accepted as one"
     (tu/with-terms [swimming Wanda]
       (v/assert kb (list 'genl swimming 'event) 'CxUniverse)
       (v/assert kb (list 'animal Wanda) N)
-      (is (v/assert kb (list 'hasCapability Wanda swimming) N))
-      (is (v/assert kb (list 'capabilityType 'fish swimming) N))))
+      (is (v/assert kb (list 'able Wanda swimming) N))
+      (is (v/assert kb (list 'abilityType 'fish swimming) N))))
   (testing "a kind that is not a happening kind is convicted by genlArg, against happening"
     ;; Forced to the constraint-only reading, where `assert` holds the fact inert.
     (tu/without-entailing
      (tu/with-terms [Wanda]
        (v/assert kb (list 'animal Wanda) N)
-       (doseq [s [(list 'hasCapability Wanda 'metal_stuff) (list 'capabilityType 'fish 'metal_stuff)]]
+       (doseq [s [(list 'able Wanda 'metal_stuff) (list 'abilityType 'fish 'metal_stuff)]]
          (let [p (first (filter #(= :arg-genl (:type %)) (tu/check-or-conviction kb s N)))]
            (is (= :arg-genl (:type p)) (str (pr-str s) " is convicted by genlArg"))
            (is (= 'happening (:expected p)) (str (pr-str s) " is convicted against happening"))))))))
 
-(tu/deftest-kb the-first-position-of-hasCapability-takes-any-causal-doer
+(tu/deftest-kb the-first-position-of-able-takes-any-causal-doer
   ;; A doer is whatever doneBy can name, and that is wider than animal: a machine or an
   ;; organization can be the doer of an event.  What cannot is an acausal thing, which
   ;; can occupy no cause slot.  Forced to the constraint-only reading, where `assert`
@@ -107,65 +107,65 @@
      (v/assert kb (list 'organization Acme) N)
      (v/assert kb (list 'time Noon) N)
      (testing "the declaration, which names causal and not animal"
-       (is (v/ask? kb '(arg hasCapability 1 causal)))
-       (is (not (v/ask? kb '(arg hasCapability 1 animal)))))
+       (is (v/ask? kb '(arg able 1 causal)))
+       (is (not (v/ask? kb '(arg able 1 animal)))))
      (testing "the doers that are not animals"
        (is (v/genl? kb 'machine 'causal))
        (is (v/genl? kb 'organization 'causal))
-       (is (= [] (v/check kb (list 'hasCapability Pump 'travelling) N)) "a machine")
-       (is (= [] (v/check kb (list 'hasCapability Acme 'event) N)) "an organization"))
+       (is (= [] (v/check kb (list 'able Pump 'travelling) N)) "a machine")
+       (is (= [] (v/check kb (list 'able Acme 'event) N)) "an organization"))
      (testing "an acausal thing is still convicted, against causal"
        (is (v/genl? kb 'time 'acausal))
        (let [p (first (filter #(= :arg-type (:type %))
-                              (tu/check-or-conviction kb (list 'hasCapability Noon 'travelling) N)))]
+                              (tu/check-or-conviction kb (list 'able Noon 'travelling) N)))]
          (is (some? p) "a time can be the doer of nothing")
          (is (= 1 (:position p)))
          (is (= 'causal (:expected p))))))))
 
 (tu/deftest-kb a-bird-that-flies-travels
-  ;; flying genl travelling, and (transitiveInArg hasCapability 2 genl) carries a
+  ;; flying genl travelling, and (transitiveInArg able 2 genl) carries a
   ;; claim about flying up to travelling at retrieval.
   (tu/with-terms [Robin]
     (v/assert kb (list 'bird Robin) N)
-    (v/assert kb (list 'hasCapability Robin 'flying) N)
-    (is (v/ask? kb (list 'hasCapability Robin 'flying) N))
-    (is (v/ask? kb (list 'hasCapability Robin 'travelling) N))))
+    (v/assert kb (list 'able Robin 'flying) N)
+    (is (v/ask? kb (list 'able Robin 'flying) N))
+    (is (v/ask? kb (list 'able Robin 'travelling) N))))
 
 (tu/deftest-kb what-a-kind-can-do-reaches-the-kinds-beneath-it
   ;; One sentence is stored.  Everything else here is the taxonomy being read.
-  ;; `capabilityType`, not `hasCapability`: this is the kind talking, and the two readings
-  ;; are two predicates (`the-two-capability-readings-are-two-predicates-and-say-so`).
+  ;; `abilityType`, not `able`: this is the kind talking, and the two readings
+  ;; are two predicates (`the-two-ability-readings-are-two-predicates-and-say-so`).
   (testing "the stated claim"
-    (is (v/ask? kb '(capabilityType bird flying) B)))
+    (is (v/ask? kb '(abilityType bird flying) B)))
   (testing "and the kinds nobody wrote anything about"
-    (is (v/ask? kb '(capabilityType eagle flying) B))
-    (is (v/ask? kb '(capabilityType sparrow flying) B)))
+    (is (v/ask? kb '(abilityType eagle flying) B))
+    (is (v/ask? kb '(abilityType sparrow flying) B)))
   (testing "inherited rather than stored — one sentex carries all of it"
-    (is (empty? (v/sentexes-matching kb '(capabilityType eagle flying) '?ctx))))
+    (is (empty? (v/sentexes-matching kb '(abilityType eagle flying) '?ctx))))
   (testing "and it climbs the genl hierarchy of event kinds: what can fly can travel"
-    (is (v/ask? kb '(capabilityType bird travelling) B))
-    (is (v/ask? kb '(capabilityType eagle travelling) B)))
+    (is (v/ask? kb '(abilityType bird travelling) B))
+    (is (v/ask? kb '(abilityType eagle travelling) B)))
   (testing "answered by transitiveInArg, so the kind level stores no rule's output"
-    (is (empty? (v/sentexes-matching kb '(capabilityType bird travelling) '?ctx)))))
+    (is (empty? (v/sentexes-matching kb '(abilityType bird travelling) '?ctx)))))
 
 (tu/deftest-kb a-nearer-claim-stops-an-inherited-default-at-itself
   ;; The genl-level counterpart of `exceptWhen`.  There is no rule to block here — the
   ;; reach is the taxonomy's — so what stops it is a claim about the nearer kind.
   (testing "the excepted kind"
-    (is (not (v/ask? kb '(capabilityType penguin flying) B))))
+    (is (not (v/ask? kb '(abilityType penguin flying) B))))
   (testing "its siblings are untouched, which is what makes this an exception"
-    (is (v/ask? kb '(capabilityType eagle flying) B))
-    (is (v/ask? kb '(capabilityType crow flying) B)))
+    (is (v/ask? kb '(abilityType eagle flying) B))
+    (is (v/ask? kb '(abilityType crow flying) B)))
   (testing "and the general claim survives being excepted"
-    (is (v/ask? kb '(capabilityType bird flying) B))))
+    (is (v/ask? kb '(abilityType bird flying) B))))
 
 (tu/deftest-kb the-exception-is-a-claim-and-not-merely-a-silence
   ;; "Penguins do not fly" is something the KB says, not something it fails to say.  An
   ;; application can query it and argue from it; an absence supports no argument.
   (testing "at the kind"
-    (is (seq (v/sentexes-matching kb '(not (capabilityType penguin flying)) '?ctx))))
+    (is (seq (v/sentexes-matching kb '(not (abilityType penguin flying)) '?ctx))))
   (testing "and at the member, by its own rule"
-    (is (seq (v/sentexes-matching kb '(not (hasCapability Tweety flying)) N)))))
+    (is (seq (v/sentexes-matching kb '(not (able Tweety flying)) N)))))
 
 ;; Flying above the sea
 ;; Glistening ice
@@ -192,7 +192,7 @@
     (v/assert kb (list 'genlCx CxJet 'CxWell) 'CxUniverse)
     (v/assert kb (list 'genlCx CxJet 'CxTra) 'CxUniverse)
     (v/assert kb (list 'machine Jetpack) CxJet)
-    (v/assert kb (list 'toolEnablesCapability Jetpack 'flying) CxJet)
+    (v/assert kb (list 'toolEnablesAbility Jetpack 'flying) CxJet)
     (v/assert kb (list 'penguin PenguinT) CxJet)
     (v/assert kb (list 'penguin PenguinU) CxJet)
     (v/assert kb (list 'agentHasTool PenguinT Jetpack) CxJet)
@@ -205,20 +205,20 @@
                                  (flatten (map :sentence (:sides %))))
                           (concat (v/contradictions kb) (v/conflicts kb))))))
     (testing "the penguin with the jetpack can fly, and so can travel"
-      (is (tu/holds-ask (list 'hasCapability PenguinT 'flying) CxJet))
-      (is (not (tu/holds-ask (list 'not (list 'hasCapability PenguinT 'flying)) CxJet)))
-      (is (tu/holds-ask (list 'hasCapability PenguinT 'travelling) CxJet)))
+      (is (tu/holds-ask (list 'able PenguinT 'flying) CxJet))
+      (is (not (tu/holds-ask (list 'not (list 'able PenguinT 'flying)) CxJet)))
+      (is (tu/holds-ask (list 'able PenguinT 'travelling) CxJet)))
     (testing "a penguin known for certain to be one flies with the jetpack too: the denial is
             excepted, not merely tied with the tool's default"
-      (is (tu/holds-ask (list 'hasCapability PenguinV 'flying) CxJet))
-      (is (not (tu/holds-ask (list 'not (list 'hasCapability PenguinV 'flying)) CxJet))))
+      (is (tu/holds-ask (list 'able PenguinV 'flying) CxJet))
+      (is (not (tu/holds-ask (list 'not (list 'able PenguinV 'flying)) CxJet))))
     (testing "the control: the same kind of penguin without the jetpack still cannot"
-      (is (not (tu/holds-ask (list 'hasCapability PenguinU 'flying) CxJet)))
-      (is (tu/holds-ask (list 'not (list 'hasCapability PenguinU 'flying)) CxJet)))))
+      (is (not (tu/holds-ask (list 'able PenguinU 'flying) CxJet)))
+      (is (tu/holds-ask (list 'not (list 'able PenguinU 'flying)) CxJet)))))
 
 (tu/deftest-kb a-life-stage-takes-a-kind-claim-of-its-own
   ;; One lineage, two stages: the adult flies and the larva does not.  Both stages are
-  ;; kinds of the lineage, and each stage carries its own capability claim.
+  ;; kinds of the lineage, and each stage carries its own ability claim.
   (testing "the stages are kinds of the lineage, named by their stage relation"
     (is (v/ask? kb '(genl caterpillar lepidopteran) B))
     (is (v/ask? kb '(genl butterfly lepidopteran) B))
@@ -231,26 +231,26 @@
   (testing "a timeless disjoint is also a diachronic one"
     (is (v/ask? kb '(diachronicallyDisjoint quantity situation) B)))
   (testing "the adult flies"
-    (is (v/ask? kb '(capabilityType butterfly flying) B)))
+    (is (v/ask? kb '(abilityType butterfly flying) B)))
   (testing "the larva does not, and the KB says so rather than staying silent"
-    (is (not (v/ask? kb '(capabilityType caterpillar flying) B)))
-    (is (seq (v/sentexes-matching kb '(not (capabilityType caterpillar flying)) '?ctx)))))
+    (is (not (v/ask? kb '(abilityType caterpillar flying) B)))
+    (is (seq (v/sentexes-matching kb '(not (abilityType caterpillar flying)) '?ctx)))))
 
 (tu/deftest-kb a-claim-about-a-kind-does-not-reach-its-members-on-its-own
   ;; The bridge is a rule, written once and deliberately, because "every bird flies" and
   ;; "this bird flies" differ by a quantifier the KB will not guess (typeToInstancePred).
   (testing "the member's flight is derived, and it is a record"
-    (is (v/ask? kb '(hasCapability Sam flying) N))
-    (is (seq (v/sentexes-matching kb '(hasCapability Sam flying) N))))
+    (is (v/ask? kb '(able Sam flying) N))
+    (is (seq (v/sentexes-matching kb '(able Sam flying) N))))
   (testing "travelling follows from the hierarchy, not a stored forward-rule conclusion"
-    (is (v/ask? kb '(hasCapability Sam travelling) N))
-    (is (empty? (v/sentexes-matching kb '(hasCapability Sam travelling) N))
+    (is (v/ask? kb '(able Sam travelling) N))
+    (is (empty? (v/sentexes-matching kb '(able Sam travelling) N))
         "answered by transitiveInArg, not stored — no redundant rule"))
   (testing "and the flightless member gets neither"
-    (is (not (v/ask? kb '(hasCapability Tweety flying) N)))
-    (is (empty? (v/sentexes-matching kb '(hasCapability Tweety travelling) N)))))
+    (is (not (v/ask? kb '(able Tweety flying) N)))
+    (is (empty? (v/sentexes-matching kb '(able Tweety travelling) N)))))
 
-(tu/deftest-kb the-two-capability-readings-are-two-predicates-and-say-so
+(tu/deftest-kb the-two-ability-readings-are-two-predicates-and-say-so
   ;; the entailing reading: the derivation is the subject
   (tu/with-entailing
     ;; One symbol read at both levels has to pick one argument check for both, and whichever
@@ -259,25 +259,25 @@
     ;; the type it lies under.  So: two predicates, the kind-level one marked, and the pair
     ;; named in prose because the predicate that names pairs cannot take a mixed half.
     (testing "the kind-level half relates kinds, and says so"
-      (is (v/ask? kb '(type_relation_predicate capabilityType))))
+      (is (v/ask? kb '(type_relation_predicate abilityType))))
     (testing "the instance-level half is MIXED — one causal thing to one event kind — so it
             carries no relation_kind, and its two positions take different checks"
-      (is (not (v/ask? kb '(instance_relation_predicate hasCapability))))
-      (is (not (v/ask? kb '(type_relation_predicate hasCapability))))
-      (is (v/ask? kb '(arg hasCapability 1 causal)))
-      (is (v/ask? kb '(genlArg hasCapability 2 happening))))
+      (is (not (v/ask? kb '(instance_relation_predicate able))))
+      (is (not (v/ask? kb '(type_relation_predicate able))))
+      (is (v/ask? kb '(arg able 1 causal)))
+      (is (v/ask? kb '(genlArg able 2 happening))))
     (testing "so declaring the pairing would mark the mixed half — typeToInstancePred
             types its second argument an instance half, and derives that mark"
       (tu/with-terms [CxPairing]
         (v/assert kb (list 'genlCx CxPairing 'CxUniverse) 'CxUniverse)
-        (v/assert kb '(typeToInstancePred capabilityType hasCapability) CxPairing)
-        (is (v/isa? kb 'hasCapability 'instance_relation_predicate CxPairing))))
+        (v/assert kb '(typeToInstancePred abilityType able) CxPairing)
+        (is (v/isa? kb 'able 'instance_relation_predicate CxPairing))))
     (testing "and neither reading answers the other's question"
-      (is (not (v/ask? kb '(hasCapability bird flying) B)))
-      (is (not (v/ask? kb '(capabilityType Sam flying) N))))))
+      (is (not (v/ask? kb '(able bird flying) B)))
+      (is (not (v/ask? kb '(abilityType Sam flying) N))))))
 
 (tu/deftest-kb every-fact-the-starter-ships-satisfies-the-declarations-it-ships
-  ;; The guard the `hasCapability` split existed to install.  A declaration arriving after
+  ;; The guard the `able` split existed to install.  A declaration arriving after
   ;; the content it convicts is accepted — that is the open-world reading, and `violations`
   ;; carries no retroactive report for `:arg-type` — so the starter could hold seven facts
   ;; its own checker rejected and nothing said a word.  Loading is not the check; this is.

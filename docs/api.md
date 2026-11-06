@@ -1734,11 +1734,11 @@ a variable so they join — grandparentOf, part-location, owns-parts).
 **A binary predicate says which level it relates at, unless its two ends disagree.**
 `relation_kind` is a `disjoint_metatype` over `instance_relation_predicate` and
 `type_relation_predicate`: `parentOf`, `northOf` and `madeOf` relate individuals; `genl`,
-`disjoint`, `orthogonal`, `largerThan`, `partType` and `capabilityType` relate kinds. *At most* one, not
+`disjoint`, `orthogonal`, `largerThan`, `partType` and `abilityType` relate kinds. *At most* one, not
 exactly one — the unmarked are those whose two ends sit at different levels, or at no
 level at all (`implies` is a connective; `rewriteOf` takes either role so long as its two
 sides agree; `result` and `genlResult` relate a function to a type;
-`functionCorrespondingPredicate` relates a function to a predicate; `hasCapability`
+`functionCorrespondingPredicate` relates a function to a predicate; `able`
 relates one causal thing to an event kind). The mark is not decoration: an
 `instance_relation_predicate` relates individuals, which are never subtypes, so
 `try-assert` refuses `genlArg` on one (`:arg-constraint-kind`). A `type_relation_predicate` takes `genlArg` and

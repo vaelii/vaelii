@@ -662,7 +662,7 @@ fires again. A rule whose consequent names an open application is dropped and fi
 at every move, so its conclusions are minted under the marks and correspondences believed
 after the move
 (`order_independence_test/a-late-reifiable-declaration-re-spells-a-stored-rule-and-re-fires-an-application-head`).
-A rule that concluded `(hasCapability ?x (SkillFn ?x))` before `SkillFn` was reifiable
+A rule that concluded `(able ?x (SkillFn ?x))` before `SkillFn` was reifiable
 therefore stores the conclusion and the constant the declaration arriving first makes.
 
 The sentence positions a variable-functor rule's hold reads move the rule the same way. An

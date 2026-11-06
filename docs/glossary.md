@@ -197,7 +197,7 @@ comparison folding. See [canonicalization.md](canonicalization.md).
 **`channel_view` / `ChannelViewFn` / `channelViewOf`** ![kb](../.github/badges/cat-kb.svg):
 `VIEW_CHANNEL` access is a happening kind below `resource_access`. `ChannelViewFn`
 names the kind over one Discord channel; `channelViewOf` relates that channel to
-the kind. A capability does not entail reading history, sending messages or
+the kind. An ability does not entail reading history, sending messages or
 connector delivery. See [contexts.md](contexts.md#the-context-topology).
 
 **Closed predication** ![kb](../.github/badges/cat-kb.svg): A **Predication** with no free variable. What a
