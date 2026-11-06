@@ -66,12 +66,32 @@ it — `git show v0.16.0:CHANGELOG.md`.
 - **life.txt ships `may` and `can` beside `able`.** `(may ?doer ?kind)` is deontic
   permission to be the doer of a happening of kind `?kind`, and `(can ?doer ?kind)` is
   ability and permission together. Both take `able`'s positions: `(arg … 1 causal)`,
-  `(genlArg … 2 happening)` and `transitiveInArg` along `genl` on the second. A forward
-  rule concludes `can` from `able` and `may`, and `(genl can able)` and `(genl can may)`
-  answer each half from a `can`. Ability without permission, or permission without
-  ability, concludes no `can`.
+  `(genlArg … 2 happening)` and `transitiveInArg` along `genl` on the second. life.txt
+  states `(intersection can able may)`, so `able` and `may` together conclude `can`, and
+  `can` is `genl` each half. Ability without permission, or permission without ability,
+  concludes no `can`.
   [inherit.md](docs/inherit.md#six-predicates-ship-with-one)
   *Migration:* none; `may` and `can` are new.
+- **`intersection` relates binary predicates as well as kinds.** `(intersection P A B)`
+  and `(intersection P A B C)` over binary predicates derive `(genl P A)` and the other
+  edges as over kinds, and a generated membership rule concludes `(P x y)` from `(A x y)`,
+  `(B x y)` and, for three, `(C x y)`. The binary rule is generated where `P` has arity 2;
+  the unary rule is generated for every intersection and concludes nothing of a binary
+  predicate. The membership is strict, and a `genl` edge between predicates is
+  forced-monotonic, so a binary intersection is stated `set/monotonic`.
+  [integrity.md](docs/integrity.md#what-a-rule-macro-finding-means)
+  *Migration:* none.
+
+### Additive: integrity
+
+- **The rule-macro sweep reports a conjunction rule as the `intersection` it spells.** A
+  rule `(A ?x)`, `(B ?x)` ⇒ `(P ?x)`, or the same over two arguments or with a third
+  component, is a `:rule-macro` finding suggesting `(intersection P A B)`, where `P` and the
+  components are distinct, uninterpreted and of the rule's arity. CxTra's
+  `nestingPartnerOf` rule is one, and CxTra acknowledges it: the unary membership rule an
+  intersection generates would spell its camelCase relations with one argument, which the
+  naming check refuses. [integrity.md](docs/integrity.md#what-a-rule-macro-finding-means)
+  *Migration:* acknowledge or replace a conjunction rule the sweep now reports.
 
 ### Internal: CI
 
