@@ -41,6 +41,15 @@
 
 ;; ---- enumeration --------------------------------------------------------
 
+(deftest case-only-term-names-are-distinct
+  (tu/with-cleared-kb [kb tu/fresh]
+    (let [h (v/assert kb '(foo Foo) 'CxUniverse {:chain? false})]
+      (is (= '(foo Foo) (:sentence (v/sentex kb h))))
+      (is (= ['Foo 'foo] (v/find-terms kb "foo")))
+      (is (= ['foo] (v/find-terms kb "foo" {:case-sensitive? true})))
+      (is (= ['Foo] (v/find-terms kb "Foo" {:case-sensitive? true})))
+      (is (not= 'foo 'Foo)))))
+
 (deftest an-empty-kb-has-an-empty-vocabulary
   (tu/with-cleared-kb [kb tu/fresh]
     (is (= [] (v/terms kb)))
