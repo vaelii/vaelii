@@ -2073,16 +2073,18 @@
         (:antecedent v)))
 
 (defn- exception-names-other?
-  "Does `a`'s `exceptWhen` name a predicate `b` is about?  That is the form a stated
+  "Does `context` see an `exceptWhen` of `a` naming a predicate `b` is about? That is the form a stated
   exception has — \"birds fly, unless penguins\" beside \"penguins do not fly\" — and it is
   why such a pair is reported as `:excepted` rather than hidden: a reader wants to see
   which clashes are already handled, not to be told there are none."
-  [kb a b]
-  (when-let [cs (rule-exception-conjuncts kb (:handle a))]
-    (let [fs (rule-functors b)]
-      (boolean (some (fn [c]
-                       (some #(contains? fs (nm/functor (if (sx/negation? %) (second %) %))) c))
-                     cs)))))
+  [kb a b context]
+  (when (reads/watched-rule? (:index kb) (:handle a))
+    (when-let [cs (seq (provers/rule-exceptions kb (:handle a) context))]
+      (let [fs (rule-functors b)]
+        (boolean (some (fn [c]
+                         (some #(contains? fs (nm/functor (if (sx/negation? %) (second %) %)))
+                               (mapcat rules/watched-literals c)))
+                       cs))))))
 
 (defn- readable-unifier
   "σ in the two rules' own variable names, the **second** rule's carrying a trailing `'`.
@@ -2173,8 +2175,8 @@
          :unifier   (readable-unifier s a b)
          :context   ctx
          :sentences [(:sentence a) (:sentence b0)]
-         :excepted  (boolean (or (exception-names-other? kb a b0)
-                                 (exception-names-other? kb b0 a)))}))))
+         :excepted  (boolean (or (exception-names-other? kb a b0 ctx)
+                                 (exception-names-other? kb b0 a ctx)))}))))
 
 (defn- clash-units
   "`[a b finding]` for every clashing pair of `rows`, lazily, in content order: a pair is
