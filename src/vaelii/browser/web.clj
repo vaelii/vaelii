@@ -3606,46 +3606,50 @@
 (def ^:private regex-metacharacters
   "What makes a pattern a *pattern* rather than a literal.  A query holding none of
   these matches exactly what `re-find` would — substring containment — so it is answered
-  by `:match :substring` and no regex is compiled at all.  That is the type-ahead path,
-  and it is the common one."
+  by `:match :substring` for the result list. The separate whole-name probe quotes
+  the literal query rather than interpreting its syntax."
   (set "\\^$.|?*+()[]{}"))
 
 (defn- term-hits
   "The terms matching `q`, from the index's **term-name set** (`v/find-terms`) — the size
   of the vocabulary, never a walk of the sentexes.  `re-find` semantics either way: a
-  literal query is a substring match, and only a query that actually carries regex
-  syntax compiles a pattern.  Answers `::too-long` for a pattern past `pattern-cap`,
+  literal query is a substring match by default, and a query carrying regex syntax
+  uses a pattern. Answers `::too-long` for a user pattern past `pattern-cap`,
   which is never compiled, `::bad` for one that does not compile or whose match overflows
   the stack, and `{::failed <message>}` for any other failure of the read, logged.
 
-  `limit` bounds the answer, so a page of results costs a page of results."
-  [kb q limit]
-  (let [regex? (some regex-metacharacters q)]
-    (cond
-      (and regex? (> (count q) pattern-cap)) ::too-long
-      ;; compiled here as well as in `find-terms`: an attached daemon answers a pattern
-      ;; that does not compile as a server fault, which the arms below would show as one
-      (and regex? (nil? (try (re-pattern q)
-                             (catch java.util.regex.PatternSyntaxException _ nil))))
-      ::bad
-      :else
-      (try
-        ;; case-insensitive: a literal query matches a term of any case, so a
-        ;; lowercase `transitiveinarg` finds `transitiveInArg`.  A regex query
-        ;; carries its own case in the pattern and asks for insensitivity with
-        ;; `(?i)`; `find-terms`' regex matcher ignores this flag, so it is unchanged.
-        (v/find-terms kb q {:match (if regex? :regex :substring)
-                            :case-sensitive? false :limit limit})
-        ;; a catastrophic pattern can raise `StackOverflowError` out of the regex
-        ;; engine, and this handler stack has no exception middleware to make a page of
-        ;; it, so the pattern is reported as unusable
-        (catch java.util.regex.PatternSyntaxException _ ::bad)
-        (catch StackOverflowError _ ::bad)
-        ;; a store fault or an unreachable daemon is not the pattern's fault
-        (catch Exception t
-          (trove/log! {:level :warn :id ::find-failed :error t
-                       :data {:q q :error (ex-message t)}})
-          {::failed (or (ex-message t) (.getName (class t)))})))))
+  `limit` bounds the answer; `exact?` asks for a quoted case-insensitive whole name."
+  ([kb q limit] (term-hits kb q limit false))
+  ([kb q limit exact?]
+   (let [regex? (and (not exact?) (some regex-metacharacters q))]
+     (cond
+       (and regex? (> (count q) pattern-cap)) ::too-long
+       ;; compiled here as well as in `find-terms`: an attached daemon answers a pattern
+       ;; that does not compile as a server fault, which the arms below would show as one
+       (and regex? (nil? (try (re-pattern q)
+                              (catch java.util.regex.PatternSyntaxException _ nil))))
+       ::bad
+       :else
+       (try
+         ;; case-insensitive: a literal query matches a term of any case, so a
+         ;; lowercase `transitiveinarg` finds `transitiveInArg`.  A regex query
+         ;; carries its own case in the pattern and asks for insensitivity with
+         ;; `(?i)`; `find-terms`' regex matcher ignores this flag, so it is unchanged.
+         (v/find-terms kb (if exact?
+                            (str "(?iu)\\A" (java.util.regex.Pattern/quote q) "\\z")
+                            q)
+                       {:match (if (or exact? regex?) :regex :substring)
+                        :case-sensitive? false :limit limit})
+         ;; a catastrophic pattern can raise `StackOverflowError` out of the regex
+         ;; engine, and this handler stack has no exception middleware to make a page of
+         ;; it, so the pattern is reported as unusable
+         (catch java.util.regex.PatternSyntaxException _ ::bad)
+         (catch StackOverflowError _ ::bad)
+         ;; a store fault or an unreachable daemon is not the pattern's fault
+         (catch Exception t
+           (trove/log! {:level :warn :id ::find-failed :error t
+                        :data {:q q :error (ex-message t)}})
+           {::failed (or (ex-message t) (.getName (class t)))}))))))
 
 (defn- find-list
   "The result list for a search: one page of hits and the sentinel that fetches the
@@ -3662,10 +3666,14 @@
   linking to its term page.  `q` reads as `re-find` does (a bare `dog` finds every term
   containing it, `^parent` anchors) and filters the index's term-name set.  **A pattern
   that resolves to a single term jumps to that term's page**, because it is the only match
-  or names a term *exactly*; the jump sets `HX-Push-Url`.  An unusable pattern or an empty
+  or is a literal naming exactly one term ignoring case; the jump sets `HX-Push-Url`.
+  Case-only name collisions stay a list. An unusable pattern or an empty
   query reports gently."
   [{:keys [kb] :as env} q]
-  (let [hits (when-not (str/blank? q) (term-hits kb q (inc find-cap)))]
+  (let [hits (when-not (str/blank? q) (term-hits kb q (inc find-cap)))
+        exact (when (and (sequential? hits) (not-any? regex-metacharacters q))
+                (term-hits kb q 2 true))
+        hits (if (and exact (not (sequential? exact))) exact hits)]
     (cond
       (str/blank? q)
       (render env "find"
@@ -3696,8 +3704,11 @@
               [:h2 "Find terms " [:span.muted "matching /" q "/"]]
               [:p.muted "Search failed: " (::failed hits)])
       :else
-      (let [exact  (first (filter #(= q (str %)) hits))
-            target (or exact (when (= 1 (count hits)) (first hits)))]
+      (let [target (if exact
+                     (or (when (= 1 (count exact)) (first exact))
+                         (when (and (empty? exact) (= 1 (count hits))) (first hits)))
+                     (or (first (filter #(= q (str %)) hits))
+                         (when (= 1 (count hits)) (first hits))))]
         (if target
           ;; jump: render the term page, and tell htmx to show the term URL
           (assoc-in (term-page env target) [:headers "HX-Push-Url"] (term-href target))

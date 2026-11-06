@@ -653,9 +653,10 @@
     (let [r (GET "/find" "q=parentof")]                    ; the terms are parentOf / grandparentOf
       (is (= 200 (:status r)))
       (is (re-find #"parentOf" (:body r)))
-      (is (re-find #"grandparentOf" (:body r)))))          ; both contain "parentof"
+      (is (= "/term?q=parentOf" (get-in r [:headers "HX-Push-Url"])))))
   (testing "an uppercase query finds it too"
-    (is (re-find #"parentOf" (:body (GET "/find" "q=PARENTOF")))))
+    (is (= "/term?q=parentOf"
+           (get-in (GET "/find" "q=PARENTOF") [:headers "HX-Push-Url"]))))
   (testing "a regex query stays case-sensitive unless it carries (?i)"
     (is (not (re-find #"parentOf" (:body (GET "/find" "q=PARENT.F"))))
         "an uppercase regex does not match the lowercase spelling")
@@ -686,6 +687,9 @@
         (is (not (re-find #"Not a valid regular expression" (:body r))) q)))))
 
 (deftest find-jumps-straight-to-a-single-or-exact-term
+  (testing "a single substring match still jumps without a whole-name match"
+    (is (= "/term?q=grandparentOf"
+           (get-in (GET "/find" "q=grandpar") [:headers "HX-Push-Url"]))))
   (testing "an exact term name jumps to its page — even though it is a substring of another"
     (let [r (GET "/find" "q=parentOf")]                    ; also a substring of grandparentOf
       (is (re-find #"Sentexes by index" (:body r)))        ; the term page, not the results list
@@ -696,6 +700,40 @@
       (is (re-find #"Find terms" (:body r)))
       (is (nil? (get-in r [:headers "HX-Push-Url"])))
       (is (re-find #"grandparentOf" (:body r))))))
+
+(tu/deftest-kb find-exact-names-are-independent-of-the-results-page
+  (v/assert kb '(foo Foo) 'CxUniverse {:chain? false})
+  (binding [*app* (web/app kb)]
+    (doseq [q ["foo" "Foo" "FOO"]]
+      (let [r (GET "/find" (str "q=" q))]
+        (is (nil? (get-in r [:headers "HX-Push-Url"])))
+        (is (re-find #"Find terms" (:body r)))
+        (is (re-find #"/term\?q=foo" (:body r)))
+        (is (re-find #"/term\?q=Foo" (:body r))))))
+  (doseq [i (range 205)]
+    (v/assert kb (list 'has_value (symbol (str "A" i "Needle"))) 'CxUniverse
+              {:chain? false}))
+  (v/assert kb '(has_value Needle) 'CxUniverse {:chain? false})
+  (binding [*app* (web/app kb)]
+    (let [r (GET "/find" "q=needle")]
+      (is (= "/term?q=Needle" (get-in r [:headers "HX-Push-Url"])))
+      (is (re-find #"Sentexes by index" (:body r)))))
+  (v/assert kb '(needle Needle) 'CxUniverse {:chain? false})
+  (binding [*app* (web/app kb)]
+    (let [r (GET "/find" "q=needle")]
+      (is (nil? (get-in r [:headers "HX-Push-Url"])))
+      (is (re-find #"More than 200 matching terms" (:body r))))))
+
+(deftest a-failed-exact-name-read-reports-the-search-failure
+  (let [find-terms acc/find-terms]
+    (with-redefs [acc/find-terms (fn [kb q opts]
+                                   (if (= :regex (:match opts))
+                                     (throw (IllegalStateException. "exact read failed"))
+                                     (find-terms kb q opts)))]
+      (let [r (GET "/find" "q=parentof")]
+        (is (= 200 (:status r)))
+        (is (nil? (get-in r [:headers "HX-Push-Url"])))
+        (is (re-find #"Search failed: exact read failed" (:body r)))))))
 
 (deftest term-page-lists-sentexes-and-taxonomy
   (let [r (GET "/term" "q=dog")]
