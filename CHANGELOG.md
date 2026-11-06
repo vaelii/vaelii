@@ -27,6 +27,19 @@ it — `git show v0.16.0:CHANGELOG.md`.
   counts such a frame under `:refused`, not under `:naming`'s `:dot-marker`.
   *Breaks:* `assert`, `check`, an import or a read of a sentence holding a `.` outside a rest marker; the `:dot-marker` naming class
 
+### Breaking: shipped ontology
+
+- **`hasCapability` is `able`, `capabilityType` is `abilityType` and
+  `toolEnablesCapability` is `toolEnablesAbility`.** The three relations keep their
+  declarations, comments and rules under the new names, in `life.txt`, `CxBiology` and
+  `CxTra`. `able` names dynamic ability, the reading `may` and `can` sit beside.
+  `resources/renames/unreleased.edn` records the three renames, so `upgrade --sync`
+  rewrites a stored premise that names an old spelling.
+  [inherit.md](docs/inherit.md#six-predicates-ship-with-one)
+  *Migration:* rename `hasCapability` to `able`, `capabilityType` to `abilityType` and
+  `toolEnablesCapability` to `toolEnablesAbility` in KB text, rules and queries.
+  *Breaks:* `hasCapability`, `capabilityType`, `toolEnablesCapability`
+
 ### Additive: canonicalization
 
 - **`distinctInArgAndRest` drops a repeated argument of a function's ground applications
@@ -40,6 +53,15 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Additive: shipped ontology
 
+- **life.txt ships `may` and `can` beside `able`.** `(may ?doer ?kind)` is deontic
+  permission to be the doer of a happening of kind `?kind`, and `(can ?doer ?kind)` is
+  ability and permission together. Both take `able`'s positions: `(arg … 1 causal)`,
+  `(genlArg … 2 happening)` and `transitiveInArg` along `genl` on the second. A forward
+  rule concludes `can` from `able` and `may`, and `(genl can able)` and `(genl can may)`
+  answer each half from a `can`. Ability without permission, or permission without
+  ability, concludes no `can`.
+  [inherit.md](docs/inherit.md#six-predicates-ship-with-one)
+  *Migration:* none; `may` and `can` are new.
 - **`CxTra` ships Discord channel permissions and account-use vocabulary.**
   `communication_channel` names an aspatial, temporal, acausal logical route or shared
   venue for messages, and `discord_channel` specializes that kind.
