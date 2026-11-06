@@ -26,20 +26,20 @@ Choose a true option that does inference work. An option that is true and licens
 nothing loses to one that is true and licenses conclusions. A type defined so narrowly
 that almost nothing can be a member also loses, because no rule over it ever fires.
 
-**Example.** The shipped KB has no `capability` type. An ability is the ability to be the
-doer of an event of some kind, so the second argument of `hasCapability` and
-`capabilityType` is an event kind, and the event kinds carry the hierarchy (abstract.txt,
+**Example.** The shipped KB has no `ability` type. An ability is the ability to be the
+doer of an event of some kind, so the second argument of `able` and
+`abilityType` is an event kind, and the event kinds carry the hierarchy (abstract.txt,
 life.txt, CxBiology.txt):
 
 ```clojure
 (genl flying travelling)
 (genl travelling causal_event)
-(transitiveInArg hasCapability 2 genl)
-(capabilityType bird flying)
+(transitiveInArg able 2 genl)
+(abilityType bird flying)
 ```
 
-The `transitiveInArg` declaration carries a `hasCapability` claim up the `genl` hierarchy
-of event kinds. For a bird `Tweety` believed to fly, the variable-free goal `(hasCapability
+The `transitiveInArg` declaration carries a `able` claim up the `genl` hierarchy
+of event kinds. For a bird `Tweety` believed to fly, the variable-free goal `(able
 Tweety travelling)` is therefore answered at retrieval, with no rule and no stored record. The fact that travelling is a
 `causal_event` is stated once and holds for the events and for the abilities together.
 
@@ -47,7 +47,7 @@ Tweety travelling)` is therefore answered at retrieval, with no rule and no stor
 
 - **Logic.** A sentence is useful for what it entails beyond itself. `(genl flying
   travelling)` entails that every flying event is a travelling event, and, read through
-  `hasCapability`'s declaration, that whatever can fly can travel. An ability modelled as
+  `able`'s declaration, that whatever can fly can travel. An ability modelled as
   an individual entails neither, because an individual has no subtypes for an entailment
   to run along.
 - **Engine.** vaelii acts on structure. Matching a unary antecedent fans out over the

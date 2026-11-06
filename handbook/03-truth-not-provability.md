@@ -147,8 +147,8 @@ it belongs to a caller that wants the refusal, not to a KB file.
 penguins, and the result is the same in either order:
 
 ```clojure
-(capabilityType bird flying)
-(not (capabilityType penguin flying))
+(abilityType bird flying)
+(not (abilityType penguin flying))
 ```
 
 A cover asserted before any facts about its parts settles to the state it reaches when

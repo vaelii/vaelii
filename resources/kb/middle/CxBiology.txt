@@ -40,10 +40,10 @@
   (set/defaultRule (set/forwardRule (implies (and (animal ?x)) (breathes_air ?x)))))
 
 ;; ---- what a kind can do, and the kind that cannot -----------------------
-;; Flight is a claim about the KIND, so it is said with capabilityType — the type-level
+;; Flight is a claim about the KIND, so it is said with abilityType — the type-level
 ;; reading — stated of bird once and reaching every kind of bird through
-;; (transitiveInArgInverse capabilityType 1 genl): crow, eagle and every species added later, with
-;; nothing written about any of them.  hasCapability is the instance-level reading and
+;; (transitiveInArgInverse abilityType 1 genl): crow, eagle and every species added later, with
+;; nothing written about any of them.  able is the instance-level reading and
 ;; says nothing here; neither implies the other, and the descent below is what crosses
 ;; between them.
 ;;
@@ -56,13 +56,13 @@
 ;;
 ;; The negative is a positive claim that penguins are flightless, which an application
 ;; can query and argue from, rather than the mere absence of a flight claim.
-(capabilityType bird flying)
-(not (capabilityType penguin flying))
+(abilityType bird flying)
+(not (abilityType penguin flying))
 
 ;; A life stage takes the same kind of claim: the adult flies and the larva does not,
 ;; though both are the one lineage and the organism lives through the change.
-(capabilityType butterfly flying)
-(not (capabilityType caterpillar flying))
+(abilityType butterfly flying)
+(not (abilityType caterpillar flying))
 
 ;; ---- and down to the individuals ----------------------------------------
 ;; The claim about the kind does not reach its members on its own: "birds fly" and "this
@@ -77,11 +77,11 @@
 ;; does not conclude, so there is no flight to defeat and nothing to arbitrate.
 ;; See docs/exceptions.md.
 (exceptWhen (penguin ?x)
-  (set/defaultRule (set/forwardRule (implies (and (bird ?x)) (hasCapability ?x flying)))))
+  (set/defaultRule (set/forwardRule (implies (and (bird ?x)) (able ?x flying)))))
 
 ;; Travelling follows from flying through the genl hierarchy of event kinds, and no rule
-;; concludes it.  (transitiveInArg hasCapability 2 genl) with (genl flying travelling)
-;; answers (hasCapability ?x travelling) at retrieval for anything believed to fly, and
+;; concludes it.  (transitiveInArg able 2 genl) with (genl flying travelling)
+;; answers (able ?x travelling) at retrieval for anything believed to fly, and
 ;; stores no record.  argue names the flight, the edge and the declaration as the
 ;; answer's supports.  When a penguin's flight is defeated, the retrieval has no believed
 ;; flight to reach from, so travelling is unanswerable until the flight is believed again.
@@ -89,12 +89,12 @@
 ;; And the negative, which is not the same statement as the blocked default: the rule
 ;; above declines to conclude for a penguin, while this concludes something — that this
 ;; particular penguin cannot fly — which an application can query and argue from. The
-;; kind-level (not (capabilityType penguin flying)) says it of the kind; this says it of
+;; kind-level (not (abilityType penguin flying)) says it of the kind; this says it of
 ;; the member, and neither follows from the other for the reason typeToInstancePred's own
 ;; comment gives.  The denial is about the penguin's own body: CxTra, whose tool
 ;; vocabulary this context does not see, excepts it for a penguin that has something
 ;; that enables flying.
-(set/forwardRule (implies (and (penguin ?x)) (not (hasCapability ?x flying))))
+(set/forwardRule (implies (and (penguin ?x)) (not (able ?x flying))))
 
 ;; ---- where an animal lives is where it is --------------------------------
 ;; livesIn specializes locatedIn.  A genl edge between two predicates is in the
