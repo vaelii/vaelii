@@ -173,7 +173,9 @@ P5_TERMS = [(pat, [re.compile(x) for x in strips], set(files)) for pat, strips, 
 P6 = re.compile(r"(?<![A-Za-z])view(?:s|ed|er|ers)?(?![A-Za-z])", re.I)
 # Words holding `view` that are not the word: `preview`, `viewBox`, the spatial
 # `viewpoint`, the KB constant `image_viewing`, the test-world individual `Viewer`.
+# Discord's permission token and the channel-access kind are literal identifiers.
 P6_NOT = [re.compile(x, re.I) for x in (
+    r"(?<!\w)(?-i:channel_view|VIEW_CHANNEL)(?!\w)",
     r"\bpreview", r"\breview", r"viewBox", r"viewport", r"scrollIntoView",
     r"ViewTransition", r"image_viewing", r"\bViewer\b", r"\bTmpViewer", r"viewpoint",
     r"point of view", r"gh run view", r"gh pr view")]

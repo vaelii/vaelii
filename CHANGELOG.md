@@ -27,6 +27,16 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Additive: shipped ontology
 
+- **`CxTra` ships Discord channel permissions and account-use vocabulary.**
+  `communication_channel` names an aspatial, temporal, acausal logical route or shared
+  venue for messages, and `discord_channel` specializes that kind.
+  `DiscordChannelFn` names a channel by its decimal-string snowflake;
+  `ChannelViewFn` names its `VIEW_CHANNEL` access kind. `discordChannelOf` and
+  `channelViewOf` are the corresponding predicates. `discordChannelName` states
+  renameable, non-unique labels, and `discordAccountId` states many-to-many account
+  use. Permission grants take their time from the context and conclude no reading,
+  sending, connector delivery or disclosure permission.
+  [contexts.md](docs/contexts.md#the-context-topology)
 - **structure.txt ships lists, multisets, finite sets and maps as structural terms.**
   `ListFn`, `MultisetFn`, `SetFn` and `MapFn` are unreifiable and variadic, `(SetFn)` is
   the empty set, and the term marks spell each kind canonically: `(SetFn b a a)` stores
