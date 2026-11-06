@@ -10,7 +10,7 @@
       (a generator generates a concrete-functor rule per intersection fact, since the
       membership consequent's predicate is a variable).
 
-  Binary and ternary arities; general arity is future work. See CxUniverse."
+  Two and three types, over kinds and over binary predicates. See CxUniverse."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.test-util :as tu]))
@@ -83,6 +83,56 @@
       (v/assert kb (list type_c 'Item) 'CxUniverse)
       (is (believes? kb (list combined_kind 'Item) 'CxUniverse)
           "all three makes a member"))))
+
+(defn- tuple?
+  "Is `sentence` believed in CxUniverse?  A failing `is` prints it, not the KB."
+  [sentence]
+  (believes? tu/*kb* sentence 'CxUniverse))
+
+(tu/deftest-kb a-binary-intersection-derives-genl-of-each-predicate
+  (tu/with-terms [can able may]
+    (doseq [p [can able may]] (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+    (v/assert kb (list 'intersection can able may) 'CxUniverse)
+    (is (v/ask? kb (list 'genl can able) 'CxUniverse))
+    (is (v/ask? kb (list 'genl can may) 'CxUniverse))))
+
+(tu/deftest-kb a-binary-intersection-concludes-the-tuple-from-each-component
+  (tu/with-terms [can able may]
+    (doseq [p [can able may]] (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+    (v/assert kb (list 'intersection can able may) 'CxUniverse)
+    (v/assert kb (list able 'Alice 'kayaking) 'CxUniverse)
+    (testing "one component is not enough"
+      (is (not (tuple? (list can 'Alice 'kayaking)))))
+    (v/assert kb (list may 'Alice 'kayaking) 'CxUniverse)
+    (testing "both components make a tuple of the combined predicate"
+      (is (tuple? (list can 'Alice 'kayaking))))
+    (testing "and the components of two different tuples do not combine"
+      (v/assert kb (list able 'Bob 'kayaking) 'CxUniverse)
+      (v/assert kb (list may 'Bob 'rowing) 'CxUniverse)
+      (is (not (tuple? (list can 'Bob 'kayaking))))
+      (is (not (tuple? (list can 'Bob 'rowing)))))))
+
+(tu/deftest-kb a-three-way-binary-intersection-needs-all-three-components
+  (tu/with-terms [can able may wants]
+    (doseq [p [can able may wants]] (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+    (v/assert kb (list 'intersection can able may wants) 'CxUniverse)
+    (is (v/ask? kb (list 'genl can wants) 'CxUniverse))
+    (v/assert kb (list able 'Alice 'kayaking) 'CxUniverse)
+    (v/assert kb (list may 'Alice 'kayaking) 'CxUniverse)
+    (is (not (tuple? (list can 'Alice 'kayaking))) "two of three is not enough")
+    (v/assert kb (list wants 'Alice 'kayaking) 'CxUniverse)
+    (is (tuple? (list can 'Alice 'kayaking)) "all three make the tuple")))
+
+(tu/deftest-kb a-binary-intersection-concludes-no-one-argument-tuple
+  (tu/with-terms [can able may]
+    (doseq [p [can able may]] (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+    (let [before (set (v/violations kb))]
+      (v/assert kb (list 'intersection can able may) 'CxUniverse)
+      (v/assert kb (list able 'Alice 'kayaking) 'CxUniverse)
+      (v/assert kb (list may 'Alice 'kayaking) 'CxUniverse)
+      (is (empty? (v/sentexes-matching kb (list can '?x) 'CxUniverse))
+          "the unary membership rule, generated for every intersection, concludes nothing here")
+      (is (= before (set (v/violations kb))) "and files no violation"))))
 
 ;; ---- the membership's strength ------------------------------------------
 ;; The generated membership rule is bare, so it confers :monotonic and the combined
