@@ -95,6 +95,14 @@
 ;; vocabulary this context does not see, excepts it for a penguin that has something
 ;; that enables flying.
 (set/forwardRule (implies (and (penguin ?x)) (not (able ?x flying))))
+;; kb-integrity pairs this denial with life.txt's rule concluding can from able and may,
+;; since can is a spec of able.  The pair is acknowledged rather than excepted, for the
+;; reason the record gives.
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (penguin ?x) (not (able ?x flying))))
+   (Quote (implies (and (able ?doer ?kind) (may ?doer ?kind)) (can ?doer ?kind))))
+  "Left unexcepted on purpose. The can rule concludes a spec of able, and this rule denies able of a penguin's flying. Both fire for one penguin only where the facts already contradict this rule: a penguin stated able to fly. The can rule restates an ability its own antecedent holds, so that clash is the one the facts owe, and an exception would hide it.")
 
 ;; ---- where an animal lives is where it is --------------------------------
 ;; livesIn specializes locatedIn.  A genl edge between two predicates is in the

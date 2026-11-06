@@ -2063,7 +2063,7 @@
   '#{abilityType able actor admitsArgnum adultFormOf after arg1 arg2 arg3 arg4 arg5 args
      argsGenl arityMax arityMin atSomeDistanceFrom before behind behindLeftOf behindRightOf
      believes beyondFarDistanceFrom borderlineExample borderlineExampleComment
-     calendarYear cardinalityOf childOf clippedBefore closeTo
+     calendarYear can cardinalityOf childOf clippedBefore closeTo
      closedExtentForArg1 closedExtentForArg2 closedExtentForArg3 closedExtentForArg4
      closedExtentForArg5 coLocatedWith comment commutativeInArgAndRest contains cxMonadOf
      cxTimeOf datetimeOf defnIff defnNecessary defnSufficient denotes derivativeOf
@@ -2077,7 +2077,7 @@
      instantNotAfter instantNotBefore instantNotEqual intangibleOutput interArgs
      intervalAfterOf intervalBeforeOf intervalEqual ist knows larvalFormOf
      latestEndOf latestStartOf leftOf leftwardOf length likes livesIn madeOf
-     matchesPattern meetFunctionOf meets memberOf metBy moderatelyFarFrom natFormula
+     matchesPattern may meetFunctionOf meets memberOf metBy moderatelyFarFrom natFormula
      nearTo negativeExample negativeExampleComment nonTangentialProperPart
      nonTangentialProperPartInverse northOf northeastOf northwardOf northwestOf
      output overlappedBy overlaps owns parentOf partType partiallyOverlapping

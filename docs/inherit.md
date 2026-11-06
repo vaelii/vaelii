@@ -63,10 +63,10 @@ super-predicate's goals — the claim reach fans through `matches-visible` like 
 read — so the asymmetry is the semantics: facts travel up the predicate hierarchy,
 licences do not travel down it.
 
-## Four predicates ship with one
+## Six predicates ship with one
 
-`largerThan` and `partType` are in `resources/kb/upper/abstract.txt`, `abilityType`
-and `able` in `resources/kb/upper/life.txt`. The first two are worth comparing
+`largerThan` and `partType` are in `resources/kb/upper/abstract.txt`, `abilityType`,
+`able`, `may` and `can` in `resources/kb/upper/life.txt`. The first two are worth comparing
 because they are declared **differently on purpose**:
 
 ```clojure
@@ -94,7 +94,8 @@ kind of bird flies with nothing written about it — while position 2 of both pr
 carries it *up* the `genl` hierarchy of happening kinds: `flying` is a kind of `travelling`,
 so whatever can fly can travel. The second position of both predicates is a happening kind,
 `(genlArg able 2 happening)`, so `(able Tweety flying)` says Tweety can be
-the doer of a flying event.
+the doer of a flying event. `may`, permission, and `can`, ability and permission together,
+carry the same declaration on the same position as `able`.
 
 The size claims also show a limit of the declaration. Preservation runs downward, so
 `(largerThan mammal mouse)` reaches every pair below it and lands on `(largerThan mouse
@@ -476,7 +477,7 @@ check (`inherited_clash_test/a-reading-over-a-default-edge-closes-no-genl-cycle`
 
 Predicate metadata beside `transitive` / `symmetric` / `reflexive` / `functional`:
 `(P a b)` and `(P b a)` cannot both hold. It does two things, and refusing `(P a a)` is
-not one of them ([above](#four-predicates-ship-with-one)).
+not one of them ([above](#six-predicates-ship-with-one)).
 
 It gives the **converse the standing to deny a claim**, which is what makes the override
 above work at all — `(typicallyLargerThan maine_coon chihuahua)` counts as evidence

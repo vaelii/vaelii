@@ -1,6 +1,6 @@
 ;; life.txt — relations about organisms: kinship (parentOf/childOf/siblingOf/
 ;; ancestorOf/grandparentOf), age (birthDate/birthYearOf/olderThan/mortal), and behaviour
-;; (eats, and the abilityType/able pair, whose second argument is a
+;; (eats, the abilityType/able pair, and may and can beside able, whose second argument is a
 ;; happening kind such as abstract.txt's flying or travelling). Loaded into CxUniverse with
 ;; the rest of kb/upper/.
 
@@ -111,7 +111,7 @@
 (transitiveInArg abilityType 2 genl)
 
 (comment able
-         "(able ?doer ?happeningKind) means that ?doer can be the doer of a happening of kind ?happeningKind, the doer being the one doneBy names. The first position holds anything causal that can be such a doer: an animal, a machine, an organization. An instrument is not thereby a doer: a pencil is used in writing and does not write, so being usable in a kind of event is not an ability. The instance-level reading: (able Tweety flying) says this bird can fly and says nothing about birds, where the claim about the kind is abilityType. The descent from the one to the other is a rule written where the kinds are, never an inference from the pairing. Carries no relation_kind because it is MIXED — the first position holds one causal thing and takes arg, the second names a happening KIND and takes genlArg — and the metatype classifies a predicate whose two ends sit at one level, so result and functionCorrespondingPredicate are left unmarked for the same reason. Declared transitiveInArg along genl on the second position, which carries a claim up the genl hierarchy of happening kinds: flying is a kind of travelling, so whatever can fly can travel.")
+         "(able ?doer ?happeningKind) means that ?doer can be the doer of a happening of kind ?happeningKind, the doer being the one doneBy names. Dynamic ability, not the epistemic 'can' of 'that can't be right': it says what ?doer has it in it to do and nothing about whether ?doer is permitted to, which is may, and the two together are can. The first position holds anything causal that can be such a doer: an animal, a machine, an organization. An instrument is not thereby a doer: a pencil is used in writing and does not write, so being usable in a kind of event is not an ability. The instance-level reading: (able Tweety flying) says this bird can fly and says nothing about birds, where the claim about the kind is abilityType. The descent from the one to the other is a rule written where the kinds are, never an inference from the pairing. Carries no relation_kind because it is MIXED — the first position holds one causal thing and takes arg, the second names a happening KIND and takes genlArg — and the metatype classifies a predicate whose two ends sit at one level, so result and functionCorrespondingPredicate are left unmarked for the same reason. Declared transitiveInArg along genl on the second position, which carries a claim up the genl hierarchy of happening kinds: flying is a kind of travelling, so whatever can fly can travel.")
 (binary_predicate able)
 (arg able 1 causal)
 (genlArg able 2 happening)
@@ -124,6 +124,23 @@
 ;; type/instance pair cannot record a pair whose instance half is mixed without
 ;; mislabelling it, to gain a link the engine reads nothing from (vocabulary/classification
 ;; calls it inert), and the pairing is prose.
+
+(comment may
+         "(may ?doer ?happeningKind) means that ?doer is permitted to be the doer of a happening of kind ?happeningKind, the doer being the one doneBy names. Deontic permission, not the epistemic 'may' of 'it may rain': it says what ?doer is allowed to do, never what might be so. Independent of able: a driver whose licence is suspended is able to drive and not permitted to, and a person allowed in a pool who never learnt to swim is permitted to swim and not able to. The positions are able's: the first holds anything causal and takes arg, the second names a happening KIND and takes genlArg, so may is mixed and carries no relation_kind. Declared transitiveInArg along genl on the second position, which carries a permission up the genl hierarchy of happening kinds: whoever is permitted to fly is permitted to travel.")
+(binary_predicate may)
+(arg may 1 causal)
+(genlArg may 2 happening)
+(transitiveInArg may 2 genl)
+
+(comment can
+         "(can ?doer ?happeningKind) means that ?doer is both able and permitted to be the doer of a happening of kind ?happeningKind: (able ?doer ?happeningKind) and (may ?doer ?happeningKind) together. Neither the epistemic 'can' nor ability alone. A rule concludes it from the two, and (genl can able) and (genl can may) answer each half from it, so a stated can answers both questions and neither half alone concludes can. The positions are able's and may's, stated here as well as inherited: the first holds anything causal and takes arg, the second names a happening KIND and takes genlArg, so can is mixed and carries no relation_kind. Declared transitiveInArg along genl on the second position, as both halves are.")
+(binary_predicate can)
+(arg can 1 causal)
+(genlArg can 2 happening)
+(transitiveInArg can 2 genl)
+(genl can able)
+(genl can may)
+(set/forwardRule (implies (and (able ?doer ?kind) (may ?doer ?kind)) (can ?doer ?kind)))
 
 (comment livesIn
          "(livesIn ?animal ?place) means that ?animal makes its home in ?place. Where the animal belongs rather than where it is at this moment, which is what locatedIn says. CxBiology states (genl livesIn locatedIn), so in that context an animal that lives somewhere is located there.")
