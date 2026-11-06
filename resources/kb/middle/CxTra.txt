@@ -850,6 +850,11 @@
 (set/forwardRule
   (implies (and (romanticPartnerOf ?x ?y) (roommateOf ?x ?y))
            (nestingPartnerOf ?x ?y)))
+;; kb-integrity suggests (intersection nestingPartnerOf romanticPartnerOf roommateOf) for
+;; the rule, and this keeps the rule.
+(acknowledgedFinding :rule-macro
+                     (intersection nestingPartnerOf romanticPartnerOf roommateOf)
+                     "The declaration says what the rule and the two genl edges say, and is not stated in their place: core.txt generates the unary membership rule for every intersection, a binary one included, and that rule spells nestingPartnerOf, romanticPartnerOf and roommateOf with one argument, which the naming check refuses for a camelCase relation and files as a violation.")
 
 ;; ---- chosen kinship ----------------------------------------------------------
 (comment chosenSiblingOf

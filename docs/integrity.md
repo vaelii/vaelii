@@ -528,6 +528,7 @@ shapes, with `?o…` standing for the free arguments of a predicate of arity `n`
 | `(commutativeInArgs P i j)` | `(P ?o1 … ?on)` ⇒ the same with positions `i` and `j` exchanged, `n` ≥ 3 | `P` declared with arity `n`; the rule is visible from CxUniverse |
 | `(inverse P Q)` | `(P ?a ?b)` ⇒ `(Q ?b ?a)`, and a second rule `(Q ?a ?b)` ⇒ `(P ?b ?a)` | `P` and `Q` declared with arity 2; both rules are visible from CxUniverse |
 | `(genl P Q)` | `(P ?o1 … ?on)` ⇒ `(Q ?o1 … ?on)` | `Q` is not a term the engine interprets; neither `P` nor `Q` is declared with another arity or with variable arity |
+| `(intersection P A B)` | `(A ?o1 … ?on)`, `(B ?o1 … ?on)` ⇒ `(P ?o1 … ?on)`, `n` 1 or 2, and the same with a third component `C` for `(intersection P A B C)` | `P` and the components are distinct and none is a term the engine interprets; none is declared with another arity or with variable arity |
 | `(predAllInstance P C K)` | `(C ?x)` ⇒ `(P ?x K)`, `K` ground | the rule is a `set/defaultRule`, and `P` is not declared with another arity |
 | `(predInstanceAll P K C)` | `(C ?y)` ⇒ `(P K ?y)`, `K` ground | as `predAllInstance` |
 
