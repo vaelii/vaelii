@@ -770,11 +770,11 @@
 (arg functionTypeByArity 1 unary_predicate)
 (arg functionTypeByArity 2 non_negative_integer)
 
-(relationTypeByArity unary 1)
-(relationTypeByArity binary 2)
-(relationTypeByArity ternary 3)
-(relationTypeByArity quaternary 4)
-(relationTypeByArity quinary 5)
+(set/monotonic (relationTypeByArity unary 1))
+(set/monotonic (relationTypeByArity binary 2))
+(set/monotonic (relationTypeByArity ternary 3))
+(set/monotonic (relationTypeByArity quaternary 4))
+(set/monotonic (relationTypeByArity quinary 5))
 
 ;; The predicate and function mappings are related to the relation-wide mapping and are
 ;; not specializations of it.  A genl edge would make every predicateTypeByArity fact a
@@ -1223,7 +1223,7 @@
 (arg defnIff 2 formula)
 
 (comment intersection
-         "(intersection ?combined . ?types) means ?combined is definitionally the intersection of ?types: a thing is a ?combined exactly when it is each of ?types. Applies to unary kinds and to binary predicates: over binary predicates a tuple is a ?combined tuple exactly when it is a tuple of each of ?types, so (intersection can able may) says that whoever is able and permitted to do a kind of thing can do it. The combined predicate's declared arity chooses the membership rule: a ?combined declared binary takes the binary rule, and every ?combined takes the unary one, which concludes nothing of a binary predicate. A definitional relation, like the defn* family above, and the twin of disjoint, which states that kinds do NOT overlap. Variable-arity; (intersection causal_event causal event) names a two-way intersection and further ?types extend it. arityMin is three: the combined kind plus at least two types, since the intersection of a single type is that type and drives no rule.")
+         "(intersection ?combined . ?types) means ?combined is definitionally the intersection of ?types: a thing is a ?combined exactly when it is each of ?types. Applies to unary kinds and to binary predicates: over binary predicates a tuple is a ?combined tuple exactly when it is a tuple of each of ?types, so (intersection can able may) says that whoever is able and permitted to do a kind of thing can do it. The combined predicate's arity chooses the membership rule: a ?combined declared unary takes the unary rule, and a ?combined declared binary takes the binary one. A ?combined of no known arity takes neither. A definitional relation, like the defn* family above, and the twin of disjoint, which states that kinds do NOT overlap. Variable-arity; (intersection causal_event causal event) names a two-way intersection and further ?types extend it. arityMin is three: the combined kind plus at least two types, since the intersection of a single type is that type and drives no rule.")
 (variable_arity_predicate intersection)
 (unbounded_arity_predicate intersection)
 (genlArg intersection 1 thing)
@@ -1254,17 +1254,16 @@
 ;; is each type is the combined kind without exception, so the rule adds no
 ;; defeasibility of its own.
 ;;
-;; The binary rule is guarded by (arity ?combined 2), which holds of a predicate declared
-;; binary_predicate or given arity 2, through the lazy-forward converse
-;; relationTypeByArity generates.  The unary rule is not guarded.  A kind carries no arity
-;; declaration (a type is unary by being a type, not by a stated arity), so
-;; (arity ?combined 1) would guard it off for every kind, and (unknown (arity ?combined 2))
-;; would make every membership it concludes defeasible.  So a binary ?combined also
-;; generates the unary rule, which no fact of a binary predicate can satisfy: it
-;; concludes nothing.
-(implies (intersection ?combined ?type1 ?type2)
+;; Each membership rule is guarded by the combined predicate's arity.  (arity ?combined 1)
+;; holds of a kind declared unary or unary_predicate, or entailed unary_predicate by an
+;; argument declaration naming it, through the lazy-forward converse relationTypeByArity
+;; generates from (relationTypeByArity unary 1).  (arity ?combined 2) holds of a predicate
+;; declared binary_predicate or given arity 2, the same way.  So an intersection generates
+;; at most one membership rule, the one of its combined predicate's arity, and none for a
+;; combined kind of no known arity.
+(implies (and (intersection ?combined ?type1 ?type2) (arity ?combined 1))
          (implies (and (?type1 ?x) (?type2 ?x)) (?combined ?x)))
-(implies (intersection ?combined ?type1 ?type2 ?type3)
+(implies (and (intersection ?combined ?type1 ?type2 ?type3) (arity ?combined 1))
          (implies (and (?type1 ?x) (?type2 ?x) (?type3 ?x)) (?combined ?x)))
 (implies (and (intersection ?combined ?type1 ?type2) (arity ?combined 2))
          (implies (and (?type1 ?x ?y) (?type2 ?x ?y)) (?combined ?x ?y)))

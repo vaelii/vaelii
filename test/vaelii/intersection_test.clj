@@ -50,6 +50,7 @@
   (tu/with-terms [combined_kind type_a type_b]
     (v/assert kb (list 'genl type_a 'thing) 'CxUniverse)
     (v/assert kb (list 'genl type_b 'thing) 'CxUniverse)
+    (v/assert kb (list 'unary combined_kind) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list 'intersection combined_kind type_a type_b) 'CxUniverse)
     (v/assert kb (list type_a 'Item) 'CxUniverse)
     (v/assert kb (list type_b 'Item) 'CxUniverse)
@@ -60,6 +61,7 @@
   (tu/with-terms [combined_kind type_a type_b]
     (v/assert kb (list 'genl type_a 'thing) 'CxUniverse)
     (v/assert kb (list 'genl type_b 'thing) 'CxUniverse)
+    (v/assert kb (list 'unary combined_kind) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list 'intersection combined_kind type_a type_b) 'CxUniverse)
     (v/assert kb (list type_a 'Item) 'CxUniverse)
     (is (not (believes? kb (list combined_kind 'Item) 'CxUniverse))
@@ -72,6 +74,7 @@
     (v/assert kb (list 'genl type_a 'thing) 'CxUniverse)
     (v/assert kb (list 'genl type_b 'thing) 'CxUniverse)
     (v/assert kb (list 'genl type_c 'thing) 'CxUniverse)
+    (v/assert kb (list 'unary combined_kind) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list 'intersection combined_kind type_a type_b type_c) 'CxUniverse)
     (is (v/ask? kb (list 'genl combined_kind type_c) 'CxUniverse)
         "combined kind is genl the third type in a ternary intersection")
@@ -83,6 +86,22 @@
       (v/assert kb (list type_c 'Item) 'CxUniverse)
       (is (believes? kb (list combined_kind 'Item) 'CxUniverse)
           "all three makes a member"))))
+
+(tu/deftest-kb a-declaration-below-cxuniverse-leaves-one-generated-membership-rule
+  (tu/with-terms [CxBelow combined_kind type_a type_b tagOf]
+    (v/assert kb (list 'genlCx CxBelow 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genl type_a 'thing) 'CxUniverse)
+    (v/assert kb (list 'genl type_b 'thing) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate combined_kind) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'arg tagOf 1 combined_kind) CxBelow)
+    (v/assert kb (list 'intersection combined_kind type_a type_b) 'CxUniverse)
+    (let [rule (list 'implies (list 'and (list type_a '?x) (list type_b '?x)) (list combined_kind '?x))]
+      (is (some? (v/handle-of kb rule 'CxUniverse)) "the membership rule is generated in CxUniverse")
+      (is (nil? (v/handle-of kb rule CxBelow)) "and not again in CxBelow"))
+    (v/assert kb (list type_a 'Item) CxBelow)
+    (v/assert kb (list type_b 'Item) CxBelow)
+    (is (believes? kb (list combined_kind 'Item) CxBelow)
+        "CxBelow concludes the membership from the CxUniverse rule")))
 
 (defn- tuple?
   "Is `sentence` believed in CxUniverse?  A failing `is` prints it, not the KB."
@@ -130,8 +149,11 @@
       (v/assert kb (list 'intersection can able may) 'CxUniverse)
       (v/assert kb (list able 'Alice 'kayaking) 'CxUniverse)
       (v/assert kb (list may 'Alice 'kayaking) 'CxUniverse)
+      (is (nil? (v/handle-of kb (list 'implies (list 'and (list able '?x) (list may '?x)) (list can '?x))
+                             'CxUniverse))
+          "a binary combined predicate generates no unary membership rule")
       (is (empty? (v/sentexes-matching kb (list can '?x) 'CxUniverse))
-          "the unary membership rule, generated for every intersection, concludes nothing here")
+          "so it concludes no one-argument tuple")
       (is (= before (set (v/violations kb))) "and files no violation"))))
 
 ;; ---- the membership's strength ------------------------------------------
@@ -142,6 +164,7 @@
   (tu/with-terms [combined_kind type_a type_b]
     (v/assert kb (list 'genl type_a 'thing) 'CxUniverse)
     (v/assert kb (list 'genl type_b 'thing) 'CxUniverse)
+    (v/assert kb (list 'unary combined_kind) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list 'intersection combined_kind type_a type_b) 'CxUniverse {:strength :monotonic})
     (testing "a :default conjunct makes a :default member"
       (v/assert kb (list type_a 'Item) 'CxUniverse)
@@ -159,6 +182,7 @@
   (tu/with-terms [combined_kind type_a type_b]
     (doseq [t [combined_kind type_a type_b]]
       (v/assert kb (list 'genl t 'thing) 'CxUniverse)
+      (v/assert kb (list 'unary t) 'CxUniverse {:strength :monotonic})
       (v/assert kb (list 'forced_monotonic_predicate t) 'CxUniverse {:strength :monotonic}))
     (v/assert kb (list 'intersection combined_kind type_a type_b) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list type_a 'Item) 'CxUniverse {:strength :monotonic})
@@ -198,7 +222,7 @@
   (let [mono {:strength :monotonic}]
     {:types     [[(list 'genl part-a 'thing) base] [(list 'genl part-b 'thing) base]
                  [(list 'genl probe 'thing) base]]
-     :ix        [[(list 'intersection comb part-a part-b) base mono]]
+     :ix        [[(list 'unary comb) base mono] [(list 'intersection comb part-a part-b) base mono]]
      :only-edge [[(list 'genl only comb) base]]
      :both-edge [[(list 'genl both comb) base]]
      :bypass    [[(list 'genl both side-a) base] [(list 'genl side-a part-a) base]
