@@ -280,18 +280,26 @@
     (assoc (if (or optional variadic) {:min (count args)} {:exact (count args)})
            :via q :grounds #{})))
 
+(defn admits-length?
+  "Does the length signature `outer` admit every length the signature `inner` admits?
+  A signature is `{:exact n}`, admitting `n` alone, or `{:min m}`, admitting every length
+  at or above `m`.  An exact `outer` admits an exact `inner` of its length and no floor;
+  a floor `outer` admits an exact `inner` or a floor `inner` at or above it."
+  [outer inner]
+  (if-let [e (:exact outer)]
+    (= e (:exact inner))
+    (<= (long (:min outer)) (long (or (:exact inner) (:min inner))))))
+
 (defn admits-shape?
   "Does a length binding of the engine term `q`, `kind` and `v` as `sx/arity-binding`
-  answers them, admit every length `q`'s shape admits (`shape-length`)?  An exact length
-  agrees with an exact shape of that length, an `arityMin` floor with a shape whose
-  shortest length is at or above it, and `variable_arity` with every shape.  True for a
-  term with no shape."
+  answers them, admit every length `q`'s shape admits (`shape-length`, `admits-length?`)?
+  An exact length agrees with an exact shape of that length, an `arityMin` floor with a
+  shape whose shortest length is at or above it, and `variable_arity` with every shape.
+  True for a term with no shape."
   [q kind v]
-  (let [{exact :exact floor :min} (shape-length q)]
-    (case kind
-      :exact (if exact (= v exact) (nil? floor))
-      :min   (<= (long v) (long (or exact floor v)))
-      :var   true)))
+  (if-let [s (shape-length q)]
+    (admits-length? (case kind :exact {:exact v} :min {:min v} :var {:min 0}) s)
+    true))
 
 (defn- reduce-own
   "The binding `q`'s own bindings `own` give it: under `variable_arity` its single
