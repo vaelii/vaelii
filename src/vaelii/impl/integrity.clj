@@ -1318,12 +1318,13 @@
        (sort-by nm/print-key)))
 
 (defn- undeclared-arity?
-  "Is `term` bound to no exact length, its own or one it inherits through `genl`
-  (`arity/relation-length`), and released by no `variable_arity` binding
-  (`arity/released?`), each read the same at every context?"
+  "Is `term` known to have no exact length of its own (`arity/own-length`) and released by
+  no `variable_arity` binding (`arity/released?`), each read the same at every context?  A
+  length `term` would read through `genl` from a bound predicate above it does not
+  declare `term`: arity is part of a predicate's own definition, as `arg` is."
   [kb term]
   (budget/spend!)
-  (not (or (arity/released? kb term) (:exact (arity/relation-length kb term)))))
+  (not (or (arity/released? kb term) (:exact (arity/own-length kb term)))))
 
 (defn- undeclared-arity-findings
   "Audit each `genl` node `context` sees, in print order, one term at a time, stopping

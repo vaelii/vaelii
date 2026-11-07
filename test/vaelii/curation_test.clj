@@ -351,6 +351,10 @@
   ;; definition check.  These are known ground candidates exercised by CxUniverse's numeric
   ;; definitions, not a request for the query engine to enumerate a domain.
   (every-believed-example-holds-as-stated)
-  (let [report (v/kb-integrity kb #{-212 0 212} 'CxUniverse)]
-    (is (= :audited (:status report)) (pr-str report))
-    (is (= 3 (:candidate-count report)))))
+  (let [report (v/kb-integrity kb #{-212 0 212} 'CxUniverse)
+        others (dissoc report :status :candidate-count :work :elapsed-ms :undeclared-arity)]
+    (is (empty? others) (pr-str report))
+    (is (= 3 (:candidate-count report)))
+    (is (every? (set (v/specs kb 'thing)) (map :term (:undeclared-arity report)))
+        "the upper ontology alone states no arity of its own for some subtypes of thing;
+         the starter loader's closing batch declares every subtype of thing unary_predicate")))

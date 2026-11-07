@@ -40,6 +40,23 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `toolEnablesCapability` to `toolEnablesAbility` in KB text, rules and queries.
   *Breaks:* `hasCapability`, `capabilityType`, `toolEnablesCapability`
 
+### Breaking: integrity
+
+- **The undeclared-arity sweep reports a `genl` node whose only length is inherited.** A
+  node passes when the node itself is known to have an exact length, from an engine
+  `:shape`, an `(arity P n)`, an exact-arity class membership such as `unary_predicate` or
+  a `:monotonic` membership reaching one, or when a `variable_arity` membership releases
+  it. Under `(unary_predicate placed_kind)` and `(genl below_kind placed_kind)`,
+  `below_kind` is an `:undeclared-arity` finding, and a default `kb-integrity` sweep of
+  such a KB answers `:gap`. The upper ontology loaded alone (`core-context/load-into`)
+  reports each subtype of `thing` that states no arity of its own, such as `dog`; the
+  starter's closing batch declares each of them `unary_predicate`, so the starter has no
+  finding. The new `arity/own-length` reads the node's own length with no
+  `genl` closure read; `arity/relation-length` and its callers keep the inherited length.
+  [integrity.md](docs/integrity.md#what-an-undeclared-arity-finding-means)
+  *Migration:* state an arity of each `genl` node, such as `(unary_predicate below_kind)`.
+  *Breaks:* `kb-integrity`
+
 ### Additive: canonicalization
 
 - **`distinctInArgAndRest` drops a repeated argument of a function's ground applications

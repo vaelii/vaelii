@@ -646,24 +646,28 @@ missing declaration. So the sweep reads each node of the visible `genl` edges:
 {:status :gap
  :candidate-count 0
  :undeclared-arity
- [{:term loose_kind} {:term stray_kind}]}
+ [{:term below_kind} {:term loose_kind} {:term stray_kind}]}
 ```
 
-One finding is reported for each node, in print order. A node has an arity when
-`arity/relation-length` binds it to an exact length or a `variable_arity` membership
-releases it (`arity/released?`), read the same at every context
-([taxonomy.md](taxonomy.md#arity)): an `(arity P n)` declaration, a membership in an
-exact-arity class (`unary_predicate`, `binary_predicate`, `unary_function`, and the
-others of `sx/exact-arity-classes`), a `:monotonic` membership in a type that reaches one
-through `:monotonic` `genl` edges, or a `variable_arity`, `variable_arity_predicate` or
-`variable_arity_function` membership, each stated in any context, or the one exact length
-the bound predicates above the node agree on. A node below a bound predicate is therefore
-not a finding.
+One finding is reported for each node, in print order. A node has an arity when the
+node itself is known to have an exact length (`arity/own-length`) or a `variable_arity`
+membership releases it (`arity/released?`), read the same at every context
+([taxonomy.md](taxonomy.md#arity)): an engine grammar term's `:shape`, an `(arity P n)`
+declaration, a membership in an exact-arity class (`unary_predicate`, `binary_predicate`,
+`unary_function`, and the others of `sx/exact-arity-classes`), a `:monotonic` membership
+in a type that reaches one through `:monotonic` `genl` edges, or a `variable_arity`,
+`variable_arity_predicate` or `variable_arity_function` membership, each stated of the
+node in any context. An arity is part of a predicate's own definition, as an `arg`
+declaration is, so a length the node would read through `genl` from a bound predicate
+above it does not declare the node: `below_kind` above is a finding although
+`placed_kind` is a `unary_predicate`. `arity/relation-length` reads that inherited length
+for the argument-position check and the inert-tuple test.
 
-`core.txt` declares an arity for every type it places under `thing`. The starter loader
+A KB that loads the upper ontology alone (`core-context/load-into`) reports each subtype
+of `thing` that states no arity of its own, such as `dog` below `mammal`. The starter loader
 (`vaelii.host.starter/load-into`) asserts `(unary_predicate X)` in CxUniverse for every subtype `X` of `thing` after the KB files load,
 which declares the 87 types of the upper and middle files that state no arity of their
-own, so the shipped starter has no finding either.
+own, so the shipped starter has no finding.
 
 The pass has these limits:
 

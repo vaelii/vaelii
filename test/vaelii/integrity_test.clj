@@ -1928,21 +1928,29 @@
                                                   {:categories #{:undeclared-arity}})))))
 
 (tu/deftest-kb a-genl-node-with-no-arity-is-reported
-  (tu/with-terms [stray_kind loose_kind placed_kind below_kind]
-    (v/assert kb (list 'unary_predicate placed_kind) 'CxUniverse)
-    (v/assert kb (list 'genl below_kind placed_kind) 'CxUniverse)
+  (tu/with-terms [stray_kind loose_kind]
     (v/assert kb (list 'genl stray_kind loose_kind) 'CxUniverse)
     (let [before (state-snapshot kb)
           report (v/kb-integrity kb #{} 'CxUniverse {:categories #{:undeclared-arity}})]
       (is (= :gap (:status report)))
       (is (= (mapv (fn [t] {:term t}) (sort-by nm/print-key [loose_kind stray_kind]))
              (:undeclared-arity report))
-          "a subtype inherits its supertype's length, and both ends of an edge no length binds are findings")
+          "both ends of an edge no length binds are findings")
       (is (= before (state-snapshot kb)) "the audit stores, believes and files nothing"))))
 
+(tu/deftest-kb a-genl-node-below-a-bound-predicate-is-reported
+  ;; `arity` is part of a predicate's own definition, as `arg` is: a length the node
+  ;; would read through `genl` from a bound supertype does not declare the node.
+  (tu/with-terms [placed_kind below_kind relP relQ]
+    (v/assert kb (list 'unary_predicate placed_kind) 'CxUniverse)
+    (v/assert kb (list 'genl below_kind placed_kind) 'CxUniverse)
+    (v/assert kb (list 'arity relQ 2) 'CxUniverse)
+    (v/assert kb (list 'genl relP relQ) 'CxUniverse)
+    (is (= (sort-by nm/print-key [below_kind relP]) (undeclared kb))
+        "below_kind under a unary_predicate and relP under an (arity relQ 2) state no arity of their own")))
+
 (tu/deftest-kb a-genl-node-with-a-declared-arity-is-not-reported
-  (tu/with-terms [typed_kind upper_kind linksX relatesX listsX gathersX arityX aritiesX
-                  relP relQ Xa Xb Xc]
+  (tu/with-terms [typed_kind upper_kind linksX relatesX listsX gathersX arityX aritiesX]
     (v/assert kb (list 'unary_predicate typed_kind) 'CxUniverse)
     (v/assert kb (list 'unary_predicate upper_kind) 'CxUniverse)
     (v/assert kb (list 'genl typed_kind upper_kind) 'CxUniverse)
@@ -1955,12 +1963,9 @@
     (v/assert kb (list 'arity arityX 3) 'CxUniverse)
     (v/assert kb (list 'arity aritiesX 3) 'CxUniverse)
     (v/assert kb (list 'genl arityX aritiesX) 'CxUniverse)
-    (v/assert kb (list 'arity relQ 2) 'CxUniverse)
-    (v/assert kb (list 'genl relP relQ) 'CxUniverse)
-    (v/assert kb (list relP Xa Xb Xc) 'CxUniverse)
     (is (= [] (undeclared kb))
         "a unary_predicate, a binary_predicate, a variable_arity and an (arity P n)
-         declaration each state an arity, and relP inherits relQ's")))
+         declaration each state an arity")))
 
 (tu/deftest-kb undeclared-arity-reads-the-edges-a-context-sees-and-an-arity-stated-anywhere
   (tu/with-terms [CxHidden stray_kind placed_kind hidden_kind loose_kind chainOf relatedTo]
