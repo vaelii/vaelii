@@ -853,7 +853,8 @@ query half and `check_test` asserts the refusal.
 (`symmetric`, `transitive`, `functional`, …) are types under `binary_predicate`, so
 `(symmetric siblingOf)` makes `isa? siblingOf binary_predicate` hold, and the marks and
 the arity classes are `decontextualized_predicate`s, so each is read from every context
-that sees CxUniverse ([the arity rules](#the-consumers-and-what-each-of-them-may-reach)).
+that sees CxUniverse. The arity classes are also `forced_decontextualized_predicate`s, so a
+statement of one is stored in CxUniverse ([the arity rules](#the-consumers-and-what-each-of-them-may-reach)).
 
 ## decontextualized_predicate: a fact that belongs to the KB, not to one theory
 
@@ -1120,6 +1121,22 @@ extent simply lives there. `genlCx` is declared this way (`core.txt` states
 topology has one canonical home rather than being scattered across the contexts each
 edge was asserted in.
 
+`arity`, `arityMin` and every arity class take the mark too: the relation-wide classes (`unary`
+through `quinary`, `variable_arity`, `unbounded_arity`) and the predicate and function
+classes (`unary_predicate` through `quinary_function`, the `variable_arity` and
+`unbounded_arity` kinds of each). A relation's length, floor and class are claims about the
+relation, so each has one record in CxUniverse whatever context states it. The
+`(unary_predicate T)` an argument declaration entails is stored there as well
+(`special/storage-context`, the call `assert-entry/storage-context` delegates to), so
+`(arg P 1 T)` in a context below CxUniverse justifies the CxUniverse record and stores
+no copy in its own context. Declarations naming `T` in several contexts justify that one
+record, and a rule reading `(unary_predicate T)` fires on it once
+(`arity_vocabulary_test/a-stated-and-a-declared-unary-predicate-are-one-sentex-in-either-order`,
+`intersection_test/a-declaration-below-cxuniverse-leaves-one-generated-membership-rule`).
+The forced mark places a statement. A rule firing concluding one of these is placed by
+the rule, and the `decontextualized_predicate` mark that `arity`, `arityMin` and every class but the
+three `unbounded_arity` kinds also carry lifts its conclusion into CxUniverse.
+
 The reads that look a sentence up by the context it names go to the same home:
 `handle-of`, `sentexes-matching` and `why-not` given `(P …)` or `(ist CxA (P …))` at a named
 context read CxUniverse, through the `assert-entry/storage-context` call that `assert`
@@ -1133,6 +1150,18 @@ ahead of the declaration; the move is what keeps those edges out of the contexts
 written in, and out of the `(context …)` entailments a fact there draws. The moves are one
 `edit!` batch with one settle, which seeds each fact the moved `genlCx` edges reach once
 rather than once per edge (`lein perf`'s `forced-declaration-over-edges-stated-below`).
+The `(unary_predicate T)` memberships argument declarations entailed below CxUniverse
+move with the mark as well: each declaration draws its membership in CxUniverse, the
+justification below is dropped, and the drawn records chain and settle
+(`special/declared-types-rehomed`,
+`argtype_entail_test/a-forced-unary-predicate-places-the-declared-membership-in-cxuniverse-in-either-order`).
+
+**An arity binding's mark is not retracted.** A move leaves no record of the context a fact
+was stated in, so a retraction could not put the facts back, and the KB would differ from
+one that never held the mark. `retract!` refuses a `(forced_decontextualized_predicate P)`
+for every arity binding and class with `:uncleared-forcing`, missing
+`:unforced-arity-placement` (`checks/uncleared-forcing`,
+`meta_test/an-uncleared-declaration-is-not-retracted`).
 
 Both are wff-checked at assert time, like the other special predicates:
 `decontextualized_predicate` routes through the same `prop-problems` check as
@@ -1439,9 +1468,9 @@ just as well when the feature is broken outright.
   scopes its `genl` walk as it already scoped its `fact-reach`, and re-reads the
   relation's transitivity from the same vantage.
 
-- **The predicate arity meta-ontology concludes where it was declared.** The arity
-  rules in `kb/upper/core.txt` place by the ordinary rule and name no context, so an
-  `(arity myRel 2)` stated in a context concludes `(binary_predicate myRel)` *there*.
-  **Do not name a context in them.** The KB-wide reading comes from the lift: the
-  declaration and the conclusion are both `decontextualized_predicate`s, so each has a
-  copy in CxUniverse, and the rule fires on the declaration's copy there.
+- **The predicate arity meta-ontology places by the ordinary rule.** The arity rules in
+  `kb/upper/core.txt` name no context. An `(arity myRel 2)` stated in any context is
+  stored in CxUniverse (`forced_decontextualized_predicate`), so the rule concludes
+  `(binary_predicate myRel)` there. **Do not name a context in them.** A binding a rule
+  concludes below CxUniverse is placed there, and its `decontextualized_predicate` mark
+  lifts a copy into CxUniverse, where the rule fires on the copy.

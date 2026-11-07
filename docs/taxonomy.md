@@ -727,8 +727,8 @@ flat caches too: `disjoint`, the disjoint metatypes and their
 members, the `sibling_disjoint` marks and their exemptions, the `covering` /
 `separating` / `partition` declarations, the predicate properties
 (`transitive`/`symmetric`/`asymmetric`/`reflexive`/`functional`), `inverse`, the
-declared `arity`, the `functionalInArg` positions and the commuting groups. Only `genlCx` is forced-decontextualized, so only it is guaranteed one
-sentex per claim; `(disjoint dog cat)` asserted in two contexts is two sentexes folding
+declared `arity`, the `functionalInArg` positions and the commuting groups. Only `genlCx`, `arity`, `arityMin` and the arity classes are forced-decontextualized, so only they
+are guaranteed one sentex per claim; `(disjoint dog cat)` asserted in two contexts is two sentexes folding
 into one cache entry with two supporters. `refresh-beliefs` reconciles each cache
 entry against belief after every
 relabel (the same call that reconciles the closures), reusing the same
@@ -2003,8 +2003,9 @@ walk off the goal paths that ask `has-prop?` per goal.
   context can see where it lands (see [contexts.md](contexts.md)).
 - `(forced_decontextualized_predicate P)` — stronger: every `(P ...)` is *stored* in
   CxUniverse directly (its context forced there on assert, no justification). Declared
-  for `genlCx`, so the context topology has one canonical home (see
-  [contexts.md](contexts.md)).
+  for `genlCx`, so the context topology has one canonical home, and for `arity`,
+  `arityMin` and the arity classes, so a relation's length, floor and class have one record (see
+  [contexts.md](contexts.md#forced_decontextualized_predicate-a-canonical-home-in-cxuniverse)).
 
 Accessors: `has-prop?`, `inverse-of`, `props` (the set carrying a property). With a
 context, `has-prop?` and `inverse-of` answer from the declaring sentexes that context
@@ -2265,8 +2266,10 @@ binding already stored, as `:violation :arity`. It also refuses a binding, a `ge
 or a `:monotonic` metatype membership or edge that would break the length of tuples
 already stored and believed (`arity/write-breaks`), and an `except` of a binding
 ([api.md](api.md#refusing-a-clash)). `core.txt`
-declares the fourteen binding functors `decontextualized_predicate`, so every binding has
+declares the twenty binding functors `decontextualized_predicate`, so every binding has
 a copy in CxUniverse ([contexts.md](contexts.md#what-the-shipped-ontology-declares-it-of)).
+Each is also `forced_decontextualized_predicate`, so a binding stated in
+any context is stored in CxUniverse.
 The length is read off the bindings of every context and the `genl` edges of every
 context, so a tuple is inert at every context, one that sees neither its binding nor the
 edges to it included.

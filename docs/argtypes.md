@@ -607,8 +607,12 @@ reads the declared type's own IN arity bindings, one read with no `genl` closure
 mints when no binding gives it a length other than one, no `variable_arity` releases it
 and no `arityMin` floors it above one. A
 declaration that mints also entails `(unary_predicate T)` of each type it names, justified
-by the declaration alone (`special/entail-existing`), so the type's arity is stored beside
-its first mints. A length `T` inherits through `genl` is not read.
+by the declaration alone (`special/entail-existing`), so the type's arity is stored with
+its first mints. The membership is stored in CxUniverse whatever context the declaration
+is in, since `unary_predicate` is forced-decontextualized
+([contexts.md](contexts.md#forced_decontextualized_predicate-a-canonical-home-in-cxuniverse)):
+the declarations naming `T` in every context and a statement of `(unary_predicate T)`
+support one record. A length `T` inherits through `genl` is not read.
 
 A declared type an arity statement binds to another length mints nothing, and nothing
 records the declaration: the stored declaration is the record. When the arity family's
