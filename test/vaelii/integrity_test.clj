@@ -2090,7 +2090,7 @@
     causal 1 closed_expression 3 context 1 denotational_term 2 event 2 expression 1
     fixed_order_type 3 fluent 1 formula 4 function 7 intangible 1 integer 4
     lepidopteran 1 literal 2 made 12 non_atomic_term 3 nowhere_never 1 organism 6
-    predicate 39 quantitative 6 relation 8 sentence 4 spatiotemporal 1 substance 15
+    predicate 38 quantitative 6 relation 8 sentence 4 spatiotemporal 1 substance 15
     tangible 5 temporal 6 thing 5 type 14 unary_predicate 26 variable_arity 3
     vertebrate 5 wff_expression 2})
 

@@ -5397,6 +5397,17 @@
 
 (def universal-context sx/root-context)
 
+(defn storage-context
+  "The context a fact whose functor is `pred` is stored in when written in `context`:
+  CxUniverse for a `forced_decontextualized_predicate`, `context` otherwise.  The mark is
+  read KB-wide: a storage context decides what the store holds, which every reader
+  shares, so no reader's view may move it.  `assert-entry/storage-context` stores with
+  it, and `unary-entailments` places a declaration's arity-class memberships with it."
+  [kb pred context]
+  (if (and pred (tax/has-prop? (reasoning/taxonomy kb) :forced-decontextualized pred))
+    universal-context
+    context))
+
 (defn- copy-merges
   "The equalities a lifted copy at `h` licenses as content new to CxUniverse, as `{:new
   :superseded :violations}`: the copy meeting a `functional` or `anti_symmetric` mark
@@ -5476,16 +5487,16 @@
                      [[]]
                      (map vector (tax/prop-supporters (reasoning/taxonomy kb)
                                                       :decontextualized pred)))))))
-
 (defn- unary-entailments
   "The `unary_predicate` memberships the declaration `sentence` stored at `dh` entails of
-  the types it mints in, each justified by the declaration alone, in the declaration's
-  context: a type is a unary predicate, and a declared type no arity statement binds to
-  another length is one (`arity/mintable-type?`).  Never withheld as a subsumed mint is,
-  since a type's arity holds at every context (`arity/relation-length`); a new membership
-  lifts as every new mint does (`entail-arg-type`).  `thing` is left out."
+  the types it mints in, each justified by the declaration alone: a declared type no
+  arity statement binds to another length is a unary predicate (`arity/mintable-type?`).
+  Each is stored where `assert` stores the membership stated in the declaration's
+  context (`storage-context`), CxUniverse in the shipped KB, so the declarations naming
+  a type justify one record.  Never withheld as a subsumed mint is, since a type's arity
+  holds at every context (`arity/relation-length`).  `thing` is left out."
   [kb sentence dh]
-  (let [ctx (:context (p/get-sentex (:records kb) dh))]
+  (let [ctx (storage-context kb 'unary_predicate (:context (p/get-sentex (:records kb) dh)))]
     (reduce (fn [acc t]
               (merge-with into acc
                           (entail-arg-type kb {:assert (list 'unary_predicate t) :because []
@@ -5493,6 +5504,35 @@
                                            dh ctx false)))
             empty-entailment-result
             (distinct (remove #{'thing} (declared-types sentence))))))
+
+(defn declared-types-rehomed
+  "The `declaredType` memberships stored where `unary-entailments` no longer places them,
+  drawn again where it does: `{:new [handle …] :violations [v …] :dropped [jid …]}`, the
+  records the draw created, and the justifications of the `(unary_predicate T)` records
+  stored outside `storage-context` that the caller drops.  The draw runs first, so the
+  record at the new home holds the declaration before the old justification goes.
+  Empty unless `pred` is `unary_predicate`: a `(forced_decontextualized_predicate
+  unary_predicate)` arriving after a declaration below CxUniverse minted there leaves
+  the KB the other order builds (`core/rehome-forced-extent!`)."
+  [kb pred]
+  (if-not (= 'unary_predicate pred)
+    (assoc empty-entailment-result :dropped [])
+    (let [tms   (reasoning/tms kb)
+          recs  (:records kb)
+          stale (for [h (sort (reads/as-stored-with-functor (:index kb) 'unary_predicate))
+                      :let [sx (p/get-sentex recs h)]
+                      :when (and sx (not= (:context sx) (storage-context kb pred (:context sx))))
+                      jid (sort (jtms/supports tms h))
+                      :let [j (jtms/justification tms jid)]
+                      :when (= declared-type-informant (:informant j))]
+                  [jid (first (:antecedents j))])
+          drawn (reduce (fn [acc dh]
+                          (if-let [d (p/get-sentex recs dh)]
+                            (merge-with into acc (unary-entailments kb (:sentence d) dh))
+                            acc))
+                        empty-entailment-result
+                        (distinct (map second stale)))]
+      (assoc drawn :dropped (mapv first stale)))))
 
 (defn entail-existing
   "When an `(arg P n T)` / `(genlArg P n T)` / `(interArg P n T m U)` declaration

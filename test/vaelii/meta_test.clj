@@ -1212,11 +1212,32 @@
              ((juxt :type :missing)
               (try (v/retract! kb h) nil (catch clojure.lang.ExceptionInfo e (ex-data e))))))
       (is (v/in? kb h))))
+  (testing "an arity binding's forced-decontextualization stays: a retraction would leave
+           the records it placed in CxUniverse"
+    (doseq [p '[arity arityMin unary binary ternary quaternary quinary unary_predicate
+                binary_predicate ternary_predicate quaternary_predicate quinary_predicate
+                unary_function binary_function ternary_function quaternary_function
+                quinary_function variable_arity variable_arity_predicate
+                variable_arity_function unbounded_arity unbounded_arity_predicate
+                unbounded_arity_function]]
+      (let [s (list 'forced_decontextualized_predicate p)
+            h (v/handle-of kb s 'CxUniverse)]
+        (is (= [:uncleared-forcing p :unforced-arity-placement]
+               ((juxt :type :predicate :missing)
+                (try (v/retract! kb h) nil (catch clojure.lang.ExceptionInfo e (ex-data e)))))
+            (pr-str s))
+        (is (v/in? kb h) (pr-str s)))))
   (testing "injection, surjection, bijection and an author's own predicate are cleared"
     (tu/with-terms [likes]
       (doseq [p ['injection 'surjection 'bijection likes]]
         (is (not (contains? checks/uncleared-forcing ['forced_monotonic_predicate p]))
-            (str p))))))
+            (str p)))))
+  (testing "an author's own forced_decontextualized_predicate is retracted"
+    (tu/with-terms [tagOf]
+      (let [s (list 'forced_decontextualized_predicate tagOf)
+            h (v/assert kb s 'CxUniverse)]
+        (is (nil? (try (v/retract! kb h) nil (catch clojure.lang.ExceptionInfo e (ex-data e)))))
+        (is (nil? (v/handle-of kb s 'CxUniverse)))))))
 
 ;; ---- decontextualized_predicate: a fact that belongs to the KB, not to one theory --
 ;;
@@ -1258,11 +1279,11 @@
 
 (tu/deftest-kb the-shipped-ontology-decontextualizes-predicate-metadata-and-nothing-else
   ;; What carries the mark is a claim about a *predicate* — its algebra — plus
-  ;; genlCx by force.  A domain relation carrying it would make one theory's fact
-  ;; a claim of the whole KB, and would take a rule's conclusions out with it: a
-  ;; decontextualized marriage lifts (knows ?x ?y) through CxSocial's rule into a
+  ;; genlCx and the length bindings by force.  A domain relation carrying it would make
+  ;; one theory's fact a claim of the whole KB, and would take a rule's conclusions out
+  ;; with it: a decontextualized marriage lifts (knows ?x ?y) through CxSocial's rule into a
   ;; context every data context sees, decontextualizing a predicate nothing declared.
-  (testing "the marked predicates are the algebraic marks, the inverse declaration, the length bindings, and genlCx"
+  (testing "the marked predicates are the algebraic marks, the inverse declaration and the length bindings, and the forced ones genlCx and the length bindings"
     ;; The three commutativity marks are here for `symmetric`'s reason and one of its
     ;; own: they are predicate algebra, and `res/kb-sentex` reads them **globally** —
     ;; a sentex has one key, so whether a predicate sorts its arguments cannot vary by
@@ -1279,7 +1300,9 @@
                     associative idempotent meetFunctionOf distinctInArgAndRest}
                  sx/arity-binding-functors)
            (v/props kb :decontextualized)))
-    (is (= '#{genlCx} (v/props kb :forced-decontextualized))))
+    (is (= (into '#{genlCx unbounded_arity unbounded_arity_predicate unbounded_arity_function}
+                 sx/arity-binding-functors)
+           (v/props kb :forced-decontextualized))))
   (testing "so a social fact stays in the theory that states it"
     (is (not (v/has-prop? kb :decontextualized 'marriedTo)))
     (is (empty? (v/sentexes-matching kb '(marriedTo Bob Nancy) 'CxUniverse)))

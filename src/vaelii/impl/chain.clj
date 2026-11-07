@@ -2241,7 +2241,7 @@
                    out))))
             placements))))
 
-(defn- drop-justifications!
+(defn drop-justifications!
   "Drops each justification of `jids` from the network and the record store, and applies
   the removals the drops make (`integrate/apply-removals!`)."
   [kb jids]

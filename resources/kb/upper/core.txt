@@ -1500,7 +1500,7 @@
 (arg evaluate 2 thing)   ;; the expression: a number or an application
 
 (comment forced_decontextualized_predicate
-         "(forced_decontextualized_predicate ?predicate) means that every (?predicate …) sentence is stored directly in CxUniverse by force. No separate deduction and no justification: the fact's extent simply lives there. Used for genlCx, so the context topology has one canonical home instead of a copy per context.")
+         "(forced_decontextualized_predicate ?predicate) means that every (?predicate …) sentence is stored directly in CxUniverse by force. No separate deduction and no justification: the fact's extent simply lives there. Used for genlCx, so the context topology has one canonical home instead of a copy per context, and for arity, arityMin and the arity classes (unary through quinary, the predicate and function classes, the variable_arity and unbounded_arity kinds), so a relation's length, floor and class have one record however many contexts state them.")
 (unary_predicate forced_decontextualized_predicate)
 (genl forced_decontextualized_predicate predicate)
 
@@ -1520,48 +1520,76 @@
 (forced_monotonic_predicate surjection)
 (forced_monotonic_predicate bijection)
 (forced_monotonic_predicate orthogonal)
-;; Each arity binding is also decontextualized: its copy in CxUniverse makes a
-;; relation's length read the same at every context (docs/contexts.md).
+;; Each arity binding is decontextualized and forced-decontextualized: a statement of one
+;; is stored in CxUniverse whatever context states it, and a rule firing's conclusion is
+;; lifted there, so a relation's length reads the same at every context (docs/contexts.md).
 (forced_monotonic_predicate arity)
 (set/monotonic (decontextualized_predicate arity))
+(forced_decontextualized_predicate arity)
+;; The arity classes take both marks too: relation-wide (unary through quinary,
+;; variable_arity) and of predicates and functions.  The unary_predicate membership an
+;; argument declaration entails is stored in CxUniverse with them, so a relation's class
+;; has one record.  The three unbounded_arity kinds take the forced mark alone.
 (forced_monotonic_predicate unary)
 (set/monotonic (decontextualized_predicate unary))
+(forced_decontextualized_predicate unary)
 (forced_monotonic_predicate binary)
 (set/monotonic (decontextualized_predicate binary))
+(forced_decontextualized_predicate binary)
 (forced_monotonic_predicate ternary)
 (set/monotonic (decontextualized_predicate ternary))
+(forced_decontextualized_predicate ternary)
 (forced_monotonic_predicate quaternary)
 (set/monotonic (decontextualized_predicate quaternary))
+(forced_decontextualized_predicate quaternary)
 (forced_monotonic_predicate quinary)
 (set/monotonic (decontextualized_predicate quinary))
+(forced_decontextualized_predicate quinary)
 (forced_monotonic_predicate unary_predicate)
 (set/monotonic (decontextualized_predicate unary_predicate))
+(forced_decontextualized_predicate unary_predicate)
 (forced_monotonic_predicate binary_predicate)
 (set/monotonic (decontextualized_predicate binary_predicate))
+(forced_decontextualized_predicate binary_predicate)
 (forced_monotonic_predicate ternary_predicate)
 (set/monotonic (decontextualized_predicate ternary_predicate))
+(forced_decontextualized_predicate ternary_predicate)
 (forced_monotonic_predicate quaternary_predicate)
 (set/monotonic (decontextualized_predicate quaternary_predicate))
+(forced_decontextualized_predicate quaternary_predicate)
 (forced_monotonic_predicate quinary_predicate)
 (set/monotonic (decontextualized_predicate quinary_predicate))
+(forced_decontextualized_predicate quinary_predicate)
 (forced_monotonic_predicate unary_function)
 (set/monotonic (decontextualized_predicate unary_function))
+(forced_decontextualized_predicate unary_function)
 (forced_monotonic_predicate binary_function)
 (set/monotonic (decontextualized_predicate binary_function))
+(forced_decontextualized_predicate binary_function)
 (forced_monotonic_predicate ternary_function)
 (set/monotonic (decontextualized_predicate ternary_function))
+(forced_decontextualized_predicate ternary_function)
 (forced_monotonic_predicate quaternary_function)
 (set/monotonic (decontextualized_predicate quaternary_function))
+(forced_decontextualized_predicate quaternary_function)
 (forced_monotonic_predicate quinary_function)
 (set/monotonic (decontextualized_predicate quinary_function))
+(forced_decontextualized_predicate quinary_function)
 (forced_monotonic_predicate variable_arity)
 (set/monotonic (decontextualized_predicate variable_arity))
+(forced_decontextualized_predicate variable_arity)
 (forced_monotonic_predicate variable_arity_predicate)
 (set/monotonic (decontextualized_predicate variable_arity_predicate))
+(forced_decontextualized_predicate variable_arity_predicate)
 (forced_monotonic_predicate variable_arity_function)
 (set/monotonic (decontextualized_predicate variable_arity_function))
+(forced_decontextualized_predicate variable_arity_function)
+(forced_decontextualized_predicate unbounded_arity)
+(forced_decontextualized_predicate unbounded_arity_predicate)
+(forced_decontextualized_predicate unbounded_arity_function)
 (forced_monotonic_predicate arityMin)
 (set/monotonic (decontextualized_predicate arityMin))
+(forced_decontextualized_predicate arityMin)
 ;; The arity policies.  Each is read beside the arity bindings above, so a relation's
 ;; policy goes OUT only by retraction, as its length does.
 (forced_monotonic_predicate fixed_arity)

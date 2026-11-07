@@ -2632,6 +2632,11 @@
   (let [j (:cache-moves @tax)]
     [(journal/position j) (when (some? since) (journal/since j since))]))
 
+(defn installed-keys
+  "The taxonomy keys the stored handle `h` installs, as a set, every family included."
+  [tax h]
+  (keys-of @tax h))
+
 (defn supported-keys
   "The flat-cache keys the handles `hs` support, as a set."
   [tax hs]

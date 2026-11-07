@@ -3588,32 +3588,44 @@
 ;; ---- the forced-monotonic set ------------------------------------------
 
 (def uncleared-forcing
-  "The forced-monotonic declarations whose retraction is refused, each with the semantics the
+  "The forcing declarations whose retraction is refused, each with the semantics the
   declared predicate has no unforced reading of: `[declaration-functor predicate]` ->
-  missing semantics (docs/nmtms.md, \"The forced-monotonic set\")."
+  missing semantics (docs/nmtms.md, \"The forced-monotonic set\").  The
+  `forced_decontextualized_predicate` of an arity binding or an `unbounded_arity` kind is
+  among them: its retraction would leave the records
+  it placed in CxUniverse there (docs/contexts.md)."
   (into {['forced_monotonic_between_predicates 'genl] :unforced-predicate-genl
          ['forced_monotonic_predicate 'genlCx]        :unforced-context-edge
          ['forced_monotonic_predicate 'except]        :unforced-except
          ['forced_monotonic_predicate 'exceptWhen]    :unforced-exception}
-        (for [[missing preds]
-              {:unforced-relation-mark
-               '[irreflexive anti_symmetric asymmetric functional functionalInArg
-                 anti_transitive]
-               :unforced-definitional-declaration
-               '[orthogonal]
-               :unforced-arity-binding
-               '[arity unary binary ternary quaternary quinary unary_predicate
-                 binary_predicate ternary_predicate quaternary_predicate quinary_predicate
-                 unary_function binary_function ternary_function quaternary_function
-                 quinary_function variable_arity variable_arity_predicate variable_arity_function arityMin]
-               :unforced-equality '[rewriteOf sameAs equals]}
-              p preds]
-          [['forced_monotonic_predicate p] missing])))
+        (concat
+         (for [[missing preds]
+               {:unforced-relation-mark
+                '[irreflexive anti_symmetric asymmetric functional functionalInArg
+                  anti_transitive]
+                :unforced-definitional-declaration
+                '[orthogonal]
+                :unforced-arity-binding
+                '[arity unary binary ternary quaternary quinary unary_predicate
+                  binary_predicate ternary_predicate quaternary_predicate quinary_predicate
+                  unary_function binary_function ternary_function quaternary_function
+                  quinary_function variable_arity variable_arity_predicate variable_arity_function arityMin]
+                :unforced-equality '[rewriteOf sameAs equals]}
+               p preds]
+           [['forced_monotonic_predicate p] missing])
+         (for [p '[arity arityMin unary binary ternary quaternary quinary unary_predicate
+                   binary_predicate ternary_predicate quaternary_predicate quinary_predicate
+                   unary_function binary_function ternary_function quaternary_function
+                   quinary_function variable_arity variable_arity_predicate
+                   variable_arity_function unbounded_arity unbounded_arity_predicate
+                   unbounded_arity_function]]
+           [['forced_decontextualized_predicate p] :unforced-arity-placement]))))
 
 (def ^:private declaration-kind
-  "The taxonomy property each forced-monotonic declaration functor maintains."
+  "The taxonomy property each forcing declaration functor maintains."
   '{forced_monotonic_predicate          :forced-monotonic
-    forced_monotonic_between_predicates :forced-between-predicates})
+    forced_monotonic_between_predicates :forced-between-predicates
+    forced_decontextualized_predicate   :forced-decontextualized})
 
 (defn forced-monotonic?
   "Is `literal` in the forced-monotonic set (`decide/forced-literal?`, docs/nmtms.md,
@@ -4597,23 +4609,29 @@
                                                     (and sx (constrained? (nm/functor (:sentence sx)))))))
                                       hs)))))))
 
+(def ^:private declaration-functor
+  "The forcing declaration functor of each taxonomy property `declaration-kind` names."
+  (into {} (map (fn [[functor kind]] [kind functor])) declaration-kind))
+
 (defn forcing-retraction-problem
   "The `:uncleared-forcing` refusal of retracting the sentex at `handle`, as a value, or
-  nil: the handle states a forced-monotonic declaration whose predicate has no established unforced
-  semantics (`uncleared-forcing`).  The test reads the declaration properties' supporters,
-  which are what the sentence alone puts there, and fetches no record.  `where` names the
-  entry point."
+  nil: the handle states a forcing declaration whose predicate has no established unforced
+  semantics (`uncleared-forcing`).  The test reads the taxonomy keys the handle installs,
+  one read through the supporter cache, and fetches no record: a declaration installs the
+  `[:prop kind predicate]` key its sentence names.  `where` names the entry point."
   [kb handle where]
-  (let [tax (reasoning/taxonomy kb)]
-    (some (fn [[[functor pred :as decl] missing]]
-            (let [kind (declaration-kind functor)]
-              (when (contains? (tax/prop-supporter-contexts tax kind pred) handle)
+  (some (fn [k]
+          (when (and (vector? k) (= 3 (count k)) (= :prop (first k)))
+            (let [[_ kind pred] k
+                  functor (declaration-functor kind)
+                  missing (when functor (get uncleared-forcing [functor pred]))]
+              (when missing
                 {:type :uncleared-forcing :handle handle :predicate pred :missing missing
                  :operation where
-                 :message (str (pr-str (apply list decl)) " is not retracted: " pred
+                 :message (str (pr-str (list functor pred)) " is not retracted: " pred
                                " has no unforced semantics yet (" (name missing)
-                               "), so its declaration stays")})))
-          uncleared-forcing)))
+                               "), so its declaration stays")}))))
+        (tax/installed-keys (reasoning/taxonomy kb) handle)))
 
 ;; ---- storable values ----------------------------------------------------
 ;; A sentence's leaves must survive the durable log.  Symbols and keywords (the
