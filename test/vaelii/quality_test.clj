@@ -21,7 +21,7 @@
             [vaelii.impl.rules :as vr]
             [vaelii.test-util :as tu]))
 
-(use-fixtures :each (tu/neutral-fresh tu/fresh))
+(use-fixtures :each (tu/neutral-fresh tu/empty-kb))
 
 (defn- handles [entries] (set (map :handle entries)))
 
@@ -951,10 +951,8 @@
         (is (zero? (:pair-count (clashes kb)))
             "a gauge is not a record, read off argAndRest as off arg")
         (v/retract! kb h)))
-    (testing "and so does args, through the argAndRest from position 1 core.txt's forward
-              rule stores, restated here since this KB loads no core.txt"
-      (v/assert-rule kb ['(args ?relation ?type)] '(argAndRest ?relation 1 ?type) 'CxUniverse
-                     {:direction :forward})
+    (testing "and so does args, through the twin the shared interface rule stores"
+      (tu/load-interface! kb)
       (v/assert kb (list 'args measures gauge) 'CxUniverse)
       (is (zero? (:pair-count (clashes kb)))
           "a gauge is not a record, read off args as off arg"))))

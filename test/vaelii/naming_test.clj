@@ -269,7 +269,7 @@
 (defn- kb-with
   "An empty KB on the scratch space under one naming policy."
   [policy]
-  (fn [] (tu/fresh {:naming policy})))
+  (fn [] (tu/empty-kb {:naming policy})))
 
 (def ^:private misnamed '(parentOf Baby_Penguin Tom))
 

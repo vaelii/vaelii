@@ -691,6 +691,11 @@ mocks — the in-memory stores by default, with no external dependency.
 - **All KB scaffolding lives in `vaelii.test-util`**, which owns the `*kb*` var — a test
   namespace declares none of its own. Reach the KB through `tu/deftest-kb` (a `deftest`
   whose body has `kb` bound) or `tu/with-kb`.
+  `tu/fresh` loads the shared `kb/upper/interface-rules.txt`, so `args` has the same
+  meaning without loading the full ontology. Use `tu/empty-kb` for a deliberately
+  rule-free store, synthetic rule census, or destination for a dump-restoring loader
+  (`tu/load-core!`, `tu/load-starter!`, `tu/load-dumped!`); `tu/load-interface!` adds
+  those rules to an existing test KB without copying their declarations.
 - **Tests are net-neutral.** A test never permanently adds terms: it invents gensym'd
   temporaries with `tu/with-terms`, whose role is inferred from the symbol's own shape
   (§3.1) and whose generated name embeds it, so a failure names what it was about. The

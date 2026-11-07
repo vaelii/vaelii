@@ -119,7 +119,7 @@
   (doseq [[label premise?] [["our dialect — a premise set and no network" true]
                             ["a foreign dialect — no premise set at all" false]]]
     (testing label
-      (let [kb (tu/fresh)]
+      (let [kb (tu/empty-kb)]
         (is (= {} (kb/write-hazards kb)) "an empty KB is empty, not unrecovered")
         (let [h (p/put-sentex (:records kb) (sx/sentex '(dog Muffet) 'CxUniverse {}))]
           (when premise? (p/mark-premise (:records kb) h :default))
@@ -144,7 +144,7 @@
   ;; `let` binds in order, so which line comes first *is* the arrangement — writing the
   ;; two in one binding vector tests only the half that cannot fail.
   (testing "opened over a store still empty, then filled by the other end"
-    (let [first-kb  (tu/fresh)
+    (let [first-kb  (tu/empty-kb)
           second-kb (v/open-kb (assoc (tu/scratch-space) :recover? false))]
       (v/assert first-kb '(dog Muffet) 'CxUniverse)
       (is (seq (p/sentex-ids (:records second-kb))) "one store behind two KB values")
@@ -182,7 +182,7 @@
       (is (integer? (v/assert kb '(cat Jerry) 'CxUniverse)))
       (tu/clear-kb! kb)))
   (testing "a loader's declaration outlives every read taken before its records land"
-    (let [kb (tu/fresh)]
+    (let [kb (tu/empty-kb)]
       (kb/note-hazards! kb {:no-belief true})       ; `io.import`, before its first write
       (is (= {} (kb/write-hazards kb)) "no records yet, so nothing for it to be true of")
       ;; the load writes around the entry points, at the dump's own handles

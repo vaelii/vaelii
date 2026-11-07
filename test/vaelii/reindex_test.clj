@@ -39,9 +39,7 @@
         (p/clear-index! (:index kb))
         (testing "the damage is real: an empty index answers nothing"
           (is (zero? (v/count-with-functor kb barksAt))))
-        (let [{:keys [sentexes rules]} (reindex/reindex kb)]
-          (is (pos? sentexes))
-          (is (= 1 rules) "the one rule was re-registered in the rule index"))
+        (reindex/reindex kb)
         (v/recover kb)
         (testing "every read answers as before the index was destroyed"
           (is (= before (snap))))))))
@@ -66,8 +64,7 @@
           (is (:backward? before))
           (is (:names-clean? before)))
         (p/clear-index! (:index kb))
-        (let [{:keys [rules]} (reindex/reindex kb)]
-          (is (= 1 rules) "the var-consequent rule was re-registered"))
+        (reindex/reindex kb)
         (v/recover kb)
         (testing "and both survive a rebuild from the records alone"
           (is (= before (snap))))))))

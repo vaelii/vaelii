@@ -23,7 +23,7 @@
 (use-fixtures :each
   (fn [f]
     (catalog/reset-registry!)
-    (let [kb (doto (tu/fresh) tu/load-core!)]
+    (let [kb (doto (tu/empty-kb) tu/load-core!)]
       (v/assert-rule kb '[(p ?x)] '(q ?x) 'CxFunnel {:direction :forward})
       (v/assert kb '(p A) 'CxFunnel)
       (v/assert-rule kb '[(unfired ?x)] '(never ?x) 'CxFunnel {:direction :forward})

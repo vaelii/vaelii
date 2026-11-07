@@ -294,7 +294,7 @@
                 (is (= (:provenance     (by-codec :none)) (:provenance     (by-codec codec))))))))))))
 
 (deftest a-kb-with-no-provenance-writes-no-provenance-file
-  (tu/with-neutral-kb [kb tu/fresh]
+  (tu/with-neutral-kb [kb tu/empty-kb]
     (tu/with-terms [likes Ann Bob CxPlain]
       ;; the bulk path records no provenance, which is the case the optional file is for
       (v/bulk-assert-facts! kb [(list likes Ann Bob)] CxPlain)

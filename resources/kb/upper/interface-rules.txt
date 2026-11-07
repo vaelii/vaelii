@@ -1,0 +1,6 @@
+;; SPDX-License-Identifier: SSPL-1.0
+;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
+;; Interface sugar shared by the upper ontology and fresh test KBs.
+;; args is argAndRest at 1. Its stored twin carries the declaration's support,
+;; so retracting args also removes the constraint that the entry point reads.
+(set/forwardRule (implies (args ?relation ?type) (argAndRest ?relation 1 ?type)))

@@ -38,7 +38,7 @@
 
 ;; The KB is built per test because `restarted` opens a second KB over the same store
 ;; and writes through it, which a KB shared with later tests would not see.
-(use-fixtures :each (tu/neutral-fresh #(doto (tu/fresh) (tu/load-core!))))
+(use-fixtures :each (tu/neutral-fresh #(doto (tu/empty-kb) (tu/load-core!))))
 
 (def ^:private U 'CxUniverse)
 

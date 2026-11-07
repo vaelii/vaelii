@@ -150,7 +150,7 @@
 
 (deftest every-inert-property-the-upper-files-state-of-a-calculus-holds-in-its-algebra
   ;; Reads the stored sentences, so a wrong upper line fails here.
-  (tu/with-neutral-kb [kb #(doto (tu/fresh) (tu/load-core!))]
+  (tu/with-neutral-kb [kb #(doto (tu/empty-kb) (tu/load-core!))]
     (let [den   (into {} (for [calc (vals calculi) p (:predicates calc)]
                            [p [calc ((:denotation calc) p)]]))
           conv  (fn [calc rs] ((:converse (:algebra calc)) rs))

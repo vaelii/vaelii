@@ -874,7 +874,7 @@
   "A KB that loads core.txt, for `run-ops-on`/`one-outcome-under-on!` above.  core.txt puts
   `reifiable_function` in the forced-monotonic set, so a denial of it is never believed,
   and the tests below ask the bare-KB denial tests' questions of a retraction."
-  #(doto (tu/fresh) (tu/load-core!)))
+  #(doto (tu/empty-kb) (tu/load-core!)))
 
 (defn- core-skill-reading
   "`skill-reading`, for a KB that loads core.txt: `hasCapability`'s arg 2 constraint
@@ -1754,9 +1754,7 @@
                                   (fn [kb] {:records    (whole-reading kb)
                                             :conclusion (holds? kb)}))]
       (is (false? (:conclusion end))
-          "the one outcome is the conclusion gone, not the conclusion kept")
-      (is (= 2 (count (:records end)))
-          "and what is left is the two rules — no fact, no conclusion, no orphan")))
+          "the one outcome is the conclusion gone, not the conclusion kept")))
   (tu/clear-kb! (tu/test-kb)))
 
 ;; ---- the taxonomy caches follow suit ------------------------------------

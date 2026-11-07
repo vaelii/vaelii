@@ -1877,7 +1877,7 @@
   `order`, with `(coll_t Foo)` at `strength` and `coll_t`/`rel_t`
   disjoint at `:monotonic`."
   [order strength]
-  (tu/with-neutral-kb [kb #(v/open-kb (tu/scratch-space))]
+  (tu/with-neutral-kb [kb tu/isolated-fresh]
     (tu/with-terms [rel_t coll_t pp Foo Bar]
       (with-entailing
         (doseq [s [(list 'genl rel_t 'thing) (list 'genl coll_t 'thing) (list 'disjoint rel_t coll_t)]]

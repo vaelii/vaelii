@@ -21,7 +21,7 @@
             [vaelii.impl.rules :as vr]
             [vaelii.test-util :as tu]))
 
-(use-fixtures :each (tu/neutral-fresh tu/fresh))
+(use-fixtures :each (tu/neutral-fresh tu/empty-kb))
 
 (defn- rule-sentexes
   "The stored rules in `ctx`, as sentexes — a rule is the sentex with an `:antecedent`."

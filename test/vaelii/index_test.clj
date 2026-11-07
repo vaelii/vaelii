@@ -15,7 +15,7 @@
             [vaelii.impl.types.dense-roots]
             [vaelii.test-util :as tu]))
 
-(use-fixtures :each (tu/neutral-fresh tu/fresh))
+(use-fixtures :each (tu/neutral-fresh tu/empty-kb))
 
 (tu/deftest-kb count-aware-trie
   (let [bornIn (tu/tmp-pred) tom (tu/tmp-ind) bob (tu/tmp-ind)

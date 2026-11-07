@@ -1334,7 +1334,7 @@
                    :believed (count (filter #(seq (v/sentexes-matching kb (list % 'Pip) 'CxUniverse))
                                             '[za zb zc]))})
         os (into #{} (map (fn [ordering]
-                            (let [kb (tu/fresh)]
+                            (let [kb (tu/isolated-fresh)]
                               (doseq [op ordering] (op kb))
                               (observe kb))))
                  (tu/permutations ops))]
@@ -1344,7 +1344,7 @@
     (testing "all three pairs, and all three memberships still believed"
       (is (= 3 (count (:pairs (first os)))))
       (is (= 3 (:believed (first os)))))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 (deftest an-antitransitive-triple-settles-the-same-way-in-every-arrival-order
   ;; the mark and the three tuples in all 24 orders
@@ -1361,7 +1361,7 @@
                                    (v/contradictions kb))
                    :conflicts (count (v/conflicts kb))})
         os (into #{} (map (fn [ordering]
-                            (let [kb (tu/fresh)]
+                            (let [kb (tu/isolated-fresh)]
                               (doseq [op ordering] (op kb))
                               (observe kb))))
                  (tu/permutations ops))]
@@ -1374,7 +1374,7 @@
       (is (= [:anti-transitive] (mapv first (:clashes (first os)))))
       (is (= 3 (count (second (first (:clashes (first os)))))))
       (is (zero? (:conflicts (first os)))))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 ;;; ── a refuted cover: the membership and every part denied ─────────────
 
@@ -1400,14 +1400,14 @@
              [#{:memb :n1}
               {:believed #{:decl :memb :n1} :clashes #{} :conflicts 0}]]]
       (let [os (into #{} (map (fn [ordering]
-                                (let [kb (tu/fresh)]
+                                (let [kb (tu/isolated-fresh)]
                                   (doseq [k ordering]
                                     (v/assert kb (sens k) 'CxUniverse
                                               {:strength (if (strong k) :monotonic :default)}))
                                   (observe kb))))
                      (tu/permutations (keys sens)))]
         (is (= #{expected} os) (str "known-true " (pr-str strong)))))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 (deftest a-cover-refutation-is-stored-whatever-the-classes
   ;; the last denial, written `:default` against a membership and a denial of `content`
@@ -1495,7 +1495,7 @@
                    :dilemmas   (count (v/contradictions kb))
                    :conflicts  (count (v/conflicts kb))})
         os (into #{} (map (fn [ordering]
-                            (let [kb (tu/fresh)]
+                            (let [kb (tu/isolated-fresh)]
                               (doseq [op ordering] (op kb))
                               (observe kb))))
                  (tu/permutations ops))]
@@ -1504,7 +1504,7 @@
              (pr-str os)))
     (testing "and the one outcome represents the clash rather than hiding it"
       (is (= {:dog true :fish true :dilemmas 1 :conflicts 0} (first os))))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 (deftest a-clash-across-a-visibility-edge-settles-the-same-way-in-every-arrival-order
   ;; belief and storage both agree.  120 orderings.
@@ -1520,7 +1520,7 @@
                    :dilemmas   (count (v/contradictions kb))
                    :conflicts  (count (v/conflicts kb))})
         os (into #{} (map (fn [ordering]
-                            (let [kb (tu/fresh)]
+                            (let [kb (tu/isolated-fresh)]
                               (doseq [op ordering] (op kb))
                               (observe kb))))
                  (tu/permutations ops))]
@@ -1530,12 +1530,12 @@
     (testing "and the one outcome defeats the default rather than leaving it beside content that denies it"
       (is (= {:known-true true :default false :stored true :dilemmas 0 :conflicts 0}
              (first os))))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 (deftest a-self-tuple-under-an-asymmetric-predicate-asserts-idempotently
   ;; `(P a a)` is its own converse, so a re-assert must not convict it against its own
   ;; stored copy.  Asymmetry does not imply irreflexivity (docs/taxonomy.md).
-  (let [kb (tu/fresh)]
+  (let [kb (tu/isolated-fresh)]
     (v/assert kb '(binary_predicate zSelfLarger) 'CxUniverse)
     (v/assert kb '(asymmetric zSelfLarger) 'CxUniverse)
     (let [h1 (v/assert kb '(zSelfLarger zrock zrock) 'CxUniverse {:strength :monotonic})
@@ -1551,7 +1551,7 @@
       (let [h1 (v/assert kb '(zSelfSmaller zpebble zpebble) 'CxUniverse {:strength :monotonic})
             h2 (v/assert kb '(zSelfSmaller zpebble zpebble) 'CxUniverse {:strength :monotonic})]
         (is (= h1 h2) "the descended mark convicts a pair, not a sentence against itself")))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 (deftest an-asymmetric-violating-set-settles-the-same-way-in-every-arrival-order
   ;; the declaration may arrive before or after either direction of the relation
@@ -1563,7 +1563,7 @@
                    :bwd      (v/ask? kb '(zTypLarger zcat zdog) 'CxUniverse)
                    :dilemmas (count (v/contradictions kb))})
         os (into #{} (map (fn [ordering]
-                            (let [kb (tu/fresh)]
+                            (let [kb (tu/isolated-fresh)]
                               (doseq [op ordering] (op kb))
                               (observe kb))))
                  (tu/permutations ops))]
@@ -1571,12 +1571,12 @@
         (str "asymmetric pair: " (count os) " distinct outcomes across 6 orderings — "
              (pr-str os)))
     (is (= {:fwd true :bwd true :dilemmas 1} (first os)))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 (deftest a-report-orders-its-sides-by-content-not-by-arrival
   ;; `(first (:sides c))` follows content, as `:sentence` does
   (let [shape (fn [ops]
-                (let [kb (tu/fresh)]
+                (let [kb (tu/isolated-fresh)]
                   (doseq [op ops] (op kb))
                   (mapv (fn [r] [(:sentence r) (mapv :sentence (:sides r)) (:handles r)])
                         (v/contradictions kb))))
@@ -1596,7 +1596,7 @@
             [[_ sides' handles']] (shape [sep cat dog])]
         (is (= sides sides'))
         (is (= 2 (count handles) (count handles')))))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 (deftest a-metatype-clique-settles-the-same-way-in-every-arrival-order
   ;; the metatype mark, the two type memberships of the clique and the clashing pair.
@@ -1612,7 +1612,7 @@
                    :dilemmas  (count (v/contradictions kb))
                    :conflicts (count (v/conflicts kb))})
         os (into #{} (map (fn [ordering]
-                            (let [kb (tu/fresh)]
+                            (let [kb (tu/isolated-fresh)]
                               (doseq [op ordering] (op kb))
                               (observe kb))))
                  (tu/permutations ops))]
@@ -1620,7 +1620,7 @@
         (str "metatype clique: " (count os) " distinct outcomes across 120 orderings — "
              (pr-str os)))
     (is (= {:dog true :cat true :dilemmas 1 :conflicts 0} (first os)))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 ;;; ── one entry point, whatever arrives first ───────────────────────────
 

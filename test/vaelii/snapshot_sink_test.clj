@@ -223,7 +223,7 @@
         (is (= {:index :rebuild :reason :records-differ}
                (snap/load-index! m (:index kb) (update fingerprint :digest inc)))))
       (testing "a genuinely different store"
-        (tu/with-cleared-kb [other tu/fresh]
+        (tu/with-cleared-kb [other tu/isolated-fresh]
           (tu/with-terms [rel Aye Bee CxOther]
             (v/assert other (list rel Aye Bee) CxOther))
           (is (= {:index :rebuild :reason :records-differ}
@@ -260,7 +260,7 @@
   ;; stream some other tool wrote and an index quietly holding whatever `index-load` made
   ;; of it.  Both places an index arrives from a file take this one install, so both
   ;; refuse alike.
-  (tu/with-cleared-kb [kb tu/fresh]
+  (tu/with-cleared-kb [kb tu/empty-kb]
     (let [index   (:index kb)
           refused (fn [frames]
                     (try (snap/install-entries! index frames)

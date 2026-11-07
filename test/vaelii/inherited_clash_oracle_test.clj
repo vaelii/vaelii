@@ -136,7 +136,7 @@
   "The same ops into both KBs, comparing after every write.  Returns `[step op
   incremental-snapshot exhaustive-snapshot]` for the first divergence, or nil."
   [ops]
-  (let [inc-kb (tu/fresh)
+  (let [inc-kb (tu/empty-kb)
         exh-kb (tu/isolated-fresh)]
     (try
       (binding [discovery/*incremental-preserving* true]  (build-ontology! inc-kb))
@@ -158,7 +158,7 @@
   `snapshot` by default."
   ([ops incremental?] (settled ops incremental? snapshot))
   ([ops incremental? observe]
-   (let [kb (if incremental? (tu/fresh) (tu/isolated-fresh))]
+   (let [kb (if incremental? (tu/empty-kb) (tu/isolated-fresh))]
      (try
        (binding [discovery/*incremental-preserving* incremental?]
          (build-ontology! kb)
@@ -478,7 +478,7 @@
   "Run `ops` into one KB, replay its `stored-set` into a fresh KB one write at a time, and
   return the stored set and where the two final snapshots differ, or nil."
   [ops]
-  (let [kb (tu/fresh)]
+  (let [kb (tu/empty-kb)]
     (try
       (build-ontology! kb)
       (run! #(apply-op! kb %) ops)
@@ -514,7 +514,7 @@
   claim.  `[snapshot questions passes]` under `incremental?`, `questions` the
   `preserving-entry` calls the settle made."
   [n incremental?]
-  (let [kb    (if incremental? (tu/fresh) (tu/isolated-fresh))
+  (let [kb    (if incremental? (tu/empty-kb) (tu/isolated-fresh))
         calls (atom 0)
         orig  @#'discovery/preserving-entry]
     (try
@@ -560,7 +560,7 @@
   `ops` under its own settle.  `[snapshot entries questions]` under `incremental?`,
   `questions` the `preserving-entry` calls each op's settle made."
   [n ops incremental?]
-  (let [kb    (if incremental? (tu/fresh) (tu/isolated-fresh))
+  (let [kb    (if incremental? (tu/empty-kb) (tu/isolated-fresh))
         calls (atom 0)
         orig  @#'discovery/preserving-entry]
     (try
@@ -630,7 +630,7 @@
   candidate index took (`install-inherited!`) or the member sets it read again
   (`update-inherited!`)."
   [n ops incremental?]
-  (let [kb      (if incremental? (tu/fresh) (tu/isolated-fresh))
+  (let [kb      (if incremental? (tu/empty-kb) (tu/isolated-fresh))
         settles (atom [])
         install inherited/install-inherited!
         revise  inherited/update-inherited!]
@@ -693,7 +693,7 @@
   `[snapshot questions]` under `incremental?`, `questions` the `preserving-entry` calls
   each op's settle made."
   [ops incremental?]
-  (let [kb    (if incremental? (tu/fresh) (tu/isolated-fresh))
+  (let [kb    (if incremental? (tu/empty-kb) (tu/isolated-fresh))
         calls (atom 0)
         orig  @#'discovery/preserving-entry]
     (try
@@ -739,7 +739,7 @@
   `[snapshot questions]` under `incremental?`, `questions` the `preserving-entry` calls
   each op's settle made."
   [n extra ops incremental?]
-  (let [kb    (if incremental? (tu/fresh) (tu/isolated-fresh))
+  (let [kb    (if incremental? (tu/empty-kb) (tu/isolated-fresh))
         calls (atom 0)
         orig  @#'discovery/preserving-entry
         m     {:strength :monotonic}]
@@ -833,7 +833,7 @@
   `:default`, so the inherited clash defeats it.  `:except` hides the route at `CxIcBase`,
   `:meta` excepts that except in `CxIcLeft`, and `:unmeta` retracts it."
   [ops incremental?]
-  (let [kb (if incremental? (tu/fresh) (tu/isolated-fresh))
+  (let [kb (if incremental? (tu/empty-kb) (tu/isolated-fresh))
         m  {:strength :monotonic}]
     (try
       (binding [discovery/*incremental-preserving* incremental?]
@@ -917,7 +917,7 @@
   `reader-snapshot`s after every write: the first `[step op incremental exhaustive]` that
   differs, or nil."
   [ops]
-  (let [inc-kb (tu/fresh)
+  (let [inc-kb (tu/empty-kb)
         exh-kb (tu/isolated-fresh)]
     (try
       (binding [discovery/*incremental-preserving* true]  (build-membership-world! inc-kb))

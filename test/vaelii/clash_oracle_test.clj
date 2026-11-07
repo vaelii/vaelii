@@ -209,7 +209,7 @@
   write and the last.  Returns `[step op arrived from-scratch]` for the first divergence,
   or nil."
   [ops every]
-  (let [kb (tu/fresh)]
+  (let [kb (tu/empty-kb)]
     (try
       (build-ontology! kb)
       (loop [step 0, net {}, [op & more] ops]
@@ -228,7 +228,7 @@
   "One KB's reading after `steps` of `seed`'s stream, on whatever retrieval strategy is
   bound around the call."
   [seed steps]
-  (let [kb (tu/fresh)]
+  (let [kb (tu/empty-kb)]
     (try
       (build-ontology! kb)
       (let [rng (java.util.Random. (long seed))]
@@ -240,7 +240,7 @@
   "A fixed op sequence into one KB, its reading compared with `from-scratch` after every
   write, one `is` per write.  Returns the stream KB's last contradictions."
   [ops]
-  (let [kb (tu/fresh)]
+  (let [kb (tu/empty-kb)]
     (try
       (build-ontology! kb)
       (let [net (reduce (fn [net [i op]]

@@ -178,11 +178,11 @@
 
 (def ^:private sugar-spellings
   "The argument-constraint spellings the entry point never queries, each with the
-  declaration its core.txt forward rule stores in its place: `(args P T)` stores
+  declaration its shared interface rule stores in its place: `(args P T)` stores
   `(argAndRest P 1 T)`, and every instance-level read here is of `arg` and `argAndRest`.
   The stored twin carries its own handle, justified by the sugar, so a refusal or an
   entailment names the twin and retracting the sugar takes both with it.  A KB that does
-  not load core.txt has no such rule, and its sugar types nothing at the entry point."
+  not load interface-rules.txt has no such rule, and its sugar types nothing at the entry point."
   '{args argAndRest})
 
 (def constraint-declaration-functors

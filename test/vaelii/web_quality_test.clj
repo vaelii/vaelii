@@ -25,7 +25,7 @@
 (use-fixtures :each
   (fn [f]
     (catalog/reset-registry!)
-    (let [kb (doto (tu/fresh) tu/load-core!)]
+    (let [kb (doto (tu/empty-kb) tu/load-core!)]
       (doseq [i (range never-fired)]
         (v/assert kb (list 'implies (list (symbol (str "qsrc_" i)) '?x)
                            (list (symbol (str "qdst_" i)) '?x))

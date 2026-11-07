@@ -119,7 +119,6 @@
 
 (tu/deftest-kb a-reflexive-predicate-reads-argandrest-and-args-declarations-as-arg-ones
   (tu/with-terms [sameRegionAs sameZoneAs region person Paris Ann]
-    (v/assert kb tu/args-sugar-rule 'CxUniverse)
     (doseq [p [sameRegionAs sameZoneAs]]
       (v/assert kb (list 'reflexive p) 'CxUniverse))
     (v/assert kb (list 'argAndRest sameRegionAs 1 region) 'CxUniverse)

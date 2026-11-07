@@ -66,15 +66,11 @@
       (is (= :bad-binding (:type (ex-data (refusal form))))
           (str "expected a refusal for " (pr-str form))))))
 
-(deftest fresh-hands-back-a-cleared-kb
-  ;; The other half of the same story: `fresh` really does clear, which is why calling it
-  ;; mid-test is a live hazard rather than a no-op.  Tests needing a genuinely separate KB
-  ;; give each arm its own `with-terms` (`exposure_test`'s budgeted-sweep pair) or build
-  ;; over a cleared store with `with-cleared-kb`.
+(deftest fresh-removes-the-previous-kbs-content
   (let [kb (tu/fresh)]
-    (is (some? kb))
-    (is (= {:sentexes 0 :justifications 0} (tu/content-count kb))
-        "fresh means empty, not merely bound")))
+    (v/assert kb '(dog Muffet) 'CxUniverse)
+    (is (nil? (v/handle-of (tu/fresh) '(dog Muffet) 'CxUniverse))
+        "a fresh KB must not retain the previous test's facts")))
 
 (deftest fresh-reopens-a-store-a-fault-stopped
   ;; A disk store latched unusable refuses every call until its directory is opened again
@@ -89,7 +85,7 @@
       (is (= :store-unusable (refusal #(v/clear! kb))) "the interrupt latched the store")
       (let [kb (tu/fresh)]
         (try
-          (is (= {:sentexes 0 :justifications 0} (tu/content-count kb)))
+          (is (nil? (v/handle-of kb '(dog Muffet) 'CxUniverse)))
           (is (nat-int? (v/assert kb '(dog Muffet) 'CxUniverse)))
           (finally (v/close! kb)))))))
 

@@ -27,7 +27,7 @@
 
 (use-fixtures :once
   (fn [f]
-    (let [kb (tu/load-starter! (tu/fresh))]
+    (let [kb (tu/load-starter! (tu/empty-kb))]
       (binding [tu/*kb* kb, *app* (web/app kb)] (f))
       (tu/clear-kb! kb))))
 (use-fixtures :each (tu/neutral))

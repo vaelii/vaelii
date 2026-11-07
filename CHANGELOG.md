@@ -14,6 +14,13 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Internal
+
+- **Fresh test KBs load the shared interface rules.** `args` expands through
+  `kb/upper/interface-rules.txt`, also loaded by the upper ontology, rather than hand
+  copies in tests. `tu/empty-kb` retains a rule-free fixture for storage and synthetic
+  rule censuses; full-ontology fixtures still import into an empty destination.
+
 ### Refusal: shape
 
 - **A `.` that is not the rest marker of its list is refused as `:shape`**

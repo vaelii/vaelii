@@ -206,7 +206,7 @@
 5	40	test/vaelii/absent_type_order_test.clj
 1	17	test/vaelii/access_test.clj
 58	39	test/vaelii/api_surface_test.clj
-0	27	test/vaelii/arg_constraints_test.clj
+0	25	test/vaelii/arg_constraints_test.clj
 16	29	test/vaelii/arg_root_retrieval_test.clj
 1	16	test/vaelii/arg_type_regression_test.clj
 4	120	test/vaelii/arggenl_test.clj
@@ -246,7 +246,7 @@
 0	143	test/vaelii/check_test.clj
 7	55	test/vaelii/clash_oracle_test.clj
 0	7	test/vaelii/clash_reading_cost_test.clj
-0	96	test/vaelii/cli_test.clj
+0	94	test/vaelii/cli_test.clj
 11	44	test/vaelii/client_surface_test.clj
 16	79	test/vaelii/columnar_index_oracle_test.clj
 9	56	test/vaelii/common_sense_qualitative_test.clj
@@ -267,7 +267,7 @@
 5	10	test/vaelii/converging_rules_test.clj
 0	22	test/vaelii/core_context_test.clj
 14	13	test/vaelii/core_copy_test.clj
-6	33	test/vaelii/covering_arg_test.clj
+4	33	test/vaelii/covering_arg_test.clj
 8	46	test/vaelii/curation_test.clj
 0	16	test/vaelii/datetime_test.clj
 12	18	test/vaelii/defeated_goals_test.clj
@@ -297,7 +297,7 @@
 1	34	test/vaelii/edit_test.clj
 0	20	test/vaelii/emptiness_test.clj
 8	19	test/vaelii/encodable_test.clj
-19	86	test/vaelii/entry_point_and_report_test.clj
+19	85	test/vaelii/entry_point_and_report_test.clj
 7	11	test/vaelii/enumeration_shape_test.clj
 1	166	test/vaelii/equality_test.clj
 21	83	test/vaelii/equational_test.clj
@@ -444,7 +444,7 @@
 0	49	test/vaelii/quoted_arg_test.clj
 6	27	test/vaelii/reach_memo_test.clj
 29	66	test/vaelii/record_fetch_cost_test.clj
-17	88	test/vaelii/recover_independence_test.clj
+17	83	test/vaelii/recover_independence_test.clj
 0	182	test/vaelii/recovery_test.clj
 48	16	test/vaelii/ref/believe.clj
 0	94	test/vaelii/ref/believe_test.clj
@@ -474,7 +474,7 @@
 2	21	test/vaelii/scenario_test.clj
 0	240	test/vaelii/scoped_defeat_test.clj
 25	81	test/vaelii/second_route_test.clj
-0	16	test/vaelii/seed_test.clj
+0	15	test/vaelii/seed_test.clj
 1	17	test/vaelii/separable_frame_test.clj
 3	35	test/vaelii/serve_parity_test.clj
 7	151	test/vaelii/serve_test.clj
@@ -511,7 +511,7 @@
 13	34	test/vaelii/temporal_functional_in_arg_test.clj
 0	30	test/vaelii/term_names_test.clj
 92	158	test/vaelii/test_util.clj
-5	42	test/vaelii/test_util_test.clj
+5	38	test/vaelii/test_util_test.clj
 4	51	test/vaelii/text_export_test.clj
 7	42	test/vaelii/timepoint_test.clj
 2	7	test/vaelii/tokens_test.clj

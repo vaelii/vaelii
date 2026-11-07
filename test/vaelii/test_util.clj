@@ -21,7 +21,7 @@
     (use-fixtures :once (tu/loaded tu/load-starter!))
     (use-fixtures :each (tu/neutral))
 
-    ;; a fresh KB rebuilt per test (empty or upper-loaded), neutral per test
+    ;; a fresh KB rebuilt per test (interface-only or upper-loaded), neutral per test
     (use-fixtures :each (tu/neutral-fresh tu/fresh))
 
     ;; an inline KB inside one deftest (varied baselines in one file)
@@ -758,11 +758,26 @@
         (catch Throwable e
           (spit out (str (pr-str {:test test :audit-error (str e)}) "\n") :append true))))))
 
-(defn fresh
-  "An empty KB on the shared scratch space, with `opts` (`:naming`, `:tms`, …)
-  merged into its opts."
-  ([] (fresh {}))
+(defn empty-kb
+  "A cleared KB with no interface rules or ontology, for storage and synthetic-rule tests."
+  ([] (empty-kb {}))
   ([opts] (fresh-slot block-top opts)))
+
+(def ^:private interface-rules
+  (seed/read-sentences "interface-rules" "upper"))
+
+(defn load-interface!
+  "Load the shared interface rules into `kb`, without the upper ontology."
+  [kb]
+  (when (:no-belief (v/write-hazards kb))
+    (v/recover kb))
+  (seed/load-sentences kb interface-rules sx/root-context))
+
+(defn fresh
+  "A fresh KB holding the shared interface rules, with `opts` (`:naming`, `:tms`, …)
+  merged into its opts. Use `empty-kb` when the absence of all rules is the subject."
+  ([] (fresh {}))
+  ([opts] (load-interface! (empty-kb opts))))
 
 ;; ---- the starter ontology, built once and copied ------------------------
 
@@ -929,13 +944,6 @@
   [kb]
   (restore! kb (starter-dump)))
 
-(def args-sugar-rule
-  "core.txt's forward rule storing the `(argAndRest P 1 T)` an `(args P T)` stands for.
-  The engine reads `args` only through that twin, so a test about the `args` spelling on
-  a KB that does not load core.txt asserts this first; a test that only needs a tail typed
-  from 1 states `argAndRest` instead."
-  '(set/forwardRule (implies (args ?relation ?type) (argAndRest ?relation 1 ?type))))
-
 ;; ---- the upper ontology, built once and copied --------------------------
 
 (def core-build-space
@@ -984,7 +992,7 @@
   ontology.
 
     (defn- channel-kb []
-      (tu/load-dumped! (tu/fresh) ::channel-kb
+      (tu/load-dumped! (tu/empty-kb) ::channel-kb
                        #(doto % (core-context/load-into) (sa/load-speech-acts))))
 
   `key` names what `build` makes, so two fixtures building different KBs must pass two
@@ -1006,7 +1014,7 @@
   `theories`.
 
     (use-fixtures :each (tu/neutral-fresh
-                         #(doto (tu/fresh)
+                         #(doto (tu/empty-kb)
                             (tu/load-core-with! '[[CxChange \"middle\"]])
                             (v/add-prover (point/point-prover)))))
 
@@ -1497,7 +1505,7 @@
   namespace, and clear at the end.  Pair with `neutral`."
   [load-fn]
   (fn [f]
-    (let [kb (fresh)]
+    (let [kb (empty-kb)]
       (load-fn kb)
       ;; `finally`, like every sibling fixture: an Error escaping the namespace's
       ;; tests would otherwise leave the shared scratch space populated for whatever
@@ -1553,7 +1561,7 @@
 
 (defn neutral-fresh
   "An `:each` fixture that builds a KB with `build-fn` (e.g. `tu/fresh`, or
-  `#(doto (tu/fresh) (tu/load-core!))` for one needing the upper ontology), binds it, and
+  `#(doto (tu/empty-kb) (tu/load-core!))` for one needing the upper ontology), binds it, and
   guards net-neutrality per test.  A test *about* the upper load path builds with
   `#(doto (tu/fresh) (core-context/load-into))` instead, paying the load rather than
   restoring the dump."

@@ -39,7 +39,7 @@
 
 ;; The KB is built per test because tests count entries in the violations ledger, which
 ;; a KB shared across tests keeps from the tests before.
-(use-fixtures :each (tu/neutral-fresh #(doto (tu/fresh) (tu/load-core!))))
+(use-fixtures :each (tu/neutral-fresh #(doto (tu/empty-kb) (tu/load-core!))))
 
 (def ^:private U 'CxUniverse)
 

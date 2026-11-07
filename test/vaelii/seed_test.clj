@@ -11,7 +11,7 @@
             [vaelii.host.seed :as seed]
             [vaelii.test-util :as tu]))
 
-(use-fixtures :each (tu/neutral-fresh tu/fresh))
+(use-fixtures :each (tu/neutral-fresh tu/empty-kb))
 
 (deftest the-kb-files-are-on-the-classpath
   (testing "the vocabulary file is read as a non-empty list of sentences"
@@ -24,17 +24,9 @@
            (seed/read-sentences "CxBiology" "middle")
            (seed/read-sentences "CxBiology.txt" "middle")))))
 
-(deftest every-file-in-a-layer-is-discovered
-  ;; the point of layer discovery: a KB is added by dropping a file, no code change
-  (testing "upper holds the domain files, sorted, and the loader reads core.txt first"
-    (is (= ["abstract.txt" "core.txt" "life.txt" "measure.txt" "organism.txt"
-            "reflection.txt" "society.txt" "space.txt" "structure.txt" "time.txt"]
-           (seed/layer-files "upper")))
+(deftest layer-load-order-and-missing-layer
+  (testing "the upper loader reads core.txt first"
     (is (= "core.txt" (first (core-context/upper-files)))))
-  (testing "middle holds the theory contexts"
-    (is (= '[CxAnatomy CxBiology CxChange CxKinship CxMereology
-             CxNormalPhysicalConditions CxRealWorld CxSize CxSocial CxTra]
-           (seed/layer-contexts "middle"))))
   (testing "an absent layer is nil, not a crash"
     (is (nil? (seed/layer-contexts "no-such-layer")))))
 

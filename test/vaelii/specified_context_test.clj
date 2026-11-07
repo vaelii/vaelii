@@ -11,7 +11,7 @@
             [vaelii.impl.taxonomy :as tax]
             [vaelii.test-util :as tu]))
 
-(use-fixtures :each (tu/neutral-fresh #(doto (tu/fresh) (tu/load-core!))))
+(use-fixtures :each (tu/neutral-fresh #(doto (tu/empty-kb) (tu/load-core!))))
 
 (defn- note [functor pred subject]
   (if (= functor 'predAllSpecified)

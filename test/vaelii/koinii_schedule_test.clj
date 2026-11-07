@@ -41,7 +41,7 @@
             [vaelii.test-util :as tu]))
 
 (defn- schedule-kb []
-  (doto (tu/fresh) (tu/load-core!) (sa/load-speech-acts)
+  (doto (tu/empty-kb) (tu/load-core!) (sa/load-speech-acts)
         (v/assert '(unreifiable_function DatetimeFn) 'CxUniverse)))
 
 ;; Majority resolution requires the :proof-tier identity policy and counts only attested

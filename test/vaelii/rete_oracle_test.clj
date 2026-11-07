@@ -357,7 +357,7 @@
 
 (deftest ^:slow end-to-end-agrees-with-the-reference-chain
   (dotimes [trial 6]
-    (let [ref-kb  (doto (tu/fresh)          build-ontology!)
+    (let [ref-kb  (doto (tu/empty-kb)       build-ontology!)
           rete-kb (doto (tu/isolated-fresh) build-ontology!)]
       (try
         (rete/track! rete-kb)
@@ -403,7 +403,7 @@
 ;; ---- targeted scenarios (deterministic, for localization) ---------------
 
 (defn- run-both [ops]
-  (let [ref-kb  (doto (tu/fresh)          build-ontology!)
+  (let [ref-kb  (doto (tu/empty-kb)       build-ontology!)
         rete-kb (doto (tu/isolated-fresh) build-ontology!)]
     (rete/track! rete-kb)
     (let [snaps (mapv #(apply-op! ref-kb rete-kb %) ops)
