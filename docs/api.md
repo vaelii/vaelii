@@ -219,7 +219,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; over a pair a stated separation divides, the suggested
                                                 ; declaration for every stored rule that a declaration the
                                                 ; engine implements states, every genl node with no
-                                                ; declared arity, every argument declaration naming a
+                                                ; declared arity, every genl edge whose spec admits a
+                                                ; length its genl does not, every argument declaration naming a
                                                 ; position its predicate lacks, and every live rule pair
                                                 ; whose conclusions would contradict if both fired, plus three
                                                 ; review-only smells: sibling types sharing one direct
@@ -239,7 +240,7 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; :not-under-thing, :implicit-genl,
                                                 ; :implicit-arity-class, :undeclared-term,
                                                 ; :orthogonal-over-separation, :rule-macro,
-                                                ; :undeclared-arity,
+                                                ; :undeclared-arity, :genl-arity-mismatch,
                                                 ; :uncorresponded-function, :stranded-declaration,
                                                 ; :rule-clash, :twin-genls, :derivable-stated-edge,
                                                 ; :disjoint-could-be-partition, :missing-arg,

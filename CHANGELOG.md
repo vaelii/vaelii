@@ -133,6 +133,17 @@ it — `git show v0.16.0:CHANGELOG.md`.
   intersection generates would spell its camelCase relations with one argument, which the
   naming check refuses. [integrity.md](docs/integrity.md#what-a-rule-macro-finding-means)
   *Migration:* acknowledge or replace a conjunction rule the sweep now reports.
+- **`kb-integrity` reports a `genl` edge whose spec admits a length its genl does not.**
+  The default sweep adds `:genl-arity-mismatch`, one `{:spec a :genl b :spec-arity …
+  :genl-arity …}` per visible `(genl a b)` whose ends each have an arity of their own
+  (`arity/own-length`) and where `a` admits a length `b` does not
+  (`arity/admits-length?`). An exact length admits itself alone, and a `variable_arity`
+  release every length at or above its `arityMin`. `(genl <unary> <variable_arity>)` is
+  not a finding, and `(genl <variable_arity> <unary>)` is one; a floor of 2 under a floor
+  of 3 is one, and a floor of 3 under a floor of 2 is not. An end with no arity of its
+  own is an `:undeclared-arity` finding instead. The shipped starter has no finding.
+  [integrity.md](docs/integrity.md#what-a-genl-arity-mismatch-finding-means)
+  *Migration:* state agreeing arities at both ends of a reported edge, or drop the edge.
 
 ### Fix: inference
 

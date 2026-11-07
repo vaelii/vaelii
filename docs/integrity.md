@@ -10,7 +10,8 @@
   every membership the uses entail, the orthogonal declarations (`orthogonal` and
   `siblingDisjointException`) over a pair a stated separation divides, the stored rules a
   declaration the engine implements states, the `genl` nodes with no declared arity, the
-  functions a held rule applies with no single correspondence, the argument declarations
+  `genl` edges whose spec admits a length its genl does not, the functions a held rule
+  applies with no single correspondence, the argument declarations
   that name a position their predicate does not have, the rule pairs whose conclusions
   would contradict each other if both fired, and for review: three ontology-engineering
   smells (sibling types with one direct `genl` set, stated edges that derive without
@@ -86,7 +87,8 @@ reads no census: one candidate term, then its memberships and its first use, at 
 The `orthogonal` pass reads one census of visible orthogonal declarations, then one
 declaration at a time. The rule-macro pass reads one census of the stored rules, then
 one rule at a time. The undeclared-arity pass reads one census of the visible `genl`
-edges, then one node at a time. The uncorresponded-function pass reads one census of the
+edges, then one node at a time. The genl-arity-mismatch pass reads the same census, then
+one edge at a time. The uncorresponded-function pass reads one census of the
 stored rules, then one rule at a time. The stranded-declaration pass reads one census of the
 argument declarations, then one declaration at a time. The two rule-clash passes read one
 census of the stored rules, then one candidate pair at a time. The taxonomy-island pass
@@ -661,7 +663,9 @@ node in any context. An arity is part of a predicate's own definition, as an `ar
 declaration is, so a length the node would read through `genl` from a bound predicate
 above it does not declare the node: `below_kind` above is a finding although
 `placed_kind` is a `unary_predicate`. `arity/relation-length` reads that inherited length
-for the argument-position check and the inert-tuple test.
+for the argument-position check and the inert-tuple test. The genl-arity-mismatch pass
+checks that the lengths the two ends of an edge are known to have agree
+([below](#what-a-genl-arity-mismatch-finding-means)).
 
 A KB that loads the upper ontology alone (`core-context/load-into`) reports each subtype
 of `thing` that states no arity of its own, such as `dog` below `mammal`. The starter loader
@@ -682,6 +686,51 @@ The pass has these limits:
 
 Reading each edge and each node's two arity reads spend one work unit, and
 `:max-results` counts these findings after the rule-macro category.
+
+## What a genl-arity-mismatch finding means
+
+A `genl` edge `(genl spec super)` says every `spec` tuple is a `super` tuple, so every
+length `spec` admits has to be one `super` admits. The sweep reads each visible `genl`
+edge and compares the arity each end is known to have of itself (`arity/own-length`,
+the reading the undeclared-arity pass takes). An exact length `n` admits `n` alone. A
+`variable_arity` release admits every length at or above its `arityMin`, or every length
+when it states none. An edge is a finding when `spec` admits a length `super` does not
+(`arity/admits-length?`):
+
+```clojure
+;; (unary_predicate placed_kind)
+;; (variable_arity chainOf)
+;; (genl placed_kind chainOf)
+;; (genl chainOf placed_kind)
+{:status :gap
+ :candidate-count 0
+ :genl-arity-mismatch
+ [{:spec chainOf :genl placed_kind :spec-arity {:min 0} :genl-arity {:exact 1}}]}
+```
+
+`(genl placed_kind chainOf)` is not a finding: the one length `placed_kind` admits,
+`chainOf` admits too. `(genl chainOf placed_kind)` is one, since `chainOf` admits two
+arguments and `placed_kind` admits one. Two exact lengths agree only when they are
+equal. A floor of 3 under a floor of 2 agrees, and a floor of 2 under a floor of 3 does
+not. An arity is part of each predicate's own definition, as an `arg` declaration is, so
+the sweep checks that the two definitions an edge relates agree rather than reading one
+end's length into the other.
+
+One finding is reported for each edge, in print order of its `spec` and then its
+`genl`. `:spec-arity` and `:genl-arity` give each end's signature, `{:exact n}` or
+`{:min m}`.
+
+The pass has these limits:
+
+- **Edge census, not candidate terms.** The caller's candidate set does not bound the
+  pass. The pass reads every visible `genl` edge once, as the undeclared-arity pass does.
+- **Both ends known.** An edge with an end that has no arity of its own is not read: that
+  end is an undeclared-arity finding. An edge from a term to itself is not read.
+- **Visible from the audit context.** An edge asserted in a context the audit context
+  cannot see is not read; each end's arity is read the same at every context.
+
+Reading each edge and each edge's two arity reads spend one work unit, and `:max-results`
+counts these findings after the undeclared-arity category.
 
 ## What an uncorresponded-function finding means
 
@@ -714,7 +763,7 @@ The pass has these limits:
 - **Visible from the audit context.** A rule the audit context cannot see is not read.
 
 Reading each rule spends one work unit, and `:max-results` counts these findings after
-the undeclared-arity category.
+the genl-arity-mismatch category.
 
 ## What a stranded-declaration finding means
 
