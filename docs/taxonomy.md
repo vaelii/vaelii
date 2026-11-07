@@ -2234,9 +2234,10 @@ reading.
 
 **One reading of an arity.** `arity/relation-length` answers what binds a relation's
 length, its own binding or the one exact length it inherits through `genl`, and the
-argument-position check, the inert-tuple test, `describe`, `admitsArgnum` and the
-undeclared-arity pass call it. `describe` reports the length as `:arity` and the
-predicate it is bound on as `:arity-via`. `arity/released?` reports a `variable_arity`
+argument-position check, the inert-tuple test, `describe` and `admitsArgnum` call it.
+The undeclared-arity pass reads `arity/own-length` instead: the length a relation is
+known to have of itself, with no `genl` closure read. `describe` reports the length as
+`:arity` and the predicate it is bound on as `:arity-via`. `arity/released?` reports a `variable_arity`
 membership stated in any context as the release, which `admitsArgnum` and the
 undeclared-arity pass read beside the length. An engine grammar term's length is its `:shape`
 (`vaelii.impl.predicates`): its argument count, or a floor at it for a shape with an
