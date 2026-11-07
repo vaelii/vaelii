@@ -514,6 +514,11 @@
                  :context CxStory :stored true}
                 {:row "a sentex in a query context" :sentence (list dog Fido) :context 'CxNothing
                  :refused :shape}
+                {:row "a `.` that opens no rest" :sentence (list bornIn Fido '.) :context CxStory
+                 :refused :shape}
+                {:row "a rule literal with a `.` before two terms"
+                 :sentence (list 'implies (list bornIn '?x '. '?a '?b) (list dog '?x))
+                 :context CxStory :refused :shape}
                 {:row "a negated rule, which has no record"
                  :sentence (list 'not (list 'implies (list dog '?x) (list cat '?x))) :context CxStory
                  :refused :not-well-formed}

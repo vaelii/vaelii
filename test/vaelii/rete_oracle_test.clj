@@ -324,6 +324,9 @@
                       (covers I0 ?x I1 ?y)
                       (covers I0 I3 ?x ?y)
                       (covers ?w ?x ?y ?z)
+                      (parentOf ?x . ?r)     ; dotted rest: `.` is not a positional argument
+                      (parentOf I1 . ?r)
+                      (betweenIn ?x . ?r)
                       (ageOf ?x ?a)
                       (grandparentOf ?x ?z)]]
           (is (= (proj (res/match-pattern rete-kb pat '?ctx))

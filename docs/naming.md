@@ -73,9 +73,10 @@ consults belief, the stored content or the KB's naming policy.
 `assert` calls `nm/check!` and `check` (docs/api.md, "Validating without writing") calls
 `nm/blocking-problems`; both read the KB's policy, and both are `nm/problems` underneath.
 It reports, in order: the context's own name, then **every literal's** functor, then
-every literal's atomic symbol **arguments**, then any `ist` context slot, then a dotted
-rest marker where one cannot appear. The argument step is lexical: it asks whether a
-spelling is an individual, a type or a predicate at all. Whether the argument is of the
+every literal's atomic symbol **arguments**, then any `ist` context slot. A `.` is not
+a name: a `.` outside a rest marker is refused as `:shape` before this check runs
+([inference.md](inference.md#dotted-rest-patterns)). The argument step is lexical: it asks
+whether a spelling is an individual, a type or a predicate at all. Whether the argument is of the
 *right* type is `arg`'s job.
 
 ### Literals, wrappers, and arguments
@@ -187,7 +188,7 @@ names a unary predicate — a kind or a property — and is legal only at arity 
 A rejection is **data before it is prose**. `nm/problems*` yields one
 `{:class :role :symbol :literal}` map per violation, with `:class` one of
 `:context-name` `:functor` `:lexeme-functor` `:functor-arity` `:functor-unary` `:argument`
-`:ist-context` `:dot-marker`, and `nm/message` renders one; `problems` is the two
+`:ist-context`, and `nm/message` renders one; `problems` is the two
 composed. `assert` spells out the sentence it refused, and a caller counting violations
 groups by class: a message embeds the literal, so it is unique per record.
 
@@ -223,8 +224,8 @@ are decoded, and a non-zero result is logged and returned in the summary as
 
 ```
 this corpus and `assert` disagree: <n> of <total> records (<pct>) hold names `assert`
-would refuse: context-name <n>, argument <n>, functor <n>, functor-arity <n>,
-dot-marker <n> — they are stored, findable and countable, but re-asserting one throws
+would refuse: context-name <n>, argument <n>, functor <n>, functor-arity <n>
+— they are stored, findable and countable, but re-asserting one throws
 under :naming :strict
 ```
 

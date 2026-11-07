@@ -1195,8 +1195,8 @@
   nil.  A sentence is an s-expression that is a list: a string, a symbol, a number, a map
   or nil is refused, and a vector is refused because it canonicalizes to the list it
   looks like while every read entry point means a conjunctive query by it (docs/api.md,
-  \"a top-level vector\").  `check` and `assert` read this one fn, so what `check`
-  predicts is what `assert` does."
+  \"a top-level vector\"), and a `.` outside a rest marker by `sx/dot-problem`.  `check`
+  and `assert` read this one fn, so what `check` predicts is what `assert` does."
   [sentence]
   (cond
     (not (sequential? sentence))
@@ -1208,7 +1208,9 @@
      :message (str "the sentence must be a list, not a vector: " (pr-str sentence)
                    " — a vector is how every read entry point spells a conjunction, so this"
                    " spelling would store one sentence and ask for a join over "
-                   (count sentence) ".  Write " (pr-str (apply list sentence)))}))
+                   (count sentence) ".  Write " (pr-str (apply list sentence)))}
+
+    :else (sx/dot-problem :sentence sentence)))
 
 (defn- check-shape!
   "Throw the `:shape` refusal `check` reports for a context or sentence that is not one.
@@ -2624,12 +2626,13 @@
 
 (defn- sentence-goal-problem
   "The `:shape` problem a read entry point that takes **one sentence** refuses a top-level
-  vector, or a goal carrying an `or`, with, or nil.  `ask`, `ask?`, `ask-within`,
-  `sentexes-matching` and `handle-of` read one.  The message names which spelling arrived.
-  `disjunctive-goal-problem` says why an `or` is refused."
+  vector, or a goal carrying an `or` or a misplaced `.`, with, or nil.  `ask`, `ask?`,
+  `ask-within`, `sentexes-matching` and `handle-of` read one.  The message names which
+  spelling arrived.  `disjunctive-goal-problem` says why an `or` is refused."
   [goal]
   (or
    (disjunctive-goal-problem goal)
+   (sx/dot-problem :goal goal)
    (when (vector? goal)
      {:type :shape :goal goal
       :message (if-let [as-list (sentence-spelled-as-a-vector goal)]
@@ -2647,11 +2650,12 @@
   whose conjuncts are not sentences with, or nil.  `prove`, `query`, `query-plan`,
   `prove-within` and `abduce` join a vector's members as separate goals, so `[likes Tom
   Ann]` would be three goals.  An empty vector is the empty conjunction and stays legal.  A
-  `nil` conjunct is refused like any other non-sentence.  A conjunct carrying an `or` is
-  refused as at `sentence-goal-problem`."
+  `nil` conjunct is refused like any other non-sentence.  A conjunct carrying an `or` or a
+  misplaced `.` is refused as at `sentence-goal-problem`."
   [goal]
   (or
    (disjunctive-goal-problem goal)
+   (sx/dot-problem :goal goal)
    ;; `some`, not `when-some` over the first offender: a nil conjunct is a value that
    ;; `when-some` reads as absent, and `[(dog ?x) nil]` would pass and answer nothing.
    (when (and (vector? goal) (some #(not (seq? %)) goal))

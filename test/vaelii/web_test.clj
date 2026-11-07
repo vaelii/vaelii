@@ -1189,6 +1189,11 @@
     (let [body (:body (GET "/term" "q=heavierThan"))]
       (is (re-find #"sx-rule\"><span class=\"sx\"><span class=\"rb1\">\(</span>" body)))))
 
+(deftest a-rest-marker-renders-as-text-not-a-term-link
+  (let [out (str (#'web/render-form (web/render-env tu/*kb* {}) '(argN ?t 1 (?r . ?args))))]
+    (is (not (re-find #"q=\." out)))
+    (is (re-find #"\[:span.sx \"\.\"\]" out))))
+
 (defn- set-cookies
   "The `Set-Cookie` values on a response, as a vector — Ring allows a header to carry a
   string or a collection of them, and this browser sets two."

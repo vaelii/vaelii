@@ -1426,10 +1426,11 @@
         :else       (map (fn [t] {a t}) (sort (scoped-equiv-class kb vis b)))))))
 
 (defn- structure-kind
-  "The kind `sx/structure-constructors` names for `t`, a ground undotted application of a
-  structure constructor, else nil (docs/nat.md, \"A data structure is a structural term\")."
+  "The kind `sx/structure-constructors` names for `t`, a ground application of a structure
+  constructor, else nil (docs/nat.md, \"A data structure is a structural term\").  A ground
+  application holds no rest variable, so it is never dotted."
   [t]
-  (when (and (seq? t) (seq t) (ground? t) (not-any? #(= sx/dot-marker %) t))
+  (when (and (seq? t) (seq t) (ground? t))
     (get sx/structure-constructors (first t))))
 
 (defn- entry-parts
@@ -1519,8 +1520,7 @@
   "`[explicit rest-var]` of a corresponding predicate's element arguments: the arguments
   before a dot and the variable after it, or all of them and nil."
   [args]
-  (let [[xs tail] (split-with #(not= sx/dot-marker %) args)]
-    [xs (second tail)]))
+  (if (sx/dotted? args) [(sx/positional args) (last args)] [args nil]))
 
 (defn- positional-matches
   "Bindings under which patterns `xs`, then rest variable `r` if any, are a list's or an
@@ -1602,7 +1602,7 @@
              (and (some? s)
                   (or (not= 'entryOf f) (= 3 (count args)))
                   (if (pvar? s)
-                    (and (nil? r) (not-any? #(= sx/dot-marker %) es) (every? ground? es))
+                    (and (nil? r) (every? ground? es))
                     (and (ground? s) (or (nil? r) (pvar? r))))))
            :else false))))
 

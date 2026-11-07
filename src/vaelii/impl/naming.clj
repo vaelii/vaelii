@@ -247,8 +247,7 @@
    :functor-unary  "a camelCase functor at arity 1 — a unary predicate is snake_case"
    :lexeme-functor "a lexeme applied to arguments — a surface form names no relation"
    :argument       "a symbol argument matching no convention"
-   :ist-context    "an ist context slot that does not name a context"
-   :dot-marker     "a dotted rest marker outside a rule pattern"})
+   :ist-context    "an ist context slot that does not name a context"})
 
 (defn- rule-wrapper?
   "Is `h` one of the virtual wrappers around a single rule form (direction, defeasible,
@@ -477,10 +476,7 @@
 
       :ist-context
       (str "ist directs " (pr-str literal) " into " (pr-str symbol)
-           ", which must start with Cx and continue CapitalCamelCase")
-
-      :dot-marker
-      "'.' is not a valid argument (dotted rest patterns belong in rule patterns)")))
+           ", which must start with Cx and continue CapitalCamelCase"))))
 
 (defn problems*
   "The naming violations of `sentence` in `context`, as a vector of
@@ -499,19 +495,14 @@
                  :let [p (argument-problem pair a)]
                  :when p]
              p)
-           (ist-context-problems sentence)
-           ;; a bare `.` is the dotted rest-pattern marker; it belongs inside a rule
-           ;; antecedent, never as a top-level argument of an asserted sentence.
-           (when (some #(= sx/dot-marker %) (args sentence))
-             [{:class :dot-marker :role :sentence :symbol sx/dot-marker
-               :literal sentence}])])))
+           (ist-context-problems sentence)])))
 
 (defn problems
   "The naming violations of `sentence` in `context`, as message strings: the context's
   name, then every literal's functor (outermost wrapper first), then every literal's
-  atomic symbol arguments, then each `ist` context slot, then a top-level dotted rest
-  marker.  A check on the spelling of a name, not on whether the vocabulary wants it
-  (docs/naming.md, \"What this does not check\")."
+  atomic symbol arguments, then each `ist` context slot.  A check on the spelling of a
+  name, not on whether the vocabulary wants it (docs/naming.md, \"What this does not
+  check\")."
   [sentence context]
   (mapv message (problems* sentence context)))
 

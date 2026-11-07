@@ -55,12 +55,6 @@
   [goal]
   (and (sequential? goal) (seq goal) (sx/variable? (first goal))))
 
-(defn- dotted?
-  "A dotted rest pattern, `(?pred . ?args)` or `(rel A . ?rest)`.  No argument past the
-  marker sits at a fixed position, so both index models answer 0 for it."
-  [goal]
-  (and (sequential? goal) (boolean (some #(= sx/dot-marker %) goal))))
-
 (defn- unary-literal? [goal]
   (and (sequential? goal) (= 2 (count goal)) (symbol? (first goal))
        (not (sx/variable? (first goal)))))
@@ -100,7 +94,7 @@
   or nil when none is ground.  Each count bounds the literal's matches from above.
   Arguments past a dotted rest marker have no position and are skipped."
   [ix goal count-with-arg*]
-  (let [args   (take-while #(not= sx/dot-marker %) (rest goal))
+  (let [args   (rest (sx/positional goal))
         counts (keep-indexed (fn [i a] (when (sx/ground-term? a) (count-with-arg* ix (inc i) a)))
                              args)]
     (when (seq counts) (apply min counts))))
@@ -152,8 +146,8 @@
            (or (arg-root-estimate ix body count-with-arg) unbounded)
            (count-with-functor ix (functor-of goal))))
 
-       ;; a dotted rest binds no position: the predicate extent, or nothing
-       (dotted? goal)
+       ;; a dotted rest binds no position past its marker: the predicate extent, or nothing
+       (sx/dotted? goal)
        (if (variable-functor? goal)
          unbounded
          (count-with-functor ix (functor-of goal)))
@@ -294,7 +288,7 @@
 
                ;; A negative literal, a dotted rest and an open functor have no trie
                ;; walk: the rows are `est-matches`'s, and no column is counted.
-               (or (negative? goal) (dotted? goal) (variable-functor? goal))
+               (or (negative? goal) (sx/dotted? goal) (variable-functor? goal))
                {:rows (double (est-matches kb goal #{}
                                            {:count-at count-at :count-children count-children
                                             :count-with-arg count-with-arg

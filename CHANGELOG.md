@@ -14,6 +14,19 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Refusal: shape
+
+- **A `.` that is not the rest marker of its list is refused as `:shape`**
+  ([#263](https://github.com/vaelii/vaelii/issues/263)). `assert`, `assert-inert`,
+  `check`, an import and every read entry point refuse `(p ?x .)`, `(p . A)`, `(p . ?a
+  ?b)` and `(p ?x (ListFn .))` in a fact, a rule or a goal, under every `:naming` policy.
+  A rest pattern ends a list with `.` and one variable. A sentence holding such a `.` was
+  a `:naming` violation of class `:dot-marker`, which `:warn` and `:off` stored.
+  [inference.md](docs/inference.md#dotted-rest-patterns)
+  *Migration:* write the literal as `(p ?x . ?rest)`, or drop the `.`. An import summary
+  counts such a frame under `:refused`, not under `:naming`'s `:dot-marker`.
+  *Breaks:* `assert`, `check`, an import or a read of a sentence holding a `.` outside a rest marker; the `:dot-marker` naming class
+
 ### Additive: canonicalization
 
 - **`distinctInArgAndRest` drops a repeated argument of a function's ground applications
@@ -68,6 +81,22 @@ it — `git show v0.16.0:CHANGELOG.md`.
   trie and the argument roots read the `.` of `(p ?c . ?xs)` as an argument, so a goal or
   a rule arriving after its facts matched nothing. The match reads the functor's extent
   and `unify` binds the rest. [nat.md](docs/nat.md#a-data-structure-is-a-structural-term)
+
+- **`kb-integrity` reports no `.` as a type `:not-under-thing`, and two rest patterns at
+  the same point unify rest with rest** ([#263](https://github.com/vaelii/vaelii/issues/263)).
+  `(p . ?a)` with `(p . ?b)` gives `?a=?b`.
+  [inference.md](docs/inference.md#dotted-rest-patterns)
+
+### Fix: answers
+
+- **`terms` and `term-count` leave out the `.` of a rest pattern**
+  ([#263](https://github.com/vaelii/vaelii/issues/263)). `terms` lists predicate,
+  individual, type and context names, and the argument-type rules in `core.txt` put `.`
+  among them; the browser linked `.` to a term page and offered it in
+  search.
+  [indexing.md](docs/indexing.md#5-the-inverted-term-index)
+  *Migration:* a durable store indexed by an earlier release lists `.` until
+  `(v/reindex kb)`.
 
 ## 0.32.0 — 2026-11-03 — "Every context sees CxUniverse, a denial undercutting a `:default` edge's reading, a `genl` cycle refused where its context sees it, `CxTimeFn` slices at ranges and moments, time zones and calendar distances, `replace-facts!`, explanations in content form"
 

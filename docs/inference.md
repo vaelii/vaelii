@@ -2744,9 +2744,21 @@ taking the far conclusion and leaving the near one, and both arrival orders.
 `?args=(Tom Bob)`; `substitute` splices the tail back, so the same pattern with
 those bindings rebuilds `(parentOf Tom Bob)`. Ordinary sentences (no `.`) are
 unaffected — plain Clojure lists, no Java interop. This lets a rule quantify over an
-arbitrary predicate and its whole argument list. No rule in the shipped ontology uses
-one; `decontextualized_predicate`'s lift, which ranges over every argument list, is
-implemented in code rather than as a rule (see [contexts.md](contexts.md)).
+arbitrary predicate and its whole argument list: the argument-type rules in `core.txt`
+read `(?relation . ?args)`, and the structure relations take one (`(listOf ?list .
+?items)`). `decontextualized_predicate`'s lift, which ranges over every argument list,
+is implemented in code rather than as a rule (see [contexts.md](contexts.md)).
+
+The rest pattern has one shape, `sx/dotted?`: a list ending in `.` and one variable.
+Every reader of a dotted form (`unify`, `substitute`, the planner, the Rete alpha
+lookup, the canonicalizer, `StructureProver`) tests that predicate. Two rest patterns at
+the same point unify rest with rest, `(p . ?a)` with `(p . ?b)` giving `?a=?b`. The `.` is
+syntax and names no term. `assert`, `assert-inert`, `check`, an import and every read
+entry point refuse a `.` outside the shape as `:shape` (`sx/dot-problem`) under every
+`:naming` policy, so `(unary_predicate .)`, `(p . A)` and `(p ?x . ?a ?b)` reach no
+reader. A rest pattern stated as a fact is open, and `assert` refuses it as `:not-ground`.
+The marker keys no term index entry ([indexing.md](indexing.md#5-the-inverted-term-index)).
+`dot_test` asserts each of these.
 
 ## Quoted forms in unification
 

@@ -663,6 +663,50 @@
   'CxUniverse)
 (def dot-marker   '.)
 
+(defn rest-marker?
+  "Does `xs`, a list or a suffix of one, open a dotted rest: the dot marker, then one
+  variable, then nothing?  A `.` in any other place is refused (`dot-problem`)."
+  [xs]
+  (and (sequential? xs) (= dot-marker (first xs)) (variable? (second xs)) (nil? (nnext xs))))
+
+(defn dotted?
+  "Is `form` a dotted rest pattern, `(?pred . ?args)` or `(rel A . ?rest)`: a list that
+  ends in the dot marker and one variable?"
+  [form]
+  (and (sequential? form)
+       (loop [s (seq form)]
+         (cond (nil? s)                  false
+               (not= dot-marker (first s)) (recur (next s))
+               (rest-marker? s)          true
+               :else                     (recur (next s))))))
+
+(defn positional
+  "The elements of `form` before its rest marker, or all of them when it is not dotted."
+  [form]
+  (if (dotted? form) (drop-last 2 form) form))
+
+(defn misplaced-dot
+  "The first list in `form`, depth-first, that holds a `.` other than its rest marker,
+  or nil when every `.` in it opens a rest (`rest-marker?`)."
+  [form]
+  (when (sequential? form)
+    (loop [s (seq form)]
+      (cond (nil? s)                    (some misplaced-dot form)
+            (not= dot-marker (first s)) (recur (next s))
+            (rest-marker? s)            (some misplaced-dot form)
+            :else                       form))))
+
+(defn dot-problem
+  "The `:shape` problem a sentence or goal holding a misplaced `.` is refused with, under
+  key `k` (`:sentence` or `:goal`), or nil.  `.` is the rest marker's syntax and names no
+  term, so the write, import and read entry points refuse it whatever `:naming` says."
+  [k form]
+  (when-let [m (misplaced-dot form)]
+    {:type :shape k form :misplaced-dot m
+     :message (str "'.' in " (pr-str m) " is not a rest marker: a '.' is legal only"
+                   " before a list's last element, and only when that element is a"
+                   " variable, as in (?pred . ?args)")}))
+
 ;; ---- sentex handles: a stored sentex as a term --------------------------
 ;; A handle is `(sentexHandle <id>)` — the term form of a stored sentex's integer
 ;; handle, so a *meta-sentex* (`exceptWhen`, `except`) can name another sentex as an
@@ -1455,7 +1499,7 @@
   arguments are a splice, not a positional list."
   [form]
   (if-let [sib (and (sequential? form) (seq form)
-                    (not-any? #(= dot-marker %) form)
+                    (not (dotted? form))
                     (comparison-siblings (first form)))]
     (apply list sib (reverse (rest form)))
     form))
@@ -1633,7 +1677,7 @@
   "A binary literal whose predicate is declared symmetric (and not a dotted form)."
   [form symmetric?]
   (boolean (and (sequential? form) (= 3 (count form)) (symbol? (first form))
-                (not-any? #(= dot-marker %) form)
+                (not (dotted? form))
                 (symmetric? (first form)))))
 
 (defn- sort-symmetric-args
@@ -1721,7 +1765,7 @@
     (let [args  (vec (rest form))
           comps (commuting-components (groups-of (first form) (count args)) (count args))]
       (if-not (and comps
-                   (not-any? #(= dot-marker %) form)
+                   (not (dotted? form))
                    (every? sortable-term? args))
         form
         (let [args' (reduce (fn [acc positions]
@@ -1783,7 +1827,7 @@
   [form comps]
   (if-not (and (sequential? form) (symbol? (first form)) (next form)
                comps
-               (not-any? #(= dot-marker %) form))
+               (not (dotted? form)))
     [form]
     (let [args     (vec (rest form))
           comps    (filterv #(every? (fn [p] (<= p (count args))) %) comps)
@@ -1920,7 +1964,7 @@
         below? (when meet-order (meet-order f))
         from   (when distinct-from (distinct-from f))]
     (if-not (and (or a? i? below? from) (symbol? f) (next form)
-                 (not-any? #(= dot-marker %) form)
+                 (not (dotted? form))
                  (every? ground-term? (rest form)))
       (permute-args form marks)
       (let [spliced  (if a?
@@ -2111,7 +2155,7 @@
   a branch (a<b, a<c) is left alone."
   [lits]
   (let [chain? #(and (sequential? %) (contains? chained-comparisons (first %))
-                     (>= (count %) 3) (not-any? (fn [t] (= dot-marker t)) %))
+                     (>= (count %) 3) (not (dotted? %)))
         chains (filterv chain? lits)
         others (filterv (complement chain?) lits)]
     (if (< (count chains) 2)
@@ -3122,11 +3166,13 @@
 (defn index-terms
   "The distinct terms that make a sentex findable: the atoms of its connective-free
   content at every depth, plus each ground compound between `*min-indexed-depth*` and
-  `max-indexed-compound`.  The sentex's context is added separately by the index."
+  `max-indexed-compound`.  The dot marker of a rest pattern is syntax and names no term.
+  The sentex's context is added separately by the index."
   [sentex]
   (let [floor (long *min-indexed-depth*)]
     (into #{} (comp (mapcat #(keyed-subterms % 0 floor))
                     (filter indexable-term?)
+                    (remove #{dot-marker})
                     (remove oversized-compound?))
           (content-forms sentex))))
 

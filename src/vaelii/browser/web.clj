@@ -921,6 +921,7 @@
   ([env t seen]
    (cond
      (= :variable (v/term-role t)) [:span.t-var (pr-str t)]
+     (= '. t)                      [:span.sx "."]   ; a rest marker is syntax, not a term
      (v/reified-term? t)           (nat-ref env t seen)
      ;; the href is the term as stored — what the page is *about* — and the text is how
      ;; the page writes it.  The two differ for a compound term holding a reified one

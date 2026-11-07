@@ -50,7 +50,7 @@
   an equal form, and a variable inside it binds nothing.  Supports dotted rest patterns:
   a sublist `(. ?rest)` binds `?rest` to the whole remaining sequence, so
   `(?pred . ?args)` unifies with `(parentOf Tom Bob)` giving `?pred=parentOf`,
-  `?args=(Tom Bob)`."
+  `?args=(Tom Bob)`.  The entry points refuse a `.` outside that shape (`sx/dot-problem`)."
   ([x y] (unify x y no-bindings))
   ([x y bindings]
    (cond
@@ -71,8 +71,10 @@
    (cond
      (nil? bindings) nil
      (= xs ys)       bindings
-     (and (sequential? xs) (= '. (first xs))) (unify-var (second xs) (dot-tail ys) bindings)
-     (and (sequential? ys) (= '. (first ys))) (unify-var (second ys) (dot-tail xs) bindings)
+     (sx/rest-marker? xs) (if (sx/rest-marker? ys)
+                            (unify (second xs) (second ys) bindings)
+                            (unify-var (second xs) (dot-tail ys) bindings))
+     (sx/rest-marker? ys) (unify-var (second ys) (dot-tail xs) bindings)
      (and (sequential? xs) (sequential? ys) (seq xs) (seq ys))
      (unify-args (rest xs) (rest ys) (unify (first xs) (first ys) bindings))
      (and (sequential? xs) (sequential? ys) (empty? xs) (empty? ys))
@@ -115,9 +117,9 @@
                              (substitute b bindings)
                              pattern)
     (sx/quote-form? pattern) pattern
-    (and (sequential? pattern) (some #{'.} pattern))
-    (let [head (mapv #(substitute % bindings) (take-while #(not= '. %) pattern))
-          tail (substitute (second (drop-while #(not= '. %) pattern)) bindings)]
+    (sx/dotted? pattern)
+    (let [head (mapv #(substitute % bindings) (sx/positional pattern))
+          tail (substitute (last pattern) bindings)]
       (clojure.lang.PersistentList/create
        (if (sequential? tail)
          (into head tail)                  ; bound rest-var → splice the tail in
@@ -250,7 +252,7 @@
                          (not (sx/variable? (:context pat))))
             path
             (cond
-              (and pred (some #(= sx/dot-marker %) args)) :functor-extent
+              (and pred (sx/dotted? body)) :functor-extent
 
               ;; A negative key holds its whole body as one token, so the trie matches a negative only exactly
               ;; and `p/lookup` answers `#{}` for every open negative. The secondary indexes (predicate extent,
@@ -1038,7 +1040,7 @@
   "Is `t` an application whose functor is a variable, `(?fn AppleTree)`?  A dotted rest
   pattern, `(?pred . ?args)`, is a sentence pattern and is not one."
   [t]
-  (and (seq? t) (< 1 (count t)) (sx/variable? (first t)) (not-any? #{'.} t)))
+  (and (seq? t) (< 1 (count t)) (sx/variable? (first t)) (not (sx/dotted? t))))
 
 (defn- term-arguments
   "The arguments of compound `form` whose applications are terms: every one, except the
@@ -2149,7 +2151,7 @@
   (and (sequential? sentence) (seq sentence)
        (symbol? (first sentence))
        (not= 'not (first sentence))
-       (not-any? #(= '. %) sentence)
+       (not (sx/dotted? sentence))
        (or (not (sx/variable? (first sentence)))
            (some sx/indexable-term? (rest sentence)))))
 

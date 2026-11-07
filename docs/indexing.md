@@ -953,7 +953,8 @@ An *indexable* subterm (`sentex/indexable-term?`) is a non-variable symbol
 (predicate, individual, type, context) or a fully-ground compound. **Numbers,
 strings, and variables are dropped** — a year like `1970` or a comment string is
 not a lookup key, since it only bloats the index; predicates, individuals,
-and ground compound subterms still key.
+and ground compound subterms still key. The `.` of a rest pattern `(?f . ?args)` is
+syntax and is dropped too, so `terms` never lists it.
 
 - `find-sentexes kb term` — sentexes containing `term` anywhere, any nesting.
 - `find-sentexes-all kb terms` — the intersection.

@@ -115,7 +115,8 @@
     (throw (ex-info (str (pr-str context) " is not a context a sentex is stored in: a"
                          " stored context is a symbol, and not a query context")
                     {:type :shape :context context})))
-  (when-let [p (or (sx/connective-problem sentence) (checks/term-shape-problem sentence))]
+  (when-let [p (or (sx/dot-problem :sentence sentence) (sx/connective-problem sentence)
+                   (checks/term-shape-problem sentence))]
     (throw (ex-info (:message p) (dissoc p :message))))
   ;; `entry/assert-one`'s test for a rule; the shape checks run on each stored form
   ;; before the constructor, as `assert` runs them
