@@ -216,20 +216,39 @@
                       (is (some? (v/handle-of kb (list 'genlCx CxAuthorUnder 'CxUniverse) 'CxUniverse)))
                       (is (some? (v/handle-of kb (list 'genlCx CxAuthorBelow 'CxWell) 'CxUniverse)))))))
 
-(deftest a-lifted-copy-of-a-data-context-binding-survives-the-sync
-  ;; `(binary_predicate R)` stated in a data context has a copy in CxUniverse, which is no
-  ;; premise, so the lock does not reach it.
+(deftest a-data-context-arity-binding-is-stored-in-cxuniverse-and-survives-the-sync
+  ;; `binary_predicate` is forced-decontextualized, so `(binary_predicate R)` stated in a
+  ;; data context is a premise stored in CxUniverse, and the sync leaves it.
   (tu/with-terms [CxAuthorData tiedTo]
     (let [binding (list 'binary_predicate tiedTo)]
-      (in-both-orders :lifted
+      (in-both-orders :forced
                       [#(v/assert % (list 'genlCx CxAuthorData 'CxWell) 'CxUniverse)
                        #(v/assert % binding CxAuthorData)]
                       (fn [kb]
-                        (let [copy (v/handle-of kb binding 'CxUniverse)]
+                        (let [h (v/handle-of kb binding 'CxUniverse)]
+                          (is (some? h))
+                          (is (= 'CxUniverse (:context (v/sentex kb h))) "stored in CxUniverse")
+                          (is (true? (v/premise? kb h)) "as the premise the author stated")
+                          (is (= {:added 0 :removed 0 :refused []} (sync/sync! kb @ships)))
+                          (is (= h (v/handle-of kb binding 'CxUniverse)))
+                          (is (v/in? kb h))))))))
+
+(deftest a-lifted-copy-of-a-data-context-fact-survives-the-sync
+  ;; A fact of a predicate the author marks `decontextualized_predicate` alone, stated in a
+  ;; data context, has a copy in CxUniverse, which is no premise, so the lock does not
+  ;; reach it.
+  (tu/with-terms [CxAuthorData tagOf Ann Bob]
+    (let [fact (list tagOf Ann Bob)]
+      (in-both-orders :lifted
+                      [#(v/assert % (list 'genlCx CxAuthorData 'CxWell) 'CxUniverse)
+                       #(v/assert % (list 'decontextualized_predicate tagOf) CxAuthorData)
+                       #(v/assert % fact CxAuthorData)]
+                      (fn [kb]
+                        (let [copy (v/handle-of kb fact 'CxUniverse)]
                           (is (some? copy))
                           (is (false? (v/premise? kb copy)) "the copy is no premise")
                           (is (= {:added 0 :removed 0 :refused []} (sync/sync! kb @ships)))
-                          (is (= copy (v/handle-of kb binding 'CxUniverse)))
+                          (is (= copy (v/handle-of kb fact 'CxUniverse)))
                           (is (v/in? kb copy))))))))
 
 (deftest a-sentence-removed-from-a-shipped-file-is-retracted
