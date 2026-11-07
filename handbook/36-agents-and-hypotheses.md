@@ -26,12 +26,12 @@ A composed pair of agents over temporaries, with each sentence asserted in the a
 context named in the comment:
 
 ```clojure composed
-(hasCapability TmpTweety flying)          ; in CxAgentTmpAlice
-(not (hasCapability TmpTweety flying))    ; in CxAgentTmpBob
+(able TmpTweety flying)          ; in CxAgentTmpAlice
+(not (able TmpTweety flying))    ; in CxAgentTmpBob
 ```
 
-From CxWell, `(believes TmpAlice (hasCapability TmpTweety flying))` and
-`(believes TmpBob (not (hasCapability TmpTweety flying)))` both answer true, and
+From CxWell, `(believes TmpAlice (able TmpTweety flying))` and
+`(believes TmpBob (not (able TmpTweety flying)))` both answer true, and
 `contradictions` stays empty.
 
 **Why.**

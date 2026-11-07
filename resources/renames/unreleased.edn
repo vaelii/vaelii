@@ -8,7 +8,9 @@
 ;; `:context-merges`) or reports (`:re-meanings`, `:retired`).  `:api` holds the
 ;; same kinds for the public API, koinii's vars and the daemon's ops, which a
 ;; caller's code rewrites.
-{:renames        {}
+{:renames        {hasCapability         able
+                  capabilityType        abilityType
+                  toolEnablesCapability toolEnablesAbility}
  :context-merges {}
  :re-meanings    {}
  :retired        #{}

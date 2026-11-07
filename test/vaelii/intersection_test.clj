@@ -10,7 +10,7 @@
       (a generator generates a concrete-functor rule per intersection fact, since the
       membership consequent's predicate is a variable).
 
-  Binary and ternary arities; general arity is future work. See CxUniverse."
+  Two and three types, over kinds and over binary predicates. See CxUniverse."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.test-util :as tu]))
@@ -50,6 +50,7 @@
   (tu/with-terms [combined_kind type_a type_b]
     (v/assert kb (list 'genl type_a 'thing) 'CxUniverse)
     (v/assert kb (list 'genl type_b 'thing) 'CxUniverse)
+    (v/assert kb (list 'unary combined_kind) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list 'intersection combined_kind type_a type_b) 'CxUniverse)
     (v/assert kb (list type_a 'Item) 'CxUniverse)
     (v/assert kb (list type_b 'Item) 'CxUniverse)
@@ -60,6 +61,7 @@
   (tu/with-terms [combined_kind type_a type_b]
     (v/assert kb (list 'genl type_a 'thing) 'CxUniverse)
     (v/assert kb (list 'genl type_b 'thing) 'CxUniverse)
+    (v/assert kb (list 'unary combined_kind) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list 'intersection combined_kind type_a type_b) 'CxUniverse)
     (v/assert kb (list type_a 'Item) 'CxUniverse)
     (is (not (believes? kb (list combined_kind 'Item) 'CxUniverse))
@@ -72,6 +74,7 @@
     (v/assert kb (list 'genl type_a 'thing) 'CxUniverse)
     (v/assert kb (list 'genl type_b 'thing) 'CxUniverse)
     (v/assert kb (list 'genl type_c 'thing) 'CxUniverse)
+    (v/assert kb (list 'unary combined_kind) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list 'intersection combined_kind type_a type_b type_c) 'CxUniverse)
     (is (v/ask? kb (list 'genl combined_kind type_c) 'CxUniverse)
         "combined kind is genl the third type in a ternary intersection")
@@ -84,6 +87,75 @@
       (is (believes? kb (list combined_kind 'Item) 'CxUniverse)
           "all three makes a member"))))
 
+(tu/deftest-kb a-declaration-below-cxuniverse-leaves-one-generated-membership-rule
+  (tu/with-terms [CxBelow combined_kind type_a type_b tagOf]
+    (v/assert kb (list 'genlCx CxBelow 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genl type_a 'thing) 'CxUniverse)
+    (v/assert kb (list 'genl type_b 'thing) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate combined_kind) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'arg tagOf 1 combined_kind) CxBelow)
+    (v/assert kb (list 'intersection combined_kind type_a type_b) 'CxUniverse)
+    (let [rule (list 'implies (list 'and (list type_a '?x) (list type_b '?x)) (list combined_kind '?x))]
+      (is (some? (v/handle-of kb rule 'CxUniverse)) "the membership rule is generated in CxUniverse")
+      (is (nil? (v/handle-of kb rule CxBelow)) "and not again in CxBelow"))
+    (v/assert kb (list type_a 'Item) CxBelow)
+    (v/assert kb (list type_b 'Item) CxBelow)
+    (is (believes? kb (list combined_kind 'Item) CxBelow)
+        "CxBelow concludes the membership from the CxUniverse rule")))
+
+(defn- tuple?
+  "Is `sentence` believed in CxUniverse?  A failing `is` prints it, not the KB."
+  [sentence]
+  (believes? tu/*kb* sentence 'CxUniverse))
+
+(tu/deftest-kb a-binary-intersection-derives-genl-of-each-predicate
+  (tu/with-terms [can able may]
+    (doseq [p [can able may]] (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+    (v/assert kb (list 'intersection can able may) 'CxUniverse)
+    (is (v/ask? kb (list 'genl can able) 'CxUniverse))
+    (is (v/ask? kb (list 'genl can may) 'CxUniverse))))
+
+(tu/deftest-kb a-binary-intersection-concludes-the-tuple-from-each-component
+  (tu/with-terms [can able may]
+    (doseq [p [can able may]] (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+    (v/assert kb (list 'intersection can able may) 'CxUniverse)
+    (v/assert kb (list able 'Alice 'kayaking) 'CxUniverse)
+    (testing "one component is not enough"
+      (is (not (tuple? (list can 'Alice 'kayaking)))))
+    (v/assert kb (list may 'Alice 'kayaking) 'CxUniverse)
+    (testing "both components make a tuple of the combined predicate"
+      (is (tuple? (list can 'Alice 'kayaking))))
+    (testing "and the components of two different tuples do not combine"
+      (v/assert kb (list able 'Bob 'kayaking) 'CxUniverse)
+      (v/assert kb (list may 'Bob 'rowing) 'CxUniverse)
+      (is (not (tuple? (list can 'Bob 'kayaking))))
+      (is (not (tuple? (list can 'Bob 'rowing)))))))
+
+(tu/deftest-kb a-three-way-binary-intersection-needs-all-three-components
+  (tu/with-terms [can able may wants]
+    (doseq [p [can able may wants]] (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+    (v/assert kb (list 'intersection can able may wants) 'CxUniverse)
+    (is (v/ask? kb (list 'genl can wants) 'CxUniverse))
+    (v/assert kb (list able 'Alice 'kayaking) 'CxUniverse)
+    (v/assert kb (list may 'Alice 'kayaking) 'CxUniverse)
+    (is (not (tuple? (list can 'Alice 'kayaking))) "two of three is not enough")
+    (v/assert kb (list wants 'Alice 'kayaking) 'CxUniverse)
+    (is (tuple? (list can 'Alice 'kayaking)) "all three make the tuple")))
+
+(tu/deftest-kb a-binary-intersection-concludes-no-one-argument-tuple
+  (tu/with-terms [can able may]
+    (doseq [p [can able may]] (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+    (let [before (set (v/violations kb))]
+      (v/assert kb (list 'intersection can able may) 'CxUniverse)
+      (v/assert kb (list able 'Alice 'kayaking) 'CxUniverse)
+      (v/assert kb (list may 'Alice 'kayaking) 'CxUniverse)
+      (is (nil? (v/handle-of kb (list 'implies (list 'and (list able '?x) (list may '?x)) (list can '?x))
+                             'CxUniverse))
+          "a binary combined predicate generates no unary membership rule")
+      (is (empty? (v/sentexes-matching kb (list can '?x) 'CxUniverse))
+          "so it concludes no one-argument tuple")
+      (is (= before (set (v/violations kb))) "and files no violation"))))
+
 ;; ---- the membership's strength ------------------------------------------
 ;; The generated membership rule is bare, so it confers :monotonic and the combined
 ;; membership is capped at the weakest conjunct.
@@ -92,6 +164,7 @@
   (tu/with-terms [combined_kind type_a type_b]
     (v/assert kb (list 'genl type_a 'thing) 'CxUniverse)
     (v/assert kb (list 'genl type_b 'thing) 'CxUniverse)
+    (v/assert kb (list 'unary combined_kind) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list 'intersection combined_kind type_a type_b) 'CxUniverse {:strength :monotonic})
     (testing "a :default conjunct makes a :default member"
       (v/assert kb (list type_a 'Item) 'CxUniverse)
@@ -109,6 +182,7 @@
   (tu/with-terms [combined_kind type_a type_b]
     (doseq [t [combined_kind type_a type_b]]
       (v/assert kb (list 'genl t 'thing) 'CxUniverse)
+      (v/assert kb (list 'unary t) 'CxUniverse {:strength :monotonic})
       (v/assert kb (list 'forced_monotonic_predicate t) 'CxUniverse {:strength :monotonic}))
     (v/assert kb (list 'intersection combined_kind type_a type_b) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list type_a 'Item) 'CxUniverse {:strength :monotonic})
@@ -148,7 +222,7 @@
   (let [mono {:strength :monotonic}]
     {:types     [[(list 'genl part-a 'thing) base] [(list 'genl part-b 'thing) base]
                  [(list 'genl probe 'thing) base]]
-     :ix        [[(list 'intersection comb part-a part-b) base mono]]
+     :ix        [[(list 'unary comb) base mono] [(list 'intersection comb part-a part-b) base mono]]
      :only-edge [[(list 'genl only comb) base]]
      :both-edge [[(list 'genl both comb) base]]
      :bypass    [[(list 'genl both side-a) base] [(list 'genl side-a part-a) base]

@@ -2154,7 +2154,7 @@ E17_ALLOW = {
     # classed by.
     ("src/vaelii/core.clj", "rehome-forced-extent!"),
     ("src/vaelii/core.clj", "target-following-meta?"),
-    ("src/vaelii/impl/assert_entry.clj", "storage-context"),
+    ("src/vaelii/impl/special.clj", "storage-context"),
     ("src/vaelii/impl/checks.clj", "checked-sentence"),
     ("src/vaelii/impl/checks.clj", "stored-spelling"),
     ("src/vaelii/impl/decide.clj", "forced-monotonic?"),

@@ -3,6 +3,7 @@
 (ns vaelii.arity-vocabulary-test
   "The relation-wide exact/variable arity partition and its documentary floor vocabulary."
   (:require [clojure.test :refer [is testing use-fixtures]]
+            [clojure.walk :as walk]
             [vaelii.core :as v]
             [vaelii.host.seed :as seed]
             [vaelii.host.starter :as starter]
@@ -1607,3 +1608,93 @@
     (is (= open-positions open))
     (is (= open-positions universe)
         "no middle-context relation or type is reported from CxUniverse")))
+
+(defn- homes
+  "The contexts of the stored sentexes of `sentence`, one entry per sentex, in context
+  order: the index read, belief unread."
+  [kb sentence]
+  (sort-by str
+           (for [h (reads/as-stored-with-args (:index kb) (first sentence) {1 (second sentence)})
+                 :let [s (v/sentex kb h)]
+                 :when (= sentence (v/sentence-of s))]
+             (:context s))))
+
+(defn- universe-support
+  "The justifications of the CxUniverse record of `sentence`, each as its informant and
+  the sentences of its antecedents."
+  [kb sentence]
+  (set (for [j (some->> (v/handle-of kb sentence 'CxUniverse) (v/supporting-justifications kb))]
+         [(:informant j) (into #{} (map #(v/sentence-of (v/sentex kb %))) (:antecedents j))])))
+
+(tu/deftest-kb an-arity-kind-stated-below-cxuniverse-is-stored-in-cxuniverse
+  (doseq [[kind make] [[:arity                     (fn [p _] (list 'arity p 2))]
+                       [:binary                    (fn [p _] (list 'binary p))]
+                       [:unary_predicate           (fn [p _] (list 'unary_predicate p))]
+                       [:binary_predicate          (fn [p _] (list 'binary_predicate p))]
+                       [:unbounded_arity_predicate (fn [p _] (list 'unbounded_arity_predicate p))]
+                       [:binary_function           (fn [_ f] (list 'binary_function f))]
+                       [:variable_arity_function   (fn [_ f] (list 'variable_arity_function f))]]
+          order [[:below :universe] [:universe :below]]]
+    (tu/with-terms [CxBelow CxSide pairOf PairFn]
+      (testing (pr-str kind order)
+        (doseq [cx [CxBelow CxSide]] (v/assert kb (list 'genlCx cx 'CxUniverse) 'CxUniverse))
+        (let [s (make pairOf PairFn)]
+          (v/assert kb s (case (first order) :below CxBelow :universe 'CxUniverse) {:strength :monotonic})
+          (is (= ['CxUniverse] (homes kb s)) "one sentex, in CxUniverse")
+          (v/assert kb s (case (second order) :below CxBelow :universe 'CxUniverse) {:strength :monotonic})
+          (is (= ['CxUniverse] (homes kb s)) "the second statement is the same sentex")
+          (doseq [cx ['CxUniverse CxBelow CxSide]]
+            (is (v/ask? kb s cx) (str "believed at " cx))))))))
+
+(tu/deftest-kb an-arg-declaration-below-cxuniverse-stores-its-types-unary-predicate-in-cxuniverse
+  (tu/with-terms [CxBelow tagOf tag_kind]
+    (v/assert kb (list 'genlCx CxBelow 'CxUniverse) 'CxUniverse)
+    (let [m    (list 'unary_predicate tag_kind)
+          decl (list 'arg tagOf 1 tag_kind)
+          dh   (v/assert kb decl CxBelow)
+          h    (v/handle-of kb m 'CxUniverse)]
+      (is (= ['CxUniverse] (homes kb m)) "one sentex, in CxUniverse, and none in CxBelow")
+      (is (and h (v/in? kb h)) "believed where it is stored")
+      (is (= #{['declaredType #{decl}]} (universe-support kb m))
+          "justified by the declaration alone")
+      (doseq [cx ['CxUniverse CxBelow]]
+        (is (v/ask? kb m cx) (str "believed at " cx)))
+      (v/retract! kb dh)
+      (is (= [] (homes kb m)) "the declaration's retraction takes it back"))))
+
+(tu/deftest-kb a-stated-and-a-declared-unary-predicate-are-one-sentex-in-either-order
+  (let [results
+        (for [order [[:stated :declared] [:declared :stated]]]
+          (tu/with-terms [CxBelow tagOf tag_kind]
+            (v/assert kb (list 'genlCx CxBelow 'CxUniverse) 'CxUniverse)
+            (let [m    (list 'unary_predicate tag_kind)
+                  decl (list 'arg tagOf 1 tag_kind)
+                  hs   (into {} (for [step order]
+                                  [step (case step
+                                          :stated   (v/assert kb m 'CxUniverse {:strength :monotonic})
+                                          :declared (v/assert kb decl CxBelow))]))
+                  both {:homes   (homes kb m)
+                        :support (universe-support kb m)}]
+              (v/retract! kb (:stated hs))
+              (let [on-decl {:homes    (homes kb m)
+                             :believed (mapv #(v/ask? kb m %) ['CxUniverse CxBelow])
+                             :support  (universe-support kb m)}]
+                (v/retract! kb (:declared hs))
+                [order (walk/postwalk-replace
+                        {tag_kind 'tag_kind tagOf 'tagOf CxBelow 'CxBelow}
+                        {:both    both
+                         :on-decl on-decl
+                         :gone    {:homes    (homes kb m)
+                                   :believed (mapv #(v/ask? kb m %) ['CxUniverse CxBelow])}})]))))]
+    (is (= 1 (count (set (map second results))))
+        (str "the record varied by arrival order: " (pr-str results)))
+    (let [r (second (first results))]
+      (is (= ['CxUniverse] (:homes (:both r))) "one sentex, in CxUniverse")
+      (is (contains? (:support (:both r)) ['declaredType #{'(arg tagOf 1 tag_kind)}])
+          "the declaration justifies the stated record")
+      (is (= {:homes ['CxUniverse] :believed [true true]
+              :support #{['declaredType #{'(arg tagOf 1 tag_kind)}]}}
+             (:on-decl r))
+          "the statement retracted, the declaration holds it up")
+      (is (= {:homes [] :believed [false false]} (:gone r))
+          "both retracted, it is gone"))))

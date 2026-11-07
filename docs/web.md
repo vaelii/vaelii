@@ -210,7 +210,7 @@ request log either, which [operations.md](operations.md) states as the trade it 
 | `/levels?q=<goal>&ctx=<context>` | the **lookup-to-query stack**: what each of the eight levels answers for a goal, which level first does, and — above them — the **query plan**: the provers bearing on the goal with their estimates and which one runs. A **vector** goal is a conjunctive query and gets the join plan instead (below). Links across to `/inference` for the same goal |
 | `/inference?q=<goal>&ctx=<context>&d=<depth>` | the **inference debugger**: the run that plan predicted, one step past `/levels`. The **search tree** the node engine builds for a goal — every node the frontier reached (not only the path that answered), each with the itemized estimate that ordered it, the rewrite that produced it, and the answers that came off it — plus the same goal under several **tacticians side by side**, tabled by the work each did and the answers each found. The identity property (every complete tactician returns the same answer set) is **verified** on the page, not asserted: a differing row is marked. Reads through `search-tree` / `compare-tacticians`, both of which bound their own work (a node budget and a wall-clock), so the page holds no session and works under `--attach`. Needs a depth — the node engine's only termination |
 | `/network?ctx=<context>&calc=<calculus>` | the **constraint network** a qualitative calculus computes over a context: the tightened matrix (a cell is what still holds of row-to-column), whether the believed facts are satisfiable at all, and one scenario out of it. With no context, the six calculi, their vocabularies and each one's stored fact count, and a line saying so when the KB states none |
-| `/demo` (GET/POST) | the **non-monotonicity walkthrough**: three stepped writes to the reader's sandbox in which `(hasCapability Pingu flying)` is believed, stops being believed, and comes back — at the same handle. GET renders where the sandbox stands, POST runs one step. Every step writes, so every step is origin-checked (below) |
+| `/demo` (GET/POST) | the **non-monotonicity walkthrough**: three stepped writes to the reader's sandbox in which `(able Pingu flying)` is believed, stops being believed, and comes back — at the same handle. GET renders where the sandbox stands, POST runs one step. Every step writes, so every step is origin-checked (below) |
 | `/reasoning` (GET/POST) | the **worked examples**: every kind of inference the shipped ontology performs, each a question with a live answer, the level that answered it, and links to the stored sentexes it reasoned from. GET renders every card at once and asks nothing; POST establishes one example's premises in the reader's sandbox (below) |
 | `/reasoning/verdict?id=&ms=` (GET) | one card's verdict, which the gallery asks for after it renders, one card at a time (`hx-sync` queued on `#main`). `ms` is the climb's deadline (`escalate`'s `:max-ms`), 10 s from the page and up to 2 min from a card's "Give it 2.0 min" button; a stopped climb says **No answer within**, which is not a verdict |
 | `/assert` (GET/POST) | the **new-sentex form**: sentences (one per line), a context, and the known-true switch. GET seeds it — `?q=<term>` from a term page, `?copy=<handle>` with a stored sentex (Copy), or `?text=`, `?ctx=` and `?strength=monotonic` whole (Copy on `/removed`); POST checks every line and applies them in one `edit!` as a job, then says what followed (below) |
@@ -515,8 +515,8 @@ holding more than the cap is brought down to it by that admission.
 `/demo` is the one page that argues rather than reports. Three clicks, in the reader's own
 sandbox:
 
-1. assert `(bird Pingu)` — `(hasCapability Pingu flying)` becomes believed, and nobody asserted it
-2. assert `(penguin Pingu)` — `(hasCapability Pingu flying)` stops being believed, and nobody retracted it
+1. assert `(bird Pingu)` — `(able Pingu flying)` becomes believed, and nobody asserted it
+2. assert `(penguin Pingu)` — `(able Pingu flying)` stops being believed, and nobody retracted it
 3. retract the penguin claim — it is believed again
 
 Nothing about the page is special-cased in the engine. Each step is an ordinary `v/edit!`
@@ -530,10 +530,10 @@ Two things it is careful to show rather than assert:
 
 - **The cascade.** All five sentences the script touches are rendered at every step. A
   stored one shows its record and its live belief pill. The `genl` hierarchy of event kinds answers
-  `(hasCapability Pingu travelling)` at retrieval and stores no record, so its row shows
+  `(able Pingu travelling)` at retrieval and stores no record, so its row shows
   what `argue` answers: answerable in step 1, unanswerable once the flight goes in step 2,
   and answerable again in step 3. An answerable row links the records the answer was read
-  from: the flight, `(genl flying travelling)` and the `transitiveInArg` declaration. `(not (hasCapability Pingu flying))` appears in step 2 —
+  from: the flight, `(genl flying travelling)` and the `transitiveInArg` declaration. `(not (able Pingu flying))` appears in step 2 —
   the KB does not merely fail to conclude flight, it concludes flightlessness, which is a
   different statement.
 - **The returning conclusion is the same record.** `exceptWhen` blocks rather than rebuts:

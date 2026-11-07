@@ -219,7 +219,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; over a pair a stated separation divides, the suggested
                                                 ; declaration for every stored rule that a declaration the
                                                 ; engine implements states, every genl node with no
-                                                ; declared arity, every argument declaration naming a
+                                                ; declared arity, every genl edge whose spec admits a
+                                                ; length its genl does not, every argument declaration naming a
                                                 ; position its predicate lacks, and every live rule pair
                                                 ; whose conclusions would contradict if both fired, plus three
                                                 ; review-only smells: sibling types sharing one direct
@@ -239,7 +240,7 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; :not-under-thing, :implicit-genl,
                                                 ; :implicit-arity-class, :undeclared-term,
                                                 ; :orthogonal-over-separation, :rule-macro,
-                                                ; :undeclared-arity,
+                                                ; :undeclared-arity, :genl-arity-mismatch,
                                                 ; :uncorresponded-function, :stranded-declaration,
                                                 ; :rule-clash, :twin-genls, :derivable-stated-edge,
                                                 ; :disjoint-could-be-partition, :missing-arg,
@@ -1734,11 +1735,11 @@ a variable so they join — grandparentOf, part-location, owns-parts).
 **A binary predicate says which level it relates at, unless its two ends disagree.**
 `relation_kind` is a `disjoint_metatype` over `instance_relation_predicate` and
 `type_relation_predicate`: `parentOf`, `northOf` and `madeOf` relate individuals; `genl`,
-`disjoint`, `orthogonal`, `largerThan`, `partType` and `capabilityType` relate kinds. *At most* one, not
+`disjoint`, `orthogonal`, `largerThan`, `partType` and `abilityType` relate kinds. *At most* one, not
 exactly one — the unmarked are those whose two ends sit at different levels, or at no
 level at all (`implies` is a connective; `rewriteOf` takes either role so long as its two
 sides agree; `result` and `genlResult` relate a function to a type;
-`functionCorrespondingPredicate` relates a function to a predicate; `hasCapability`
+`functionCorrespondingPredicate` relates a function to a predicate; `able`
 relates one causal thing to an event kind). The mark is not decoration: an
 `instance_relation_predicate` relates individuals, which are never subtypes, so
 `try-assert` refuses `genlArg` on one (`:arg-constraint-kind`). A `type_relation_predicate` takes `genlArg` and

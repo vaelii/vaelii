@@ -443,8 +443,8 @@
 (intersection acausal_event acausal event)
 
 ;; --- travelling / flying: event kinds an ability names ------------------------
-;; life.txt's hasCapability and capabilityType take an event kind as their second argument:
-;; (hasCapability Tweety flying) says Tweety can be the doer of a flying event.
+;; life.txt's able and abilityType take an event kind as their second argument:
+;; (able Tweety flying) says Tweety can be the doer of a flying event.
 (comment travelling "A causal event of getting from one place to another under the doer's own power. flying is a kind of travelling; another way of travelling is stated as its own event kind below travelling.")
 (unary_predicate travelling)
 (genl travelling causal_event)

@@ -1027,6 +1027,14 @@
           :meta        '#{?mP}
           :defeasible  false
           :declaration (fn [b] (list 'commutativeInArgs (b '?mP) (inc i) (inc j)))}))
+     (when (<= 1 n 2)
+       (for [types [['?mA '?mB] ['?mA '?mB '?mC]]]
+         {:macro       'intersection
+          :antecedent  (mapv #(list* % os) types)
+          :consequent  (list* '?mP os)
+          :meta        (into #{'?mP} types)
+          :defeasible  false
+          :declaration (fn [b] (list* 'intersection (b '?mP) (map b types)))}))
      [{:macro       'genl
        :antecedent  [(list* '?mP os)]
        :consequent  (list* '?mQ os)
@@ -1158,7 +1166,13 @@
            (let [Q (b '?mQ)]
              (and (symbol? Q) (not= P Q)
                   (nil? (predicates/entry Q))
-                  (arity-is? kb P n ctx true) (arity-is? kb Q n ctx true)))))))
+                  (arity-is? kb P n ctx true) (arity-is? kb Q n ctx true)))
+
+           intersection
+           (let [types (keep b '[?mA ?mB ?mC])]
+             (and (every? symbol? types) (apply distinct? P types)
+                  (every? #(nil? (predicates/entry %)) (cons P types))
+                  (every? #(arity-is? kb % n ctx true) (cons P types))))))))
 
 (defn- macro-candidate?
   "May the stored rule `rsx` at handle `h` be read as a macro's spelling: a believed
@@ -1289,27 +1303,41 @@
          finding)
        remaining))))
 
-;; ---- undeclared-arity: a genl node no length binds ----
+;; ---- undeclared-arity and genl-arity-mismatch: the genl nodes and edges ----
+
+(defn- genl-edges
+  "The `[spec genl]` pair of each `genl` edge `context` sees, one work unit each: the one
+  open read of the undeclared-arity and genl-arity-mismatch passes, a census of the edges
+  rather than of any extent."
+  [kb context]
+  (map (fn [[_ b]]
+         (budget/spend!)
+         [(get b '?a) (get b '?b)])
+       (res/matches-visible kb '(genl ?a ?b) context)))
+
+(defn- ground-symbol?
+  "Is `t` a symbol other than a variable?"
+  [t]
+  (and (symbol? t) (not (sx/variable? t))))
 
 (defn- genl-nodes
-  "The ground symbols at either end of a `genl` edge `context` sees, in print order: the
-  one open read of this pass, a census of the edges rather than of any extent."
+  "The ground symbols at either end of a `genl` edge `context` sees (`genl-edges`), in
+  print order."
   [kb context]
-  (->> (res/matches-visible kb '(genl ?a ?b) context)
-       (mapcat (fn [[_ b]]
-                 (budget/spend!)
-                 [(get b '?a) (get b '?b)]))
-       (filter #(and (symbol? %) (not (sx/variable? %))))
+  (->> (genl-edges kb context)
+       (mapcat identity)
+       (filter ground-symbol?)
        distinct
        (sort-by nm/print-key)))
 
 (defn- undeclared-arity?
-  "Is `term` bound to no exact length, its own or one it inherits through `genl`
-  (`arity/relation-length`), and released by no `variable_arity` binding
-  (`arity/released?`), each read the same at every context?"
+  "Is `term` known to have no exact length of its own (`arity/own-length`) and released by
+  no `variable_arity` binding (`arity/released?`), each read the same at every context?  A
+  length `term` would read through `genl` from a bound predicate above it does not
+  declare `term`: arity is part of a predicate's own definition, as `arg` is."
   [kb term]
   (budget/spend!)
-  (not (or (arity/released? kb term) (:exact (arity/relation-length kb term)))))
+  (not (or (arity/released? kb term) (:exact (arity/own-length kb term)))))
 
 (defn- undeclared-arity-findings
   "Audit each `genl` node `context` sees, in print order, one term at a time, stopping
@@ -1322,6 +1350,35 @@
       (bounded-findings :undeclared-arity (for [term  (progress/each r nodes)
                                                 :when (undeclared-arity? kb term)]
                                             {:term term}) remaining))))
+
+(defn- arity-mismatch
+  "The finding for the edge `(genl spec super)` when each end is known to have a length of
+  its own (`arity/own-length`) and `super`'s admits not every length `spec`'s admits
+  (`arity/admits-length?`), else nil.  An end with no known length is an undeclared-arity
+  finding, not this one."
+  [kb [spec super]]
+  (budget/spend!)
+  (let [s (arity/own-length kb spec)
+        g (arity/own-length kb super)]
+    (when (and s g (not (arity/admits-length? g s)))
+      {:spec spec :genl super :spec-arity s :genl-arity g})))
+
+(defn- genl-arity-mismatch-findings
+  "Audit each `genl` edge `context` sees between two ground symbols, in print order of
+  the edge, one edge at a time, stopping after the first finding beyond `remaining`
+  proves that the result bound truncated the sweep."
+  [kb context remaining]
+  (let [edges (->> (genl-edges kb context)
+                   (filter #(every? ground-symbol? %))
+                   (remove (fn [[a b]] (= a b)))
+                   distinct
+                   (sort-by (fn [[a b]] [(nm/print-key a) (nm/print-key b)])))]
+    (with-open [r (progress/start ::genl-arity-mismatch
+                                  "integrity: find the genl edges whose ends' arities disagree"
+                                  (count edges))]
+      (bounded-findings :genl-arity-mismatch
+                        (keep #(arity-mismatch kb %) (progress/each r edges))
+                        remaining))))
 
 (defn- uncorresponded-units
   "`{:function f :rules [handle …]}` for each `reifiable_function` an open application in
@@ -2332,6 +2389,8 @@
                   (rule-macro-findings kb context remaining false))]
    [:undeclared-arity (fn [kb _ context remaining]
                         (undeclared-arity-findings kb context remaining))]
+   [:genl-arity-mismatch (fn [kb _ context remaining]
+                           (genl-arity-mismatch-findings kb context remaining))]
    [:uncorresponded-function (fn [kb _ context remaining]
                                (uncorresponded-function-findings kb context remaining))]
    [:stranded-declaration (fn [kb _ context remaining]

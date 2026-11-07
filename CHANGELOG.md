@@ -27,6 +27,36 @@ it — `git show v0.16.0:CHANGELOG.md`.
   counts such a frame under `:refused`, not under `:naming`'s `:dot-marker`.
   *Breaks:* `assert`, `check`, an import or a read of a sentence holding a `.` outside a rest marker; the `:dot-marker` naming class
 
+### Breaking: shipped ontology
+
+- **`hasCapability` is `able`, `capabilityType` is `abilityType` and
+  `toolEnablesCapability` is `toolEnablesAbility`.** The three relations keep their
+  declarations, comments and rules under the new names, in `life.txt`, `CxBiology` and
+  `CxTra`. `able` names dynamic ability, the reading `may` and `can` sit beside.
+  `resources/renames/unreleased.edn` records the three renames, so `upgrade --sync`
+  rewrites a stored premise that names an old spelling.
+  [inherit.md](docs/inherit.md#six-predicates-ship-with-one)
+  *Migration:* rename `hasCapability` to `able`, `capabilityType` to `abilityType` and
+  `toolEnablesCapability` to `toolEnablesAbility` in KB text, rules and queries.
+  *Breaks:* `hasCapability`, `capabilityType`, `toolEnablesCapability`
+
+### Breaking: integrity
+
+- **The undeclared-arity sweep reports a `genl` node whose only length is inherited.** A
+  node passes when the node itself is known to have an exact length, from an engine
+  `:shape`, an `(arity P n)`, an exact-arity class membership such as `unary_predicate` or
+  a `:monotonic` membership reaching one, or when a `variable_arity` membership releases
+  it. Under `(unary_predicate placed_kind)` and `(genl below_kind placed_kind)`,
+  `below_kind` is an `:undeclared-arity` finding, and a default `kb-integrity` sweep of
+  such a KB answers `:gap`. The upper ontology loaded alone (`core-context/load-into`)
+  reports each subtype of `thing` that states no arity of its own, such as `dog`; the
+  starter's closing batch declares each of them `unary_predicate`, so the starter has no
+  finding. The new `arity/own-length` reads the node's own length with no
+  `genl` closure read; `arity/relation-length` and its callers keep the inherited length.
+  [integrity.md](docs/integrity.md#what-an-undeclared-arity-finding-means)
+  *Migration:* state an arity of each `genl` node, such as `(unary_predicate below_kind)`.
+  *Breaks:* `kb-integrity`
+
 ### Additive: canonicalization
 
 - **`distinctInArgAndRest` drops a repeated argument of a function's ground applications
@@ -40,6 +70,24 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Additive: shipped ontology
 
+- **life.txt ships `may` and `can` beside `able`.** `(may ?doer ?kind)` is deontic
+  permission to be the doer of a happening of kind `?kind`, and `(can ?doer ?kind)` is
+  ability and permission together. Both take `able`'s positions: `(arg … 1 causal)`,
+  `(genlArg … 2 happening)` and `transitiveInArg` along `genl` on the second. life.txt
+  states `(intersection can able may)`, so `able` and `may` together conclude `can`, and
+  `can` is `genl` each half. Ability without permission, or permission without ability,
+  concludes no `can`.
+  [inherit.md](docs/inherit.md#six-predicates-ship-with-one)
+  *Migration:* none; `may` and `can` are new.
+- **`intersection` relates binary predicates as well as kinds.** `(intersection P A B)`
+  and `(intersection P A B C)` over binary predicates derive `(genl P A)` and the other
+  edges as over kinds, and a generated membership rule concludes `(P x y)` from `(A x y)`,
+  `(B x y)` and, for three, `(C x y)`. The binary rule is generated where `P` has arity 2;
+  the unary rule is generated for every intersection and concludes nothing of a binary
+  predicate. The membership is strict, and a `genl` edge between predicates is
+  forced-monotonic, so a binary intersection is stated `set/monotonic`.
+  [integrity.md](docs/integrity.md#what-a-rule-macro-finding-means)
+  *Migration:* none.
 - **`CxTra` ships Discord channel permissions and account-use vocabulary.**
   `communication_channel` names an aspatial, temporal, acausal logical route or shared
   venue for messages, and `discord_channel` specializes that kind.
@@ -74,6 +122,28 @@ it — `git show v0.16.0:CHANGELOG.md`.
   ?t))` reaches every type of an intersection at any arity.
   [nat.md](docs/nat.md#a-data-structure-is-a-structural-term)
   *Migration:* none; every name structure.txt declares is new.
+
+### Additive: integrity
+
+- **The rule-macro sweep reports a conjunction rule as the `intersection` it spells.** A
+  rule `(A ?x)`, `(B ?x)` ⇒ `(P ?x)`, or the same over two arguments or with a third
+  component, is a `:rule-macro` finding suggesting `(intersection P A B)`, where `P` and the
+  components are distinct, uninterpreted and of the rule's arity. CxTra's
+  `nestingPartnerOf` rule is one, and CxTra acknowledges it: the unary membership rule an
+  intersection generates would spell its camelCase relations with one argument, which the
+  naming check refuses. [integrity.md](docs/integrity.md#what-a-rule-macro-finding-means)
+  *Migration:* acknowledge or replace a conjunction rule the sweep now reports.
+- **`kb-integrity` reports a `genl` edge whose spec admits a length its genl does not.**
+  The default sweep adds `:genl-arity-mismatch`, one `{:spec a :genl b :spec-arity …
+  :genl-arity …}` per visible `(genl a b)` whose ends each have an arity of their own
+  (`arity/own-length`) and where `a` admits a length `b` does not
+  (`arity/admits-length?`). An exact length admits itself alone, and a `variable_arity`
+  release every length at or above its `arityMin`. `(genl <unary> <variable_arity>)` is
+  not a finding, and `(genl <variable_arity> <unary>)` is one; a floor of 2 under a floor
+  of 3 is one, and a floor of 3 under a floor of 2 is not. An end with no arity of its
+  own is an `:undeclared-arity` finding instead. The shipped starter has no finding.
+  [integrity.md](docs/integrity.md#what-a-genl-arity-mismatch-finding-means)
+  *Migration:* state agreeing arities at both ends of a reported edge, or drop the edge.
 
 ### Fix: inference
 

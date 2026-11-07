@@ -38,7 +38,6 @@
             [vaelii.impl.settle :as settle]
             [vaelii.impl.special :as special]
             [vaelii.impl.strength :as strength]
-            [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.violations :as violations]))
 
@@ -452,13 +451,11 @@
 (defn storage-context
   "The context a fact whose functor is `pred` is stored in when asserted in `context`:
   CxUniverse for a `forced_decontextualized_predicate`, `context` otherwise, read from the
-  global property.  `assert-one` stores with it, `vaelii.core`'s `fact-problems` and
-  `check-reified-inputs!` check from it, and its `stored-context` looks a sentence up in
-  it for `handle-of`, `sentexes-matching` and `why-not`."
+  global property (`special/storage-context`).  `assert-one` stores with it, `vaelii.core`'s
+  `fact-problems` and `check-reified-inputs!` check from it, and its `stored-context` looks
+  a sentence up in it for `handle-of`, `sentexes-matching` and `why-not`."
   [kb pred context]
-  (if (and pred (tax/has-prop? (reasoning/taxonomy kb) :forced-decontextualized pred))
-    special/universal-context
-    context))
+  (special/storage-context kb pred context))
 
 (defn- exceptWhen-handle
   "The handle of the meta-sentex the `exceptWhen` halves `exc` and `inner`

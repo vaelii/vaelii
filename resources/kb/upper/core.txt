@@ -770,11 +770,11 @@
 (arg functionTypeByArity 1 unary_predicate)
 (arg functionTypeByArity 2 non_negative_integer)
 
-(relationTypeByArity unary 1)
-(relationTypeByArity binary 2)
-(relationTypeByArity ternary 3)
-(relationTypeByArity quaternary 4)
-(relationTypeByArity quinary 5)
+(set/monotonic (relationTypeByArity unary 1))
+(set/monotonic (relationTypeByArity binary 2))
+(set/monotonic (relationTypeByArity ternary 3))
+(set/monotonic (relationTypeByArity quaternary 4))
+(set/monotonic (relationTypeByArity quinary 5))
 
 ;; The predicate and function mappings are related to the relation-wide mapping and are
 ;; not specializations of it.  A genl edge would make every predicateTypeByArity fact a
@@ -1223,7 +1223,7 @@
 (arg defnIff 2 formula)
 
 (comment intersection
-         "(intersection ?combined . ?types) means ?combined is definitionally the intersection of ?types: a thing is a ?combined exactly when it is each of ?types. A definitional collection relation over kinds, like the defn* family above, and the twin of disjoint, which states that kinds do NOT overlap. Variable-arity; (intersection causal_event causal event) names a two-way intersection and further ?types extend it. arityMin is three: the combined kind plus at least two types, since the intersection of a single type is that type and drives no rule.")
+         "(intersection ?combined . ?types) means ?combined is definitionally the intersection of ?types: a thing is a ?combined exactly when it is each of ?types. Applies to unary kinds and to binary predicates: over binary predicates a tuple is a ?combined tuple exactly when it is a tuple of each of ?types, so (intersection can able may) says that whoever is able and permitted to do a kind of thing can do it. The combined predicate's arity chooses the membership rule: a ?combined declared unary takes the unary rule, and a ?combined declared binary takes the binary one. A ?combined of no known arity takes neither. A definitional relation, like the defn* family above, and the twin of disjoint, which states that kinds do NOT overlap. Variable-arity; (intersection causal_event causal event) names a two-way intersection and further ?types extend it. arityMin is three: the combined kind plus at least two types, since the intersection of a single type is that type and drives no rule.")
 (variable_arity_predicate intersection)
 (unbounded_arity_predicate intersection)
 (genlArg intersection 1 thing)
@@ -1236,7 +1236,7 @@
 
 ;; --- defining rules. A combined kind is genl each type it intersects, and anything
 ;;     that is each type is a member of the combined kind. ---------------------------
-(implementationNote intersection "The defining rules are stated for two and for three intersected types. A rule for any number of types needs list membership (vaelii/vaelii#79), so an intersection of four or more types derives neither its genl edges nor its memberships.")
+(implementationNote intersection "The defining rules are stated for two and for three intersected types, and the membership rule for a unary ?combined and for a binary one. A rule for any number of types needs list membership (vaelii/vaelii#79), so an intersection of four or more types derives neither its genl edges nor its memberships.")
 ;; Forward rules: an intersection fact materializes the genl edges when it is asserted,
 ;; so the derived edge reaches the taxonomy closure and answers a variable-free genl
 ;; goal at every read entry point. A bare (implies …) defaults to :backward, which the
@@ -1253,10 +1253,22 @@
 ;; a type at :default is a :default member.  An intersection is a definition, and what
 ;; is each type is the combined kind without exception, so the rule adds no
 ;; defeasibility of its own.
-(implies (intersection ?combined ?type1 ?type2)
+;;
+;; Each membership rule is guarded by the combined predicate's arity.  (arity ?combined 1)
+;; holds of a kind declared unary or unary_predicate, or entailed unary_predicate by an
+;; argument declaration naming it, through the lazy-forward converse relationTypeByArity
+;; generates from (relationTypeByArity unary 1).  (arity ?combined 2) holds of a predicate
+;; declared binary_predicate or given arity 2, the same way.  So an intersection generates
+;; at most one membership rule, the one of its combined predicate's arity, and none for a
+;; combined kind of no known arity.
+(implies (and (intersection ?combined ?type1 ?type2) (arity ?combined 1))
          (implies (and (?type1 ?x) (?type2 ?x)) (?combined ?x)))
-(implies (intersection ?combined ?type1 ?type2 ?type3)
+(implies (and (intersection ?combined ?type1 ?type2 ?type3) (arity ?combined 1))
          (implies (and (?type1 ?x) (?type2 ?x) (?type3 ?x)) (?combined ?x)))
+(implies (and (intersection ?combined ?type1 ?type2) (arity ?combined 2))
+         (implies (and (?type1 ?x ?y) (?type2 ?x ?y)) (?combined ?x ?y)))
+(implies (and (intersection ?combined ?type1 ?type2 ?type3) (arity ?combined 2))
+         (implies (and (?type1 ?x ?y) (?type2 ?x ?y) (?type3 ?x ?y)) (?combined ?x ?y)))
 
 ;; ---- the predAll / predExists / predInstance / predSpecified matrix -------
 ;; A family of ternary relations that quantify one binary ?pred's two argument positions
@@ -1487,7 +1499,7 @@
 (arg evaluate 2 thing)   ;; the expression: a number or an application
 
 (comment forced_decontextualized_predicate
-         "(forced_decontextualized_predicate ?predicate) means that every (?predicate …) sentence is stored directly in CxUniverse by force. No separate deduction and no justification: the fact's extent simply lives there. Used for genlCx, so the context topology has one canonical home instead of a copy per context.")
+         "(forced_decontextualized_predicate ?predicate) means that every (?predicate …) sentence is stored directly in CxUniverse by force. No separate deduction and no justification: the fact's extent simply lives there. Used for genlCx, so the context topology has one canonical home instead of a copy per context, and for arity, arityMin and the arity classes (unary through quinary, the predicate and function classes, the variable_arity and unbounded_arity kinds), so a relation's length, floor and class have one record however many contexts state them.")
 (unary_predicate forced_decontextualized_predicate)
 (genl forced_decontextualized_predicate predicate)
 
@@ -1507,48 +1519,76 @@
 (forced_monotonic_predicate surjection)
 (forced_monotonic_predicate bijection)
 (forced_monotonic_predicate orthogonal)
-;; Each arity binding is also decontextualized: its copy in CxUniverse makes a
-;; relation's length read the same at every context (docs/contexts.md).
+;; Each arity binding is decontextualized and forced-decontextualized: a statement of one
+;; is stored in CxUniverse whatever context states it, and a rule firing's conclusion is
+;; lifted there, so a relation's length reads the same at every context (docs/contexts.md).
 (forced_monotonic_predicate arity)
 (set/monotonic (decontextualized_predicate arity))
+(forced_decontextualized_predicate arity)
+;; The arity classes take both marks too: relation-wide (unary through quinary,
+;; variable_arity) and of predicates and functions.  The unary_predicate membership an
+;; argument declaration entails is stored in CxUniverse with them, so a relation's class
+;; has one record.  The three unbounded_arity kinds take the forced mark alone.
 (forced_monotonic_predicate unary)
 (set/monotonic (decontextualized_predicate unary))
+(forced_decontextualized_predicate unary)
 (forced_monotonic_predicate binary)
 (set/monotonic (decontextualized_predicate binary))
+(forced_decontextualized_predicate binary)
 (forced_monotonic_predicate ternary)
 (set/monotonic (decontextualized_predicate ternary))
+(forced_decontextualized_predicate ternary)
 (forced_monotonic_predicate quaternary)
 (set/monotonic (decontextualized_predicate quaternary))
+(forced_decontextualized_predicate quaternary)
 (forced_monotonic_predicate quinary)
 (set/monotonic (decontextualized_predicate quinary))
+(forced_decontextualized_predicate quinary)
 (forced_monotonic_predicate unary_predicate)
 (set/monotonic (decontextualized_predicate unary_predicate))
+(forced_decontextualized_predicate unary_predicate)
 (forced_monotonic_predicate binary_predicate)
 (set/monotonic (decontextualized_predicate binary_predicate))
+(forced_decontextualized_predicate binary_predicate)
 (forced_monotonic_predicate ternary_predicate)
 (set/monotonic (decontextualized_predicate ternary_predicate))
+(forced_decontextualized_predicate ternary_predicate)
 (forced_monotonic_predicate quaternary_predicate)
 (set/monotonic (decontextualized_predicate quaternary_predicate))
+(forced_decontextualized_predicate quaternary_predicate)
 (forced_monotonic_predicate quinary_predicate)
 (set/monotonic (decontextualized_predicate quinary_predicate))
+(forced_decontextualized_predicate quinary_predicate)
 (forced_monotonic_predicate unary_function)
 (set/monotonic (decontextualized_predicate unary_function))
+(forced_decontextualized_predicate unary_function)
 (forced_monotonic_predicate binary_function)
 (set/monotonic (decontextualized_predicate binary_function))
+(forced_decontextualized_predicate binary_function)
 (forced_monotonic_predicate ternary_function)
 (set/monotonic (decontextualized_predicate ternary_function))
+(forced_decontextualized_predicate ternary_function)
 (forced_monotonic_predicate quaternary_function)
 (set/monotonic (decontextualized_predicate quaternary_function))
+(forced_decontextualized_predicate quaternary_function)
 (forced_monotonic_predicate quinary_function)
 (set/monotonic (decontextualized_predicate quinary_function))
+(forced_decontextualized_predicate quinary_function)
 (forced_monotonic_predicate variable_arity)
 (set/monotonic (decontextualized_predicate variable_arity))
+(forced_decontextualized_predicate variable_arity)
 (forced_monotonic_predicate variable_arity_predicate)
 (set/monotonic (decontextualized_predicate variable_arity_predicate))
+(forced_decontextualized_predicate variable_arity_predicate)
 (forced_monotonic_predicate variable_arity_function)
 (set/monotonic (decontextualized_predicate variable_arity_function))
+(forced_decontextualized_predicate variable_arity_function)
+(forced_decontextualized_predicate unbounded_arity)
+(forced_decontextualized_predicate unbounded_arity_predicate)
+(forced_decontextualized_predicate unbounded_arity_function)
 (forced_monotonic_predicate arityMin)
 (set/monotonic (decontextualized_predicate arityMin))
+(forced_decontextualized_predicate arityMin)
 ;; The arity policies.  Each is read beside the arity bindings above, so a relation's
 ;; policy goes OUT only by retraction, as its length does.
 (forced_monotonic_predicate fixed_arity)
@@ -2288,7 +2328,7 @@
 (arg transitiveInArgInverse 3 predicate)
 
 (comment transitiveInArg
-         "(transitiveInArg ?predicate ?position ?relation) means that argument ?position of ?predicate is preserved along the arrow of the transitive ?relation, the direction of Cyc's transitiveViaArg. A stored (?predicate … W …) licenses the same claim about A whenever (?relation W A) holds, so with genl this is upward inheritance: (capabilityType bird flying) with (genl flying travelling) reaches (capabilityType bird travelling). transitiveInArgInverse is the other direction, and the two names exist so neither direction requires declaring an inverse predicate with no other use. The same restriction on ?relation applies.")
+         "(transitiveInArg ?predicate ?position ?relation) means that argument ?position of ?predicate is preserved along the arrow of the transitive ?relation, the direction of Cyc's transitiveViaArg. A stored (?predicate … W …) licenses the same claim about A whenever (?relation W A) holds, so with genl this is upward inheritance: (abilityType bird flying) with (genl flying travelling) reaches (abilityType bird travelling). transitiveInArgInverse is the other direction, and the two names exist so neither direction requires declaring an inverse predicate with no other use. The same restriction on ?relation applies.")
 (ternary_predicate transitiveInArg)
 (arg transitiveInArg 1 predicate)
 (arg transitiveInArg 2 positive_integer)

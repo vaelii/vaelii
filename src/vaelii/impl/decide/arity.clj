@@ -280,18 +280,26 @@
     (assoc (if (or optional variadic) {:min (count args)} {:exact (count args)})
            :via q :grounds #{})))
 
+(defn admits-length?
+  "Does the length signature `outer` admit every length the signature `inner` admits?
+  A signature is `{:exact n}`, admitting `n` alone, or `{:min m}`, admitting every length
+  at or above `m`.  An exact `outer` admits an exact `inner` of its length and no floor;
+  a floor `outer` admits an exact `inner` or a floor `inner` at or above it."
+  [outer inner]
+  (if-let [e (:exact outer)]
+    (= e (:exact inner))
+    (<= (long (:min outer)) (long (or (:exact inner) (:min inner))))))
+
 (defn admits-shape?
   "Does a length binding of the engine term `q`, `kind` and `v` as `sx/arity-binding`
-  answers them, admit every length `q`'s shape admits (`shape-length`)?  An exact length
-  agrees with an exact shape of that length, an `arityMin` floor with a shape whose
-  shortest length is at or above it, and `variable_arity` with every shape.  True for a
-  term with no shape."
+  answers them, admit every length `q`'s shape admits (`shape-length`, `admits-length?`)?
+  An exact length agrees with an exact shape of that length, an `arityMin` floor with a
+  shape whose shortest length is at or above it, and `variable_arity` with every shape.
+  True for a term with no shape."
   [q kind v]
-  (let [{exact :exact floor :min} (shape-length q)]
-    (case kind
-      :exact (if exact (= v exact) (nil? floor))
-      :min   (<= (long v) (long (or exact floor v)))
-      :var   true)))
+  (if-let [s (shape-length q)]
+    (admits-length? (case kind :exact {:exact v} :min {:min v} :var {:min 0}) s)
+    true))
 
 (defn- reduce-own
   "The binding `q`'s own bindings `own` give it: under `variable_arity` its single
@@ -309,6 +317,22 @@
   `admitsArgnum` and the integrity pass's undeclared-arity read beside it."
   [kb q]
   (boolean (seq (:var (held-bindings kb q)))))
+
+(defn own-length
+  "The length `q` itself is known to have, as `{:exact n}` or `{:min m}`, or nil, read the
+  same at every context and with no `genl` closure read: an engine term's `:shape`
+  (`shape-length`), else `q`'s own IN bindings (`reduce-own`), else, for a `variable_arity`
+  release with no single `arityMin`, the highest of its floors, zero without one.  An
+  exact-arity class membership and a `:monotonic` membership reaching one are own
+  bindings.  A length the bound predicates above `q` agree on is not `q`'s own
+  (`relation-length` reads it), so the integrity pass's undeclared-arity and
+  genl-arity-mismatch censuses read `own-length`."
+  [kb q]
+  (or (some-> (shape-length q) (dissoc :via :grounds))
+      (let [own (held-bindings kb q)]
+        (or (some-> (reduce-own q own) (dissoc :via :grounds))
+            (when (seq (:var own))
+              {:min (reduce max 0 (keys (:min own)))})))))
 
 (defn unary-consistent?
   "Does `t`'s own arity admit one argument and no other: an engine term's `:shape` of

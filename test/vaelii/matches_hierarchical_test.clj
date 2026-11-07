@@ -152,11 +152,11 @@
 ;; claim about the predicate rather than about the two paths agreeing.
 (deftest negative-literal-falls-back
   (tu/with-kb [kb]
-    (doseq [pat '[(not (parentOf ?x Ann)) (not (hasCapability Tweety flying)) (not (dog ?x))]]
+    (doseq [pat '[(not (parentOf ?x Ann)) (not (able Tweety flying)) (not (dog ?x))]]
       (is (not (#'res/hierarchical-literal? pat))
           (str "a negative literal must not take the set-algebra path: " (pr-str pat))))
     (probed "negative-literal-falls-back"
-            (for [pat '[(not (parentOf ?x Ann)) (not (hasCapability Tweety flying)) (not (dog ?x))]
+            (for [pat '[(not (parentOf ?x Ann)) (not (able Tweety flying)) (not (dog ?x))]
                   ctx ctxs]
               (let [[off on :as both] (both-ways #(res/matches-visible kb pat ctx))]
                 (is (= off on) (str "negative diverged on " (pr-str pat) " @ " ctx))

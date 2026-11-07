@@ -4037,7 +4037,7 @@
               [:div
                (when goal [:p.muted "A goal is a sentence, e.g. " [:code "(animal ?x)"]
                            " — or a vector of them, e.g. "
-                           [:code "[(bird ?x) (hasCapability ?x flying)]"] ", which is a conjunctive "
+                           [:code "[(bird ?x) (able ?x flying)]"] ", which is a conjunctive "
                            "query and gets a join plan."])
                [:h3 "The levels"]
                [:ul (for [{lvl :level nm :name adds :adds} table]
@@ -4053,7 +4053,7 @@
               [:div
                [:h2 "Not a goal" in-cx (term-link env ctx)]
                [:p.muted "A vector goal is a conjunction, so each member has to be a "
-                "sentence — e.g. " [:code "[(bird ?x) (hasCapability ?x flying)]"] ". "
+                "sentence — e.g. " [:code "[(bird ?x) (able ?x flying)]"] ". "
                 "One sentence is written as a list: " [:code "(animal ?x)"] ", not "
                 [:code "[animal ?x]"] "."]]
 
@@ -4717,7 +4717,7 @@
     (render env "not found" [:p "No sentex #" h])))
 
 ;; ---- the non-monotonicity demo ------------------------------------------
-;; `(hasCapability Pingu flying)` is believed; the KB then learns `(penguin Pingu)` and
+;; `(able Pingu flying)` is believed; the KB then learns `(penguin Pingu)` and
 ;; stops believing it, with nothing deleted or overridden.  Retracting the penguin claim
 ;; brings it back.  Every step is an ordinary `edit` against the reader's own sandbox, and
 ;; every handle links to its record.  The conclusion that comes back is the **same
@@ -4736,10 +4736,10 @@
   [pred] (list pred demo-subject))
 
 (defn- demo-cap
-  "`(hasCapability Pingu <event-kind>)` — what the walkthrough's conclusion is about.
+  "`(able Pingu <event-kind>)` — what the walkthrough's conclusion is about.
   Flight is an event kind Pingu can be the doer of rather than a one-place property, so the
   conclusion under test is a binary sentence and the demo builds it apart from `demo-claim`."
-  [event-kind] (list 'hasCapability demo-subject event-kind))
+  [event-kind] (list 'able demo-subject event-kind))
 
 (def ^:private demo-script
   "The three steps.  `:from` is the state the KB has to be in for a step to be the next
@@ -4748,15 +4748,15 @@
   [{:n 1 :from :before   :op "start"
     :button "Assert (bird Pingu)"
     :does   "Tell the KB that Pingu is a bird. Say nothing whatever about flying."
-    :then   "(hasCapability Pingu flying) becomes believed"}
+    :then   "(able Pingu flying) becomes believed"}
    {:n 2 :from :believed :op "except"
     :button "Assert (penguin Pingu)"
     :does   "Tell it Pingu is a penguin. Retract nothing, delete nothing, override nothing."
-    :then   "(hasCapability Pingu flying) stops being believed"}
+    :then   "(able Pingu flying) stops being believed"}
    {:n 3 :from :blocked  :op "restore"
     :button "Retract (penguin Pingu)"
     :does   "Take the penguin claim back."
-    :then   "(hasCapability Pingu flying) is believed again — the same record"}])
+    :then   "(able Pingu flying) is believed again — the same record"}])
 
 (def ^:private demo-watched
   "The five sentences the walkthrough touches, in the order they make sense in: the two
@@ -4923,7 +4923,7 @@
               "thing brings it back. Each step below is a real write to "
               [:a {:href "/assert"} "your own sandbox"] "."]
              (demo-ledger st)
-             [:h3 "The conclusion under test " [:span.muted "(hasCapability Pingu flying)"]]
+             [:h3 "The conclusion under test " [:span.muted "(able Pingu flying)"]]
              (demo-verdict env st)
              (demo-controls st)
              [:h3 "Everything about Pingu " [:span.muted "as the KB holds it right now"]]

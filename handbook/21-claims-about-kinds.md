@@ -34,11 +34,11 @@ direction that holds with `transitiveInArgInverse` (down `genl`, to subkinds) or
 (set/monotonic (transitiveInArgInverse largerThan 2 genl))
 ```
 
-`life.txt` declares the two positions of `capabilityType` in opposite directions:
+`life.txt` declares the two positions of `abilityType` in opposite directions:
 
 ```clojure
-(set/monotonic (transitiveInArgInverse capabilityType 1 genl))
-(transitiveInArg capabilityType 2 genl)
+(set/monotonic (transitiveInArgInverse abilityType 1 genl))
+(transitiveInArg abilityType 2 genl)
 ```
 
 Its `comment` says the first carries a claim about a kind down to its subkinds ("a kind of
@@ -81,10 +81,10 @@ Do not write a rule exception for an inherited claim.
 **Example.** `CxBiology.txt`:
 
 ```clojure
-(capabilityType bird flying)
-(not (capabilityType penguin flying))
-(capabilityType butterfly flying)
-(not (capabilityType caterpillar flying))
+(abilityType bird flying)
+(not (abilityType penguin flying))
+(abilityType butterfly flying)
+(not (abilityType caterpillar flying))
 ```
 
 The note above the first pair reads "an inherited default is undercut by a claim about the
@@ -100,7 +100,7 @@ leaves its siblings flying."
   are incomparable come back `:ambiguous`, and the prover answers nothing.
 - *Engine.* A `:monotonic` general claim is never undercut. A contrary specific claim is
   then the weaker member of a nogood, stored and not believed. A `:default` general claim,
-  as `(capabilityType bird flying)` is, yields to the nearer claim.
+  as `(abilityType bird flying)` is, yields to the nearer claim.
 - *Maintenance.* The note in `CxBiology.txt` gives the reason the negative is a stated
   sentence: it is a positive claim that penguins are flightless, which an application can
   query and argue from, where the absence of a flight claim says nothing.
@@ -125,7 +125,7 @@ exception:
 
 ```clojure
 (exceptWhen (penguin ?x)
-  (set/defaultRule (set/forwardRule (implies (and (bird ?x)) (hasCapability ?x flying)))))
+  (set/defaultRule (set/forwardRule (implies (and (bird ?x)) (able ?x flying)))))
 ```
 
 **Why.**
@@ -142,7 +142,7 @@ exception:
   about individuals, and nothing reports it.
 
 **Why not the other ways.** One symbol read at both levels has to declare one argument
-check for each position, and `life.txt`'s `comment` on `capabilityType` says that choice
+check for each position, and `life.txt`'s `comment` on `abilityType` says that choice
 "mistypes whichever half it was not written for."
 
 **Audit.** For each kind-level relation, name its thing-level partner if one exists, and

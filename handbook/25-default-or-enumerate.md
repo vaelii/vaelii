@@ -82,7 +82,7 @@ context below `CxWell`, a fiction included, reads it:
 
 ```clojure
 (exceptWhen (penguin ?x)
-  (set/defaultRule (set/forwardRule (implies (and (bird ?x)) (hasCapability ?x flying)))))
+  (set/defaultRule (set/forwardRule (implies (and (bird ?x)) (able ?x flying)))))
 ```
 
 The metal default sits in `CxNormalPhysicalConditions`, which sees `CxRealWorld` and which
