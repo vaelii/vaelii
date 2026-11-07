@@ -67,25 +67,31 @@
           (str "expected a refusal for " (pr-str form))))))
 
 (deftest fresh-removes-the-previous-kbs-content
-  (let [kb (tu/fresh)]
-    (v/assert kb '(dog Muffet) 'CxUniverse)
-    (is (nil? (v/handle-of (tu/fresh) '(dog Muffet) 'CxUniverse))
-        "a fresh KB must not retain the previous test's facts")))
+  (testing "empty-kb holds nothing at all"
+    (is (= {:sentexes 0 :justifications 0} (tu/content-count (tu/empty-kb)))))
+  (testing "fresh holds the interface rules and nothing the previous KB wrote"
+    (let [kb       (tu/fresh)
+          baseline (tu/content-count kb)]
+      (is (pos? (:sentexes baseline)) "the interface rules are loaded")
+      (v/assert kb '(dog Muffet) 'CxUniverse)
+      (is (= baseline (tu/content-count (tu/fresh)))
+          "a fresh KB must not retain the previous test's facts"))))
 
 (deftest fresh-reopens-a-store-a-fault-stopped
   ;; A disk store latched unusable refuses every call until its directory is opened again
   ;; (docs/storage.md, "A store that stops").  Built on `disk-log` whatever the run
   ;; selected; an interrupt during the write latches the fault.
   (binding [tu/*storage* {:backend :disk-log}]
-    (let [kb      (tu/fresh)
-          refusal (fn [f] (try (f) nil (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))]
+    (let [kb       (tu/fresh)
+          baseline (tu/content-count kb)
+          refusal  (fn [f] (try (f) nil (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))]
       (.interrupt (Thread/currentThread))
       (try (v/assert kb '(dog Muffet) 'CxUniverse) (catch Throwable _ nil))
       (Thread/interrupted)
       (is (= :store-unusable (refusal #(v/clear! kb))) "the interrupt latched the store")
       (let [kb (tu/fresh)]
         (try
-          (is (nil? (v/handle-of kb '(dog Muffet) 'CxUniverse)))
+          (is (= baseline (tu/content-count kb)))
           (is (nat-int? (v/assert kb '(dog Muffet) 'CxUniverse)))
           (finally (v/close! kb)))))))
 

@@ -24,9 +24,17 @@
            (seed/read-sentences "CxBiology" "middle")
            (seed/read-sentences "CxBiology.txt" "middle")))))
 
-(deftest layer-load-order-and-missing-layer
-  (testing "the upper loader reads core.txt first"
-    (is (= "core.txt" (first (core-context/upper-files)))))
+(deftest every-file-in-a-layer-is-discovered
+  (testing "upper holds the vocabulary, the interface rules and the domain files, sorted"
+    (let [fs (seed/layer-files "upper")]
+      (is (= (sort fs) fs))
+      (is (some #{"core.txt"} fs))
+      (is (some #{"interface-rules.txt"} fs))))
+  (testing "the upper loader reads core.txt first and every other file after it, sorted"
+    (is (= (into ["core.txt"] (remove #{"core.txt"}) (seed/layer-files "upper"))
+           (core-context/upper-files))))
+  (testing "middle holds the theory contexts"
+    (is (some #{'CxBiology} (seed/layer-contexts "middle"))))
   (testing "an absent layer is nil, not a crash"
     (is (nil? (seed/layer-contexts "no-such-layer")))))
 

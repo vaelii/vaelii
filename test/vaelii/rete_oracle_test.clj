@@ -381,7 +381,7 @@
 
 (deftest ^:slow suppressed-firings-agree-with-every-trigger-enumerated
   (dotimes [trial 6]
-    (let [sup-kb (tu/fresh)
+    (let [sup-kb (tu/empty-kb)
           ref-kb (tu/isolated-fresh)]
       (try
         (build-ontology! sup-kb core-context/load-into)

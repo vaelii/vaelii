@@ -767,7 +767,10 @@
   (seed/read-sentences "interface-rules" "upper"))
 
 (defn load-interface!
-  "Load the shared interface rules into `kb`, without the upper ontology."
+  "Load the shared interface rules into `kb`, without the upper ontology.  Recovers first
+  when `kb` carries `:no-belief`: an overlay-arm `fresh-slot` opens its fork over a
+  populated base with `:recover? false` and no `clear-kb!`, so the write would be refused
+  and the base unbelieved (`the-overlay-arms-fresh-kb-reads-through-its-base`)."
   [kb]
   (when (:no-belief (v/write-hazards kb))
     (v/recover kb))
@@ -1029,7 +1032,8 @@
                     (doseq [[context dir] theories] (seed/load-context kb context dir))))))
 
 (defn isolated-fresh
-  "`fresh` on the isolated space.  See `isolated-test-kb`."
+  "`empty-kb` on the isolated space: no interface rules, no ontology.  See
+  `isolated-test-kb`."
   ([] (isolated-fresh {}))
   ([opts] (fresh-slot (dec block-top) opts)))
 
@@ -1563,7 +1567,7 @@
   "An `:each` fixture that builds a KB with `build-fn` (e.g. `tu/fresh`, or
   `#(doto (tu/empty-kb) (tu/load-core!))` for one needing the upper ontology), binds it, and
   guards net-neutrality per test.  A test *about* the upper load path builds with
-  `#(doto (tu/fresh) (core-context/load-into))` instead, paying the load rather than
+  `#(doto (tu/empty-kb) (core-context/load-into))` instead, paying the load rather than
   restoring the dump."
   [build-fn]
   (fn [f]

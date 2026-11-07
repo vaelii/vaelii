@@ -127,6 +127,17 @@
       (is (= (vec (v/prove kb (list animal '?x) CxCliProve)) (vec sols))
           "handed back in the order the search produced, not re-ordered into a set answer"))))
 
+(deftest quality-answers-in-prose-because-four-distributions-are-not-a-value-to-read
+  (tu/with-neutral-kb [kb tu/isolated-fresh]
+    (tu/with-terms [a_type pOne]
+      (v/assert-rule kb [(list a_type '?x)] (list pOne '?x) 'CxUniverse)
+      (let [out (cli/dispatch kb "quality" [] {})]
+        (is (string? out) "a string, so `show` prints it as written rather than pprinting it")
+        (is (re-find #"# KB quality" out))
+        (is (re-find #"1 rules — \*\*1 never fired\*\*" out)
+            "on a rule-free KB, the one rule nothing matched")
+        (is (re-find #"## Taxonomy coverage" out))))))
+
 (tu/deftest-kb strength-option-marks-an-assert-monotonic
   (tu/with-terms [cat Felix CxCli]
     (cli/dispatch kb "assert" [(list cat Felix) CxCli] {:strength "monotonic"})

@@ -2,9 +2,10 @@
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.arg-constraints-test
   "The argument-constraint chokepoint (`res/arg-constraints`, `res/arg-constraints-at`) over
-  the core vocabulary, whose forward rules store the declaration each sugar spelling
-  stands for: `(args P T)` stores `(argAndRest P 1 T)`, so the chokepoint looks up `arg`
-  and `argAndRest` alone at the instance level and still answers for `args`."
+  the upper ontology, whose `kb/upper/interface-rules.txt` forward rules store the
+  declaration each sugar spelling stands for: `(args P T)` stores `(argAndRest P 1 T)`,
+  so the chokepoint looks up `arg` and `argAndRest` alone at the instance level and still
+  answers for `args`."
   (:require [clojure.string :as str]
             [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]

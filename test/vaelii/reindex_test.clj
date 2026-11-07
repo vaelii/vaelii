@@ -18,7 +18,7 @@
            (java.lang.management ManagementFactory)))
 
 (deftest reindex-rebuilds-a-destroyed-index
-  (tu/with-cleared-kb [kb tu/fresh]
+  (tu/with-cleared-kb [kb tu/empty-kb]
     (tu/with-terms [dog animal barksAt growls Muffet Rex]
       (v/assert kb (list 'genl dog animal) 'CxUniverse)
       (v/assert kb (list dog Muffet) 'CxUniverse)
@@ -39,7 +39,9 @@
         (p/clear-index! (:index kb))
         (testing "the damage is real: an empty index answers nothing"
           (is (zero? (v/count-with-functor kb barksAt))))
-        (reindex/reindex kb)
+        (let [{:keys [sentexes rules]} (reindex/reindex kb)]
+          (is (pos? sentexes))
+          (is (= 1 rules) "the one rule was re-registered in the rule index"))
         (v/recover kb)
         (testing "every read answers as before the index was destroyed"
           (is (= before (snap))))))))
@@ -50,7 +52,7 @@
   ;; must rebuild that posting from the record so a backward goal still reaches the rule.
   ;; A `set/backwardRule` isolates the backward path: it never fires forward, so the
   ;; conclusion is reachable only by expanding the rule from `concluding-rule-handles`.
-  (tu/with-cleared-kb [kb tu/fresh]
+  (tu/with-cleared-kb [kb tu/empty-kb]
     (tu/with-terms [holds loves Tom Ann]
       (v/assert kb (list 'set/backwardRule
                          (list 'implies (list holds '?p '?x '?y) (list '?p '?x '?y)))
@@ -64,7 +66,9 @@
           (is (:backward? before))
           (is (:names-clean? before)))
         (p/clear-index! (:index kb))
-        (reindex/reindex kb)
+        (let [{:keys [sentexes rules]} (reindex/reindex kb)]
+          (is (pos? sentexes))
+          (is (= 1 rules) "the var-consequent rule was re-registered"))
         (v/recover kb)
         (testing "and both survive a rebuild from the records alone"
           (is (= before (snap))))))))

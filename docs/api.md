@@ -1694,9 +1694,10 @@ changed ([operations.md](operations.md#restarting-over-a-built-store)). The cont
 topology is three levels, most general (top) to most specific (bottom).
 
 **CxUniverse** is the root, seen by every context the topology wires in. It holds the
-upper layer: `core.txt`, the vocabulary and the top of the ontology; `abstract.txt`, the
-kinds below the skeleton `core.txt` holds, body parts and substances,
-`tangiblePartOf`/`locatedIn`/`madeOf`, and the two **type-level** relations
+upper layer: `core.txt`, the vocabulary and the top of the ontology;
+`interface-rules.txt`, the interface sugar (`args` stored as `argAndRest`, also loaded
+by `tu/fresh`); `abstract.txt`, the kinds below the skeleton `core.txt` holds, body
+parts and substances, `tangiblePartOf`/`locatedIn`/`madeOf`, and the two **type-level** relations
 `largerThan`/`partType`; `organism.txt`, the biological taxonomy and its disjointness;
 `life.txt`, the organism relations and states; `society.txt`, the social relations;
 `measure.txt`, the theory of measurement; `reflection.txt`, the expression lattice and

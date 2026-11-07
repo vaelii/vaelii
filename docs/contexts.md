@@ -109,7 +109,9 @@ Data hangs below CxWell.
   of the ontology: the parts of the three partitions of `thing`
   ([taxonomy.md](taxonomy.md#the-three-partitions-of-thing)), `physical`, `spatiotemporal`,
   `nowhere_never`, `logical`, `linguistic`, `quantitative`, `biological`, `organism`
-  and `measure`. Each other file is one domain:
+  and `measure`. `interface-rules.txt` is interface sugar rather than a domain: its forward
+  rule stores the `(argAndRest P 1 T)` an `(args P T)` stands for, and `tu/fresh` loads it
+  without the rest of the layer ([argtypes.md](argtypes.md)). Each other file is one domain:
   - `abstract.txt` — the kinds below the skeleton `core.txt` holds (`made`, `food`,
     `substance`, `body_part`, `context`, …), the structural relations
     `tangiblePartOf`/`locatedIn`, and the `travelling` and `flying` event kinds.
