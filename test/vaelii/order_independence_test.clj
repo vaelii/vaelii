@@ -1742,19 +1742,21 @@
         holds? #(boolean (seq (v/sentexes-matching % '(cf_q CfSubj) 'CxUniverse)))]
     (testing "a withdrawal leaves the conclusion standing on the other witness"
       (doseq [[first-drop second-drop] [[drop-p drop-r] [drop-r drop-p]]]
-        (let [kb (tu/fresh)]
+        (let [kb (tu/empty-kb)]
           (doseq [op [rule-p rule-r add-p add-r]] (op kb))
           (is (holds? kb) "two witnesses")
           (first-drop kb)
           (is (holds? kb) "one witness left, and one is enough")
           (second-drop kb)
           (is (not (holds? kb)) "and none left is none"))))
-    (let [end (one-outcome-under! "both supports withdrawn"
-                                  [[add-p drop-p] [add-r drop-r] [rule-p] [rule-r]]
-                                  (fn [kb] {:records    (whole-reading kb)
-                                            :conclusion (holds? kb)}))]
+    (let [end (one-outcome-under-on! tu/empty-kb "both supports withdrawn"
+                                     [[add-p drop-p] [add-r drop-r] [rule-p] [rule-r]]
+                                     (fn [kb] {:records    (whole-reading kb)
+                                               :conclusion (holds? kb)}))]
       (is (false? (:conclusion end))
-          "the one outcome is the conclusion gone, not the conclusion kept")))
+          "the one outcome is the conclusion gone, not the conclusion kept")
+      (is (= 2 (count (:records end)))
+          "and what is left is the two rules — no fact, no conclusion, no orphan")))
   (tu/clear-kb! (tu/test-kb)))
 
 ;; ---- the taxonomy caches follow suit ------------------------------------
