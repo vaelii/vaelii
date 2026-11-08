@@ -358,8 +358,8 @@
 ;; The audit sweeps the genl nodes visible from CxWell, excluding relation predicates.
 ;; Opt-in theory types outside its visibility are not part of this measurement.
 ;; The integrated rigidity vocabulary adds metatypes without removing a separation:
-;; 278 types, 38,503 pairs, 32,417 disjoint (84.1934%) and 2,433 unknown (6.3190%).
-;; The -0.3566 / +0.2590 pp shifts from develop satisfy the standing 0.5 pp allowance.
+;; 278 types, 38,503 pairs, 32,417 disjoint (84.1934%) and 2,432 unknown (6.3164%).
+;; The -0.3566 / +0.2564 pp shifts from develop satisfy the standing 0.5 pp allowance.
 
 (tu/deftest-kb disjointness-coverage-ratchet
   (let [a          (v/disjointness-audit kb)

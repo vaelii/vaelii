@@ -1872,12 +1872,16 @@
 ;; except takes one argument, the sentexHandle of the sentence it hides, and that
 ;; argument is a non-atomic term.
 (unary_predicate except)
+(set/monotonic (time_varying_relation except))
+(implementationNote except "An exception may hold only within a temporal slice. It is time-varying, not eternal: neither the declaration's forced-monotonic strength nor theory revision makes it apply at all times.")
 (quotedArg except 1 sentex_handle_term)
 (genl except non_atomic_term)
 (forced_monotonic_predicate exceptWhen)
 ;; exceptWhen takes two arguments as stored, the query and the sentexHandle of the rule it
 ;; qualifies.
 (binary_predicate exceptWhen)
+(set/monotonic (time_varying_relation exceptWhen))
+(implementationNote exceptWhen "The exception attachment itself may apply only during a temporal slice, independently of whether its query holds for a particular firing. It is time-varying, not eternal.")
 (arg exceptWhen 1 formula)
 (quotedArg exceptWhen 2 sentex_handle_term)
 (forced_monotonic_predicate rewriteOf)
