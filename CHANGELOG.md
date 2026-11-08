@@ -121,6 +121,9 @@ it — `git show v0.16.0:CHANGELOG.md`.
   every phase of matter time-varying. The fifty spatial relations, the six predall
   world-statement cells, `contradicts` and `intangiblePartOf` are time-agnostic. CxSocial and CxTra
   classify their own relations, which CxUniverse does not see.
+  `software_service` and `mcp_server` are invariant kinds: serving, and serving over
+  MCP respectively, are constitutive rather than changeable roles. This adds no
+  software-versioning vocabulary.
 
 
 - **A function and its corresponding predicate must share a rigidity kind.** A default

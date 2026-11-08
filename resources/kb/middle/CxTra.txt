@@ -314,7 +314,8 @@
 (negativeExampleComment software_container "a box or a cup, which is a container")
 
 (unary_predicate software_service)
-(comment software_service "A computational system that runs continuously and answers requests sent to it.")
+(comment software_service "A computational system that runs continuously and answers requests sent to it. Its ability to serve is constitutive: editing it so it can no longer serve makes it a different thing, not the same service losing a role. An outage alone does not change its kind.")
+(set/monotonic (time_invariant_relation software_service))
 (positiveExampleComment software_service "a web server")
 (positiveExampleComment software_service "a database server")
 (positiveExampleComment software_service "a mail transfer agent")
@@ -325,7 +326,8 @@
 (set/monotonic (separating computational_system virtual_machine software_container software_service))
 
 (unary_predicate mcp_server)
-(comment mcp_server "A software service that answers its clients over the Model Context Protocol, listing its tools and running them on request.")
+(comment mcp_server "A software service that answers its clients over the Model Context Protocol, listing its tools and running them on request. Serving over MCP is constitutive to this kind, not a changeable role of the same service.")
+(set/monotonic (time_invariant_relation mcp_server))
 (positiveExampleComment mcp_server "a memory server an assistant stores notes in")
 (positiveExampleComment mcp_server "a server that exposes a chat platform's messages")
 (genl mcp_server software_service)
