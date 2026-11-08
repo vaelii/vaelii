@@ -1268,6 +1268,7 @@
 ;; defeat takes one argument, the sentexHandle of the sentence it removes from belief, as
 ;; except does.
 (unary_predicate defeat)
+(set/monotonic (time_varying_relation defeat))
 (quotedArg defeat 1 sentex_handle_term)
 (genl defeat non_atomic_term)
 

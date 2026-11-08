@@ -124,8 +124,8 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `software_service` and `mcp_server` are invariant kinds: serving, and serving over
   MCP respectively, are constitutive rather than changeable roles. This adds no
   software-versioning vocabulary.
-  `except` and `exceptWhen` are time-varying: exceptions may apply only within a
-  temporal slice, so they are not eternal declarations.
+  `except`, `exceptWhen` and engine-derived `defeat` are time-varying: their effects
+  may apply only within a temporal slice, so they are not eternal declarations.
 
 
 - **A function and its corresponding predicate must share a rigidity kind.** A default
