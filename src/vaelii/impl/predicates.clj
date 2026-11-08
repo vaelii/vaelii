@@ -1366,6 +1366,8 @@
            [possibly_time_invariant_relation "ontology, not grammar: time_invariant_relation and time_agnostic_relation together, preserved up genl by transitiveInArg. No engine check names it."]
            [rigidity_kind "ontology, not grammar: the at_least_metatype holding the three rigidity kinds of relation. No engine check names it."]
            [time_indexed_relation "ontology, not grammar: a relation one argument of which names the time a tuple holds at, below time_invariant_relation. temporalIndexArg's first argument is typed time_indexed_relation, so a fact of it makes the relation one; no engine check names it."]
+           [eternal_predicate "ontology, not grammar: a predicate whose tuples hold independently of time within a theory, below time_invariant_relation. No engine projection reads this mark yet; temporal support is tracked in #272."]
+           [documentation_predicate "ontology, not grammar: a predicate documenting a term, implementation or usage example, below eternal_predicate. It classifies the annotation, not the truth or temporality of a quoted example; no engine check names it."]
            [stable_once_true "ontology, not grammar: a time-varying relation that, once it holds at a time, holds at every later time. No engine check names it."]
            [stable_once_false "ontology, not grammar: a time-varying relation that, once it fails at a time, fails at every later time. No engine check names it."]])
 

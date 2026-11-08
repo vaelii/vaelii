@@ -1271,6 +1271,44 @@ its executable temporal regressions are tracked in
 [#272](https://github.com/vaelii/vaelii/issues/272); storage and monad-boundary choices
 remain separate from this vocabulary declaration.
 
+`documentation_predicate` is an eternal subclass covering `comment`,
+`implementationNote` and the positive, negative and borderline example predicates,
+including their string-valued `*ExampleComment` siblings. The annotation is eternal;
+its quoted example is not thereby true or eternal, and the existing curation checks
+still evaluate examples in their writing context.
+
+The definition predicates, input/output argument contracts (numbered, covering,
+suffix, quoted and cross-argument forms), arity declarations and functional-slot
+constraints are also eternal. Both forced and ordinary decontextualized predicates
+inherit the eternal classification through `genl`. Interpretation predicates `means` and
+`denotes` are time-agnostic, not invariant or eternal: fixed reference and
+context-dependent indexicals coexist.
+
+The one-way bridge for unary predicates requires both invariant membership and
+`(genl P atemporal)` before deriving `(eternal_predicate P)`. Atemporal members alone
+are insufficient: a changing selection of numbers need not be eternal. There is no
+converse deriving atemporal members from eternal classification; fixed facts about
+temporal intervals are valid examples of that distinction.
+
+Fixed mathematical comparisons, unit conversions and measure comparisons, calendar
+mappings, interval/instant relations, whole-extent start/end/duration facts and the
+explicitly timed event-calculus predicates are eternal. These concern named values,
+complete extents or an explicit time argument: `holdsAt(F, noon)` does not assert
+that F holds at every time. `initially` is not included in this timed family.
+Changing measurements and an implicit "now" remain distinct.
+
+There is no complement type or closed-world completion. A positive eternal mark says
+yes, explicit `(not (eternal_predicate P))` records a decided no, and the absence of both
+leaves the meaning open. Absence of a promotion does not itself authorize a negative assertion.
+
+The taxonomy-law family is time-agnostic and explicitly non-eternal: a subsumption or
+separation can be valid only within a temporal slice while its types retain their
+meanings. Closed-world grants (global and per-argument spellings) and abducibility
+are time-varying inference permissions, explicitly non-eternal. This prevents their
+old invariant metatype marks from activating the bridge. `modal_predicate`, by
+contrast, is eternal: modal projection is part of the marked predicate's meaning,
+not an expiring grant.
+
 Each rule is quoted on its own. A quoted term is opaque, so no inference or
 canonicalization reaches inside either one, and what the pair needs inferred — that
 `(RulePairFn R1 R2)` and `(RulePairFn R2 R1)` name the same pair — belongs to

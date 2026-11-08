@@ -91,6 +91,20 @@ it — `git show v0.16.0:CHANGELOG.md`.
   restriction on assertion or retraction.
   Cross-time propagation is not supplied by this declaration; engine support and
   temporal regressions are tracked in [#272](https://github.com/vaelii/vaelii/issues/272).
+  `documentation_predicate` groups `comment`, `implementationNote` and all six
+  example/`*ExampleComment` predicates under the eternal kind without making their
+  documented sentences eternal. Definition, argument-contract, arity and functional
+  declarations are eternal too, and ordinary as well as forced-decontextualized
+  predicates inherit that classification.
+  `means` and `denotes` are time-agnostic rather than invariant: interpretation
+  includes both fixed reference and time-dependent indexicals.
+  A one-way forward rule derives eternal unary predicates from invariant membership
+  over atemporal things; its converse is not asserted. Fixed math, unit/measure,
+  calendar, interval/instant, whole-extent and explicit-time event-calculus predicates
+  are eternal; `initially` remains separate. Taxonomy laws are time-agnostic and
+  explicitly non-eternal. Closure and abducibility grants are time-varying and
+  non-eternal, while modal classification is eternal. No complement type is introduced,
+  and undecided cases are not closed-world negatives.
 
 
 - **`typeAllSpecified`, a classification requirement `kb-integrity` audits.**

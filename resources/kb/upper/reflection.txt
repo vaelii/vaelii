@@ -220,17 +220,19 @@
 ;; separates relation from context; this declaration adds proposition.
 (set/monotonic (separating logical relation proposition context))
 
-(comment means "(means ?expression ?meaning) means that ?expression, a closed wff_expression, has ?meaning as its semantic content: for a term what it denotes, for a sentence the proposition it expresses. Read in the context the sentence is stated in, which supplies the interpretation. Functional: an expression has at most one meaning in a context.")
+(comment means "(means ?expression ?meaning) means that ?expression, a closed wff_expression, has ?meaning as its semantic content: for a term what it denotes, for a sentence the proposition it expresses. Read in the context the sentence is stated in, which supplies the interpretation. The relation includes fixed interpretations and time-dependent indexicals, so it is time-agnostic rather than invariant or eternal. Functional: an expression has at most one meaning in a context.")
 (positiveExampleComment means "(means (Quote Muffet) Muffet)")
 (arg means 1 wff_expression)
 (arg means 1 closed_expression)
 (arg means 2 thing)   ;; the meaning: what a term denotes or the proposition a sentence expresses
 (set/monotonic (functional means))
-(set/monotonic (time_invariant_relation means))
+(set/monotonic (time_agnostic_relation means))
+(not (eternal_predicate means))
 
-(comment denotes "(denotes ?term ?thing) means that the denotational_term ?term names ?thing. (denotes (Quote Muffet) Muffet): the symbol Muffet names the dog. (denotes (Quote dog) dog): the symbol dog names the predicate. (denotes (Quote (MotherFn Muffet)) (MotherFn Muffet)).")
+(comment denotes "(denotes ?term ?thing) means that the denotational_term ?term names ?thing. (denotes (Quote Muffet) Muffet): the symbol Muffet names the dog. (denotes (Quote dog) dog): the symbol dog names the predicate. (denotes (Quote (MotherFn Muffet)) (MotherFn Muffet)). Reference may be fixed or time-dependent under the context's interpretation, so the relation is time-agnostic, not invariant or eternal.")
 (binary_predicate denotes)
-(set/monotonic (time_invariant_relation denotes))
+(set/monotonic (time_agnostic_relation denotes))
+(not (eternal_predicate denotes))
 (genl denotes means)
 (arg denotes 1 denotational_term)
 (arg denotes 2 thing)   ;; what a denotational_term names: a thing of any kind

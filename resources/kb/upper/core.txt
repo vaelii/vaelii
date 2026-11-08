@@ -17,20 +17,23 @@
 (comment abducible_predicate
          "(abducible_predicate ?predicate) means that a (?predicate …) sentence may be hypothesized. When a backward proof dead-ends on one, abduce may assume it rather than fail. A grant, and the only thing that makes a predicate abducible: an undeclared one is never assumed, since an abducer that will hypothesize anything explains everything and is worth nothing. Read from the asking context's genlCx ancestor set rather than universally, so it is a policy of the context that gives it — one theory may be willing to assume what another, reading the same vocabulary, will not.")
 (unary_predicate abducible_predicate)
-(set/monotonic (time_invariant_relation abducible_predicate))
+(set/monotonic (time_varying_relation abducible_predicate))
+(not (eternal_predicate abducible_predicate))
 (genl abducible_predicate predicate)
 
 (comment closed_extent_predicate
          "(closed_extent_predicate ?predicate) means that ?predicate's believed extent is complete: everything that holds of it is already derivable, so nothing answering (?predicate …) is what answers (not (?predicate …)). A grant, and the only thing that closes an extent — an undeclared predicate stays open-world, where an argument nobody has typed cannot violate a constraint and a fact nobody has stated is not thereby false. Read from the asking context's genlCx ancestor set rather than universally, so it is a policy of the theory that closes the extent: one may state the twelve months and read a thirteenth as refuted, while a sibling reading the same predicate answers only what it was told. Belief-following: a defeated or retracted member leaves the extent, and a closed (not (?predicate …)) rule antecedent is negation as failure, withdrawn when a member arrives.")
 (unary_predicate closed_extent_predicate)
-(set/monotonic (time_invariant_relation closed_extent_predicate))
+(set/monotonic (time_varying_relation closed_extent_predicate))
+(not (eternal_predicate closed_extent_predicate))
 (genl closed_extent_predicate predicate)
 
 (comment closedExtentForArg
          "(closedExtentForArg ?predicate ?position ?value) means that ?predicate's believed extent is complete for the sentences whose argument ?position is ?value: nothing answering a ground (?predicate …) with ?value at ?position is what answers its (not (?predicate …)). The grant closed_extent_predicate makes, narrowed to one argument value. (closedExtentForArg accountOn 2 HostA) says the accounts on HostA are exactly the believed ones, and (accountOn ?x HostB) stays open-world beside it. A goal whose argument ?position is not ground is not closed. Read from the asking context's genlCx ancestor set, and belief-following, as closed_extent_predicate is.")
 (implementationNote closedExtentForArg "The rule concluding this grant from closed_extent_predicate is inert: a forward rule would store one grant per value. The closed-extent prover reads closed_extent_predicate itself, so the grant holds at every value with no grant stored.")
 (ternary_predicate closedExtentForArg)
-(set/monotonic (time_invariant_relation closedExtentForArg))
+(set/monotonic (time_varying_relation closedExtentForArg))
+(not (eternal_predicate closedExtentForArg))
 (arg closedExtentForArg 1 predicate)
 (arg closedExtentForArg 2 positive_integer)
 (arg closedExtentForArg 3 thing)   ;; the argument value a closed extent is granted for: a term of any kind
@@ -51,7 +54,8 @@
          "(closedExtentForArg1 ?predicate ?value) is the binary spelling of (closedExtentForArg ?predicate 1 ?value). The two rules below state the equivalence.")
 (implementationNote closedExtentForArg1 "The rule deriving the ternary is a forward rule, so the engine reads only the ternary. The rule deriving this binary spelling is inert, so a ternary grant mints no binary twin.")
 (binary_predicate closedExtentForArg1)
-(set/monotonic (time_invariant_relation closedExtentForArg1))
+(set/monotonic (time_varying_relation closedExtentForArg1))
+(not (eternal_predicate closedExtentForArg1))
 (arg closedExtentForArg1 1 predicate)
 (arg closedExtentForArg1 2 thing)   ;; the argument value: a term of any kind
 (set/forwardRule (implies (and (closedExtentForArg1 ?predicate ?value)) (closedExtentForArg ?predicate 1 ?value)))
@@ -61,7 +65,8 @@
          "(closedExtentForArg2 ?predicate ?value) is the binary spelling of (closedExtentForArg ?predicate 2 ?value).")
 (implementationNote closedExtentForArg2 "The rule deriving the ternary is a forward rule, so the engine reads only the ternary. The rule deriving this binary spelling is inert, so a ternary grant mints no binary twin.")
 (binary_predicate closedExtentForArg2)
-(set/monotonic (time_invariant_relation closedExtentForArg2))
+(set/monotonic (time_varying_relation closedExtentForArg2))
+(not (eternal_predicate closedExtentForArg2))
 (arg closedExtentForArg2 1 predicate)
 (arg closedExtentForArg2 2 thing)   ;; the argument value: a term of any kind
 (set/forwardRule (implies (and (closedExtentForArg2 ?predicate ?value)) (closedExtentForArg ?predicate 2 ?value)))
@@ -71,7 +76,8 @@
          "(closedExtentForArg3 ?predicate ?value) is the binary spelling of (closedExtentForArg ?predicate 3 ?value).")
 (implementationNote closedExtentForArg3 "The rule deriving the ternary is a forward rule, so the engine reads only the ternary. The rule deriving this binary spelling is inert, so a ternary grant mints no binary twin.")
 (binary_predicate closedExtentForArg3)
-(set/monotonic (time_invariant_relation closedExtentForArg3))
+(set/monotonic (time_varying_relation closedExtentForArg3))
+(not (eternal_predicate closedExtentForArg3))
 (arg closedExtentForArg3 1 predicate)
 (arg closedExtentForArg3 2 thing)   ;; the argument value: a term of any kind
 (set/forwardRule (implies (and (closedExtentForArg3 ?predicate ?value)) (closedExtentForArg ?predicate 3 ?value)))
@@ -81,6 +87,8 @@
          "(closedExtentForArg4 ?predicate ?value) is the binary spelling of (closedExtentForArg ?predicate 4 ?value).")
 (implementationNote closedExtentForArg4 "The rule deriving the ternary is a forward rule, so the engine reads only the ternary. The rule deriving this binary spelling is inert, so a ternary grant mints no binary twin.")
 (binary_predicate closedExtentForArg4)
+(set/monotonic (time_varying_relation closedExtentForArg4))
+(not (eternal_predicate closedExtentForArg4))
 (arg closedExtentForArg4 1 predicate)
 (arg closedExtentForArg4 2 thing)   ;; the argument value: a term of any kind
 (set/forwardRule (implies (and (closedExtentForArg4 ?predicate ?value)) (closedExtentForArg ?predicate 4 ?value)))
@@ -90,6 +98,8 @@
          "(closedExtentForArg5 ?predicate ?value) is the binary spelling of (closedExtentForArg ?predicate 5 ?value).")
 (implementationNote closedExtentForArg5 "The rule deriving the ternary is a forward rule, so the engine reads only the ternary. The rule deriving this binary spelling is inert, so a ternary grant mints no binary twin.")
 (binary_predicate closedExtentForArg5)
+(set/monotonic (time_varying_relation closedExtentForArg5))
+(not (eternal_predicate closedExtentForArg5))
 (arg closedExtentForArg5 1 predicate)
 (arg closedExtentForArg5 2 thing)   ;; the argument value: a term of any kind
 (set/forwardRule (implies (and (closedExtentForArg5 ?predicate ?value)) (closedExtentForArg ?predicate 5 ?value)))
@@ -147,7 +157,7 @@
 (comment genlArg
          "(genlArg ?relation ?position ?type) means that argument ?position of ?relation must be a subtype of ?type. The arg constraint one level up, for arguments naming kinds rather than instances: (genlArg partType 1 tangible) says the argument names a kind of physical object, where (arg tangiblePartOf 1 tangible) says it names one. Open-world, so an argument with no place in the genl hierarchy cannot violate it. Relation-wide vocabulary; the current function-input enforcement boundary is documented in docs/argtypes.md.")
 (ternary_predicate genlArg)
-(set/monotonic (time_invariant_relation genlArg))
+(set/monotonic (eternal_predicate genlArg))
 (arg genlArg 1 relation)
 (arg genlArg 2 positive_integer)
 (genlArg genlArg 3 thing)
@@ -155,14 +165,14 @@
 (comment arg
          "(arg ?relation ?position ?type) means that argument ?position of ?relation is of ?type. Its domain includes predicates and functions. Under assertive argument types, the default, it derives that membership of a symbol argument, wherever the declaration is visible, and convicts only a value or an application whose type misses: assert stores that fact inert, never believed, and try-assert refuses it. Under the constraint-only reading it is checked through genl transitivity whenever a sentex is asserted, and open-world: an argument whose type is unknown cannot violate it. A KB invariant: every argument position of a relation with a declared arity is typed, by an arg at that position or by an argAndRest from it or an earlier one (args and the arg1 through arg5 projections being spellings of those two), or by a type-level or quoted twin; the kb-integrity :missing-arg category reports a position no declaration types.")
 (ternary_predicate arg)
-(set/monotonic (time_invariant_relation arg))
+(set/monotonic (eternal_predicate arg))
 (arg arg 1 relation)
 (arg arg 2 positive_integer)
 (genlArg arg 3 thing)
 (comment arg1
          "(arg1 ?relation ?type) means that argument 1 of ?relation must be of ?type — the binary projection of (arg ?relation 1 ?type), created so a positional argument constraint can itself be the subject of a binary declaration. The projection and the ternary spelling derive each other, so asserting either keeps both believed and retracting the one that was actually asserted collapses the pair; both are held to the same declaration checks at assert, so neither spelling accepts a declaration the other refuses. The projection relates stored declarations only: a reading arg answers through genl generalization or super-predicate inheritance has no arg1 through arg5 twin, so a generalized or inherited question must be asked of arg itself. arg2, arg3, arg4 and arg5 project positions 2 through 5 the same way.")
 (binary_predicate arg1)
-(set/monotonic (time_invariant_relation arg1))
+(set/monotonic (eternal_predicate arg1))
 (arg arg1 1 relation)
 (genlArg arg1 2 thing)
 (set/forwardRule (implies (and (arg1 ?reln ?type)) (arg ?reln 1 ?type)))
@@ -171,7 +181,7 @@
 (comment arg2
          "(arg2 ?relation ?type) is the binary projection of (arg ?relation 2 ?type) — see arg1.")
 (binary_predicate arg2)
-(set/monotonic (time_invariant_relation arg2))
+(set/monotonic (eternal_predicate arg2))
 (arg arg2 1 relation)
 (genlArg arg2 2 thing)
 (set/forwardRule (implies (and (arg2 ?reln ?type)) (arg ?reln 2 ?type)))
@@ -180,7 +190,7 @@
 (comment arg3
          "(arg3 ?relation ?type) is the binary projection of (arg ?relation 3 ?type) — see arg1.")
 (binary_predicate arg3)
-(set/monotonic (time_invariant_relation arg3))
+(set/monotonic (eternal_predicate arg3))
 (arg arg3 1 relation)
 (genlArg arg3 2 thing)
 (set/forwardRule (implies (and (arg3 ?reln ?type)) (arg ?reln 3 ?type)))
@@ -189,6 +199,7 @@
 (comment arg4
          "(arg4 ?relation ?type) is the binary projection of (arg ?relation 4 ?type) — see arg1.")
 (binary_predicate arg4)
+(set/monotonic (eternal_predicate arg4))
 (arg arg4 1 relation)
 (genlArg arg4 2 thing)
 (set/forwardRule (implies (and (arg4 ?reln ?type)) (arg ?reln 4 ?type)))
@@ -197,6 +208,7 @@
 (comment arg5
          "(arg5 ?relation ?type) is the binary projection of (arg ?relation 5 ?type) — see arg1.")
 (binary_predicate arg5)
+(set/monotonic (eternal_predicate arg5))
 (arg arg5 1 relation)
 (genlArg arg5 2 thing)
 (set/forwardRule (implies (and (arg5 ?reln ?type)) (arg ?reln 5 ?type)))
@@ -211,21 +223,21 @@
 (comment args
          "(args ?relation ?type) means that every accepted argument position of ?relation is an instance of ?type. The covering form of arg: where (arg P n T) types one numbered position, (args P T) types the whole admitted tail, so a variable-arity relation whose positions carry one role is typed without naming a largest finite position. Conjunctive with a position-specific (arg P n T). Open-world as arg is: an argument whose type is unknown cannot violate it. Checked position by position over the positions a sentence actually has; the boundary a covering constraint enforces is documented in docs/argtypes.md.")
 (binary_predicate args)
-(set/monotonic (time_invariant_relation args))
+(set/monotonic (eternal_predicate args))
 (arg args 1 relation)
 (genlArg args 2 thing)
 
 (comment argsGenl
          "(argsGenl ?relation ?type) means that every accepted argument position of ?relation names a subtype of ?type. The covering form of genlArg, for a variable-arity relation whose positions name kinds: argsGenl is to genlArg what args is to arg. Conjunctive with a position-specific (genlArg P n T). Open-world as genlArg is.")
 (binary_predicate argsGenl)
-(set/monotonic (time_invariant_relation argsGenl))
+(set/monotonic (eternal_predicate argsGenl))
 (arg argsGenl 1 relation)
 (genlArg argsGenl 2 thing)
 
 (comment argAndRest
          "(argAndRest ?relation ?position ?type) means that argument ?position of ?relation and every later position is an instance of ?type. The suffix form of args: the tail from ?position onward, the prefix below it excluded, so a relation whose head positions carry their own arg declarations and whose tail repeats one role is typed exactly. (args P T) states what (argAndRest P 1 T) states. Read position by position, as arg is. With arg it carries the invariant stated on arg: every argument position of a relation with a declared arity is typed, and the kb-integrity :missing-arg category reports a position no declaration types.")
 (ternary_predicate argAndRest)
-(set/monotonic (time_invariant_relation argAndRest))
+(set/monotonic (eternal_predicate argAndRest))
 (arg argAndRest 1 relation)
 (arg argAndRest 2 positive_integer)
 (genlArg argAndRest 3 thing)
@@ -233,7 +245,7 @@
 (comment argAndRestGenl
          "(argAndRestGenl ?relation ?position ?type) means that argument ?position of ?relation and every later position names a subtype of ?type. The suffix form of argsGenl, and the genl twin of argAndRest.")
 (ternary_predicate argAndRestGenl)
-(set/monotonic (time_invariant_relation argAndRestGenl))
+(set/monotonic (eternal_predicate argAndRestGenl))
 (arg argAndRestGenl 1 relation)
 (arg argAndRestGenl 2 positive_integer)
 (genlArg argAndRestGenl 3 thing)
@@ -249,7 +261,7 @@
 (comment quotedArg
          "(quotedArg ?relation ?position ?type) means that argument ?position of ?relation, taken AS A TERM — the syntactic object written in that position, not what it denotes — must be of ?type. The mention twin of arg: (arg name_of_guy 1 agent) types what the first argument names, (quotedArg name_of_guy 1 string) types the argument itself, the value sitting there. Its ?type is a syntactic type — string, number (with integer below it), symbol — and the argument is classified by its EDN kind, then checked through genl like arg; a compound is classified by its spelling (provers/shape-kinds) and violates the declaration only where one of its kinds is disjoint from ?type. Closed about a value whose kind is decidable: (name_of_guy 5) violates (quotedArg name_of_guy 1 string), 5 being a number and not a string. It does not read the referent's type, which is arg's business. Relation-wide vocabulary; the current function-input enforcement boundary is documented in docs/argtypes.md.")
 (ternary_predicate quotedArg)
-(set/monotonic (time_invariant_relation quotedArg))
+(set/monotonic (eternal_predicate quotedArg))
 (arg quotedArg 1 relation)
 (arg quotedArg 2 positive_integer)
 (genlArg quotedArg 3 thing)
@@ -257,6 +269,7 @@
 (comment quotedArgAndRest
          "(quotedArgAndRest ?relation ?position ?type) means that argument ?position of ?relation and every later position, each taken AS A TERM, is of ?type. The suffix form of quotedArg, as argAndRest is of arg: a variable-arity relation whose tail repeats one mention is typed without naming a largest finite position. Checked position by position over the positions a sentence has, as quotedArg is, and never entailed.")
 (ternary_predicate quotedArgAndRest)
+(set/monotonic (eternal_predicate quotedArgAndRest))
 (arg quotedArgAndRest 1 relation)
 (arg quotedArgAndRest 2 positive_integer)
 (genlArg quotedArgAndRest 3 thing)
@@ -618,7 +631,7 @@
          "(interArg ?relation ?position1 ?type1 ?position2 ?type2) means that whenever argument ?position1 of ?relation is a ?type1, argument ?position2 must be a ?type2. The conditional argument constraint, and it says what arg cannot: (interArg eats 1 carnivore 2 meat) types the second argument only for the eaters that are carnivores, where (arg eats 2 meat) would demand meat of every eater. Silence about the trigger argument's type leaves the constraint dormant rather than firing it. Once the trigger holds, the target is derived a ?type2 under assertive argument types, and under the constraint-only reading it is convicted when the KB places it outside ?type2. Read through genl transitivity from the writing context, like arg. Relation-wide vocabulary; the current function-input enforcement boundary is documented in docs/argtypes.md.")
 (arity interArg 5)
 (quinary_predicate interArg)
-(set/monotonic (time_invariant_relation interArg))
+(set/monotonic (eternal_predicate interArg))
 (arg interArg 1 relation)
 (arg interArg 2 positive_integer)
 (arg interArg 3 unary_predicate)
@@ -628,7 +641,7 @@
 (comment argArg
          "(argArg ?relation ?position ?typePosition) means that argument ?position of ?relation is an instance of the type its argument ?typePosition names. arg with the type read off each sentence instead of written in the declaration: (argArg kindOfPet 1 2) says (kindOfPet Rex dog) makes Rex a dog, since dog is the second argument. Under assertive argument types it derives that membership of a symbol argument, as arg does, and under the constraint-only reading it convicts an argument whose visible types reach thing and miss the named type. A sentence holding no symbol at ?typePosition is not constrained. See docs/argtypes.md.")
 (ternary_predicate argArg)
-(set/monotonic (time_invariant_relation argArg))
+(set/monotonic (eternal_predicate argArg))
 (arg argArg 1 relation)
 (arg argArg 2 positive_integer)
 (arg argArg 3 positive_integer)
@@ -637,6 +650,7 @@
          "(interArgEqual ?relation ?position1 ?thing ?position2 ?type) means that whenever argument ?position1 of ?relation is ?thing, argument ?position2 must be a ?type. The conditional argument constraint triggered by a value instead of a type: (interArgEqual closedExtentForArg 2 3 1 at_least_ternary) says a grant at argument 3 names a predicate of three or more arguments, and a grant at argument 2 is unconstrained by it. ?thing is a value — a number, string, keyword, boolean or character — and the trigger is equality of the argument with it, which no sameAs or equals merge changes, since the equality partition holds symbols only. A sentence holding any other term at ?position1 is not constrained. On the sentences it triggers it reads as arg does: under assertive argument types it derives the ?type membership of a symbol argument, and under the constraint-only reading it convicts an argument the KB places outside ?type. See docs/argtypes.md.")
 (arity interArgEqual 5)
 (quinary_predicate interArgEqual)
+(set/monotonic (eternal_predicate interArgEqual))
 (arg interArgEqual 1 relation)
 (arg interArgEqual 2 positive_integer)
 (arg interArgEqual 3 unrepresented_term)
@@ -647,7 +661,7 @@
 (comment resultArg
          "(resultArg ?function ?position) means that an application of ?function denotes an instance of the type the application's argument ?position names. result with the type read off each application: (resultArg SomeMemberFn 1) says (SomeMemberFn dog) denotes a dog. Derived as a membership of the constant a reifiable function's application mints, off its natFormula fact, while argument types entail, and read at check time for an unreifiable function's application, which is never minted. See docs/argtypes.md.")
 (binary_predicate resultArg)
-(set/monotonic (time_invariant_relation resultArg))
+(set/monotonic (eternal_predicate resultArg))
 (arg resultArg 1 function)
 (arg resultArg 2 positive_integer)
 
@@ -662,7 +676,7 @@
 (comment interArgAndRest
          "(interArgAndRest ?relation ?position ?type) means that whenever an argument of ?relation at ?position or later is a ?type, every argument at ?position or later must be a ?type. Suffix homogeneity: the arguments before ?position are unconstrained. The general form of interArgs, which states what (interArgAndRest ?relation 1 ?type) states. It reads as interArg does: the triggering argument must be known to be a ?type, and then every other symbol in the suffix is derived a ?type under assertive argument types, or, under the constraint-only reading, convicted when the KB places it in the hierarchy outside ?type. An argument whose type is unknown triggers nothing. Checked over the positions a sentence actually has; the boundary is documented in docs/argtypes.md.")
 (ternary_predicate interArgAndRest)
-(set/monotonic (time_invariant_relation interArgAndRest))
+(set/monotonic (eternal_predicate interArgAndRest))
 (arg interArgAndRest 1 relation)
 (arg interArgAndRest 2 positive_integer)
 (arg interArgAndRest 3 unary_predicate)
@@ -670,7 +684,7 @@
 (comment interArgs
          "(interArgs ?relation ?type) means that whenever any argument of ?relation is a ?type, every argument must be a ?type. Full argument homogeneity: (interArgs sameKindAs animal) lets two plants or two animals be compared, and an animal beside a plant derives animal of the plant, which the constraint-only reading refuses instead. The every-position form of interArgAndRest, and it states what (interArgAndRest ?relation 1 ?type) states; each spelling derives the other. It reads as interArgAndRest does.")
 (binary_predicate interArgs)
-(set/monotonic (time_invariant_relation interArgs))
+(set/monotonic (eternal_predicate interArgs))
 (arg interArgs 1 relation)
 (arg interArgs 2 unary_predicate)
 (set/forwardRule (implies (and (interArgs ?reln ?type)) (interArgAndRest ?reln 1 ?type)))
@@ -772,7 +786,7 @@
 (genl unbounded_arity_function variable_arity_function)
 (comment arityMax "(arityMax ?relation ?n) means that the bounded_arity relation ?relation takes at most ?n arguments.")
 (binary_predicate arityMax)
-(set/monotonic (time_invariant_relation arityMax))
+(set/monotonic (eternal_predicate arityMax))
 (arg arityMax 1 bounded_arity)
 (arg arityMax 2 positive_integer)
 
@@ -876,7 +890,7 @@
          "(arity ?relation ?n) means that ?relation takes exactly ?n arguments and is fixed_arity. One maps to unary, two to binary, three to ternary, four to quaternary and five to quinary: an asserted arity concludes that relation-wide class, and a membership of an exact-arity class is read as the arity by every reader of one. A query for the arity of a class member, and a forward rule's arity antecedent, is proved from the membership by a lazy-forward rule, and no arity is stored for it. Predicate and function specializations inherit those classes; the conclusion stops at the relation-wide class because an arity says how many arguments, not whether the relation holds or denotes.")
 (set/monotonic (instance_relation_predicate arity))
 (set/monotonic (functional arity))
-(set/monotonic (time_invariant_relation arity))
+(set/monotonic (eternal_predicate arity))
 (arg arity 1 fixed_arity)
 (arg arity 2 non_negative_integer)
 
@@ -885,14 +899,14 @@
 (comment arityMin
          "(arityMin ?relation ?n) means that a variable-arity ?relation requires at least ?n arguments. Every further position normally repeats the same argument role rather than introducing an unnamed optional field. The arity check holds an application of the relation shorter than ?n inert: assert stores it, never believed, and try-assert refuses it.")
 (set/monotonic (instance_relation_predicate arityMin))
-(set/monotonic (time_invariant_relation arityMin))
+(set/monotonic (eternal_predicate arityMin))
 (arg arityMin 1 relation)
 (arg arityMin 2 non_negative_integer)
 
 (comment admitsArgnum
          "(admitsArgnum ?relation ?argnum) means that positive argument position ?argnum exists in a well-formed application of ?relation. It asks about one position, not the application's total arity. Answered at query time from the relation's declared arity and variable-arity mark. The backward rules below state the same definition, so an answer can be justified from them.")
 (set/monotonic (instance_relation_predicate admitsArgnum))
-(set/monotonic (time_invariant_relation admitsArgnum))
+(set/monotonic (eternal_predicate admitsArgnum))
 (arg admitsArgnum 1 relation)
 (arg admitsArgnum 2 positive_integer)
 ;; admitsArgnum's definition, as set/backwardRule.  The prover answers a ground admitsArgnum
@@ -1102,6 +1116,23 @@
 (set/monotonic (genl eternal_predicate time_invariant_relation))
 (set/monotonic (time_invariant_relation eternal_predicate))
 (not (decontextualized_predicate eternal_predicate))
+
+;; Atemporal members and rigid membership suffice for eternal unary truth.
+;; This is one-way: eternal predicates may classify temporal things too.
+(set/forwardRule
+ (implies
+  (and
+   (unary_predicate ?predicate)
+   (genl ?predicate atemporal)
+   (time_invariant_relation ?predicate))
+  (eternal_predicate ?predicate)))
+
+(comment documentation_predicate "A predicate that documents a term, its implementation or an example of its use. Its annotation holds independently of time within the theory, even when the documented sentence describes something temporal. An eternal documentation annotation does not make its quoted example true or eternal. Documentation can be revised by asserting or retracting annotations.")
+(unary_predicate documentation_predicate)
+(set/monotonic (genl documentation_predicate eternal_predicate))
+(set/monotonic (time_invariant_relation documentation_predicate))
+(not (decontextualized_predicate documentation_predicate))
+
 ;; Some time-varying relations change one way only.  An organism that is dead stays
 ;; dead, and one that is not alive is never alive again.  Each is a kind of
 ;; time_varying_relation, so a relation no instance could lose is neither.
@@ -1242,7 +1273,7 @@
 (comment comment
          "(comment ?term ?text) means that ?text documents ?term. Ordinary sentexes, so the KB documents itself in its own representation and a comment is queried, retracted and justified like anything else. Written as a signature and a definition, as this one is, so that first clause doubles as the template an English gloss of any (?term …) sentence is composed from; everything after it is prose for a reader and no machine reads it.")
 (set/monotonic (instance_relation_predicate comment))
-(set/monotonic (time_invariant_relation comment))
+(set/monotonic (documentation_predicate comment))
 (arg comment 2 string)
 (quotedArg comment 1 denotational_term)   ;; the commented term as written: a type, a predicate, an individual or a context
 
@@ -1250,7 +1281,7 @@
          "(implementationNote ?term ?text) means that ?text records how the engine or this KB's own text implements ?term, or a limit of that implementation, e.g. a rule stated only for some arities. A comment says what ?term means, and an implementation note says how the meaning is carried out. A note can go stale when the engine changes, and a comment cannot. Ordinary sentexes, queried like any fact. Nothing in the engine reads one and it draws no inference.")
 (binary_predicate implementationNote)
 (instance_relation_predicate implementationNote)
-(set/monotonic (time_invariant_relation implementationNote))
+(set/monotonic (documentation_predicate implementationNote))
 (arg implementationNote 2 string)
 (quotedArg implementationNote 1 denotational_term)   ;; the noted term as written, as comment's is
 (termsRelated comment implementationNote)
@@ -1269,6 +1300,7 @@
 ;; except does.
 (unary_predicate defeat)
 (set/monotonic (time_varying_relation defeat))
+(not (eternal_predicate defeat))
 (quotedArg defeat 1 sentex_handle_term)
 (genl defeat non_atomic_term)
 
@@ -1276,12 +1308,13 @@
          "(decontextualized_predicate ?predicate) means that every (?predicate …) sentence, asserted or concluded by a rule, is also deduced into CxUniverse. Every context sees CxUniverse, so the fact stops being a claim of one theory and becomes a claim of the KB. The copy is supported by the placement sentex and this declaration together, so retracting either withdraws it. The lift is implemented in code rather than stated as a rule, because it runs wherever content is stored and not only where it is asserted, and because a rule stating it would match every fact in the store.")
 (unary_predicate decontextualized_predicate)
 (set/monotonic (time_invariant_relation decontextualized_predicate))
-(genl decontextualized_predicate predicate)
+(genl decontextualized_predicate eternal_predicate)
 
 (comment disjoint
          "(disjoint ?type1 ?type2) means that the two types have no common instance. Inherited by subtypes through genl, so declaring it of dog and cat separates every breed from every breed. The declaration keeps its written strength: a :monotonic denial defeats a :default one at the denial's context and below, where the memberships it separated clash with nothing. A membership that violates it is stored, and the two memberships form a :disjoint contradiction; try-assert refuses the second instead. A clash that only becomes visible from some descendant context is reported by exposed-clashes.")
 (set/monotonic (type_relation_predicate disjoint))
-(set/monotonic (time_invariant_relation disjoint))
+(set/monotonic (time_agnostic_relation disjoint))
+(not (eternal_predicate disjoint))
 (genlArg disjoint 1 thing)
 (genlArg disjoint 2 thing)
 
@@ -1296,13 +1329,15 @@
 (comment disjoint_metatype
          "(disjoint_metatype ?metatype) means that every pair of ?metatype's member types is disjoint. The clique is consulted rather than stored, so it adds no work quadratic and retraction reaches all of it: dropping ?metatype releases every pair at once, and dropping one member releases exactly that member's pairs.")
 (unary_predicate disjoint_metatype)
-(set/monotonic (time_invariant_relation disjoint_metatype))
+(set/monotonic (time_agnostic_relation disjoint_metatype))
+(not (eternal_predicate disjoint_metatype))
 
 (comment orthogonal
          "(orthogonal ?type1 ?type2) means three things together: the two types are not disjoint, ?type1 is not a genl of ?type2, and ?type2 is not a genl of ?type1. It does not say that anything is an instance of both, and it exempts the pair from no separation. The declared spelling of the :orthogonal subsumption status, which otherwise needs a shared instance as its witness; the declaration names no such instance and derives none. Symmetric, so the two spellings of one pair store as one sentex. A separation of the pair the reader sees, through a disjoint, a partition or separating declaration, a disjoint_metatype or a sibling_disjoint parent over the two or over a supertype of each, contradicts the declaration, and so do a genl edge between the two in either direction and the one type named twice. siblingDisjointException is a genl of it, so an exception answers (orthogonal ?type1 ?type2) too.")
 (set/monotonic (symmetric orthogonal))
 (set/monotonic (type_relation_predicate orthogonal))
-(set/monotonic (time_invariant_relation orthogonal))
+(set/monotonic (time_agnostic_relation orthogonal))
+(not (eternal_predicate orthogonal))
 (genlArg orthogonal 1 thing)
 (genlArg orthogonal 2 thing)
 ;; Not preserved along genl in either direction, at either position: a subtype of one side
@@ -1337,7 +1372,8 @@
          "(covering ?whole ?part1 ?part2 ...) means that every instance of ?whole is an instance of at least one named part. Each part is a subtype of ?whole, which the declaration states rather than requires of the ontology beforehand: asserting the cover installs the genl edge per part, supported by the covering sentex and carrying its context, so a cover asserted before its parts carry any other fact settles where one asserted after them does. The parts may overlap; partition is the spelling that separates them as well, and separating is the separation without the coverage. Coverage is actionable only on explicit negation: (not (?part ?x)) for every part but one proves the remaining membership, and a whole instance with nothing else known stays unknown rather than being assigned a part. Negating every part contradicts the cover. At least two distinct parts, since one part covering a whole says only that the two have the same instances.")
 (variable_arity_predicate covering)
 (unbounded_arity_predicate covering)
-(set/monotonic (time_invariant_relation covering))
+(set/monotonic (time_agnostic_relation covering))
+(not (eternal_predicate covering))
 (genlArg covering 1 thing)
 (argAndRestGenl covering 2 thing)
 (arityMin covering 3)
@@ -1347,7 +1383,8 @@
          "(separating ?whole ?part1 ?part2 ...) means that no two of the named parts share an instance. The separation half of partition without the coverage half: it says nothing about whether the parts exhaust ?whole, so an instance of ?whole belonging to none of them violates nothing. Each part is a subtype of ?whole, stated by the declaration as covering states it. The part list is recorded the way a disjoint_metatype's member set is, which is what this spelling is for — a named few types separated from each other, where disjoint_metatype needs a metatype term to hang them on and sibling_disjoint separates every specialization of the parent rather than the ones named.")
 (variable_arity_predicate separating)
 (unbounded_arity_predicate separating)
-(set/monotonic (time_invariant_relation separating))
+(set/monotonic (time_agnostic_relation separating))
+(not (eternal_predicate separating))
 (genlArg separating 1 thing)
 (argAndRestGenl separating 2 thing)
 (arityMin separating 3)
@@ -1360,7 +1397,8 @@
          "(partition ?whole ?part1 ?part2 ...) means that the named parts cover ?whole and that no two of them share an instance. The coverage half is covering's exactly, and both declarations are recorded under one taxonomy entry, so the coverage inference reads a partition as the cover it is. The separation half is recorded the way a disjoint_metatype's member set is — consulted by the disjointness test, never written out as a (disjoint …) sentex per pair — so a siblingDisjointException over two parts exempts that pair as it exempts two metatype members, and dropping the declaration releases every pair at once. disjoint_metatype keeps its own meaning and claims no coverage.")
 (variable_arity_predicate partition)
 (unbounded_arity_predicate partition)
-(set/monotonic (time_invariant_relation partition))
+(set/monotonic (time_agnostic_relation partition))
+(not (eternal_predicate partition))
 (genlArg partition 1 thing)
 (argAndRestGenl partition 2 thing)
 (arityMin partition 3)
@@ -1440,21 +1478,21 @@
 (comment defnNecessary
          "(defnNecessary ?collection ?condition) means that every instance of ?collection satisfies ?condition — a necessary condition on membership, written over the member ?x. Expands to the forward rule (implies (?collection ?x) ?condition), so an instance's membership entails the condition of it. Open-world: it says what members must satisfy, never that satisfying it makes a member (that is defnSufficient), and never that a non-member fails it.")
 (binary_predicate defnNecessary)
-(set/monotonic (time_invariant_relation defnNecessary))
+(set/monotonic (eternal_predicate defnNecessary))
 (genlArg defnNecessary 1 thing)
 (arg defnNecessary 2 formula)
 
 (comment defnSufficient
          "(defnSufficient ?collection ?condition) means that anything satisfying ?condition is an instance of ?collection — a sufficient condition for membership, written over the member ?x. Expands to the forward rule (implies ?condition (?collection ?x)), so a thing meeting the condition is concluded a member. Open-world: it says what makes a member, never that a member must satisfy it (that is defnNecessary), and it draws no non-membership from the condition failing.")
 (binary_predicate defnSufficient)
-(set/monotonic (time_invariant_relation defnSufficient))
+(set/monotonic (eternal_predicate defnSufficient))
 (genlArg defnSufficient 1 thing)
 (arg defnSufficient 2 formula)
 
 (comment defnIff
          "(defnIff ?collection ?condition) means that ?condition is both necessary and sufficient for membership in ?collection — an instance satisfies it exactly when it is a member, written over the member ?x. Expands to both forward rules defnNecessary and defnSufficient state, and nothing more: it does not close the collection's complement, so a thing whose condition is merely unknown is neither concluded a member nor concluded a non-member (docs/defns.md).")
 (binary_predicate defnIff)
-(set/monotonic (time_invariant_relation defnIff))
+(set/monotonic (eternal_predicate defnIff))
 (genlArg defnIff 1 thing)
 (arg defnIff 2 formula)
 
@@ -1748,7 +1786,7 @@
          "(forced_decontextualized_predicate ?predicate) means that every (?predicate …) sentence is stored directly in CxUniverse by force. No separate deduction and no justification: the fact's extent simply lives there. Used for genlCx, so the context topology has one canonical home instead of a copy per context.")
 (unary_predicate forced_decontextualized_predicate)
 (set/monotonic (time_invariant_relation forced_decontextualized_predicate))
-(genl forced_decontextualized_predicate predicate)
+(set/monotonic (genl forced_decontextualized_predicate eternal_predicate))
 
 (comment forced_monotonic_predicate
          "(forced_monotonic_predicate ?predicate) makes ?predicate forced-monotonic. Every (?predicate …) sentence is stored as written and keeps the strength it was written at, a genlCx edge excepted, which reads :monotonic so that it caps no firing's class, and belief is computed with the forced-monotonic set applied: a (?predicate …) sentence is never the loser of a nogood, a denial of one loses to the literal it denies at either strength, and a firing concluding one from a rule that is not all forced-monotonic antecedents with no unknown, exceptWhen or set/defaultRule supports nothing and is reported as a :forced-conclusion violation. The declaration is a switch: asserting or retracting it recomputes belief over what ?predicate reaches, so a KB that retracted it believes what a KB that never held it believes. Declared of genlCx, the relation marks, the function classes, orthogonal, the arity bindings (arity, the exact-arity classes, variable_arity and its two specializations, arityMin), the arity policies (fixed_arity and its two specializations, bounded_arity, unbounded_arity, at_least_binary through at_least_quinary, arityMax, admitsArgnum), the term kinds (relation, predicate, function, truth_valued_relation, logical_constant, logical_connective, quantifier, symbol, context, unrepresented_term and its value kinds), the numeric comparators (greaterThan, lessThan) and their quantity twins (quantityGreaterThan, quantityGreaterThanOrEqual, quantityLessThan, quantityLessThanOrEqual, sameQuantity), the argument declarations (arg, arg1 through arg5), the correspondence premises (functionCorrespondingPredicate, result), except, exceptWhen and the equality relations, every one of which the engine holds forced-monotonic whether or not it is declared; the retraction of every one of these but injection, surjection, bijection, the arity policies, the term kinds, the numeric and quantity comparators, the argument declarations and the correspondence premises is refused. Declared of inverse too, a premise of the rules typing one partner's arguments by the other's. The engine holds inverse forced-monotonic only where this declaration is seen, and its retraction is not refused. See docs/nmtms.md.")
@@ -1874,6 +1912,7 @@
 ;; argument is a non-atomic term.
 (unary_predicate except)
 (set/monotonic (time_varying_relation except))
+(not (eternal_predicate except))
 (implementationNote except "An exception may hold only within a temporal slice. It is time-varying, not eternal: neither the declaration's forced-monotonic strength nor theory revision makes it apply at all times.")
 (quotedArg except 1 sentex_handle_term)
 (genl except non_atomic_term)
@@ -1882,6 +1921,7 @@
 ;; qualifies.
 (binary_predicate exceptWhen)
 (set/monotonic (time_varying_relation exceptWhen))
+(not (eternal_predicate exceptWhen))
 (implementationNote exceptWhen "The exception attachment itself may apply only during a temporal slice, independently of whether its query holds for a particular firing. It is time-varying, not eternal.")
 (arg exceptWhen 1 formula)
 (quotedArg exceptWhen 2 sentex_handle_term)
@@ -1904,7 +1944,7 @@
 (positiveExample functional (Quote (functional birthYearOf)))
 (unary_predicate functional)
 (decontextualized_predicate functional)
-(set/monotonic (time_invariant_relation functional))
+(set/monotonic (eternal_predicate functional))
 (set/monotonic (genl functional binary_predicate))
 
 (comment functionalInArg
@@ -1912,7 +1952,7 @@
 (positiveExampleComment functionalInArg "capitalCityOf at position 1, beside (functional capitalCityOf): one capital per country and one country per capital")
 (binary_predicate functionalInArg)
 (decontextualized_predicate functionalInArg)
-(set/monotonic (time_invariant_relation functionalInArg))
+(set/monotonic (eternal_predicate functionalInArg))
 (arg functionalInArg 1 relation)
 (arg functionalInArg 2 positive_integer)
 ;; functional is functionalInArg read at position 2, the binary spelling of the mark.  The
@@ -2029,7 +2069,8 @@
 (comment genl
          "(genl ?subtype ?supertype) means that every ?subtype is a ?supertype. Transitive, and cached as a closure rather than run as a rule, since transitivity is the lifeblood of common sense and far too hot to chain. The type hierarchy it builds is rooted at thing. Types are unary predicates, so membership is written (dog Muffet) and never (isa Muffet Dog). The same relation relates predicate specializations of any arity: every tuple of the subtype is a tuple of the supertype, which is what a type reading of it is the unary case of, so neither argument is declared a subtype of thing.")
 (set/monotonic (type_relation_predicate genl))
-(set/monotonic (time_invariant_relation genl))
+(set/monotonic (time_agnostic_relation genl))
+(not (eternal_predicate genl))
 ;; NEITHER position is declared, and both are left so deliberately.
 ;; (genlArg genl 1 thing) reads "the subtype is a subtype of thing", which is false of
 ;; the predicate specializations genl also relates: (genl performedBy doneBy) puts one
@@ -2134,14 +2175,14 @@
 (comment result
          "(result ?function ?type) means that the output of ?function is an instance of ?type. Read for both kinds of function, and where the type is held is what the reifiability mark decides: a REIFIABLE function's application is minted, so the membership is materialized as (?type K) on the freshly minted constant K — a real sentex with a justification, rather than a rule that would have to run at read time — and an UNREIFIABLE one has no constant to hang it on, so its applications are typed from this declaration at check time instead. One declaration, one verdict, whichever kind of function wrote it. (result ?function context) says that ?function's applications denote contexts: a ground application written in a sentex's context slot reifies to an opaque cx/-namespaced constant whatever is declared about ?function, and a read names that context through the application only while some reader believes the declaration. The cx/ spelling carries the context role, so no (context K) is materialized on the constant (docs/context-nat.md). Named for what it says rather than for the check that reads it, as arg is: the instance reading, with genlResult one level up.")
 (binary_predicate result)
-(set/monotonic (time_invariant_relation result))
+(set/monotonic (eternal_predicate result))
 (arg result 1 function)
 (genlArg result 2 thing)
 
 (comment genlResult
          "(genlResult ?function ?type) means that the output of ?function is a subtype of ?type. The subtype reading of result, the way genlArg is arg's: materialized as (genl K ?type) on each freshly minted constant K for a reifiable function, and read at check time for an unreifiable one whose applications never mint.")
 (binary_predicate genlResult)
-(set/monotonic (time_invariant_relation genlResult))
+(set/monotonic (eternal_predicate genlResult))
 (arg genlResult 1 function)
 (genlArg genlResult 2 thing)
 
@@ -2176,7 +2217,7 @@
 (argAndRest greaterThan 3 number)
 (variable_arity_predicate greaterThan)
 (unbounded_arity_predicate greaterThan)
-(set/monotonic (time_invariant_relation greaterThan))
+(set/monotonic (eternal_predicate greaterThan))
 (arityMin greaterThan 2)
 
 (comment exceptWhen
@@ -2235,7 +2276,7 @@
 (argAndRest lessThan 3 number)
 (variable_arity_predicate lessThan)
 (unbounded_arity_predicate lessThan)
-(set/monotonic (time_invariant_relation lessThan))
+(set/monotonic (eternal_predicate lessThan))
 (arityMin lessThan 2)
 
 (comment matchesPattern
@@ -2246,9 +2287,9 @@
 (quotedArg matchesPattern 2 string)
 
 (comment modal_predicate
-         "(modal_predicate ?predicate) means that (?predicate ?agent ?sentence) is a belief-style projection: it holds when ?sentence holds in ?agent's context. A grant, and the only thing that turns projection on — an undeclared predicate is never projected, so the table is open (assert the marker to add knows / desires / intends) and closed by default to everything but what a context grants. Read scoped from the asking context, like abducible_predicate: which predicates a theory reads modally is a policy of the context that declares it, not a global switch. believes ships granted here.")
+         "(modal_predicate ?predicate) means that (?predicate ?agent ?sentence) is a belief-style projection: it holds when ?sentence holds in ?agent's context. A marker for the predicate's meaning, not an expiring permission. An undeclared predicate is never projected, so assert the marker to define knows / desires / intends as modal. The engine reads the marker from the asking context; its eternal classification does not itself implement temporal projection. believes ships marked here.")
 (unary_predicate modal_predicate)
-(set/monotonic (time_invariant_relation modal_predicate))
+(set/monotonic (eternal_predicate modal_predicate))
 (genl modal_predicate predicate)
 
 (comment not
@@ -2448,7 +2489,8 @@
          "(sibling_disjoint ?collection) means that any two specializations of ?collection — the types below it under genl — share no instance, unless one is itself a genl of the other. The clique is consulted rather than stored, exactly as disjoint_metatype's is: no (disjoint …) sentex per pair, dropping the mark releases every pair at once, and a specialization arriving as a later genl edge is separated the moment it is believed. The genl-relatedness exception is what keeps a specialization disjoint from its siblings without being separated from its own supertypes, which are specializations of ?collection too; it is read over the whole KB, the way a (disjoint a b) over a genl-related pair is read as a clash. Whether those specializations cover ?collection is a separate claim this one does not make, and covering states it over a named part list.")
 (unary_predicate sibling_disjoint)
 (at_least_metatype sibling_disjoint)
-(set/monotonic (time_invariant_relation sibling_disjoint))
+(set/monotonic (time_agnostic_relation sibling_disjoint))
+(not (eternal_predicate sibling_disjoint))
 (set/monotonic (genl sibling_disjoint unary_predicate))
 (genlArg sibling_disjoint 1 thing)
 
@@ -2638,7 +2680,6 @@
 ;; thing holds individuals and types alike: a variable_order_type, which is a
 ;; unary_predicate.
 (set/monotonic (variable_order_type thing))
-(arg thing 1 thing)
 
 (comment transitive
          "(transitive ?predicate) means that ?predicate is transitive, so (?predicate a b) and (?predicate b c) imply (?predicate a c). Answered by a generic closure prover rather than materialized, since writing the closure out is quadratic in the extent and nobody asserted it. Also a type: (transitive P) classifies P as a binary_predicate, so a KB can be queried for the transitive predicates.")
@@ -2830,19 +2871,19 @@
          "(positiveExample ?term (Quote ?sentence)) means that ?sentence is a TRUE example of ?term's usage. The second argument is only a quoted sentence, closed and written in full: (positiveExample ip_address (Quote (ip_address \"192.0.2.1\"))). Tested by curation_test, which asks ?sentence in the context this fact is stated in and requires it to be provable there. Names no sentex, so it is not target_following_predicate: retracting what made ?sentence provable leaves the example standing and turns that test red. ?term is the term being exemplified.")
 (set/monotonic (instance_relation_predicate positiveExample))
 (quotedArg positiveExample 1 denotational_term)   ;; the exemplified term, taken as written
-(set/monotonic (time_invariant_relation positiveExample))
+(set/monotonic (documentation_predicate positiveExample))
 
 (comment negativeExample
          "(negativeExample ?term (Quote ?sentence)) means that ?sentence is a FALSE example of ?term's usage — a use of ?term that does not hold. The second argument is only a quoted sentence, closed and written in full, as for positiveExample. Tested by curation_test, which asks ?sentence in the context this fact is stated in and requires it NOT to be provable there; unknown is enough, so the KB need not prove the negation. Names no sentex, so it is not target_following_predicate. ?term is the term being exemplified.")
 (set/monotonic (instance_relation_predicate negativeExample))
 (quotedArg negativeExample 1 denotational_term)   ;; the exemplified term, taken as written
-(set/monotonic (time_invariant_relation negativeExample))
+(set/monotonic (documentation_predicate negativeExample))
 
 (comment borderlineExample
          "(borderlineExample ?term (Quote ?sentence)) means that ?sentence is a BORDERLINE example of ?term's usage — a case where whether it holds is arguable. The second argument is only a quoted sentence, closed and written in full, as for positiveExample. Truth-agnostic by design: curation_test does not check whether ?sentence is provable. Names no sentex, so it is not target_following_predicate.")
 (set/monotonic (instance_relation_predicate borderlineExample))
 (quotedArg borderlineExample 1 denotational_term)   ;; the exemplified term, taken as written
-(set/monotonic (time_invariant_relation borderlineExample))
+(set/monotonic (documentation_predicate borderlineExample))
 
 (termsRelated positiveExample negativeExample borderlineExample)
 
@@ -2852,18 +2893,21 @@
 (comment positiveExampleComment
          "(positiveExampleComment ?term ?text) means that ?text describes, as a string, a TRUE example of ?term: something ?term holds of, or a use of ?term that is true. The string sibling of positiveExample, for an example that is not a sentence the KB can state, or whose sentence the KB does not prove. Documentation only, like comment: nothing in the engine reads it, it draws no inference, and no test checks ?text against the KB.")
 (set/monotonic (instance_relation_predicate positiveExampleComment))
+(set/monotonic (documentation_predicate positiveExampleComment))
 (arg positiveExampleComment 2 string)
 (quotedArg positiveExampleComment 1 denotational_term)   ;; the exemplified term, taken as written
 
 (comment negativeExampleComment
          "(negativeExampleComment ?term ?text) means that ?text describes, as a string, a FALSE example of ?term: something ?term does not hold of, or a use of ?term that is false. The string sibling of negativeExample, for an example that is not a sentence the KB can state. Documentation only, like comment: nothing in the engine reads it, it draws no inference, and no test checks ?text against the KB.")
 (set/monotonic (instance_relation_predicate negativeExampleComment))
+(set/monotonic (documentation_predicate negativeExampleComment))
 (arg negativeExampleComment 2 string)
 (quotedArg negativeExampleComment 1 denotational_term)   ;; the exemplified term, taken as written
 
 (comment borderlineExampleComment
          "(borderlineExampleComment ?term ?text) means that ?text describes, as a string, a BORDERLINE example of ?term: a case where whether ?term holds is arguable. The string sibling of borderlineExample, for an example that is not a sentence the KB can state. Documentation only, like comment: nothing in the engine reads it, it draws no inference, and no test checks ?text against the KB.")
 (set/monotonic (instance_relation_predicate borderlineExampleComment))
+(set/monotonic (documentation_predicate borderlineExampleComment))
 (arg borderlineExampleComment 2 string)
 (quotedArg borderlineExampleComment 1 denotational_term)   ;; the exemplified term, taken as written
 
@@ -2935,7 +2979,8 @@
 ;; arguments exactly when it holds an odd number of genlInverse edges, so two of them
 ;; compose to genl.
 (binary_predicate genlInverse)
-(set/monotonic (time_invariant_relation genlInverse))
+(set/monotonic (time_agnostic_relation genlInverse))
+(not (eternal_predicate genlInverse))
 (arg genlInverse 1 binary_predicate)
 (arg genlInverse 2 binary_predicate)
 (comment genlInverse "Binary `genl` with arguments 1 and 2 swapped. (genlInverse ?spec ?genl-inv) means (?spec ?x ?y) entails (?genl-inv ?y ?x), so a stored (?spec a b) answers a (?genl-inv b a) goal and satisfies a (?genl-inv ?x ?y) antecedent, and a justification names the edge. Two genlInverse edges in a row compose to genl. Does not license the converse: a (?genl-inv b a) fact concludes nothing about ?spec.")
@@ -2943,7 +2988,8 @@
 ;; --- Lacuna proposals (upper ontology overhaul) ---
 (implementationNote typeGenl "No rule or engine path reads typeGenl, so a stated (typeGenl ?classifier ?genl) concludes no genl edge. A rule added for it must not fire for a thing target: (typeGenl empty thing) and (typeGenl nonempty thing) are vacuous on purpose.")
 (binary_predicate typeGenl)
-(set/monotonic (time_invariant_relation typeGenl))
+(set/monotonic (time_agnostic_relation typeGenl))
+(not (eternal_predicate typeGenl))
 (arg typeGenl 1 at_least_metatype)
 (arg typeGenl 2 unary_predicate)
 (comment typeGenl "Higher-order genl: (typeGenl ?classifier ?genl) means every instance of ?classifier is a genl of ?genl.")
@@ -2965,7 +3011,8 @@
 ;; classifier is forced-monotonic.
 (comment typeOrthogonal "(typeOrthogonal ?classifier ?type) means that every instance of ?classifier is orthogonal to ?type, e.g. (typeOrthogonal arity_type abducible_predicate) says that binary, unary and every other arity type each overlap abducible_predicate without either side subsuming the other.")
 (binary_predicate typeOrthogonal)
-(set/monotonic (time_invariant_relation typeOrthogonal))
+(set/monotonic (time_agnostic_relation typeOrthogonal))
+(not (eternal_predicate typeOrthogonal))
 (arg typeOrthogonal 1 at_least_metatype)
 (arg typeOrthogonal 2 unary_predicate)
 (implies (typeOrthogonal ?classifier ?type)
@@ -2984,7 +3031,8 @@
 (arityMin orthogonalMetatypes 2)
 (argAndRest orthogonalMetatypes 1 at_least_metatype)
 (commutative orthogonalMetatypes)
-(set/monotonic (time_invariant_relation orthogonalMetatypes))
+(set/monotonic (time_agnostic_relation orthogonalMetatypes))
+(not (eternal_predicate orthogonalMetatypes))
 (implies (orthogonalMetatypes ?metatype1 ?metatype2)
          (set/forwardRule (implies (and (?metatype1 ?x) (?metatype2 ?y)) (orthogonal ?x ?y))))
 (implies (orthogonalMetatypes ?metatype1 ?metatype2 ?metatype3)
@@ -3017,7 +3065,8 @@
 (comment type_type_by_order "A disjoint_metatype partitioning fixed_order_type into type, metatype, and meta_metatype.")
 (comment partitionedByType "(partitionedByType ?whole ?classifier) means that the members of ?classifier partition ?whole: each member is a subtype of ?whole, no two members share an instance, and every instance of ?whole is an instance of some member. e.g. (partitionedByType tangible origin_type) says that made and natural partition tangible.")
 (binary_predicate partitionedByType)
-(set/monotonic (time_invariant_relation partitionedByType))
+(set/monotonic (time_agnostic_relation partitionedByType))
+(not (eternal_predicate partitionedByType))
 (arg partitionedByType 1 unary_predicate)
 (arg partitionedByType 2 at_least_metatype)
 ;; A generator generates the strict membership rule placing each member under the whole.  It

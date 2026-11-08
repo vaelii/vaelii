@@ -358,8 +358,8 @@
 ;; The audit sweeps the genl nodes visible from CxWell, excluding relation predicates.
 ;; Opt-in theory types outside its visibility are not part of this measurement.
 ;; The integrated rigidity vocabulary adds metatypes without removing a separation:
-;; 278 types, 38,503 pairs, 32,417 disjoint (84.1934%) and 2,432 unknown (6.3164%).
-;; The -0.3566 / +0.2564 pp shifts from develop satisfy the standing 0.5 pp allowance.
+;; 279 types, 38,781 pairs, 32,624 disjoint (84.1237%) and 2,444 unknown (6.3021%).
+;; The -0.4263 / +0.2421 pp shifts from develop satisfy the standing 0.5 pp allowance.
 
 (tu/deftest-kb disjointness-coverage-ratchet
   (let [a          (v/disjointness-audit kb)
@@ -369,12 +369,12 @@
         unknown    (get by-status :unknown 0)
         disjoint-% (* 100.0 (/ disjoint pairs))
         unknown-%  (* 100.0 (/ unknown pairs))]
-    (is (>= disjoint 32417)
-        (format "disjoint pairs must not fall below 32417 (got %d)" disjoint))
-    (is (>= disjoint-% 84.19)
-        (format "disjoint coverage must not regress below 84.19%% (got %.2f%%)" disjoint-%))
-    (is (<= unknown-% 6.32)
-        (format "unknown pairs must not grow above 6.32%% (got %.2f%%)" unknown-%))))
+    (is (>= disjoint 32624)
+        (format "disjoint pairs must not fall below 32624 (got %d)" disjoint))
+    (is (>= disjoint-% 84.12)
+        (format "disjoint coverage must not regress below 84.12%% (got %.2f%%)" disjoint-%))
+    (is (<= unknown-% 6.31)
+        (format "unknown pairs must not grow above 6.31%% (got %.2f%%)" unknown-%))))
 
 (tu/deftest-kb the-audits-between-two-writes-ask-a-ground-goal-once
   (tu/with-terms [a_kind b_kind]

@@ -26,8 +26,44 @@
   (doseq [r relations]
     (is (= #{kind} (kinds-of kb r context)) (str r " is " kind " and of no other kind"))))
 
-(tu/deftest-kb types-over-atemporal-things-and-every-metatype-are-time-invariant
-  (testing "types over numbers, expressions and other atemporal things"
+(tu/deftest-kb eternal-documentation-does-not-assert-its-quoted-example
+  (tu/with-terms [example_kind ExamplePerson]
+    (v/assert kb (list 'unary_predicate example_kind) 'CxUniverse)
+    (v/assert kb (list 'genl example_kind 'tangible) 'CxUniverse)
+    (v/assert kb (list 'time_varying_relation example_kind) 'CxUniverse)
+    (is (true? (v/ask? kb '(eternal_predicate positiveExample) 'CxUniverse)))
+    (v/assert kb (list 'positiveExample example_kind
+                       (list 'Quote (list example_kind ExamplePerson)))
+              'CxUniverse)
+    (is (not (v/ask? kb (list example_kind ExamplePerson) 'CxUniverse))
+        "an eternal annotation does not establish its quoted example")
+    (is (not (v/ask? kb (list 'eternal_predicate example_kind) 'CxUniverse))
+        "documenting a time-varying kind does not make that kind eternal")))
+
+(tu/deftest-kb atemporal-members-need-rigidity-for-the-eternal-bridge
+  (tu/with-terms [fixed_number_type selected_number_type eternal_time_type]
+    (doseq [sentence [(list 'unary_predicate fixed_number_type)
+                      (list 'genl fixed_number_type 'number)
+                      (list 'time_invariant_relation fixed_number_type)
+                      (list 'unary_predicate selected_number_type)
+                      (list 'genl selected_number_type 'number)
+                      (list 'time_varying_relation selected_number_type)
+                      (list 'unary_predicate eternal_time_type)
+                      (list 'genl eternal_time_type 'time_interval)
+                      (list 'eternal_predicate eternal_time_type)]]
+      (v/assert kb sentence 'CxUniverse))
+    (is (true? (v/ask? kb (list 'eternal_predicate fixed_number_type) 'CxUniverse))
+        "invariant unary membership over atemporal things is eternal")
+    (is (not (v/ask? kb (list 'eternal_predicate selected_number_type) 'CxUniverse))
+        "atemporal members do not make changing membership eternal")
+    (is (not (v/ask? kb (list 'genl eternal_time_type 'atemporal) 'CxUniverse))
+        "eternal unary membership does not imply atemporal members")
+    (v/retract! kb (v/handle-of kb (list 'time_invariant_relation fixed_number_type) 'CxUniverse))
+    (is (not (v/ask? kb (list 'eternal_predicate fixed_number_type) 'CxUniverse))
+        "withdrawing rigidity removes the derived eternal mark despite the invariant supertype")))
+
+(tu/deftest-kb selected-value-and-metatype-kinds-are-time-invariant
+  (testing "the shipped fixed value and expression kinds"
     (all-of-kind kb 'time_invariant_relation
                  '[number non_positive_integer atomic_expression open_expression
                    ill_formed_expression logical aspatial atemporal]
@@ -58,8 +94,11 @@
   (all-of-kind kb 'time_invariant_relation
                '[arity admitsArgnum arityMin functionCorrespondingPredicate implies not and
                  forall thereExists equals different lessThan termsRelated
-                 borderlineExample comment means]
+                 borderlineExample comment]
                'CxUniverse))
+
+(tu/deftest-kb interpretation-predicates-are-time-agnostic
+  (all-of-kind kb 'time_agnostic_relation '[means denotes] 'CxUniverse))
 
 (tu/deftest-kb kinship-and-biology-are-time-invariant
   (all-of-kind kb 'time_invariant_relation
@@ -86,10 +125,12 @@
                  regionConnectedTo withinNearDistanceOf]
                'CxUniverse))
 
-(tu/deftest-kb type-relation-and-argument-declaration-predicates-are-time-invariant
+(tu/deftest-kb taxonomy-is-agnostic-and-argument-declarations-remain-invariant
+  (all-of-kind kb 'time_agnostic_relation
+               '[disjoint partition covering separating orthogonal genl typeGenl typeOrthogonal]
+               'CxUniverse)
   (all-of-kind kb 'time_invariant_relation
-               '[disjoint partition covering separating orthogonal intersection genl genlCx
-                 typeGenl typeOrthogonal arg genlArg result defnIff transitiveInArg]
+               '[intersection genlCx arg genlArg result defnIff transitiveInArg]
                'CxUniverse))
 
 (tu/deftest-kb every-spec-of-time-and-of-situation-is-time-invariant
@@ -269,7 +310,7 @@
 (tu/deftest-kb every-life-stage-is-time-varying
   ;; A caterpillar stops being a caterpillar and goes on existing as a butterfly.  One
   ;; genl edge classifies every member of life_stage_type, and the metatype itself is
-  ;; time-invariant, as every metatype is.
+  ;; one of the shipped invariant classifiers.
   (is (seq (v/ask kb '(comment life_stage_type ?c) 'CxUniverse)) "life_stage_type is commented")
   (is (v/ask? kb '(genl life_stage_type time_varying_relation) 'CxUniverse))
   (all-of-kind kb 'time_invariant_relation '[life_stage_type] 'CxUniverse)
