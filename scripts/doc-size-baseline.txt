@@ -56,14 +56,14 @@
 279	647	src/vaelii/core.clj
 57	55	src/vaelii/host/cli.clj
 38	32	src/vaelii/host/client.clj
-11	5	src/vaelii/host/core_context.clj
+12	5	src/vaelii/host/core_context.clj
 64	12	src/vaelii/host/gloss.clj
 47	9	src/vaelii/host/guard.clj
 32	65	src/vaelii/host/io/generate.clj
 0	4	src/vaelii/host/lines.clj
 19	2	src/vaelii/host/seed.clj
 91	208	src/vaelii/host/serve.clj
-82	10	src/vaelii/host/starter.clj
+83	10	src/vaelii/host/starter.clj
 49	20	src/vaelii/host/subscribe.clj
 73	13	src/vaelii/host/sync.clj
 12	10	src/vaelii/impl/argtype_pass.clj
@@ -474,7 +474,7 @@
 2	21	test/vaelii/scenario_test.clj
 0	240	test/vaelii/scoped_defeat_test.clj
 25	81	test/vaelii/second_route_test.clj
-0	15	test/vaelii/seed_test.clj
+0	16	test/vaelii/seed_test.clj
 1	17	test/vaelii/separable_frame_test.clj
 3	35	test/vaelii/serve_parity_test.clj
 7	151	test/vaelii/serve_test.clj

@@ -14,13 +14,6 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
-### Internal
-
-- **Fresh test KBs load the shared interface rules.** `args` expands through
-  `kb/upper/interface-rules.txt`, also loaded by the upper ontology, rather than hand
-  copies in tests. `tu/empty-kb` retains a rule-free fixture for storage and synthetic
-  rule censuses; full-ontology fixtures still import into an empty destination.
-
 ### Refusal: shape
 
 - **A `.` that is not the rest marker of its list is refused as `:shape`**
@@ -104,6 +97,13 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [indexing.md](docs/indexing.md#5-the-inverted-term-index)
   *Migration:* a durable store indexed by an earlier release lists `.` until
   `(v/reindex kb)`.
+
+### Internal
+
+- **The `args`→`argAndRest` forward rule moved from `core.txt` to the new
+  `kb/upper/interface-rules.txt`**, loaded with the rest of the upper ontology by
+  `core-context/load-into`. Test fixtures: `tu/fresh` loads it; the new `tu/empty-kb` is
+  rule-free.
 
 ## 0.32.0 — 2026-11-03 — "Every context sees CxUniverse, a denial undercutting a `:default` edge's reading, a `genl` cycle refused where its context sees it, `CxTimeFn` slices at ranges and moments, time zones and calendar distances, `replace-facts!`, explanations in content form"
 

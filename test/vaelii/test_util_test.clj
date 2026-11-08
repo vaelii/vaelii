@@ -73,7 +73,7 @@
     (let [kb       (tu/fresh)
           baseline (tu/content-count kb)]
       (is (pos? (:sentexes baseline)) "the interface rules are loaded")
-      (v/assert kb '(dog Muffet) 'CxUniverse)
+      (is (nat-int? (v/assert kb '(dog Muffet) 'CxUniverse)))
       (is (= baseline (tu/content-count (tu/fresh)))
           "a fresh KB must not retain the previous test's facts"))))
 

@@ -4,11 +4,12 @@
   "The upper ontology: every KB file under `resources/kb/upper/`, loaded into CxUniverse.
   `core.txt` is the vocabulary — the special-predicate surface the engine interprets
   (types/contexts, arg, disjoint, the `set/*Rule` wrappers, the predicate metadata,
-  negation, `ist`, the evaluables), the predicate meta-ontology and the ontology's top;
-  `interface-rules.txt` is interface sugar (`args` stored as `argAndRest`, also loaded
-  by `tu/fresh`); each other file is one domain (abstract, life, measure, organism,
-  reflection, society, space, structure, time).  Documentation rides on `comment`
-  sentexes, ordinary stored ones, so the KB documents itself in its own representation.
+  negation, `ist`, the evaluables), the predicate meta-ontology and the top of the
+  ontology; `interface-rules.txt` holds the `args`→`argAndRest` twin rule; and each other
+  file is one domain (abstract, life, measure, organism, reflection, society, space,
+  structure, time).  Documentation rides on `comment` sentexes, `(comment <term> \"...\")`
+  — ordinary sentexes (stored, indexed, queryable) — so the KB documents itself in its
+  own representation.
 
   CxUniverse is the root: every context the middle layer wires in sees it, and a KB built
   for vocabulary alone holds exactly this load.  The middle contexts below it are the
@@ -20,8 +21,8 @@
             [vaelii.impl.sentex :as sx]))
 
 (defn upper-files
-  "The file names under `kb/upper/`, `core.txt` first and the domain files after it in
-  sorted order."
+  "The file names under `kb/upper/`, `core.txt` first and every other file after it
+  (`interface-rules.txt` and the domain files) in sorted order."
   []
   (let [fs (seed/layer-files "upper")]
     (into ["core.txt"] (remove #{"core.txt"}) fs)))

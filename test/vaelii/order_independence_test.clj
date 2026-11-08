@@ -82,28 +82,31 @@
 (defn- run-ops
   "Apply `ops` to a freshly cleared KB and return `observe`'s reading of it, after
   checking the justification verdicts against belief over the handles the ops left IN, at
-  each of their contexts (`tu/verdict-violations`)."
-  [ops observe]
-  (let [kb     (tu/fresh)
-        tms    (reasoning/tms kb)
-        before (set (jtms/in-datums tms))]
-    (doseq [op ops] (op kb))
-    (let [hs (into [] (remove before) (jtms/in-datums tms))]
-      (is (= [] (tu/verdict-violations kb hs (into #{} (keep #(:context (v/sentex kb %))) hs)))))
-    (observe kb)))
+  each of their contexts (`tu/verdict-violations`).  `build` makes the KB, `tu/fresh`
+  unless given (`tu/empty-kb` for a rule-free one)."
+  ([ops observe] (run-ops ops observe tu/fresh))
+  ([ops observe build]
+   (let [kb     (build)
+         tms    (reasoning/tms kb)
+         before (set (jtms/in-datums tms))]
+     (doseq [op ops] (op kb))
+     (let [hs (into [] (remove before) (jtms/in-datums tms))]
+       (is (= [] (tu/verdict-violations kb hs (into #{} (keep #(:context (v/sentex kb %))) hs)))))
+     (observe kb))))
 
 (defn- outcome-census
   "The distinct outcomes over `orderings`, each mapped to how many produced it (`:n`) and
   the index of the first that did (`:at`).  A sixteen-against-four split names the defective
   side, which a bare set of readings does not.  `interleavings` is deterministic, so the
-  index reproduces the ordering."
-  [orderings observe]
-  (reduce (fn [acc [i o]]
-            (if (contains? acc o)
-              (update-in acc [o :n] inc)
-              (assoc acc o {:n 1 :at i})))
-          {}
-          (map-indexed (fn [i ops] [i (run-ops ops observe)]) orderings)))
+  index reproduces the ordering.  `build` makes each KB, as in `run-ops`."
+  ([orderings observe] (outcome-census orderings observe tu/fresh))
+  ([orderings observe build]
+   (reduce (fn [acc [i o]]
+             (if (contains? acc o)
+               (update-in acc [o :n] inc)
+               (assoc acc o {:n 1 :at i})))
+           {}
+           (map-indexed (fn [i ops] [i (run-ops ops observe build)]) orderings))))
 
 (def ^:private census-lines
   "How many outcomes a failure prints in full; an `observe` reading something
@@ -127,12 +130,14 @@
 (defn- one-outcome-under!
   "Assert that every linear extension of `chains` agrees, and return the single outcome.
   `one-outcome!` is this with every op its own chain; use this form when an op depends on
-  an earlier one.  `cap` samples as in `one-outcome!`."
+  an earlier one.  `cap` samples as in `one-outcome!`; `build` makes each KB, as in
+  `run-ops`."
   ([label chains observe] (one-outcome-under! label chains observe nil))
-  ([label chains observe cap]
+  ([label chains observe cap] (one-outcome-under! label chains observe cap tu/fresh))
+  ([label chains observe cap build]
    (let [all    (interleavings chains)
          walked (cond->> all cap (sampled-orderings cap))
-         census (outcome-census walked observe)]
+         census (outcome-census walked observe build)]
      (is (= 1 (count census))
          (str label ": " (count census) " distinct outcomes across " (count walked)
               (when cap (str " sampled of " (count all))) " orderings —"
@@ -1749,10 +1754,11 @@
           (is (holds? kb) "one witness left, and one is enough")
           (second-drop kb)
           (is (not (holds? kb)) "and none left is none"))))
-    (let [end (one-outcome-under-on! tu/empty-kb "both supports withdrawn"
-                                     [[add-p drop-p] [add-r drop-r] [rule-p] [rule-r]]
-                                     (fn [kb] {:records    (whole-reading kb)
-                                               :conclusion (holds? kb)}))]
+    (let [end (one-outcome-under! "both supports withdrawn"
+                                  [[add-p drop-p] [add-r drop-r] [rule-p] [rule-r]]
+                                  (fn [kb] {:records    (whole-reading kb)
+                                            :conclusion (holds? kb)})
+                                  nil tu/empty-kb)]
       (is (false? (:conclusion end))
           "the one outcome is the conclusion gone, not the conclusion kept")
       (is (= 2 (count (:records end)))

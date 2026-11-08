@@ -411,7 +411,7 @@
         (doseq [[s c] facts] (v/assert kb s c))
         (let [all (mapv (fn [[s c]] (checks/constraint-entailments kb s c)) facts)]
           ;; `args` is no kind of its own: it entails through the `argAndRest` twin
-          ;; core.txt's forward rule stores (covering_arg_test)
+          ;; its shared interface rule stores (covering_arg_test)
           (is (= '#{arg genlArg interArg argAndRest argAndRestGenl interArgs
                     interArgAndRest argsGenl}
                  (into #{} (comp cat (map :kind)) all))

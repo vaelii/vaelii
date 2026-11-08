@@ -8,6 +8,7 @@
     * upper (`kb/upper/`, every file in CxUniverse): what things *are*, always true, like
       `genl`.  Split by domain, one file each:
         - core.txt       — the vocabulary the engine interprets and the ontology's top.
+        - interface-rules.txt — the args→argAndRest twin rule, not a domain.
         - abstract.txt   — the abstract type skeleton (physical/intangible and
                                 their kinds) + the structural relations tangiblePartOf/locatedIn.
         - organism.txt   — the biological taxonomy + its disjointness.

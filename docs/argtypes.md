@@ -132,8 +132,8 @@ change clock, so a read-only caller asking per fact reads the store once per pre
 The assert-time checks look up the same two at the instance level: `args` is refused,
 and derives memberships, through its stored `argAndRest` twin, whose handle is the support
 an entailment names. Retracting the `args` takes the twin, and everything resting on it,
-with it. The upper ontology and `tu/fresh` load that same interface file. A bare
-`open-kb` loads no rules; load the interface file or state `argAndRest` directly.
+with it. A bare `open-kb` loads no rules; state `argAndRest` directly, or load the upper
+ontology.
 
 A valid unbounded tail: a `variable_arity` `herd` with `(arityMin herd 2)` and `(args herd
 animal)` accepts `(herd Rex Bossy)` and `(herd Rex Bossy Clarabelle)` and derives
