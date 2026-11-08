@@ -1266,6 +1266,10 @@ predicates still satisfy the existing rigidity-kind requirement. Eternity is str
 than rigidity: `person` is rigid while its instances exist in time. The mark adds no
 engine restriction on revision and does not make acknowledgments visible in unrelated
 contexts.
+The mark alone does not project a slice-local tuple across time. Engine support and
+its executable temporal regressions are tracked in
+[#272](https://github.com/vaelii/vaelii/issues/272); storage and monad-boundary choices
+remain separate from this vocabulary declaration.
 
 Each rule is quoted on its own. A quoted term is opaque, so no inference or
 canonicalization reaches inside either one, and what the pair needs inferred — that

@@ -89,6 +89,8 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `declined_rule_macro` are members. Assertions remain revisable, not an immutable
   review history or a temporal sequence of endorsements. The mark adds no engine
   restriction on assertion or retraction.
+  Cross-time propagation is not supplied by this declaration; engine support and
+  temporal regressions are tracked in [#272](https://github.com/vaelii/vaelii/issues/272).
 
 
 - **`typeAllSpecified`, a classification requirement `kb-integrity` audits.**
