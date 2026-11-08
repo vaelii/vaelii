@@ -1332,8 +1332,11 @@ spelling `commutativeInArgAndRest`. A mark stated in any context is lifted into
 rigidity marks. Functional constraints remain eternal and
 definitional; temporary uniqueness constraints can use ordinary slice-scoped nogoods.
 The forced-monotonic marks and `target_following_predicate` are eternal engine
-contracts. Equality predicates `sameAs`, `equals` and `different` are explicitly
-non-eternal, while canonical `rewriteOf` remains eternal. These classifications do
+contracts. Equality predicates `sameAs`, `equals` and `different` share one rigidity
+kind and are eternal, as canonical `rewriteOf` is: identity and distinctness do not
+hold at one time and fail at another. `different` stays a unique-name-assumption reading
+of the equality closure the asking context sees; its eternal mark says nothing about
+that reader-local closure. These classifications do
 not implement cross-time propagation or change the engine's identity closure.
 
 The time-slice and monad vocabulary (`cxMonadOf`, `cxTimeOf`, `genlMonad`,

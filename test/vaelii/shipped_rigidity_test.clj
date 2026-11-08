@@ -132,6 +132,12 @@
                  borderlineExample comment]
                'CxUniverse))
 
+(tu/deftest-kb equality-predicates-are-eternal-like-rewriteOf
+  (all-eternal kb '[sameAs equals different rewriteOf] 'CxUniverse)
+  (doseq [r '[sameAs equals different]]
+    (is (not (v/ask? kb (list 'not (list 'eternal_predicate r)) 'CxUniverse))
+        (str r " carries no non-eternal mark"))))
+
 (tu/deftest-kb interpretation-predicates-are-time-agnostic
   (all-of-kind kb 'time_agnostic_relation '[means denotes] 'CxUniverse))
 

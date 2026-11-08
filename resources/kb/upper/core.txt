@@ -2169,7 +2169,7 @@
 (arg sameAs 1 thing)   ;; either side of a sameAs: a term of any kind
 (arg sameAs 2 thing)
 (set/monotonic (time_invariant_relation sameAs))
-(not (eternal_predicate sameAs))
+(set/monotonic (eternal_predicate sameAs))
 
 (comment equals
          "(equals ?term1 ?term2) means that ?term1 and ?term2 denote one thing. Any two terms may be equated, where sameAs follows OWL in equating individuals. The merge feeds the one equivalence closure rewriteOf and sameAs feed. A goal of equals is answered from the closure. A collision under functional, functionalInArg or anti_symmetric between two monotonic symbols derives an equals. See docs/equality.md.")
@@ -2177,7 +2177,7 @@
 (arg equals 1 thing)   ;; either side of an equals: a term of any kind
 (arg equals 2 thing)
 (set/monotonic (time_invariant_relation equals))
-(not (eternal_predicate equals))
+(set/monotonic (eternal_predicate equals))
 
 ;; different is the unique-name assumption read as a relation.  The engine answers it and
 ;; never stores it: wff refuses an assert of it, and provers/DifferentProver answers a
@@ -2191,7 +2191,7 @@
 (args different thing)   ;; every side of a different: a term of any kind
 (commutative different)
 (set/monotonic (time_invariant_relation different))
-(not (eternal_predicate different))
+(set/monotonic (eternal_predicate different))
 
 (comment result
          "(result ?function ?type) means that the output of ?function is an instance of ?type. Read for both kinds of function, and where the type is held is what the reifiability mark decides: a REIFIABLE function's application is minted, so the membership is materialized as (?type K) on the freshly minted constant K — a real sentex with a justification, rather than a rule that would have to run at read time — and an UNREIFIABLE one has no constant to hang it on, so its applications are typed from this declaration at check time instead. One declaration, one verdict, whichever kind of function wrote it. (result ?function context) says that ?function's applications denote contexts: a ground application written in a sentex's context slot reifies to an opaque cx/-namespaced constant whatever is declared about ?function, and a read names that context through the application only while some reader believes the declaration. The cx/ spelling carries the context role, so no (context K) is materialized on the constant (docs/context-nat.md). Named for what it says rather than for the check that reads it, as arg is: the instance reading, with genlResult one level up.")
