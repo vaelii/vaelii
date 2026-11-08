@@ -293,7 +293,7 @@
 
 (tu/deftest-kb a-genl-rule-over-a-binary-predicate-class-is-believed-in-either-order-and-after-recover
   ;; #244: a type_relation_predicate's positions ask for what its `args` declaration
-  ;; names, `predicate` from core.txt's forward rule, so a class of binary predicates
+  ;; names, `predicate` through interface-rules.txt, so a class of binary predicates
   ;; fills genl's first argument; the rule written before its declarations and after
   (let [outcomes (vec (for [rule-first? [true false]]
                         (tu/with-terms [pair_type pair_kind steady_kind targetRel]

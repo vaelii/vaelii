@@ -237,7 +237,7 @@ own handle instead.
 
 **A load is one order-insensitive pass.** A file's blocks run in natural sort order of their
 terms, so a sentence can rest on content further down a file or in another file (a
-`transitive` mark under `tangiblePartOf`, read by a rule under `largerThan`). The loader
+`transitive` mark under `tangiblePartOf`, read by a rule under `typeLargerThan`). The loader
 asserts every `(genlCx …)` first, because a firing with no placement context is dropped as
 a `:no-placement` violation and nothing retries it. Every `(target_following_predicate P)`,
 `(arg P n sentence)` and `quotedArg` or `quotedArgAndRest` typing `sentex_handle_term` goes

@@ -6,8 +6,8 @@
   theory, so the everyday contexts below CxWell assume no temperature, and a user's own
   context opts in by placing itself under CxNormalPhysicalConditions.
 
-  Stone, wood and glass are solid there through `genl` edges.  `metal_stuff` is solid
-  there by default, through a `set/defaultRule` whose `exceptWhen` names mercury, so a
+  Stone, wood and glass are solid there by default, through `set/defaultRule`s.
+  `metal_stuff` is solid by default through a rule whose `exceptWhen` names mercury, so a
   metal the KB says nothing more about comes out solid and a portion of mercury comes
   out liquid and not solid.  None of these states holds in a context that does not see
   the theory: a stone is solid at room temperature, and the upper ontology says nothing
@@ -71,10 +71,13 @@
       (doseq [ctx [CxStuff CxElsewhere 'CxWell 'CxUniverse]
               x   [Pebble Plank Pane]]
         (is (not (holds-isa x 'solid ctx)) (str x " is not concluded solid in " ctx))))
-    (testing "the three edges are the theory's, not the upper ontology's"
+    (testing "a phase is a state, not a kind: each is a default rule, not a genl edge"
       (doseq [t '[stone wood glass_stuff]]
-        (is (tu/holds-genl t 'solid NPC))
-        (is (not (tu/holds-genl t 'solid 'CxUniverse)))))))
+        (is (not (tu/holds-genl t 'solid NPC)))
+        (is (not (tu/holds-genl t 'solid 'CxUniverse)))
+        (is (tu/holds-ask (list 'declined_rule_macro (list 'genl t 'solid)) NPC)))
+      (doseq [x [Pebble Plank Pane]]
+        (is (= :default (v/defeat-class kb (v/handle-of kb (list 'solid x) CxRoom))))))))
 
 (tu/deftest-kb metal-stuff-is-solid-by-default-and-mercury-is-the-exception
   (tu/with-terms [CxStuff CxRoom CxElsewhere Nail Droplet]
@@ -95,6 +98,8 @@
         (is (= :default (v/defeat-class kb h)))))
     (testing "mercury is liquid and is not concluded solid"
       (is (holds-isa Droplet 'liquid CxRoom))
+      (is (not (tu/holds-genl 'mercury 'liquid NPC)) "liquid by a default rule, not a genl edge")
+      (is (tu/holds-ask '(declined_rule_macro (genl mercury liquid)) NPC))
       (is (holds-isa Droplet 'metal_stuff CxRoom))
       (is (not (tu/holds-ask (list 'solid Droplet) CxRoom)))
       (is (not (holds-isa Droplet 'solid CxRoom)))

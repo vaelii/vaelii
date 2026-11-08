@@ -23,6 +23,10 @@
   stored rule and concludes nothing — it reads the declaration and the beliefs and hands
   back the violations, the way a solve-time report does.
 
+  `typeAllSpecified` is the counterpart for a classification: `type-specified-violations`
+  reports the instances of a collection no member of a classifier is believed to hold,
+  and `kb-integrity` folds its declaration stream as its own category (docs/integrity.md).
+
   **Indeterminate = the `indeterminate_term` category.**  A filler counts as determinate
   unless it is a member of the extensible `indeterminate_term` collection (core.txt).
   Skolem constants are its built-in first member — a reified NAT whose expression is a
@@ -152,6 +156,7 @@
 (defn- member-selector
   [kb]
   (let [tax (reasoning/taxonomy kb)
+        down (memoize #(budget/checked-call (fn [] (tax/context-down tax %))))
         evidence (memoize #(budget/checked-call (fn [] (defining/definition-evidence kb %))))
         eligible (memoize
                   (fn [source subject]
@@ -159,12 +164,11 @@
                       (cond
                         skeletal-only? #{}
                         (or (empty? contexts) (sx/variable? source)) ::actual-reader
-                        :else (into #{}
-                                    (mapcat (fn [home]
-                                              (budget/checked-seq
-                                               (budget/checked-call
-                                                #(tax/common-descendants tax [source home])))))
-                                    (budget/checked-seq contexts))))))]
+                        :else (let [source-readers (down source)]
+                                (into #{}
+                                      (comp (mapcat #(budget/checked-seq (down %)))
+                                            (filter source-readers))
+                                      (budget/checked-seq contexts)))))))]
     (fn [source reader subject]
       (budget/spend!)
       (let [readers (eligible source subject)]
@@ -286,18 +290,19 @@
         (for [b (quasiquote/ask-prepared kb (list functor '?pred '?indep) ctx)]
           [(get b '?pred) (get b '?indep)]))))
 
-(defn- merge-specified-results
-  "Combine source-context results without changing the public result shape. A missing
-  slot contract remains an explicit gap; audited violation sets combine by union."
+(defn- merge-audit-results
+  "Combine reader-context results without changing the public result shape. A
+  declaration-contract gap remains explicit; audited violation sets combine by union."
   [previous result]
   (cond
     (= :gap (:status previous)) previous
     (= :gap (:status result)) result
     :else (update previous :violations into (:violations result))))
 
-(defn- specified-context-audits
-  "Emit cumulative results after each eligible reader, retaining completed findings."
-  [kb functor arg-pos declarations]
+(defn- declaration-context-audits
+  "Emit cumulative results after each eligible reader. `audit` reads one declaration's
+  two arguments, a reader and the member-eligibility predicate in that reader."
+  [kb functor audit declarations]
   (let [declarations (budget/checked-seq declarations)
         [pred indep] (first declarations)
         declaration [functor pred indep]
@@ -307,7 +312,7 @@
                               (if handle
                                 (let [descendants
                                       (budget/checked-call
-                                       #(tax/common-descendants (reasoning/taxonomy kb) [source]))]
+                                       #(tax/context-down (reasoning/taxonomy kb) source))]
                                   (budget/checked-call
                                    #(sort-by nm/name-key (budget/checked-seq descendants))))
                                 [source]))
@@ -320,9 +325,8 @@
     (map (fn [result] [declaration result])
          (rest (reductions
                 (fn [previous [source reader]]
-                  (merge-specified-results
-                   previous (specified-violations kb pred indep reader arg-pos
-                                                  #(eligible? source reader %))))
+                  (merge-audit-results
+                   previous (audit pred indep reader #(eligible? source reader %))))
                 {:status :audited :violations #{}}
                 readers)))))
 
@@ -365,7 +369,9 @@
    (res/lazy-mapcat
     (fn [[functor arg-pos]]
       (res/lazy-mapcat
-       #(specified-context-audits kb functor arg-pos %)
+       #(declaration-context-audits
+         kb functor (fn [pred indep reader eligible?]
+                      (specified-violations kb pred indep reader arg-pos eligible?)) %)
        (declaration-contexts kb functor ctx)))
     [['predAllSpecified :second] ['predSpecifiedAll :first]])
    (res/lazy-mapcat
@@ -385,28 +391,60 @@
        (exists-declarations kb functor ctx)))
     '[predAllExists predExistsAll predExistsInstance predInstanceExists])))
 
-(defn all-specified-violations
-  "Audit every `predAllSpecified` and `predSpecifiedAll` declaration visible in `ctx`,
-  and every *Exists* declaration (`exists-violations`, keyed `[functor pred a b]`),
-  and return `{[functor pred indep] result …}` — each result carrying a `:status`:
-  `{:status :audited :violations #{…}}` where the audit ran, or `{:status :gap …}`
-  for a diagnostic. Gap kinds include `:missing-slot-typing`
-  (the predicate carries no visible slot typing at the audited position) and
-  `:legacy-ternary-declaration` (a stored pre-migration ternary sentex, reachable
-  through the bulk import path, which the binary audit cannot read).  A legacy gap
-  is keyed by its whole stale argument tuple, `[functor pred a b]`, so it collides
-  with neither a three-element binary key nor another stale sentex over the same
-  predicate: an unmigrated KB carries both spellings at once, and a key off the
-  first two arguments alone let the stale one replace the migrated declaration's
-  violation set.  Declarations that hold are omitted; a gap never is, so a clean
-  sweep is an empty map and a gap cannot pass as one.  This public aggregate and
-  `kb-integrity` both fold the same focused per-declaration audit stream; only this
-  function returns its complete aggregate map.
+(defn type-specified-violations
+  "Audit `(typeAllSpecified classifier indep)` in `ctx` using believed memberships.
+  Return `{:status :audited :violations #{…}}`, or `:gap` for an empty classifier or
+  incomplete defining support. Ordinary defining-home eligibility exempts only proved
+  skeletal-only instances; no-home instances remain audited in the actual reader.
+  The five-argument arm accepts a stored declaration's reader eligibility.
+  Membership derived by genl or argument preservation counts. See docs/integrity.md."
+  ([kb classifier indep ctx]
+   (let [eligible? (member-selector kb)]
+     (type-specified-violations kb classifier indep ctx #(eligible? ctx ctx %))))
+  ([kb classifier indep ctx eligible?]
+   (let [members (into [] (comp (map #(get % '?k)) (filter some?) (distinct))
+                       (quasiquote/ask-prepared kb (list classifier '?k) ctx))]
+     (if (empty? members)
+       {:status :gap :gap :empty-classifier :classifier classifier}
+       (try
+         {:status :audited
+          :violations
+          (into #{}
+                (comp (map #(get % '?x))
+                      (filter some?)
+                      (remove (fn [x] (some #(ask? kb (list % x) ctx) members)))
+                      (filter eligible?))
+                (quasiquote/ask-prepared kb (list indep '?x) ctx))}
+         (catch clojure.lang.ExceptionInfo e
+           (if (= :incomplete-defining-contexts (:type (ex-data e)))
+             (merge {:status :gap :gap :incomplete-defining-contexts :classifier classifier}
+                    (select-keys (ex-data e) [:term :handles]))
+             (throw e))))))))
 
-  Each stored Specified declaration is checked in every known eligible reader; a proved
-  skeletal-only instance is exempt, an empty evidence set is audited in the actual reader,
-  and unclassified support is an `:incomplete-defining-contexts` gap. Native-only registry
-  answers without a stored definition retain `ctx`, as do Exists audits."
+(defn type-specified-declaration-audits
+  "Every `typeAllSpecified` declaration visible in `ctx`, audited, as a lazy stream of
+  `[[typeAllSpecified classifier indep] result]` entries in content order.
+
+  As for `specified-declaration-audits`, each stored declaration audits every known reader
+  seeing it and an instance's ordinary defining home. Each reader supplies its own
+  population and classifier memberships; cumulative findings share one declaration key.
+  Native-only declaration answers retain `ctx`."
+  [kb ctx]
+  (res/lazy-mapcat
+   #(declaration-context-audits kb 'typeAllSpecified
+                                (fn [classifier indep reader eligible?]
+                                  (type-specified-violations kb classifier indep reader eligible?))
+                                %)
+   (declaration-contexts kb 'typeAllSpecified ctx)))
+
+(defn all-specified-violations
+  "Audit visible Specified and Exists declarations as `{declaration result …}`.
+  Binary keys are `[functor pred indep]`; Exists and legacy-ternary keys keep all
+  arguments. Results are `{:status :audited :violations #{…}}` or explicit `:gap`
+  diagnostics. Omit satisfied declarations, never gaps; an empty map is clean.
+  Specified audits every eligible defining reader, exempts only proved skeletal-only
+  instances, and reports incomplete support. No-home/native answers retain the actual
+  reader. Uses the same declaration stream as `kb-integrity`; see docs/integrity.md."
   [kb ctx]
   (into {}
         (filter (fn [[_ r]] (or (= :gap (:status r)) (seq (:violations r)))))

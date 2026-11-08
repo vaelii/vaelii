@@ -309,7 +309,7 @@ the one batch.
 - **The `kb/middle/` contexts are the engine's** and end up stating what it ships, under
   the same vocabulary rule. A context an author wires into the topology is not one of them and is not read.
 - **Only the layers a KB has.** A middle file whose context holds nothing is not loaded,
-  and the upper layer and the `unary_predicate` batch are loaded only into a KB whose
+  and the upper layer is loaded only into a KB whose
   CxUniverse holds a premise the upper load ships, so a vocabulary KB stays one.
 - **A shipped sentence outside an exact context is looked up by handle** and asserted only
   when absent, so a context holding a corpus is never read whole.
@@ -348,8 +348,7 @@ the difference becomes line edits to the shipped files (`sync/write-back!`):
 
 Every other line stays, comments and order included. The edit changes the files' mtimes,
 so the next request syncs the other loaded KBs to them. Only the starter writes back. A
-`genlCx` edge in CxUniverse is not compared, and a retraction no file states (a member of
-the closing `unary_predicate` batch) is logged as skipped and restored by that sync. No
+`genlCx` edge in CxUniverse is not compared. No
 comparison runs while a job holds the writer, and the reading is taken again when a file
 sync finishes, so a sync's own writes are never written back.
 

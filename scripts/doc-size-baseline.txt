@@ -63,9 +63,9 @@
 0	4	src/vaelii/host/lines.clj
 19	2	src/vaelii/host/seed.clj
 90	208	src/vaelii/host/serve.clj
-83	10	src/vaelii/host/starter.clj
+83	5	src/vaelii/host/starter.clj
 49	20	src/vaelii/host/subscribe.clj
-73	13	src/vaelii/host/sync.clj
+73	11	src/vaelii/host/sync.clj
 12	10	src/vaelii/impl/argtype_pass.clj
 27	10	src/vaelii/impl/asp/aspif.clj
 1	2	src/vaelii/impl/asp/atoms.clj
@@ -114,7 +114,7 @@
 99	149	src/vaelii/impl/inference.clj
 69	77	src/vaelii/impl/inherit.clj
 6	56	src/vaelii/impl/integrate.clj
-105	79	src/vaelii/impl/integrity.clj
+102	79	src/vaelii/impl/integrity.clj
 3	8	src/vaelii/impl/interval.clj
 28	18	src/vaelii/impl/io/digest.clj
 8	24	src/vaelii/impl/io/export.clj
@@ -142,7 +142,7 @@
 7	6	src/vaelii/impl/overlay/rebase.clj
 40	83	src/vaelii/impl/overlay/store.clj
 20	53	src/vaelii/impl/plan.clj
-86	2	src/vaelii/impl/predall.clj
+77	2	src/vaelii/impl/predall.clj
 137	148	src/vaelii/impl/predicates.clj
 3	12	src/vaelii/impl/profile.clj
 57	88	src/vaelii/impl/protocols.clj

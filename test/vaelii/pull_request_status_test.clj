@@ -46,7 +46,7 @@
     (is (holds-ask '(arg holdsReadyLatch 2 forge_repository) CPT))
     (is (holds-ask '(genlArg mergeAccessOf 2 merge_access) CPT)))
   (is (holds-ask '(functionCorrespondingPredicate PullRequestFn pullRequestOf 3) CPT))
-  (is (holds-ask '(functionCorrespondingPredicate MergeAccessFn mergeAccessOf) CPT)))
+  (is (holds-ask '(functionCorrespondingPredicate MergeAccessFn mergeAccessOf 2) CPT)))
 
 (tu/deftest-kb who-may-merge-pull-requests-of-a-repository
   (tu/with-terms [CxDesk Repo OtherRepo Maintainer Writer]

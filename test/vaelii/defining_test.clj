@@ -159,7 +159,7 @@
     (contexts kb [CxHome])
     (doseq [sentence [(list 'reifiable_function LookupFn)
                       (list 'result LookupFn access_kind)
-                      (list 'functionCorrespondingPredicate LookupFn lookupOf)
+                      (list 'functionCorrespondingPredicate LookupFn lookupOf 2)
                       (list 'arg lookupOf 1 namespace_kind)]]
       (v/assert kb sentence 'CxUniverse))
     (v/assert kb (list namespace_kind Namespace) CxHome)
@@ -641,7 +641,7 @@
       (contexts kb [CxHome])
       (doseq [sentence [(list 'reifiable_function LookupFn)
                         (list 'result LookupFn access_kind)
-                        (list 'functionCorrespondingPredicate LookupFn lookupOf)
+                        (list 'functionCorrespondingPredicate LookupFn lookupOf 2)
                         (list 'arg lookupOf 1 namespace_kind)]]
         (v/assert kb sentence 'CxUniverse))
       (v/assert kb (list usedBy (list LookupFn Namespace) Observer) CxHome)

@@ -102,7 +102,8 @@
         (v/assert kb (list 'implies (list 'sentence q) (list kinded Ann))
                   'CxUniverse {:direction :forward})
         (v/assert kb (list valueOf Ann q) 'CxUniverse)
-        (is (empty? (v/sentexes-matching kb (list kinded '?y) 'CxUniverse)))))))
+        (is (empty? (v/sentexes-matching kb (list kinded q) 'CxUniverse)))
+        (is (empty? (v/sentexes-matching kb (list kinded Ann) 'CxUniverse)))))))
 
 (tu/deftest-kb a-firing-on-a-kind-antecedent-is-withdrawn-with-the-fact-that-bound-it
   (setup! kb)

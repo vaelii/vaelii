@@ -139,11 +139,9 @@ A valid unbounded tail: a `variable_arity` `herd` with `(arityMin herd 2)` and `
 animal)` accepts `(herd Rex Bossy)` and `(herd Rex Bossy Clarabelle)` and derives
 `(animal X)` of every member, at whatever length the tail reaches.
 
-Not every variable-arity relation has a homogeneous tail. `functionCorrespondingPredicate`
-relates a function, its corresponding predicate, and an argument count — three positions of
-three types — so no covering constraint fits it, and its positions take per-position `arg`
-declarations. The covering forms serve the homogeneous case; they do not demand that a tail
-be homogeneous, and the engine enforces neither preference.
+Not every variable-arity relation has a homogeneous tail, and such a relation takes
+per-position `arg` declarations. The covering forms serve the homogeneous case; they do not
+demand that a tail be homogeneous, and the engine enforces neither preference.
 
 Three properties hold, each of them `arg`'s:
 
