@@ -476,8 +476,11 @@ is **inertia**, one literal of negation as failure:
            (holdsAt ?f ?t2)))
 ```
 
-A second `holdsAt` rule reads `initially` and `clippedBefore`, with `(time_point ?t)` as the
-generator that binds the moment before the `unknown` runs. So the cat is asleep at four
+A second `holdsAt` rule reads `initially`, with `(time_point ?t2)` as the generator that
+binds the moment before the `unknown` runs. Its `unknown` joins `clippedBefore`'s
+antecedents when the question is asked, because the moment asked about may be one no
+stored fact names, and a forward `clippedBefore` derives nothing about such a moment
+([defenses.md](defenses.md#inertia-joins-the-terminating-event-under-unknown-not-a-stored-clipped)). So the cat is asleep at four
 because something put it to sleep at three and nothing woke it in between, and it is not
 asleep at six because something did.
 
@@ -499,13 +502,11 @@ forward chaining would store one fact per moment per fluent. Ask it with `query`
 rather than `ask`: level 6 is the registry and expands no rule, and `holdsAt` is a rule
 ([levels.md](levels.md)).
 
-`clipped` is a predicate of its own because `unknown` takes **one literal**
-([defenses.md](defenses.md#clipped-is-a-predicate-not-a-conjunction-under-unknown)).
-
 ### Stratified, and admitted as written
 
 Simple event calculus is **predicate-stratified**: `holdsAt` depends negatively on
-`clipped` and `clippedBefore`, and neither of those depends on `holdsAt`. The assert-time
+`clipped`, `happens`, `terminates` and `instantBefore`, and none of those depends on
+`holdsAt`. The assert-time
 check is predicate-level ([exceptions.md](exceptions.md), "Stratification"), so it admits
 the theory as written, and a cycle through negation would have been refused.
 
@@ -567,7 +568,10 @@ A calendar moment is the same case. A narrative may be written at computed insta
 afternoon of named moments needs them. The calendar clock supplies none, and both halves of
 the theory stop at the same place: `clipped`'s forward join and inertia's backward one each
 reach `instantBefore` with one end **open**, and the clock refuses an open end (["What the
-clock does not reach"](#what-the-clock-does-not-reach)). So a fluent is never reported as
+clock does not reach"](#what-the-clock-does-not-reach)). The `initially` rule's `unknown`
+reaches `instantBefore` with both ends bound, and the clock orders the terminating event
+against the moment asked
+(`calendar_test/an-initially-fluent-stops-at-an-event-the-clock-orders`). So a fluent is never reported as
 persisting past an event the clock could have ordered and the narrative did not. Which end
 is open depends on the conjunction's ranking ([inference.md](inference.md), "Where the
 ranking is required"). State the links, and `clipped` fires over `InstantFn` moments,

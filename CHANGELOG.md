@@ -157,6 +157,18 @@ it — `git show v0.16.0:CHANGELOG.md`.
   *Migration:* a durable store indexed by an earlier release lists `.` until
   `(v/reindex kb)`.
 
+### Fix: shipped ontology
+
+- **A fluent that held at the outset stops at an event the calendar clock orders before
+  the moment asked.** `CxChange`'s `initially` inertia rule read a forward
+  `clippedBefore`, which holds no fact about a moment only a `holdsAt` question names. With
+  `:calendar` registered, `(holdsAt F (InstantFn 2000 1 15 18 0 0))` held past an event at
+  seventeen o'clock that `terminates` F. The rule tests for that event when the question
+  is asked.
+  [time.md](docs/time.md#what-clipped-can-see)
+  *Migration:* retract the `initially` `holdsAt` rule a store loaded from an earlier
+  `CxChange`.
+
 ### Fix: storage
 
 - **A fork mints its handles from its base's counter.** A base written while a fork was

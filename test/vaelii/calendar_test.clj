@@ -264,6 +264,24 @@
           (testing "and retracting a link takes the derived reason back with it"
             (is (empty? (v/sentexes-matching kb (list 'clipped t3 F t6) W)))))))))
 
+(tu/deftest-kb an-initially-fluent-stops-at-an-event-the-clock-orders
+  (let [W  'CxWell
+        t4 '(InstantFn 2000 1 15 16 0 0)
+        t5 '(InstantFn 2000 1 15 17 0 0)
+        t6 '(InstantFn 2000 1 15 18 0 0)]
+    (tu/with-terms [IndoorsFn Rex RexLeaves]
+      (let [G (list IndoorsFn Rex)]
+        (v/assert kb (list 'result IndoorsFn 'fluent) W)
+        (v/assert kb (list 'initially G) W)
+        (v/assert kb (list 'happens RexLeaves t5) W)
+        (let [ends (v/assert kb (list 'terminates RexLeaves G t5) W)]
+          (testing "the fluent holds until the event the clock orders before the moment asked"
+            (is (v/query? kb (list 'holdsAt G t4) W {:max-depth 3}))
+            (is (not (v/query? kb (list 'holdsAt G t6) W {:max-depth 3}))))
+          (v/retract! kb ends)
+          (testing "retracting the end gives the fluent back past it"
+            (is (v/query? kb (list 'holdsAt G t6) W {:max-depth 3}))))))))
+
 ;; ---- the vocabulary the answers are written in --------------------------
 
 (tu/deftest-kb the-clock-answers-the-whole-shipped-vocabulary-and-only-what-holds

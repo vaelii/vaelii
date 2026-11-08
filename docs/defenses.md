@@ -2093,11 +2093,15 @@ be a second apart instead of identical.
 would put a mention in argument position, and would have to be held opaque to identity
 congruence to mean anything.
 
-### `clipped` is a predicate, not a conjunction under `unknown`
+### Inertia joins the terminating event under `unknown`, not a stored `clipped`
 
-`unknown` takes one literal, and a conjunction under it would be read as independent ground
-checks sharing no witness. `CxChange` names the condition `clipped`, which keeps the
-inertia rule's negated antecedent one literal with its meaning intact.
+A forward `clipped` derives a fact only for two moments a stored fact names, and a
+`holdsAt` question may name a moment nothing stores. The calendar clock orders such a
+moment after an event that ends the fluent, and a stored `clipped` would hold no fact for
+it, so the fluent would hold past its end. `unknown` joins a conjunction under one
+`thereExists` ([naf.md](naf.md#the-conjunction-is-joined-so-its-conjuncts-may-share-a-witness)),
+so inertia tests the terminating event against the moment asked about when the question
+is asked.
 
 
 ## Operations and the daemon
