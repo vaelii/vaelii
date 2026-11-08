@@ -451,3 +451,24 @@
       (is (= #{'time_varying_relation} (kinds-of kb properChangingRel 'CxUniverse))))
     (testing "an invariant proper reading says nothing of its relation"
       (is (= #{} (kinds-of kb plainRel 'CxUniverse))))))
+
+(tu/deftest-kb resource-access-kinds-and-stable-id-correspondences-are-time-invariant
+  ;; Revoking a grant changes who may act, not which action kind concerns a resource, and
+  ;; a snowflake or a repository and number names one thing for as long as it exists.
+  (all-of-kind kb 'time_invariant_relation
+               '[readAccessOf writeAccessOf shellAccessOf adminAccessOf deployAccessOf
+                 mergeAccessOf channelViewOf fileLookupOf discordChannelOf discordMessageOf
+                 pullRequestOf]
+               'CxTra)
+  (testing "each constructor takes its predicate's kind through the correspondence"
+    (all-of-kind kb 'time_invariant_relation
+                 '[ReadAccessFn WriteAccessFn ShellAccessFn AdminAccessFn DeployAccessFn
+                   MergeAccessFn ChannelViewFn FileLookupFn DiscordChannelFn DiscordMessageFn
+                   PullRequestFn]
+                 'CxTra)))
+
+(tu/deftest-kb plural-system-membership-is-time-varying-and-carrying-time-agnostic
+  ;; A plural system's alters can change, and a reusable medium can stop carrying what a
+  ;; content-essential token cannot.
+  (all-of-kind kb 'time_varying_relation '[alterOf headmateOf] 'CxTra)
+  (all-of-kind kb 'time_agnostic_relation '[carries] 'CxTra))

@@ -121,7 +121,11 @@ it — `git show v0.16.0:CHANGELOG.md`.
   repositories, pull requests, channels, messages and conceptual works are
   time-invariant. `maxCommonSpec`, `minCommonGenl`, `negates`, `typeLargerThan`,
   `adultFormOf` and `larvalFormOf` are time-agnostic, and `seat` and `construct` are
-  time-varying.
+  time-varying. CxTra's resource-specific access kinds (`readAccessOf`, `writeAccessOf`,
+  `shellAccessOf`, `adminAccessOf`, `deployAccessOf`, `mergeAccessOf`, `channelViewOf`,
+  `fileLookupOf`) and stable-ID correspondences (`discordChannelOf`, `discordMessageOf`,
+  `pullRequestOf`) are time-invariant, and their constructors take that kind through the
+  correspondence. `alterOf` and `headmateOf` are time-varying and `carries` time-agnostic.
   A `properCounterpart` pair passes rigidity only in its sound directions: a
   time-invariant or eternal relation has a time-invariant or eternal proper reading,
   and a time-agnostic proper reading has a time-agnostic relation. Time variance reaches

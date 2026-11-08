@@ -468,6 +468,7 @@
 
 (comment readAccessOf "(readAccessOf ?resource ?kind) means that ?kind is the happening kind of reading ?resource under a grant: (ReadAccessFn ?resource) is ?kind.")
 (binary_predicate readAccessOf)
+(set/monotonic (time_invariant_relation readAccessOf))
 (arg readAccessOf 1 thing)
 (genlArg readAccessOf 2 read_access)
 (set/monotonic (functional readAccessOf))
@@ -481,6 +482,7 @@
 
 (comment writeAccessOf "(writeAccessOf ?resource ?kind) means that ?kind is the happening kind of changing ?resource under a grant: (WriteAccessFn ?resource) is ?kind.")
 (binary_predicate writeAccessOf)
+(set/monotonic (time_invariant_relation writeAccessOf))
 (arg writeAccessOf 1 thing)
 (genlArg writeAccessOf 2 write_access)
 (set/monotonic (functional writeAccessOf))
@@ -494,6 +496,7 @@
 
 (comment shellAccessOf "(shellAccessOf ?resource ?kind) means that ?kind is the happening kind of running commands on ?resource under a grant: (ShellAccessFn ?resource) is ?kind.")
 (binary_predicate shellAccessOf)
+(set/monotonic (time_invariant_relation shellAccessOf))
 (arg shellAccessOf 1 thing)
 (genlArg shellAccessOf 2 shell_access)
 (set/monotonic (functional shellAccessOf))
@@ -507,6 +510,7 @@
 
 (comment adminAccessOf "(adminAccessOf ?resource ?kind) means that ?kind is the happening kind of administering ?resource under a grant: (AdminAccessFn ?resource) is ?kind.")
 (binary_predicate adminAccessOf)
+(set/monotonic (time_invariant_relation adminAccessOf))
 (arg adminAccessOf 1 thing)
 (genlArg adminAccessOf 2 admin_access)
 (set/monotonic (functional adminAccessOf))
@@ -520,6 +524,7 @@
 
 (comment deployAccessOf "(deployAccessOf ?resource ?kind) means that ?kind is the happening kind of deploying workloads onto ?resource under a grant: (DeployAccessFn ?resource) is ?kind.")
 (binary_predicate deployAccessOf)
+(set/monotonic (time_invariant_relation deployAccessOf))
 (arg deployAccessOf 1 thing)
 (genlArg deployAccessOf 2 deploy_access)
 (set/monotonic (functional deployAccessOf))
@@ -605,6 +610,7 @@
 
 (comment fileLookupOf "(fileLookupOf ?namespace ?kind) means that ?kind is the happening kind of resolving paths in ?namespace under a grant: (FileLookupFn ?namespace) is ?kind.")
 (binary_predicate fileLookupOf)
+(set/monotonic (time_invariant_relation fileLookupOf))
 (arg fileLookupOf 1 filesystem_namespace)
 (genlArg fileLookupOf 2 file_lookup)
 (set/monotonic (functional fileLookupOf))
@@ -642,6 +648,7 @@
 
 (comment pullRequestOf "(pullRequestOf ?repository ?number ?pullRequest) means that ?pullRequest is the pull request numbered ?number in ?repository: (PullRequestFn ?repository ?number) is ?pullRequest. A query joins on it to reach a repository's pull requests.")
 (ternary_predicate pullRequestOf)
+(set/monotonic (time_invariant_relation pullRequestOf))
 (arg pullRequestOf 1 forge_repository)
 (arg pullRequestOf 2 positive_integer)
 (arg pullRequestOf 3 pull_request)
@@ -686,6 +693,7 @@
 
 (comment mergeAccessOf "(mergeAccessOf ?repository ?kind) means that ?kind is the happening kind of merging pull requests into ?repository under a grant: (MergeAccessFn ?repository) is ?kind.")
 (binary_predicate mergeAccessOf)
+(set/monotonic (time_invariant_relation mergeAccessOf))
 (arg mergeAccessOf 1 forge_repository)
 (genlArg mergeAccessOf 2 merge_access)
 (set/monotonic (functional mergeAccessOf))
@@ -714,6 +722,7 @@
 (comment carries "(carries ?carrier ?info) means that the temporal ?carrier holds ?info in its medium: reading the medium in the right way gives ?info. A carrier and the information it holds are two things, so destroying a carrier destroys the carrier and not, by that alone, the information. Not functional in position 2: one carrier holds more than one piece of information, e.g. a tree's rings hold the tree's age and each year's rainfall.")
 (binary_predicate carries)
 (set/monotonic (instance_relation_predicate carries))
+(set/monotonic (time_agnostic_relation carries))
 (arg carries 1 temporal)
 (arg carries 2 information)
 
@@ -766,6 +775,7 @@
 
 (comment discordChannelOf "(discordChannelOf ?snowflake ?channel) means that ?channel is the Discord channel whose ID is the decimal string ?snowflake: (DiscordChannelFn ?snowflake) is ?channel.")
 (binary_predicate discordChannelOf)
+(set/monotonic (time_invariant_relation discordChannelOf))
 (quotedArg discordChannelOf 1 string)
 (arg discordChannelOf 2 discord_channel)
 (set/monotonic (functional discordChannelOf))
@@ -783,6 +793,7 @@
 
 (comment channelViewOf "(channelViewOf ?channel ?kind) means that ?kind is the happening kind of accessing Discord channel ?channel under VIEW_CHANNEL permission: (ChannelViewFn ?channel) is ?kind.")
 (binary_predicate channelViewOf)
+(set/monotonic (time_invariant_relation channelViewOf))
 (arg channelViewOf 1 discord_channel)
 (genlArg channelViewOf 2 channel_view)
 (set/monotonic (functional channelViewOf))
@@ -819,6 +830,7 @@
 
 (comment discordMessageOf "(discordMessageOf ?snowflake ?message) means that ?message is the Discord message whose snowflake id is ?snowflake, written as a decimal string: (DiscordMessageFn ?snowflake) is ?message.")
 (binary_predicate discordMessageOf)
+(set/monotonic (time_invariant_relation discordMessageOf))
 (quotedArg discordMessageOf 1 string)
 (arg discordMessageOf 2 discord_message)
 (set/monotonic (functional discordMessageOf))
@@ -1016,6 +1028,7 @@
 (comment alterOf
          "(alterOf ?alter ?system) means that ?alter is one of the identities of the plural system ?system. Functional: an alter belongs to one system.")
 (set/monotonic (instance_relation_predicate alterOf))
+(set/monotonic (time_varying_relation alterOf))
 (set/monotonic (asymmetric alterOf))
 (arg alterOf 1 alter)
 (arg alterOf 2 plural_system)
@@ -1024,6 +1037,7 @@
 (comment headmateOf
          "(headmateOf ?x ?y) means that ?x and ?y are two alters of the same plural system. Read by the rule below from alterOf.")
 (set/monotonic (instance_relation_predicate headmateOf))
+(set/monotonic (time_varying_relation headmateOf))
 (set/monotonic (symmetric headmateOf))
 (arg headmateOf 1 alter)
 (arg headmateOf 2 alter)
