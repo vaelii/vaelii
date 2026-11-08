@@ -35,9 +35,10 @@
 ;; specifically.
 
 (comment relativeOf
-         "(relativeOf ?x ?y) means ?x and ?y are family: related by birth or by choice.")
+         "(relativeOf ?x ?y) means ?x and ?y are currently family: related by birth or by choice. This is not a historical have-ever-been-family relation. A chosen-family bond may end while both people continue to exist, while biological kinship supplies fixed cases.")
 (set/monotonic (instance_relation_predicate relativeOf))
-(set/monotonic (time_invariant_relation relativeOf))
+(set/monotonic (time_agnostic_relation relativeOf))
+(not (eternal_predicate relativeOf))
 (set/monotonic (symmetric relativeOf))
 (arg relativeOf 1 person)
 (arg relativeOf 2 person)
@@ -77,7 +78,7 @@
 (comment originatorOf
          "(originatorOf ?originator ?originated) means ?originator brought ?originated into being. Read by the rule below from parentOf when both are persons.")
 (set/monotonic (instance_relation_predicate originatorOf))
-(set/monotonic (time_invariant_relation originatorOf))
+(set/monotonic (eternal_predicate originatorOf))
 (set/monotonic (asymmetric originatorOf))
 (arg originatorOf 1 person)
 (arg originatorOf 2 person)

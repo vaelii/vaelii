@@ -96,15 +96,21 @@ it — `git show v0.16.0:CHANGELOG.md`.
   documented sentences eternal. Definition, argument-contract, arity and functional
   declarations are eternal too, and ordinary as well as forced-decontextualized
   predicates inherit that classification.
-  `means` and `denotes` are time-agnostic rather than invariant: interpretation
-  includes both fixed reference and time-dependent indexicals.
+  `means`, `denotes` and `expresses` are time-agnostic rather than invariant:
+  interpretation includes both fixed reference and time-dependent indexicals.
   A one-way forward rule derives eternal unary predicates from invariant membership
   over atemporal things; its converse is not asserted. Fixed math, unit/measure,
-  calendar, interval/instant, whole-extent and explicit-time event-calculus predicates
-  are eternal; `initially` remains separate. Taxonomy laws are time-agnostic and
-  explicitly non-eternal. Closure and abducibility grants are time-varying and
-  non-eternal, while modal classification is eternal. No complement type is introduced,
-  and undecided cases are not closed-world negatives.
+  calendar, interval/instant, whole-extent and event-calculus predicates, including
+  `initially`, are eternal. Taxonomy laws are time-agnostic and explicitly non-eternal.
+  Closure, abducibility and audit-completeness requirements are time-varying and
+  non-eternal, while modal classification is eternal. Whole-event actor specializations,
+  provenance, biological genealogy and current fixed-region topology are eternal;
+  chosen/current kinship and kind-level parts/capabilities are agnostic and non-eternal.
+  Algebraic macros, the commutativity family included, are eternal and keep their
+  decontextualization marks, so a mark stated in any context holds for every reader. Preservation macros are explicitly non-eternal;
+  functional constraints and forced-strength/lifecycle engine contracts remain eternal.
+  Equality `sameAs`/`equals`/`different` is non-eternal; `rewriteOf` remains eternal.
+  No complement type is introduced, and undecided cases are not closed-world negatives.
 
 
 - **`typeAllSpecified`, a classification requirement `kb-integrity` audits.**

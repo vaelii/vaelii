@@ -1280,9 +1280,9 @@ still evaluate examples in their writing context.
 The definition predicates, input/output argument contracts (numbered, covering,
 suffix, quoted and cross-argument forms), arity declarations and functional-slot
 constraints are also eternal. Both forced and ordinary decontextualized predicates
-inherit the eternal classification through `genl`. Interpretation predicates `means` and
-`denotes` are time-agnostic, not invariant or eternal: fixed reference and
-context-dependent indexicals coexist.
+inherit the eternal classification through `genl`. Interpretation predicates `means`,
+`denotes` and `expresses` are time-agnostic, not invariant or eternal: fixed reference
+and context-dependent indexicals coexist.
 
 The one-way bridge for unary predicates requires both invariant membership and
 `(genl P atemporal)` before deriving `(eternal_predicate P)`. Atemporal members alone
@@ -1292,9 +1292,9 @@ temporal intervals are valid examples of that distinction.
 
 Fixed mathematical comparisons, unit conversions and measure comparisons, calendar
 mappings, interval/instant relations, whole-extent start/end/duration facts and the
-explicitly timed event-calculus predicates are eternal. These concern named values,
-complete extents or an explicit time argument: `holdsAt(F, noon)` does not assert
-that F holds at every time. `initially` is not included in this timed family.
+event-calculus predicates are eternal. These concern named values, complete extents
+or a fixed narrative: `holdsAt(F, noon)` does not assert that F holds at every time,
+and `initially` describes the narrative's outset, not the current state.
 Changing measurements and an implicit "now" remain distinct.
 
 There is no complement type or closed-world completion. A positive eternal mark says
@@ -1308,6 +1308,31 @@ are time-varying inference permissions, explicitly non-eternal. This prevents th
 old invariant metatype marks from activating the bridge. `modal_predicate`, by
 contrast, is eternal: modal projection is part of the marked predicate's meaning,
 not an expiring grant.
+
+Whole-event participation (`actor` and all its binary specializations), causes,
+sub-situations, provenance and biological genealogy describe fixed history and are
+eternal. Current kinship `relativeOf`, which also admits chosen family, is instead
+time-agnostic and explicitly non-eternal. The current RCC region relations describe
+fixed extents and are eternal; this does not promote compass relations between moving
+objects or introduce a geographic-territory distinction.
+
+Audit-completeness requirements (`predAllSpecified`, `predSpecifiedAll`,
+`typeAllSpecified`) are time-varying and non-eternal. `siblingDisjointException`,
+`partType` and `capabilityType` are time-agnostic and non-eternal, like taxonomy laws.
+Algebraic rule macros are eternal and decontextualized: `reflexive`, `irreflexive`,
+`asymmetric`, `anti_symmetric`, `transitive`, `anti_transitive`, `associative` and
+`idempotent`, like the canonicalization properties `commutative`, `commutativeInArgs`,
+their specializations (including `symmetric` and `equivalence_relation`) and the runtime
+spelling `commutativeInArgAndRest`. A mark stated in any context is lifted into
+`CxUniverse`, so it holds for every reader.
+
+`transitiveInArg` and its inverse are explicitly non-eternal and keep their own
+rigidity marks. Functional constraints remain eternal and
+definitional; temporary uniqueness constraints can use ordinary slice-scoped nogoods.
+The forced-monotonic marks and `target_following_predicate` are eternal engine
+contracts. Equality predicates `sameAs`, `equals` and `different` are explicitly
+non-eternal, while canonical `rewriteOf` remains eternal. These classifications do
+not implement cross-time propagation or change the engine's identity closure.
 
 Each rule is quoted on its own. A quoted term is opaque, so no inference or
 canonicalization reaches inside either one, and what the pair needs inferred — that

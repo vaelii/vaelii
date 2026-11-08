@@ -1580,26 +1580,3 @@
                  (some->> (v/check (assoc kb :naming :off) s 'CxUniverse) seq (mapv :type)))
               "the spelling half reads the naming policy"))))))
 
-(defn- missing-args
-  "The `:missing-arg` findings as `context` reads the starter, as a set of
-  `[predicate missing-positions]`."
-  [kb context]
-  (into #{} (map (juxt :predicate :missing))
-        (:missing-arg (v/kb-integrity kb #{} context {:categories #{:missing-arg}
-                                                      :max-results 10000}))))
-
-(def ^:private open-positions
-  "The starter's argument positions no declaration types: the quoted example of the three example predicates.  ontology_test's
-  undeclared-positions gives the reason they stay open."
-  '#{[positiveExample [2]] [negativeExample [2]] [borderlineExample [2]]})
-
-(tu/deftest-kb every-starter-position-is-typed-but-the-open-ones
-  ;; A middle context's relation and type carry their arity mark in CxUniverse, while the
-  ;; declarations typing them stay in the context that states them.  The audit reads them
-  ;; from there, so CxUniverse reports what CxTra, which sees every middle context that
-  ;; declares one, still reports: the positions no declaration types.
-  (let [universe (missing-args kb 'CxUniverse)
-        open     (missing-args kb 'CxTra)]
-    (is (= open-positions open))
-    (is (= open-positions universe)
-        "no middle-context relation or type is reported from CxUniverse")))

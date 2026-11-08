@@ -122,8 +122,10 @@
   ;; plane can never move, so some instances could lose the relation and some could not.
   (all-of-kind kb 'time_agnostic_relation
                '[veryFarFrom moderatelyFarFrom northwestOf behindRightOf eastOf
-                 regionConnectedTo withinNearDistanceOf]
-               'CxUniverse))
+                 withinNearDistanceOf]
+               'CxUniverse)
+  (all-of-kind kb 'time_invariant_relation '[regionConnectedTo] 'CxUniverse)
+  (is (v/ask? kb '(eternal_predicate regionConnectedTo) 'CxUniverse)))
 
 (tu/deftest-kb taxonomy-is-agnostic-and-argument-declarations-remain-invariant
   (all-of-kind kb 'time_agnostic_relation
@@ -173,9 +175,11 @@
     (is (not (v/ask? kb (list 'stable_once_true r) 'CxUniverse)))
     (is (not (v/ask? kb (list 'stable_once_false r) 'CxUniverse)))))
 
-(tu/deftest-kb kin-and-making-are-time-invariant-and-the-life-states-time-varying
+(tu/deftest-kb biological-history-is-fixed-but-current-chosen-kinship-can-change
   (all-of-kind kb 'time_invariant_relation '[grandparentOf madeOf] 'CxUniverse)
-  (all-of-kind kb 'time_invariant_relation '[relativeOf originatorOf] 'CxSocial)
+  (all-of-kind kb 'time_invariant_relation '[originatorOf] 'CxSocial)
+  (all-of-kind kb 'time_agnostic_relation '[relativeOf] 'CxSocial)
+  (is (v/ask? kb '(not (eternal_predicate relativeOf)) 'CxSocial))
   (all-of-kind kb 'time_varying_relation '[breathes_air preysOn] 'CxUniverse))
 
 (tu/deftest-kb contains-and-the-durations-are-time-invariant
@@ -183,9 +187,11 @@
                'CxUniverse))
 
 (tu/deftest-kb the-integrity-requirements-placeholders-and-contradicts-are-classified
+  (all-of-kind kb 'time_varying_relation
+               '[typeAllSpecified predAllSpecified predSpecifiedAll]
+               'CxUniverse)
   (all-of-kind kb 'time_invariant_relation
-               '[typeAllSpecified predAllSpecified predSpecifiedAll
-                 predAllExistsPlaceholder predExistsAllPlaceholder
+               '[predAllExistsPlaceholder predExistsAllPlaceholder
                  predExistsInstancePlaceholder predInstanceExistsPlaceholder]
                'CxUniverse)
   (testing "each Pred...Fn takes its placeholder's kind through the correspondence"
@@ -289,8 +295,8 @@
   (all-of-kind kb 'time_varying_relation '[heightOf weightOf tallerThan heavierThan]
                'CxUniverse))
 
-(tu/deftest-kb the-type-level-claims-are-time-invariant
-  (all-of-kind kb 'time_invariant_relation '[partType capabilityType] 'CxUniverse))
+(tu/deftest-kb kind-level-parts-and-capabilities-allow-slice-dependent-profiles
+  (all-of-kind kb 'time_agnostic_relation '[partType capabilityType] 'CxUniverse))
 
 (tu/deftest-kb parthood-is-time-agnostic-tangible-parthood-time-varying-and-situation-parthood-time-invariant
   ;; A wheel can come off a car and both go on existing, while a part of an event or a

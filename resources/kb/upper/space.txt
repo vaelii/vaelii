@@ -12,6 +12,9 @@
 ;; relations each name a disjunction of them: regionConnectedTo (C), partOfRegion (P),
 ;; properPartOfRegion (PP), hasRegionPart (Pi), regionOverlaps (O), regionDiscreteFrom
 ;; (DR).
+;; These fourteen region-topology predicates are eternal: their facts concern fixed
+;; region extents. This classification does not extend to the direction or distance
+;; calculi below and does not narrow the spatial argument types.
 ;;
 ;; Direction. Nine BASE relations, again jointly exhaustive and pairwise disjoint: the
 ;; eight compass points (northOf, northeastOf, eastOf, southeastOf, southOf, southwestOf,
@@ -130,7 +133,7 @@
 (comment externallyConnected
          "(externallyConnected ?region1 ?region2) means that ?region1 and ?region2 touch but share no interior. RCC-8's EC, a base relation and its own converse. What two countries either side of a border stand in.")
 (set/monotonic (instance_relation_predicate externallyConnected))
-(set/monotonic (time_agnostic_relation externallyConnected))
+(set/monotonic (eternal_predicate externallyConnected))
 (arg externallyConnected 1 spatial)
 (arg externallyConnected 2 spatial)
 (set/inert (negates externallyConnected nonTangentialProperPart))
@@ -175,7 +178,7 @@
 (comment hasRegionPart
          "(hasRegionPart ?region1 ?region2) means that ?region2 is part of ?region1. RCC-8's Pi, denoting TPPi, NTPPi or EQ. Derived, so asserting it says only that one contains the other and not how.")
 (set/monotonic (instance_relation_predicate hasRegionPart))
-(set/monotonic (time_agnostic_relation hasRegionPart))
+(set/monotonic (eternal_predicate hasRegionPart))
 (arg hasRegionPart 1 spatial)
 (arg hasRegionPart 2 spatial)
 (set/inert (genlInverse hasRegionPart partOf))
@@ -221,7 +224,7 @@
 (comment nonTangentialProperPart
          "(nonTangentialProperPart ?region1 ?region2) means that ?region1 lies strictly inside ?region2, touching no part of its boundary. RCC-8's NTPP, a base relation.")
 (set/monotonic (instance_relation_predicate nonTangentialProperPart))
-(set/monotonic (time_agnostic_relation nonTangentialProperPart))
+(set/monotonic (eternal_predicate nonTangentialProperPart))
 (arg nonTangentialProperPart 1 spatial)
 (arg nonTangentialProperPart 2 spatial)
 (set/inert (genl nonTangentialProperPart properPartOfRegion))
@@ -237,7 +240,7 @@
 (comment nonTangentialProperPartInverse
          "(nonTangentialProperPartInverse ?region1 ?region2) means that ?region2 lies strictly inside ?region1, touching no part of its boundary. RCC-8's NTPPi, a base relation.")
 (set/monotonic (instance_relation_predicate nonTangentialProperPartInverse))
-(set/monotonic (time_agnostic_relation nonTangentialProperPartInverse))
+(set/monotonic (eternal_predicate nonTangentialProperPartInverse))
 (arg nonTangentialProperPartInverse 1 spatial)
 (arg nonTangentialProperPartInverse 2 spatial)
 (set/inert (genlInverse nonTangentialProperPartInverse partOf))
@@ -283,7 +286,7 @@
 (comment partiallyOverlapping
          "(partiallyOverlapping ?region1 ?region2) means that ?region1 and ?region2 share a part, and each also has a part outside the other. RCC-8's PO, a base relation and its own converse.")
 (set/monotonic (instance_relation_predicate partiallyOverlapping))
-(set/monotonic (time_agnostic_relation partiallyOverlapping))
+(set/monotonic (eternal_predicate partiallyOverlapping))
 (arg partiallyOverlapping 1 spatial)
 (arg partiallyOverlapping 2 spatial)
 (set/inert (negates partiallyOverlapping spatiallyDisconnected))
@@ -294,7 +297,7 @@
 (comment partOfRegion
          "(partOfRegion ?region1 ?region2) means that ?region1 is part of ?region2. RCC-8's P, which denotes TPP, NTPP or EQ. A derived relation: it is entailed by any of those three and asserts none of them in particular.")
 (set/monotonic (instance_relation_predicate partOfRegion))
-(set/monotonic (time_invariant_relation partOfRegion))
+(set/monotonic (eternal_predicate partOfRegion))
 (arg partOfRegion 1 spatial)
 (arg partOfRegion 2 spatial)
 (set/inert (inverse partOfRegion hasRegionPart))
@@ -304,7 +307,7 @@
 (comment properPartOfRegion
          "(properPartOfRegion ?region1 ?region2) means that ?region1 is part of ?region2 and not the whole of it. RCC-8's PP, denoting TPP or NTPP.")
 (set/monotonic (instance_relation_predicate properPartOfRegion))
-(set/monotonic (time_agnostic_relation properPartOfRegion))
+(set/monotonic (eternal_predicate properPartOfRegion))
 (arg properPartOfRegion 1 spatial)
 (arg properPartOfRegion 2 spatial)
 (set/monotonic (irreflexive properPartOfRegion))
@@ -323,21 +326,21 @@
 (comment regionConnectedTo
          "(regionConnectedTo ?region1 ?region2) means that ?region1 and ?region2 are connected. Anything but disconnected, so it is RCC-8's C, the primitive the eight base relations are defined from, and the weakest claim that says anything at all.")
 (set/monotonic (instance_relation_predicate regionConnectedTo))
-(set/monotonic (time_agnostic_relation regionConnectedTo))
+(set/monotonic (eternal_predicate regionConnectedTo))
 (arg regionConnectedTo 1 spatial)
 (arg regionConnectedTo 2 spatial)
 
 (comment regionDiscreteFrom
          "(regionDiscreteFrom ?region1 ?region2) means that ?region1 and ?region2 share no part. Disconnected or externally connected, so it is RCC-8's DR, and the complement of regionOverlaps.")
 (set/monotonic (instance_relation_predicate regionDiscreteFrom))
-(set/monotonic (time_agnostic_relation regionDiscreteFrom))
+(set/monotonic (eternal_predicate regionDiscreteFrom))
 (arg regionDiscreteFrom 1 spatial)
 (arg regionDiscreteFrom 2 spatial)
 
 (comment regionOverlaps
          "(regionOverlaps ?region1 ?region2) means that ?region1 and ?region2 share a part. Anything but disconnected or merely touching, so it is RCC-8's O, and the complement of regionDiscreteFrom.")
 (set/monotonic (instance_relation_predicate regionOverlaps))
-(set/monotonic (time_agnostic_relation regionOverlaps))
+(set/monotonic (eternal_predicate regionOverlaps))
 (arg regionOverlaps 1 spatial)
 (arg regionOverlaps 2 spatial)
 
@@ -400,7 +403,7 @@
 (comment spatiallyDisconnected
          "(spatiallyDisconnected ?region1 ?region2) means that ?region1 and ?region2 share no point at all. RCC-8's DC, a base relation, its own converse, and the weakest thing two regions can stand in.")
 (set/monotonic (instance_relation_predicate spatiallyDisconnected))
-(set/monotonic (time_agnostic_relation spatiallyDisconnected))
+(set/monotonic (eternal_predicate spatiallyDisconnected))
 (arg spatiallyDisconnected 1 spatial)
 (arg spatiallyDisconnected 2 spatial)
 (set/inert (negates spatiallyDisconnected spatiallyEqual))
@@ -410,7 +413,7 @@
 (comment spatiallyEqual
          "(spatiallyEqual ?region1 ?region2) means that ?region1 and ?region2 occupy exactly the same extent. RCC-8's EQ, and the identity of the algebra. A claim about extent rather than about the identity of the two terms, so it is not the equality closure's sameAs: two coextensive regions are still two regions.")
 (set/monotonic (instance_relation_predicate spatiallyEqual))
-(set/monotonic (time_agnostic_relation spatiallyEqual))
+(set/monotonic (eternal_predicate spatiallyEqual))
 (arg spatiallyEqual 1 spatial)
 (arg spatiallyEqual 2 spatial)
 (set/inert (genl spatiallyEqual partOfRegion))
@@ -420,7 +423,7 @@
 (comment tangentialProperPart
          "(tangentialProperPart ?region1 ?region2) means that ?region1 lies inside ?region2 and touches its boundary. RCC-8's TPP, a base relation.")
 (set/monotonic (instance_relation_predicate tangentialProperPart))
-(set/monotonic (time_agnostic_relation tangentialProperPart))
+(set/monotonic (eternal_predicate tangentialProperPart))
 (arg tangentialProperPart 1 spatial)
 (arg tangentialProperPart 2 spatial)
 (set/inert (genl tangentialProperPart properPartOfRegion))
@@ -431,7 +434,7 @@
 (comment tangentialProperPartInverse
          "(tangentialProperPartInverse ?region1 ?region2) means that ?region2 lies inside ?region1 and touches its boundary. RCC-8's TPPi, a base relation.")
 (set/monotonic (instance_relation_predicate tangentialProperPartInverse))
-(set/monotonic (time_agnostic_relation tangentialProperPartInverse))
+(set/monotonic (eternal_predicate tangentialProperPartInverse))
 (arg tangentialProperPartInverse 1 spatial)
 (arg tangentialProperPartInverse 2 spatial)
 (set/inert (genlInverse tangentialProperPartInverse partOf))

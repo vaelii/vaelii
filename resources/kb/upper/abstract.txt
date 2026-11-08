@@ -368,7 +368,8 @@
 (comment partType
          "(partType ?wholeKind ?partKind) means that a ?wholeKind has a ?partKind among its parts. The type-level reading of tangiblePartOf: (partType bird wing) says birds have wings, where (tangiblePartOf LeftWing Pingu) says one thing is part of another. Declared transitiveInArgInverse along genl on the FIRST position only, and the asymmetry is the claim: a kind of bird has whatever parts birds have, so penguins have wings without a word being written about penguins, while the second position preserves nothing — birds having wings says nothing about which kinds of wing they have. Linked to tangiblePartOf by typeToInstancePred, which records that the two are readings of one relation and deliberately moves no claim between them: going from the kinds to their members needs a quantifier reading (every bird has SOME wing) that nothing here fixes, and guessing it is how a claim about kinds quietly becomes a false claim about individuals.")
 (set/monotonic (type_relation_predicate partType))
-(set/monotonic (time_invariant_relation partType))
+(set/monotonic (time_agnostic_relation partType))
+(not (eternal_predicate partType))
 (genlArg partType 1 tangible)
 (genlArg partType 2 tangible)
 (set/monotonic (transitiveInArgInverse partType 1 genl))
@@ -448,7 +449,7 @@
 ;; --- subSituationOf: a situation that is part of another ---------------------
 (comment subSituationOf
          "(subSituationOf ?part ?whole) means that the situation ?part is a part of the situation ?whole. Declared transitive, so a part of a part is a part. A part's time is within its whole's time. The converse does not hold: two situations sharing a time are not thereby parts of one another. subSituationOf supplies parthood only. It rolls no role of the part up to the whole, and it closes no situation under the sum of its parts.")
-(set/monotonic (time_invariant_relation subSituationOf))
+(set/monotonic (eternal_predicate subSituationOf))
 (implementationNote subSituationOf "No rule concludes the temporal containment of a part in its whole. The upper ontology has no relation for one time falling within another that covers an intermittent time.")
 (set/monotonic (instance_relation_predicate subSituationOf))
 (arg subSituationOf 1 situation)
@@ -524,7 +525,7 @@
 (comment causes
          "(causes ?cause ?effect) means that ?cause brings ?effect about. The cause is a causal thing: a causal event, a tangible or an organization. The effect is a situation: something that holds or happens, over any extent. A chain of causes is itself a cause.")
 (implementationNote causes "Declared transitive, so the transitive prover answers a chain of causes at query time and stores no conclusion of it.")
-(set/monotonic (time_invariant_relation causes))
+(set/monotonic (eternal_predicate causes))
 (positiveExampleComment causes "the flattery made the crow sing")
 (positiveExampleComment causes "the rock dented the car")
 (positiveExampleComment causes "the drought ruined the harvest")
@@ -545,10 +546,10 @@
 (set/monotonic (instance_relation_predicate actor))
 (arg actor 1 situation)
 (arg actor 2 thing)
-;; A situation is a whole that timeOf places in time and nothing slices by time, so whoever
-;; takes part in one takes part in it for as long as both exist: every spec of actor is
-;; time-invariant.
-(set/forwardRule (implies (and (binary_predicate ?relation) (genl ?relation actor)) (time_invariant_relation ?relation)))
+;; A situation is a whole that timeOf places in time and nothing slices by time.
+;; Participation records that whole history, not who is participating now: every
+;; binary spec of actor is eternal, even before or after either participant exists.
+(set/forwardRule (implies (and (binary_predicate ?relation) (genl ?relation actor)) (eternal_predicate ?relation)))
 
 (comment thingPerceived "(thingPerceived ?happening ?thing) means that ?thing is what is perceptually taken in during ?happening.")
 (set/monotonic (instance_relation_predicate thingPerceived))

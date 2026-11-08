@@ -239,7 +239,8 @@
 
 (comment expresses "(expresses ?sentence ?proposition) means that the wff_sentence ?sentence says ?proposition. Two sentences can express one proposition, in two languages or two phrasings, and two true sentences can express different ones.")
 (binary_predicate expresses)
-(set/monotonic (time_invariant_relation expresses))
+(set/monotonic (time_agnostic_relation expresses))
+(not (eternal_predicate expresses))
 (genl expresses means)
 (arg expresses 1 wff_sentence)
 (arg expresses 2 proposition)

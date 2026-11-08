@@ -1353,7 +1353,8 @@
 (positiveExampleComment siblingDisjointException "a Braille reading, both a reading and a touch perception")
 (set/monotonic (symmetric siblingDisjointException))
 (set/monotonic (type_relation_predicate siblingDisjointException))
-(set/monotonic (time_invariant_relation siblingDisjointException))
+(set/monotonic (time_agnostic_relation siblingDisjointException))
+(not (eternal_predicate siblingDisjointException))
 (genlArg siblingDisjointException 1 thing)
 (genlArg siblingDisjointException 2 thing)
 (genl siblingDisjointException orthogonal)
@@ -1757,21 +1758,24 @@
 (comment predAllSpecified
          "(predAllSpecified ?pred ?indep) declares the integrity requirement that every instance of collection ?indep have a determinate filler at ?pred's second position: for all x in ?indep there is a believed (?pred x y) with y determinate and y satisfying ?pred's own slot-2 argument contract. The required filler type is DERIVED, never restated: every visible (arg ?pred 2 ?t) constrains y to be a member of ?t, every visible (genlArg ?pred 2 ?t) constrains y to be a subtype of ?t, and the constraints compose as the assert-time checker composes them. A ?pred with no visible slot-2 typing is a declaration-contract gap the audit reports explicitly — never silently audited unconstrained. An audit, not an inference — vaelii.core/specified-violations reads the declaration and returns the instances of ?indep with no determinate filler. Indeterminate terms are skolems plus any declared indeterminate_term kind (none ships by default); an author-asserted *Exists* placeholder is a determinate filler, so predAllSpecified is the antagonist of predAllExists. The declaration generates no rule and concludes nothing.")
 (binary_predicate predAllSpecified)
-(set/monotonic (time_invariant_relation predAllSpecified))
+(set/monotonic (time_varying_relation predAllSpecified))
+(not (eternal_predicate predAllSpecified))
 (arg predAllSpecified 1 binary_predicate)
 (genlArg predAllSpecified 2 thing)
 
 (comment predSpecifiedAll
          "(predSpecifiedAll ?pred ?indep) is the argument-swapped twin of predAllSpecified: it requires that every instance of collection ?indep have a determinate filler at ?pred's FIRST position — for all x in ?indep there is a believed (?pred y x) with y determinate and y satisfying ?pred's slot-1 argument contract, derived from the visible (arg ?pred 1 ?t) / (genlArg ?pred 1 ?t) declarations exactly as the twin derives slot 2. An audit read by vaelii.core/specified-violations with :first, not a stored rule (docs above).")
 (binary_predicate predSpecifiedAll)
-(set/monotonic (time_invariant_relation predSpecifiedAll))
+(set/monotonic (time_varying_relation predSpecifiedAll))
+(not (eternal_predicate predSpecifiedAll))
 (arg predSpecifiedAll 1 binary_predicate)
 (genlArg predSpecifiedAll 2 thing)
 
 (comment typeAllSpecified
          "(typeAllSpecified ?classifier ?indep) declares the integrity requirement that every instance of collection ?indep have a believed membership in some member of the metatype ?classifier: for all x in ?indep there is a member K of ?classifier with (K x) believed, stated or reached through genl or argument preservation alike. predAllSpecified's counterpart for a classification rather than a filler. A partition of ?indep into ?classifier's members does not imply it: the partition says every instance IS in some member, and this requirement says the KB must KNOW which. An audit, not an inference: kb-integrity reads each visible declaration and reports the instances of ?indep no member of ?classifier is believed to hold, or a gap when ?classifier has no visible member. The declaration generates no rule and concludes nothing. e.g. (typeAllSpecified rigidity_kind relation) requires every relation to be classified time_invariant_relation, time_agnostic_relation or time_varying_relation. See docs/integrity.md.")
 (binary_predicate typeAllSpecified)
-(set/monotonic (time_invariant_relation typeAllSpecified))
+(set/monotonic (time_varying_relation typeAllSpecified))
+(not (eternal_predicate typeAllSpecified))
 (arg typeAllSpecified 1 at_least_metatype)
 (genlArg typeAllSpecified 2 thing)
 
@@ -2143,7 +2147,7 @@
 (binary_predicate rewriteOf)
 (arg rewriteOf 1 thing)   ;; either side of a rewriteOf: a term of any kind
 (arg rewriteOf 2 thing)
-(set/monotonic (time_invariant_relation rewriteOf))
+(set/monotonic (eternal_predicate rewriteOf))
 
 (comment sameAs
          "(sameAs ?individual1 ?individual2) means that the two named individuals are one, in OWL's sense: reflexive, symmetric, transitive and substitutive. The merge feeds the one equivalence closure rewriteOf and equals feed, and neither name is deprecated by it. The closure elects a representative by content rather than by arrival order. A goal of sameAs is answered from the closure. See docs/equality.md.")
@@ -2151,6 +2155,7 @@
 (arg sameAs 1 thing)   ;; either side of a sameAs: a term of any kind
 (arg sameAs 2 thing)
 (set/monotonic (time_invariant_relation sameAs))
+(not (eternal_predicate sameAs))
 
 (comment equals
          "(equals ?term1 ?term2) means that ?term1 and ?term2 denote one thing. Any two terms may be equated, where sameAs follows OWL in equating individuals. The merge feeds the one equivalence closure rewriteOf and sameAs feed. A goal of equals is answered from the closure. A collision under functional, functionalInArg or anti_symmetric between two monotonic symbols derives an equals. See docs/equality.md.")
@@ -2158,6 +2163,7 @@
 (arg equals 1 thing)   ;; either side of an equals: a term of any kind
 (arg equals 2 thing)
 (set/monotonic (time_invariant_relation equals))
+(not (eternal_predicate equals))
 
 ;; different is the unique-name assumption read as a relation.  The engine answers it and
 ;; never stores it: wff refuses an assert of it, and provers/DifferentProver answers a
@@ -2171,6 +2177,7 @@
 (args different thing)   ;; every side of a different: a term of any kind
 (commutative different)
 (set/monotonic (time_invariant_relation different))
+(not (eternal_predicate different))
 
 (comment result
          "(result ?function ?type) means that the output of ?function is an instance of ?type. Read for both kinds of function, and where the type is held is what the reifiability mark decides: a REIFIABLE function's application is minted, so the membership is materialized as (?type K) on the freshly minted constant K — a real sentex with a justification, rather than a rule that would have to run at read time — and an UNREIFIABLE one has no constant to hang it on, so its applications are typed from this declaration at check time instead. One declaration, one verdict, whichever kind of function wrote it. (result ?function context) says that ?function's applications denote contexts: a ground application written in a sentex's context slot reifies to an opaque cx/-namespaced constant whatever is declared about ?function, and a read names that context through the application only while some reader believes the declaration. The cx/ spelling carries the context role, so no (context K) is materialized on the constant (docs/context-nat.md). Named for what it says rather than for the check that reads it, as arg is: the instance reading, with genlResult one level up.")
@@ -2401,7 +2408,7 @@
          "(reflexive ?predicate) means that ?predicate is reflexive, so (?predicate a a) holds for every a in its domain. Answered by a generic prover rather than materialized, the reflexive pairs of a large domain being a great many facts nobody wrote. Also a type: (reflexive P) classifies P as a binary_predicate.")
 (unary_predicate reflexive)
 (decontextualized_predicate reflexive)
-(set/monotonic (time_invariant_relation reflexive))
+(set/monotonic (eternal_predicate reflexive))
 (set/monotonic (genl reflexive binary_predicate))
 (implementationNote reflexive "The reflexive prover reads no argument type. It answers (P a a) for any ground a, so (tangiblePartOf 5 5) is answered although 5 is no tangible. A domain read off P's arg declarations would close the gap.")
 
@@ -2410,7 +2417,7 @@
 (positiveExample irreflexive (Quote (irreflexive typeLargerThan)))
 (unary_predicate irreflexive)
 (decontextualized_predicate irreflexive)
-(set/monotonic (time_invariant_relation irreflexive))
+(set/monotonic (eternal_predicate irreflexive))
 (set/monotonic (genl irreflexive binary_predicate))
 
 (unary_predicate relation_kind)
@@ -2500,7 +2507,7 @@
 (positiveExample symmetric (Quote (symmetric marriedTo)))
 (unary_predicate symmetric)
 (decontextualized_predicate symmetric)
-(set/monotonic (time_invariant_relation symmetric))
+(set/monotonic (eternal_predicate symmetric))
 (set/monotonic (genl symmetric binary_predicate))
 
 (comment commutative
@@ -2509,7 +2516,7 @@
 (implementationNote commutative "The rules between this mark and (commutativeInArgAndRest ?p 1) are inert. Each mark installs the commuting group at its own arm in special/arms, so neither spelling needs deriving from the other. A derivation between them is a cycle, each conclusion justifying the other, and set/forwardRule adds forward chaining without taking the backward use away. Forward chaining survives a cycle: the pair is unfounded and the JTMS labels it so. Backward search has no ancestor-goal guard, so (commutative ?p) expands to (commutativeInArgAndRest ?p 1) and back until the depth bound stops it, an exponential frontier inside that depth, and (genl commutative relation) puts the goal under every open (relation ?x) query.")
 (unary_predicate commutative)
 (decontextualized_predicate commutative)
-(set/monotonic (time_invariant_relation commutative))
+(set/monotonic (eternal_predicate commutative))
 (genl commutative relation)
 ;; One argument is no permutation, so every commutative relation takes two or more.
 (set/monotonic (genl commutative at_least_binary))
@@ -2519,10 +2526,17 @@
 (variable_arity_predicate commutativeInArgs)
 (unbounded_arity_predicate commutativeInArgs)
 (decontextualized_predicate commutativeInArgs)
-(set/monotonic (time_invariant_relation commutativeInArgs))
+(set/monotonic (eternal_predicate commutativeInArgs))
 (arityMin commutativeInArgs 3)
 (arg commutativeInArgs 1 relation)
 (argAndRest commutativeInArgs 2 positive_integer)
+;; Canonicalization properties, including their specializations, cannot vary by slice.
+(set/forwardRule
+ (implies (and (genl ?property commutative))
+          (eternal_predicate ?property)))
+(set/forwardRule
+ (implies (and (genl ?property commutativeInArgs))
+          (eternal_predicate ?property)))
 
 (comment commutativeInArgAndRest
          "(commutativeInArgAndRest ?relation ?position) means that the arguments of ?relation from ?position through the end of an application may be permuted without changing the proposition, while every earlier argument stays where it was written. The canonical runtime spelling of commutativity: the other two marks reduce to it, and the assert entry point sorts the arguments inside the component it names, so every permitted permutation of a ground fact is one sentex and one handle. Variable arity is respected rather than flattened — the component is closed by the application's own arity, so a relation applied at three arguments and at four states two claims and no permutation moves an argument between them. Repeated argument values keep their multiplicity: commutativity changes order, never content. See docs/canonicalization.md.")
@@ -2530,7 +2544,7 @@
 (implementationNote commutativeInArgAndRest "The rules between this mark at position 1 and commutative are inert: the two form a cycle under backward search, and each mark installs the commuting group itself. The implementationNote on commutative has the detail.")
 (decontextualized_predicate commutativeInArgAndRest)
 (set/monotonic (instance_relation_predicate commutativeInArgAndRest))
-(set/monotonic (time_invariant_relation commutativeInArgAndRest))
+(set/monotonic (eternal_predicate commutativeInArgAndRest))
 (arg commutativeInArgAndRest 1 relation)
 (arg commutativeInArgAndRest 2 positive_integer)
 
@@ -2588,6 +2602,7 @@
 (positiveExampleComment associative "a function such as the intersection of time intervals")
 (unary_predicate associative)
 (decontextualized_predicate associative)
+(set/monotonic (eternal_predicate associative))
 (genl associative variable_arity)
 
 (comment idempotent
@@ -2595,6 +2610,7 @@
 (positiveExampleComment idempotent "a function such as the intersection of time intervals")
 (unary_predicate idempotent)
 (decontextualized_predicate idempotent)
+(set/monotonic (eternal_predicate idempotent))
 (genl idempotent relation)
 
 (comment meetFunctionOf
@@ -2628,20 +2644,21 @@
 (positiveExample asymmetric (Quote (asymmetric typeLargerThan)))
 (unary_predicate asymmetric)
 (decontextualized_predicate asymmetric)
-(set/monotonic (time_invariant_relation asymmetric))
+(set/monotonic (eternal_predicate asymmetric))
 
 (comment anti_symmetric
          "(anti_symmetric ?predicate) means that ?predicate holding both ways forces its two arguments to be one thing. Believing (?predicate a b) and (?predicate b a) of two symbols, both known true (monotonic), derives (equals a b) and merges, mirroring how a functional predicate reconciles two symbol values — the merge is justified by both facts and the declaration, so retracting any one un-merges them. Any other converse pair, two non-symbols such as 1980 and 1990 or a pair with a default member, is a nogood each context reading the pair decides instead: a default member is not believed there when the other is monotonic, and two default members are a dilemma. A self tuple (?predicate a a) is admitted: its converse is itself and (equals a a) is trivial. Also a type: (anti_symmetric P) classifies P as a binary_predicate.")
 (positiveExampleComment anti_symmetric "a partial order such as atOrAbove")
 (unary_predicate anti_symmetric)
 (decontextualized_predicate anti_symmetric)
-(set/monotonic (time_invariant_relation anti_symmetric))
+(set/monotonic (eternal_predicate anti_symmetric))
 (set/monotonic (genl anti_symmetric binary_predicate))
 
 (comment transitiveInArgInverse
          "(transitiveInArgInverse ?predicate ?position ?relation) means that argument ?position of ?predicate is preserved against the arrow of the transitive ?relation. A stored (?predicate … W …) then licenses the same claim about A whenever (?relation A W) holds. With genl that is downward inheritance among kinds, so (typeLargerThan dog cat) reaches a golden retriever — and stops at the kinds, since preservation moves an argument and never the level the predicate relates at. Whether a relation distributes over a kind's subkinds is a claim about that relation, so it is declared rather than assumed; a more specific claim undercuts an inherited default, and never an inherited monotonic one. Several declarations may name one position, and the reach is the closure under all their relations together; a ?predicate itself declared transitive is one more such relation. ?relation must be genl, genlCx, or a predicate already declared transitive: assert refuses the declaration otherwise, since the reach is walked to a fixpoint and would manufacture a transitivity nobody stated.")
 (ternary_predicate transitiveInArgInverse)
 (set/monotonic (time_invariant_relation transitiveInArgInverse))
+(not (eternal_predicate transitiveInArgInverse))
 (arg transitiveInArgInverse 1 predicate)
 (arg transitiveInArgInverse 2 positive_integer)
 (arg transitiveInArgInverse 3 predicate)
@@ -2650,6 +2667,7 @@
          "(transitiveInArg ?predicate ?position ?relation) means that argument ?position of ?predicate is preserved along the arrow of the transitive ?relation, the direction of Cyc's transitiveViaArg. A stored (?predicate … W …) licenses the same claim about A whenever (?relation W A) holds, so with genl this is upward inheritance: (capabilityType bird flying) with (genl flying travelling) reaches (capabilityType bird travelling). transitiveInArgInverse is the other direction, and the two names exist so neither direction requires declaring an inverse predicate with no other use. The same restriction on ?relation applies.")
 (ternary_predicate transitiveInArg)
 (set/monotonic (time_invariant_relation transitiveInArg))
+(not (eternal_predicate transitiveInArg))
 (arg transitiveInArg 1 predicate)
 (arg transitiveInArg 2 positive_integer)
 (arg transitiveInArg 3 predicate)
@@ -2670,7 +2688,7 @@
 (comment target_following_predicate
          "(target_following_predicate ?predicate) means a (?predicate … (sentexHandle H) …) sentence is a meta-sentex that names sentex H and must not outlive it: retracting H retracts the meta with it (core/retract-following-metas!). Opt-in and belief-following — the engine's own except / exceptWhen deliberately do not carry it, so their orphan-on-retraction behavior is unchanged. koinii's reply acts declare it, so retracting a claim cascades to the replies about it, which a message bus cannot do. A position of ?predicate declared (arg ?predicate ?n sentence) takes the named sentex's sentence, or (ist ?context ?sentence), which assert replaces with its handle and refuses when nothing stores it (docs/canonicalization.md).")
 (unary_predicate target_following_predicate)
-(set/monotonic (time_invariant_relation target_following_predicate))
+(set/monotonic (eternal_predicate target_following_predicate))
 (genl target_following_predicate predicate)
 
 (comment thing
@@ -2687,7 +2705,7 @@
 (positiveExample transitive (Quote (transitive tangiblePartOf)))
 (unary_predicate transitive)
 (decontextualized_predicate transitive)
-(set/monotonic (time_invariant_relation transitive))
+(set/monotonic (eternal_predicate transitive))
 (set/monotonic (genl transitive binary_predicate))
 ;; genl and genlCx ARE transitive — but the engine answers them from its cached genl/genlCx
 ;; closures rather than the generic closure prover, which is an implementation choice and
@@ -2713,7 +2731,7 @@
 (positiveExampleComment anti_transitive "a relation such as parentOf: a grandparent is not a parent")
 (unary_predicate anti_transitive)
 (decontextualized_predicate anti_transitive)
-(set/monotonic (time_invariant_relation anti_transitive))
+(set/monotonic (eternal_predicate anti_transitive))
 (set/monotonic (genl anti_transitive binary_predicate))
 
 (comment equivalence_relation
@@ -2721,7 +2739,7 @@
 (positiveExampleComment equivalence_relation "a relation such as sameAgeAs")
 (unary_predicate equivalence_relation)
 (decontextualized_predicate equivalence_relation)
-(set/monotonic (time_invariant_relation equivalence_relation))
+(set/monotonic (eternal_predicate equivalence_relation))
 ;; The definition read in the other direction: a predicate reflexive, symmetric and
 ;; transitive at once is an equivalence.  Its genl edges to the three marks place
 ;; equivalence_relation below binary_predicate, so that edge is not stated.

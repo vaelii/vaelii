@@ -17,7 +17,7 @@
 (arg ancestorOf 1 organism)
 (arg ancestorOf 2 organism)
 (set/monotonic (transitive ancestorOf))
-(set/monotonic (time_invariant_relation ancestorOf))
+(set/monotonic (eternal_predicate ancestorOf))
 
 (comment asleep
          "(asleep ?animal) means that ?animal is sleeping. Stated rather than derived, and what blocks the awake default; a rule concludes (not (awake ?x)) from it, so the two cannot both be believed of one animal and neither has to be retracted for the other to be told.")
@@ -36,6 +36,7 @@
 (implementationNote birthDate "Each rule below concludes the next coarser birthDate, from an InstantFn to its DayFn, a DayFn to its MonthFn and a MonthFn to its YearFn, and one rule concludes birthYearOf from the YearFn, so one rule alone concludes the functional birthYearOf. Two birth dates in different years clash on birthYearOf; two different days in one year clash with nothing, since birthDate is not functional. No rule reads the year out of a DatetimeFn or DatetimeRangeFn term, whose year is inside a string. The converse rule, from birthYearOf to the YearFn, is inert, so the clash on birthYearOf runs through the facts and not through a pair of rules concluding each other.")
 (positiveExampleComment birthDate "(birthDate Tom (DayFn 1970 3 14)) beside (birthDate Tom (YearFn 1970))")
 (set/monotonic (instance_relation_predicate birthDate))
+(set/monotonic (eternal_predicate birthDate))
 (arg birthDate 1 organism)
 (arg birthDate 2 uninterrupted_time)
 ;; Not functional: a birth stated to the day and to the year has two true birthDate
@@ -59,7 +60,7 @@
 (arg birthYearOf 1 organism)
 (arg birthYearOf 2 integer)
 (set/monotonic (functional birthYearOf))
-(set/monotonic (time_invariant_relation birthYearOf))
+(set/monotonic (eternal_predicate birthYearOf))
 
 (comment breathes_air
          "(breathes_air ?animal) means that ?animal takes its oxygen from the air. True by default of an animal and blocked for a fish. The exception names a whole CLASS rather than one awkward species, so it reaches every kind of fish ever added and needs no upkeep.")
@@ -72,7 +73,7 @@
          "(childOf ?child ?parent) means that ?parent is a biological parent of ?child. Declared the inverse of parentOf, so (parentOf Ann Tom) states (childOf Tom Ann), and the two are never asserted side by side.")
 (implementationNote childOf "The inverse prover answers (childOf Tom Ann) from (parentOf Ann Tom), and retracting the one withdraws the other.")
 (set/monotonic (instance_relation_predicate childOf))
-(set/monotonic (time_invariant_relation childOf))
+(set/monotonic (eternal_predicate childOf))
 (arg childOf 1 organism)
 (arg childOf 2 organism)
 
@@ -105,19 +106,20 @@
 (arg fatherOf 1 animal)
 (arg fatherOf 2 animal)
 (set/monotonic (functional fatherOf))
-(set/monotonic (time_invariant_relation fatherOf))
+(set/monotonic (eternal_predicate fatherOf))
 
 (comment grandparentOf
          "(grandparentOf ?grandparent ?grandchild) means that ?grandparent is a parent of a parent of ?grandchild. Derived by a joined rule over two parentOf facts rather than asserted, so it is believed exactly as long as both links are.")
 (set/monotonic (instance_relation_predicate grandparentOf))
-(set/monotonic (time_invariant_relation grandparentOf))
+(set/monotonic (eternal_predicate grandparentOf))
 (arg grandparentOf 1 organism)
 (arg grandparentOf 2 organism)
 
 (comment capabilityType
          "(capabilityType ?kind ?happeningKind) means that a ?kind can be the doer of a happening of kind ?happeningKind. The type-level reading of hasCapability: (capabilityType bird flying) says the kind flies, where (hasCapability Tweety flying) says one bird does. Two predicates rather than one because they are two claims — a claim about a kind and a claim about a member — and one symbol read at both levels has to declare one position's argument check for both, which is a choice that mistypes whichever half it was not written for. Declared transitiveInArgInverse along genl on the FIRST position, which carries a claim about a kind down to its subkinds: a kind of bird flies with nothing written about it. Declared transitiveInArg along genl on the second, which carries it UP the genl hierarchy of happening kinds: flying is a kind of travelling, so a kind that can fly can travel. Paired with hasCapability, and the pairing moves no claim between the two: going from the kind to its members needs a quantifier reading (every bird, or some bird) that nothing here fixes, so the descent is a rule written where the kinds are. The comment below hasCapability says why that pairing is prose rather than a typeToInstancePred sentex.")
 (set/monotonic (type_relation_predicate capabilityType))
-(set/monotonic (time_invariant_relation capabilityType))
+(set/monotonic (time_agnostic_relation capabilityType))
+(not (eternal_predicate capabilityType))
 (genlArg capabilityType 1 animal)
 (genlArg capabilityType 2 happening)
 (set/monotonic (transitiveInArgInverse capabilityType 1 genl))
@@ -174,13 +176,13 @@
 (arg motherOf 1 animal)
 (arg motherOf 2 animal)
 (set/monotonic (functional motherOf))
-(set/monotonic (time_invariant_relation motherOf))
+(set/monotonic (eternal_predicate motherOf))
 
 (comment olderThan
          "(olderThan ?organism1 ?organism2) means that ?organism1 was born before ?organism2. CxKinship concludes it from two birthYearOf values in order, so it holds whenever both birth years are known and ordered. Declared transitive, the same instance-level strict order heavierThan and tallerThan are: born-before composes, so two stated comparisons carry the third with no birth year written down.")
 (implementationNote olderThan "The CxKinship rule is a backward rule, and it compares the two years with the evaluable lessThan. The transitive prover answers a chain of olderThan facts at query time.")
 (set/monotonic (instance_relation_predicate olderThan))
-(set/monotonic (time_invariant_relation olderThan))
+(set/monotonic (eternal_predicate olderThan))
 (arg olderThan 1 organism)
 (arg olderThan 2 organism)
 (set/monotonic (transitive olderThan))
@@ -189,7 +191,8 @@
          "(parentOf ?parent ?child) means that ?parent is a biological parent of ?child. Both arguments are individual organisms: a plant or a bacterium has a parent as an animal does. The primitive of the kinship theory: childOf, siblingOf, grandparentOf and ancestorOf are all read off it rather than asserted beside it.")
 (negativeExampleComment parentOf "a step-parent or an adoptive parent of ?child")
 (set/monotonic (instance_relation_predicate parentOf))
-(set/monotonic (time_invariant_relation parentOf))
+(set/monotonic (eternal_predicate parentOf))
+(implementationNote parentOf "The biological genealogy and birth-history relations describe the whole history, not a current or chosen-family role. Their eternal classification is independent of the evaluation time; correcting a genealogy revises the theory rather than changing the date at which parentage holds.")
 (arg parentOf 1 organism)
 (arg parentOf 2 organism)
 (inverse parentOf childOf)
@@ -209,7 +212,7 @@
 (arg siblingOf 1 organism)
 (arg siblingOf 2 organism)
 (set/monotonic (symmetric siblingOf))
-(set/monotonic (time_invariant_relation siblingOf))
+(set/monotonic (eternal_predicate siblingOf))
 
 (comment warm_blooded
          "(warm_blooded ?animal) means that ?animal holds its own body temperature rather than taking the temperature around it. Derived of the mammals and the birds and denied of the three cold-blooded classes, so it is never asserted of any particular animal — which is what makes it a worked example of a claim inherited from a kind rather than stated of a thing.")

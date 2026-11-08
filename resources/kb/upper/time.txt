@@ -405,6 +405,7 @@
 (comment initially
          "(initially ?fluent) means that ?fluent is the case before the narrative starts — true at the outset, with no event named as having started it. It gives inertia something to run from where no initiates fact does; a fluent that is neither initially true nor ever initiated holds nowhere. See docs/time.md.")
 (unary_predicate initially)
+(set/monotonic (eternal_predicate initially))
 (genl initially fluent)
 
 (comment initiates

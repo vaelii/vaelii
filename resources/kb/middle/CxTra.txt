@@ -254,7 +254,7 @@
 ;; ---- invocations and receipts --------------------------------------------
 (comment toolInvoked "(toolInvoked ?invocation ?tool) means that ?invocation is a call of ?tool.")
 (set/monotonic (instance_relation_predicate toolInvoked))
-(set/monotonic (time_invariant_relation toolInvoked))
+(set/monotonic (eternal_predicate toolInvoked))
 (arg toolInvoked 1 tool_invocation)
 (arg toolInvoked 2 software_tool)
 
@@ -266,7 +266,7 @@
 
 (comment receipt "(receipt ?invocation ?receipt) means that ?invocation produced ?receipt as the record of its output.")
 (set/monotonic (instance_relation_predicate receipt))
-(set/monotonic (time_invariant_relation receipt))
+(set/monotonic (eternal_predicate receipt))
 (arg receipt 1 tool_invocation)
 (arg receipt 2 tool_receipt)
 
