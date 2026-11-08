@@ -2239,35 +2239,34 @@
       (is (not (contains? e :inert))))))
 
 (tu/deftest-kb quantified-exceptions-read-literals-but-not-quoted-predicates
-  (tu/with-terms [bird_kind penguin_kind flies guardLink]
-    (doseq [[label guard excepted?]
-            [["the other case occurs inside an existential conjunction"
+  (doseq [[label guard-of excepted?]
+          [["the other case occurs inside an existential conjunction"
+            (fn [penguin_kind guardLink]
               (list 'thereExists '?w
-                    (list 'and (list penguin_kind '?x) (list guardLink '?x '?w))) true]
-             ["an unrelated existential does not handle the clash"
-              (list 'thereExists '?w (list guardLink '?x '?w)) false]
-             ["a predicate mentioned in quoted data is not queried"
+                    (list 'and (list penguin_kind '?x) (list guardLink '?x '?w)))) true]
+           ["an unrelated existential does not handle the clash"
+            (fn [_ guardLink] (list 'thereExists '?w (list guardLink '?x '?w))) false]
+           ["a predicate mentioned in quoted data is not queried"
+            (fn [penguin_kind guardLink]
               (list 'thereExists '?w
                     (list 'and (list guardLink '?x '?w)
-                          (list guardLink '?w (list 'Quote (list penguin_kind '?x))))) false]]]
-      (testing label
-        (let [probe (v/fork kb)]
-          (try
-            (v/assert probe
-                      (list 'exceptWhen guard
-                            (list 'set/defaultRule
-                                  (list 'set/forwardRule
-                                        (list 'implies (list bird_kind '?x) (list flies '?x)))))
-                      'CxUniverse)
-            (v/assert-rule probe [(list penguin_kind '?x)] (list 'not (list flies '?x))
-                           'CxUniverse {:direction :forward})
-            (let [report (clash-sweep probe #{:rule-clash :rule-clash-review})
-                  live   (about [flies] (:rule-clash report))
-                  review (about [flies] (:rule-clash-review report))]
-              (is (= (if excepted? 0 1) (count live)))
-              (is (= (if excepted? 1 0) (count review)))
-              (is (= excepted? (:excepted (first (concat live review))))))
-            (finally (v/close! probe))))))))
+                          (list guardLink '?w (list 'Quote (list penguin_kind '?x)))))) false]]]
+    (testing label
+      (tu/with-terms [bird_kind penguin_kind flies guardLink]
+        (v/assert kb
+                  (list 'exceptWhen (guard-of penguin_kind guardLink)
+                        (list 'set/defaultRule
+                              (list 'set/forwardRule
+                                    (list 'implies (list bird_kind '?x) (list flies '?x)))))
+                  'CxUniverse)
+        (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x))
+                       'CxUniverse {:direction :forward})
+        (let [report (clash-sweep kb #{:rule-clash :rule-clash-review})
+              live   (about [flies] (:rule-clash report))
+              review (about [flies] (:rule-clash-review report))]
+          (is (= (if excepted? 0 1) (count live)))
+          (is (= (if excepted? 1 0) (count review)))
+          (is (= excepted? (:excepted (first (concat live review))))))))))
 
 (tu/deftest-kb a-quantified-exception-handles-only-readers-that-see-it
   (tu/with-terms [bird_kind penguin_kind flies guardLink CxVisible CxHidden]

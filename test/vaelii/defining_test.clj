@@ -635,22 +635,24 @@
       (is (= {:leaves #{rh} :computed? false} (defining-leaves kb h))))))
 
 (tu/deftest-kb the-defining-walk-halts-at-nat-bookkeeping
-  (tu/with-terms [CxHome Namespace namespace_kind LookupFn lookupOf access_kind usedBy Observer]
-    (contexts kb [CxHome])
-    (doseq [sentence [(list 'reifiable_function LookupFn)
-                      (list 'result LookupFn access_kind)
-                      (list 'functionCorrespondingPredicate LookupFn lookupOf)
-                      (list 'arg lookupOf 1 namespace_kind)]]
-      (v/assert kb sentence 'CxUniverse))
-    (v/assert kb (list usedBy (list LookupFn Namespace) Observer) CxHome)
-    (let [bk (held kb (list namespace_kind Namespace) 'CxUniverse)
-          nat-formula? #(= 'natFormula (first (:sentence (v/sentex kb %))))]
-      (is (some? bk))
-      (is (not (v/premise? kb bk)) "the global copy is deduced from the NAT's bookkeeping")
-      (is (some nat-formula? (:leaves (leaves kb bk))) "which the plain walk keeps as a leaf")
-      (is (seq (:leaves (defining-leaves kb bk))))
-      (is (not-any? nat-formula? (:leaves (defining-leaves kb bk)))
-          "and the defining walk halts at"))))
+  ;; Forced to the entailing reading, since the bookkeeping copy is the arg type's entailment.
+  (tu/with-entailing
+    (tu/with-terms [CxHome Namespace namespace_kind LookupFn lookupOf access_kind usedBy Observer]
+      (contexts kb [CxHome])
+      (doseq [sentence [(list 'reifiable_function LookupFn)
+                        (list 'result LookupFn access_kind)
+                        (list 'functionCorrespondingPredicate LookupFn lookupOf)
+                        (list 'arg lookupOf 1 namespace_kind)]]
+        (v/assert kb sentence 'CxUniverse))
+      (v/assert kb (list usedBy (list LookupFn Namespace) Observer) CxHome)
+      (let [bk (held kb (list namespace_kind Namespace) 'CxUniverse)
+            nat-formula? #(= 'natFormula (first (:sentence (v/sentex kb %))))]
+        (is (some? bk))
+        (is (not (v/premise? kb bk)) "the global copy is deduced from the NAT's bookkeeping")
+        (is (some nat-formula? (:leaves (leaves kb bk))) "which the plain walk keeps as a leaf")
+        (is (seq (:leaves (defining-leaves kb bk))))
+        (is (not-any? nat-formula? (:leaves (defining-leaves kb bk)))
+            "and the defining walk halts at")))))
 
 (tu/deftest-kb the-defining-walk-keeps-an-asserted-rule-and-walks-a-deduced-one
   (testing "an asserted rule is a leaf"
