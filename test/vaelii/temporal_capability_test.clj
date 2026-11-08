@@ -250,6 +250,34 @@
       (testing "an eternal fact asserted only in 2040 is not yet seen from the unrelated 1800 slice"
         (is (true? (v/ask? kb (list 'parentOf Ann Bob) y1800)))))))
 
+(defn- clashes-naming
+  "The contradictions and conflicts whose sentence names `term`."
+  [kb term]
+  (filter #(some #{term} (tree-seq seqable? seq (:sentence %)))
+          (concat (v/contradictions kb) (v/conflicts kb))))
+
+(tu/deftest-kb ^:red diachronic-disjointness-clashes-only-in-the-slice-that-states-it
+  (declare-cxtimefn! kb)
+  (tu/with-terms [registered_student licensed_practitioner Orrin Wren]
+    (doseq [t [registered_student licensed_practitioner]]
+      (v/assert kb (list 'unary_predicate t) U)
+      (v/assert kb (list 'genl t 'person) U)
+      (v/assert kb (list 'time_varying_relation t) U))
+    (let [before2030 (slice '(IntervalBeforeFn (InstantFn 2030 1 1 0 0 0)))
+          y2035      (slice '(DatetimeFn "2035"))]
+      (v/assert kb (list 'diachronicallyDisjoint registered_student licensed_practitioner)
+                before2030)
+      (doseq [t [registered_student licensed_practitioner]]
+        (v/assert kb (list t Orrin) before2030)
+        (v/assert kb (list t Wren) y2035))
+      (testing "after 2030 Wren is both at once, and nothing clashes over it"
+        (is (true? (v/ask? kb (list registered_student Wren) y2035)))
+        (is (true? (v/ask? kb (list licensed_practitioner Wren) y2035)))
+        (is (empty? (clashes-naming kb Wren))))
+      (testing (str "before 2030 the same dual membership is a clash; red until memberships are "
+                    "checked with time, since diachronicallyDisjoint is stated, not enforced")
+        (is (seq (clashes-naming kb Orrin)))))))
+
 (tu/deftest-kb a-rigid-but-non-eternal-fact-in-one-year-slice-is-unknown-in-an-unrelated-year
   ;; The contrast: person carries (time_invariant_relation person) in organism.txt but no
   ;; eternal_predicate mark — core.txt says a rigid type need not be eternal. 1800 is a
