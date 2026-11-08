@@ -120,29 +120,30 @@
   ;; with `acknowledgedFinding`, so they are `:rule-clash-review` findings carrying that
   ;; reason and no live `:rule-clash` finding is left.
   ;;
-  ;; Four `:disjoint` pairs are review findings too.  The rigidity-correspondence rules give
-  ;; a function its corresponding predicate's kind, one rule per kind, and the kinds
-  ;; partition relation, so two of them fire together only for a function corresponding
-  ;; to predicates of two kinds, which the rigidity-correspondence census reports.  core.txt
-  ;; acknowledges the three pairs.  CxNormalPhysicalConditions' default rules make a metal
-  ;; solid and mercury liquid, and the metal rule states mercury as its exception.
+  ;; Eight `:disjoint` pairs are review findings too.  Seven pair two rules concluding
+  ;; disjoint rigidity kinds of one relation, which fire together only where the facts
+  ;; already give it two kinds, and core.txt acknowledges them.  The eighth pairs
+  ;; CxNormalPhysicalConditions' metal-is-solid and mercury-is-liquid defaults, and the
+  ;; metal rule states mercury as its exception.
   (let [live        (rule-clashes-everywhere kb #{:rule-clash})
         pairs       (rule-clashes-everywhere kb #{:rule-clash-review})
         kinds       (frequencies (map :kind (concat live pairs)))
         root-denial '(implies (properPartOf ?part ?whole) (not (partOf ?whole ?part)))
         definition? #(some #{root-denial} (:sentences %))
-        rigidity    '#{time_invariant_relation time_agnostic_relation time_varying_relation}
+        rigidity    '#{time_invariant_relation time_agnostic_relation time_varying_relation
+                      eternal_predicate}
         rigidity?   (fn [pair] (every? #(contains? rigidity (first (nth % 2))) (:sentences pair)))
         acked       (filter :acknowledged pairs)]
     (is (empty? live)
         (str "live clashes: " (pr-str (mapv (juxt :kind :sentences) live))))
-    (is (= {:negation 12 :disjoint 4} kinds)
+    (is (= {:negation 12 :disjoint 8} kinds)
         (str "clashes: " (pr-str (mapv (juxt :kind :sentences) (concat live pairs)))))
     (is (every? #(or (:excepted %) (:acknowledged %)) (filter #(= :negation (:kind %)) pairs))
         "negation clashes are excepted or acknowledged")
     (is (every? :excepted (remove rigidity? (filter #(= :disjoint (:kind %)) pairs)))
         "the one other disjoint pair, a metal solid and mercury liquid, is excepted")
-    (is (= 3 (count (filter rigidity? acked))) "the three rigidity-correspondence pairs are acknowledged")
+    (is (= 7 (count (filter rigidity? acked)))
+        "the three rigidity-correspondence and four properCounterpart-transfer pairs are acknowledged")
     (is (= 8 (count (remove rigidity? acked)))
         "the root denial meets the two proper readings', Forever's, TimeIntersectionFn's four and subtimeOf's definitions, unexcepted")
     (is (every? definition? (remove rigidity? acked)) "and those are the eight other acknowledged pairs")

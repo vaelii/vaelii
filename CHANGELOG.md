@@ -122,6 +122,11 @@ it — `git show v0.16.0:CHANGELOG.md`.
   time-invariant. `maxCommonSpec`, `minCommonGenl`, `negates`, `typeLargerThan`,
   `adultFormOf` and `larvalFormOf` are time-agnostic, and `seat` and `construct` are
   time-varying.
+  A `properCounterpart` pair passes rigidity only in its sound directions: a
+  time-invariant or eternal relation has a time-invariant or eternal proper reading,
+  and a time-agnostic proper reading has a time-agnostic relation. Time variance reaches
+  the proper reading down the `genl` beside each pair, and no blanket two-way
+  inheritance is stated.
   No complement type is introduced, and undecided cases are not closed-world negatives.
 
 

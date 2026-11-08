@@ -1356,6 +1356,17 @@ existing, and a person is a `construct` only through a computational realization
 not essential to it, so both are time-varying. A change of model or provider alone does
 not show that a person has stopped being a construct.
 
+`(properCounterpart P Q)` makes Q hold of x and y exactly when P does and P of y and x
+does not, so rigidity passes between the two only in the directions that holds for every
+pair: P time-invariant makes Q time-invariant, P eternal makes Q eternal, and Q
+time-agnostic makes P time-agnostic. P time-varying makes Q time-varying through the
+`(genl Q P)` stated beside each pair, which carries time variance down. No other
+direction is universal, because Q leaves out P's mutual and reflexive tuples, so no
+blanket two-way inheritance is stated. `properTangiblePartOf` is therefore time-varying,
+like `tangiblePartOf`. kb-integrity pairs the agnostic transfer with each rule
+concluding a disjoint kind of the same relation; each pair fires together only where the
+facts already contradict the transfers, and core.txt acknowledges the four.
+
 Each rule is quoted on its own. A quoted term is opaque, so no inference or
 canonicalization reaches inside either one, and what the pair needs inferred — that
 `(RulePairFn R1 R2)` and `(RulePairFn R2 R1)` name the same pair — belongs to

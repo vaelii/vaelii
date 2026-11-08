@@ -422,3 +422,32 @@
                  pull_request virtual_machine software_container kubernetes_cluster network]
                'CxTra)
   (all-of-kind kb 'time_varying_relation '[seat construct] 'CxTra))
+
+(tu/deftest-kb rigidity-transfers-between-a-relation-and-its-proper-reading-only-where-sound
+  ;; (properCounterpart P Q): Q holds of x and y exactly when P does and P of y and x
+  ;; does not.
+  (tu/with-terms [fixedRel properFixedRel eternalRel properEternalRel mixedRel properMixedRel
+                  changingRel properChangingRel plainRel properPlainRel]
+    (doseq [r [fixedRel properFixedRel eternalRel properEternalRel mixedRel properMixedRel
+               changingRel properChangingRel plainRel properPlainRel]]
+      (v/assert kb (list 'binary_predicate r) 'CxUniverse))
+    (doseq [[p q] [[fixedRel properFixedRel] [eternalRel properEternalRel]
+                   [mixedRel properMixedRel] [changingRel properChangingRel]
+                   [plainRel properPlainRel]]]
+      (v/assert kb (list 'properCounterpart p q) 'CxUniverse))
+    (v/assert kb (list 'time_invariant_relation fixedRel) 'CxUniverse)
+    (v/assert kb (list 'eternal_predicate eternalRel) 'CxUniverse)
+    (v/assert kb (list 'time_agnostic_relation properMixedRel) 'CxUniverse)
+    (v/assert kb (list 'time_varying_relation changingRel) 'CxUniverse)
+    (v/assert kb (list 'genl properChangingRel changingRel) 'CxUniverse)
+    (v/assert kb (list 'time_invariant_relation properPlainRel) 'CxUniverse)
+    (testing "an invariant relation has an invariant proper reading"
+      (is (= #{'time_invariant_relation} (kinds-of kb properFixedRel 'CxUniverse))))
+    (testing "an eternal relation has an eternal proper reading"
+      (is (true? (v/ask? kb (list 'eternal_predicate properEternalRel) 'CxUniverse))))
+    (testing "an agnostic proper reading has an agnostic relation"
+      (is (= #{'time_agnostic_relation} (kinds-of kb mixedRel 'CxUniverse))))
+    (testing "a varying relation's proper reading is varying through the genl beside the pair"
+      (is (= #{'time_varying_relation} (kinds-of kb properChangingRel 'CxUniverse))))
+    (testing "an invariant proper reading says nothing of its relation"
+      (is (= #{} (kinds-of kb plainRel 'CxUniverse))))))

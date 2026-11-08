@@ -405,7 +405,7 @@
 3	5	test/vaelii/normal_physical_conditions_test.clj
 18	7	test/vaelii/ns_counts.clj
 0	18	test/vaelii/ontology_folk_taxonomy_test.clj
-0	86	test/vaelii/ontology_rules_test.clj
+0	85	test/vaelii/ontology_rules_test.clj
 10	322	test/vaelii/ontology_test.clj
 24	9	test/vaelii/oplog_crash_fuzz_test.clj
 4	9	test/vaelii/oplog_test.clj

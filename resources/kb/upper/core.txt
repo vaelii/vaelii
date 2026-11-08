@@ -2820,6 +2820,54 @@
 (arg properCounterpart 2 binary_predicate)
 (implies (properCounterpart ?pred ?proper)
          (set/forwardRule (implies (and (?pred ?x ?y) (not (?pred ?y ?x))) (?proper ?x ?y))))
+;; A proper tuple is a plain tuple together with the denial of its reverse, so rigidity
+;; moves between the two readings in the directions that definition makes sound.  A
+;; time-invariant plain relation has a time-invariant proper reading and an eternal one
+;; an eternal proper reading, and a time-agnostic proper reading has a time-agnostic
+;; plain relation.  The plain relation's time variance
+;; reaches the proper reading down the genl stated beside each pair.  No other
+;; direction holds of every pair: the mutual and the reflexive plain tuples are the ones
+;; the proper reading leaves out.
+(set/forwardRule
+ (implies (and (properCounterpart ?pred ?proper) (time_invariant_relation ?pred))
+          (time_invariant_relation ?proper)))
+(set/forwardRule
+ (implies (and (properCounterpart ?pred ?proper) (eternal_predicate ?pred))
+          (eternal_predicate ?proper)))
+(set/forwardRule
+ (implies (and (properCounterpart ?pred ?proper) (time_agnostic_relation ?proper))
+          (time_agnostic_relation ?pred)))
+;; kb-integrity pairs the agnostic transfer with each rule concluding a disjoint kind of
+;; the same relation.  Each pair is acknowledged rather than excepted, for the reason the
+;; record gives.
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (properCounterpart ?pred ?proper) (time_agnostic_relation ?proper))
+                   (time_agnostic_relation ?pred)))
+   (Quote (implies (and (properCounterpart ?pred ?proper) (time_invariant_relation ?pred))
+                   (time_invariant_relation ?proper))))
+  "Both rules fire for one relation only where it is the proper reading of a time-invariant relation and has a time-agnostic proper reading of its own. The invariant transfer then makes that proper reading time-invariant as well, so the facts already contradict the transfers, and the clash is the one they owe.")
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (properCounterpart ?pred ?proper) (time_agnostic_relation ?proper))
+                   (time_agnostic_relation ?pred)))
+   (Quote (implies (and (properCounterpart ?pred ?proper) (eternal_predicate ?pred))
+                   (eternal_predicate ?proper))))
+  "Both rules fire for one relation only where it is the proper reading of an eternal relation and has a time-agnostic proper reading of its own. The eternal transfer then makes that proper reading eternal as well, so the facts already contradict the transfers, and the clash is the one they owe.")
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (properCounterpart ?pred ?proper) (time_agnostic_relation ?proper))
+                   (time_agnostic_relation ?pred)))
+   (Quote (implies (and (binary_predicate ?relation) (genl ?relation actor))
+                   (eternal_predicate ?relation))))
+  "Both rules fire for one relation only where it is a binary spec of actor with a time-agnostic proper reading. The eternal transfer then makes that proper reading eternal, so the facts already contradict the transfers, and the clash is the one they owe.")
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (properCounterpart ?pred ?proper) (time_agnostic_relation ?proper))
+                   (time_agnostic_relation ?pred)))
+   (Quote (implies (genl ?property commutativeInArgs)
+                   (eternal_predicate ?property))))
+  "Both rules fire for one relation only where it is a spec of commutativeInArgs with a time-agnostic proper reading. The eternal transfer then makes that proper reading eternal, so the facts already contradict the transfers, and the clash is the one they owe.")
 
 (unary_predicate unary_predicate)
 (comment unary_predicate      "A predicate of one argument: every type (a snake_case unary predicate) and every one-place property.")
