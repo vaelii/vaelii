@@ -171,6 +171,8 @@
                                              :exclusions [com.vaelii/vaelii]]]}
              :with-foreign  {:dependencies [[com.vaelii/vaelii-foreign "RELEASE"
                                              :exclusions [com.vaelii/vaelii]]]}
+             :with-agents   {:dependencies [[com.vaelii/vaelii-agents "RELEASE"
+                                             :exclusions [com.vaelii/vaelii]]]}
              ;; static analysis, dev-only so none of it reaches an uberjar. Keep
              ;; lein-cloverage's version in step with scripts/coverage.sh, which injects
              ;; the same plugin at the root level so `cloverage` registers under

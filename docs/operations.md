@@ -1005,7 +1005,8 @@ resolves from a public repository, and so does every `+with-` profile — so the
 from a clean clone. The `PROFILES` build argument names the profiles the jar is built with:
 `docker build --build-arg PROFILES=+with-postgres,+with-sqlite -t vaelii .` gives an image
 that opens `:pg-*` and `:sqlite` KBs ([storage.md](storage.md)), and an empty one builds
-the engine alone. The build context excludes `checkouts/`, so an image carries the released
+the engine alone. `+with-agents` adds the `com.vaelii/vaelii-agents` library, which nothing
+in the engine calls, for a script or REPL run from the jar that requires it. The build context excludes `checkouts/`, so an image carries the released
 adapters, never a linked source tree. `clojure.main -m vaelii.host.serve` is the entry point
 rather than `java -jar`, because the jar's Main-Class is `vaelii.core`. The entry point
 also names the flags `project.clj`'s `:jvm-opts` give a JVM that lein launches, since an

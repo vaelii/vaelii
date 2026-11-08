@@ -107,6 +107,13 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [nat.md](docs/nat.md#a-data-structure-is-a-structural-term)
   *Migration:* none; every name structure.txt declares is new.
 
+### Additive: tooling
+
+- **`+with-agents` adds the released `com.vaelii/vaelii-agents` jar to any task**,
+  `uberjar` included, as `+with-foreign` adds the plugin's.
+  [operations.md](docs/operations.md#container--the-daemon-as-an-image)
+  *Migration:* none.
+
 ### Fix: inference
 
 - **`compare-tacticians` holds every row to one `:max-ms` deadline, and runs a tactician
