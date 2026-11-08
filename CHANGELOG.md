@@ -111,7 +111,7 @@ it — `git show v0.16.0:CHANGELOG.md`.
   trend and derivative, `greaterInMagnitudeThan` and the qualitative arithmetic are
   time-varying, and `(genl stuff_type_by_state_of_matter time_varying_relation)` makes
   every phase of matter time-varying. The fifty spatial relations, the six predall
-  world-statement cells and `contradicts` are time-agnostic. CxSocial and CxTra
+  world-statement cells, `contradicts` and `intangiblePartOf` are time-agnostic. CxSocial and CxTra
   classify their own relations, which CxUniverse does not see.
 
 

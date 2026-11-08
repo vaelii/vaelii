@@ -344,9 +344,10 @@
 ;; of a person, a person as part of an organization) stays plain partOf and neither spec:
 ;; partOf is not partitioned into the two.
 (comment intangiblePartOf
-         "(intangiblePartOf ?part ?whole) means that the intangible ?part is a component of the intangible ?whole. A part of a part is a part. Structural parthood between things without mass, as tangiblePartOf states between tangible things. A tangible part of an intangible whole, or an intangible part of a tangible whole, stays plain partOf and neither spec.")
+         "(intangiblePartOf ?part ?whole) means that the intangible ?part is a component of the intangible ?whole. A part of a part is a part. Structural parthood between things without mass, as tangiblePartOf states between tangible things. This includes permanent parts of a work and removable software or organizational components, so the relation is time-agnostic. A tangible part of an intangible whole, or an intangible part of a tangible whole, stays plain partOf and neither spec.")
 (implementationNote intangiblePartOf "Declared transitive, so the transitive prover answers a chain of parthood at query time and stores no conclusion of it.")
 (set/monotonic (instance_relation_predicate intangiblePartOf))
+(set/monotonic (time_agnostic_relation intangiblePartOf))
 (arg intangiblePartOf 1 intangible)
 (arg intangiblePartOf 2 intangible)
 (set/monotonic (transitive intangiblePartOf))
