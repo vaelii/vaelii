@@ -1285,10 +1285,12 @@ inherit the eternal classification through `genl`. Interpretation predicates `me
 and context-dependent indexicals coexist.
 
 The one-way bridge for unary predicates requires both invariant membership and
-`(genl P atemporal)` before deriving `(eternal_predicate P)`. Atemporal members alone
-are insufficient: a changing selection of numbers need not be eternal. There is no
-converse deriving atemporal members from eternal classification; fixed facts about
-temporal intervals are valid examples of that distinction.
+`(genl P sempiternal)` before deriving `(eternal_predicate P)`. `sempiternal` is the
+common genl of `atemporal`, `time` and `situation` (present at every evaluation time),
+so the bridge covers specs of all three. Sempiternal members alone are insufficient: a
+changing selection of numbers need not be eternal. There is no converse deriving
+sempiternal members from eternal classification; fixed facts about temporal intervals
+are valid examples of that distinction.
 
 Fixed mathematical comparisons, unit conversions and measure comparisons, calendar
 mappings, interval/instant relations, whole-extent start/end/duration facts and the

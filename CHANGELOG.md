@@ -99,9 +99,12 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `means`, `denotes` and `expresses` are time-agnostic rather than invariant:
   interpretation includes both fixed reference and time-dependent indexicals.
   A one-way forward rule derives eternal unary predicates from invariant membership
-  over atemporal things; its converse is not asserted. Fixed math, unit/measure,
-  calendar, interval/instant, whole-extent and event-calculus predicates, including
-  `initially`, are eternal. Taxonomy laws are time-agnostic and explicitly non-eternal.
+  over atemporal things; its converse is not asserted. `sempiternal` is the common genl
+  of `atemporal`, `time` and `situation`, and the bridge now reads
+  `(genl ?predicate sempiternal)` in place of `(genl ?predicate atemporal)`.
+  Fixed math, unit/measure, calendar, interval/instant, whole-extent and event-calculus
+  predicates, including `initially`, are eternal. Taxonomy laws are time-agnostic and
+  explicitly non-eternal.
   Closure, abducibility and audit-completeness requirements are time-varying and
   non-eternal, while modal classification is eternal. Whole-event actor specializations,
   provenance, biological genealogy and current fixed-region topology are eternal;

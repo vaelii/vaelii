@@ -391,6 +391,7 @@
 (comment intermittent "Something temporal with a gap: there is a moment between its start and its end at which it is absent. The writing of a novel, a trial with its recesses, a World Series, a bicycle taken apart and put back together. The complement of uninterrupted within temporal.")
 (set/monotonic (time_invariant_relation intermittent))
 (comment atemporal "Not located in time. Numbers, relations and the other kinds below nowhere_never are atemporal; a fluent is not atemporal, since it holds over time.")
+(comment sempiternal "Present at every evaluation time. Atemporal things are outside time altogether. A time or a situation is located in time, yet it exists as the individual it is at every evaluation time, including times it does not occupy: an event in 1969 is evaluated from 1950 without occurring in 1950. Sempiternal crosscuts the temporal/atemporal partition rather than sitting inside it: atemporal is one of its kinds, and time and situation, both temporal, are two more.")
 (comment tangible "Something with mass. Having mass, it necessarily has a location in space and time too, so it is spatiotemporal.")
 (set/monotonic (time_invariant_relation tangible))
 (comment organism "Something alive in its own right: it is born, grows, reproduces, and (by default) dies.")
@@ -491,6 +492,15 @@
 ;; The partition of thing into tangible and intangible does not derive a genl edge from
 ;; the disjointness, so the edge is stated.
 (set/monotonic (genl situation intangible))
+;; sempiternal crosscuts the tangible/intangible and temporal/atemporal partitions alike
+;; (time and situation are temporal; atemporal is not), so, like person, it reaches
+;; thing directly rather than through either partition.
+(genl sempiternal thing)
+;; atemporal is outside time, and a time or situation exists at every evaluation
+;; time while occupying only its own, so all three are present at every evaluation time.
+(set/monotonic (genl atemporal sempiternal))
+(set/monotonic (genl time sempiternal))
+(set/monotonic (genl situation sempiternal))
 ;; Each skeleton collection is a type, a one-place predicate.
 (unary_predicate intangible)
 (unary_predicate spatial)
@@ -526,9 +536,11 @@
 (unary_predicate static_situation)
 (unary_predicate event)
 (unary_predicate measure)
+(unary_predicate sempiternal)
 (set/monotonic (time_invariant_relation aspatial))
 (set/monotonic (time_invariant_relation atemporal))
 (set/monotonic (time_invariant_relation nowhere_never))
+(set/monotonic (time_invariant_relation sempiternal))
 
 ;; The expression kinds the engine and this file's own declarations name: formula, sentence and
 ;; non_atomic_term, beside symbol and the value kinds above.  A FORMULA is a predication, a
@@ -1117,13 +1129,13 @@
 (set/monotonic (time_invariant_relation eternal_predicate))
 (not (decontextualized_predicate eternal_predicate))
 
-;; Atemporal members and rigid membership suffice for eternal unary truth.
+;; Sempiternal members and rigid membership suffice for eternal unary truth.
 ;; This is one-way: eternal predicates may classify temporal things too.
 (set/forwardRule
  (implies
   (and
    (unary_predicate ?predicate)
-   (genl ?predicate atemporal)
+   (genl ?predicate sempiternal)
    (time_invariant_relation ?predicate))
   (eternal_predicate ?predicate)))
 

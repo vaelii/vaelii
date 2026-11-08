@@ -284,7 +284,7 @@
 0	22	test/vaelii/direction_test.clj
 27	34	test/vaelii/disjoint_oracle_test.clj
 0	79	test/vaelii/disjoint_test.clj
-0	58	test/vaelii/disjointness_audit_test.clj
+0	62	test/vaelii/disjointness_audit_test.clj
 13	69	test/vaelii/disjunctive_antecedent_test.clj
 0	122	test/vaelii/disk_backend_test.clj
 0	61	test/vaelii/disk_codec_test.clj

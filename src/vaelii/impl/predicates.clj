@@ -1347,6 +1347,7 @@
          '[[temporal "ontology, not grammar: something that exists in time. core.txt states it because time.txt and abstract.txt both extend it; no engine check names it."]
            [aspatial "ontology, not grammar: not located in any space, the complement of spatial. core.txt states it as the top of the ontology the domain files place kinds under; no engine check names it."]
            [atemporal "ontology, not grammar: not located in time, the complement of temporal. core.txt states it so nowhere_never can sit under it; no engine check names it."]
+           [sempiternal "ontology, not grammar: present at every evaluation time, the common genl of atemporal, time and situation. core.txt states it so the eternal_predicate bridge rule can read it; no engine check names it."]
            [uninterrupted "ontology, not grammar: something temporal present at every moment between its start and its end, one side of the partition of temporal. core.txt states it as the top of the ontology the domain files place kinds under; no engine check names it."]
            [intermittent "ontology, not grammar: something temporal with a gap between its start and its end, the other side of the partition of temporal. core.txt states it as the top of the ontology the domain files place kinds under; no engine check names it."]
            [nowhere_never "ontology, not grammar: in no space and at no time, below aspatial and atemporal and the whole that logical, linguistic and quantitative are separated under; no engine check names it."]

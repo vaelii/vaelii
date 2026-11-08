@@ -62,6 +62,34 @@
     (is (not (v/ask? kb (list 'eternal_predicate fixed_number_type) 'CxUniverse))
         "withdrawing rigidity removes the derived eternal mark despite the invariant supertype")))
 
+(tu/deftest-kb sempiternal-bridge-covers-time-and-situation
+  (tu/with-terms [fixed_time_type fixed_situation_type varying_situation_type]
+    (doseq [sentence [(list 'unary_predicate fixed_time_type)
+                      (list 'genl fixed_time_type 'time)
+                      (list 'time_invariant_relation fixed_time_type)
+                      (list 'unary_predicate fixed_situation_type)
+                      (list 'genl fixed_situation_type 'situation)
+                      (list 'time_invariant_relation fixed_situation_type)
+                      (list 'unary_predicate varying_situation_type)
+                      (list 'genl varying_situation_type 'situation)]]
+      (v/assert kb sentence 'CxUniverse))
+    (is (true? (v/ask? kb (list 'eternal_predicate fixed_time_type) 'CxUniverse))
+        "a time-invariant spec of time is eternal through the sempiternal bridge")
+    (is (true? (v/ask? kb (list 'eternal_predicate fixed_situation_type) 'CxUniverse))
+        "a time-invariant spec of situation is eternal through the sempiternal bridge")
+    ;; Every spec of situation is concluded time_invariant_relation unconditionally (the
+    ;; forward rule above, pre-existing and unconditioned on this bridge), so an ordinary
+    ;; default-strength (time_varying_relation ...) on a genl of situation only ties with
+    ;; that conclusion instead of beating it.  Asserted :monotonic, it wins outright, and
+    ;; the sempiternal bridge correctly stays one-way: time-varying membership over a
+    ;; sempiternal type is not swept into eternal_predicate.
+    (v/assert kb (list 'time_varying_relation varying_situation_type) 'CxUniverse
+              {:strength :monotonic})
+    (is (not (v/ask? kb (list 'time_invariant_relation varying_situation_type) 'CxUniverse))
+        "a monotonic time-varying mark defeats the inherited time-invariant conclusion")
+    (is (not (v/ask? kb (list 'eternal_predicate varying_situation_type) 'CxUniverse))
+        "a time-varying spec of situation is not eternal")))
+
 (tu/deftest-kb selected-value-and-metatype-kinds-are-time-invariant
   (testing "the shipped fixed value and expression kinds"
     (all-of-kind kb 'time_invariant_relation
