@@ -506,7 +506,7 @@
 12	79	test/vaelii/taxonomy_scoped_test.clj
 5	23	test/vaelii/taxonomy_teardown_test.clj
 0	236	test/vaelii/taxonomy_test.clj
-13	563	test/vaelii/temporal_capability_test.clj
+13	573	test/vaelii/temporal_capability_test.clj
 8	8	test/vaelii/temporal_diamond_test.clj
 13	34	test/vaelii/temporal_functional_in_arg_test.clj
 0	30	test/vaelii/term_names_test.clj

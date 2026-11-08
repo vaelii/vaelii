@@ -233,6 +233,37 @@
           (is (= :unknown (verdict kb (list p) y2001)))
           (is (not (v/ask? kb (list 'not (list p)) y2001))))))))
 
+;; `eternal_predicate` (core.txt, #190) classifies a relation's tuples as holding
+;; independently of time. It is a classification mark, not a cross-context projection
+;; mechanism — issue #272 is that gap. Contrast a-fact-stated-unsliced-holds-in-every-
+;; year-slice above: a fact asserted unsliced in CxUniverse, visible everywhere already.
+
+(tu/deftest-kb ^:red an-eternal-fact-in-one-year-slice-does-not-yet-project-to-an-unrelated-year
+  ;; parentOf carries (set/monotonic (eternal_predicate parentOf)) in life.txt. 1800 is
+  ;; a sibling of 2040, so ordinary context visibility sees nothing stated there; #272
+  ;; tracks reading the mark across contexts. Fails today by design; drops ^:red when it lands.
+  (declare-cxtimefn! kb)
+  (tu/with-terms [Ann Bob]
+    (let [y2040 (slice '(DatetimeFn "2040"))
+          y1800 (slice '(DatetimeFn "1800"))]
+      (v/assert kb (list 'parentOf Ann Bob) y2040)
+      (testing "an eternal fact asserted only in 2040 is not yet seen from the unrelated 1800 slice"
+        (is (true? (v/ask? kb (list 'parentOf Ann Bob) y1800)))))))
+
+(tu/deftest-kb a-rigid-but-non-eternal-fact-in-one-year-slice-is-unknown-in-an-unrelated-year
+  ;; The contrast: person carries (time_invariant_relation person) in organism.txt but no
+  ;; eternal_predicate mark — core.txt says a rigid type need not be eternal. 1800 is a
+  ;; sibling of 2040 with no genlCx path, so the fact is unknown there, not false.
+  (declare-cxtimefn! kb)
+  (tu/with-terms [Bob]
+    (let [y2040 (slice '(DatetimeFn "2040"))
+          y1800 (slice '(DatetimeFn "1800"))]
+      (v/assert kb (list 'person Bob) y2040)
+      (testing "a rigid but non-eternal fact is unknown, not false, from the unrelated 1800 slice"
+        (is (not (v/ask? kb (list 'person Bob) y1800)))
+        (is (= :unknown (verdict kb (list 'person Bob) y1800)))
+        (is (not (v/ask? kb (list 'not (list 'person Bob)) y1800)))))))
+
 (tu/deftest-kb a-fact-in-a-named-year-slice-holds-in-a-named-month-and-is-unknown-the-named-next-year
   ;; The reified twin of a-fact-in-a-year-slice-holds-in-its-months-and-is-unknown-the-next-year.
   ;; The calendar fields say that January starts 2000, that 2000 meets 2001 and that
