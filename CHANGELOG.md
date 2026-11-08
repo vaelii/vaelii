@@ -84,6 +84,12 @@ it — `git show v0.16.0:CHANGELOG.md`.
   it, so a time-varying genl of a time-invariant type is an inherited clash `conflicts`
   reports. `rigidity_kind` names the three kinds.
 
+- **`eternal_predicate` classifies time-independent truth within a theory.** It is
+  below `predicate` and `time_invariant_relation`; `acknowledgedFinding` and
+  `declined_rule_macro` are members. Assertions remain revisable, not an immutable
+  review history or a temporal sequence of endorsements. The mark adds no engine
+  restriction on assertion or retraction.
+
 
 - **`typeAllSpecified`, a classification requirement `kb-integrity` audits.**
   `(typeAllSpecified ?classifier ?indep)` requires every instance of `?indep` to have a

@@ -1257,6 +1257,16 @@ stays visible with the reason beside it and no longer makes a default sweep `:ga
 | `:rule-clash` | the pair, `(RulePairFn (Quote R1) (Quote R2))` | `:rule-clash-review` | the audit context |
 | `:derivable-stated-edge` | the stated sentence, `(genl plant organism)` | `:derivable-stated-edge`, already review-only | the audit context |
 
+`acknowledgedFinding` and its `declined_rule_macro` sugar are `eternal_predicate`s:
+their tuples hold independently of time within the theory, not only at a time slice.
+The KB contains what that theory acknowledges; changing its mind is theory revision
+by assertion or retraction, not temporal change or an immutable history of reviews.
+`eternal_predicate` is below `predicate` and `time_invariant_relation`, so these
+predicates still satisfy the existing rigidity-kind requirement. Eternity is stronger
+than rigidity: `person` is rigid while its instances exist in time. The mark adds no
+engine restriction on revision and does not make acknowledgments visible in unrelated
+contexts.
+
 Each rule is quoted on its own. A quoted term is opaque, so no inference or
 canonicalization reaches inside either one, and what the pair needs inferred — that
 `(RulePairFn R1 R2)` and `(RulePairFn R2 R1)` name the same pair — belongs to

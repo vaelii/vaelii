@@ -1095,6 +1095,13 @@
 ;; One argument names the time and at least one other the rest of the tuple, so a
 ;; time-indexed relation takes two or more.
 (set/monotonic (genl time_indexed_relation at_least_binary))
+
+(comment eternal_predicate "A predicate whose tuples hold independently of time within the theory that states them. A true tuple is not true only at one time or from one time onward: it has no time-dependent truth to slice. Theory revision may assert or retract it; eternality does not freeze the KB or preserve a history of withdrawn beliefs. Every eternal_predicate is a time_invariant_relation, but a rigid type such as person need not be eternal: its members exist in time.")
+(unary_predicate eternal_predicate)
+(set/monotonic (genl eternal_predicate predicate))
+(set/monotonic (genl eternal_predicate time_invariant_relation))
+(set/monotonic (time_invariant_relation eternal_predicate))
+(not (decontextualized_predicate eternal_predicate))
 ;; Some time-varying relations change one way only.  An organism that is dead stays
 ;; dead, and one that is not alive is never alive again.  Each is a kind of
 ;; time_varying_relation, so a relation no instance could lose is neither.
@@ -2870,6 +2877,8 @@
 (positiveExampleComment acknowledgedFinding "(acknowledgedFinding :rule-macro (genl livesIn locatedIn) \"livesIn is meant as a default\")")
 (positiveExampleComment acknowledgedFinding "(acknowledgedFinding :rule-clash (RulePairFn (Quote (implies (penguin_kind ?x) (not (flies ?x)))) (Quote (implies (bird_kind ?x) (flies ?x)))) \"penguins are birds that do not fly\")")
 (ternary_predicate acknowledgedFinding)
+(set/monotonic (eternal_predicate acknowledgedFinding))
+(implementationNote acknowledgedFinding "The KB contains the findings the theory acknowledges, not an immutable review history. Revise an acknowledgment by assertion or retraction, not by temporal slicing; eternal_predicate states that distinction without changing the revision machinery.")
 (arg acknowledgedFinding 1 keyword)                    ;; the category, as the sweep keys it
 ;; expression, the most general type: a :rule-macro subject is a bare declaration
 ;; (formula-shaped), a :rule-clash subject a RulePairFn application (non_atomic_term-
@@ -2910,7 +2919,7 @@
 (unary_predicate declined_rule_macro)
 ;; What a record declines is a suggested declaration, a ground atomic sentence.
 (genl declined_rule_macro closed_predication)
-(set/monotonic (time_invariant_relation declined_rule_macro))
+(set/monotonic (eternal_predicate declined_rule_macro))
 (set/forwardRule
  (implies (declined_rule_macro ?declaration)
           (acknowledgedFinding :rule-macro ?declaration "Acknowledged via declined_rule_macro; no reason supplied.")))
