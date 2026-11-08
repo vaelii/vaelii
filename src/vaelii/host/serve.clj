@@ -132,24 +132,23 @@
   "Which of the two ceilings apply to which op, and under which key the op reads it.  A read
   that expands rules runs on the daemon's **single write monitor**, so every other request
   queues behind it.  The clock ceiling, `:max-ms` (`config/max-query-ms`), bounds every
-  entry point that takes a clock.  `:query`, `:query?`, `:query-status` and `:argue` take
-  no clock (`query-opt-keys` has no `:max-ms`), so the depth ceiling, `:max-depth`
-  (`config/max-query-depth`), bounds them.  An anytime budget map is `:max-ms` and takes
-  no default of its own.
+  entry point that takes a clock.  The depth ceiling, `:max-depth`
+  (`config/max-query-depth`), also bounds `:query`, `:query?`, `:query-status` and
+  `:argue`, which read both keys.  An anytime budget map is `:max-ms` and takes no default
+  of its own.
 
   **The table holds the search bounds of reads, and no write's bound.**  A read with no dial
-  of its own (`:sentexes-matching`) is not on it; the four backward-search entry points
-  (`core/ask-opt-keys`, `core/prove-opt-keys`) are held to the clock ceiling.  **Eight writes
-  name a bound this table does not hold**: `:assert`, `:try-assert`, `:assert-many`,
-  `:assert-rule` and `:forward-chain` read `:max-depth`, `:max-term-depth` and
-  `:max-derivations`, and `:edit`, `:edit-with-consequences` and `:preview` read them off
-  each batch entry's opts.  All three bound the chaining fixpoint
+  of its own (`:sentexes-matching`) is not on it, and every read whose `core/<op>-opt-keys`
+  names `:max-ms` is.  **Eight writes name a bound this table does not hold**: `:assert`,
+  `:try-assert`, `:assert-many`, `:assert-rule` and `:forward-chain` read `:max-depth`,
+  `:max-term-depth` and `:max-derivations`, and `:edit`, `:edit-with-consequences` and
+  `:preview` read them off each batch entry's opts.  All three bound the chaining fixpoint
   (`chain/default-chain-opts`) on the same monitor.  `write-bounds` holds `:max-ms` to the
   write ceiling for all but `:forward-chain` and `:preview` (no clock).  docs/operations.md."
-  {:query              #{:max-depth}
-   :query?             #{:max-depth}
-   :query-status       #{:max-depth}
-   :argue              #{:max-depth}
+  {:query              #{:max-depth :max-ms}
+   :query?             #{:max-depth :max-ms}
+   :query-status       #{:max-depth :max-ms}
+   :argue              #{:max-depth :max-ms}
    :why-not            #{:max-ms}
    :search-tree        #{:max-ms}
    :compare-tacticians #{:max-ms}
@@ -159,37 +158,52 @@
    :provable?          #{:max-ms}
    :ask-within         #{:max-ms}
    :prove-within       #{:max-ms}
+   :escalate           #{:max-ms}
+   :lookup             #{:max-ms}
    :kb-integrity       #{:max-ms :max-work :max-results}})
 
 (def ^:private clock-fill
   "The ops whose ceiling has to reach a caller who sent **no option map at all**, and the
   arguments to fill in between what they sent and the map.  An absent `:max-depth` is a
-  *smaller* question than the ceiling (no rule expansion), so it needs nothing here.  An
-  absent `:max-ms` is **no clock**, so a short call is padded to the arity that has a map,
-  with `vaelii.core`'s default for each argument in between, and `under-ceiling` fills the
-  clock in.  The four search entry points fill their one intervening context argument with
-  `?ctx`; `kb-integrity` has none.  `:option-arity` distinguishes an omitted options map
-  from an explicit nil.  An entry point added here owes the same reading of its arglists."
-  {:ask         {:fill ['?ctx] :option-arity 3}
-   :ask?        {:fill ['?ctx] :option-arity 3}
-   :prove       {:fill ['?ctx] :option-arity 3}
-   :provable?   {:fill ['?ctx] :option-arity 3}
-   :kb-integrity {:fill [] :option-arity 3}})
+  *smaller* question than the ceiling (no rule expansion) and needs nothing here.  An absent
+  `:max-ms` is **no clock**, so a short call is padded to the arity that has a map, with
+  `vaelii.core`'s default for each argument in between, and `under-ceiling` fills the clock
+  in.  A context is filled with `?ctx` and `escalate`'s floor with nil
+  (`levels/query-floor`).  A budget op's map is mandatory, so it has no `:fill`, and
+  `:map-arities` names the arities that end in it."
+  {:query              {:fill ['?ctx] :option-arity 3}
+   :query?             {:fill ['?ctx] :option-arity 3}
+   :query-status       {:fill [] :option-arity 3}
+   :argue              {:fill [] :option-arity 3}
+   :ask                {:fill ['?ctx] :option-arity 3}
+   :ask?               {:fill ['?ctx] :option-arity 3}
+   :prove              {:fill ['?ctx] :option-arity 3}
+   :provable?          {:fill ['?ctx] :option-arity 3}
+   :search-tree        {:fill ['?ctx] :option-arity 3}
+   :compare-tacticians {:fill ['?ctx] :option-arity 3}
+   :why-not            {:fill [] :option-arity 3}
+   :escalate           {:fill ['?ctx nil] :option-arity 4}
+   :lookup             {:fill ['?ctx] :option-arity 4}
+   :kb-integrity       {:fill [] :option-arity 3}
+   :ask-within         {:option-arity 3 :map-arities #{2 3}}
+   :prove-within       {:option-arity 3 :map-arities #{2 3}}})
 
 (defn- with-opts-map
   "`args` padded out to the arity whose last argument is the option map: nothing to do
   when the caller already sent one, or when the call is short of an argument `fill` has
   no default for (an arity refusal the op itself owes), else the tail of `fill` the call
-  is short by, and then an empty map for `under-ceiling` to write the clock into."
-  [args {:keys [fill option-arity]}]
-  (let [first-fill (- option-arity 1 (count fill))]
+  is short by, and then an empty map for `under-ceiling` to write the clock into.  A nil
+  in the map's place, at an arity `:map-arities` (default `option-arity`) names, is that
+  empty map; an op with no `:fill` is never padded."
+  [args {:keys [fill option-arity map-arities]}]
+  (let [n          (count args)
+        first-fill (- option-arity 1 (count fill))]
     (cond
-      (< (count args) first-fill) args
-      (map? (peek args)) args
-      (and (= option-arity (count args)) (nil? (peek args)))
-      (assoc args (dec option-arity) {})
+      (and (contains? (or map-arities #{option-arity}) n) (nil? (peek args)))
+      (assoc args (dec n) {})
+      (or (nil? fill) (< n first-fill) (map? (peek args))) args
       :else
-      (conj (into args (subvec fill (min (count fill) (- (count args) first-fill)))) {}))))
+      (conj (into args (subvec fill (min (count fill) (- n first-fill)))) {}))))
 
 (defn- ceiling-for
   "The ceiling on `k`, or nil when the operator lifted it (`0`)."

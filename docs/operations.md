@@ -420,13 +420,14 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   Under it answers; over it is refused **400** with `{:type :over-ceiling}` carrying the
   requested figure and the ceiling, so the next request knows what to name. A read that
   names *no* `:max-ms` is given the ceiling's, because absent there means no clock at all
-  — and for the four backward-search entry points that holds even when the request sent no
-  option map, since the alternative is an unbounded search on the write monitor. `0` on
-  either variable lifts that ceiling. The ceilings hold the search bounds of reads. The
-  clock holds ten ops — `:why-not`, `:search-tree`, `:compare-tacticians`, `:ask`, `:ask?`,
-  `:prove`, `:provable?`, `:ask-within`, `:prove-within`, `:kb-integrity` — and none of
-  them is held to a depth. The depth ceiling holds the four that take no clock: `:query`,
-  `:query?`, `:query-status` and `:argue`. `:why` reads no bound. `:kb-integrity` has two more dials,
+  — and that holds when the request sent no option map or a nil one, since the
+  alternative is an unbounded search on the write monitor. `0` on either variable lifts
+  that ceiling. The ceilings hold the search bounds of reads. The clock holds sixteen ops
+  — `:query`, `:query?`, `:query-status`, `:argue`, `:why-not`, `:search-tree`,
+  `:compare-tacticians`, `:ask`, `:ask?`, `:prove`, `:provable?`, `:ask-within`,
+  `:prove-within`, `:lookup`, `:escalate` and `:kb-integrity` — and the depth ceiling
+  holds the first four beside it. `:compare-tacticians` holds all its rows to one
+  deadline. `:why` reads no bound. `:kb-integrity` has two more dials,
   `:max-work` and `:max-results`, held the same way under `VAELII_INTEGRITY_MAX_WORK`
   (**10000**) and `VAELII_INTEGRITY_MAX_RESULTS` (**1000**), `0` lifting either, and filled
   with the ceiling when a request omits them or sends no option map, so a served sweep always
@@ -442,10 +443,13 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   a read is held to `VAELII_MAX_QUERY_MS`, and a write the clock ends is refused **400**
   `{:type :interrupted}` and rolled back ([inference.md](inference.md#stopping-a-run)).
   `:forward-chain`'s `:max-ms` is a clock no ceiling fills in. `:preview` takes no clock. A search that reaches its clock is **400** `{:type
-  :budget-exhausted}` at the four plain entry points, which answer with a solution set or a
-  boolean and have no room to say the answer is a prefix; `:ask-within` and
-  `:prove-within` return the prefix with a `:status` instead
-  ([anytime.md](anytime.md)). **30 seconds is the client's own read timeout**
+  :budget-exhausted}` at `:query`, `:query?`, `:argue`, `:lookup` and the four plain
+  backward-search entry points, which answer with a solution set, a verdict or a boolean
+  and have no room to say the answer is a prefix; `:query-status` reports `:status
+  :timeout`, and `:ask-within` and `:prove-within` return the prefix with a `:status` instead
+  ([anytime.md](anytime.md)). `:escalate` stopped by its clock before any level answered
+  returns `{:level nil :status :timeout}` ([levels.md](levels.md)). **30 seconds is the
+  client's own read timeout**
   (`vaelii.client`, below): every op runs under the single write monitor, so a read still
   running past the point the caller stopped listening is holding every other request
   behind an answer nobody will receive. The ceiling is applied in the op table rather
@@ -1338,7 +1342,7 @@ the read still found one of them. Set a new floor by rounding the first mention 
 | `VAELII_TOKEN_TABLE` | `src/vaelii/host/guard.clj:240+` | the path of an EDN file mapping each token to `{:principal <symbol> :writes #{<context> …} :admin? <boolean>}`; blank or whitespace-only is unset | unset | The per-principal token table: set, it replaces `VAELII_API_TOKEN`, and a write op lands only in the contexts the presenting token's grant names ([The token table](#the-token-table)). A file that does not check stops the daemon at start. |
 | `VAELII_ALLOWED_HOSTS` | `src/vaelii/host/guard.clj:40+` | comma-separated host **names**; a port on an entry is read as the name alone, and a value naming nothing is unset | unset | The `Host` headers a server answers, overriding the list the bind address implies. Entries are compared in the form a `Host` header is, so `kb.example.com:8080` and `kb.example.com` are one entry. |
 | `VAELII_MAX_BODY_BYTES` | `src/vaelii/host/guard.clj:160+` | a positive whole number of bytes; blank is unset | `16777216` (16 MiB) | The request-body ceiling both servers refuse above, with 413. |
-| `VAELII_MAX_QUERY_MS` | `src/vaelii/impl/config.clj:330+` | a whole number of milliseconds, 0 or more | `30000` | The wall clock a served read may name. A request may name less and is refused (`:over-ceiling`, 400) for naming more; a read naming none is given this, the four backward-search entry points included. `0` lifts the ceiling. |
+| `VAELII_MAX_QUERY_MS` | `src/vaelii/impl/config.clj:330+` | a whole number of milliseconds, 0 or more | `30000` | The wall clock a served read may name. A request may name less and is refused (`:over-ceiling`, 400) for naming more; a read naming none is given this, one sent with no option map or a nil one included. `0` lifts the ceiling. |
 | `VAELII_MAX_QUERY_DEPTH` | `src/vaelii/impl/config.clj:340+` | a whole number of rule expansions, 0 or more | `256` | The rule-expansion depth `:query`, `:query?`, `:query-status` and `:argue` may name, refused the same way; a read that takes a clock is held to no depth. `0` lifts it. |
 | `VAELII_INTEGRITY_MAX_WORK` | `src/vaelii/impl/config.clj:460+` | a whole number of cooperative query units, 0 or more | `10000` | The `:max-work` a served `:kb-integrity` may name, refused the same way; a request naming none is given this. `0` lifts it. |
 | `VAELII_INTEGRITY_MAX_RESULTS` | `src/vaelii/impl/config.clj:470+` | a whole number of findings, 0 or more | `1000` | The `:max-results` a served `:kb-integrity` may name, held the same way as `VAELII_INTEGRITY_MAX_WORK`. `0` lifts it. |

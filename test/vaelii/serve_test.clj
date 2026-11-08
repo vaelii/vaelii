@@ -935,10 +935,70 @@
           (is (= :budget-exhausted (:type r)))
           (is (= 400 (:status r))))))))
 
-(deftest a-depth-ceiling-holds-only-a-read-that-takes-no-clock
+(tu/deftest-kb escalate-is-held-to-the-clock-ceiling-at-every-arity
+  (tu/with-terms [dog Muffet CxServe]
+    (let [handler (open-app kb)
+          goal    (list dog '?x)]
+      (post-op handler :assert [(list dog Muffet) CxServe])
+      (testing "a clock past the ceiling is refused by name"
+        (let [r (post-op handler :escalate [goal CxServe nil
+                                            {:max-ms (inc (config/max-query-ms))}])]
+          (is (= [false :over-ceiling 400] [(:ok r) (:type r) (:status r)]))))
+      (testing "a call naming no option map is padded with ?ctx and the default floor"
+        (doseq [args [[goal] [goal CxServe] [goal CxServe nil] [goal CxServe 2]]]
+          (let [r (post-op handler :escalate args)]
+            (is (= [true [Muffet]] [(:ok r) (mapv #(get-in % [:bindings '?x])
+                                                  (:results (:result r)))])
+                (pr-str args))))))))
+
+(deftest every-op-whose-opt-keys-name-a-clock-is-held-to-a-ceiling
+  (let [clocked (for [[sym v] (ns-publics 'vaelii.core)
+                      :let [[_ stem] (re-matches #"(.+)-opt-keys" (name sym))]
+                      :when (and stem (contains? @v :max-ms))
+                      op [(keyword stem) (keyword (str stem "?"))]
+                      :when (contains? serve/ops op)]
+                  op)]
+    (is (<= 6 (count clocked)))
+    (doseq [op clocked]
+      (is (or (contains? (get serve/search-bounds op) :max-ms)
+              (contains? serve/write-bounds op))
+          (str op)))))
+
+(deftest a-short-call-or-a-nil-map-is-given-the-clock-ceiling
+  (let [ms      (config/max-query-ms)
+        sent-as (fn [op args] ((#'serve/bounded op (fn [_ args] args)) nil args))]
+    (doseq [[op args expected]
+            [[:ask-within ['g nil] ['g {:max-ms ms}]]
+             [:ask-within ['g 'Cx nil] ['g 'Cx {:max-ms ms}]]
+             [:prove-within ['g 'Cx {}] ['g 'Cx {:max-ms ms}]]
+             [:prove-within ['g 'Cx] ['g 'Cx]]
+             [:why-not ['s 'Cx] ['s 'Cx {:max-ms ms}]]
+             [:why-not [7] [7]]
+             [:search-tree ['g] ['g '?ctx {:max-ms ms}]]
+             [:compare-tacticians ['g 'Cx nil] ['g 'Cx {:max-ms ms}]]
+             [:escalate ['g 'Cx nil] ['g 'Cx nil {:max-ms ms}]]
+             [:lookup [7 'g] [7 'g '?ctx {:max-ms ms}]]
+             [:query ['g] ['g '?ctx {:max-ms ms}]]
+             [:query ['g 'Cx {:max-depth 3}] ['g 'Cx {:max-depth 3 :max-ms ms}]]
+             [:query-status ['g 'Cx] ['g 'Cx {:max-ms ms}]]
+             [:argue ['s 'Cx nil] ['s 'Cx {:max-ms ms}]]]]
+      (is (= expected (sent-as op args)) (pr-str op args)))
+    (is (= (set (keep (fn [[op ks]] (when (:max-ms ks) op)) serve/search-bounds))
+           (set (keys @#'serve/clock-fill)))
+        "every op the clock ceiling holds has a clock-fill row")))
+
+(tu/deftest-kb an-anytime-read-sent-a-nil-budget-answers-under-the-ceiling
+  (tu/with-terms [dog Muffet CxServe]
+    (let [handler (open-app kb)]
+      (post-op handler :assert [(list dog Muffet) CxServe])
+      (doseq [op [:ask-within :prove-within]]
+        (let [r (post-op handler op [(list dog '?x) CxServe nil])]
+          (is (= [true :complete] [(:ok r) (:status (:result r))]) (str op)))))))
+
+(deftest the-depth-ceiling-holds-the-query-family-beside-the-clock
   (let [depth (set (keep (fn [[op ks]] (when (:max-depth ks) op)) serve/search-bounds))]
     (is (= #{:query :query? :query-status :argue} depth))
-    (is (not-any? #(:max-ms (serve/search-bounds %)) depth))
+    (is (every? #(:max-ms (serve/search-bounds %)) depth))
     (is (not (contains? serve/search-bounds :why)) "why reads no bound")))
 
 (def ^:private chain-bounded-writes

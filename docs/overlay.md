@@ -417,10 +417,11 @@ Two seats that believe the same knowledge, loaded in any order, answer `=` repli
 
 The replies differ where the seats believe or derive differently, and five causes do that:
 
-- **A deadline.** `why`, `argue` and a plain `why-not` read no clock. Two clocks make
-  replies differ by the machine's speed and load: `why-not`'s `{:nearest n}` search stops
-  at its `:max-ms` with the near misses it reached, and a chaining write the daemon's
-  write ceiling ends is rolled back, so the slower seat stores less
+- **A deadline.** `why`, a plain `why-not` and `argue` naming no `:max-ms` read no clock.
+  A clock makes replies differ by the machine's speed and load: `why-not`'s
+  `{:nearest n}` search stops at its `:max-ms` with the near misses it reached, a read
+  named a `:max-ms` refuses `:budget-exhausted` on the slower seat, and a chaining write
+  the daemon's write ceiling ends is rolled back, so the slower seat stores less
   ([inference.md](inference.md#stopping-a-run)).
 - **The heap mark.** A seat on a smaller heap rolls back a chaining write that a larger
   heap stores ([operations.md](operations.md#a-seat-on-a-small-host)).

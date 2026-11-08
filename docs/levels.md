@@ -280,6 +280,14 @@ Three things make that true:
   paging. A level 7 that realized everything before returning would make merely asking
   whether it answers cost the whole search.
 
+- **A clock makes `lookup` eager.** `(lookup kb level goal context {:max-ms n})` realizes
+  the level under the clock and returns a vector, or refuses `:budget-exhausted` once the
+  clock passes (`levels/lookup-within`). Level 7 takes the deadline itself, and a lower
+  level stops at it only inside a walk that reads `budget/*deadline*`. A level-7 run that
+  ends after the deadline counts as stopped, since its seq ends at the deadline without
+  saying so. The daemon fills the clock ceiling into every served `:lookup`
+  ([operations.md](operations.md#daemon--vaeliiserve)).
+
 Some costs are inherent rather than missed. Reading a stored set is one operation
 whether you take one member or all of them, and a transitive closure has no partial
 answer — computing one link computes the fixpoint. Those are noted at the site.

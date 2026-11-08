@@ -160,7 +160,7 @@
                     (try (v/query kb goal CxQ opts) nil
                          (catch clojure.lang.ExceptionInfo e (ex-data e))))]
       (testing "every key in the key set is taken"
-        (is (= #{:max-depth :proof? :strategy :portfolio? :auto? :racers} v/query-opt-keys))
+        (is (= #{:max-depth :max-ms :proof? :strategy :portfolio? :auto? :racers} v/query-opt-keys))
         (is (= [{'?z Bob}] (vec (v/query kb goal CxQ {:max-depth 2 :strategy :depth-first
                                                       :auto? false :portfolio? false
                                                       :racers [:cost :depth-first]}))))
@@ -222,6 +222,38 @@
           (is (= proved (bounded 6))))
         (testing "while a shallow one is a strict subset"
           (is (< (count (bounded 1)) (count proved))))))))
+
+(tu/deftest-kb a-query-under-a-clock-answers-the-same-or-refuses
+  (tu/with-terms [parentOf anc dog Ann Bob Cy CxQ]
+    (v/assert kb (list parentOf Ann Bob) CxQ)
+    (v/assert kb (list parentOf Bob Cy) CxQ)
+    (v/assert kb (list dog Ann) CxQ)
+    (v/assert-rule kb [(list parentOf '?x '?z)] (list anc '?x '?z) CxQ
+                   {:direction :backward})
+    (v/assert-rule kb [(list parentOf '?x '?y) (list anc '?y '?z)] (list anc '?x '?z)
+                   CxQ {:direction :backward})
+    (let [goal    (list anc Ann '?z)
+          deep    {:max-depth 4 :max-ms 60000}
+          refused #(try (%) nil (catch clojure.lang.ExceptionInfo e (:type (ex-data e))))]
+      (testing "a clock that does not pass answers what the read answers without one"
+        (doseq [[g opts] [[goal {:max-depth 4}] [goal {:max-depth 4 :portfolio? true}]
+                          [(list dog '?x) {}]]]
+          (is (= (set (v/query kb g CxQ opts))
+                 (set (v/query kb g CxQ (assoc opts :max-ms 60000))))
+              (pr-str opts)))
+        (is (true? (v/query? kb goal CxQ deep)))
+        (is (= (select-keys (v/query-status kb goal CxQ {:max-depth 4}) [:status :answers])
+               (select-keys (v/query-status kb goal CxQ deep) [:status :answers])))
+        (is (= :true (:verdict (v/argue kb (list anc Ann Cy) CxQ deep)))))
+      (testing "a passed clock refuses the answer set rather than return a prefix"
+        (doseq [opts [{:max-depth 4 :max-ms 0} {:max-depth 4 :max-ms 0 :portfolio? true}
+                      {:max-ms 0}]]
+          (is (= :budget-exhausted (refused #(v/query kb goal CxQ opts))) (pr-str opts)))
+        (is (= :budget-exhausted
+               (refused #(v/argue kb (list anc Ann Cy) CxQ {:max-depth 4 :max-ms 0})))))
+      (testing "and query-status reports it"
+        (doseq [opts [{:max-depth 4 :max-ms 0} {:max-ms 0}]]
+          (is (= :timeout (:status (v/query-status kb goal CxQ opts))) (pr-str opts)))))))
 
 (defn- leaf-calls
   "How many literals the registry leaf answers while `f` runs, and `f`'s value."

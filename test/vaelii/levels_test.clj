@@ -307,6 +307,26 @@
       (is (thrown? clojure.lang.ExceptionInfo
                    (v/escalate kb (list dog Muffet) CxStory 2 {:max-mss 10}))))))
 
+(tu/deftest-kb lookup-under-a-clock-answers-a-vector-or-refuses
+  (tu/with-terms [parentOf grandparentOf Tom Bob Ann CxStory]
+    (v/assert-rule kb [(list parentOf '?x '?y) (list parentOf '?y '?z)]
+                   (list grandparentOf '?x '?z) CxStory {:direction :backward})
+    (v/assert kb (list parentOf Tom Bob) CxStory)
+    (v/assert kb (list parentOf Bob Ann) CxStory)
+    (let [goal (list grandparentOf Tom '?who)]
+      (testing "a clock that does not pass answers what the lazy read answers, realized"
+        (doseq [n [2 7]]
+          (let [r (v/lookup kb n goal CxStory {:max-ms 60000})]
+            (is (vector? r))
+            (is (= (vec (v/lookup kb n goal CxStory)) r) (str "level " n)))))
+      (testing "a passed clock at level 7 is refused, not answered with a prefix"
+        (is (= :budget-exhausted
+               (try (v/lookup kb 7 goal CxStory {:max-ms 0}) nil
+                    (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))))
+      (testing "a key lookup does not read is refused"
+        (is (thrown? clojure.lang.ExceptionInfo
+                     (v/lookup kb 2 goal CxStory {:max-depth 3})))))))
+
 ;; ---- explain-levels ------------------------------------------------------------
 
 (tu/deftest-kb explain-levels-shows-where-the-answer-appears

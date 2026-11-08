@@ -157,7 +157,9 @@ exactly *n*.
 **The plain entry points take a bound too, and answer differently.** `ask`, `ask?`, `prove` and
 `provable?` each take a trailing option map — `{:max-ms n}` at the first two,
 `{:max-ms n :max-depth n}` at the last two ([api.md](api.md)) — and what a reached
-`:max-ms` gets there is a refusal, `:type :budget-exhausted`, rather than the prefix. A
+`:max-ms` gets there is a refusal, `:type :budget-exhausted`, rather than the prefix.
+`query`, `query?`, `argue` and `lookup` refuse the same way, and `query-status` reports
+`:status :timeout`. A
 solution vector and a boolean have no `:status` slot, so a prefix returned in either shape
 is a wrong answer wearing a right one's face; the contract below is what a caller asks
 through when the prefix is what they want

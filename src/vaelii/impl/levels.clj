@@ -366,12 +366,25 @@
                     {:type :bad-level :level level})))
   ((nth level-fns level) kb goal context))
 
+(defn- passed? [dl] (and dl (>= (long (budget/now)) (long dl))))
+
+(defn lookup-within
+  "`lookup` realized under `budget`'s `:max-ms`, as `budget/collect`'s partial-result
+  contract.  Level 7 takes the deadline itself and a lower level stops at it inside a walk
+  that reads `budget/*deadline*`.  A level-7 seq ends silently at its deadline, so a run
+  that ended after the deadline passed reads `:timeout`, never `:complete`."
+  [kb level goal context budget]
+  (let [dl    (budget/deadline budget)
+        build #(if (and dl (= level max-level))
+                 (level-7 kb goal context dl)
+                 (lookup kb level goal context))
+        r     (budget/collect (build) budget build)]
+    (cond-> r (and (= :complete (:status r)) (passed? dl)) (assoc :status :timeout))))
+
 (defn- with-unenumerated-keys
   "`m` plus `provers/with-unenumerated`'s report keys whose vectors are non-empty."
   [m report]
   (into m (filter (comp seq val)) report))
-
-(defn- passed? [dl] (and dl (>= (long (budget/now)) (long dl))))
 
 (defn- probe
   "Level `n`'s lazy answer to `goal` and whether it has a first one: `[rs hit? report]`,

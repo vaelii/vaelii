@@ -27,6 +27,28 @@ it — `git show v0.16.0:CHANGELOG.md`.
   counts such a frame under `:refused`, not under `:naming`'s `:dot-marker`.
   *Breaks:* `assert`, `check`, an import or a read of a sentence holding a `.` outside a rest marker; the `:dot-marker` naming class
 
+### Refusal: serving
+
+- **The daemon holds `:escalate` to `VAELII_MAX_QUERY_MS`.** A request naming a larger
+  `:max-ms` is refused `:over-ceiling`, and one naming none, option map or not, runs under
+  the ceiling's clock. A climb the clock stops before any level answers returns
+  `{:level nil :status :timeout}`.
+  [operations.md](docs/operations.md#daemon--vaeliiserve)
+  *Migration:* name a `:max-ms` at or under the ceiling, or raise `VAELII_MAX_QUERY_MS`.
+  *Breaks:* a served `:escalate` naming `:max-ms` over the ceiling, and one that climbed
+  past the ceiling
+- **The daemon holds `:lookup`, `:query`, `:query?`, `:query-status` and `:argue` to
+  `VAELII_MAX_QUERY_MS`, and fills the ceiling into every clocked op's short call.** A
+  request naming a larger `:max-ms` is refused `:over-ceiling`, and one naming none runs
+  under the ceiling's clock: a query or lookup that reaches it is refused
+  `:budget-exhausted`, and `:query-status` reports `:status :timeout`. A `:why-not`,
+  `:search-tree`, `:compare-tacticians`, `:ask-within` or `:prove-within` call that omits
+  its option map or sends `nil` runs under the ceiling too.
+  [operations.md](docs/operations.md#daemon--vaeliiserve)
+  *Migration:* name a `:max-ms` at or under the ceiling, or raise `VAELII_MAX_QUERY_MS`.
+  *Breaks:* a served `:lookup`, `:query`, `:query?` or `:argue` that ran past the ceiling,
+  and a served call to the five ops above that omitted its option map and ran past it
+
 ### Additive: canonicalization
 
 - **`distinctInArgAndRest` drops a repeated argument of a function's ground applications
@@ -36,6 +58,16 @@ it — `git show v0.16.0:CHANGELOG.md`.
   flattened. A declaration arriving after the facts merges their rows, and its retraction
   splits them back.
   [canonicalization.md](docs/canonicalization.md#a-functions-terms-reshaped-by-declaration)
+  *Migration:* none.
+
+### Additive: inference
+
+- **`query`, `query?`, `query-status` and `argue` take `:max-ms`, and `lookup` takes an
+  option map.** A clocked `query`, `query?`, `argue` or `lookup` returns its whole answer
+  or refuses `:budget-exhausted`, and `query-status` reports `:status :timeout`.
+  `query-opt-keys` and `argue-opt-keys` hold `:max-ms`, and `lookup-opt-keys` names
+  `lookup`'s one key.
+  [anytime.md](docs/anytime.md#the-partial-result-contract)
   *Migration:* none.
 
 ### Additive: shipped ontology
@@ -76,6 +108,10 @@ it — `git show v0.16.0:CHANGELOG.md`.
   *Migration:* none; every name structure.txt declares is new.
 
 ### Fix: inference
+
+- **`compare-tacticians` holds every row to one `:max-ms` deadline, and runs a tactician
+  named twice once.** Each row took a fresh clock, so a call naming *n* tacticians ran up
+  to *n* times its `:max-ms`. [api.md](docs/api.md)
 
 - **A dotted literal with a concrete functor matches stored facts of every length.** The
   trie and the argument roots read the `.` of `(p ?c . ?xs)` as an argument, so a goal or

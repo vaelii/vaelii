@@ -282,9 +282,10 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; engine, bounded at that many rule rewrites.  There
                                                ; is no default depth — name the smallest that works
                                                ; goal = a sentence, or a VECTOR of them, at any depth
-                                               ; opts: {:max-depth n :proof? true} + the node engine's
-                                               ; :strategy :portfolio? :auto? :racers — the whole
+                                               ; opts: {:max-depth n :max-ms n :proof? true} + the node
+                                               ; engine's :strategy :portfolio? :auto? :racers — the whole
                                                ; key set is `query-opt-keys`; a key off it is refused.
+                                               ; Reaching :max-ms is `:budget-exhausted`
                                                ; query? stops the search at the first answer
 (query-status kb goal context opts)            ; query's answers PLUS a report -> {:answers :count :status
                                                ; :truncated? :unenumerated :unenumerated-in-guards :depth
@@ -294,7 +295,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; answer; it is conservative (a cyclic set is truncated at
                                                ; every depth).  :unenumerated names each transitive P a
                                                ; (P ?x ?y) goal answered by its extent, not its closure;
-                                               ; :status is :complete, :truncated or :incomplete.
+                                               ; :status is :complete, :truncated, :incomplete, or
+                                               ; :timeout when :max-ms passed first.
                                                ; One concrete context — a fanned context is refused
 (prove kb goal context opts)                   ; recur DFS backward chaining -> [solutions].  With no
                                                ; opts the UNBOUNDED one: terminates on the data,
@@ -347,7 +349,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; :unenumerated and :answers SET.  Every complete tactician returns the same set —
                                                ; the rows let you verify it, not trust it
                                                ; opts: `compare-tacticians-opt-keys` — the same three
-                                               ; bounds + :tacticians, and NOT :strategy (set per row)
+                                               ; bounds + :tacticians, and NOT :strategy (set per row);
+                                               ; :max-ms is one deadline for every row
 (add-prover kb prover)                         ; register a custom prover
 (prover {:applicable? f :solve f})             ; a prover built from fns of [kb goal context], for
                                                ; add-prover.  :solve-with-support in place of :solve,
@@ -373,7 +376,9 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ;   :sign :calendar, and :brave-cautious, the ASP
                                                ;   dilemma reader (docs/labeling.md)
 (reasoner :allen)                              ; one as a value, for a registry of your own
-(lookup kb level goal context)                 ; the lookup-to-query stack, levels 0-7
+(lookup kb level goal context [opts])          ; the lookup-to-query stack, levels 0-7; opts
+                                               ; `lookup-opt-keys`: {:max-ms n}, a vector answer or
+                                               ; `:budget-exhausted` at the clock
 (escalate kb goal context [floor] [opts])      ; cheapest level that answers (floor defaults to 2);
                                                ; opts `escalate-opt-keys`: {:max-ms n}, and a climb it
                                                ; stops early is {:level nil :status :timeout}
@@ -1539,8 +1544,8 @@ extent with defeated defaults in it, and an `open-kb` mount or durability key na
 axis opened a KB other than the one asked for.  Each of those is a plausible answer to a
 question nobody asked, which is the structure of failure hardest to notice from the outside.
 
-`query`'s key set is **`query-opt-keys`**: its own dial plus the node engine's keys, which
-is where everything but `:max-depth` and `:proof?` goes — and the engine reads what it
+`query`'s key set is **`query-opt-keys`**: its own dials plus the node engine's keys, which
+is where everything but `:max-depth`, `:max-ms` and `:proof?` goes — and the engine reads what it
 knows and ignores the rest, so an open key set there would let `{:max-deph 3}` answer
 facts-only with nothing to say it had.
 

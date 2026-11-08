@@ -3103,12 +3103,12 @@
   nil)
 
 (def query-opt-keys
-  "Every key `query` / `query?` read: `:max-depth`, `:proof?`, `:strategy`, `:portfolio?`,
-  `:auto?` and `:racers` (the node engine's keys go to `inference/solutions`).  A key off
+  "Every key `query` / `query?` read: `:max-depth`, `:max-ms`, `:proof?`, `:strategy`,
+  `:portfolio?`, `:auto?` and `:racers` (the node engine's keys go to `inference/solutions`).  A key off
   this set is refused (`:unknown-option`).  `:first-result?` is a strategy key
   (`{:strategy {:first-result? true}}`), as are the signs and weights in
   `vaelii.impl.tactics/defaults`."
-  #{:max-depth :proof? :strategy :portfolio? :auto? :racers})
+  #{:max-depth :max-ms :proof? :strategy :portfolio? :auto? :racers})
 
 (def search-tree-opt-keys
   "Every key `search-tree` reads: the depth, the search ordering, the node-expansion budget
@@ -3142,6 +3142,11 @@
   "Every key `escalate` reads — the wall clock, and nothing else.  It is checked between
   levels and inside level 7's search, and a climb it stops before anything answered
   says `:status :timeout` rather than that nothing answers (docs/levels.md).  Public for
+  `query-opt-keys`' reason."
+  #{:max-ms})
+
+(def lookup-opt-keys
+  "Every key `lookup` reads — the wall clock, and nothing else.  Public for
   `query-opt-keys`' reason."
   #{:max-ms})
 
@@ -3385,6 +3390,32 @@
                   nil)))))
      (boolean (seq (ask kb goal context))))))
 
+(defn- remaining-clock
+  "`opts` with `:max-ms` cut to what is left of the deadline `dl`, so a read that runs
+  several searches holds them all to one clock.  A nil `dl` returns `opts`."
+  [opts dl]
+  (cond-> opts
+    dl (assoc :max-ms (max 0 (quot (- (long dl) (long (budget/now))) 1000000)))))
+
+(defn- clocked
+  "`(read)`'s answers realized under `opts`' `:max-ms` and capped at `max-results`, or
+  `bound-exhausted!`'s refusal naming `entry-point`.  A node-engine run the clock stops
+  throws `::inference/timeout`, which `clocked` turns into the same refusal; a portfolio
+  racer's throw arrives wrapped in the future's `ExecutionException`."
+  [entry-point opts max-results read]
+  (let [bound  {:max-ms (:max-ms opts)}
+        {:keys [results status elapsed-ms]}
+        (try (budget/collect (read) (cond-> bound max-results (assoc :max-results max-results))
+                             read)
+             (catch Exception e
+               (if-let [t (some #(when (::inference/timeout (ex-data %)) (ex-data %))
+                                (take-while some? (iterate ex-cause e)))]
+                 {:status :timeout :elapsed-ms (:elapsed-ms t)}
+                 (throw e))))]
+    (if (#{:complete :capped} status)
+      results
+      (bound-exhausted! entry-point bound status elapsed-ms))))
+
 (defn- query-node-opts
   "The node engine's opts for a depth-`d` read in `context`: `*query-options*` and the
   caller's `opts`, plus the depth and the two things that make the engine answer what
@@ -3399,43 +3430,48 @@
   "`query`'s answer from **one** named context, once the depth has been read and the goal
   resolved.  `CxInference` asks it once per reader (`vaelii.impl.vantage`), so a read
   from a vantage is a function of that vantage.  `max-results` stops the node engine once
-  that many answers are in hand (nil: every one); registry reads are lazy and need no cap."
+  that many answers are in hand (nil: every one); registry reads are lazy and need no cap.
+  Under `opts`' `:max-ms` the answer is `clocked`'s."
   [kb goals-in context d opts max-results]
-  (let [goals (goals-in context)]
-    (cond
-      ;; A depth: the node engine, whose leaf is the registry, so an antecedent is
-      ;; answerable by *any* prover and the engine only expands rules.  `prove`'s leaf is
-      ;; the stored facts instead.
-      (and d (pos? (long d)))
-      (inference/solutions kb goals context
-                           (cond-> (query-node-opts kb context d opts)
-                             max-results (assoc :max-results max-results)))
+  (let [goals (goals-in context)
+        read
+        (fn []
+          (cond
+            ;; A depth: the node engine, whose leaf is the registry, so an antecedent is
+            ;; answerable by *any* prover and the engine only expands rules.  `prove`'s leaf is
+            ;; the stored facts instead.
+            (and d (pos? (long d)))
+            (inference/solutions kb goals context
+                                 (cond-> (query-node-opts kb context d opts)
+                                   max-results (assoc :max-results max-results)))
 
-      ;; No depth and one literal: the registry answers it directly, and lazily to the
-      ;; first result.  The goal is already prepared, which is the whole of what `ask`
-      ;; would add before handing it over.
-      (= 1 (count goals))
-      (provers/ask kb (first goals) context)
+            ;; No depth and one literal: the registry answers it directly, and lazily to the
+            ;; first result.  The goal is already prepared, which is the whole of what `ask`
+            ;; would add before handing it over.
+            (= 1 (count goals))
+            (provers/ask kb (first goals) context)
 
-      ;; No depth and a **conjunction**: still the registry and no rule, but the conjuncts
-      ;; must join, which one `ask` per literal cannot do.  The recursive chainer at depth 0
-      ;; is the registry as its leaf with no rewrite admitted, so the shapes agree on their
-      ;; answers.  Lazy, like the single-literal case.
-      :else
-      (res/prove-seq kb #(provers/candidate-rules kb % context) goals context
-                     (assoc (registry-leaf kb context) :max-depth 0)))))
+            ;; No depth and a **conjunction**: still the registry and no rule, but the conjuncts
+            ;; must join, which one `ask` per literal cannot do.  The recursive chainer at depth 0
+            ;; is the registry as its leaf with no rewrite admitted, so the shapes agree on their
+            ;; answers.  Lazy, like the single-literal case.
+            :else
+            (res/prove-seq kb #(provers/candidate-rules kb % context) goals context
+                           (assoc (registry-leaf kb context) :max-depth 0))))]
+    (if (:max-ms opts) (clocked "query" opts max-results read) (read))))
 
 (defn- query-capped
   "`query`'s body, with `query-at`'s `max-results`."
   [kb goal context opts max-results]
   (check-shape! (conjunction-goal-problem goal))
   (let [[goal context kb] (ist-goal kb goal context)
-        d (query-depth opts query-opt-keys "query")]
+        d  (query-depth opts query-opt-keys "query")
+        dl (budget/deadline opts)]
     (read-alternatives
      kb goal context max-results
      (fn [goals-in]
        (read-in-context kb goals-in context
-                        #(query-at kb goals-in % d opts max-results)
+                        #(query-at kb goals-in % d (remaining-clock opts dl) max-results)
                         {:expands-rules? (boolean (and d (pos? (long d))))})))))
 
 (defn query
@@ -3465,15 +3501,22 @@
    (boolean (seq (query-capped kb goal context (cond-> opts (map? opts) (dissoc :proof?)) 1)))))
 
 (defn- timed-realize
-  "Realize `xs`, timing it: `[vector first-answer-ns total-ns]`, `first-answer-ns` nil
-  when `xs` is empty.  A `query-status` over the facts-only reads, which come back as
-  lazy seqs the way `query` returns them."
-  [xs]
-  (let [start (System/nanoTime)]
-    (loop [s (seq xs), acc (transient []), first-ns nil]
-      (if s
-        (recur (next s) (conj! acc (first s)) (or first-ns (- (System/nanoTime) start)))
-        [(persistent! acc) first-ns (- (System/nanoTime) start)]))))
+  "Realize `xs`, timing it: `[vector first-answer-ns total-ns timeout?]`, `first-answer-ns`
+  nil when `xs` is empty.  A `query-status` over the facts-only reads, which come back as
+  lazy seqs the way `query` returns them.  `timeout?` is true when the `budget/now`
+  instant `dl` passed between pulls, or inside one at a walk reading `budget/*deadline*`."
+  [xs dl]
+  (let [start (System/nanoTime)
+        done  (fn [acc first-ns timeout?]
+                [(persistent! acc) first-ns (- (System/nanoTime) start) timeout?])]
+    (loop [xs xs, acc (transient []), first-ns nil]
+      (let [s (cond (and dl (>= (long (budget/now)) (long dl))) ::budget/interrupted
+                    dl                                         (budget/interruptible dl #(seq xs))
+                    :else                                      (seq xs))]
+        (cond
+          (identical? ::budget/interrupted s) (done acc first-ns true)
+          s     (recur (rest s) (conj! acc (first s)) (or first-ns (- (System/nanoTime) start)))
+          :else (done acc first-ns false))))))
 
 (defn- query-status-at
   "`query-status`'s report from **one** concrete context.  The node engine when a depth
@@ -3484,12 +3527,13 @@
   [kb goal context d opts]
   (if (and d (pos? (long d)))
     (let [goals (quasiquote/prepare-conjunction-for-read kb goal context)
-          {:keys [answers truncated? time-to-first-answer-ms total-time-ms stats unenumerated
-                  unenumerated-in-guards]}
+          {:keys [answers truncated? timeout? time-to-first-answer-ms total-time-ms stats
+                  unenumerated unenumerated-in-guards]}
           (inference/search-report kb goals context (query-node-opts kb context d opts))]
       {:answers                 answers
        :count                   (count answers)
-       :status                  (cond truncated?          :truncated
+       :status                  (cond timeout?            :timeout
+                                      truncated?          :truncated
                                       (seq unenumerated) :incomplete
                                       :else              :complete)
        :truncated?              truncated?
@@ -3499,12 +3543,16 @@
        :time-to-first-answer-ms time-to-first-answer-ms
        :total-time-ms           total-time-ms
        :stats                   stats})
-    (let [[[answers first-ns total-ns] {:keys [unenumerated unenumerated-in-guards]}]
-          (provers/with-unenumerated #(timed-realize (query-at kb (fn [ctx] (quasiquote/prepare-conjunction-for-read kb goal ctx))
-                                                               context d opts nil)))]
+    (let [goals-in (fn [ctx] (quasiquote/prepare-conjunction-for-read kb goal ctx))
+          [[answers first-ns total-ns timeout?] {:keys [unenumerated unenumerated-in-guards]}]
+          (provers/with-unenumerated
+            #(timed-realize (query-at kb goals-in context d (dissoc opts :max-ms) nil)
+                            (budget/deadline opts)))]
       {:answers                 answers
        :count                   (count answers)
-       :status                  (if (seq unenumerated) :incomplete :complete)
+       :status                  (cond timeout?           :timeout
+                                      (seq unenumerated) :incomplete
+                                      :else              :complete)
        :truncated?              false
        :unenumerated            unenumerated
        :unenumerated-in-guards  unenumerated-in-guards
@@ -3518,7 +3566,7 @@
 
       {:answers                 [{?x v} …]   `query`'s own answers, realized
        :count                   n
-       :status                  :complete | :truncated | :incomplete
+       :status                  :complete | :truncated | :incomplete | :timeout
        :truncated?              bool         = (= status :truncated)
        :unenumerated            [P …]        transitive predicates whose closure a goal
                                              with both arguments open did not enumerate
@@ -4109,13 +4157,19 @@
     2 :local    + unification                 6 :solved   full provers, no rules
     3 :visible  + genlCx inheritance          7 :proved   full stack
 
-  A lazy seq of {:level :handle :sentence :context :bindings}; a field the level cannot
-  supply is nil.  Levels 0-4 carry the handle of a result read off the store.  At level 0
-  a vector goal is an index path; elsewhere the goal is a sentence.  docs/levels.md."
+  A lazy seq of {:level :handle :sentence :context :bindings}, nil where the level cannot
+  supply a field; at level 0 a vector goal is an index path.  Under `lookup-opt-keys`'
+  `{:max-ms n}` it is a vector, or `:budget-exhausted` at the clock.  docs/levels.md."
   ([kb level goal] (lookup kb level goal '?ctx))
   ([kb level goal context]
    (let [[goal context kb] (checked-ist-goal kb goal context)]
-     (lvl/lookup kb level goal context))))
+     (lvl/lookup kb level goal context)))
+  ([kb level goal context opts]
+   (check-opts! :search opts lookup-opt-keys "lookup")
+   (if (empty? opts)
+     (lookup kb level goal context)
+     (let [[goal context kb] (checked-ist-goal kb goal context)]
+       (exhaustive-within "lookup" opts (lvl/lookup-within kb level goal context opts))))))
 
 (defn escalate
   "The cheapest level that answers `goal`: climb from `floor` and stop at the first level
@@ -7060,10 +7114,11 @@
   ground goal), or nil if not provable.  Rules fire only with `:max-depth`.  A ground
   goal has one answer at most, so its search stops at the first."
   [kb goal context opts]
-  (seq (if (:max-depth opts)
-         (query-capped kb goal context opts
-                       (when-not (sx/some-symbol? sx/variable? goal) 1))
-         (ask kb goal context))))
+  (seq (cond
+         (:max-depth opts)
+         (query-capped kb goal context opts (when-not (sx/some-symbol? sx/variable? goal) 1))
+         (:max-ms opts) (ask kb goal context (select-keys opts [:max-ms]))
+         :else          (ask kb goal context))))
 
 (defn- argue-justification
   "The `why` graph for `sentence` in `context` when it is stored and believed, else nil."
@@ -7168,6 +7223,7 @@
                 (str "An option nothing reads takes the default in silence, which here is"
                      " the no-rule-expansion read — a misspelt depth answers :unknown for"
                      " a sentence a rule derives."))
+   (opts/check-values! opts "argue")
    (if (:content? opts)
      (let [r     (content-form kb (argue kb asent context (dissoc opts :content?)))
            order (fn [a] (vec (nm/sort-by-content-key first (:bindings a a))))]
@@ -7175,8 +7231,9 @@
          (:for r)     (update :for #(nm/sort-by-content-key order %))
          (:against r) (update :against #(nm/sort-by-content-key order %))))
      (let [neg       (list 'not asent)
-           for-r     (argue-results kb asent context opts)
-           against-r (argue-results kb neg context opts)
+           dl        (budget/deadline opts)
+           for-r     (argue-results kb asent context (remaining-clock opts dl))
+           against-r (argue-results kb neg context (remaining-clock opts dl))
            pos?      (boolean (seq for-r))
            neg?      (boolean (seq against-r))
            ;; the JTMS's answer: a stored, believed side only
@@ -7186,9 +7243,9 @@
            ;; fallback rather than a second opinion: where the JTMS has a justification it
            ;; is the better answer, and asking for a tree nobody reads costs a whole query
            for-d     (when (and pos? (not for-j))
-                       (argue-derivation kb asent context opts for-r))
+                       (argue-derivation kb asent context (remaining-clock opts dl) for-r))
            against-d (when (and neg? (not against-j))
-                       (argue-derivation kb neg context opts against-r))
+                       (argue-derivation kb neg context (remaining-clock opts dl) against-r))
            defeats   (when-not pos? (not-empty (clashes/defeats-against kb asent context)))
            base      (cond-> {}
                        pos?      (assoc :for for-r)

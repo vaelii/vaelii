@@ -195,9 +195,9 @@
       (testing "a non-map opts too"
         (is (= :unknown-option (:type (refusal :oops))))
         (is (= :unknown-option (:type (refusal [:max-depth 3])))))
-      (testing "a time bound, which argue does not read, as why does not"
-        (is (= [:unknown-option :unknown-option]
-               [(:type (refusal {:max-depth 3 :max-ms 50}))
+      (testing "a time bound, which argue reads and why does not"
+        (is (= [:true :unknown-option]
+               [(:verdict (v/argue kb goal 'CxUniverse {:max-depth 3 :max-ms 600000}))
                 (:type (try (v/why kb (v/handle-of kb (list dog Muffet) 'CxUniverse) {:max-ms 50}) nil
                             (catch clojure.lang.ExceptionInfo e (ex-data e))))])))
       (testing "and every accepted key still answers"

@@ -62,7 +62,7 @@
 32	65	src/vaelii/host/io/generate.clj
 0	4	src/vaelii/host/lines.clj
 19	2	src/vaelii/host/seed.clj
-91	208	src/vaelii/host/serve.clj
+90	208	src/vaelii/host/serve.clj
 83	10	src/vaelii/host/starter.clj
 49	20	src/vaelii/host/subscribe.clj
 73	13	src/vaelii/host/sync.clj

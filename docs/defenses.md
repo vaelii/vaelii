@@ -2171,11 +2171,11 @@ The ceiling is **30 seconds** because that is when the caller stops listening �
 zero-dep client's own read timeout ([operations.md](operations.md)) — so a read still
 running past it is holding the writer for an answer nobody is waiting for.
 
-**The clock is the cost bound, and a depth ceiling holds only a read that takes no clock.**
-A depth ceiling refuses a complete answer whose derivation is deeper than the ceiling,
-however little the search would spend reaching it, so a read that takes `:max-ms` is held
-to the clock and to no depth. `:query`, `:query?`, `:query-status` and `:argue` read
-`query`'s key set, which has no clock, and the depth ceiling (**256**) is their only bound.
+**The clock is the cost bound on every served read.** A depth ceiling refuses a complete
+answer whose derivation is deeper than the ceiling, however little the search would spend
+reaching it, so a read whose key set has no depth is held to the clock alone. `:query`,
+`:query?`, `:query-status` and `:argue` read `query`'s key set, which has both keys, and
+the depth ceiling (**256**) holds them beside the clock.
 `why` reads no bound at all: it returns the reachable justification graph with each
 handle once, so its cost is linear in what it returns ([api.md](api.md)). The rejected
 shape is a tree under a depth cap. A node with two justifications that share an
@@ -2189,10 +2189,10 @@ request has to name. And **applying the ceiling at the HTTP route** would be a c
 browser's access facade does not have, since it dispatches through the same op table
 in process — so the clamp lives in the table, where every entry point reaches it.
 
-An op with no option map is deliberately not on the table. `:prove`, `:provable?`,
-`:ask` and `:ask?` take an option map and are on it; a call to one of them that sends no
-map gets the clock ceiling filled in (`serve/clock-fill`), since absent there means no
-clock.
+An op with no option map is deliberately not on the table. Every op the clock ceiling
+holds has a `serve/clock-fill` row, so a call that sends no map, or a nil one, gets the
+clock ceiling filled in, since absent there means no clock. `:ask-within` and
+`:prove-within` take a mandatory budget, so their row fills a nil budget and pads nothing.
 
 ### What a server binds decides what it requires
 

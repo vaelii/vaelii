@@ -682,7 +682,8 @@
 (defn ^:daemon-op lookup
   "Answer `goal` in `context` using exactly the machinery of `level`:"
   ([conn level goal] (call conn :lookup [level goal]))
-  ([conn level goal context] (call conn :lookup [level goal context])))
+  ([conn level goal context] (call conn :lookup [level goal context]))
+  ([conn level goal context opts] (call conn :lookup [level goal context opts])))
 
 (defn ^:daemon-op max-common-specs
   "The **maximal** common subtypes of `types`: the members of `common-specs` that are no

@@ -751,10 +751,20 @@
 
 (defn- run-one
   "One search, under one strategy — the whole engine, and what every mode below drives.
-  `:max-results` stops the search once that many solutions are in hand."
+  `:max-results` stops the search once that many solutions are in hand.  `:max-ms` drives
+  it through `search-within`, and reaching the clock throws an ex-info carrying
+  `::timeout`, which ends a portfolio race as any racer's throw does."
   [kb goals context opts]
-  (let [xs (search-seq (session kb goals context opts))]
-    (vec (if-let [n (:max-results opts)] (take n xs) xs))))
+  (let [sess (session kb goals context opts)]
+    (if (:max-ms opts)
+      (let [{:keys [results status elapsed-ms]}
+            (search-within sess (select-keys opts [:max-ms :max-results]))]
+        (when (= :timeout status)
+          (throw (ex-info "the node engine's search reached its clock"
+                          {::timeout true :elapsed-ms elapsed-ms})))
+        results)
+      (let [xs (search-seq sess)]
+        (vec (if-let [n (:max-results opts)] (take n xs) xs))))))
 
 (def default-racers
   "The tacticians a portfolio races when the caller names none: the shipped ordering, a
@@ -878,6 +888,7 @@
        :truncated?              <bool>   the depth bound stopped a rewrite the search would
                                          otherwise have taken; `false` with an empty
                                          `:unenumerated` means every answer within the bound
+       :timeout?                <bool>   `opts`' `:max-ms` passed before the frontier emptied
        :time-to-first-answer-ms <double|nil>   nil when there are no answers
        :total-time-ms           <double>
        :stats                   <tree-stats>
@@ -887,26 +898,31 @@
                                           `exceptWhen` evaluation (`unenumerated`)}
 
   `:truncated?` is conservative: `true` means a branch was stopped at the bound, and a shallower
-  branch may have answered it.  A caller tuning `:max-depth` raises it until `:truncated?` is
-  false and the answers stop growing.  It drives the single-strategy run `solutions` drives
-  (`:auto?` picks one ordering, never a race) with `:track-truncation?` on, which `session`
-  allocates only when asked."
+  branch may have answered it.  It drives `solutions`' single-strategy run (`:auto?` picks
+  one ordering, never a race) with `:track-truncation?` on."
   [kb goals context opts]
   (let [pick (when (and (:auto? opts) (not (:strategy opts)))
                (tactics/auto-strategy kb goals context (required-depth (:max-depth opts))))
         opts (cond-> (assoc opts :track-truncation? true)
                (and pick (not= :portfolio pick)) (assoc :strategy pick))
         sess (session kb goals context opts)
-        start (System/nanoTime)]
-    (loop [s (seq (search-seq sess)), acc (transient []), first-ns nil]
-      (if s
-        (recur (next s) (conj! acc (first s)) (or first-ns (- (System/nanoTime) start)))
-        (merge {:answers                 (persistent! acc)
-                :truncated?              (boolean (some-> (:truncated sess) deref))
-                :time-to-first-answer-ms (when first-ns (/ (double first-ns) 1e6))
-                :total-time-ms           (/ (double (- (System/nanoTime) start)) 1e6)
-                :stats                   (tree-stats sess)}
-               (unenumerated sess))))))
+        dl   (budget/deadline opts)
+        start (System/nanoTime)
+        done (fn [acc first-ns timeout?]
+               (merge {:answers                 (persistent! acc)
+                       :truncated?              (boolean (some-> (:truncated sess) deref))
+                       :timeout?                timeout?
+                       :time-to-first-answer-ms (when first-ns (/ (double first-ns) 1e6))
+                       :total-time-ms           (/ (double (- (System/nanoTime) start)) 1e6)
+                       :stats                   (tree-stats sess)}
+                      (unenumerated sess)))]
+    (loop [acc (transient []), first-ns nil]
+      (let [r (if (and dl (>= (long (budget/now)) (long dl))) ::budget/interrupted (step! sess dl))]
+        (cond
+          (nil? r)                              (done acc first-ns false)
+          (identical? ::budget/interrupted r)   (done acc first-ns true)
+          (empty? r)                            (recur acc first-ns)
+          :else (recur (reduce conj! acc r) (or first-ns (- (System/nanoTime) start))))))))
 
 ;; ---- the search as data, for a debugger ----------------------------------
 
@@ -1017,18 +1033,19 @@
   so the answer sets must be identical, and a differing row is a bug the completeness sweep says
   cannot happen.  `:first-result?` is a strategy flag and no row carries it.
 
-  Bounded as `search-tree` is (`:node-budget` per run, optional `:max-ms`, reported per row as
-  `:status`).  Each run is timed with `System/currentTimeMillis`.  Pass the same
-  `:leaf-solver` / `:est-override` as `query`."
+  Bounded as `search-tree` is: `:node-budget` per run, and an optional `:max-ms`, one
+  deadline for the whole call, so a row it reaches reports `:timeout` and the rows after
+  it run no node.  A tactician named twice runs once.  Pass `query`'s `:leaf-solver` /
+  `:est-override`."
   ([kb goals context] (compare-tacticians kb goals context {}))
-  ([kb goals context {:keys [tacticians node-budget max-ms] :as opts}]
-   (let [ts     (or (seq tacticians) default-compare-tacticians)
-         budget (long (or node-budget default-node-budget))]
+  ([kb goals context {:keys [tacticians node-budget] :as opts}]
+   (let [ts       (distinct (or (seq tacticians) default-compare-tacticians))
+         budget   (long (or node-budget default-node-budget))
+         deadline (budget/deadline opts)]
      (mapv
       (fn [t]
         (let [sess     (session kb (vec goals) context (assoc opts :strategy t :proof? false))
               queue    (:queue sess)
-              deadline (when max-ms (+ (System/currentTimeMillis) (long max-ms)))
               t0       (System/currentTimeMillis)
               elapsed  (fn [] (- (System/currentTimeMillis) t0))]
           (loop [answers [], expanded 0]
@@ -1040,7 +1057,7 @@
                 (>= expanded budget)
                 (compare-row t sess answers :bounded (elapsed))
 
-                (and deadline (>= (System/currentTimeMillis) (long deadline)))
+                (and deadline (>= (long (budget/now)) (long deadline)))
                 (compare-row t sess answers :timeout (elapsed))
 
                 :else
