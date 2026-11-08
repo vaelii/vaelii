@@ -41,6 +41,7 @@
 (positiveExampleComment variable "?person")
 (comment non_atomic_expression "An expression with parts. KB text writes one as an operator applied to zero or more arguments, (op a1 a2 ...), whatever op is.")
 (comment sentex_handle_term "The term (sentexHandle N), N a positive integer: the name of the stored sentex whose handle is N, written where a meta-sentex such as except, exceptWhen or contradicts names the sentex it is about.")
+(set/monotonic (eternal_predicate sentex_handle_term))
 (positiveExampleComment sentex_handle_term "(sentexHandle 212)")
 (negativeExampleComment sentex_handle_term "212, the bare integer, which names no sentex")
 (comment denotational_term "An expression that DENOTES an entity: an atomic_term (a symbol or a value) or a non_atomic_term. The logic sense of 'term', spelled in full because plain 'term' is the vocabulary sense — a name the term index is keyed by.")
@@ -254,6 +255,7 @@
 ;; Quote a reifiable_function, and a function is logical.
 (comment syncategorematic "A constant of vaelii's syntax that is written like a term and names nothing, e.g. set/monotonic, which the loader reads and never stores. A sentence mentions one only to document it.")
 (unary_predicate syncategorematic)
+(set/monotonic (eternal_predicate syncategorematic))
 (genl syncategorematic nowhere_never)
 (set/monotonic (disjoint syncategorematic linguistic))
 (set/monotonic (disjoint syncategorematic quantitative))

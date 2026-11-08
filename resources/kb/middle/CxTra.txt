@@ -295,6 +295,7 @@
 
 (unary_predicate computer)
 (comment computer "An electronic device built around a programmable processor and the memory it runs programs from: the hardware a computational system runs on. A computer that is switched off or broken is still one.")
+(set/monotonic (time_invariant_relation computer))
 (positiveExampleComment computer "a laptop")
 (positiveExampleComment computer "a rack-mounted server")
 (positiveExampleComment computer "a single-board computer")
@@ -305,11 +306,13 @@
 
 (unary_predicate virtual_machine)
 (comment virtual_machine "A computational system that emulates a whole computer and runs its own operating system kernel on a hypervisor.")
+(set/monotonic (time_invariant_relation virtual_machine))
 (positiveExampleComment virtual_machine "a cloud server instance")
 (positiveExampleComment virtual_machine "a guest operating system under a desktop hypervisor")
 
 (unary_predicate software_container)
 (comment software_container "A computational system that runs processes isolated from the rest of its host while sharing the host's operating system kernel.")
+(set/monotonic (time_invariant_relation software_container))
 (positiveExampleComment software_container "a container started from an image by a container runtime")
 (negativeExampleComment software_container "a box or a cup, which is a container")
 
@@ -340,18 +343,21 @@
 
 (unary_predicate kubernetes_cluster)
 (comment kubernetes_cluster "A computational system that schedules and runs containerized workloads across a set of nodes under one control plane, each node an operating system install that runs on a computer or on a hypervisor.")
+(set/monotonic (time_invariant_relation kubernetes_cluster))
 (positiveExampleComment kubernetes_cluster "a managed Kubernetes cluster rented from a cloud provider")
 (positiveExampleComment kubernetes_cluster "a three-node cluster of single-board computers")
 (genl kubernetes_cluster computational_system)
 
 (unary_predicate network)
 (comment network "A collection of things that can address one another over shared links.")
+(set/monotonic (time_invariant_relation network))
 (positiveExampleComment network "a home local area network")
 (positiveExampleComment network "a mesh virtual private network")
 (genl network intangible)
 
 (unary_predicate kubernetes_namespace)
 (comment kubernetes_namespace "A named scope inside one Kubernetes cluster that holds some of the cluster's workloads and keeps their names apart from those of other namespaces.")
+(set/monotonic (time_invariant_relation kubernetes_namespace))
 (positiveExampleComment kubernetes_namespace "the namespace a cluster runs its own system services in")
 (genl kubernetes_namespace intangible)
 
@@ -545,12 +551,14 @@
 
 (unary_predicate filesystem_namespace)
 (comment filesystem_namespace "A rooted tree of names in which an absolute file path is resolved. Not a host, a storage device or a mount point: two namespaces over the same storage need not resolve a path alike.")
+(set/monotonic (time_invariant_relation filesystem_namespace))
 (positiveExampleComment filesystem_namespace "the file tree a container's processes see")
 (positiveExampleComment filesystem_namespace "the file tree of a computer's root filesystem")
 (genl filesystem_namespace intangible)
 
 (unary_predicate file_path_reference)
 (comment file_path_reference "An absolute path taken together with the filesystem namespace it is resolved in. A reference to look a file up by, which does not say that the file exists or can be read.")
+(set/monotonic (time_invariant_relation file_path_reference))
 (genl file_path_reference linguistic)
 
 (unary_predicate file_lookup)
@@ -616,10 +624,12 @@
 
 (unary_predicate forge_repository)
 (comment forge_repository "A version-controlled repository as a forge hosts it, with its branches and the pull requests opened against it. Stays the same repository as commits land and branches move.")
+(set/monotonic (time_invariant_relation forge_repository))
 (genl forge_repository digital_artifact)
 
 (unary_predicate pull_request)
 (comment pull_request "A request on a forge to merge a branch's commits into a branch of a repository, with its discussion and reviews. Stays the same request through every change of status and every push to its branch.")
+(set/monotonic (time_invariant_relation pull_request))
 (genl pull_request digital_artifact)
 
 (comment PullRequestFn "(PullRequestFn ?repository ?number) means the pull request numbered ?number in ?repository. A forge never gives one number to two pull requests of one repository, so the pair fixes the request. Says nothing about its status or whether the forge still serves it.")
@@ -694,6 +704,7 @@
 
 (unary_predicate conceptual_work)
 (comment conceptual_work "Information composed as one work, which stays the same work in each copy and each encoding of it. A copy of a work is a carrier of the work and is not the work.")
+(set/monotonic (time_invariant_relation conceptual_work))
 (positiveExampleComment conceptual_work "the novel Moby-Dick")
 (positiveExampleComment conceptual_work "the information content of a newspaper article")
 (negativeExampleComment conceptual_work "a physical copy of a newspaper article, which carries the work")
@@ -730,6 +741,7 @@
 ;; ---- Discord channels and permissions ---------------------------------------
 (unary_predicate communication_channel)
 (comment communication_channel "A logical route or shared venue established for transmitting messages. The channel has no spatial location and cannot itself be a cause. A channel may be one-way or reciprocal and may remain available without messages. A physical carrier, message content, or a bare frequency or address is not itself a communication channel.")
+(set/monotonic (time_invariant_relation communication_channel))
 (genl communication_channel aspatial)
 (genl communication_channel temporal)
 (genl communication_channel acausal)
@@ -742,6 +754,7 @@
 
 (unary_predicate discord_channel)
 (comment discord_channel "A communication space managed by Discord and fixed by its snowflake ID. Includes threads. It is not its messages, audience, or a connector subscription.")
+(set/monotonic (time_invariant_relation discord_channel))
 (genl discord_channel communication_channel)
 
 (comment DiscordChannelFn "(DiscordChannelFn ?snowflake) means the Discord channel or thread whose ID is the decimal string ?snowflake. Does not imply that it exists now or is readable.")
@@ -794,6 +807,7 @@
 ;; provenance, and is not an argument.
 (unary_predicate discord_message)
 (comment discord_message "A message posted on Discord, fixed by its snowflake id. Discord holds its text and its author, and an edit or a deletion there does not make it a different message.")
+(set/monotonic (time_invariant_relation discord_message))
 (genl discord_message digital_artifact)
 
 (comment DiscordMessageFn "(DiscordMessageFn ?snowflake) means the Discord message whose snowflake id is ?snowflake, written as a decimal string. A snowflake is unique across Discord, so the id alone fixes the message. Does not say that the message can still be fetched.")
@@ -945,6 +959,7 @@
 ;; one person, not an organization, a group of people acting as one body.
 (unary_predicate construct)
 (comment construct "A person whose mind runs on a computational substrate rather than a biological one: an artificial agent with social agency, continuity of identity, and accountability for what it does.")
+(set/monotonic (time_varying_relation construct))
 (positiveExampleComment construct "an artificial agent that keeps its identity, memory and relationships from one conversation to the next")
 (negativeExampleComment construct "the computer or the container a construct runs on, which is a separate thing")
 (genl construct person)
@@ -958,6 +973,7 @@
 ;; construct can move from one seat to another or run in several at once.
 (unary_predicate seat)
 (comment seat "A computational system in which a construct runs: the execution environment its mind's processes live in, such as a container or a virtual machine.")
+(set/monotonic (time_varying_relation seat))
 (positiveExampleComment seat "a container a construct's sessions run in")
 (negativeExampleComment seat "the construct itself, which is a person and has its seat")
 (genl seat computational_system)

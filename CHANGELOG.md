@@ -113,6 +113,15 @@ it — `git show v0.16.0:CHANGELOG.md`.
   decontextualization marks, so a mark stated in any context holds for every reader. Preservation macros are explicitly non-eternal;
   functional constraints and forced-strength/lifecycle engine contracts remain eternal.
   Equality `sameAs`/`equals`/`different` is non-eternal; `rewriteOf` remains eternal.
+  The time-slice and monad vocabulary, the data structures and their element,
+  cardinality, multiplicity and value relations, `properCounterpart`,
+  `successorTypeOrder`, `rulePairOf`, `sentex_handle_term` and `syncategorematic` are
+  eternal. `CxTimeFn`, `timezone`, `zonedDatetimeOf` and CxTra's computers, virtual
+  machines, containers, clusters, networks, namespaces, file path references,
+  repositories, pull requests, channels, messages and conceptual works are
+  time-invariant. `maxCommonSpec`, `minCommonGenl`, `negates`, `typeLargerThan`,
+  `adultFormOf` and `larvalFormOf` are time-agnostic, and `seat` and `construct` are
+  time-varying.
   No complement type is introduced, and undecided cases are not closed-world negatives.
 
 

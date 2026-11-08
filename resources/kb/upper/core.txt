@@ -2107,12 +2107,14 @@
 (comment minCommonGenl
          "(minCommonGenl ?type . ?types) means that ?type is a minimal common supertype of ?types: a strict supertype of every one of them, with no other strict common supertype of them below it. Computed from the genl closure through the edges the asking context sees, and never stored. With ?type open, a query binds it to each minimal common supertype, so (minCommonGenl ?x dog cat) lists where a new type above both would sit. With ?type ground, the sentence is true when ?type is one of them and false when it is none of them. With one type in ?types the answers are its minimal supertypes.")
 (unbounded_arity_predicate minCommonGenl)
+(set/monotonic (time_agnostic_relation minCommonGenl))
 (args minCommonGenl unary_predicate)
 (arityMin minCommonGenl 2)
 
 (comment maxCommonSpec
          "(maxCommonSpec ?type . ?types) means that ?type is a maximal common subtype of ?types: a strict subtype of every one of them, with no other strict common subtype of them above it. The dual of minCommonGenl, computed and answered the same way: an open ?type binds each maximal common subtype, and a ground ?type is true when it is one of them and false when it is none of them. With one type in ?types the answers are its maximal subtypes.")
 (unbounded_arity_predicate maxCommonSpec)
+(set/monotonic (time_agnostic_relation maxCommonSpec))
 (args maxCommonSpec unary_predicate)
 (arityMin maxCommonSpec 2)
 (termsRelated genl minCommonGenl maxCommonSpec)   ;; the two read off the genl closure
@@ -2279,6 +2281,7 @@
 (arg negates 1 predicate)
 (arg negates 2 predicate)
 (forced_monotonic_predicate negates)
+(set/monotonic (time_agnostic_relation negates))
 (termsRelated negates disjoint)
 
 (comment ist
@@ -2812,6 +2815,7 @@
          "(properCounterpart ?predicate ?properPredicate) means that ?properPredicate is the proper reading of ?predicate: (?properPredicate x y) holds exactly when (?predicate x y) holds and (?predicate y x) does not. Declared of partOf and properPartOf, for instance. A reverse tuple nobody stated is not a reverse tuple denied, so the proper tuple needs (not (?predicate y x)) believed and is not concluded from the absence of (?predicate y x).")
 (implementationNote properCounterpart "A generator generates the definition half of the contract per pair. The other half, the proper tuple denying the reverse plain one, is a rule stated once at the root of a family of pairs, since generating it per pair would repeat what the root's rule already concludes through genl.")
 (set/monotonic (instance_relation_predicate properCounterpart))
+(set/monotonic (eternal_predicate properCounterpart))
 (arg properCounterpart 1 binary_predicate)
 (arg properCounterpart 2 binary_predicate)
 (implies (properCounterpart ?pred ?proper)
@@ -2984,6 +2988,7 @@
 (comment rulePairOf
          "(rulePairOf ?rule1 ?rule2 ?pair) means that ?pair is the term (RulePairFn ?rule1 ?rule2) names: the unordered pair of ?rule1 and ?rule2. RulePairFn is the corresponding function, and its value is the last argument. Nothing reads it: kb-integrity reads a rule-clash acknowledgment's RulePairFn subject. See docs/integrity.md.")
 (ternary_predicate rulePairOf)
+(set/monotonic (eternal_predicate rulePairOf))
 (arg rulePairOf 1 thing)
 (arg rulePairOf 2 thing)
 (arg rulePairOf 3 thing)
@@ -3030,6 +3035,7 @@
 ;; (typeGenl metatype type).
 (comment successorTypeOrder "(successorTypeOrder ?lower ?higher) means that ?higher is the order of type directly above ?lower: every instance of ?higher is a spec of ?lower, e.g. (successorTypeOrder type metatype) says that the instances of a metatype are first-order types.")
 (binary_predicate successorTypeOrder)
+(set/monotonic (eternal_predicate successorTypeOrder))
 (arg successorTypeOrder 1 type_type_by_order)
 (arg successorTypeOrder 2 type_type_by_order)
 (genlInverse successorTypeOrder typeGenl)

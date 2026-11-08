@@ -1336,6 +1336,23 @@ contracts. Equality predicates `sameAs`, `equals` and `different` are explicitly
 non-eternal, while canonical `rewriteOf` remains eternal. These classifications do
 not implement cross-time propagation or change the engine's identity closure.
 
+The time-slice and monad vocabulary (`cxMonadOf`, `cxTimeOf`, `genlMonad`,
+`monad_context`, `time_slice_context`, `subtimeOf`, `timeIntersectionOf`,
+`datetimeRangeOf`, `intervalAfterOf`, `intervalBeforeOf`) is eternal, and `CxTimeFn`,
+being a function rather than a predicate, is time-invariant. The data structures and
+their structural relations, element, cardinality, multiplicity and value lookups
+included, are eternal: they are mathematical, and a context-sensitive normalization of
+their elements is a matter of denotation, not of the structure changing. `timezone`,
+`zonedDatetimeOf` and CxTra's identity-fixed resources (computers, virtual machines,
+software containers, clusters, networks, namespaces, file path references, forge
+repositories, pull requests, communication channels, Discord channels and messages, and
+conceptual works) are time-invariant. The taxonomy computations `maxCommonSpec`,
+`minCommonGenl`, `negates` and `typeLargerThan`, and the kind-level `adultFormOf` and
+`larvalFormOf`, are time-agnostic. A `seat` can stop hosting a construct and go on
+existing, and a person is a `construct` only through a computational realization that is
+not essential to it, so both are time-varying. A change of model or provider alone does
+not show that a person has stopped being a construct.
+
 Each rule is quoted on its own. A quoted term is opaque, so no inference or
 canonicalization reaches inside either one, and what the pair needs inferred — that
 `(RulePairFn R1 R2)` and `(RulePairFn R2 R1)` name the same pair — belongs to

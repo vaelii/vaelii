@@ -26,6 +26,13 @@
   (doseq [r relations]
     (is (= #{kind} (kinds-of kb r context)) (str r " is " kind " and of no other kind"))))
 
+(defn- all-eternal
+  "Each of `relations` is eternal in `context`, and so time-invariant and of no other kind."
+  [kb relations context]
+  (all-of-kind kb 'time_invariant_relation relations context)
+  (doseq [r relations]
+    (is (true? (v/ask? kb (list 'eternal_predicate r) context)) (str r " is eternal"))))
+
 (tu/deftest-kb eternal-documentation-does-not-assert-its-quoted-example
   (tu/with-terms [example_kind ExamplePerson]
     (v/assert kb (list 'unary_predicate example_kind) 'CxUniverse)
@@ -372,3 +379,40 @@
   ;; image or a video that happened stays happened.
   (all-of-kind kb 'time_varying_relation '[perceives sees] 'CxTra)
   (all-of-kind kb 'time_invariant_relation '[seeImage watchVideo] 'CxTra))
+
+(tu/deftest-kb the-time-slice-and-monad-vocabulary-is-eternal-and-cxtimefn-time-invariant
+  ;; CxTimeFn is a function, so it takes the invariant kind and no eternal_predicate mark.
+  (all-eternal kb '[cxMonadOf cxTimeOf datetimeRangeOf genlMonad intervalAfterOf
+                    intervalBeforeOf monad_context subtimeOf timeIntersectionOf
+                    time_slice_context]
+               'CxUniverse)
+  (all-of-kind kb 'time_invariant_relation '[CxTimeFn timezone zonedDatetimeOf] 'CxUniverse)
+  (is (not (v/ask? kb '(eternal_predicate CxTimeFn) 'CxUniverse)) "CxTimeFn is not eternal")
+  (testing "timezone, invariant over strings, is eternal through the sempiternal bridge"
+    (is (true? (v/ask? kb '(eternal_predicate timezone) 'CxUniverse)))))
+
+(tu/deftest-kb data-structures-and-their-structural-relations-are-eternal
+  (all-eternal kb '[data_structure finite_set list map map_entry multiset entryOf listOf mapOf
+                    multisetOf setOf elementOf cardinalityOf multiplicityOf valueAt]
+               'CxUniverse))
+
+(tu/deftest-kb counterparts-type-orders-rule-pairs-and-syntax-kinds-are-eternal
+  (all-eternal kb '[properCounterpart successorTypeOrder rulePairOf sentex_handle_term
+                    syncategorematic]
+               'CxUniverse))
+
+(tu/deftest-kb taxonomy-computations-and-life-stage-forms-are-time-agnostic
+  (all-of-kind kb 'time_agnostic_relation
+               '[maxCommonSpec minCommonGenl negates typeLargerThan adultFormOf larvalFormOf]
+               'CxUniverse))
+
+(tu/deftest-kb identity-fixed-computational-resources-are-time-invariant-and-seat-and-construct-time-varying
+  ;; A pull request stays the same request through every push, and a Discord message
+  ;; the same message through every edit.  A seat can stop hosting a construct, and a
+  ;; person's computational realization is not essential to it.
+  (all-of-kind kb 'time_invariant_relation
+               '[communication_channel computer conceptual_work discord_channel discord_message
+                 file_path_reference filesystem_namespace forge_repository kubernetes_namespace
+                 pull_request virtual_machine software_container kubernetes_cluster network]
+               'CxTra)
+  (all-of-kind kb 'time_varying_relation '[seat construct] 'CxTra))

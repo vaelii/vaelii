@@ -23,6 +23,7 @@
 (comment adultFormOf
          "(adultFormOf ?stage ?kind) means that ?stage is a kind of ?kind in its adult stage: (adultFormOf butterfly lepidopteran) says butterflies are adult lepidopterans. A claim about kinds, like partType: it says what the stage is a stage of and nothing about any particular organism, and (genl ?stage ?kind) is stated beside it, because the organism goes on existing through the change. Companion to larvalFormOf.")
 (set/monotonic (type_relation_predicate adultFormOf))
+(set/monotonic (time_agnostic_relation adultFormOf))
 (genlArg adultFormOf 1 organism)
 (genlArg adultFormOf 2 organism)
 
@@ -223,6 +224,7 @@
 (comment larvalFormOf
          "(larvalFormOf ?stage ?kind) means that ?stage is a kind of ?kind in its larval stage: (larvalFormOf caterpillar lepidopteran) says caterpillars are larval lepidopterans. A claim about kinds, like partType: it says what the stage is a stage of and nothing about any particular organism, and (genl ?stage ?kind) is stated beside it, because the organism goes on existing through metamorphosis. Companion to adultFormOf.")
 (set/monotonic (type_relation_predicate larvalFormOf))
+(set/monotonic (time_agnostic_relation larvalFormOf))
 (genlArg larvalFormOf 1 organism)
 (genlArg larvalFormOf 2 organism)
 

@@ -171,6 +171,7 @@
 (comment typeLargerThan
          "(typeLargerThan ?kind1 ?kind2) means that a ?kind1 is bigger than a ?kind2. A claim about two KINDS rather than about two things — a type_relation_predicate — so (typeLargerThan dog cat) says dogs are bigger than cats and says nothing whatever about any particular dog. Transitive and asymmetric, so a cycle of size claims is a contradiction the KB reports rather than a chain it walks. Declared transitiveInArgInverse on both positions along genl, which is what carries a claim down to subkinds: a kind of dog is larger than a kind of cat. That distribution is itself a claim about typeLargerThan, which is why it is declared rather than assumed — the same inheritance is false of a chihuahua and a maine coon, and nothing in a sentence says which case it is in.")
 (set/monotonic (type_relation_predicate typeLargerThan))
+(set/monotonic (time_agnostic_relation typeLargerThan))
 (genlArg typeLargerThan 1 tangible)
 (genlArg typeLargerThan 2 tangible)
 (set/monotonic (transitive typeLargerThan))
