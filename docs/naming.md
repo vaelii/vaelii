@@ -115,6 +115,11 @@ role, the consequent included: `(implies (holds ?x ?s) ?s)` is written `(implies
 ?x (?pred . ?args)) (?pred . ?args))`, which binds the functor and the arguments in the
 antecedent.
 
+A literal's functor is a symbol, or a ground application of a `reifiable_function`,
+which `assert` reifies to its `nat/` constant before this check runs
+([nat.md](nat.md#an-application-as-a-sentences-predicate)); the check passes that constant
+in functor position. A compound functor that reaches the check is refused `:functor`.
+
 A rule's outermost functor is `implies`, which is engine vocabulary, so the descent is
 what reaches the author's names: `(implies (penguin ?x) (lives_in ?x cold_place))` is
 refused for its consequent, the position where derived and generated content lands.

@@ -1981,7 +1981,7 @@
   read as written rather than aligned to the rule's varmap — naming reads a literal's
   functor and argument spellings, which alpha-renaming does not touch."
   [kb exc context]
-  (vec (for [lit exc
+  (vec (for [lit (nat/heads-for-check kb exc context)
              p   (nm/blocking-problems (:naming kb) lit context)]
          {:type :naming :sentence lit :context context
           :message (str "naming invariant: " p)})))
@@ -2074,7 +2074,7 @@
                  (first-problems
                   [#(some-> (rules/exceptWhen-not-a-rule exc inner) vector)
                    #(first-problems
-                     (for [form (exceptWhen-rule-forms exc inner)]
+                     (for [form (exceptWhen-rule-forms exc (nat/heads-for-check kb inner context))]
                        (fn []
                          (some-> (problem (fn []
                                             (entry/check-rule-sentence kb form context)
@@ -2085,7 +2085,7 @@
                    #(check kb inner context opts)])
 
                  (rules/rule-sentence? (rules/inner-rule sentence))
-                 (rule-problems kb sentence context)
+                 (rule-problems kb (nat/heads-for-check kb sentence context) context)
 
                  ;; the application-input check first and over the sentence as written,
                  ;; where `assert` asks it, before the reify pass; then the fact as `assert`
@@ -2094,7 +2094,8 @@
                  :else
                  (or (some-> (problem (fn [] (check-reified-inputs! kb sentence context))) vector)
                      (binding [checks/*entry-mints?* true]
-                       (fact-problems kb (nat-read/reify-existing kb sentence context) context)))))))))))
+                       (fact-problems kb (nat-read/reify-existing kb (nat/heads-for-check kb sentence context) context)
+                                      context)))))))))))
 
 (defn- bad-handle-message
   "The refusal text for a non-handle passed where one handle belongs — shared between
@@ -2968,7 +2969,7 @@
                                          :context context})))
                     context)
           sentence (entry/resolve-references kb sentence context)]
-      (nm/check! (:naming kb) sentence context)
+      (nm/check! (:naming kb) (nat/heads-for-check kb sentence context) context)
       ;; a stored sentence is closed (`checks/check-ground`, the same refusal `assert`
       ;; makes): an inert literal holding a variable is a record every belief-blind read
       ;; answers as a fact, and a labeling's materialized truth values are ground atoms

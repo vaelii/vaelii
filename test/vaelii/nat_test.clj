@@ -2078,3 +2078,97 @@
       (is (= #{LaPaz Sucre} (set (map '?c (v/ask kb (list capitalOf Bolivia '?c) CxWorld)))))
       (is (empty? (v/conflicts kb)))
       (is (empty? (v/contradictions kb))))))
+
+;; ---- an application as a sentence's predicate --------------------------------
+
+(defn- kin-fn
+  "Declare `f` a reifiable function whose values are binary predicates, and return the
+  application of `f` to `p`."
+  [kb f p]
+  (v/assert kb (list 'reifiable_function f) 'CxUniverse {:strength :monotonic})
+  (v/assert kb (list 'result f 'binary_predicate) 'CxUniverse {:strength :monotonic})
+  (list f p))
+
+(tu/deftest-kb an-application-in-the-head-reifies-to-the-constant-its-argument-spelling-names
+  (tu/with-terms [BloodKinFn siblingOf Ann Bob]
+    (let [head (kin-fn kb BloodKinFn siblingOf)
+          h    (v/assert kb (list head Ann Bob) 'CxUniverse)
+          k    (first (:sentence (v/sentex kb h)))]
+      (is (nat-read/reified-object-symbol? k))
+      (is (= k (nat-read/dedup-constant kb head)))
+      (is (= [{'?x Bob}] (v/ask kb (list head Ann '?x) 'CxUniverse)))
+      (is (= [{'?x Bob}] (v/ask kb (list (vec head) Ann '?x) 'CxUniverse))
+          "a vector spelling of the head reads the same constant")
+      (is (= (list k Bob Ann) (:sentence (v/sentex kb (v/assert-inert kb (list head Bob Ann) 'CxUniverse))))
+          "assert-inert stores the head as the constant assert minted"))))
+
+(tu/deftest-kb a-rule-reads-and-concludes-an-application-in-the-head
+  (doseq [direction [:forward :backward]]
+    (tu/with-terms [BloodKinFn siblingOf kinOf relatedTo Ann Bob]
+      (let [head (kin-fn kb BloodKinFn siblingOf)
+            ask  #(v/query kb (list % Ann '?x) 'CxUniverse {:max-depth 3})]
+        (v/assert-rule kb [(list kinOf '?x '?y)] (list head '?x '?y) 'CxUniverse {:direction direction})
+        (v/assert-rule kb [(list head '?x '?y)] (list relatedTo '?x '?y) 'CxUniverse {:direction direction})
+        (v/assert kb (list kinOf Ann Bob) 'CxUniverse)
+        (is (= [[{'?x Bob}] [{'?x Bob}]] [(ask head) (ask relatedTo)]) (name direction))))))
+
+(tu/deftest-kb a-genl-edge-on-an-application-derives-the-base-predicate
+  (tu/with-terms [BloodKinFn siblingOf Ann Bob]
+    (let [head (kin-fn kb BloodKinFn siblingOf)]
+      (v/assert kb (list 'genl head siblingOf) 'CxUniverse)
+      (v/assert kb (list head Ann Bob) 'CxUniverse)
+      (is (= [{'?x Bob}] (v/ask kb (list siblingOf Ann '?x) 'CxUniverse))))))
+
+(tu/deftest-kb an-applications-argument-types-are-read-as-a-named-predicates-are
+  (doseq [inherited? [false true]]
+    (tu/with-terms [BloodKinFn siblingOf organism Bob]
+      (let [head (kin-fn kb BloodKinFn siblingOf)
+            on   (if inherited? siblingOf head)]
+        (v/assert kb (list 'genl organism 'thing) 'CxUniverse {:strength :monotonic})
+        (v/assert kb (list 'genl head siblingOf) 'CxUniverse)
+        (v/assert kb (list 'arg on 1 organism) 'CxUniverse {:strength :monotonic})
+        (is (= :arg-type (tu/write-type kb #(v/assert kb (list head 42 Bob) 'CxUniverse)))
+            (str (if inherited? "inherited: " "declared: ") "a value in an organism slot is held inert"))
+        (is (= :arg-type (tu/try-violation kb (list head 43 Bob) 'CxUniverse))
+            (str (if inherited? "inherited: " "declared: ") "try-assert refuses it"))))))
+
+(tu/deftest-kb a-rewrite-of-an-application-in-the-head-reads-in-either-arrival-order
+  (doseq [rewrite-first? [false true]]
+    (tu/with-terms [BloodKinFn siblingOf bloodSiblingOf Ann Bob Cal Dee]
+      (let [head    (kin-fn kb BloodKinFn siblingOf)
+            rewrite #(v/assert kb (list 'rewriteOf bloodSiblingOf head) 'CxUniverse {:strength :monotonic})
+            order   (if rewrite-first? "rewrite first: " "rewrite last: ")]
+        (v/assert kb (list 'binary_predicate bloodSiblingOf) 'CxUniverse)
+        (when rewrite-first? (rewrite))
+        (v/assert kb (list head Ann Bob) 'CxUniverse)
+        (v/assert kb (list bloodSiblingOf Cal Dee) 'CxUniverse)
+        (when-not rewrite-first? (rewrite))
+        (is (= [{'?x Bob}] (v/ask kb (list bloodSiblingOf Ann '?x) 'CxUniverse))
+            (str order "the application's fact answers the named predicate"))
+        (is (= [{'?x Dee}] (v/ask kb (list head Cal '?x) 'CxUniverse))
+            (str order "the named predicate's fact answers the application"))))))
+
+(tu/deftest-kb a-compound-head-that-does-not-reify-is-refused-by-naming
+  (tu/with-terms [BloodKinFn OtherFn siblingOf Ann Bob]
+    (kin-fn kb BloodKinFn siblingOf)
+    (doseq [head [(list OtherFn siblingOf) (list BloodKinFn '?p)]]
+      (is (= :naming (tu/refusal-type #(v/assert kb (list head Ann Bob) 'CxUniverse)))
+          (pr-str head)))))
+
+(tu/deftest-kb check-reads-an-application-in-the-head-as-assert-does
+  (tu/with-terms [BloodKinFn OtherFn siblingOf Ann Bob]
+    (let [head (kin-fn kb BloodKinFn siblingOf)]
+      (is (empty? (v/check kb (list head Ann Bob) 'CxUniverse)) "a fact, before the mint")
+      (is (empty? (v/check kb (list 'implies (list siblingOf '?x '?y) (list head '?x '?y)) 'CxUniverse))
+          "a rule, before the mint")
+      (is (= [:naming] (mapv :type (v/check kb (list (list OtherFn siblingOf) Ann Bob) 'CxUniverse)))))))
+
+(tu/deftest-kb an-application-in-the-head-has-its-inputs-checked-as-an-arguments-are
+  (tu/with-terms [BloodKinFn siblingOf kin_relation Ann Bob]
+    (kin-fn kb BloodKinFn siblingOf)
+    (v/assert kb (list 'genl kin_relation 'thing) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'arg BloodKinFn 1 kin_relation) 'CxUniverse {:strength :monotonic})
+    (is (= [:arg-type :arg-type :arg-type]
+           [(tu/write-type kb #(v/assert kb (list 'genl (list BloodKinFn 42) siblingOf) 'CxUniverse))
+            (tu/write-type kb #(v/assert kb (list (list BloodKinFn 43) Ann Bob) 'CxUniverse))
+            (first (map :type (v/check kb (list (list BloodKinFn 44) Ann Bob) 'CxUniverse)))]))))

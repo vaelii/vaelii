@@ -14,6 +14,22 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Breaking: storage
+
+- **A ground application of a reifiable function can be a literal's predicate**
+  ([#274](https://github.com/vaelii/vaelii/issues/274)). `((BloodKinFn siblingOf) Ann Bob)`
+  stores its head as the constant `(genl (BloodKinFn siblingOf) siblingOf)` stores its
+  argument as, so the fact reaches `siblingOf` through the edge, and an `arg` declared on
+  the application or inherited through its edges types the fact's arguments. `assert`,
+  `assert-inert` and `check` accept the head under `:naming :strict` and check its inputs
+  as they check an argument application's; a compound head that does not reify is refused
+  `:naming` as before. A query reifies the head too, so a head that a
+  store holds as written from `:naming :warn` or `:off` is not reached by a read.
+  [nat.md](docs/nat.md#an-application-as-a-sentences-predicate)
+  *Migration:* retract each fact a store holds with a reifiable application as its head,
+  and assert it again.
+  *Breaks:* a read of a head application stored as written under `:naming :warn` or `:off`
+
 ### Refusal: shape
 
 - **A `.` that is not the rest marker of its list is refused as `:shape`**

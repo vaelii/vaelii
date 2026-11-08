@@ -1063,8 +1063,9 @@
 
 (defn- nested-input-problem
   "The first violation of a function's own argument declarations by an input written
-  inside one of `sentence`'s used arguments, at any depth, or nil.  The violation is the
-  arm's own, so its `:sentence` is the innermost application whose input failed.
+  inside `sentence`'s head application or used arguments, at any depth, or nil.  The
+  violation is the arm's own, so its `:sentence` is the innermost application whose input
+  failed.
 
   No membership is derived from a nested input: no index finds the applications of a
   function inside stored facts, so a derivation would depend on arrival order.  Under the
@@ -1074,18 +1075,19 @@
   predicate's argument (`res/nat-quoting-predicates`) and a quoting function's argument
   (`sx/quoting-functors`) are mentions and are not descended into, though a quoting
   function's own declarations are still read over its application.  A sentence with no
-  compound argument reads nothing."
+  compound argument or head reads nothing."
   [kb sentence context types decls]
   (let [pred (nm/functor sentence)
-        as   (nm/args sentence)]
-    (when (and (symbol? pred)
+        as   (nm/args sentence)
+        hd   (when (application-term? pred) [[0 pred]])]
+    (when (and (or hd (symbol? pred))
                (not (contains? provers/formula-heads pred))
-               (some application-term? as)
+               (or hd (some application-term? as))
                (not (contains? res/nat-quoting-predicates pred))
                (not (sx/quoting-functor? pred)))
       (let [mentioned? (mentioned-position decls)]
         (first-refusing
-         (for [[n x] (map-indexed (fn [i a] [(inc i) a]) as)
+         (for [[n x] (concat hd (map-indexed (fn [i a] [(inc i) a]) as))
                :when (and (application-term? x)
                           (not (contains? provers/formula-heads (first x)))
                           (not (mentioned? n)))
@@ -3443,25 +3445,28 @@
   "Throw the first violation of a function's argument declarations inside `sentence` in
   `context` — `application-input-problem`, asked of a fact **before** the reify pass.
 
-  `assert` mints every ground reifiable application into its constant before
-  `constraint-checks` runs, and the constant carries the function's result types, not
-  what the application was given: the inputs are gone by the time the arm that reads
-  them could look.  So the assert path asks this first, over the sentence as written,
-  from the writer's vantage — the same reading `constraint-checks` gives an unreifiable
-  application after the pass, and the one `check` gives both, since `check` does not
-  mint.  Asked before the mint, a refused sentence leaves no constant behind.
-
-  Nil for a sentence with no compound argument, before any reader is built."
+  The constant `assert` mints carries the function's result types and not the inputs, so
+  the assert path asks this over the sentence as written, from the writer's vantage, and a
+  refused sentence leaves no constant behind.  `check`, which does not mint, asks it too.
+  A head application's inputs are read as an argument application's are, and the
+  arguments meet the declarations of the term the head reifies to
+  (`nat/heads-for-check`).  Nil for a sentence with no compound argument or head, before
+  any reader is built."
   [kb sentence context]
   ;; the raw sentence's arguments first: a fact with no compound argument has none under
   ;; any `not` either, and asking this before `checked-sentence` keeps the common fact
   ;; off the canonicalization that reads through its negations
-  (when (and (sequential? sentence) (some application-term? (rest sentence)))
-    (let [chk (checked-sentence kb sentence)]
-      (when (and (symbol? (nm/functor chk)) (some application-term? (nm/args chk)))
+  (when (and (sequential? sentence)
+             (or (application-term? (first sentence)) (some application-term? (rest sentence))))
+    (let [chk (checked-sentence kb sentence)
+          f   (nm/functor chk)
+          hd? (application-term? f)]
+      (when (or hd? (and (symbol? f) (some application-term? (nm/args chk))))
         (let [p (application-input-problem kb chk context
                                            (kb/membership-reader kb context)
-                                           (declaration-reader kb (nm/functor chk) context))]
+                                           (declaration-reader
+                                            kb (if hd? (nm/functor (nat/heads-for-check kb chk context)) f)
+                                            context))]
           (when (entry-refuses? p)
             (throw (refusal kb context p))))))))
 

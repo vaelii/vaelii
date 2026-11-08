@@ -385,11 +385,15 @@
 
 (defn- functor-problem
   "The naming violation of one `[role literal]` pair's functor, or nil:
-  `:lexeme-functor`, `:functor`, `:functor-arity` or `:functor-unary`."
+  `:lexeme-functor`, `:functor`, `:functor-arity` or `:functor-unary`.  A `nat/`
+  constant passes: the write and read paths reify a head that is a ground reifiable
+  application before this check (docs/nat.md, Write path)."
   [[role literal]]
   (let [f (functor literal)]
     (cond
       (nil? f) nil
+
+      (and (reified-constant? f) (not (context? f))) nil
 
       ;; a lexeme names no relation; as an argument it is ordinary
       (lexeme? f)
@@ -441,9 +445,13 @@
       (str "context " symbol " must start with Cx and continue CapitalCamelCase")
 
       :functor
-      (str "functor " (pr-str symbol) " in " where " matches no naming convention: a"
-           " predicate is camelCase (parentOf, arg), a type is snake_case"
-           " (physical_object) or a sense (abrasive-grit), and a type is only unary")
+      (if (sequential? symbol)
+        (str "functor " (pr-str symbol) " in " where " is an application that did not"
+             " reify: a compound functor must be a ground application of a"
+             " reifiable_function, which reifies to the constant it names")
+        (str "functor " (pr-str symbol) " in " where " matches no naming convention: a"
+             " predicate is camelCase (parentOf, arg), a type is snake_case"
+             " (physical_object) or a sense (abrasive-grit), and a type is only unary"))
 
       :lexeme-functor
       (str "functor " (pr-str symbol) " in " where " is a lexeme, and a surface form names"

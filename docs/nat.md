@@ -105,9 +105,11 @@ checks**:
   meet and distinct arms are not applied, since they can change an application's arity.
   A row naming such a constant records the sentence as written, unreified
   (`integrate/spellings-key`), and a rule firing records its conclusion unreified too;
-- the walk descends into nested non-NAT literals (rule bodies, conjuncts) but leaves
-  the head predicate, every quoting-predicate argument and a `modal_predicate`'s
-  proposition opaque. A stored `(believes Ann (likes Tom (FruitFn Apple)))` keeps the
+- the walk descends into nested non-NAT literals (rule bodies, conjuncts). A literal's
+  head that is itself a ground reifiable application reifies as an argument does
+  ([An application as a sentence's predicate](#an-application-as-a-sentences-predicate));
+  a symbol head, every quoting-predicate argument and a `modal_predicate`'s
+  proposition stay opaque. A stored `(believes Ann (likes Tom (FruitFn Apple)))` keeps the
   application, and the read entry points leave it as written in a goal, so the belief
   projection reifies it in the agent's context
   ([belief.md](belief.md#where-the-barrier-sits-and-what-it-covers));
@@ -130,6 +132,22 @@ The **argument** checks do not skip it. `args-problem` and `genls-problem` read 
 compound through its function's declared result — see [Typing an application that is
 never minted](#typing-an-application-that-is-never-minted) below, which is what makes
 one declaration bind both classes of function.
+
+### An application as a sentence's predicate
+
+A ground application of a function whose `result` is a predicate type can stand as a
+literal's head. `((BloodKinFn siblingOf) Ann Bob)` reifies its head to the constant that
+`(genl (BloodKinFn siblingOf) siblingOf)` and `(arg (BloodKinFn siblingOf) 1 organism)`
+reify their argument to. The fact, the `genl` edge and the argument declaration therefore
+key on one predicate. A `rewriteOf` target replaces the head as it replaces an argument.
+
+The naming check runs after the reify and reads the `nat/` constant, which passes in
+functor position. `check` and `assert-inert` mint nothing, so they read a head with no
+constant as the `nat/` constant `constant-for` names for it (`nat/heads-for-check`). The
+application-input check reads a head application's inputs before the reify, as it reads
+an argument application's. A compound head that does not reify is refused `:naming`
+([naming.md](naming.md#literals-wrappers-and-arguments)): an application of a function no
+`reifiable_function` mark names, or one holding a variable.
 
 `mint-nat!` allocates the opaque `K`, asserts `(natFormula K E)`, materializes the
 result types (`(T K)` per `result`, `(genl K T)` per `genlResult`), and returns

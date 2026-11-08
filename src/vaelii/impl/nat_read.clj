@@ -293,25 +293,28 @@
 
 (defn reify-in
   "Reify every reifiable ground NAT subterm of literal/sentence `s`, calling `nat-fn` (a
-  `(fn [kb form])`) at each one; `nat-fn` returns the NAT's term, having reified its
-  nested NAT arguments itself.  A head predicate, a quoting-predicate argument and a
-  `modal_predicate`'s proposition (`res/attitude-application?`) stay opaque.  The modal
-  mark is read KB-wide, once per walk: whether an argument is a mention is a fact about
-  the sentence (`tax/mention-marks`).  A vector is descended element by element
-  (docs/nat.md, Write path)."
-  [kb s nat-fn]
-  (let [modal (:modal (tax/mention-marks (reasoning/taxonomy kb)))]
-    (letfn [(walk [s]
-              (cond
-                (reifiable-ground-nat? kb s) (nat-fn kb s)
-                (vector? s) (mapv walk s)
-                (and (seq? s) (seq s))
-                (cond
-                  (contains? res/nat-quoting-predicates (first s)) s
-                  (res/attitude-application? modal s) (list (first s) (walk (second s)) (nth s 2))
-                  :else (apply list (first s) (map walk (rest s))))
-                :else s))]
-      (walk s))))
+  `(fn [kb form])`) at each one, and `head-fn` (default `nat-fn`) at a literal's head that
+  is one; each returns the NAT's term, having reified its nested NAT arguments itself.  A
+  symbol head, a quoting-predicate argument and a `modal_predicate`'s proposition
+  (`res/attitude-application?`) stay opaque.  The modal mark is read KB-wide, once per
+  walk: whether an argument is a mention is a fact about the sentence
+  (`tax/mention-marks`).  A vector is descended element by element (docs/nat.md, Write
+  path)."
+  ([kb s nat-fn] (reify-in kb s nat-fn nat-fn))
+  ([kb s nat-fn head-fn]
+   (let [modal (:modal (tax/mention-marks (reasoning/taxonomy kb)))]
+     (letfn [(walk [s]
+               (cond
+                 (reifiable-ground-nat? kb s) (nat-fn kb s)
+                 (vector? s) (mapv walk s)
+                 (and (seq? s) (seq s))
+                 (cond
+                   (contains? res/nat-quoting-predicates (first s)) s
+                   (res/attitude-application? modal s) (list (first s) (walk (second s)) (nth s 2))
+                   :else (apply list (head (first s)) (map walk (rest s))))
+                 :else s))
+             (head [h] (if (reifiable-ground-nat? kb h) (head-fn kb h) h))]
+       (walk s)))))
 
 (defn existing-term
   "The term ground NAT expression `E` already resolves to in reify namespace `ns` for a

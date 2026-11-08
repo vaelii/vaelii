@@ -567,6 +567,24 @@
     (or (existing-context kb context) (constant-for nat-read/context-namespace context))
     context))
 
+(defn term-for-check
+  "The term `assert` reifies the ground reifiable application `form` written in `context`
+  to, minting nothing: its existing term, else the `nat/` constant `constant-for` names for
+  `form` as written, which no stored sentex names."
+  [kb form context]
+  (let [k (nat-read/reify-nat-for-read kb form nat-read/nat-namespace context)]
+    (if (= nat-read/no-match k) (constant-for nat-read/nat-namespace form) k)))
+
+(defn heads-for-check
+  "`sentence` with each literal head that is a ground reifiable application read as
+  `term-for-check` reads it, and every argument as written.  `vaelii.core/check`,
+  `assert-inert` and the application-input check read a head through this, so they read
+  the predicate `maybe-reify-nats` gives the sentence."
+  [kb sentence context]
+  (if (nat-read/any-reifiable-functions? kb)
+    (nat-read/reify-in kb sentence (fn [_ form] form) #(term-for-check %1 %2 context))
+    sentence))
+
 (defn- merge-collisions!
   "Restore the 1:1 constant↔expression map in each context that reads a collision among
   the believed `natFormula` sentexes `rows`: there, each other constant is equated with the

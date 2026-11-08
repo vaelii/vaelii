@@ -783,6 +783,19 @@
     (is (= [(list 'hasCapability 'Rex (nat/constant-for nat-read/nat-namespace '(SkillFn Rex)))] (:rows result))))
   (tu/clear-kb! (tu/test-kb)))
 
+(deftest a-late-reifiable-declaration-re-spells-an-application-in-the-head
+  (let [head   '(BloodKinFn siblingOf)
+        ops    [(assert-op '(reifiable_function BloodKinFn))
+                (assert-op '(result BloodKinFn binary_predicate))
+                (assert-op (list 'genl head 'siblingOf))
+                #(v/assert (assoc % :naming :off) (list head 'Ann 'Bob) 'CxUniverse)]
+        result (one-outcome! "a head application" ops
+                             (fn [kb] {:base   (v/ask kb '(siblingOf Ann ?x) 'CxUniverse)
+                                       :head   (v/ask kb (list head 'Ann '?x) 'CxUniverse)
+                                       :minted (count (v/sentexes-matching kb (list 'natFormula '?k head) 'CxUniverse))}))]
+    (is (= {:base [{'?x 'Bob}] :head [{'?x 'Bob}] :minted 1} result)))
+  (tu/clear-kb! (tu/test-kb)))
+
 (deftest a-late-inner-declaration-names-the-outer-constant-as-a-first-one-does
   ;; The outer constant's name hashes its expression, so a use stored while `InnerFn` was
   ;; undeclared names a constant whose map holds the raw inner application.  The inner
