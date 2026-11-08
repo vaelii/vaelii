@@ -176,8 +176,9 @@ deliberately, because that is what the caller asked for.
 
 `OverlayRecordStore` is a composite `RecordStore` `{overlay base}`.
 
-- **The id boundary.** The fork's handle counter is seeded above every handle the base holds,
-  so a minted handle can never collide with a base one. A record written at a handle the
+- **The id boundary.** The fork mints each handle from its base's counter, so a minted
+  handle collides with no base one, including a handle the base mints after the mount, and
+  two forks over one base mint distinct handles. A record written at a handle the
   base *already* uses is therefore an **override** — same handle, different record — and
   the overlay's copy wins every read. That is how a base record is edited without editing
   the base: `mark-premise` materializes an override before it writes, since the assumption
@@ -254,18 +255,17 @@ about how the underlying store was opened — which is what makes the compositio
 whatever the base is.
 
 One call is deliberately not a refusal: `next-id` on the frozen record store. It hands out
-a handle nobody holds and touches no stored record, and it is what the fork's id watermark
-is seeded from; the alternative is a `max` over the base's whole live-id set at every
-mount.
+a handle nobody holds and touches no stored record. The mount seeds the fork's id
+watermark from it, and the fork mints every handle from it, so the base and each fork over
+it draw from one sequence.
 
-**It is the one thing a mount changes about the base**, and over a durable base the change
+**It is the one thing a fork changes about the base**, and over a durable base the change
 outlives the process. `next-id` advances the base store's monotonic counter, and the disk
-record store persists that counter to `counters.nippy` on its next flush — so mounting a
-fork over a `:disk` base bumps the base's stored sequence by one, permanently. The bump
-allocates: it can only skip a handle, never reuse one, and recovery takes
+record store persists that counter to `counters.nippy` on its next flush — so a mount and
+each handle a fork mints advance a `:disk` base's stored sequence, permanently. The
+advance allocates: it can only skip a handle, never reuse one, and recovery takes
 `max(the counters blob, 1 + the highest slot id)`, so a skipped number adds no work and
-loses nothing. There is no read-only way to seed a watermark, and no arrangement under
-which the counter both seeds a fork and stays where it was.
+loses nothing.
 
 ## Replacing the base
 
@@ -438,9 +438,9 @@ The replies differ where the seats believe or derive differently, and five cause
 1. **Base immutability.** No overlay operation writes the base. `overlay_test` compares
    the base's records, premise marks and whole index before and after a fork asserts,
    derives, retracts and clears — byte-identical, including handles. The **id counter**
-   is outside that comparison and is the one exception, above: mounting advances it by
-   one, and on a durable base that lands in `counters.nippy`. No record, key, mark or
-   handle assignment moves.
+   is outside that comparison and is the one exception, above: a mount and each handle a
+   fork mints advance it, and on a durable base that lands in `counters.nippy`. No
+   record, key, mark or handle assignment moves.
 2. **A fork of nothing is the thing it forked.** The overlay `KvBackend` passes
    `kv_backend_test`'s adapter contract over an empty base, and
    `VAELII_TEST_BACKEND=overlay` runs the *whole suite* that way

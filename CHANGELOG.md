@@ -141,6 +141,13 @@ it — `git show v0.16.0:CHANGELOG.md`.
   *Migration:* a durable store indexed by an earlier release lists `.` until
   `(v/reindex kb)`.
 
+### Fix: storage
+
+- **A fork mints its handles from its base's counter.** A base written while a fork was
+  mounted could give a base record and a fork record one handle, and a read in the fork
+  then joined the base's index postings to the fork's record. The base's stored counter
+  advances with each handle a fork mints. [overlay.md](docs/overlay.md#the-merge-model--record-half)
+
 ### Internal
 
 - **The `args`→`argAndRest` forward rule moved from `core.txt` to the new

@@ -7,8 +7,8 @@
   The record half of the `:overlay` backend (the index half is
   `vaelii.impl.overlay.kv`).
 
-  * **The id boundary.**  The overlay's handle counter is seeded above every handle the base
-    holds, so a newly minted handle can never collide with a base one.  A record written
+  * **The id boundary.**  The overlay mints each handle from the base's counter, so a
+    minted handle matches no base one, even one minted after the mount.  A record written
     at a handle the base *already* uses is therefore an **override** — the same handle,
     a different record — and the overlay's copy wins every read.  That is how a base
     record is edited without editing the base: `mark-premise` materializes an override
@@ -143,9 +143,14 @@
                                base-opts rebase-lock]
 
   p/RecordStore
-  ;; strictly above every handle the base holds, so a minted handle is never a base one
-  ;; and a handle at or below the watermark is unambiguously an override
-  (next-id [_] (long (swap! counter inc)))
+  ;; drawn from the base's counter past every handle the fork holds, so no base handle minted
+  ;; after the mount names a fork record; a cleared fork counts alone (`clear-records!`)
+  (next-id [_]
+    (if @hidden?
+      (long (swap! counter inc))
+      (let [id (loop [] (let [b (long (p/next-id base))] (if (> b (long @counter)) b (recur))))]
+        (swap! counter max id)
+        id)))
 
   (put-sentex [this sentex]
     (let [id (long (or (:id sentex) (p/next-id this)))]

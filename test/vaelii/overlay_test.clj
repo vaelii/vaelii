@@ -319,6 +319,19 @@
     (is (= before (base-snapshot base)))
     (v/clear! base)))
 
+(deftest a-base-write-after-a-mount-takes-a-handle-no-fork-record-holds
+  (let [base (fresh-base 26)
+        f    (v/fork base)
+        hf   (v/assert f '(cat Tom) 'CxOverlay {:strength :monotonic})
+        hb   (v/assert base '(bear Bruno) 'CxOverlay {:strength :monotonic})]
+    (is (not= hf hb))
+    (is (= '(bear Bruno) (:sentence (p/get-sentex (:records f) hb)))
+        "the fork reads the base's record at the base's handle")
+    (is (not-any? #(= 'Tom (get % '?x)) (v/ask f '(bear ?x) 'CxOverlay))
+        "no answer joins the base's posting to the fork's record")
+    (v/close! f)
+    (v/clear! base)))
+
 (deftest a-fork-can-be-cleared-back-to-empty-without-emptying-the-base
   (let [base   (fresh-base 5)
         before (base-snapshot base)
