@@ -21,7 +21,7 @@
 (use-fixtures :each
   (fn [f]
     (catalog/reset-registry!)
-    (let [kb (doto (tu/fresh) tu/load-core!)]
+    (let [kb (doto (tu/empty-kb) tu/load-core!)]
       (doseq [s '[(genl top_t thing) (genl left_t top_t) (genl right_t top_t)
                   (genl base_t left_t) (genl base_t right_t) (genl base_t top_t)]]
         (v/assert kb s 'CxUniverse))

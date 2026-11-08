@@ -20,7 +20,7 @@
 ;; The KB is built per test because a test registers reasoners, which a KB shared
 ;; across tests would keep.
 (use-fixtures :each (tu/neutral-fresh
-                     #(doto (tu/fresh)
+                     #(doto (tu/empty-kb)
                         (tu/load-core-with! '[[CxChange "middle"]])
                         (v/add-prover (cal/calendar-prover)))))
 

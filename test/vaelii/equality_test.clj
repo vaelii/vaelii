@@ -1166,7 +1166,7 @@
             (fn [kb k _] (v/retract! kb (v/handle-of kb (list 'genl k 'indeterminate_term)
                                                      'CxUniverse)))]]]
     (testing label
-      (tu/with-cleared-kb [kb tu/fresh]
+      (tu/with-cleared-kb [kb tu/isolated-fresh]
         (tu/with-terms [pRel qRel Aa Bb vague_kind]
           (v/assert kb (list 'binary_predicate pRel) 'CxUniverse)
           (v/assert kb (list 'binary_predicate qRel) 'CxUniverse)

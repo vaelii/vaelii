@@ -1,0 +1,7 @@
+;; interface-rules.txt — the args→argAndRest twin rule: (args P T) is (argAndRest P 1 T).
+;; Forward, so the argAndRest twin is stored beside every args declaration: the readers of
+;; what a position is declared to hold (res/arg-constraints) look up arg and argAndRest
+;; alone, and reach an args declaration through its twin. The twin carries the
+;; declaration's support, so retracting the args also removes the constraint the entry
+;; point reads. Loaded into CxUniverse with the rest of kb/upper/.
+(set/forwardRule (implies (args ?relation ?type) (argAndRest ?relation 1 ?type)))

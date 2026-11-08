@@ -35,7 +35,7 @@
 (use-fixtures :each
   (fn [f]
     (catalog/reset-registry!)
-    (let [kb (doto (tu/fresh) tu/load-core!)]
+    (let [kb (doto (tu/empty-kb) tu/load-core!)]
       (catalog/register! "base" "Base KB" kb {:source (catalog/source "core")})
       (binding [tu/*kb* kb, *app* (web/app (catalog/holder kb))]
         (try (f)

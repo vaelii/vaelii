@@ -2870,7 +2870,8 @@
 
 ;; ---- the argument-constraint chokepoint ---------------------------------
 ;; Two instance-level constraints are looked up: `arg` (one position) and `argAndRest` (a position and
-;; every later one). The other spellings are sugar whose forward rules (core.txt) store them. The
+;; every later one). The other spellings are sugar whose forward rules store them (core.txt's for the
+;; `argN` projections, the shared interface rule in interface-rules.txt for `args`). The
 ;; type-level (`genlArg`, `argsGenl`, `argAndRestGenl`) and quoted (`quotedArg`) twins come back on the
 ;; same entries under their own `:kind`.
 

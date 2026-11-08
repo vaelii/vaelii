@@ -16,7 +16,7 @@
             [vaelii.impl.protocols :as p]
             [vaelii.test-util :as tu]))
 
-(defn- starter-kb [] (doto (tu/fresh) (tu/load-starter!)))
+(defn- starter-kb [] (doto (tu/empty-kb) (tu/load-starter!)))
 
 (defn- scanned-terms
   "The oracle: every symbol term reachable by walking the records — what a client with
@@ -51,7 +51,7 @@
       (is (not= 'foo 'Foo)))))
 
 (deftest an-empty-kb-has-an-empty-vocabulary
-  (tu/with-cleared-kb [kb tu/fresh]
+  (tu/with-cleared-kb [kb tu/empty-kb]
     (is (= [] (v/terms kb)))
     (is (zero? (v/term-count kb)))
     (is (= [] (v/find-terms kb "anything")))))

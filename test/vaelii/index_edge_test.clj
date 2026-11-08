@@ -25,7 +25,7 @@
             [vaelii.impl.sentex :as sx]
             [vaelii.test-util :as tu]))
 
-(use-fixtures :each (tu/neutral-fresh tu/fresh))
+(use-fixtures :each (tu/neutral-fresh tu/empty-kb))
 
 ;; ---- the ragged trie: a walk must land on a leaf, not an interior node ----
 

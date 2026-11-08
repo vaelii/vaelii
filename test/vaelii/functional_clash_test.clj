@@ -22,7 +22,7 @@
 
 (defn- kb-with-starter
   "A fresh starter KB per arm, so each strength is compared on the same baseline."
-  [] (doto (tu/fresh) (tu/load-starter!)))
+  [] (doto (tu/empty-kb) (tu/load-starter!)))
 
 (defn- held?
   "Is `sentence` stored in `context` and believed?"

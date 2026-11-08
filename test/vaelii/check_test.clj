@@ -15,7 +15,7 @@
   namespace.  Restored from `tu/load-starter!`'s dump rather than re-asserted: this
   namespace builds one 23 times, and the two routes produce the same KB
   (`starter_copy_test`)."
-  [] (doto (tu/fresh) (tu/load-starter!)))
+  [] (doto (tu/empty-kb) (tu/load-starter!)))
 
 (defn- types-of-check
   "The `:type` keywords `check` reports for a sentence, as a set."

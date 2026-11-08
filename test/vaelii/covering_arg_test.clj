@@ -11,10 +11,8 @@
   declaration.  A covering constraint mints nothing and convicts only, and it walks the
   positions a sentence actually has rather than a re-counted tail.
 
-  The engine reads `args` only through the `(argAndRest P 1 T)` core.txt's forward rule
-  stores, and this KB loads no core.txt: a test about the `args` spelling asserts that
-  rule first (`args-sugar`), and one that only needs a tail typed from 1 states
-  `argAndRest`."
+  The engine reads `args` through its stored `(argAndRest P 1 T)` twin. The shared
+  interface rules supply that meaning in both the upper ontology and this fresh KB."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.provers :as provers]
@@ -45,18 +43,11 @@
     (v/assert kb (list 'arityMin rel 2) 'CxUniverse)
     [rel animal dog other]))
 
-(defn- args-sugar
-  "Assert core.txt's `args` forward rule (`tu/args-sugar-rule`), so an `args` declaration
-  stores the `argAndRest` twin the entry point reads."
-  [kb]
-  (v/assert kb tu/args-sugar-rule 'CxUniverse))
-
 ;; ---- args: every position is an instance -----------------------------------
 
 (tu/deftest-kb args-types-every-position-at-two-three-and-high-arity
   (let [[rel animal dog] (variable-relation kb)
         a (tu/tmp-ind) b (tu/tmp-ind) c (tu/tmp-ind) d (tu/tmp-ind) e (tu/tmp-ind)]
-    (args-sugar kb)
     (v/assert kb (list 'args rel animal) 'CxUniverse)
     (doseq [x [a b c d e]] (v/assert kb (list dog x) 'CxUniverse))
     (testing "two, three and a high arity all store when every member is an instance"
@@ -67,7 +58,6 @@
 (tu/deftest-kb a-bad-value-only-in-the-unbounded-tail-is-convicted
   (let [[rel animal dog] (variable-relation kb)
         a (tu/tmp-ind) b (tu/tmp-ind)]
-    (args-sugar kb)
     (v/assert kb (list 'args rel animal) 'CxUniverse)
     (v/assert kb (list dog a) 'CxUniverse)
     (v/assert kb (list dog b) 'CxUniverse)
@@ -82,7 +72,6 @@
 (tu/deftest-kb args-is-open-world-about-a-symbol
   (let [[rel animal] (variable-relation kb)
         a (tu/tmp-ind) b (tu/tmp-ind)]
-    (args-sugar kb)
     (v/assert kb (list 'args rel animal) 'CxUniverse)
     (testing "an untyped symbol in the tail cannot violate — the same open world arg keeps"
       (is (v/assert kb (list rel a b) 'CxUniverse)))))
@@ -178,7 +167,6 @@
             a (tu/tmp-ind) b (tu/tmp-ind) c (tu/tmp-ind)
             gr (tu/tmp-pred) k1 (tu/tmp-type) k2 (tu/tmp-type)]
         (tu/with-entailing
-          (args-sugar kb)
           (v/assert kb (list other c) 'CxUniverse)
           (v/assert kb (list 'binary_predicate gr) 'CxUniverse)
           (v/assert kb (list 'variable_arity gr) 'CxUniverse)
@@ -278,7 +266,6 @@
   (let [[rel animal dog] (variable-relation kb)
         a (tu/tmp-ind)]
     (v/assert kb (list dog a) 'CxUniverse)
-    (args-sugar kb)
     (let [h (v/assert kb (list 'args rel animal) 'CxUniverse)]
       (is (= :arg-type (tu/kb-write-type #(v/assert kb (list rel a "bad") 'CxUniverse)))
           "convicted while the declaration stands")
@@ -309,8 +296,8 @@
 (tu/deftest-kb the-chokepoint-reads-every-spelling-as-arg-or-argAndRest
   ;; `res/arg-constraints` is the one read of what a position is declared to hold: `arg`
   ;; and `argAndRest` at the instance level, and the type-level twins under their own
-  ;; `:kind`.  An `args` declaration reaches it through the `argAndRest` its core.txt
-  ;; forward rule stores (arg_constraints_test), a rule this KB does not load.
+  ;; `:kind`. An `args` declaration reaches it through the `argAndRest` its shared
+  ;; interface rule stores (arg_constraints_test).
   (let [[rel animal dog other] (variable-relation kb)
         super (tu/tmp-pred)]
     (v/assert kb (list 'binary_predicate super) 'CxUniverse)

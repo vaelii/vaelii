@@ -1069,9 +1069,9 @@
                                    " quotedArg's reason at the covering arity.")}
                              :notes (str "the every-position instance twin of arg: one"
                                          " declaration types the whole admitted tail.  Sugar"
-                                         " for (argAndRest P 1 T), which core.txt's forward"
-                                         " rule stores beside it; the entry point reads that"
-                                         " twin, never args, so a super-predicate's covering"
+                                         " for (argAndRest P 1 T), which its shared interface"
+                                         " rule (kb/upper/interface-rules.txt) stores beside"
+                                         " it; the entry point reads that twin, never args, so a super-predicate's covering"
                                          " constraint binds a sub-predicate's tuples as"
                                          " argAndRest's does."))
                       "checks/covering-args-problem — every accepted position typed as an instance, through the argAndRest twin")]

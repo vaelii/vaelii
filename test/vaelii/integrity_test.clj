@@ -1685,7 +1685,7 @@
   "A KB holding the upper ontology, whose core.txt states the forward rule that makes
   `declined_rule_macro` sugar for `acknowledgedFinding`."
   []
-  (doto (tu/fresh) (tu/load-core!)))
+  (doto (tu/isolated-fresh) (tu/load-core!)))
 
 (tu/deftest-kb a-declined-suggestion-moves-to-review-until-the-record-goes
   (tu/with-cleared-kb [kb core-kb]

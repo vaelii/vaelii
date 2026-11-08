@@ -17,7 +17,7 @@
 ;; ---- store-state ------------------------------------------------------------
 
 (deftest store-state-reports-an-empty-store-and-then-a-believed-fact
-  (tu/with-cleared-kb [kb tu/fresh]
+  (tu/with-cleared-kb [kb tu/empty-kb]
     (testing "an empty store is readable and holds no belief and nothing to recover from"
       (is (= {:readable? true :network? false :believes? false :recoverable? false}
              (v/store-state kb))))

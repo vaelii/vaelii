@@ -5,10 +5,11 @@
   `core.txt` is the vocabulary — the special-predicate surface the engine interprets
   (types/contexts, arg, disjoint, the `set/*Rule` wrappers, the predicate metadata,
   negation, `ist`, the evaluables), the predicate meta-ontology and the top of the
-  ontology — and each other file is one domain (abstract, life, measure, organism,
-  reflection, society, space, time).  Documentation rides on `comment` sentexes,
-  `(comment <term> \"...\")` — ordinary sentexes (stored, indexed, queryable) — so the
-  KB documents itself in its own representation.
+  ontology; `interface-rules.txt` holds the `args`→`argAndRest` twin rule; and each other
+  file is one domain (abstract, life, measure, organism, reflection, society, space,
+  structure, time).  Documentation rides on `comment` sentexes, `(comment <term> \"...\")`
+  — ordinary sentexes (stored, indexed, queryable) — so the KB documents itself in its
+  own representation.
 
   CxUniverse is the root: every context the middle layer wires in sees it, and a KB built
   for vocabulary alone holds exactly this load.  The middle contexts below it are the
@@ -20,8 +21,8 @@
             [vaelii.impl.sentex :as sx]))
 
 (defn upper-files
-  "The file names under `kb/upper/`, `core.txt` first and the domain files after it in
-  sorted order."
+  "The file names under `kb/upper/`, `core.txt` first and every other file after it
+  (`interface-rules.txt` and the domain files) in sorted order."
   []
   (let [fs (seed/layer-files "upper")]
     (into ["core.txt"] (remove #{"core.txt"}) fs)))

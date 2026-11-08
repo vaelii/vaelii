@@ -66,30 +66,32 @@
       (is (= :bad-binding (:type (ex-data (refusal form))))
           (str "expected a refusal for " (pr-str form))))))
 
-(deftest fresh-hands-back-a-cleared-kb
-  ;; The other half of the same story: `fresh` really does clear, which is why calling it
-  ;; mid-test is a live hazard rather than a no-op.  Tests needing a genuinely separate KB
-  ;; give each arm its own `with-terms` (`exposure_test`'s budgeted-sweep pair) or build
-  ;; over a cleared store with `with-cleared-kb`.
-  (let [kb (tu/fresh)]
-    (is (some? kb))
-    (is (= {:sentexes 0 :justifications 0} (tu/content-count kb))
-        "fresh means empty, not merely bound")))
+(deftest fresh-removes-the-previous-kbs-content
+  (testing "empty-kb holds nothing at all"
+    (is (= {:sentexes 0 :justifications 0} (tu/content-count (tu/empty-kb)))))
+  (testing "fresh holds the interface rules and nothing the previous KB wrote"
+    (let [kb       (tu/fresh)
+          baseline (tu/content-count kb)]
+      (is (pos? (:sentexes baseline)) "the interface rules are loaded")
+      (is (nat-int? (v/assert kb '(dog Muffet) 'CxUniverse)))
+      (is (= baseline (tu/content-count (tu/fresh)))
+          "a fresh KB must not retain the previous test's facts"))))
 
 (deftest fresh-reopens-a-store-a-fault-stopped
   ;; A disk store latched unusable refuses every call until its directory is opened again
   ;; (docs/storage.md, "A store that stops").  Built on `disk-log` whatever the run
   ;; selected; an interrupt during the write latches the fault.
   (binding [tu/*storage* {:backend :disk-log}]
-    (let [kb      (tu/fresh)
-          refusal (fn [f] (try (f) nil (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))]
+    (let [kb       (tu/fresh)
+          baseline (tu/content-count kb)
+          refusal  (fn [f] (try (f) nil (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))]
       (.interrupt (Thread/currentThread))
       (try (v/assert kb '(dog Muffet) 'CxUniverse) (catch Throwable _ nil))
       (Thread/interrupted)
       (is (= :store-unusable (refusal #(v/clear! kb))) "the interrupt latched the store")
       (let [kb (tu/fresh)]
         (try
-          (is (= {:sentexes 0 :justifications 0} (tu/content-count kb)))
+          (is (= baseline (tu/content-count kb)))
           (is (nat-int? (v/assert kb '(dog Muffet) 'CxUniverse)))
           (finally (v/close! kb)))))))
 

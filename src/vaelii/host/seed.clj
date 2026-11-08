@@ -17,17 +17,17 @@
 
   The files live under `resources/kb/`, in two layers:
 
-      kb/upper/<domain>.txt     the upper ontology, every file loaded into CxUniverse
+      kb/upper/<name>.txt       the upper ontology, every file loaded into CxUniverse
                                 (see vaelii.host.core-context)
       kb/middle/<C>.txt         theory contexts, each seeing CxUniverse
 
-  An upper file is named for its domain (`core.txt` is the vocabulary); a middle file's
-  *name* is its context.  Only the layer a caller names is discovered, so a sibling
-  directory under `kb/` that names no layer here is not loaded: `kb/koinii/` is one, an
-  application's own context files, which that application loads for itself.  What stays
-  in **code** (vaelii.host.core-context, vaelii.host.starter) is the *order* the layers
-  load in and the one computed batch.  Sentences read with `clojure.edn`, so a KB file
-  is data and can never run code."
+  An upper file is named for its domain (`core.txt` is the vocabulary, `interface-rules.txt`
+  the `args`→`argAndRest` twin rule); a middle file's *name* is its context.  Only the
+  layer a caller names is discovered, so a sibling directory under `kb/` that names no
+  layer here is not loaded: `kb/koinii/` is one, an application's own context files, which
+  that application loads for itself.  What stays in **code** (vaelii.host.core-context,
+  vaelii.host.starter) is the *order* the layers load in and the one computed batch.
+  Sentences read with `clojure.edn`, so a KB file is data and can never run code."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]

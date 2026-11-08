@@ -26,7 +26,7 @@
            [java.nio.file.attribute FileAttribute]
            [vaelii.impl.observe HeldAtom]))
 
-(use-fixtures :each (tu/neutral-fresh tu/fresh))
+(use-fixtures :each (tu/neutral-fresh tu/empty-kb))
 
 (def ^:private U 'CxUniverse)
 (def ^:private mono {:strength :monotonic})

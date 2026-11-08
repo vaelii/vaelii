@@ -33,7 +33,7 @@
 
 (use-fixtures :each
   (fn [f]
-    (let [kb (tu/fresh)]                       ; cleared empty
+    (let [kb (tu/empty-kb)]                    ; cleared empty
       (binding [tu/*kb* kb]
         (let [before (tu/content-count kb)]    ; {:sentexes 0 :justifications 0}
           (try (f)

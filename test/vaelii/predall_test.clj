@@ -36,7 +36,7 @@
 
 ;; The KB is built per test because a test registers a prover of its own, which a KB
 ;; shared across tests would keep.
-(use-fixtures :each (tu/neutral-fresh #(doto (tu/fresh) (tu/load-core!))))
+(use-fixtures :each (tu/neutral-fresh #(doto (tu/empty-kb) (tu/load-core!))))
 
 (tu/deftest-kb nested-comments-do-not-satisfy-a-specified-comment
   (tu/with-terms [CxTest fictional_defined FictionalDefinedTerm JimboMcFallible]

@@ -999,7 +999,7 @@
   the table `entail-existing` dispatches on, so another kind is one line rather than a
   widened `and`.  Every kind of the `:argument-constraint` family but `quotedArg`, which
   types the term as written and has nothing to derive (docs/argtypes.md), and `args`,
-  which entails through the `(argAndRest P 1 T)` its core.txt forward rule stores: that
+  which entails through the `(argAndRest P 1 T)` its shared interface rule stores: that
   twin's arrival sweeps the stored facts, and its handle is what each mint rests on
   (`checks/covering-entailments`)."
   '{arg 3, argArg 3, genlArg 3, interArg 5, interArgEqual 5, argAndRest 3, argsGenl 2,

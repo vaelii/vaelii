@@ -23,7 +23,7 @@
 ;; (`qkb/note-joined`), and `a-delta-with-no-baseline-is-all-and-an-unchanged-network-moves-nothing`
 ;; expects none.
 (use-fixtures :each (tu/neutral-fresh
-                     #(doto (tu/fresh)
+                     #(doto (tu/empty-kb)
                         (tu/load-core!)
                         (v/add-prover (space/spatial-prover))
                         (v/add-prover (iv/allen-prover)))))

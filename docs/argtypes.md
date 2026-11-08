@@ -118,7 +118,7 @@ T)` is the subtype reading — `argsGenl` to `genlArg` what `args` is to `arg`. 
 R n T)` and `(argAndRestGenl R n T)` type position `n` and every later one, so a relation
 whose head positions carry their own `arg` declarations and whose tail repeats one role is
 typed exactly. `(args R T)` states what `(argAndRest R 1 T)` states, and a forward rule
-in `core.txt` stores that `argAndRest` beside it.
+in `kb/upper/interface-rules.txt` stores that `argAndRest` beside it.
 
 What a position is declared to hold is read through one chokepoint,
 `res/arg-constraints` (the whole list) and `res/arg-constraints-at` (the entries covering
@@ -132,8 +132,8 @@ change clock, so a read-only caller asking per fact reads the store once per pre
 The assert-time checks look up the same two at the instance level: `args` is refused,
 and derives memberships, through its stored `argAndRest` twin, whose handle is the support
 an entailment names. Retracting the `args` takes the twin, and everything resting on it,
-with it. A KB that does not load `core.txt` has no such rule, so there an `args`
-declaration types nothing; state `argAndRest` instead.
+with it. A bare `open-kb` loads no rules; state `argAndRest` directly, or load the upper
+ontology.
 
 A valid unbounded tail: a `variable_arity` `herd` with `(arityMin herd 2)` and `(args herd
 animal)` accepts `(herd Rex Bossy)` and `(herd Rex Bossy Clarabelle)` and derives

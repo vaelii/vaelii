@@ -23,7 +23,7 @@
 (use-fixtures :each
   (fn [f]
     (catalog/reset-registry!)
-    (let [kb (doto (tu/fresh) tu/load-core!)]
+    (let [kb (doto (tu/empty-kb) tu/load-core!)]
       (doseq [[c up] '[[CxL CxUniverse] [CxR CxUniverse] [CxJ CxL] [CxJ CxR]]]
         (v/assert kb (list 'genlCx c up) 'CxUniverse))
       (doseq [s '[(genl mammal_t thing) (genl dog_t mammal_t) (disjoint mammal_t reptile_t)

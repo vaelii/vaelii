@@ -1484,8 +1484,9 @@ quantifier's variable. Ground/closed only and never stored. See [naf.md](naf.md)
 
 **Upper layer** ![kb](../.github/badges/cat-kb.svg): The upper ontology: every file
 under `resources/kb/upper/`, loaded into **CxUniverse** as one batch. `core.txt` is the
-vocabulary the engine interprets, and each other file is one domain. A vocabulary KB
-holds the upper layer alone. See [contexts.md](contexts.md#the-context-topology).
+vocabulary the engine interprets, `interface-rules.txt` the `args`→`argAndRest` twin
+rule, and each other file is one domain.
+A vocabulary KB holds the upper layer alone. See [contexts.md](contexts.md#the-context-topology).
 
 ## V
 

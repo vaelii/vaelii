@@ -28,7 +28,7 @@
 
 (use-fixtures :once
   (fn [f]
-    (let [kb (tu/fresh)]
+    (let [kb (tu/empty-kb)]
       ;; The world is loaded under the shipped cost RANKING whatever the run installed:
       ;; incremental forward chaining over a growing prover extent is complete only because the
       ;; ranking re-drives the join, so an unranked load leaves two `responsibleFor` conclusions

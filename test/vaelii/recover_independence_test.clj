@@ -26,7 +26,7 @@
   keys the derivation path on a functor the metatype *is*), and the two condition
   evaluations that are re-asked rather than stored, over a term whose spelling a merge
   retired."
-  (:require [clojure.test :refer [is testing use-fixtures]]
+  (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.sentex :as sx]
@@ -45,14 +45,15 @@
 
 (defn- one-reading!
   "Read `observe` off the live KB and off a restart of it, assert the two agree, and
-  return the reading."
-  [label kb observe]
-  (let [live (observe kb)
-        back (observe (restarted))]
-    (is (= live back)
-        (str label ": the restarted KB disagrees with the live one over one store — live "
-             (pr-str live) ", recovered " (pr-str back)))
-    live))
+  return the reading. `restart` defaults to reopening the shared scratch store."
+  ([label kb observe] (one-reading! label kb observe restarted))
+  ([label kb observe restart]
+   (let [live (observe kb)
+         back (observe (restart))]
+     (is (= live back)
+         (str label ": the restarted KB disagrees with the live one over one store — live "
+              (pr-str live) ", recovered " (pr-str back)))
+     live)))
 
 ;; ---- a rule concluded it, and only an assert had ever been integrated ----
 
@@ -197,33 +198,32 @@
       (is (= 1 (:handles reading)) "and both spellings resolve to the one handle")
       (is (= [true true] [(:ask-sf reading) (:ask-fs reading)])))))
 
-(tu/deftest-kb a-late-mark-hands-back-its-spellings-after-a-restart
+(deftest a-late-mark-hands-back-its-spellings-after-a-restart
   ;; The spellings a mark folded are recorded on the row (`integrate/spellings-key`), and
   ;; that record is what retracting the mark hands them back from — so it has to be in the
   ;; store, not in the process that folded them.  The mark is retracted on the
   ;; **restarted** KB, whose every in-memory structure was rebuilt from the records, and
   ;; it has to answer as a KB never told the mark: each spelling its own row, at the class
-  ;; it was asserted at.
-  (tu/with-terms [pborders SEsp SFra]
-    (v/assert kb (list pborders SFra SEsp) 'CxUniverse)
-    (v/assert kb (list pborders SEsp SFra) 'CxUniverse {:strength :monotonic})
-    (let [mark    (v/assert kb (list 'symmetric pborders) 'CxUniverse)
-          back    (restarted)
-          _       (v/retract! back mark)
-          observe (fn [k]
-                    {:rows    (set (map :sentence (v/sentexes-matching k (list pborders '?x '?y) '?c)))
-                     :classes (mapv #(v/defeat-class k (v/handle-of k % 'CxUniverse))
-                                    [(list pborders SFra SEsp) (list pborders SEsp SFra)])})
-          reading (one-reading! "a late mark retracted after a restart" back observe)]
-      (is (= {:rows    #{(list pborders SFra SEsp) (list pborders SEsp SFra)}
-              :classes [:default :monotonic]}
-             reading)
-          "both spellings are back as written, each at its own class"))
-    ;; the split was made by the *rebuilt* KB, which the fixture's KB value holds no node
-    ;; for, so the store is cleared here rather than left to its teardown
-    (tu/clear-kb! (tu/test-kb))))
+  ;; it was asserted at. Restarted writes need their own cleared store, not the fixture's.
+  (tu/with-cleared-kb [kb tu/isolated-fresh]
+    (tu/with-terms [pborders SEsp SFra]
+      (v/assert kb (list pborders SFra SEsp) 'CxUniverse)
+      (v/assert kb (list pborders SEsp SFra) 'CxUniverse {:strength :monotonic})
+      (let [restart #(doto (tu/isolated-test-kb) (v/recover))
+            mark    (v/assert kb (list 'symmetric pborders) 'CxUniverse)
+            back    (restart)
+            _       (v/retract! back mark)
+            observe (fn [k]
+                      {:rows    (set (map :sentence (v/sentexes-matching k (list pborders '?x '?y) '?c)))
+                       :classes (mapv #(v/defeat-class k (v/handle-of k % 'CxUniverse))
+                                      [(list pborders SFra SEsp) (list pborders SEsp SFra)])})
+            reading (one-reading! "a late mark retracted after a restart" back observe restart)]
+        (is (= {:rows    #{(list pborders SFra SEsp) (list pborders SEsp SFra)}
+                :classes [:default :monotonic]}
+               reading)
+            "both spellings are back as written, each at its own class")))))
 
-(tu/deftest-kb a-different-guarded-rule-is-re-checkable-after-a-restart
+(deftest a-different-guarded-rule-is-re-checkable-after-a-restart
   ;; A `(different …)` antecedent holds by the *absence* of a merge, so it names no handle
   ;; a justification can carry and the re-check index is the only instrument that can
   ;; withdraw the firing it guards (docs/equality.md).  The posting is written when the
@@ -234,31 +234,28 @@
   ;; The withdrawing fact therefore lands on the **restarted** KB and not before it, which
   ;; is what the sibling tests here cannot do with `one-reading!`: the two KBs share one
   ;; store, so a merge asserted live is a merge the rebuild replays rather than one it has
-  ;; to re-decide.
-  (tu/with-terms [dpRel dqRel DAa DBb]
-    (v/assert kb (list 'binary_predicate dpRel) 'CxUniverse)
-    (v/assert kb (list 'binary_predicate dqRel) 'CxUniverse)
-    (v/assert kb (list 'implies (list 'and (list dpRel '?x '?y) (list 'different '?x '?y))
-                       (list dqRel '?x '?y))
-              'CxUniverse {:direction :forward})
-    (v/assert kb (list dpRel DAa DBb) 'CxUniverse)
-    (is (v/ask? kb (list dqRel DAa DBb) 'CxUniverse)
-        "the guard holds, so the live KB fired")
-    (let [back (restarted)]
-      (is (v/ask? back (list dqRel DAa DBb) 'CxUniverse)
-          "and the rebuild agrees the firing stands")
-      (let [merge (v/assert back (list 'sameAs DAa DBb) 'CxUniverse)]
-        (is (not (v/ask? back (list 'different DAa DBb) 'CxUniverse))
-            "merged, so the two are no longer provably different")
-        (is (not (v/ask? back (list dqRel DAa DBb) 'CxUniverse))
-            "and the rebuilt KB re-checks the firing the guard licensed, as the live one does")
-        (v/retract! back merge)
+  ;; to re-decide. Restarted writes need their own cleared store, not the fixture's.
+  (tu/with-cleared-kb [kb tu/isolated-fresh]
+    (tu/with-terms [dpRel dqRel DAa DBb]
+      (v/assert kb (list 'binary_predicate dpRel) 'CxUniverse)
+      (v/assert kb (list 'binary_predicate dqRel) 'CxUniverse)
+      (v/assert kb (list 'implies (list 'and (list dpRel '?x '?y) (list 'different '?x '?y))
+                         (list dqRel '?x '?y))
+                'CxUniverse {:direction :forward})
+      (v/assert kb (list dpRel DAa DBb) 'CxUniverse)
+      (is (v/ask? kb (list dqRel DAa DBb) 'CxUniverse)
+          "the guard holds, so the live KB fired")
+      (let [back (doto (tu/isolated-test-kb) (v/recover))]
         (is (v/ask? back (list dqRel DAa DBb) 'CxUniverse)
-            "the release direction survives the restart too")))
-    ;; the re-derivation above was drawn by the *rebuilt* KB, whose justification the
-    ;; fixture's KB value has no node for, so the store is cleared here rather than left
-    ;; to a teardown that can only unwind what one TMS recorded
-    (tu/clear-kb! (tu/test-kb))))
+            "and the rebuild agrees the firing stands")
+        (let [merge (v/assert back (list 'sameAs DAa DBb) 'CxUniverse)]
+          (is (not (v/ask? back (list 'different DAa DBb) 'CxUniverse))
+              "merged, so the two are no longer provably different")
+          (is (not (v/ask? back (list dqRel DAa DBb) 'CxUniverse))
+              "and the rebuilt KB re-checks the firing the guard licensed, as the live one does")
+          (v/retract! back merge)
+          (is (v/ask? back (list dqRel DAa DBb) 'CxUniverse)
+              "the release direction survives the restart too"))))))
 
 (tu/deftest-kb a-computed-context-edge-merge-reads-the-same-after-a-restart
   ;; vaelii#56.  The `genlCx` edge here is **computed** — `contextArgSubrelation` makes

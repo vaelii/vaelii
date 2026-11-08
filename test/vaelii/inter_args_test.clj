@@ -24,7 +24,7 @@
 ;; derivation is `the-entailing-reading-derives-the-suffix-type`, which binds it back.
 (use-fixtures :each
   (fn [f] (tu/without-entailing (f)))
-  (tu/neutral-fresh #(doto (tu/fresh) (tu/load-core!))))
+  (tu/neutral-fresh #(doto (tu/empty-kb) (tu/load-core!))))
 
 (defn- check-message
   "The message of the first problem `tu/check-or-conviction` reads for a sentence, or nil."

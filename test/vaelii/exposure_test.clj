@@ -493,7 +493,7 @@
           two (list birthYear Tom 1980)
           spec {:a CxA :b CxB :w CxW :decl 'functional :pred birthYear}
           run  (fn [first-half second-half]
-                 (tu/with-cleared-kb [k tu/fresh]
+                 (tu/with-cleared-kb [k tu/isolated-fresh]
                    (split-lattice! k spec)
                    (v/assert k first-half (if (= first-half one) CxA CxB))
                    (v/assert k second-half (if (= second-half one) CxA CxB))
@@ -555,7 +555,7 @@
   (tu/with-terms [CxA CxB CxW beats Rex]
     (let [claim (list beats Rex Rex)
           run   (fn [c1 c2]
-                  (tu/with-cleared-kb [k tu/fresh]
+                  (tu/with-cleared-kb [k tu/isolated-fresh]
                     (split-lattice! k {:a CxA :b CxB :w CxW
                                        :decl 'asymmetric :pred beats})
                     (v/assert k claim c1)
@@ -623,7 +623,7 @@
                    (v/assert k (list 'genlCx CxW CxB) 'CxUniverse))
           facts! (fn [k] (v/assert k one CxA) (v/assert k two CxB))
           run   (fn [first! second!]
-                  (tu/with-cleared-kb [k tu/fresh]
+                  (tu/with-cleared-kb [k tu/isolated-fresh]
                     (decl! k) (first! k) (second! k)
                     [(mapv :kind (v/contradictions k)) (decided-pairs k)]))
           edges-last  (run facts! edges!)
@@ -738,7 +738,7 @@
             l!    #(v/assert % loser CxU {:strength :default})   ; defeasible, must lose
             ;; the loser is stored in every order and defeated by the settle
             belief (fn [order]
-                     (tu/with-neutral-kb [k #(v/open-kb (tu/scratch-space))]
+                     (tu/with-neutral-kb [k tu/isolated-fresh]
                        (doseq [step order] (step k))
                        [(boolean (seq (v/sentexes-matching k mono CxU)))
                         (boolean (seq (v/sentexes-matching k loser CxU)))]))]
@@ -829,7 +829,7 @@
           edge!  (fn [k] (v/assert k (list 'genl birthYear measureOf) 'CxUniverse))
           facts! (fn [k] (v/assert k one CxA) (v/assert k two CxB))
           run    (fn [first! second!]
-                   (tu/with-cleared-kb [k tu/fresh]
+                   (tu/with-cleared-kb [k tu/isolated-fresh]
                      (decl! k) (first! k) (second! k)
                      [(mapv :kind (v/contradictions k)) (decided-pairs k)]))
           edge-last  (run facts! edge!)
@@ -869,7 +869,7 @@
   ;; clash was found rather than on what it is.
   (tu/with-terms [CxA CxB CxW birthYear measureOf Tom]
     (doseq [order (tu/orders [:declaration :edge :facts])]
-      (tu/with-cleared-kb [k tu/fresh]
+      (tu/with-cleared-kb [k tu/isolated-fresh]
         (v/assert k (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
         (v/assert k (list 'genlCx CxB 'CxUniverse) 'CxUniverse)
         (v/assert k (list 'genlCx CxW CxA) 'CxUniverse)
