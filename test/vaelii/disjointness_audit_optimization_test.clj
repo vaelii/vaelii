@@ -113,6 +113,31 @@
     (let [row (pair-row (assert-reference kb 'CxUniverse) first_kind second_kind)]
       (is (= [:shared-instance Abe] ((juxt :witness :via) row))))))
 
+(tu/deftest-kb self-separated-shared-subtype-is-not-an-audit-overlap-witness
+  (tu/with-terms [root_kind first_kind second_kind both_kind upper_first_kind upper_second_kind]
+    (doseq [t [first_kind second_kind upper_first_kind upper_second_kind]]
+      (v/assert kb (list 'genl t root_kind) 'CxUniverse))
+    (v/assert kb (list 'disjoint upper_first_kind upper_second_kind) 'CxUniverse)
+    (doseq [t [first_kind second_kind upper_first_kind upper_second_kind]]
+      (v/assert kb (list 'genl both_kind t) 'CxUniverse))
+    (is (true? (v/disjoint? kb both_kind both_kind 'CxUniverse)))
+    (is (empty? (v/query kb (list 'empty both_kind) 'CxUniverse {:max-depth 0})))
+    (let [row (pair-row (assert-reference kb 'CxUniverse) first_kind second_kind)]
+      (is (= #{} (:statuses row)))
+      (is (= :unknown (:status row))))))
+
+(tu/deftest-kb globally-coextensional-types-retain-both-prepared-subsumption-directions
+  (tu/with-terms [root_kind first_kind second_kind CxFirst CxSecond]
+    (doseq [t [first_kind second_kind]]
+      (v/assert kb (list 'genl t root_kind) 'CxUniverse))
+    (v/assert kb (list 'genl first_kind second_kind) CxFirst)
+    (v/assert kb (list 'genl second_kind first_kind) CxSecond)
+    (is (true? (v/genl? kb first_kind second_kind)))
+    (is (true? (v/genl? kb second_kind first_kind)))
+    (let [row (pair-row (assert-reference kb 'CxUniverse) first_kind second_kind)]
+      (is (= #{:coextensional} (:statuses row)))
+      (is (= :coextensional (:status row))))))
+
 (tu/deftest-kb the-scoped-reader-ignores-global-row-callbacks
   (tu/with-terms [root_kind first_kind second_kind]
     (let [cx (tu/tmp-ctx)]
@@ -124,9 +149,9 @@
             fail (fn [& _] (throw (ex-info "a scoped read used a global row callback" {})))
             prepared (assoc rd :genl? fail :specs fail :disjoint? fail)]
         (is (= #{} (:statuses (integrity/subsumption-reading kb first_kind second_kind
-                                                            'CxUniverse prepared true))))
+                                                             'CxUniverse prepared true))))
         (is (= #{:genl} (:statuses (integrity/subsumption-reading kb first_kind second_kind
-                                                                'CxUniverse rd))))))))
+                                                                  'CxUniverse rd))))))))
 
 (tu/deftest-kb ambient-query-depth-does-not-turn-a-rule-into-an-overlap-witness
   (tu/with-terms [root_kind a_kind z_kind Member]
