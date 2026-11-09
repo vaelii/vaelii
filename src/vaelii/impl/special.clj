@@ -6537,10 +6537,10 @@
   "Queue the minted constants whose values the `genlCx` move `m` can place differently
   (`chain/sync-values!`): the constants each sentence stored in `:gained-below` names
   (`nat-read/note-values`), and for each declaration stored there `[:valued-facts f]`.
-  Linear in what `:gained-below` stores, behind `nat-read/values-reachable?` or
-  `nat-read/rewrites-reachable?`."
+  Linear in what `:gained-below` stores, behind the minted/named value-presence checks."
   [kb m]
-  (when (or (nat-read/values-reachable? kb) (nat-read/rewrites-reachable? kb))
+  (when (or (nat-read/values-reachable? kb) (nat-read/rewrites-reachable? kb)
+            (nat-read/named-values-reachable? kb))
     (let [idx   (:index kb)
           recs  (:records kb)
           sxs   (into [] (comp (mapcat #(reads/as-stored-in-context idx %))
@@ -6549,6 +6549,7 @@
                       (sort-by nm/name-key @(:gained-below m)))
           decl? #(and (seq? %) (= res/correspondence-predicate (first %)))]
       (nat-read/note-values kb (remove decl? sxs) true)
+      (nat-read/note-values kb (filter decl? sxs) true)
       (when-let [fs (seq (into #{} (comp (filter decl?) (map second) (filter symbol?)) sxs))]
         (swap! (reasoning/respell kb) into (map #(vector :valued-facts %)) fs)))))
 

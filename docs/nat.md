@@ -160,6 +160,17 @@ declared ([defenses.md](defenses.md#the-mints-natformula-fact-does-not-chain)). 
 stores synchronously, so a second occurrence of `E` in the same sentence dedups against
 the first; a `(rewriteOf T E)` declaration short-circuits the mint to the real term `T`.
 
+A named target used independently of its generated metadata takes supported result and
+correspondence facts without minting another identity. `named-application/sync!` places
+them where the unique visible rewrite and the use meet. Structural result declarations
+are read globally; a correspondence declaration must also be visible there. These are
+derivations, not the mint's independent type premises: their own support can leave, and
+an alias-first asserted tuple still names `T` after the alias is withdrawn. Generated
+facts and their dependent consequences establish no new demand; a separate premise or
+finite independent proof does. Ordinary derivation admission still applies, including
+the restriction on forced-monotonic outputs. This adds no intrinsic forced-output
+producer and synthesizes no `natFormula` map for the named target.
+
 `K` is **named by the content of `E`**: `constant-for` hashes `E` with SHA-256, takes the
 first 96 bits, and encodes them base62 behind a one-letter scheme tag — `nat/a<17
 base62>` for an object NAT, `cx/a…` for a context one (`nat-scheme-tag`). So the same

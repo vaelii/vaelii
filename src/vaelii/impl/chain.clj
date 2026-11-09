@@ -30,6 +30,7 @@
             [vaelii.impl.integrate :as integrate]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
+            [vaelii.impl.named-application :as named-application]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.nat :as nat]
             [vaelii.impl.nat-read :as nat-read]
@@ -5847,6 +5848,22 @@
        (binding [wiring/*defer-settle?* true]
          (into [] (mapcat #(sync-value! kb % deferred)) all))))))
 
+(defn sync-named-values!
+  "Place the supported named-application facts owed by targets; defer postpones drops."
+  [kb targets deferred]
+  (binding [wiring/*defer-settle?* true]
+    (into []
+          (mapcat (fn [target]
+                    (named-application/sync!
+                     kb target
+                     (fn [sentence context antes bindings]
+                       (place-fact-conclusion kb {:name named-application/informant :rule-handle nil}
+                                              sentence context antes
+                                              (inc (reduce max 0 (map #(or (jtms/depth (reasoning/tms kb) %) 0) antes)))
+                                              bindings :monotonic nil nil))
+                     (when deferred #(vswap! deferred conj [:named-valued target])))))
+          (sort-by nm/name-key (distinct targets)))))
+
 (defn- sync-queued-values!
   "Place what the constants queued on `:respell` for their correspondence derivations owe
   (`sync-values!`) and add the handles it made to `queued`, a running chain's queue, so a
@@ -5856,13 +5873,14 @@
   write's mark.  One scan of the queue while nothing is queued."
   [kb queued deferred]
   (let [q      (reasoning/respell kb)
-        value? #(and (vector? %) (contains? #{:valued :valued-fn :valued-facts} (first %)))]
+        value? #(and (vector? %) (contains? #{:valued :valued-fn :valued-facts :named-valued} (first %)))]
     (when (some value? @q)
       (let [[old _] (swap-vals! q #(into (empty %) (remove value?) %))
             taken   (filter value? old)
             by      (fn [t] (into [] (comp (filter #(= t (first %))) (map second)) taken))]
-        (vswap! queued into (sync-values! kb (by :valued) (by :valued-fn) (by :valued-facts)
-                                          (when *rollback-scope* deferred)))))))
+        (vswap! queued into (concat (sync-values! kb (by :valued) (by :valued-fn) (by :valued-facts)
+                                                  (when *rollback-scope* deferred))
+                                    (sync-named-values! kb (by :named-valued) (when *rollback-scope* deferred))))))))
 
 (defn reconcile-formula-positions!
   "Bring the stored rules whose hold a `formula` position of one of `preds` decides
@@ -6555,7 +6573,7 @@
               (if (or (empty? agenda) (spent?)
                       (and (seq agenda) (stopped? *stop*)))
                 (do (when (seq @deferred)
-                      (swap! (reasoning/respell kb) into (map #(vector :valued %)) @deferred))
+                      (swap! (reasoning/respell kb) into (map #(if (vector? %) % [:valued %])) @deferred))
                     (when (and *rollback-scope* (not *keep-on-stop*))
                       (cond (spent?)                       (interrupted! :max-derivations)
                             (some-> *stop* :hit deref)     (interrupted! (stop-bound *stop*))))

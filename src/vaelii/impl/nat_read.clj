@@ -542,9 +542,47 @@
     (into #{} (comp (keep #(p/get-sentex recs %)) (keep #(nth (:sentence %) 2 nil)) (filter symbol?))
           (reads/as-stored-with-args (:index kb) res/correspondence-predicate {}))))
 
+(defn named-values-reachable?
+  "Does the KB store rewriteOf rows: the coarse named-application presence check."
+  [kb]
+  (pos? (reads/stored-count-with-functor (:index kb) 'rewriteOf)))
+
+(defn- named-value-events
+  "The named targets affected by these uses, compound rewrites or function declarations."
+  [kb sentences]
+  (when (or (named-values-reachable? kb)
+            (some #(and (seq? %) (= 'rewriteOf (first %)) (seq? (nth % 2 nil))) sentences))
+    (let [idx (:index kb)
+          recs (:records kb)
+          of-function (fn [f]
+                        (into #{} (comp (keep #(p/get-sentex recs %))
+                                        (keep #(let [[p t e] (:sentence %)]
+                                                 (when (and (= 'rewriteOf p) (symbol? t) (seq? e) (= f (first e))) t))))
+                              (reads/as-stored-with-term idx f)))]
+      (into #{}
+            (mapcat (fn [s]
+                      (let [direct (when (and (seq? s) (= 'rewriteOf (first s))
+                                              (symbol? (second s)) (seq? (nth s 2 nil)))
+                                     (cons (second s)
+                                           (keep #(some-> (p/get-sentex recs %) :sentence second)
+                                                 (reads/as-stored-with-args idx 'rewriteOf {2 (nth s 2)}))))
+                            declared (when (and (seq? s)
+                                                (contains? '#{result genlResult reifiable_function functionCorrespondingPredicate} (first s)))
+                                       (of-function (second s)))
+                            merged (when (and (seq? s) (contains? '#{equals sameAs rewriteOf} (first s)))
+                                     (into #{} (comp (mapcat #(reads/as-stored-with-term idx %))
+                                                     (keep #(p/get-sentex recs %))
+                                                     (keep #(let [[p t e] (:sentence %)]
+                                                              (when (and (= 'rewriteOf p) (symbol? t) (seq? e)) t))))
+                                           (filter symbol? (rest s))))
+                            used (filter #(seq (reads/as-stored-with-args idx 'rewriteOf {1 %}))
+                                         (filter symbol? (tree-seq sequential? seq s)))]
+                        (map #(vector :named-valued %) (concat direct declared merged used)))))
+            sentences))))
+
 (defn note-values
-  "Queue on `:respell` what the stored, removed or relabelled `sentences` move the
-  values of: `[:valued-fn f]` for a correspondence declaration of `f`, `[:valued k]` for
+  "Queue affected named targets (`:named-valued`) and minted constants on `:respell`:
+  `[:valued-fn f]` for a correspondence declaration of `f`, `[:valued k]` for
   each constant a corresponding fact names a value of (`fact-constants`) and for each
   constant minted for the expression of a compound `rewriteOf`, and with `uses?` for each
   constant a sentence names whose function is declared or whose expression a compound
@@ -557,7 +595,7 @@
     (let [corr? (values-reachable? kb)
           rw?   (delay (rewrites-reachable? kb))
           preds (delay (declared-predicates kb))
-          es    (into #{}
+          es    (into (or (named-value-events kb sentences) #{})
                       (mapcat (fn [s]
                                 (cond
                                   (not (seq? s)) nil

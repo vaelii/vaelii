@@ -86,13 +86,13 @@
   chaining has settled: `nat/reconcile-nats!`, the correspondence derivations it moves
   (`reconcile-values!`), the rules a correspondence declaration respells
   (`respell-corresponded!`), then the structural `genlCx` edges
-  `context-nat/reconcile-genlCx` builds, settled, behind `nat/any-reified-constants?`;
+  `context-nat/reconcile-genlCx` builds, settled, when constants or rewrite rows are stored;
   and on every KB the rules a `formula` position it moves holds or releases
   (`reconcile-formula-positions`).  `opts` is the assert's; the stored context is not
   read."
   [kb sentence _context opts]
   (when (sequential? sentence)
-    (when (nat/any-reified-constants? kb)
+    (when (or (nat/any-reified-constants? kb) (nat-read/named-values-reachable? kb))
       (nat/reconcile-nats! kb sentence)
       (reconcile-values! kb [sentence] true (:chain? opts true))
       (respell-corresponded! kb [sentence] false)

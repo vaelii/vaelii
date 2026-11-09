@@ -762,7 +762,8 @@
               hs (cond-> (-> #{} (into gone) (into back))
                    belief-moved? (into @region))
               sentences #(keep (fn [h] (:sentence (p/get-sentex (:records kb) h))) %)]
-          (when (and (or (seq hs) (seq (:moved ex))) (nat-read/values-reachable? kb))
+          (when (and (or (seq hs) (seq (:moved ex)))
+                     (or (nat-read/values-reachable? kb) (nat-read/named-values-reachable? kb)))
             (nat-read/note-values kb (sentences hs) false)
             (nat-read/note-values kb (sentences (:moved ex)) true)))))
     ;; `moved` is every datum whose supersession entry changed since the last settle
@@ -1293,10 +1294,10 @@
   `[:mention p]` predicates whose mention mark moved, the `[:reifiable f]` functions whose
   reifiable or permuting mark moved, the `[:reifiable-use f]` functions used while their
   readers disagree, the `[:corresponded f]` functions a `genlCx` move can re-spell rules
-  through, and the `[:valued k]`, `[:valued-fn f]` and `[:valued-facts f]` constants whose
-  correspondence derivations moved (`nat-read/note-values`), through the reconciles of
-  `vaelii.impl.chain` and `chain/sync-values!`, and return `[respelled valued]`, the handles
-  each made.  A rebuild clears the queue and respells nothing, since a recovered store was
+  through, and the `[:named-valued t]` targets and `[:valued k]`, `[:valued-fn f]` and
+  `[:valued-facts f]` constants whose correspondence derivations moved (`nat-read/note-values`),
+  through `vaelii.impl.chain`'s reconciles and value syncs, and return `[respelled valued]`,
+  the handles each made.  A rebuild clears the queue and respells nothing, since a recovered store was
   spelled when written.  With `*sweep?*` off the queue is kept, so `core/preview`'s rollback
   settle drains it against the restored KB and the handles stay the same."
   [kb]
@@ -1320,8 +1321,9 @@
                                 (into (when (seq fns) (chain/reconcile-reified! kb fns)))
                                 (into (when (seq ufns) (chain/reconcile-reified! kb ufns nil false)))
                                 (into (when (seq cfs) (chain/reconcile-corresponded! kb cfs))))
-                            (chain/sync-values! kb (tagged :valued) (tagged :valued-fn)
-                                                (tagged :valued-facts))])))))
+                            (into (chain/sync-values! kb (tagged :valued) (tagged :valued-fn)
+                                                      (tagged :valued-facts))
+                                  (chain/sync-named-values! kb (tagged :named-valued) nil))])))))
 
 (defn- hold-belief!
   "Hold the belief `kb` holds now for every other thread until `publish-belief!`, and
