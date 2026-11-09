@@ -535,11 +535,14 @@
 ;; have left populated, and `fresh` clears right after construction, so the
 ;; unrecovered-store warning would be noise on nearly every build.
 
-(def overlay-base-space
-  "The base every KB of the overlay arm is a fork over: an in-RAM space beside the suite's
+(defn- overlay-base-space
+  "The base the overlay arm's fork on slot `s` mounts: an in-RAM space beside the suite's
   block that the suite never writes, so a fork over it answers what a plain backend
-  answers."
-  {:backend :memory :space [::base block-top]})
+  answers.  Each slot mounts its own base, as each slot opens its own store on a plain
+  backend.  A fork mints its handles from its base's counter (docs/overlay.md), so two
+  slots over one base give the same writes different handles."
+  [s]
+  {:backend :memory :space [::base s]})
 
 (def ^:private fork-spaces
   "`{slot own-space}`: under the overlay arm, the `:space` of the fork each slot's store is
@@ -567,8 +570,8 @@
 
 (defn- slot-opts
   "The KB opts for the store slot `s` holds now.  Under the overlay arm that store is a
-  fork over `overlay-base-space` whose own half is the slot's current fork space, taken on
-  the first call; on every other storage it is space `s`."
+  fork over the slot's `overlay-base-space` whose own half is the slot's current fork
+  space, taken on the first call; on every other storage it is space `s`."
   [s]
   ;; `:reasoners :stored`: a test that registered a reasoner left it recorded in the slot's
   ;; store, and `fresh` forgets it after the open (`forget-reasoners!`)
@@ -577,7 +580,7 @@
       (let [own (or (@fork-spaces s)
                     ((swap! fork-spaces update s #(or % (fork-space))) s))]
         (merge common {:backend :overlay
-                       :base    overlay-base-space
+                       :base    (overlay-base-space s)
                        :overlay {:backend :memory :space own}}))
       (merge {:space s} common *storage*))))
 
@@ -628,7 +631,7 @@
   [s opts]
   (if (overlay?)
     (let [old  (get @fork-spaces s)
-          base (mem/memory-record-store overlay-base-space)]
+          base (mem/memory-record-store (overlay-base-space s))]
       ;; Mounting a fork allocates one handle from its base (docs/overlay.md), so each
       ;; fork would mint from one higher than the fork before it, and two KBs built by the
       ;; same writes would hold different handles.  Clearing an empty base restarts its
