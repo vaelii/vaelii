@@ -1377,7 +1377,7 @@ objects or introduce a geographic-territory distinction.
 
 Audit-completeness requirements (`predAllSpecified`, `predSpecifiedAll`,
 `typeAllSpecified`) are time-varying and non-eternal. `siblingDisjointException`,
-`partType` and `capabilityType` are time-agnostic and non-eternal, like taxonomy laws.
+`partType` and `abilityType` are time-agnostic and non-eternal, like taxonomy laws.
 Algebraic rule macros are eternal and decontextualized: `reflexive`, `irreflexive`,
 `asymmetric`, `anti_symmetric`, `transitive`, `anti_transitive`, `associative` and
 `idempotent`, like the canonicalization properties `commutative`, `commutativeInArgs`,
