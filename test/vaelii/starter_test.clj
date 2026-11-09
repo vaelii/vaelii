@@ -102,6 +102,12 @@
   (concat (for [f (core-context/upper-files)    s (seed/read-sentences f "upper")]  ['CxUniverse s])
           (for [c (seed/layer-contexts "middle") s (seed/read-sentences c "middle")] [c s])))
 
+(tu/deftest-kb starter-loading-preserves-contextual-type-defining-homes
+  (doseq [t '[digital_artifact image video]]
+    (is (v/ask? kb (list 'unary_predicate t) 'CxTra))
+    (is (= #{'CxTra} (v/defining-contexts kb t))
+        (str t " remains defined in its own theory"))))
+
 (tu/deftest-kb every-sentence-the-starter-ships-is-well-formed-once-it-is-all-loaded
   ;; **Loading is not checking**, and the gap between the two is where the shipped
   ;; ontology can go wrong quietly.  `seed/load-sentences` asserts in file order and

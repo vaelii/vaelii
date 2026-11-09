@@ -104,7 +104,7 @@
   ;; the line that makes the page checkable: every claim on a card is about these
   ;; handles, and a reader can open each one
   (let [c (card (:body (GET "/reasoning")) "arg-preserving")
-        h (v/handle-of kb '(largerThan mammal insect) 'CxSize)]
+        h (v/handle-of kb '(typeLargerThan mammal insect) 'CxSize)]
     (is (nat-int? h))
     (is (str/includes? c (str "/sentex/" h))
         "the premise the inheritance runs from is linked, not merely described")

@@ -41,6 +41,7 @@
 (positiveExampleComment variable "?person")
 (comment non_atomic_expression "An expression with parts. KB text writes one as an operator applied to zero or more arguments, (op a1 a2 ...), whatever op is.")
 (comment sentex_handle_term "The term (sentexHandle N), N a positive integer: the name of the stored sentex whose handle is N, written where a meta-sentex such as except, exceptWhen or contradicts names the sentex it is about.")
+(set/monotonic (eternal_predicate sentex_handle_term))
 (positiveExampleComment sentex_handle_term "(sentexHandle 212)")
 (negativeExampleComment sentex_handle_term "212, the bare integer, which names no sentex")
 (comment denotational_term "An expression that DENOTES an entity: an atomic_term (a symbol or a value) or a non_atomic_term. The logic sense of 'term', spelled in full because plain 'term' is the vocabulary sense — a name the term index is keyed by.")
@@ -183,6 +184,30 @@
 (unary_predicate ill_formed)
 (unary_predicate wff_sentence)
 (unary_predicate ill_formed_sentence)
+;; Syntax is atemporal: an expression is of its kind for as long as it exists, so each
+;; expression kind is time-invariant.
+(set/monotonic (time_invariant_relation atomic_expression))
+(set/monotonic (time_invariant_relation atomic_term))
+(set/monotonic (time_invariant_relation closed_expression))
+(set/monotonic (time_invariant_relation closed_literal))
+(set/monotonic (time_invariant_relation closed_predication))
+(set/monotonic (time_invariant_relation denotational_term))
+(set/monotonic (time_invariant_relation expression))
+(set/monotonic (time_invariant_relation ill_formed))
+(set/monotonic (time_invariant_relation ill_formed_expression))
+(set/monotonic (time_invariant_relation ill_formed_sentence))
+(set/monotonic (time_invariant_relation literal))
+(set/monotonic (time_invariant_relation negated_predication))
+(set/monotonic (time_invariant_relation non_atomic_expression))
+(set/monotonic (time_invariant_relation open_expression))
+(set/monotonic (time_invariant_relation open_formula))
+(set/monotonic (time_invariant_relation open_literal))
+(set/monotonic (time_invariant_relation open_predication))
+(set/monotonic (time_invariant_relation predication))
+(set/monotonic (time_invariant_relation variable))
+(set/monotonic (time_invariant_relation wff))
+(set/monotonic (time_invariant_relation wff_expression))
+(set/monotonic (time_invariant_relation wff_sentence))
 
 ;; ---- use and mention ------------------------------------------------------------
 ;; Use is the default: dog written in a sentence denotes the predicate dog, and only
@@ -191,25 +216,32 @@
 ;; carries.
 (comment proposition "What a wff_sentence expresses: semantic content whose truth is evaluated in a context, which sentences in any language can carry. (dog Muffet) and \"Muffet est un chien\" express one proposition.")
 (unary_predicate proposition)
+(set/monotonic (time_invariant_relation proposition))
 ;; What a sentence says is neither an operator nor what the sentence holds in.  core.txt
 ;; separates relation from context; this declaration adds proposition.
 (set/monotonic (separating logical relation proposition context))
 
-(comment means "(means ?expression ?meaning) means that ?expression, a closed wff_expression, has ?meaning as its semantic content: for a term what it denotes, for a sentence the proposition it expresses. Read in the context the sentence is stated in, which supplies the interpretation. Functional: an expression has at most one meaning in a context.")
+(comment means "(means ?expression ?meaning) means that ?expression, a closed wff_expression, has ?meaning as its semantic content: for a term what it denotes, for a sentence the proposition it expresses. Read in the context the sentence is stated in, which supplies the interpretation. The relation includes fixed interpretations and time-dependent indexicals, so it is time-agnostic rather than invariant or eternal. Functional: an expression has at most one meaning in a context.")
 (positiveExampleComment means "(means (Quote Muffet) Muffet)")
 (arg means 1 wff_expression)
 (arg means 1 closed_expression)
 (arg means 2 thing)   ;; the meaning: what a term denotes or the proposition a sentence expresses
 (set/monotonic (functional means))
+(set/monotonic (time_agnostic_relation means))
+(not (eternal_predicate means))
 
-(comment denotes "(denotes ?term ?thing) means that the denotational_term ?term names ?thing. (denotes (Quote Muffet) Muffet): the symbol Muffet names the dog. (denotes (Quote dog) dog): the symbol dog names the predicate. (denotes (Quote (MotherFn Muffet)) (MotherFn Muffet)).")
+(comment denotes "(denotes ?term ?thing) means that the denotational_term ?term names ?thing. (denotes (Quote Muffet) Muffet): the symbol Muffet names the dog. (denotes (Quote dog) dog): the symbol dog names the predicate. (denotes (Quote (MotherFn Muffet)) (MotherFn Muffet)). Reference may be fixed or time-dependent under the context's interpretation, so the relation is time-agnostic, not invariant or eternal.")
 (binary_predicate denotes)
+(set/monotonic (time_agnostic_relation denotes))
+(not (eternal_predicate denotes))
 (genl denotes means)
 (arg denotes 1 denotational_term)
 (arg denotes 2 thing)   ;; what a denotational_term names: a thing of any kind
 
 (comment expresses "(expresses ?sentence ?proposition) means that the wff_sentence ?sentence says ?proposition. Two sentences can express one proposition, in two languages or two phrasings, and two true sentences can express different ones.")
 (binary_predicate expresses)
+(set/monotonic (time_agnostic_relation expresses))
+(not (eternal_predicate expresses))
 (genl expresses means)
 (arg expresses 1 wff_sentence)
 (arg expresses 2 proposition)
@@ -223,6 +255,7 @@
 ;; Quote a reifiable_function, and a function is logical.
 (comment syncategorematic "A constant of vaelii's syntax that is written like a term and names nothing, e.g. set/monotonic, which the loader reads and never stores. A sentence mentions one only to document it.")
 (unary_predicate syncategorematic)
+(set/monotonic (eternal_predicate syncategorematic))
 (genl syncategorematic nowhere_never)
 (set/monotonic (disjoint syncategorematic linguistic))
 (set/monotonic (disjoint syncategorematic quantitative))

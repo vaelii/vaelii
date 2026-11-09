@@ -95,12 +95,12 @@ standing in `R` both ways are one thing.
 
 ```clojure
 (set/monotonic (asymmetric originatorOf))
-(set/monotonic (asymmetric largerThan))
+(set/monotonic (asymmetric typeLargerThan))
 (set/monotonic (irreflexive properPartOf))
 ```
 
 The first is from `CxSocial.txt`, the other two from `abstract.txt`. The `comment` on
-`largerThan` says that the relation is "Transitive and asymmetric, so a cycle of size
+`typeLargerThan` says that the relation is "Transitive and asymmetric, so a cycle of size
 claims is a contradiction the KB reports rather than a chain it walks."
 
 **Why.**

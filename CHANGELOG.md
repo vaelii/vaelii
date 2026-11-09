@@ -30,6 +30,271 @@ it — `git show v0.16.0:CHANGELOG.md`.
   and assert it again.
   *Breaks:* a read of a head application stored as written under `:naming :warn` or `:off`
 
+### Fix: ontology names
+
+- **`largerThan` is `typeLargerThan`.** The relation compares two kinds, as a
+  `type_relation_predicate`, and the new name keeps it from reading as a sibling of
+  `tallerThan` and `heavierThan`, which compare two individuals. Its declarations, its
+  facts in CxSize and its comment are unchanged apart from the name.
+
+  *Migration:* write `typeLargerThan` for `largerThan` in every fact, rule and query.
+
+### Breaking: NATs
+
+- **`functionCorrespondingPredicate` takes three arguments, and the third, the value
+  position, is always stated.** `(functionCorrespondingPredicate F P N)` says `(F a…)` is
+  the value `P` holds at argument `N` of those arguments. A two-argument form is refused
+  `:not-well-formed`. `(functionCorrespondingBinaryPredicate F P)` states the common case,
+  a binary `P` with the value second: a `core.txt` rule concludes
+  `(functionCorrespondingPredicate F P 2)` from it, and the engine reads only the ternary.
+  That ternary is derived, so a rule stored before the binary declaration is not
+  respelled through it. This accepted limit is tracked in
+  [#271](https://github.com/vaelii/vaelii/issues/271); the order regression remains `:red`.
+  Two `functionalInArg` marks constrain the ternary. A function and predicate pair has one
+  position, and a predicate and position have one function, so a second position for a
+  pair, or a second function for a predicate and position, is a `:functional` nogood and
+  `try-assert` refuses it. A function may still correspond to several predicates. The
+  shipped correspondences use `functionCorrespondingBinaryPredicate` for a binary
+  predicate whose value is second, and the explicit ternary otherwise. The declaration
+  is no longer `variable_arity_predicate` or `bounded_arity`, and `core.txt` states no `arityMax`.
+  [nat.md](docs/nat.md#the-corresponding-predicate)
+  *Migration:* write `(functionCorrespondingPredicate F P)` as
+  `(functionCorrespondingBinaryPredicate F P)` where `P` is binary, and as
+  `(functionCorrespondingPredicate F P N)` with `N` the arity of `P` otherwise; a pattern
+  `(functionCorrespondingPredicate ?f ?p)` becomes `(functionCorrespondingPredicate ?f ?p ?n)`.
+  *Breaks:* `assert` of a two-argument `functionCorrespondingPredicate`, `ask` of one,
+  `(variable_arity_predicate functionCorrespondingPredicate)`,
+  `(arityMax functionCorrespondingPredicate 3)`
+
+### Breaking: shipped ontology
+
+- **A pull request's status is its membership in a status kind.** CxTra's `open_pr`,
+  `merged_pr` and `closed_pr` partition `pull_request`, and `draft_pr` and `ready_pr`
+  partition `open_pr`. Each is time-varying: a pull request changes status and stays the
+  same request. `prStatus`, `pull_request_status` and its four individuals
+  `PullRequestDraft`, `PullRequestReady`, `PullRequestMerged` and `PullRequestClosed` are
+  retired.
+  *Migration:* write `(prStatus ?pr PullRequestDraft)` as `(draft_pr ?pr)`,
+  `PullRequestReady` as `ready_pr`, `PullRequestMerged` as `merged_pr` and
+  `PullRequestClosed` as `closed_pr`.
+  *Breaks:* `prStatus`, `pull_request_status`, `PullRequestDraft`, `PullRequestReady`,
+  `PullRequestMerged`, `PullRequestClosed`
+
+### Fix: contextual type definitions
+
+- **The starter text declares each type's unary arity in its defining context.**
+  Loading the starter no longer invents CxUniverse premises for types defined only in
+  a middle theory. Defining-context audits therefore keep those types' obligations in
+  readers of their actual theory. The computed closing type batch and its synthetic
+  `:unary-predicates` load phase are removed; starter synchronization reads the authored
+  layers directly.
+
+### Additive: vocabulary and reasoning
+
+- **The rigidity kinds of relation.** core.txt partitions `relation` into
+  `time_invariant_relation`, `time_agnostic_relation` and `time_varying_relation`
+  (OntoClean's +R, -R and ~R, read modally), with `possibly_time_invariant_relation` the
+  first two together. Possible invariance is preserved up `genl` and time variance down
+  it, so a time-varying genl of a time-invariant type is an inherited clash `conflicts`
+  reports. `rigidity_kind` names the three kinds.
+
+- **`eternal_predicate` classifies time-independent truth within a theory.** It is
+  below `predicate` and `time_invariant_relation`; `acknowledgedFinding` and
+  `declined_rule_macro` are members. Assertions remain revisable, not an immutable
+  review history or a temporal sequence of endorsements. The mark adds no engine
+  restriction on assertion or retraction.
+  Cross-time propagation is not supplied by this declaration; engine support and
+  temporal regressions are tracked in [#272](https://github.com/vaelii/vaelii/issues/272).
+  `documentation_predicate` groups `comment`, `implementationNote` and all six
+  example/`*ExampleComment` predicates under the eternal kind without making their
+  documented sentences eternal. Definition, argument-contract, arity and functional
+  declarations are eternal too, and ordinary as well as forced-decontextualized
+  predicates inherit that classification.
+  `means`, `denotes` and `expresses` are time-agnostic rather than invariant:
+  interpretation includes both fixed reference and time-dependent indexicals.
+  A one-way forward rule derives eternal unary predicates from invariant membership
+  over atemporal things; its converse is not asserted. `sempiternal` is the common genl
+  of `atemporal`, `time` and `situation`, and the bridge now reads
+  `(genl ?predicate sempiternal)` in place of `(genl ?predicate atemporal)`.
+  Fixed math, unit/measure, calendar, interval/instant, whole-extent and event-calculus
+  predicates, including `initially`, are eternal. Taxonomy laws are time-agnostic and
+  explicitly non-eternal.
+  Closure, abducibility and audit-completeness requirements are time-varying and
+  non-eternal, while modal classification is eternal. Whole-event actor specializations,
+  provenance, biological genealogy and current fixed-region topology are eternal;
+  chosen/current kinship and kind-level parts/capabilities are agnostic and non-eternal.
+  Algebraic macros, the commutativity family included, are eternal and keep their
+  decontextualization marks, so a mark stated in any context holds for every reader. Preservation macros are explicitly non-eternal;
+  functional constraints and forced-strength/lifecycle engine contracts remain eternal.
+  Equality `sameAs`/`equals`/`different` is eternal, as canonical `rewriteOf` is.
+  The time-slice and monad vocabulary, the data structures and their element,
+  cardinality, multiplicity and value relations, `properCounterpart`,
+  `successorTypeOrder`, `rulePairOf`, `sentex_handle_term` and `syncategorematic` are
+  eternal. `CxTimeFn`, `timezone`, `zonedDatetimeOf` and CxTra's computers, virtual
+  machines, containers, clusters, networks, namespaces, file path references,
+  repositories, pull requests, channels, messages and conceptual works are
+  time-invariant. `maxCommonSpec`, `minCommonGenl`, `negates`, `typeLargerThan`,
+  `adultFormOf` and `larvalFormOf` are time-agnostic, and `seat` and `construct` are
+  time-varying. CxTra's resource-specific access kinds (`readAccessOf`, `writeAccessOf`,
+  `shellAccessOf`, `adminAccessOf`, `deployAccessOf`, `mergeAccessOf`, `channelViewOf`,
+  `fileLookupOf`) and stable-ID correspondences (`discordChannelOf`, `discordMessageOf`,
+  `pullRequestOf`) are time-invariant, and their constructors take that kind through the
+  correspondence. `alterOf` and `headmateOf` are time-varying and `carries` time-agnostic.
+  `situation_predicate`, below `eternal_predicate`, holds predicates whose first argument
+  is a situation that fixes their truth: `actor` and its binary specs, `subSituationOf`,
+  `properSubSituationOf` and `toolInvocationArg`. Taking a situation first does not by
+  itself make a predicate one.
+  A `properCounterpart` pair passes rigidity only in its sound directions: a
+  time-invariant or eternal relation has a time-invariant or eternal proper reading,
+  and a time-agnostic proper reading has a time-agnostic relation. Time variance reaches
+  the proper reading down the `genl` beside each pair, and no blanket two-way
+  inheritance is stated.
+  No complement type is introduced, and undecided cases are not closed-world negatives.
+
+
+- **`typeAllSpecified`, a classification requirement `kb-integrity` audits.**
+  `(typeAllSpecified ?classifier ?indep)` requires every instance of `?indep` to have a
+  believed membership in some member of `?classifier` in each eligible defining reader;
+  a partition does not satisfy it. Like Specified, the pass excludes proven skeletal-only
+  bookkeeping, not native answers whose defining home is unknown, and reports incomplete
+  defining support as a gap. The new default category is `:type-specified-violations`. core.txt
+  states `(typeAllSpecified rigidity_kind relation)`, and not every shipped relation is
+  classified yet, so a default sweep over CxUniverse now answers `:gap` with that one
+  requirement.
+  [integrity.md](docs/integrity.md#what-a-type-specified-finding-means).
+
+
+- **The shipped relations' rigidity kinds.** The upper and starter vocabularies
+  classify relations as time-invariant, time-agnostic or time-varying.
+  Types over numbers, expressions, relations and types, every
+  metatype, the folk kinds, the meta, logical and type-relation predicates, kinship,
+  `madeOf`, `contains`, `length`, `totalDuration`, `overlapDuration`, the integrity
+  requirements and the predall placeholders are time-invariant.
+  `(genl folk_species time_invariant_relation)`,
+  `(genl folk_biological_class time_invariant_relation)` and
+  `(genl arity_type time_invariant_relation)` classify those families with one edge
+  each. The social relations, `knows`, `livesIn`, `locatedIn`, `eats`,
+  `hasCapability`, `asleep`, `awake`, `breathes_air`, `preysOn`, a quantity's sign,
+  trend and derivative, `greaterInMagnitudeThan` and the qualitative arithmetic are
+  time-varying, and `(genl stuff_type_by_state_of_matter time_varying_relation)` makes
+  every phase of matter time-varying. The fifty spatial relations, the six predall
+  world-statement cells, `contradicts` and `intangiblePartOf` are time-agnostic. CxSocial and CxTra
+  classify their own relations, which CxUniverse does not see.
+  `software_service` and `mcp_server` are invariant kinds: serving, and serving over
+  MCP respectively, are constitutive rather than changeable roles. This adds no
+  software-versioning vocabulary.
+  `except`, `exceptWhen` and engine-derived `defeat` are time-varying: their effects
+  may apply only within a temporal slice, so they are not eternal declarations.
+
+
+- **A function and its corresponding predicate must share a rigidity kind.** A default
+  `kb-integrity` pass, `:rigidity-correspondence`, reports each
+  `functionCorrespondingPredicate` pair whose function and predicate are both classified
+  and of different kinds. A pair with an unclassified side is left to
+  `:type-specified-violations`.
+  [integrity.md](docs/integrity.md#what-a-rigidity-correspondence-finding-means).
+
+
+- **Every spec of `time` and every spec of `situation` is time-invariant.** Two
+  core.txt forward rules classify `time`, `situation` and each type below either, a
+  type stated later included.
+
+
+- **`temporalIndexArg` and `time_indexed_relation`.** `(temporalIndexArg ?relation
+  ?position)` names the argument that carries the time a tuple holds at.
+  `(arg temporalIndexArg 1 time_indexed_relation)` types the relation a
+  `time_indexed_relation`, which is below `time_invariant_relation` and `at_least_binary`:
+  the tuple carries its own time, so nothing can lose it, and a unary relation has no
+  other argument for the time to index.
+
+
+- **A function takes the rigidity kind of its corresponding predicate.** A generator over
+  `rigidity_kind` generates one forward rule per kind, concluding `(?kind ?function)` from
+  `(functionCorrespondingPredicate ?function ?predicate ?position)` and
+  `(?kind ?predicate)`, a kind the predicate inherits down `genl` included. Each `Pred…Fn` takes its placeholder's
+  kind this way. A function believed of a second kind is reported by
+  `:rigidity-correspondence`. The rule-clash pairing pairs each two of the three rules,
+  and core.txt acknowledges the three pairs with `acknowledgedFinding`, so they are
+  `:rule-clash-review` findings.
+
+
+- **`permanentPartOf`, a time-invariant spec of `partOf`.** `partOfRegion` and
+  `subSituationOf` are below it, and `tangiblePartOf` is not, since a wheel can come off
+  a car. It is transitive and reflexive, and both its positions declare `thing`, as
+  `partOf`'s do.
+  [glossary.md](docs/glossary.md).
+
+
+- **`stable_once_true` and `stable_once_false`, two kinds of time-varying relation.** A
+  `stable_once_true` relation that holds at a time holds at every later time, and a
+  `stable_once_false` relation that fails at a time fails at every later time. Both are
+  below `time_varying_relation`, so no time-invariant relation is either. `dead` is
+  `stable_once_true` and `alive` is `stable_once_false`. No rule states either
+  definition, since the KB has no sentence for a relation holding at a time.
+
+
+- **A new OE principle, "consistent at each commit".** Assume the KB is consistent, and
+  revise a theory in one atomic commit, so consistency and soundness hold at each commit.
+  [oe-principles.md](docs/oe-principles.md).
+
+
+- **`(functional P)` concludes `(functionalInArg P 2)`.** A core.txt forward rule states
+  the definition: `functional` is `functionalInArg` read at position 2, its binary
+  spelling. A functional predicate now answers `(functionalInArg P 2)`, and an injection,
+  functional through its own rule, is functional in both arguments.
+  [glossary.md](docs/glossary.md).
+
+
+### Additive: integrity
+
+- **`kb-integrity`'s rule-macro sweep covers `(arg P i C)`.** A stored rule
+  `(P ?o1 … ?on)` ⇒ `(C ?oi)`, the other arguments free, distinct variables, restates
+  what `entail-arg-type` already derives from the declaration: every argument `i` of a
+  true `P`-fact is typed `C`, materialized and retracted with the declaration.
+  Reported when `P` has a fixed arity of two or more, `C` is not a term the engine
+  interprets, and the rule is visible from CxUniverse.
+  [integrity.md](docs/integrity.md#what-a-rule-macro-finding-means).
+
+
+### Fix: shipped ontology and rule clashes
+
+- **`knows` follows from `relativeOf` by a default rule, not a `genl` edge.** Two
+  relatives need not have met. A stated `(not (knows ?x ?y))` now overrides the default,
+  where the edge made every relative an acquaintance.
+  `(declined_rule_macro (genl relativeOf knows))` records the declined suggestion.
+
+  *Migration:* none for a KB that only reads `knows`. A query for the `genl` edge from
+  `relativeOf` to `knows` answers no.
+
+- **CxNormalPhysicalConditions states each room-temperature phase as a default rule.** A
+  phase is a state a portion of stuff is in, not a kind it is. Four default rules replace
+  `(genl stone solid)`, `(genl wood solid)`, `(genl glass_stuff solid)` and
+  `(genl mercury liquid)`, and each suggestion is recorded with `declined_rule_macro`.
+
+  *Migration:* none for a KB that reads a portion's phase. A query for one of the four
+  `genl` edges answers no.
+
+- **The rule-clash pairing reads a functional slot off the KB's `functionalInArg` marks,
+  for any predicate.** Two antecedents filling one marked slot for one tuple with
+  two distinct numbers or other non-symbol atoms, with a number a `lessThan` or
+  `greaterThan` bound on the other filler excludes, or with two variables whose bounds
+  leave nothing between them, cannot both hold, and the pair is dropped. The arity table
+  reaches the reading through `(functional arity)`, where the reading named `arity`
+  before, and an upper bound now counts beside a lower one. A KB that does not mark
+  `arity` functional now pairs `(arity ?p 1)` with `(arity ?p 2)`.
+  [integrity.md](docs/integrity.md#what-a-rule-clash-finding-means).
+
+
+- **The inert rule from `(commutativeInArgAndRest ?p 1)` to `(commutative ?p)` leaves a
+  unary relation out.** `(commutativeInArgAndRest P 1)` holds vacuously of a unary `P`, and
+  a commutative relation is `at_least_binary`. Two inert rules replace the one, requiring
+  `(arity ?p ?n)` or `(arityMin ?p ?n)` with `(greaterThan ?n 1)`, as the
+  `at_least_binary` floor rules do, so `kb-quality` no longer pairs the bridge with the
+  arity-1 and `empty` rules. [canonicalization.md](docs/canonicalization.md)
+
+  *Migration:* a query for the unguarded rule by `handle-of` answers nil.
+
+
 ### Refusal: shape
 
 - **A `.` that is not the rest marker of its list is refused as `:shape`**

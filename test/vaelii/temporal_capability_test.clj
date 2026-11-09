@@ -233,6 +233,65 @@
           (is (= :unknown (verdict kb (list p) y2001)))
           (is (not (v/ask? kb (list 'not (list p)) y2001))))))))
 
+;; `eternal_predicate` (core.txt, #190) classifies a relation's tuples as holding
+;; independently of time. It is a classification mark, not a cross-context projection
+;; mechanism — issue #272 is that gap. Contrast a-fact-stated-unsliced-holds-in-every-
+;; year-slice above: a fact asserted unsliced in CxUniverse, visible everywhere already.
+
+(tu/deftest-kb ^:red an-eternal-fact-in-one-year-slice-does-not-yet-project-to-an-unrelated-year
+  ;; parentOf carries (set/monotonic (eternal_predicate parentOf)) in life.txt. 1800 is
+  ;; a sibling of 2040, so ordinary context visibility sees nothing stated there; #272
+  ;; tracks reading the mark across contexts. Fails today by design; drops ^:red when it lands.
+  (declare-cxtimefn! kb)
+  (tu/with-terms [Ann Bob]
+    (let [y2040 (slice '(DatetimeFn "2040"))
+          y1800 (slice '(DatetimeFn "1800"))]
+      (v/assert kb (list 'parentOf Ann Bob) y2040)
+      (testing "an eternal fact asserted only in 2040 is not yet seen from the unrelated 1800 slice"
+        (is (true? (v/ask? kb (list 'parentOf Ann Bob) y1800)))))))
+
+(defn- clashes-naming
+  "The contradictions and conflicts whose sentence names `term`."
+  [kb term]
+  (filter #(some #{term} (tree-seq seqable? seq (:sentence %)))
+          (concat (v/contradictions kb) (v/conflicts kb))))
+
+(tu/deftest-kb ^:red diachronic-disjointness-clashes-only-in-the-slice-that-states-it
+  (declare-cxtimefn! kb)
+  (tu/with-terms [registered_student licensed_practitioner Orrin Wren]
+    (doseq [t [registered_student licensed_practitioner]]
+      (v/assert kb (list 'unary_predicate t) U)
+      (v/assert kb (list 'genl t 'person) U)
+      (v/assert kb (list 'time_varying_relation t) U))
+    (let [before2030 (slice '(IntervalBeforeFn (InstantFn 2030 1 1 0 0 0)))
+          y2035      (slice '(DatetimeFn "2035"))]
+      (v/assert kb (list 'diachronicallyDisjoint registered_student licensed_practitioner)
+                before2030)
+      (doseq [t [registered_student licensed_practitioner]]
+        (v/assert kb (list t Orrin) before2030)
+        (v/assert kb (list t Wren) y2035))
+      (testing "after 2030 Wren is both at once, and nothing clashes over it"
+        (is (true? (v/ask? kb (list registered_student Wren) y2035)))
+        (is (true? (v/ask? kb (list licensed_practitioner Wren) y2035)))
+        (is (empty? (clashes-naming kb Wren))))
+      (testing (str "before 2030 the same dual membership is a clash; red until memberships are "
+                    "checked with time, since diachronicallyDisjoint is stated, not enforced")
+        (is (seq (clashes-naming kb Orrin)))))))
+
+(tu/deftest-kb a-rigid-but-non-eternal-fact-in-one-year-slice-is-unknown-in-an-unrelated-year
+  ;; The contrast: person carries (time_invariant_relation person) in organism.txt but no
+  ;; eternal_predicate mark — core.txt says a rigid type need not be eternal. 1800 is a
+  ;; sibling of 2040 with no genlCx path, so the fact is unknown there, not false.
+  (declare-cxtimefn! kb)
+  (tu/with-terms [Bob]
+    (let [y2040 (slice '(DatetimeFn "2040"))
+          y1800 (slice '(DatetimeFn "1800"))]
+      (v/assert kb (list 'person Bob) y2040)
+      (testing "a rigid but non-eternal fact is unknown, not false, from the unrelated 1800 slice"
+        (is (not (v/ask? kb (list 'person Bob) y1800)))
+        (is (= :unknown (verdict kb (list 'person Bob) y1800)))
+        (is (not (v/ask? kb (list 'not (list 'person Bob)) y1800)))))))
+
 (tu/deftest-kb a-fact-in-a-named-year-slice-holds-in-a-named-month-and-is-unknown-the-named-next-year
   ;; The reified twin of a-fact-in-a-year-slice-holds-in-its-months-and-is-unknown-the-next-year.
   ;; The calendar fields say that January starts 2000, that 2000 meets 2001 and that
@@ -765,16 +824,16 @@
     (is (true? (v/ask? kb '(not (arg CxTimeFn 1 monad_context)) U)))
     (is (not (v/ask? kb '(arg CxTimeFn 1 monad_context) U))))
   (testing "CxTimeOfFn and cxTimeOf, a context's temporal part, which is a time"
-    (is (true? (v/ask? kb '(functionCorrespondingPredicate CxTimeOfFn cxTimeOf) U)))
+    (is (true? (v/ask? kb '(functionCorrespondingPredicate CxTimeOfFn cxTimeOf 2) U)))
     (is (true? (v/ask? kb '(result CxTimeOfFn time) U))))
   (testing "CxMonadOfFn and cxMonadOf, a context's monadic part, which is a context"
-    (is (true? (v/ask? kb '(functionCorrespondingPredicate CxMonadOfFn cxMonadOf) U)))
+    (is (true? (v/ask? kb '(functionCorrespondingPredicate CxMonadOfFn cxMonadOf 2) U)))
     (is (true? (v/ask? kb '(result CxMonadOfFn context) U))))
   (testing "genlMonad orders two contexts"
     (is (true? (v/ask? kb '(arg genlMonad 1 context) U)))
     (is (true? (v/ask? kb '(arg genlMonad 2 context) U))))
   (testing "TimeIntersectionFn, the time two times have in common, which is a time"
-    (is (true? (v/ask? kb '(functionCorrespondingPredicate TimeIntersectionFn timeIntersectionOf) U)))
+    (is (true? (v/ask? kb '(functionCorrespondingPredicate TimeIntersectionFn timeIntersectionOf 3) U)))
     (is (true? (v/ask? kb '(arg TimeIntersectionFn 1 time) U)))
     (is (true? (v/ask? kb '(result TimeIntersectionFn time) U))))
   (testing "subtimeOf, one time within another, below partOf and above subintervalOf"

@@ -1,22 +1,22 @@
 ;; CxSize — comparative size, said the two ways it can be said: among *kinds* as
-;; stated `largerThan` claims, and between two particular objects as a comparison
+;; stated `typeLargerThan` claims, and between two particular objects as a comparison
 ;; computed from their measures. Sees the shared upper ontology via CxUniverse;
 ;; CxWell sees it.
 ;;
 ;; The kind-level half is the worked example of argument-position preservation
-;; (docs/inherit.md). `largerThan` is declared transitiveInArgInverse along `genl` on both
-;; positions, so each claim below reaches every pair of subkinds beneath it: (largerThan
-;; mammal insect) answers (largerThan dog ant) with nothing stored about dogs or ants,
-;; and (largerThan tree flower) answers (largerThan oak rose). Eleven stated claims, and
+;; (docs/inherit.md). `typeLargerThan` is declared transitiveInArgInverse along `genl` on both
+;; positions, so each claim below reaches every pair of subkinds beneath it: (typeLargerThan
+;; mammal insect) answers (typeLargerThan dog ant) with nothing stored about dogs or ants,
+;; and (typeLargerThan tree flower) answers (typeLargerThan oak rose). Eleven stated claims, and
 ;; the closure of what they answer is far larger — which is what makes the declaration
 ;; worth its keep and also what makes it dangerous, since the inheritance is a claim
 ;; about the relation and not a fact about the world.
 ;;
 ;; Every pair below is between kinds that are **not** genl-related, and that is a
 ;; requirement rather than a coincidence. Preservation runs downward, so a claim about a
-;; kind and one of its own subkinds would license (largerThan K K) — a kind reported
-;; larger than itself. (largerThan mammal mouse) is not a fact this ontology can hold,
-;; however true it sounds. The requirement is this file's own: (asymmetric largerThan)
+;; kind and one of its own subkinds would license (typeLargerThan K K) — a kind reported
+;; larger than itself. (typeLargerThan mammal mouse) is not a fact this ontology can hold,
+;; however true it sounds. The requirement is this file's own: (asymmetric typeLargerThan)
 ;; convicts against a believed opposing claim, and a self tuple has none, so nothing
 ;; refuses the pair on the way in.
 ;;
@@ -41,27 +41,27 @@
   (implies (and (weightOf ?x ?wx) (weightOf ?y ?wy) (quantityGreaterThan ?wx ?wy))
            (heavierThan ?x ?y)))
 
-(largerThan bird insect)
+(typeLargerThan bird insect)
 
-(largerThan cow sheep)
+(typeLargerThan cow sheep)
 
-(largerThan dog cat)
+(typeLargerThan dog cat)
 
-(largerThan eagle sparrow)
+(typeLargerThan eagle sparrow)
 
-(largerThan horse dog)
+(typeLargerThan horse dog)
 
-(largerThan lion cat)
+(typeLargerThan lion cat)
 
-(largerThan mammal insect)
+(typeLargerThan mammal insect)
 
-(largerThan reptile insect)
+(typeLargerThan reptile insect)
 
-(largerThan tree flower)
+(typeLargerThan tree flower)
 
-(largerThan tree grass)
+(typeLargerThan tree grass)
 
-(largerThan wolf fox)
+(typeLargerThan wolf fox)
 
 (set/backwardRule
   (implies (and (heightOf ?x ?hx) (heightOf ?y ?hy) (quantityGreaterThan ?hx ?hy))

@@ -88,10 +88,10 @@
   the test it holds a unit to.
 
   What stays in code here is the *order the layers* load in — loading order is logic,
-  the definitional layer must precede the theories that reason over it — and the one
-  computed batch (every type is also a unary_predicate).  Within a layer, every file
-  present is loaded (discovered from the classpath), so adding a domain or a theory is
-  dropping a file in kb/upper/ or kb/middle/, no code change."
+  the definitional layer must precede the theories that reason over it. Within a layer,
+  every file present is loaded (discovered from the classpath), so adding a domain or a
+  theory is dropping a file in kb/upper/ or kb/middle/, no code change. Each file states
+  its types' unary arity alongside their definitions."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [taoensso.trove :as trove]
@@ -103,7 +103,6 @@
             [vaelii.impl.disk.files :as dfiles]
             [vaelii.impl.io.text :as text]
             [vaelii.impl.kb :as kbi]
-            [vaelii.impl.naming :as nm]
             [vaelii.impl.oplog :as oplog]
             [vaelii.impl.opts :as opts]
             [vaelii.impl.progress :as progress]
@@ -141,8 +140,7 @@
   release's `:retired` set (`seed/release-renames`). Returns kb.
 
   `loaded`, when given, is called with each load's context right after it is asserted —
-  `CxUniverse` after the upper ontology, then each middle context in load order — and
-  with `:unary-predicates` after the closing batch, which no file states.
+  `CxUniverse` after the upper ontology, then each middle context in load order.
   `vaelii.host.sync` reads it to learn which load each premise came from."
   ([kb] (load-into kb nil))
   ([kb loaded]
@@ -159,21 +157,6 @@
              (seed/load-context kb c "middle")
              (loaded c)
              (progress/tick! r)))))
-     ;; The subtypes of thing are unary types. Other genl components may relate
-     ;; predicates of any arity and do not imply unary membership.  `specs` is read after the
-     ;; batch above settles, so its extent is the believed one; a second batch stores the
-     ;; marks.  A type an argument declaration names already holds its mark (docs/argtypes.md)
-     ;; and is skipped.
-     (v/with-deferred-settle kb
-       (let [ts (into [] (remove #(seq (v/sentexes-matching kb (list 'unary_predicate %)
-                                                            sx/root-context)))
-                      (nm/by-print-key (v/specs kb 'thing)))]
-         (with-open [r (progress/start ::unary-predicates "starter: mark the unary types"
-                                       (count ts))]
-           (doseq [t ts]
-             (v/assert kb (list 'unary_predicate t) sx/root-context)
-             (progress/tick! r)))))
-     (loaded :unary-predicates)
      (warn-retired kb (:retired (seed/release-renames)))
      kb)))
 

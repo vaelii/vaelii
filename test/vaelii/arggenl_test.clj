@@ -57,8 +57,8 @@
      (v/assert kb (list 'genl sub root2) 'CxUniverse)
      (v/assert kb (list 'arg instRel 1 root2) 'CxUniverse)
      ;; a type symbol comes within arg's reach only once it carries a membership of
-     ;; its own reaching `thing` — which is what the starter's (unary_predicate t) batch
-     ;; does for every type.  Without one the open-world exemption applies and there is
+     ;; its own reaching `thing`, as each starter type's defining text declares with
+     ;; (unary_predicate t). Without one the open-world exemption applies and there is
      ;; nothing to convict, so the test states it rather than assuming a loaded KB.
      (let [meta (tu/tmp-type)]
        (v/assert kb (list 'genl meta 'thing) 'CxUniverse)

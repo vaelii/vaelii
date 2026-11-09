@@ -4497,7 +4497,8 @@
   `:status :truncated` with its `:reason`, the `:pass` it stopped in and the findings kept.
   Every answer carries `:work` and `:elapsed-ms`.  `options` takes `:max-work`, `:max-ms`,
   `:max-results`, and `:categories`, a set of category keys to run; the review-only
-  categories run only when named.  Categories: docs/integrity.md.  Stores nothing."
+  categories run only when named. Finding keys and category contracts: docs/integrity.md.
+  Stores nothing."
   ([kb candidate-terms context]
    (integrity/kb-integrity kb candidate-terms context nil))
   ([kb candidate-terms context options]

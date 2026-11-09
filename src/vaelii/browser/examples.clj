@@ -58,23 +58,23 @@
 
    {:id "arg-preserving" :group "Taxonomy"
     :title "A claim about kinds, reaching kinds it never mentions"
-    :shows "(largerThan mammal insect) is a claim about two kinds. Because largerThan is
+    :shows "(typeLargerThan mammal insect) is a claim about two kinds. Because typeLargerThan is
             declared transitiveInArgInverse along genl on both positions, it answers about every
             pair of subkinds beneath it — here dogs and ants, about whose sizes the KB
             holds nothing whatever."
-    :rests-on [['(largerThan mammal insect) 'CxSize]
-               ['(transitiveInArgInverse largerThan 1 genl) 'CxUniverse]
-               ['(transitiveInArgInverse largerThan 2 genl) 'CxUniverse]]
-    :goal '(largerThan dog ant) :context 'CxWell :expect :yes}
+    :rests-on [['(typeLargerThan mammal insect) 'CxSize]
+               ['(transitiveInArgInverse typeLargerThan 1 genl) 'CxUniverse]
+               ['(transitiveInArgInverse typeLargerThan 2 genl) 'CxUniverse]]
+    :goal '(typeLargerThan dog ant) :context 'CxWell :expect :yes}
 
    {:id "arg-preserving-stops" :group "Taxonomy"
     :title "…and does not reach the other way"
     :shows "The same declaration, the converse question. Preservation moves an argument
-            down the hierarchy; it does not make the relation symmetric, and largerThan
+            down the hierarchy; it does not make the relation symmetric, and typeLargerThan
             is declared asymmetric besides. A KB that answered this would be inventing."
-    :rests-on [['(largerThan mammal insect) 'CxSize]
-               ['(asymmetric largerThan) 'CxUniverse]]
-    :goal '(largerThan ant dog) :context 'CxWell :expect :no}
+    :rests-on [['(typeLargerThan mammal insect) 'CxSize]
+               ['(asymmetric typeLargerThan) 'CxUniverse]]
+    :goal '(typeLargerThan ant dog) :context 'CxWell :expect :no}
 
    ;; ---- the vocabulary reasoning about itself -------------------------
    {:id "metadata-to-type" :group "Predicates about predicates"
@@ -89,30 +89,30 @@
 
    {:id "arity-by-class" :group "Predicates about predicates"
     :title "The exact class is the arity"
-    :shows "largerThan is declared a binary_predicate, which is a binary through
+    :shows "typeLargerThan is declared a binary_predicate, which is a binary through
             (genl binary_predicate binary), and every reader of an arity reads that
             class: the position query answers that a second argument exists. No rule
-            concludes (arity largerThan 2), since arity is forced-monotonic; an asserted (arity R 2) concludes (binary R) the other way."
-    :rests-on [['(binary_predicate largerThan) 'CxUniverse]
+            concludes (arity typeLargerThan 2), since arity is forced-monotonic; an asserted (arity R 2) concludes (binary R) the other way."
+    :rests-on [['(binary_predicate typeLargerThan) 'CxUniverse]
                ['(genl binary_predicate binary) 'CxUniverse]]
-    :goal '(admitsArgnum largerThan 2) :context 'CxWell :expect :yes}
+    :goal '(admitsArgnum typeLargerThan 2) :context 'CxWell :expect :yes}
 
    {:id "type-level" :group "Predicates about predicates"
     :title "A relation between kinds, marked as one"
-    :shows "largerThan relates kinds and parentOf relates individuals, and the KB says
+    :shows "typeLargerThan relates kinds and parentOf relates individuals, and the KB says
             which is which. relation_kind is a disjoint_metatype over the two, so a
-            predicate is at most one of them — asking whether largerThan relates
+            predicate is at most one of them — asking whether typeLargerThan relates
             individuals is answered no, not merely left unanswered."
-    :rests-on [['(type_relation_predicate largerThan) 'CxUniverse]
+    :rests-on [['(type_relation_predicate typeLargerThan) 'CxUniverse]
                ['(disjoint_metatype relation_kind) 'CxUniverse]]
-    :goal '(instance_relation_predicate largerThan) :context 'CxWell :expect :no}
+    :goal '(instance_relation_predicate typeLargerThan) :context 'CxWell :expect :no}
 
    {:id "part-type" :group "Predicates about predicates"
     :title "Preserved on one position and not the other"
     :shows "Nobody wrote that penguins have wings. partType is declared transitiveInArgInverse
             along genl on its first position only, and that asymmetry is the claim: a
             kind of bird has whatever parts birds have, while birds having wings says
-            nothing about which kinds of wing. Compare largerThan, which is declared on
+            nothing about which kinds of wing. Compare typeLargerThan, which is declared on
             both — each position is a separate decision about the relation."
     :rests-on [['(partType bird wing) 'CxAnatomy]
                ['(transitiveInArgInverse partType 1 genl) 'CxUniverse]

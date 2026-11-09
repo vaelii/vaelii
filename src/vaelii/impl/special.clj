@@ -667,7 +667,7 @@
   [kb sub sup]
   (let [tx   (reasoning/taxonomy kb)
         idx  (:index kb)
-        rec  #(p/get-sentex (:records kb) %)
+        rec  (checks/rule-shape-reader kb)
         ups  (set (tax/genls-global tx sup))
         fns  (fn [r] (into #{} (keep nm/functor) (:antecedent r)))
         held (delay (filterv #(pos? (long (reads/stored-count-with-functor idx %)))

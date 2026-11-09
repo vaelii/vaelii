@@ -105,8 +105,7 @@
 (defn premises
   "Every premise the starter stores, as `{:context c :form f :file ctx}`: the form a KB
   file writes it in, the context it is stored in, and the context of the load that stored
-  it — CxUniverse for the upper ontology, `:unary-predicates` for the closing batch no
-  file states.  In the order the
+  it — CxUniverse for the upper ontology or the defining middle context. In the order the
   load stored them, which is an order they assert in: the load retried what arrived
   before its dependencies.  Built in a scratch in-memory KB that is cleared before this
   returns."
@@ -241,17 +240,13 @@
    (let [shipped (map #(update % :form canonical-form) shipped)
          exact   (set (exact-contexts))
          root    sx/root-context
-         ;; each layer belongs to a KB that holds some of it: the upper ontology to one
-         ;; whose CxUniverse holds a premise it ships, and the closing batch, which a
-         ;; vocabulary KB does not run, to one holding a mark the batch ships
+         ;; The upper layer belongs to a KB whose CxUniverse holds a premise it ships.
          holds?  (fn [load] (some (fn [{:keys [context form file]}]
                                     (and (= load file) (= root context) (not (edge? form))
                                          (stored? kb context form)))
                                   shipped))
          upper?  (holds? root)
-         present (into (cond-> #{}
-                         upper?                                (conj root)
-                         (and upper? (holds? :unary-predicates)) (conj :unary-predicates))
+         present (into (cond-> #{} upper? (conj root))
                        (filter #(and (not= root %) (pos? (v/count-in-context kb %))))
                        (distinct (filter symbol? (keep :file shipped))))
          ours    (into #{} (map (juxt :context :form)) shipped)

@@ -207,7 +207,12 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; Reads only, nothing filed (docs/predall.md)
 (kb-integrity kb candidate-terms ctx)
 (kb-integrity kb candidate-terms ctx opts)       ; the bounded checkpoint sweep: the complete specified
-                                                ; audit above, query-only definition clashes over an
+                                                ; audit above, every visible (typeAllSpecified
+                                                ; classifier indep) requirement, each instance of indep
+                                                ; with no believed membership in a member of classifier,
+                                                ; every functionCorrespondingPredicate pair whose function
+                                                ; and predicate are believed of different rigidity kinds,
+                                                ; query-only definition clashes over an
                                                 ; explicit finite set of ground terms, every visible
                                                 ; predicate genl edge whose spec declares an arg type its
                                                 ; genl's constraint does not subsume, every candidate
@@ -235,6 +240,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; {:status :audited :candidate-count n}
                                                 ; when clean, or :status :gap plus any of the sparse
                                                 ; categories :all-specified-violations,
+                                                ; :type-specified-violations,
+                                                ; :rigidity-correspondence,
                                                 ; :definition-inconsistencies, :genl-arg-widening,
                                                 ; :not-under-thing, :implicit-genl,
                                                 ; :implicit-arity-class, :undeclared-term,
@@ -1691,8 +1698,8 @@ under `resources/kb/`, read by `vaelii.host.seed`
 never run code). Every sentence about a term is grouped **term-centrically** (blocks in
 natural sort order), and every context file is **discovered on the classpath and loaded
 on kb start** (`seed/layer-files`), so adding a KB is dropping a file — no code
-change. What stays in `starter.clj` is the *order the layers* load in and the one
-computed batch (every type is a `unary_predicate`, placed in CxUniverse). `(load-into kb
+change. What stays in `starter.clj` is the *order the layers* load in. Types declare
+`unary_predicate` in their defining text contexts. `(load-into kb
 {:layers [path …]})` then loads each text KB path through `load-text!`, and over a durable
 store nothing wrote to since the last call skips the sources before the first whose files
 changed ([operations.md](operations.md#restarting-over-a-built-store)). The context
@@ -1703,7 +1710,7 @@ upper layer: `core.txt`, the vocabulary and the top of the ontology;
 `interface-rules.txt`, the `args`→`argAndRest` twin rule; `abstract.txt`, the kinds below
 the skeleton `core.txt` holds, body parts and substances,
 `tangiblePartOf`/`locatedIn`/`madeOf`, and the two **type-level** relations
-`largerThan`/`partType`; `organism.txt`, the biological taxonomy and its disjointness;
+`typeLargerThan`/`partType`; `organism.txt`, the biological taxonomy and its disjointness;
 `life.txt`, the organism relations and states; `society.txt`, the social relations;
 `measure.txt`, the theory of measurement; `reflection.txt`, the expression lattice and
 the use/mention vocabulary; `space.txt`, the four spatial calculi of
@@ -1740,7 +1747,7 @@ a variable so they join — grandparentOf, part-location, owns-parts).
 **A binary predicate says which level it relates at, unless its two ends disagree.**
 `relation_kind` is a `disjoint_metatype` over `instance_relation_predicate` and
 `type_relation_predicate`: `parentOf`, `northOf` and `madeOf` relate individuals; `genl`,
-`disjoint`, `orthogonal`, `largerThan`, `partType` and `capabilityType` relate kinds. *At most* one, not
+`disjoint`, `orthogonal`, `typeLargerThan`, `partType` and `capabilityType` relate kinds. *At most* one, not
 exactly one — the unmarked are those whose two ends sit at different levels, or at no
 level at all (`implies` is a connective; `rewriteOf` takes either role so long as its two
 sides agree; `result` and `genlResult` relate a function to a type;
@@ -1750,7 +1757,7 @@ relates one causal thing to an event kind). The mark is not decoration: an
 `try-assert` refuses `genlArg` on one (`:arg-constraint-kind`). A `type_relation_predicate` takes `genlArg` and
 `arg` both: the kinds it relates are subtypes of what `genlArg` names and instances of
 what `arg` names. The distinction is
-what `typeToInstancePred` is stated over, and it is the difference between `(largerThan
+what `typeToInstancePred` is stated over, and it is the difference between `(typeLargerThan
 dog cat)` — dogs are bigger than cats — and a claim about two particular animals.
 
 **Contingent data lives in the tests.** The starter ships no cast: individuals, facts,

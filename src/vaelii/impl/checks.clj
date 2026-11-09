@@ -4875,23 +4875,25 @@
   not a rule, which the rule index should never hand back but which a stale posting
   could.  Puts each exceptWhen meta-sentex naming the rule into `believed`, a map, with
   whether it is believed."
-  [kb handle ^java.util.Map believed]
-  (when-let [rsx (p/get-sentex (:records kb) handle)]
-    (when (rules/rule? rsx)
-      (let [tms   (reasoning/tms kb)
-            metas (provers/stored-exception-metas kb handle)]
-        (doseq [m metas] (.put believed (:id m) (jtms/in? tms (:id m))))
-        (rule-graph-node kb handle rsx
-                         (into [] (comp (filter #(jtms/in? tms (:id %)))
-                                        (map #(sx/exception-query-conjuncts (:sentence %))))
-                               metas))))))
+  ([kb handle believed]
+   (stored-rule-node kb handle believed #(p/get-sentex (:records kb) %)))
+  ([kb handle ^java.util.Map believed record-of]
+   (when-let [rsx (record-of handle)]
+     (when (rules/rule? rsx)
+       (let [tms   (reasoning/tms kb)
+             metas (provers/stored-exception-metas kb handle)]
+         (doseq [m metas] (.put believed (:id m) (jtms/in? tms (:id m))))
+         (rule-graph-node kb handle rsx
+                          (into [] (comp (filter #(jtms/in? tms (:id %)))
+                                         (map #(sx/exception-query-conjuncts (:sentence %))))
+                                metas)))))))
 
 (defn- stored-stratification-graph
   "The stored rules' half of `stratification-readers`: `{:readers f :starts s …}`, where
   `f` maps a predicate to the stored rule nodes reading it in content order, and with no
   argument answers every stored rule node, and `s` maps an upward closure to the starts of
   a `genl` edge's walk (`wff/negation-starts`).  Each is memoized: the node per rule
-  handle, the readers per predicate, the starts per closure.  The rest of the map is what
+  handle and shared rule shape, readers per predicate, starts per closure. The rest is what
   `stratification-graph-current?` compares: the index and taxonomy it read, the two
   closed-extent mark sets, and `:believed`, each exceptWhen meta-sentex a node read with
   whether it was believed.  It reads every context and the marks unscoped: the graph is a
@@ -4900,11 +4902,17 @@
   (let [index    (:index kb)
         tx       (reasoning/taxonomy kb)
         believed (java.util.HashMap.)
+        records  (java.util.HashMap.)
+        record-of (fn [h]
+                    (if (.containsKey records h)
+                      (.get records h)
+                      (let [r (some-> (p/get-sentex (:records kb) h) (assoc :strength nil))]
+                        (.put records h r) r)))
         nodes    (java.util.HashMap.)
         node     (fn [h]
                    (if (.containsKey nodes h)
                      (.get nodes h)
-                     (let [n (stored-rule-node kb h believed)] (.put nodes h n) n)))
+                     (let [n (stored-rule-node kb h believed record-of)] (.put nodes h n) n)))
         ;; content order, since `wff/negation-walk` returns the first cycle it closes, and a
         ;; set of handles iterates in an order the handles decide
         ordered  (fn [handles keep?]
@@ -4933,6 +4941,8 @@
                         found))))
         starts   (java.util.HashMap.)]
     {:index      index
+     :records    (:records kb)
+     :record-of  record-of
      :taxonomy   tx
      :closed     (tax/props tx :closed-extent)
      :closed-arg (tax/props tx :closed-extent-arg)
@@ -4944,14 +4954,15 @@
 
 (defn- stratification-graph-current?
   "Does the stored graph `g` still answer for `kb`?  A rule or a re-check posting written
-  since, or a rule's engines moving, empties the memo it sits in
+  since, or a rule's slots moving, empties the memo it sits in
   (`rules/*stratification-memo*`); what else a node or a reader read is compared here:
-  the index and the taxonomy, the closed-extent mark sets by identity, unscoped as the
+  the stores and the taxonomy, the closed-extent mark sets by identity, unscoped as the
   graph reads them, and the belief of each exceptWhen meta-sentex a node read."
   [kb g]
   (let [tx  (reasoning/taxonomy kb)
         tms (reasoning/tms kb)]
     (and (identical? (:index kb) (:index g))
+         (identical? (:records kb) (:records g))
          (identical? tx (:taxonomy g))
          (identical? (tax/props tx :closed-extent) (:closed g))
          (identical? (tax/props tx :closed-extent-arg) (:closed-arg g))
@@ -4968,6 +4979,15 @@
       (let [g (stored-stratification-graph kb)]
         (when memo (vreset! memo g))
         g))))
+
+(defn rule-shape-reader
+  "A rule-shape reader for one read-only call, sharing the write's stratification graph.
+  Acquire again after writes: rule-index and rule-slot changes retire that graph. Premise
+  strength is nil, not a shape field. Without a bound memo, each read goes to the store."
+  [kb]
+  (if rules/*stratification-memo*
+    (:record-of (stratification-graph kb))
+    #(some-> (p/get-sentex (:records kb) %) (assoc :strength nil))))
 
 (defn- stratification-readers
   "Predicate -> the rule nodes reading it, positively or negatively, in content order;

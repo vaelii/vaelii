@@ -134,8 +134,6 @@
         (str term " names no sentex, so it has no target to follow"))))
 
 (tu/deftest-kb each-example-predicate-is-related-to-its-string-sibling
-  ;; A star of pairs, each example predicate to its string sibling, beside the two
-  ;; triangles: the three example predicates and the three string siblings.
   (doseq [form '[(termsRelated positiveExample positiveExampleComment)
                  (termsRelated negativeExample negativeExampleComment)
                  (termsRelated borderlineExample borderlineExampleComment)
@@ -351,6 +349,10 @@
   ;; definition check.  These are known ground candidates exercised by CxUniverse's numeric
   ;; definitions, not a request for the query engine to enumerate a domain.
   (every-believed-example-holds-as-stated)
+  ;; Every upper-ontology relation is classified by rigidity_kind, so core.txt's
+  ;; (typeAllSpecified rigidity_kind relation) is met and every pass is clean.
   (let [report (v/kb-integrity kb #{-212 0 212} 'CxUniverse)]
-    (is (= :audited (:status report)) (pr-str report))
-    (is (= 3 (:candidate-count report)))))
+    (is (= {:status :audited :candidate-count 3}
+           (dissoc report :type-specified-violations :work :elapsed-ms))
+        (pr-str (dissoc report :type-specified-violations :work :elapsed-ms)))
+    (is (empty? (:type-specified-violations report)))))

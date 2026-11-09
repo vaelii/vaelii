@@ -1978,7 +1978,7 @@
   (tu/with-terms [FruitFn fruitOf ripe Ann favoriteFood CxSide]
     (v/assert kb (list 'genlCx CxSide 'CxUniverse) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list 'reifiable_function FruitFn) 'CxUniverse {:strength :monotonic})
-    (v/assert kb (list 'functionCorrespondingPredicate FruitFn fruitOf) CxSide)
+    (v/assert kb (list 'functionCorrespondingPredicate FruitFn fruitOf 2) CxSide)
     (let [h (v/assert kb (list 'set/forwardRule
                                (list 'implies (list favoriteFood Ann (list FruitFn '?t))
                                      (list ripe '?t)))

@@ -109,10 +109,10 @@
 ;; ---- asymmetric --------------------------------------------------------------
 
 (deftest an-asymmetric-mark-convicts-a-tuple-and-its-converse
-  (is (= [{:kind :asymmetric :members #{'(largerThan Rex Tom) '(largerThan Tom Rex)}
-           :ground #{'(asymmetric largerThan)}}]
-         (ng/asymmetric (view-of '[(asymmetric largerThan) (largerThan Rex Tom)
-                                   (largerThan Tom Rex) (largerThan Rex Rex)])))))
+  (is (= [{:kind :asymmetric :members #{'(typeLargerThan Rex Tom) '(typeLargerThan Tom Rex)}
+           :ground #{'(asymmetric typeLargerThan)}}]
+         (ng/asymmetric (view-of '[(asymmetric typeLargerThan) (typeLargerThan Rex Tom)
+                                   (typeLargerThan Tom Rex) (typeLargerThan Rex Rex)])))))
 
 (deftest an-asymmetric-mark-convicts-a-converse-written-at-a-sub-predicate
   (is (= [{:kind :asymmetric :members #{'(fatherOf Tom Bob) '(parentOf Bob Tom)}
@@ -121,7 +121,7 @@
                                    (fatherOf Tom Bob) (parentOf Bob Tom)])))))
 
 (deftest an-asymmetric-self-tuple-convicts-nothing
-  (is (= [] (ng/asymmetric (view-of '[(asymmetric largerThan) (largerThan Rex Rex)])))))
+  (is (= [] (ng/asymmetric (view-of '[(asymmetric typeLargerThan) (typeLargerThan Rex Rex)])))))
 
 ;; ---- anti_transitive ---------------------------------------------------------
 
@@ -337,27 +337,27 @@
 ;; ---- irreflexive -------------------------------------------------------------
 
 (deftest an-irreflexive-mark-convicts-a-default-self-tuple-as-a-one-member-nogood
-  (let [v (view-of '[(irreflexive largerThan) (largerThan Rex Rex) (largerThan Tom Rex)])]
-    (is (= [{:kind :irreflexive :members #{'(largerThan Rex Rex)}
-             :ground #{'(irreflexive largerThan)}}]
+  (let [v (view-of '[(irreflexive typeLargerThan) (typeLargerThan Rex Rex) (typeLargerThan Tom Rex)])]
+    (is (= [{:kind :irreflexive :members #{'(typeLargerThan Rex Rex)}
+             :ground #{'(irreflexive typeLargerThan)}}]
            (ng/irreflexive v)))
     (testing "the one-member nogood reaches the decision through families"
-      (is (some #{#{'(largerThan Rex Rex)}} (map :members (mapcat #(% v) ng/families)))))))
+      (is (some #{#{'(typeLargerThan Rex Rex)}} (map :members (mapcat #(% v) ng/families)))))))
 
 (deftest an-irreflexive-mark-reaches-a-sub-predicate-over-a-believed-edge-of-either-class
-  (let [content '[(irreflexive largerThan) (genl muchLargerThan largerThan)
+  (let [content '[(irreflexive typeLargerThan) (genl muchLargerThan typeLargerThan)
                   (muchLargerThan Rex Rex)]
-        edge    '(genl muchLargerThan largerThan)
+        edge    '(genl muchLargerThan typeLargerThan)
         nogood  {:kind :irreflexive :members #{'(muchLargerThan Rex Rex)}
-                 :ground #{'(irreflexive largerThan) edge}}]
+                 :ground #{'(irreflexive typeLargerThan) edge}}]
     (is (= [[nogood] [nogood] []]
            [(ng/irreflexive (view-of content {edge :default}))
             (ng/irreflexive (view-of content {edge :monotonic}))
             (ng/irreflexive (view-of (remove #{edge} content)))]))))
 
 (deftest an-irreflexive-mark-without-a-self-tuple-convicts-nothing
-  (is (= [] (ng/irreflexive (view-of '[(irreflexive largerThan) (largerThan Rex Tom)
-                                       (largerThan Tom Rex) (smallerThan Rex Rex)])))))
+  (is (= [] (ng/irreflexive (view-of '[(irreflexive typeLargerThan) (typeLargerThan Rex Tom)
+                                       (typeLargerThan Tom Rex) (smallerThan Rex Rex)])))))
 
 ;; ---- anti_symmetric ----------------------------------------------------------
 
@@ -400,7 +400,7 @@
   (let [content (concat two-claims-world
                         '[(disjoint animal plant) (tree Bone1) (animal Bone1)
                           (functional ageOf) (ageOf Bob 5) (ageOf Bob 6)
-                          (asymmetric largerThan) (largerThan Rex Tom) (largerThan Tom Rex)
+                          (asymmetric typeLargerThan) (typeLargerThan Rex Tom) (typeLargerThan Tom Rex)
                           (irreflexive fondOf) (fondOf Rex Rex)
                           (anti_symmetric atOrAbove) (atOrAbove Ann Bob) (atOrAbove Bob Ann)
                           (anti_transitive parentOf) (parentOf Ann Bob) (parentOf Bob Cy)

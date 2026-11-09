@@ -26,7 +26,7 @@
   layer a caller names is discovered, so a sibling directory under `kb/` that names no
   layer here is not loaded: `kb/koinii/` is one, an application's own context files, which
   that application loads for itself.  What stays in **code** (vaelii.host.core-context,
-  vaelii.host.starter) is the *order* the layers load in and the one computed batch.
+  vaelii.host.starter) is the *order* the layers load in.
   Sentences read with `clojure.edn`, so a KB file is data and can never run code."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]

@@ -324,7 +324,7 @@
 ;; about one pair rather than for the closure.
 
 (tu/deftest-kb declared-transitive-closure-and-its-limits
-  (let [larger (tu/tmp-pred "largerThan")
+  (let [larger (tu/tmp-pred "typeLargerThan")
         r      (fn [i] (tu/fresh-term :individual (str "R" i)))
         rs     (mapv r (range 6))]
     (v/assert kb (list 'transitive larger) 'CxUniverse)
@@ -344,7 +344,7 @@
   ;; The membership question is not the closure question.  Building the closure to
   ;; answer it charges a near pair for the whole extent; `reaches?` stops at the
   ;; sighting, so a two-hop answer never visits the far end of the chain.
-  (let [larger (tu/tmp-pred "largerThan")
+  (let [larger (tu/tmp-pred "typeLargerThan")
         r      (fn [i] (tu/fresh-term :individual (str "R" i)))
         n      60
         rs     (mapv r (range (inc n)))]
@@ -385,25 +385,25 @@
   ;; arrives late and is retracted again, because the failures worth catching here are
   ;; a fan that reads every predicate and a closure cache that outlives the edge —
   ;; both invisible to a test that asserts everything first and asks once.
-  (tu/with-terms [largerThan muchLargerThan A B C]
+  (tu/with-terms [typeLargerThan muchLargerThan A B C]
     (v/with-deferred-settle kb
-      (v/assert kb (list 'transitive largerThan) 'CxUniverse)
+      (v/assert kb (list 'transitive typeLargerThan) 'CxUniverse)
       (v/assert kb (list muchLargerThan A B) 'CxUniverse)
-      (v/assert kb (list largerThan B C) 'CxUniverse))
-    (is (not (v/ask? kb (list largerThan A C) 'CxUniverse))
+      (v/assert kb (list typeLargerThan B C) 'CxUniverse))
+    (is (not (v/ask? kb (list typeLargerThan A C) 'CxUniverse))
         "without the edge the sub-predicate's fact is not a hop, and the chain is broken")
-    (v/assert kb (list 'genl muchLargerThan largerThan) 'CxUniverse)
-    (is (v/ask? kb (list largerThan A C) 'CxUniverse)
+    (v/assert kb (list 'genl muchLargerThan typeLargerThan) 'CxUniverse)
+    (is (v/ask? kb (list typeLargerThan A C) 'CxUniverse)
         "the late edge puts the first hop on the graph")
-    (is (not (v/ask? kb (list largerThan C A) 'CxUniverse)) "and not backwards")
+    (is (not (v/ask? kb (list typeLargerThan C A) 'CxUniverse)) "and not backwards")
     (is (= #{B C} (set (map #(get % '?y)
-                            (v/ask kb (list largerThan A '?y) 'CxUniverse))))
+                            (v/ask kb (list typeLargerThan A '?y) 'CxUniverse))))
         "the open goal enumerates through the fan too")
     (is (not (v/ask? kb (list muchLargerThan A C) 'CxUniverse))
         "transitivity stays with the predicate that declared it")
-    (v/retract! kb (v/handle-of kb (list 'genl muchLargerThan largerThan)
+    (v/retract! kb (v/handle-of kb (list 'genl muchLargerThan typeLargerThan)
                                 'CxUniverse))
-    (is (not (v/ask? kb (list largerThan A C) 'CxUniverse))
+    (is (not (v/ask? kb (list typeLargerThan A C) 'CxUniverse))
         "and retracting the edge breaks the chain again")))
 
 (tu/deftest-kb a-partner-spelled-edge-of-a-sub-predicate-is-an-edge-of-the-super

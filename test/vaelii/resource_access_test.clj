@@ -82,6 +82,6 @@
   (is (= '{ReadAccessFn readAccessOf, WriteAccessFn writeAccessOf, ShellAccessFn shellAccessOf,
            AdminAccessFn adminAccessOf, DeployAccessFn deployAccessOf,
            MergeAccessFn mergeAccessOf}
-         (into {} (for [b (v/ask kb '(functionCorrespondingPredicate ?f ?p) CPT)
+         (into {} (for [b (v/ask kb '(functionCorrespondingPredicate ?f ?p 2) CPT)
                         :when (.endsWith (name (get b '?f)) "AccessFn")]
                     [(get b '?f) (get b '?p)])))))

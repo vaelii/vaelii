@@ -470,11 +470,11 @@
             "decided is not exposed")))))
 
 (tu/deftest-kb an-asymmetric-claim-written-across-an-edge-is-decided-at-the-viewer
-  (tu/with-terms [CxA CxB CxW largerThan Rex Pip]
-    (let [one (list largerThan Rex Pip)
-          two (list largerThan Pip Rex)]
+  (tu/with-terms [CxA CxB CxW typeLargerThan Rex Pip]
+    (let [one (list typeLargerThan Rex Pip)
+          two (list typeLargerThan Pip Rex)]
       (split-pair! kb {:a CxA :b CxB :w CxW :decl 'asymmetric
-                       :pred largerThan :one one :two two})
+                       :pred typeLargerThan :one one :two two})
       (is (= [:asymmetric] (mapv :kind (v/contradictions kb))))
       (is (= #{#{[one CxA] [two CxB]}} (decided-pairs kb)))
       (testing "two defaults cannot be ranked, so both claims stand"
@@ -795,10 +795,10 @@
         (is (empty? (filter (comp #{:functional} :violation) (v/violations kb))))))))
 
 (tu/deftest-kb an-asymmetric-mark-descends-to-a-claim-written-across-an-edge
-  (tu/with-terms [CxA CxB CxW muchLargerThan largerThan Rex Pip]
+  (tu/with-terms [CxA CxB CxW muchLargerThan typeLargerThan Rex Pip]
     (let [one (list muchLargerThan Rex Pip)
           two (list muchLargerThan Pip Rex)]
-      (v/assert kb (list 'asymmetric largerThan) 'CxUniverse)
+      (v/assert kb (list 'asymmetric typeLargerThan) 'CxUniverse)
       (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
       (v/assert kb (list 'genlCx CxB 'CxUniverse) 'CxUniverse)
       (v/assert kb (list 'genlCx CxW CxA) 'CxUniverse)
@@ -806,7 +806,7 @@
       (v/assert kb one CxA)
       (v/assert kb two CxB)
       (is (empty? (v/contradictions kb)))
-      (v/assert kb (list 'genl muchLargerThan largerThan) 'CxUniverse)
+      (v/assert kb (list 'genl muchLargerThan typeLargerThan) 'CxUniverse)
       (is (= [:asymmetric] (mapv :kind (v/contradictions kb))))
       (is (= #{#{[one CxA] [two CxB]}} (decided-pairs kb)))
       (is (empty? (filter (comp #{:asymmetric} :violation) (v/violations kb)))))))

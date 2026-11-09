@@ -42,7 +42,7 @@
   (is (holds-genl 'discord_message 'digital_artifact CPT))
   (is (holds-ask '(quotedArg DiscordMessageFn 1 string) CPT))
   (is (holds-ask '(result DiscordMessageFn discord_message) CPT))
-  (is (holds-ask '(functionCorrespondingPredicate DiscordMessageFn discordMessageOf) CPT))
+  (is (holds-ask '(functionCorrespondingPredicate DiscordMessageFn discordMessageOf 2) CPT))
   (is (holds-ask '(quotedArg discordMessageOf 1 string) CPT))
   (is (holds-ask '(arg discordMessageOf 2 discord_message) CPT))
   (is (holds-ask '(functional discordMessageOf) CPT))
