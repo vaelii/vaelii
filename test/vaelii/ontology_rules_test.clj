@@ -131,7 +131,7 @@
         root-denial '(implies (properPartOf ?part ?whole) (not (partOf ?whole ?part)))
         definition? #(some #{root-denial} (:sentences %))
         rigidity    '#{time_invariant_relation time_agnostic_relation time_varying_relation
-                      eternal_predicate}
+                       eternal_predicate situation_predicate}
         rigidity?   (fn [pair] (every? #(contains? rigidity (first (nth % 2))) (:sentences pair)))
         acked       (filter :acknowledged pairs)]
     (is (empty? live)

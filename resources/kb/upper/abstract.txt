@@ -451,7 +451,7 @@
 ;; --- subSituationOf: a situation that is part of another ---------------------
 (comment subSituationOf
          "(subSituationOf ?part ?whole) means that the situation ?part is a part of the situation ?whole. Declared transitive, so a part of a part is a part. A part's time is within its whole's time. The converse does not hold: two situations sharing a time are not thereby parts of one another. subSituationOf supplies parthood only. It rolls no role of the part up to the whole, and it closes no situation under the sum of its parts.")
-(set/monotonic (eternal_predicate subSituationOf))
+(set/monotonic (situation_predicate subSituationOf))
 (implementationNote subSituationOf "No rule concludes the temporal containment of a part in its whole. The upper ontology has no relation for one time falling within another that covers an intermittent time.")
 (set/monotonic (instance_relation_predicate subSituationOf))
 (arg subSituationOf 1 situation)
@@ -463,6 +463,7 @@
 (comment properSubSituationOf
          "(properSubSituationOf ?part ?whole) means that the situation ?part is a part of the situation ?whole and ?whole is not a part of ?part.")
 (set/monotonic (instance_relation_predicate properSubSituationOf))
+(set/monotonic (situation_predicate properSubSituationOf))
 (arg properSubSituationOf 1 situation)
 (arg properSubSituationOf 2 situation)
 (set/monotonic (irreflexive properSubSituationOf))
@@ -549,9 +550,11 @@
 (arg actor 1 situation)
 (arg actor 2 thing)
 ;; A situation is a whole that timeOf places in time and nothing slices by time.
-;; Participation records that whole history, not who is participating now: every
-;; binary spec of actor is eternal, even before or after either participant exists.
-(set/forwardRule (implies (and (binary_predicate ?relation) (genl ?relation actor)) (eternal_predicate ?relation)))
+;; Participation records that whole history, not who is participating now: actor and
+;; every binary spec of it is a situation_predicate, and so eternal, even before or after
+;; either participant exists.
+(set/monotonic (situation_predicate actor))
+(set/forwardRule (implies (and (binary_predicate ?relation) (genl ?relation actor)) (situation_predicate ?relation)))
 
 (comment thingPerceived "(thingPerceived ?happening ?thing) means that ?thing is what is perceptually taken in during ?happening.")
 (set/monotonic (instance_relation_predicate thingPerceived))

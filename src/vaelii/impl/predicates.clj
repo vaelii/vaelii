@@ -1369,6 +1369,7 @@
            [time_indexed_relation "ontology, not grammar: a relation one argument of which names the time a tuple holds at, below time_invariant_relation. temporalIndexArg's first argument is typed time_indexed_relation, so a fact of it makes the relation one; no engine check names it."]
            [eternal_predicate "ontology, not grammar: a predicate whose tuples hold independently of time within a theory, below time_invariant_relation. No engine projection reads this mark yet; temporal support is tracked in #272."]
            [documentation_predicate "ontology, not grammar: a predicate documenting a term, implementation or usage example, below eternal_predicate. It classifies the annotation, not the truth or temporality of a quoted example; no engine check names it."]
+           [situation_predicate "ontology, not grammar: a predicate whose first argument is a situation and whose truth that situation fixes, below eternal_predicate. No engine check names it; the arg-1 constraint is checked by test, not by rule (#273)."]
            [stable_once_true "ontology, not grammar: a time-varying relation that, once it holds at a time, holds at every later time. No engine check names it."]
            [stable_once_false "ontology, not grammar: a time-varying relation that, once it fails at a time, fails at every later time. No engine check names it."]])
 

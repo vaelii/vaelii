@@ -261,6 +261,7 @@
 
 (comment toolInvocationArg "(toolInvocationArg ?invocation ?key ?value) means that ?invocation passed the argument named ?key with the value ?value, in the text form the call carried, e.g. the key pattern with the value written for one run.")
 (ternary_predicate toolInvocationArg)
+(set/monotonic (situation_predicate toolInvocationArg))
 (arg toolInvocationArg 1 tool_invocation)
 (quotedArg toolInvocationArg 2 string)
 (quotedArg toolInvocationArg 3 string)

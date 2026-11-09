@@ -126,6 +126,10 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `fileLookupOf`) and stable-ID correspondences (`discordChannelOf`, `discordMessageOf`,
   `pullRequestOf`) are time-invariant, and their constructors take that kind through the
   correspondence. `alterOf` and `headmateOf` are time-varying and `carries` time-agnostic.
+  `situation_predicate`, below `eternal_predicate`, holds predicates whose first argument
+  is a situation that fixes their truth: `actor` and its binary specs, `subSituationOf`,
+  `properSubSituationOf` and `toolInvocationArg`. Taking a situation first does not by
+  itself make a predicate one.
   A `properCounterpart` pair passes rigidity only in its sound directions: a
   time-invariant or eternal relation has a time-invariant or eternal proper reading,
   and a time-agnostic proper reading has a time-agnostic relation. Time variance reaches

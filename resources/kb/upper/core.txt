@@ -1147,6 +1147,12 @@
 (set/monotonic (time_invariant_relation documentation_predicate))
 (not (decontextualized_predicate documentation_predicate))
 
+(comment situation_predicate "A predicate whose first argument is a situation and whose truth is fixed by that situation: a participant of an event, a part of a situation, an argument a call passed. A situation is a whole that timeOf places in time, so such a tuple records that whole and not what holds now, and every situation_predicate is an eternal_predicate. Taking a situation first does not by itself make a predicate one.")
+(unary_predicate situation_predicate)
+(set/monotonic (genl situation_predicate eternal_predicate))
+(set/monotonic (time_invariant_relation situation_predicate))
+(not (decontextualized_predicate situation_predicate))
+
 ;; Some time-varying relations change one way only.  An organism that is dead stays
 ;; dead, and one that is not alive is never alive again.  Each is a kind of
 ;; time_varying_relation, so a relation no instance could lose is neither.
@@ -2863,8 +2869,8 @@
    (Quote (implies (and (properCounterpart ?pred ?proper) (time_agnostic_relation ?proper))
                    (time_agnostic_relation ?pred)))
    (Quote (implies (and (binary_predicate ?relation) (genl ?relation actor))
-                   (eternal_predicate ?relation))))
-  "Both rules fire for one relation only where it is a binary spec of actor with a time-agnostic proper reading. The eternal transfer then makes that proper reading eternal, so the facts already contradict the transfers, and the clash is the one they owe.")
+                   (situation_predicate ?relation))))
+  "Both rules fire for one relation only where it is a binary spec of actor, so a situation_predicate and eternal, with a time-agnostic proper reading. The eternal transfer then makes that proper reading eternal, so the facts already contradict the transfers, and the clash is the one they owe.")
 (acknowledgedFinding :rule-clash
   (RulePairFn
    (Quote (implies (and (properCounterpart ?pred ?proper) (time_agnostic_relation ?proper))

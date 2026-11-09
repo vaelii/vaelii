@@ -497,3 +497,24 @@
     (all-of-kind kb 'time_varying_relation '[controlPlaneNode workerNode] 'CxTra))
   (testing "FilePathRefFn takes filePathRefOf's kind through the correspondence"
     (all-of-kind kb 'time_invariant_relation '[filePathRefOf FilePathRefFn] 'CxTra)))
+
+(tu/deftest-kb situation-predicates-are-eternal-and-take-a-situation-first
+  (is (v/genl? kb 'situation_predicate 'eternal_predicate))
+  (testing "the stated members and an actor spec derive eternal through the genl"
+    (doseq [[r cx] '[[subSituationOf CxUniverse] [properSubSituationOf CxUniverse]
+                     [actor CxUniverse] [thingPerceived CxUniverse] [toolInvocationArg CxTra]]]
+      (is (true? (v/ask? kb (list 'situation_predicate r) cx)) (str r " is a situation_predicate"))
+      (is (true? (v/ask? kb (list 'eternal_predicate r) cx)) (str r " is eternal"))))
+  (testing "every shipped situation_predicate takes a situation first"
+    (doseq [cx '[CxUniverse CxTra]
+            {r '?r} (v/query kb '(situation_predicate ?r) cx)]
+      (let [types (map #(get % '?t) (v/query kb (list 'arg r 1 '?t) cx))]
+        (is (seq types) (str r " declares its first argument"))
+        (doseq [t types]
+          (is (v/genl? kb t 'situation) (str r "'s first argument " t " is a situation"))))))
+  (testing "taking a situation first does not make a predicate a situation_predicate"
+    (tu/with-terms [happenedNear]
+      (v/assert kb (list 'binary_predicate happenedNear) 'CxUniverse)
+      (v/assert kb (list 'arg happenedNear 1 'situation) 'CxUniverse)
+      (v/assert kb (list 'arg happenedNear 2 'thing) 'CxUniverse)
+      (is (not (v/ask? kb (list 'situation_predicate happenedNear) 'CxUniverse))))))

@@ -361,9 +361,9 @@
 ;; 279 types, 38,781 pairs, 32,624 disjoint (84.1237%) and 2,447 unknown (6.3098%).
 ;; The -0.4263 / +0.2498 pp shifts from develop satisfy the standing 0.5 pp allowance.
 ;;
-;; sempiternal (#190) adds one type with only its three genl edges, so most new pairs
-;; are unknown: 280 types, 39,060 pairs, 32,624 disjoint unchanged (83.5228%, -0.6009pp),
-;; 2,537 unknown (6.4951%, +0.1853pp) — past the 0.5pp allowance, so both floors below move.
+;; With sempiternal and situation_predicate: 281 types, 39,340 pairs, 32,819 disjoint
+;; (83.4240%) and 2,589 unknown (6.5811%). situation_predicate moved them -0.0988 and
+;; +0.0860 pp, within the allowance.
 
 (tu/deftest-kb disjointness-coverage-ratchet
   (let [a          (v/disjointness-audit kb)
@@ -373,12 +373,12 @@
         unknown    (get by-status :unknown 0)
         disjoint-% (* 100.0 (/ disjoint pairs))
         unknown-%  (* 100.0 (/ unknown pairs))]
-    (is (>= disjoint 32624)
-        (format "disjoint pairs must not fall below 32624 (got %d)" disjoint))
-    (is (>= disjoint-% 83.52)
-        (format "disjoint coverage must not regress below 83.52%% (got %.2f%%)" disjoint-%))
-    (is (<= unknown-% 6.50)
-        (format "unknown pairs must not grow above 6.50%% (got %.2f%%)" unknown-%))))
+    (is (>= disjoint 32819)
+        (format "disjoint pairs must not fall below 32819 (got %d)" disjoint))
+    (is (>= disjoint-% 83.42)
+        (format "disjoint coverage must not regress below 83.42%% (got %.2f%%)" disjoint-%))
+    (is (<= unknown-% 6.59)
+        (format "unknown pairs must not grow above 6.59%% (got %.2f%%)" unknown-%))))
 
 (tu/deftest-kb the-audits-between-two-writes-ask-a-ground-goal-once
   (tu/with-terms [a_kind b_kind]
