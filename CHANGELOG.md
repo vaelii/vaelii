@@ -14,6 +14,13 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Internal: disjointness audit
+
+- **`disjointness-audit` prepares taxonomy reads once per row.** Each row holds its
+  first type's global ancestor and descendant sets and contextual disjointness predicate.
+  Pair statuses, witnesses, ordering and facts-only queries retain their existing reading.
+  The audit releases the prepared references after each row.
+
 ### Breaking: storage
 
 - **A ground application of a reifiable function can be a literal's predicate**

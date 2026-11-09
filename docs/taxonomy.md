@@ -1365,6 +1365,12 @@ declaration separates them, and neither a declaration, a shared instance nor a s
 subtype shows they can overlap — so the modeller decides which they are. The audit reads
 only, and writes nothing.
 
+The audit prepares the first type's global ancestor and descendant sets and contextual
+disjointness predicate once per row. Membership of the second type in those sets answers
+the two subsumption directions. The row releases its references when its pairs finish.
+Other subtype closures remain in the taxonomy's bounded closure cache. The prepared
+reads do not change the facts-only overlap queries or the scoped integrity reading.
+
 `disjointness_audit_test`'s `disjointness-coverage-ratchet` holds the starter KB's audit
 at its current values: a floor on the `:disjoint` pair count, a floor on the disjoint
 fraction and a ceiling on the unknown fraction. A removed separation lowers all three. A
