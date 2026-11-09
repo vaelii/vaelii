@@ -2089,7 +2089,11 @@ accent pair, the term-role colours (`--t-*`) and the nine-step spectrum (`--rb1`
   (`position: sticky`). Below 57rem the menubar takes a row of its own between the brand
   and the search, and the header scrolls away, since four or five lines of it would hold a
   third of a phone screen. A long KB name truncates with an ellipsis before the menubar
-  loses width. The search is an htmx *active search*: a debounced
+  loses width. Press `/` outside an input, textarea, select or contenteditable region
+  to focus the search box and select its current text. The shortcut uses the typed
+  character (including Shift where the keyboard layout requires it), leaves Ctrl,
+  Cmd and Alt combinations alone, and does not run during IME composition or after
+  another handler consumes the key. The search is an htmx *active search*: a debounced
   `hx-get` to `/find` swaps just the
   `#main` region, so it stays focused and no full reload happens. What you type is
   matched against **term names**: a query with no regex metacharacter is a
