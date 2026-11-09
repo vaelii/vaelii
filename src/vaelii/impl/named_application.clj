@@ -180,7 +180,11 @@
                                (reads/as-stored-with-args (:index kb) res/correspondence-predicate {1 f}))]
          (reduce
           (fn [want [{uh :id uc :context} spelling map-handles]]
-            (let [want (reduce
+            (let [want (reduce #(add %1 (list 'natFormula target e) %2
+                                     (into [rh uh] map-handles) (into [rh uh] map-handles)
+                                     spelling e uh)
+                               want (at (into [rh uh] map-handles) [rc uc]))
+                  want (reduce
                         (fn [want {dh :id [pred _ kind] :sentence}]
                           (reduce #(add %1 (if (= pred 'result) (list kind target) (list 'genl target kind))
                                         %2 (into [rh uh dh] map-handles) (into [rh uh] map-handles) spelling e uh)

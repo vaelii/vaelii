@@ -5844,6 +5844,7 @@
                                        (mapcat #(nat-read/fact-constants kb (:sentence %))))
                               preds))))
            all   (into (sorted-set-by #(compare (nm/name-key %1) (nm/name-key %2)))
+                       (filter nat-read/reified-object-symbol?)
                        (concat ks (mapcat of-fn fns) (mapcat valued fact-fns)))]
        (binding [wiring/*defer-settle?* true]
          (into [] (mapcat #(sync-value! kb % deferred)) all))))))

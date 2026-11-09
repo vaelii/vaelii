@@ -18,6 +18,14 @@
   (filter #(let [[f _ e] (:sentence %)] (and (= 'natFormula f) (= expression e)))
           (v/find-sentexes kb 'natFormula)))
 
+(defn- opaque-function-maps
+  "All stored opaque maps of a function, including retired or inner-reified payloads."
+  [kb function]
+  (filter #(let [[_ target expression] (:sentence %)]
+             (and (nat-read/reified-nat-symbol? target)
+                  (seq? expression) (= function (first expression))))
+          (v/find-sentexes kb 'natFormula)))
+
 (defn- declare-function!
   "Declare one application, its result/projection, and two sibling readers on a bare KB."
   ([kb] (declare-function! kb 'CxUniverse 'CxUniverse))
@@ -311,7 +319,8 @@
         (is (= [true true true] (named-answers kb context))
             (pr-str {:alias-first? alias-first? :deferred? deferred? :context context}))
         (when alias-first?
-          (is (zero? (count (application-maps kb '(QualifierFn base))))))
+          (is (empty? (opaque-function-maps kb 'QualifierFn)))
+          (is (true? (v/ask? kb '(natFormula namedRoot (QualifierFn base)) context))))
         (when (= 'CxStory context)
           (is (= [false false false] (named-answers kb 'CxOther)))
           (is (= [false false false] (named-answers kb 'CxUniverse))))))))
@@ -449,6 +458,7 @@
             first-alias (v/assert kb '(rewriteOf firstPair (PairFn A B)) 'CxUniverse)]
         (v/assert kb '(marked firstPair) 'CxUniverse)
         (is (true? (v/ask? kb '(qualified_relation firstPair) 'CxUniverse)))
+        (is (true? (v/ask? kb '(natFormula firstPair (PairFn A B)) 'CxUniverse)))
         (let [second-alias (v/assert kb '(rewriteOf secondPair (PairFn B A)) 'CxUniverse)]
           (v/assert kb '(marked secondPair) 'CxUniverse)
           (is (= (nat-read/sorted-expression kb '(PairFn A B))
@@ -456,13 +466,19 @@
           (is (nil? (nat-read/rewrite-target kb '(PairFn A B) nat-read/nat-namespace 'CxUniverse)))
           (is (false? (v/ask? kb '(qualified_relation firstPair) 'CxUniverse)))
           (is (false? (v/ask? kb '(qualified_relation secondPair) 'CxUniverse)))
+          (is (false? (v/ask? kb '(natFormula firstPair (PairFn A B)) 'CxUniverse)))
+          (is (false? (v/ask? kb '(natFormula secondPair (PairFn A B)) 'CxUniverse)))
           (v/retract! kb @m)
           (is (true? (v/ask? kb '(qualified_relation firstPair) 'CxUniverse)))
           (is (true? (v/ask? kb '(qualified_relation secondPair) 'CxUniverse)))
+          (is (true? (v/ask? kb '(natFormula firstPair (PairFn A B)) 'CxUniverse)))
+          (is (true? (v/ask? kb '(natFormula secondPair (PairFn B A)) 'CxUniverse)))
           (reset! m (v/assert kb mark 'CxUniverse))
           (is (false? (v/ask? kb '(qualified_relation firstPair) 'CxUniverse)))
+          (is (false? (v/ask? kb '(natFormula firstPair (PairFn A B)) 'CxUniverse)))
           (v/retract! kb first-alias)
           (is (true? (v/ask? kb '(qualified_relation secondPair) 'CxUniverse)))
+          (is (true? (v/ask? kb '(natFormula secondPair (PairFn A B)) 'CxUniverse)))
           (is (true? (v/ask? kb '(pairProjection A B secondPair) 'CxUniverse)))
           (v/retract! kb second-alias))))))
 
@@ -477,7 +493,8 @@
       (v/assert kb s 'CxUniverse))
     (is (true? (v/ask? kb '(outerProjection (InnerFn X) namedRoot) 'CxUniverse)))
     (is (= 1 (count (application-maps kb '(InnerFn X)))))
-    (is (zero? (count (application-maps kb '(OuterFn (InnerFn X))))))
+    (is (empty? (opaque-function-maps kb 'OuterFn)))
+    (is (true? (v/ask? kb '(natFormula namedRoot (OuterFn (InnerFn X))) 'CxUniverse)))
     (is (false? (:truncated? (v/forward-chain kb {:max-derivations 100 :max-ms 10000}))))
     (let [n (count (p/justification-ids (:records kb)))]
       (is (false? (:truncated? (v/forward-chain kb {:max-derivations 100 :max-ms 10000}))))
@@ -491,10 +508,13 @@
     (v/assert kb '(genlCx CxVia CxUniverse) 'CxUniverse)
     (v/assert kb '(rewriteOf namedRoot (QualifierFn base)) 'CxUniverse)
     (v/assert kb '(related publicPeer Other) 'CxUniverse)
-    (let [goals #(mapv (fn [c] (take 2 (named-answers kb c))) '[CxUniverse CxSecret CxOther])
-          private-answer [[false false] [true true] [false false]]
+    (let [goals #(mapv (fn [c]
+                         (conj (vec (take 2 (named-answers kb c)))
+                               (v/ask? kb '(natFormula namedRoot (QualifierFn base)) c)))
+                       '[CxUniverse CxSecret CxOther])
+          private-answer [[false false false] [true true true] [false false false]]
           h (atom nil)]
-      (is (= [[false false] [false false] [false false]] (goals)))
+      (is (= [[false false false] [false false false] [false false false]] (goals)))
       (reset! h (v/assert kb '(rewriteOf publicPeer namedRoot) 'CxSecret))
       (is (= private-answer (goals)))
       (let [a (v/assert kb '(equals namedRoot intermediatePeer) 'CxSecret)
@@ -503,13 +523,13 @@
         (is (= private-answer (goals)))
         (v/retract! kb a)
         (v/retract! kb b))
-      (is (= [[false false] [false false] [false false]] (goals)))
+      (is (= [[false false false] [false false false] [false false false]] (goals)))
       (reset! h (v/assert kb '(rewriteOf publicPeer namedRoot) 'CxVia))
-      (is (= [[false false] [false false] [false false]] (goals)))
+      (is (= [[false false false] [false false false] [false false false]] (goals)))
       (let [via (v/assert kb '(genlCx CxSecret CxVia) 'CxUniverse)]
         (is (= private-answer (goals)))
         (v/retract! kb via)
-        (is (= [[false false] [false false] [false false]] (goals)))))))
+        (is (= [[false false false] [false false false] [false false false]] (goals)))))))
 
 (deftest a-nested-mint-is-not-its-outer-named-targets-independent-demand
   (tu/with-neutral-kb [kb tu/isolated-fresh]
@@ -539,4 +559,4 @@
           (is (true? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse)))
           (v/retract! kb independent)
           (is (false? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse))))
-        (is (zero? (count (application-maps kb '(OuterFn (InnerFn namedRoot))))))))))
+        (is (empty? (opaque-function-maps kb 'OuterFn)))))))
