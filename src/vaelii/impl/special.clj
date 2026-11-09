@@ -2743,7 +2743,10 @@
   specifically withdraws it as it withdraws a mint it meets on arrival."
   [kb h]
   (when (and argument/*assertive-arg-types?* checks/*prune-subsumed-mints?*)
-    (swap! (reasoning/mint-queues kb) update :unpremised (fnil conj []) h)))
+    (swap! (reasoning/mint-queues kb) update :unpremised (fnil conj []) h))
+  (when (nat-read/named-values-reachable? kb)
+    (when-let [s (some-> (p/get-sentex (:records kb) h) sx/sentence-of)]
+      (nat-read/note-values kb [s] true))))
 
 (defn- drain-unpremised!
   "The handles `note-unpremised!` queued since the last drain, and the queue emptied."

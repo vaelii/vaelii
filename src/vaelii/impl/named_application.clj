@@ -2,15 +2,19 @@
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.impl.named-application
   "Supported results and projections of independently used compound rewrite targets."
-  (:require [vaelii.impl.integrate :as integrate]
+  (:require [vaelii.impl.checks :as checks]
+            [vaelii.impl.integrate :as integrate]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.naming :as nm]
+            [vaelii.impl.nat :as nat]
             [vaelii.impl.nat-read :as nat-read]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
+            [vaelii.impl.rewrite :as rewrite]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.special :as special]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]))
 
@@ -19,15 +23,28 @@
   ::named-application)
 
 (defn- target-records
-  "Target-index rows, including the target's spellings in the contexts naming it."
+  "Indexed target/application records; maps witness spelling, never independent demand."
   [kb target]
-  (let [rows (vec (kb/find-sentexes kb target))
-        names (into #{target} (map #(res/normal-form kb target (res/visible-supporter-fn kb (:context %)))) rows)]
-    [names (vec (distinct (mapcat #(kb/find-sentexes kb %) names)))]))
+  (let [names (tax/equiv-class (reasoning/taxonomy kb) target)
+        tms (reasoning/tms kb)]
+    (loop [todo (vec names), seen #{}, rows {}, maps {}]
+      (if-let [term (peek todo)]
+        (if (contains? seen term)
+          (recur (pop todo) seen rows maps)
+          (let [rs (kb/find-sentexes kb term)
+                ms (filter (fn [{h :id c :context [f k e] :sentence}]
+                             (and (= 'natFormula f) (= sx/root-context c) (seq? e)
+                                  (nat-read/reified-nat-symbol? k)
+                                  (or (jtms/in? tms h)
+                                      (and (jtms/premise? tms h) (jtms/network-in? tms h))))) rs)]
+            (recur (into (pop todo) (map #(second (:sentence %))) ms)
+                   (conj seen term) (into rows (map (juxt :id identity)) rs)
+                   (into maps (map (juxt :id identity)) ms))))
+        [names (vec (vals rows)) (vec (vals maps))]))))
 
 (defn- independent-handles
   "Candidate handles with finite live proofs not using this target's materialization."
-  [kb handles names]
+  [kb handles names bookkeeping]
   (let [tms (reasoning/tms kb)
         owned? #(and (= informant (:informant %))
                      (contains? names (get (:bindings (p/get-justification (:records kb) (:id %))) '?named-target)))
@@ -44,23 +61,67 @@
         inert (into #{} (filter #(and (not (jtms/known-datum? tms %))
                                       (p/get-sentex (:records kb) %))) nodes)
         out (into #{} (filter #(and (jtms/known-datum? tms %) (not (jtms/network-in? tms %)))) nodes)]
-    (jtms/region-in tms nodes nodes inert out nil invalid)))
+    ;; Intrinsic mint premises are not demand roots, but a separate justification of
+    ;; the same row can still prove it. region-in's extra means forced OUT, so use its
+    ;; public justification predicate with a target-local, seed-filtered fixpoint.
+    (let [eligible? #(and (not (contains? out %)) (not (jtms/forced? tms :out %)))
+          seed (into inert (filter #(and (jtms/premise? tms %) (eligible? %)
+                                         (not (contains? bookkeeping %)))) nodes)
+          js (into [] (comp (mapcat #(jtms/supports tms %)) (distinct)
+                            (keep #(jtms/justification tms %))) nodes)
+          valid? (jtms/region-valid-fn tms nodes nil invalid)]
+      (loop [in seed]
+        (let [next-in (reduce (fn [acc j]
+                                (let [h (:consequence j)]
+                                  (if (and (eligible? h) (valid? acc j)) (conj acc h) acc))) in js)]
+          (if (= in next-in) in (recur next-in)))))))
 
-(defn- uses-name?
-  "Does a sentence use a target spelling outside quoting and modal mention positions?"
-  [kb names form]
+(defn- used-spellings
+  "Semantic target spellings and map witnesses; quoting is not an application use."
+  [kb names mappings form]
   (let [modal (:modal (tax/mention-marks (reasoning/taxonomy kb)))]
-    (letfn [(used? [x]
+    (letfn [(used? [seen x]
               (cond
-                (contains? names x) true
-                (vector? x) (boolean (some used? x))
+                (contains? names x) #{[x #{}]}
+                (and (symbol? x) (contains? mappings x) (not (contains? seen x)))
+                (let [{:keys [expression handles]} (get mappings x)]
+                  (into #{} (map (fn [[spelling hs]] [spelling (into hs handles)]))
+                        (used? (conj seen x) expression)))
+                (vector? x) (into #{} (mapcat #(used? seen %)) x)
                 (seq? x) (cond
                            (or (sx/quoting-functor? (first x))
-                               (contains? res/nat-quoting-predicates (first x))) false
-                           (res/attitude-application? modal x) (or (used? (first x)) (used? (second x)))
-                           :else (boolean (some used? x)))
-                :else false))]
-      (used? form))))
+                               (contains? res/nat-quoting-predicates (first x))) #{}
+                           (res/attitude-application? modal x)
+                           (into (used? seen (first x)) (used? seen (second x)))
+                           :else (into #{} (mapcat #(used? seen %)) x))
+                :else #{}))]
+      (used? #{} form))))
+
+(defn- proof-placements
+  "Readers and equality/topology witnesses for a use spelling and original conclusion."
+  [kb target spelling sentence base local-handles]
+  (let [tx (reasoning/taxonomy kb)
+        probe (list 'and sentence (list 'equals target spelling))
+        readers (distinct (cons base (special/reader-contexts-at kb base probe)))]
+    (for [reader readers
+          :let [visible? (res/visible-supporter-fn kb reader)]
+          :when (and (res/same-class-in? kb target spelling reader)
+                     (every? #(res/supporter-visible? kb % reader false) local-handles))
+          :let [paths (concat
+                       (when (not= target spelling)
+                         [(tax/scoped-path-supporters tx target spelling visible?)])
+                       (keep (fn [[a b]] (tax/scoped-path-supporters tx a b visible?))
+                             (kb/displaced-terms* kb sentence visible?)))
+                rule-handles (into #{} (keep #(when (and (visible? (:handle %))
+                                                         (rewrite/rule-applies? % sentence)) (:handle %)))
+                                   (tax/rewrite-rules tx))
+                alternatives (reduce (fn [acc path]
+                                       (for [a acc, b (tax/path-alternatives path)] (into a b)))
+                                     [rule-handles] paths)]
+          witnesses alternatives
+          :let [hs (into (set local-handles) witnesses)
+                topology (mapcat #(checks/visibility-support kb % reader) hs)]]
+      [reader (into witnesses topology)])))
 
 (defn- rewrites
   "Stored compound rewrite rows naming this target."
@@ -73,40 +134,54 @@
 
 (defn- wanted
   "The named facts and support sets the current independent uses and rewrites warrant."
-  [kb target names rows]
-  (let [independent (independent-handles kb (map :id rows) names)
-        uses (filter #(and (contains? independent (:id %))
-                           (not (contains? '#{rewriteOf natFormula} (nm/functor (:sentence %))))
-                           (uses-name? kb names (sx/sentence-of %))) rows)
+  [kb target names rows maps]
+  (let [bookkeeping (into #{} (mapcat #(nat/bookkeeping-handles kb (second (:sentence %)))) maps)
+        mappings (into {} (map (fn [[k ms]]
+                                 [k {:expression (nm/min-by-content-key #(nth (:sentence %) 2) ms)
+                                     :handles (mapv :id ms)}]))
+                       (group-by #(second (:sentence %)) maps))
+        mappings (into {} (map (fn [[k m]] [k (update m :expression #(nth (:sentence %) 2))])) mappings)
+        independent (independent-handles kb (map :id rows) names bookkeeping)
+        uses (for [row rows
+                   :when (and (contains? independent (:id row))
+                              (not (kb/equality-sentence? (:sentence row)))
+                              (not= 'natFormula (nm/functor (:sentence row))))
+                   [spelling map-handles] (used-spellings kb names mappings (sx/sentence-of row))]
+               [row spelling map-handles])
         recs (:records kb)
         at #(res/exception-aware-placements kb %1 %2)
-        add (fn [want sentence context antes]
-              (update want [(kb/canonical-sentence kb sentence context) context] (fnil conj #{}) (set antes)))]
+        add (fn [want sentence base antes local-handles spelling e]
+              (reduce (fn [want [reader witnesses]]
+                        (if (= (res/normal-form kb target (res/visible-supporter-fn kb reader))
+                               (nat-read/rewrite-target kb e nat-read/nat-namespace reader))
+                          (let [normalized (kb/rewrite-term kb sentence reader)
+                                s (kb/canonical-sentence kb (nat-read/reify-existing kb normalized reader) reader)]
+                            (update want [s reader] (fnil conj #{}) (into (set antes) witnesses)))
+                          want))
+                      want (proof-placements kb target spelling sentence base local-handles)))]
     (reduce
      (fn [want {rh :id rc :context [_ _ e] :sentence}]
-       (let [f (first e)
+       (let [e (nat-read/sorted-expression kb e)
+             f (first e)
              declarations (concat (kb/sentexes-matching kb (list 'result f '?t) '?ctx)
                                   (kb/sentexes-matching kb (list 'genlResult f '?t) '?ctx))
              projections (keep #(p/get-sentex recs %)
-                               (reads/as-stored-with-args (:index kb) res/correspondence-predicate {1 f}))
-             unique? (fn [c] (= (res/normal-form kb target (res/visible-supporter-fn kb c))
-                                (nat-read/rewrite-target kb e nat-read/nat-namespace c)))]
+                               (reads/as-stored-with-args (:index kb) res/correspondence-predicate {1 f}))]
          (reduce
-          (fn [want {uh :id uc :context}]
+          (fn [want [{uh :id uc :context} spelling map-handles]]
             (let [want (reduce
                         (fn [want {dh :id [pred _ kind] :sentence}]
-                          (reduce #(if (unique? %2)
-                                     (add %1 (if (= pred 'result) (list kind target) (list 'genl target kind))
-                                          %2 [rh uh dh]) %1)
-                                  want (at [rh uh] [rc uc])))
+                          (reduce #(add %1 (if (= pred 'result) (list kind target) (list 'genl target kind))
+                                        %2 (into [rh uh dh] map-handles) (into [rh uh] map-handles) spelling e)
+                                  want (at (into [rh uh] map-handles) [rc uc])))
                         want declarations)]
               (reduce
                (fn [want {dh :id dc :context [_ _ pred :as declaration] :sentence}]
                  (let [pos (res/stated-position declaration)]
                    (if (and pos (<= pos (inc (count (rest e)))))
-                     (reduce #(if (unique? %2)
-                                (add %1 (apply list pred (res/insert-at (rest e) pos target)) %2 [rh uh dh]) %1)
-                             want (at [rh uh dh] [rc uc dc]))
+                     (reduce #(add %1 (apply list pred (res/insert-at (rest e) pos target))
+                                   %2 (into [rh uh dh] map-handles) (into [rh uh dh] map-handles) spelling e)
+                             want (at (into [rh uh dh] map-handles) [rc uc dc]))
                      want))) want projections)))
           want uses)))
      {} (rewrites kb target))))
@@ -116,8 +191,8 @@
   [kb target place! defer!]
   (let [tms (reasoning/tms kb)
         recs (:records kb)
-        [names rows] (target-records kb target)
-        want (wanted kb target names rows)
+        [names rows maps] (target-records kb target)
+        want (wanted kb target names rows maps)
         mine? #(when-let [j (p/get-justification recs %)]
                  (and (= informant (:informant j)) (= target (get (:bindings j) '?named-target))))
         ids (into #{} (filter mine?)

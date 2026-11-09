@@ -4,7 +4,15 @@
   "A correspondence keeps the mint map its own supported rewrite supersedes."
   (:require [clojure.test :refer [deftest is]]
             [vaelii.core :as v]
+            [vaelii.impl.nat-read :as nat-read]
+            [vaelii.impl.protocols :as p]
             [vaelii.test-util :as tu]))
+
+(defn- application-maps
+  "Every stored map of expression, including retired maps, not only believed ones."
+  [kb expression]
+  (filter #(let [[f _ e] (:sentence %)] (and (= 'natFormula f) (= expression e)))
+          (v/find-sentexes kb 'natFormula)))
 
 (defn- declare-function!
   "Declare one application, its result/projection, and two sibling readers on a bare KB."
@@ -81,7 +89,7 @@
         (is (= [true true true] (named-answers kb context))
             (pr-str {:alias-first? alias-first? :deferred? deferred? :context context}))
         (when alias-first?
-          (is (empty? (v/sentexes-matching kb '(natFormula ?k ?e) 'CxUniverse))))
+          (is (zero? (count (application-maps kb '(QualifierFn base))))))
         (when (= 'CxStory context)
           (is (= [false false false] (named-answers kb 'CxOther)))
           (is (= [false false false] (named-answers kb 'CxUniverse))))))))
@@ -207,3 +215,106 @@
     (is (true? (v/ask? kb '(genlResult PredicateQualifierFn superPredicate) 'CxUniverse)))
     (is (true? (v/ask? kb '(related namedPredicate Other) 'CxUniverse)))
     (is (false? (v/ask? kb '(genl namedPredicate superPredicate) 'CxUniverse)))))
+
+(deftest commuting-alias-peers-are-invalidated-on-alias-and-mark-changes
+  (doseq [mark '[(commutative PairFn) (commutativeInArgs PairFn 1 2)]]
+    (tu/with-neutral-kb [kb tu/isolated-fresh]
+      (doseq [s '[(binary_function PairFn) (reifiable_function PairFn)
+                  (result PairFn qualified_relation)
+                  (functionCorrespondingPredicate PairFn pairProjection 3)]]
+        (v/assert kb s 'CxUniverse))
+      (let [m (atom (v/assert kb mark 'CxUniverse))
+            first-alias (v/assert kb '(rewriteOf firstPair (PairFn A B)) 'CxUniverse)]
+        (v/assert kb '(marked firstPair) 'CxUniverse)
+        (is (true? (v/ask? kb '(qualified_relation firstPair) 'CxUniverse)))
+        (let [second-alias (v/assert kb '(rewriteOf secondPair (PairFn B A)) 'CxUniverse)]
+          (v/assert kb '(marked secondPair) 'CxUniverse)
+          (is (= (nat-read/sorted-expression kb '(PairFn A B))
+                 (nat-read/sorted-expression kb '(PairFn B A))))
+          (is (nil? (nat-read/rewrite-target kb '(PairFn A B) nat-read/nat-namespace 'CxUniverse)))
+          (is (false? (v/ask? kb '(qualified_relation firstPair) 'CxUniverse)))
+          (is (false? (v/ask? kb '(qualified_relation secondPair) 'CxUniverse)))
+          (v/retract! kb @m)
+          (is (true? (v/ask? kb '(qualified_relation firstPair) 'CxUniverse)))
+          (is (true? (v/ask? kb '(qualified_relation secondPair) 'CxUniverse)))
+          (reset! m (v/assert kb mark 'CxUniverse))
+          (is (false? (v/ask? kb '(qualified_relation firstPair) 'CxUniverse)))
+          (v/retract! kb first-alias)
+          (is (true? (v/ask? kb '(qualified_relation secondPair) 'CxUniverse)))
+          (is (true? (v/ask? kb '(pairProjection A B secondPair) 'CxUniverse)))
+          (v/retract! kb second-alias))))))
+
+(deftest named-projections-reify-nested-arguments-and-reach-a-fixed-point
+  (tu/with-neutral-kb [kb tu/isolated-fresh]
+    (doseq [s '[(reifiable_function InnerFn) (reifiable_function OuterFn)
+                (result OuterFn qualified_relation)
+                (functionCorrespondingPredicate OuterFn outerProjection 2)
+                (functionCorrespondingPredicate InnerFn innerProjection 2)
+                (rewriteOf namedRoot (OuterFn (InnerFn X)))
+                (marked namedRoot)]]
+      (v/assert kb s 'CxUniverse))
+    (is (true? (v/ask? kb '(outerProjection (InnerFn X) namedRoot) 'CxUniverse)))
+    (is (= 1 (count (application-maps kb '(InnerFn X)))))
+    (is (zero? (count (application-maps kb '(OuterFn (InnerFn X))))))
+    (is (false? (:truncated? (v/forward-chain kb {:max-derivations 100 :max-ms 10000}))))
+    (let [n (count (p/justification-ids (:records kb)))]
+      (is (false? (:truncated? (v/forward-chain kb {:max-derivations 100 :max-ms 10000}))))
+      (is (= n (count (p/justification-ids (:records kb)))))
+      (is (= 1 (count (application-maps kb '(InnerFn X))))))))
+
+(deftest private-identity-is-a-private-demand-witness-not-public-authority
+  (tu/with-neutral-kb [kb tu/isolated-fresh]
+    (declare-function! kb)
+    (v/assert kb '(genlCx CxSecret CxUniverse) 'CxUniverse)
+    (v/assert kb '(genlCx CxVia CxUniverse) 'CxUniverse)
+    (v/assert kb '(rewriteOf namedRoot (QualifierFn base)) 'CxUniverse)
+    (v/assert kb '(related publicPeer Other) 'CxUniverse)
+    (let [goals #(mapv (fn [c] (take 2 (named-answers kb c))) '[CxUniverse CxSecret CxOther])
+          private-answer [[false false] [true true] [false false]]
+          h (atom nil)]
+      (is (= [[false false] [false false] [false false]] (goals)))
+      (reset! h (v/assert kb '(rewriteOf publicPeer namedRoot) 'CxSecret))
+      (is (= private-answer (goals)))
+      (let [a (v/assert kb '(equals namedRoot intermediatePeer) 'CxSecret)
+            b (v/assert kb '(equals intermediatePeer publicPeer) 'CxSecret)]
+        (v/retract! kb @h)
+        (is (= private-answer (goals)))
+        (v/retract! kb a)
+        (v/retract! kb b))
+      (is (= [[false false] [false false] [false false]] (goals)))
+      (reset! h (v/assert kb '(rewriteOf publicPeer namedRoot) 'CxVia))
+      (is (= [[false false] [false false] [false false]] (goals)))
+      (let [via (v/assert kb '(genlCx CxSecret CxVia) 'CxUniverse)]
+        (is (= private-answer (goals)))
+        (v/retract! kb via)
+        (is (= [[false false] [false false] [false false]] (goals)))))))
+
+(deftest a-nested-mint-is-not-its-outer-named-targets-independent-demand
+  (tu/with-neutral-kb [kb tu/isolated-fresh]
+    (doseq [s '[(reifiable_function InnerFn) (reifiable_function OuterFn)
+                (result OuterFn qualified_relation)
+                (functionCorrespondingPredicate OuterFn outerProjection 2)
+                (functionCorrespondingPredicate InnerFn innerProjection 2)
+                (rewriteOf namedRoot (OuterFn (InnerFn namedRoot)))]]
+      (v/assert kb s 'CxUniverse))
+    (doseq [[antecedent conclusion] '[[(innerProjection ?x ?k) (shadow ?x)]
+                                      [(shadow ?x) (shadow_again ?x)]
+                                      [(independentLink ?x ?k) (innerProjection ?x ?k)]]]
+      (v/assert-rule kb [antecedent] conclusion 'CxUniverse {:direction :forward}))
+    (let [use (v/assert kb '(marked namedRoot) 'CxUniverse)]
+      (is (true? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse)))
+      (is (true? (v/ask? kb '(shadow_again namedRoot) 'CxUniverse)))
+      (let [inner-use (v/assert kb '(kept (InnerFn namedRoot)) 'CxUniverse)]
+        (v/retract! kb use)
+        (is (true? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse)))
+        (v/retract! kb inner-use)
+        (is (false? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse)))
+        (let [independent (v/assert kb '(innerProjection namedRoot (InnerFn namedRoot)) 'CxUniverse)]
+          (is (true? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse)))
+          (v/retract! kb independent)
+          (is (false? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse))))
+        (let [independent (v/assert kb '(independentLink namedRoot (InnerFn namedRoot)) 'CxUniverse)]
+          (is (true? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse)))
+          (v/retract! kb independent)
+          (is (false? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse))))
+        (is (zero? (count (application-maps kb '(OuterFn (InnerFn namedRoot))))))))))

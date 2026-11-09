@@ -5857,10 +5857,10 @@
                     (named-application/sync!
                      kb target
                      (fn [sentence context antes bindings]
-                       (place-fact-conclusion kb {:name named-application/informant :rule-handle nil}
-                                              sentence context antes
-                                              (inc (reduce max 0 (map #(or (jtms/depth (reasoning/tms kb) %) 0) antes)))
-                                              bindings :monotonic nil nil))
+                       (place-conclusion kb {:name named-application/informant :rule-handle nil}
+                                         sentence context antes
+                                         (inc (reduce max 0 (map #(or (jtms/depth (reasoning/tms kb) %) 0) antes)))
+                                         bindings :monotonic nil))
                      (when deferred #(vswap! deferred conj [:named-valued target])))))
           (sort-by nm/name-key (distinct targets)))))
 

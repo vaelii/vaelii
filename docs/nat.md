@@ -169,7 +169,13 @@ an alias-first asserted tuple still names `T` after the alias is withdrawn. Gene
 facts and their dependent consequences establish no new demand; a separate premise or
 finite independent proof does. Ordinary derivation admission still applies, including
 the restriction on forced-monotonic outputs. This adds no intrinsic forced-output
-producer and synthesizes no `natFormula` map for the named target.
+producer and synthesizes no `natFormula` map for the named target. Nested applications
+in a projection use ordinary conclusion reification. Their maps witness the meaning of
+an independently used inner value; intrinsic map/type premises are not demand roots.
+The proof read excludes those seeds, not independent justifications of the same row,
+and never changes the live premises. As in orphan detection, an identical reassertion
+of an intrinsic type premise has no separately represented origin. A lost premise
+queues demand again even when another derivation keeps that row believed.
 
 `K` is **named by the content of `E`**: `constant-for` hashes `E` with SHA-256, takes the
 first 96 bits, and encodes them base62 behind a one-letter scheme tag — `nat/a<17

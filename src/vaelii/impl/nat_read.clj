@@ -554,20 +554,31 @@
             (some #(and (seq? %) (= 'rewriteOf (first %)) (seq? (nth % 2 nil))) sentences))
     (let [idx (:index kb)
           recs (:records kb)
+          use-terms (fn [form]
+                      (loop [todo (vec (filter symbol? (tree-seq sequential? seq form))), seen #{}]
+                        (if-let [term (peek todo)]
+                          (if (contains? seen term)
+                            (recur (pop todo) seen)
+                            (let [expressions (keep #(some-> (p/get-sentex recs %) :sentence (nth 2 nil))
+                                                    (reads/as-stored-with-args idx 'natFormula {1 term}))]
+                              (recur (into (pop todo) (filter symbol? (mapcat #(tree-seq sequential? seq %) expressions)))
+                                     (conj seen term))))
+                          seen)))
           of-function (fn [f]
                         (into #{} (comp (keep #(p/get-sentex recs %))
                                         (keep #(let [[p t e] (:sentence %)]
-                                                 (when (and (= 'rewriteOf p) (symbol? t) (seq? e) (= f (first e))) t))))
-                              (reads/as-stored-with-term idx f)))]
+                                                 (when (and (= 'rewriteOf p) (symbol? t) (seq? e)) t))))
+                              (mapcat #(reads/as-stored-with-term idx %)
+                                      (tax/equiv-class (reasoning/taxonomy kb) f))))]
       (into #{}
             (mapcat (fn [s]
                       (let [direct (when (and (seq? s) (= 'rewriteOf (first s))
                                               (symbol? (second s)) (seq? (nth s 2 nil)))
                                      (cons (second s)
-                                           (keep #(some-> (p/get-sentex recs %) :sentence second)
-                                                 (reads/as-stored-with-args idx 'rewriteOf {2 (nth s 2)}))))
+                                           (of-function (first (nth s 2)))))
                             declared (when (and (seq? s)
-                                                (contains? '#{result genlResult reifiable_function functionCorrespondingPredicate} (first s)))
+                                                (contains? '#{result genlResult reifiable_function functionCorrespondingPredicate
+                                                              symmetric commutative commutativeInArgs commutativeInArgAndRest} (first s)))
                                        (of-function (second s)))
                             merged (when (and (seq? s) (contains? '#{equals sameAs rewriteOf} (first s)))
                                      (into #{} (comp (mapcat #(reads/as-stored-with-term idx %))
@@ -576,7 +587,7 @@
                                                               (when (and (= 'rewriteOf p) (symbol? t) (seq? e)) t))))
                                            (filter symbol? (rest s))))
                             used (filter #(seq (reads/as-stored-with-args idx 'rewriteOf {1 %}))
-                                         (filter symbol? (tree-seq sequential? seq s)))]
+                                         (use-terms s))]
                         (map #(vector :named-valued %) (concat direct declared merged used)))))
             sentences))))
 
