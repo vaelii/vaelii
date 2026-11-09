@@ -169,7 +169,8 @@
       (is (false? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse))))))
 
 (deftest distinct-genl-uses-keep-their-own-named-supports
-  (doseq [parents ['[first_parent second_parent] '[second_parent first_parent]]]
+  (doseq [parents ['[first_parent second_parent] '[second_parent first_parent]]
+          remove-first? [false true]]
     (tu/with-neutral-kb [kb tu/isolated-fresh]
       (declare-function! kb)
       (v/assert kb '(rewriteOf namedRoot (QualifierFn base)) 'CxUniverse)
@@ -187,10 +188,12 @@
         (is (= #{#{a} #{@b}}
                (into #{} (map (fn [j] (into #{} (filter #{a @b}) (:antecedents j)))) (proofs))))
         (let [ids (set (map :id (proofs)))
-              survivor (into #{} (comp (filter #(some #{a} (:antecedents %))) (map :id)) (proofs))]
+              removed (if remove-first? a @b)
+              remaining (if remove-first? @b a)
+              survivor (into #{} (comp (filter #(some #{remaining} (:antecedents %))) (map :id)) (proofs))]
           (is (false? (:truncated? (v/forward-chain kb {:max-ms 1000 :max-derivations 100}))))
           (is (= ids (set (map :id (proofs)))))
-          (when @b (v/retract! kb @b))
+          (when removed (v/retract! kb removed))
           (is (= survivor (set (map :id (proofs))))
               "removing either arrival removes only the proof using it")
           (is (true? (v/ask? kb '(qualifierOf base namedRoot) 'CxUniverse))))))))
