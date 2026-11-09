@@ -2314,6 +2314,7 @@ E17_ALLOW = {
     ("src/vaelii/impl/resolution.clj", "displaced-terms-in"),
     ("src/vaelii/impl/resolution.clj", "retired-for?"),
     ("src/vaelii/impl/nat_read.clj", "reify-in"),
+    ("src/vaelii/impl/named_application.clj", "used-spellings"),
     ("src/vaelii/impl/nat.clj", "names-reifiable-nat?"),
     ("src/vaelii/impl/nat.clj", "formula-position-rules"),
     # A candidate superset a later step narrows: a trigger whose firing names the mark it
