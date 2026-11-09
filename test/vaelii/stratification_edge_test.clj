@@ -31,11 +31,14 @@
   neutral fixture asserts the KB is restored."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.assert-entry :as entry]
             [vaelii.impl.checks :as checks]
+            [vaelii.impl.jtms :as jtms]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reads :as reads]
             [vaelii.impl.rules :as vr]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.special :as special]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.wff :as wff]
@@ -222,6 +225,82 @@
                   {:direction :forward})
         (testing "R2, stored in the pass, closes the cycle the next check finds"
           (is (= :not-stratified (:violation (check)))))))))
+
+(tu/deftest-kb shared-rule-records-follow-slot-changes-and-their-rollback
+  (tu/with-terms [base seen CxSlots]
+    (let [rule (vr/rule-sentence [(list base '?x)] (list seen '?x))
+          h    (v/assert kb (list 'set/defaultRule rule) CxSlots)]
+      (binding [vr/*stratification-memo* (volatile! nil)]
+        (let [original ((checks/rule-shape-reader kb) h)
+              restore entry/restore-rule-slots!
+              restored (atom 0)]
+          (is (:defeasible original))
+          (with-redefs [entry/restore-rule-slots!
+                        (fn [restore-kb rh slots]
+                          (let [temporary ((checks/rule-shape-reader restore-kb) rh)]
+                            (is (= h rh))
+                            (is (not (:defeasible temporary)))
+                            (is (not= original temporary)))
+                          (swap! restored inc)
+                          (restore restore-kb rh slots))]
+            (v/preview kb {:add [[rule CxSlots]]}))
+          (is (= 1 @restored))
+          (is (= original ((checks/rule-shape-reader kb) h))))
+        (is (= (assoc (p/get-sentex (:records kb) h) :strength nil) ((checks/rule-shape-reader kb) h))
+            "preview restores the record after its temporary strict spelling")
+        (is (:defeasible ((checks/rule-shape-reader kb) h)))
+        (is (= h (v/assert kb rule CxSlots)))
+        (is (not (:defeasible ((checks/rule-shape-reader kb) h)))
+            "a strict spelling changes defeasibility even when engines stay put")
+        (is (= h (v/assert kb rule CxSlots {:direction :forward})))
+        (is (contains? (:engines ((checks/rule-shape-reader kb) h)) :forward))
+        (is (= (assoc (p/get-sentex (:records kb) h) :strength nil) ((checks/rule-shape-reader kb) h)))))))
+
+(tu/deftest-kb a-shared-rule-record-does-not-hide-a-new-edge-cycle
+  (tu/with-terms [base p flightless penguin unrelated CxShared]
+    (cycle-shaped-rules! kb {:base base :p p :flightless flightless :penguin penguin
+                             :ctx CxShared})
+    (binding [vr/*stratification-memo* (volatile! nil)]
+      (let [shape-of (checks/rule-shape-reader kb)]
+        (doseq [h (reads/as-stored-rules-in-global (:index kb) :rule)]
+          (shape-of h)))
+      (is (v/assert kb (list 'genl penguin unrelated) CxShared))
+      (let [before-sx (tu/sentex-ids kb)
+            before-dd (tu/justification-ids kb)
+            before-edges (tax/genl-edges (reasoning/taxonomy kb))
+            data (tu/assert-refusal-data kb (list 'genl penguin flightless) CxShared)]
+        (is (= :not-stratified (:type data)))
+        (is (seq (:cycle data)))
+        (is (= before-sx (tu/sentex-ids kb)))
+        (is (= before-dd (tu/justification-ids kb)))
+        (is (= before-edges (tax/genl-edges (reasoning/taxonomy kb))))))))
+
+(deftest lazy-guard-readers-check-shape-validity-once-per-call
+  (doseq [readers [2 6], exceptions [2 6]]
+    (tu/with-neutral-kb [probe-kb tu/isolated-fresh]
+      (tu/with-terms [seed mid]
+        (v/assert probe-kb (list 'set/lazyForwardRule
+                                 (vr/rule-sentence [(list seed '?x)] (list mid '?x))) 'CxUniverse)
+        (let [expected
+              (set (for [_ (range readers)]
+                     (tu/with-terms [tag out]
+                       (v/assert probe-kb (list 'genl out seed) 'CxUniverse)
+                       (v/assert probe-kb (vr/rule-sentence [(list mid '?x) (list tag '?x)]
+                                                            (list out '?x))
+                                 'CxUniverse {:direction :forward}))))]
+          (dotimes [_ exceptions]
+            (tu/with-terms [exc base seen]
+              (v/assert probe-kb (tu/except-rule (list exc '?x) [(list base '?x)] (list seen '?x))
+                        'CxUniverse)))
+          (binding [vr/*stratification-memo* (volatile! nil)]
+            ((@#'checks/stratification-readers probe-kb))
+            (let [probes (atom 0)
+                  in? jtms/in?
+                  found (with-redefs [jtms/in? (fn [t h] (swap! probes inc) (in? t h))]
+                          (@#'special/lazy-guard-readers probe-kb seed seed))]
+              (is (= expected (set found)) "the edge reaches every applicable forward reader")
+              (is (= exceptions @probes)
+                  (str "one belief check per exception, independent of " readers " readers")))))))))
 
 (tu/deftest-kb an-edit-batch-of-edges-builds-each-stored-rule-node-once
   (tu/with-terms [hub exc p sub1 sub2 sub3 CxEdit]

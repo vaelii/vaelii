@@ -221,9 +221,9 @@
         (p/put-sentex (:records kb) s')
         (when moved?
           (p/index-sentex (:index kb) s' h)
-          (kb/note-lazy-rule-moved! kb s')
-          ;; the engines decide whether a `(?p …)` consequent concludes any predicate
-          (rules/forget-stratification))
+          (kb/note-lazy-rule-moved! kb s'))
+        ;; The shared graph holds the rule record, including both slots.
+        (rules/forget-stratification)
         (when (not= (boolean def?) (boolean (:defeasible stored)))
           (special/restrength-firings! kb h)
           ;; a rule's defeasibility decides whether it is a forced-monotonic rule
@@ -250,8 +250,8 @@
           (when moved? (p/unindex-sentex! (:index kb) cur h))
           (p/put-sentex (:records kb) s')
           (when moved?
-            (p/index-sentex (:index kb) s' h)
-            (rules/forget-stratification))
+            (p/index-sentex (:index kb) s' h))
+          (rules/forget-stratification)
           (when def-moved?
             (special/restrength-firings! kb h)
             (checks/force-sentexes! kb [s'])))))))

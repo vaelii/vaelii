@@ -816,7 +816,8 @@ starts are memoized per upward closure. An `assert` and a `settle` bind
 `rules/*stratification-memo*`, so every check of the write or the pass reads one stored
 graph: a pass minting many `genl` edges reads each rule's node once, not once per mint
 (`lein perf`'s `edge-stratification-mints-in-one-pass`). A write to the rule index or the
-re-check index empties the memo, as does a rule's engines moving, and a check compares the rest of what the graph read
+re-check index empties the memo, as does a rule's engines or defeasibility moving. The
+same memo shares raw rule records with the lazy-guard reader; a check compares the rest of what the graph read
 before it reuses it: the closed-extent marks by identity, and the belief of each
 exceptWhen meta-sentex a node read. Without the binding, each check builds its own graph
 and drops it when it returns. The walk expands
