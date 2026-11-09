@@ -7401,28 +7401,29 @@
   a shutdown or the caller's bound stopped (`:shutdown-abort`, `:interrupted`) marks the
   log unusable: its frame describes a write that did not complete as logged.  The frame
   holds `args` without the caller's bound (`unbounded-args`), so a replay runs the write
-  to its end."
+  to its end. Record-only edits leave belief unread; their later rebuild is observed."
   [op class g]
   (fn [kb & args]
     (binding [observe/*route-gain-sink* (if (:reasoning kb)
                                           (special/route-gain-sink kb)
                                           observe/*route-gain-sink*)]
-      (with-support-observer
-        kb
-        (fn [] (dur/call-as-write
-                op
-                (fn []
-                  (if (nil? (:oplog kb))
-                    (do (seal/retire-unlogged! kb)
-                        (apply g kb args))
-                    (try
-                      (oplog/run-op kb op class (unbounded-args args) #(op-inputs op)
-                                    (fn [inputs] (with-op-inputs inputs #(apply g kb args))))
-                      (catch clojure.lang.ExceptionInfo e
-                        (when (and (#{:shutdown-abort :interrupted} (:type (ex-data e)))
-                                   (not oplog/*in-op?*))
-                          (oplog/mark-unusable! (:oplog kb) [(:type (ex-data e)) op]))
-                        (throw e)))))))))))
+      (let [write (fn [] (dur/call-as-write
+                          op
+                          (fn []
+                            (if (nil? (:oplog kb))
+                              (do (seal/retire-unlogged! kb)
+                                  (apply g kb args))
+                              (try
+                                (oplog/run-op kb op class (unbounded-args args) #(op-inputs op)
+                                              (fn [inputs] (with-op-inputs inputs #(apply g kb args))))
+                                (catch clojure.lang.ExceptionInfo e
+                                  (when (and (#{:shutdown-abort :interrupted} (:type (ex-data e)))
+                                             (not oplog/*in-op?*))
+                                    (oplog/mark-unusable! (:oplog kb) [(:type (ex-data e)) op]))
+                                  (throw e)))))))]
+        (if (= op :edit-records)
+          (write)
+          (with-support-observer kb write))))))
 
 (def ^:private write-ops
   "Every public write entry point, as `name -> [op class]`.  The classes are
