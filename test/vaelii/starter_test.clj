@@ -228,7 +228,9 @@
   (tu/with-terms [old_kind unused_kind Fido CxStore]
     (v/assert kb (list old_kind Fido) CxStore)
     (let [logged (atom [])]
-      (with-redefs [seed/release-renames (constantly {:retired #{old_kind unused_kind}})]
+      (with-redefs [seed/release-renames   (constantly {:retired #{old_kind unused_kind}})
+                    core-context/load-into identity
+                    seed/load-context      (fn [& _])]
         (binding [trove/*log-fn* (fn [_ns _coords level id payload]
                                    (when (= ::starter/retired-symbol id)
                                      (swap! logged conj [level (:data (force payload))])))]
