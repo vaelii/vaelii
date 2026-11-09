@@ -872,8 +872,10 @@ The read excludes literal `Quote` contents and nested sentences, but enters ordi
 function terms. NAT bookkeeping is recognized by the owning reified constant, including
 a projection mentioning another term as an argument. A lift-only copy and a consequence
 with only skeletal content support do not create an ordinary home. The engine's
-generated arity-class copy is skeletal too. An independent
-ordinary content support preserves the home. A fact an equality merge respells keeps the
+generated arity-class copy is skeletal too. An arity, `arityMin` or arity-class premise
+(a `forced_decontextualized_predicate`, stored in CxUniverse whichever context states it)
+gives a home only when no other leaf does, so a type a middle theory defines keeps that
+theory as its home. An independent ordinary content support preserves the home. A fact an equality merge respells keeps the
 home of the fact as stated, since the stated spelling the merge supersedes classifies as
 a premise.
 

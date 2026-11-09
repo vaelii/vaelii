@@ -120,6 +120,18 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [integrity.md](docs/integrity.md#what-a-genl-arity-mismatch-finding-means)
   *Migration:* state agreeing arities at both ends of a reported edge, or drop the edge.
 
+### Fix: contextual type definitions
+
+- **A forced arity-class store in CxUniverse does not move a type's defining context.**
+  `arity`, `arityMin` and the arity classes are `forced_decontextualized_predicate`s, so a
+  middle theory's `(unary_predicate T)` is stored in CxUniverse. `defining-contexts` reads
+  such a record as a home only when no other leaf gives the term one, so a type or
+  relation a middle theory defines keeps that theory as its home, and its rigidity class
+  stated there satisfies `(typeAllSpecified rigidity_kind relation)`.
+  [api.md](docs/api.md)
+  *Migration:* to define a relation in CxUniverse, state something other than its arity
+  there, such as its `comment`.
+
 ### Internal: CI
 
 - **A CI shard runs its recurring failures first**

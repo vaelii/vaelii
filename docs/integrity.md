@@ -223,7 +223,8 @@ The pass has these limits:
   declaration remains believed. Classification is read in that same reader, so a
   sibling's membership cannot discharge the obligation. Literal `Quote` and nested
   sentences do not define their contents; ordinary function arguments do. Generated
-  lifts, arity-class copies and NAT bookkeeping alone create no ordinary home.
+  lifts, arity-class copies and NAT bookkeeping alone create no ordinary home, and a
+  forced arity-class store in CxUniverse creates one only for a term with no other home.
 - **Only proven skeletal population is exempt.** An answer with no stored defining home
   is still audited unless its support proves it skeletal-only. Incomplete live defining
   support reports `{:status :gap :gap :incomplete-defining-contexts :classifier c
