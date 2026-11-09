@@ -30,26 +30,21 @@ file says so in a `;;` note when it is made.
 ```clojure
 (reifiable_function MotherFn)
 (unary_function MotherFn)
-(functionCorrespondingBinaryPredicate MotherFn motherOf)
+(functionCorrespondingBinaryPredicate MotherFn (BloodKinFn motherOf))
 (result MotherFn animal)
 ```
 
 ```clojure
 (set/monotonic (instance_relation_predicate motherOf))
-(arg motherOf 1 animal)
-(arg motherOf 2 animal)
-(set/monotonic (functional motherOf))
+(arg motherOf 1 causal)
+(arg motherOf 2 causal)
+(generic_kinship_predicate motherOf)
 ```
 
 `functionCorrespondingBinaryPredicate` puts the value at the second argument of
-`motherOf`. The `comment` on `fatherOf` gives the reason the child comes first: "The
-child comes FIRST and the father second, the shape functionCorrespondingBinaryPredicate
-states, which is what lets FatherFn read off it." The kinship edges in `CxKinship.txt`
-are stated over the predicate:
-
-```clojure
-(genlInverse motherOf parentOf)
-```
+blood-qualified `motherOf`. The child comes first. Generic motherOf and its blood
+reading need not be functional: if several mothers are visible the correspondence
+selects none and does not merge them.
 
 **Why.**
 
@@ -58,10 +53,10 @@ are stated over the predicate:
   `(functionCorrespondingBinaryPredicate F P)` is
   `(functionCorrespondingPredicate F P 2)`. The function and the predicate state one
   relationship, and the declaration tells the KB so.
-- *Engine.* The correspondence is read both ways. A believed `(motherOf Muffet Mary)`
+- *Engine.* The correspondence is read both ways. A believed `((BloodKinFn motherOf) Muffet Mary)`
   makes `(MotherFn Muffet)` written in a context that sees the fact resolve to `Mary`, so
   no second name is minted. When no value is known, the mint proceeds and the constant is
-  projected back onto the predicate as `(motherOf Muffet K)`, so the placeholder answers
+  projected back onto the predicate as `((BloodKinFn motherOf) Muffet K)`, so the placeholder answers
   `motherOf` questions. A value arriving after the mint retires the placeholder by a
   `rewriteOf` in the fact's context. Whichever of the application, the fact and the
   declaration arrives last, the KB ends in the same state.
@@ -71,9 +66,8 @@ are stated over the predicate:
   antecedents. A rule whose antecedents apply a reifiable function its context sees no
   correspondence for is stored as written and held: it is not believed and fires nothing.
   Nothing on the write path refuses the rule.
-- *Maintenance.* A KB told one of the two spellings can reason with both. The FatherFn
-  `comment` in `life.txt` names the effect: "Corresponding to fatherOf is what keeps it
-  from minting a second name for a father the KB already knows."
+- *Maintenance.* Keep the correspondence on the qualified predicate: a generic parent
+  fact alone does not choose blood descent.
 
 **Why not the other ways.** A function with no predicate forces every statement about
 the relationship to be written with the NAT in it, so the representation depends on how

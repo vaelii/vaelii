@@ -63,13 +63,13 @@
         (is (not (tu/holds-ask (list 'nestingPartnerOf P1 P2) ctx)) (str "nestingPartnerOf in " ctx))))))
 
 (tu/deftest-kb each-relation-specializes-what-it-is-a-kind-of
-  (doseq [[sub super] '[[chosenSiblingOf relativeOf]
+  (doseq [[sub super] '[[chosenSiblingOf chosenKinOf]
                         [nestingPartnerOf romanticPartnerOf]
                         [nestingPartnerOf roommateOf]
                         [founderOf originatorOf]]]
     (is (tu/holds-genl sub super SOCX))
     (is (not (tu/holds-genl sub super 'CxSocial))))
-  (is (not (tu/holds-genl 'chosenSiblingOf 'siblingOf SOCX)))
+  (is (tu/holds-genl 'chosenSiblingOf 'siblingOf SOCX))
   (is (not (tu/holds-genl 'siblingOf 'chosenSiblingOf SOCX))))
 
 (tu/deftest-kb a-user-context-under-the-extension-concludes-from-each-relation
@@ -78,9 +78,9 @@
     (doseq [p [P1 P2 P3 P4]] (v/assert kb (list 'human p) CxHome))
     (v/assert kb (list 'chosenSiblingOf P1 P2) CxHome)
     (v/assert kb (list 'nestingPartnerOf P3 P4) CxHome)
-    (is (tu/holds-ask (list 'relativeOf P1 P2) CxHome))
+    (is (tu/holds-ask (list 'kinOf P1 P2) CxHome))
     (is (tu/holds-ask (list 'knows P1 P2) CxHome))
-    (is (not (tu/holds-ask (list 'siblingOf P1 P2) CxHome)))
+    (is (tu/holds-ask (list 'siblingOf P1 P2) CxHome))
     (is (tu/holds-ask (list 'romanticPartnerOf P3 P4) CxHome))
     (is (tu/holds-ask (list 'roommateOf P3 P4) CxHome))))
 
@@ -214,4 +214,5 @@
       (is (= [:arg-type] (problem-types (list 'founderOf Maker Firm) CxHome))))
     (v/assert kb (list 'founderOf Maker Made) CxHome)
     (is (tu/holds-ask (list 'originatorOf Maker Made) CxHome))
-    (is (tu/holds-ask (list 'relativeOf Maker Made) CxHome))))
+    (is (not (tu/holds-ask (list 'kinOf Maker Made) CxHome)))
+    (is (not (tu/holds-ask (list 'organism Made) CxHome)))))

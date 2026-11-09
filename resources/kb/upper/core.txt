@@ -1165,6 +1165,25 @@
 (set/monotonic (time_invariant_relation situation_predicate))
 (not (decontextualized_predicate situation_predicate))
 
+(comment generic_kinship_predicate "An unqualified kinship predicate whose meaning admits both a blood reading and a chosen-family reading. It does not itself choose either reading for a tuple.")
+(unary_predicate generic_kinship_predicate)
+(genl generic_kinship_predicate predicate)
+(set/monotonic (genl generic_kinship_predicate time_agnostic_relation))
+(set/monotonic (time_invariant_relation generic_kinship_predicate))
+(forced_monotonic_predicate generic_kinship_predicate)
+(implementationNote generic_kinship_predicate "Constructor inputs are structural declarations. Their mark is forced-monotonic so the guarded rules may conclude the forced-monotonic arity and argument declarations of their qualified readings.")
+
+(comment blood_kinship_predicate "The blood-qualified reading of a kinship predicate. It describes ancestry or birth history, with genetic consequences defeasible for gestational-only parenthood and other known exceptions.")
+(unary_predicate blood_kinship_predicate)
+(set/monotonic (genl blood_kinship_predicate eternal_predicate))
+(set/monotonic (time_invariant_relation blood_kinship_predicate))
+
+(comment chosen_kinship_predicate "The chosen-family reading of a kinship predicate: a tie that can end while its participants continue to exist.")
+(unary_predicate chosen_kinship_predicate)
+(genl chosen_kinship_predicate predicate)
+(set/monotonic (genl chosen_kinship_predicate time_varying_relation))
+(set/monotonic (time_invariant_relation chosen_kinship_predicate))
+
 ;; Some time-varying relations change one way only.  An organism that is dead stays
 ;; dead, and one that is not alive is never alive again.  Each is a kind of
 ;; time_varying_relation, so a relation no instance could lose is neither.

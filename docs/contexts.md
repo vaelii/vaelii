@@ -166,8 +166,8 @@ Data hangs below CxWell.
     example of `transitiveInArgInverse` ([inherit.md](inherit.md)).
   - `CxSocial` — what acquaintance follows from, how employment relates to
     membership, and the general relationship and dwelling vocabulary over two
-    persons: `relativeOf`, `romanticPartnerOf`, `coworkerOf`, `roommateOf`,
-    `originatorOf` (read by a rule from `parentOf`), `relationshipLabel`, and
+    persons: `kinOf` (also organisms), `romanticPartnerOf`, `coworkerOf`, `roommateOf`,
+    `originatorOf` (read from blood-qualified `parentOf`), `relationshipLabel`, and
     `dwelling`/`dwellsIn` (whose rule derives `roommateOf` for co-dwellers). Every
     rule runs one way only, because `knows` is deliberately not symmetric.
 - **CxNormalPhysicalConditions** — an **opt-in** theory in `kb/middle/` that sees
@@ -289,7 +289,7 @@ Data hangs below CxWell.
   - **relationships and plural identity** — relationship vocabulary narrower than
     CxSocial's: `nestingPartnerOf` (a spec of CxSocial's `romanticPartnerOf` and
     `roommateOf`, and read by a rule from the two), `chosenSiblingOf` (a spec of
-    `relativeOf`), `construct` (a person whose mind runs on a computational substrate,
+    `chosenKinOf` and blood/chosen-neutral `siblingOf`), `construct` (a person whose mind runs on a computational substrate,
     `:monotonic`-disjoint from `organism`, `computational_system` and `organization`), its `seat` (the computational
     system it runs in, related by the non-functional `hasSeat`), `founderOf` (a spec of
     `originatorOf` naming the person who founded a construct), and the plurality terms: `singlet`, `plural_system` and

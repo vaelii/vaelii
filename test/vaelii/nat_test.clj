@@ -1786,6 +1786,8 @@
 (tu/deftest-kb a-default-value-copies-the-uses-and-the-rules-and-merges-nothing
   (tu/with-terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]
     (let [terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]
+          merges (fn [content] (set (filter #(= 'rewriteOf (ffirst %)) (filter #(seq? (first %)) content))))
+          shipped (merges (believed-content kb))
           _     (default-value-kb! kb terms [:decl :fact :use :rules])
           k     (nat-read/dedup-constant kb (list MomFn Muffet))
           held  (believed-content kb)]
@@ -1794,7 +1796,7 @@
              (into #{} (filter #(= likes (ffirst %))) (filter #(= Tom (second (first %))) held))))
       (is (contains? held [(list momOf Muffet k) 'CxUniverse]))
       (is (v/believed? kb (v/handle-of kb (list 'implies (list likes '?x Mary) (list fond '?x)) CxStory) CxStory))
-      (is (not-any? #(= 'rewriteOf (ffirst %)) (filter #(seq? (first %)) held))))))
+      (is (= shipped (merges held)) "the default value adds no rewriteOf of its own"))))
 
 (tu/deftest-kb a-default-value-defeated-takes-every-copy-out
   (tu/with-terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]
@@ -2267,8 +2269,8 @@
       (is (= :not-well-formed (:type (ex-data e)))))))
 
 (tu/deftest-kb the-shipped-correspondences-state-their-position
-  (is (true? (v/ask? kb '(functionCorrespondingBinaryPredicate MotherFn motherOf) 'CxUniverse)))
-  (is (true? (v/ask? kb '(functionCorrespondingPredicate MotherFn motherOf 2) 'CxUniverse)))
+  (is (true? (v/ask? kb '(functionCorrespondingBinaryPredicate MotherFn (BloodKinFn motherOf)) 'CxUniverse)))
+  (is (true? (v/ask? kb '(functionCorrespondingPredicate MotherFn (BloodKinFn motherOf) 2) 'CxUniverse)))
   (is (true? (v/ask? kb '(functionCorrespondingPredicate QuantityFn measureInUnit 3) 'CxUniverse)))
   (is (true? (v/ask? kb '(functionCorrespondingPredicate InstantFn calendarInstant 7) 'CxUniverse)))
   (is (empty? (filter #(and (= 'functionCorrespondingPredicate (first (:sentence %)))

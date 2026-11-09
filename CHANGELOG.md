@@ -14,6 +14,21 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Breaking: ontology
+
+- **Kinship shares one generic hierarchy with blood and chosen readings.** `relativeOf`
+  becomes `kinOf`; `BloodKinFn` qualifies eternal blood history and `ChosenKinFn`
+  qualifies time-varying chosen ties. Generic kinship is time-agnostic. Gestational-only
+  parenthood is blood kin without a genetic or shared-carrier sibling inference.
+  Mothers are not unique; `MotherFn` does not choose between several known mothers.
+  `originatorOf` admits organisms and no longer specializes kinship.
+  *Migration:* rename `relativeOf` to `kinOf`; rewrite biological family/history facts
+  with `BloodKinFn`. Generic facts no longer assert blood descent or eternity.
+  `MotherFn` and `FatherFn` correspond to their blood-qualified predicates.
+  *Breaks:* `relativeOf`, `parentOf`, `childOf`, `motherOf`, `fatherOf`, `siblingOf`,
+  `grandparentOf`, `ancestorOf`, `birthDate`, `birthYearOf`, `olderThan`, `MotherFn`,
+  `FatherFn`, `originatorOf`
+
 ### Additive: shipped ontology
 
 - **A `comment` documents any closed expression.** `core.txt` declares

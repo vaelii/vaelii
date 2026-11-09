@@ -20,10 +20,10 @@ That caps the KB at hand-curated single-source data. Every real ingest pipeline
 produces co-referents on day one, so this is the precondition for an import path,
 not a refinement of one.
 
-It also makes the most useful common-sense constraint unusable. Without equality,
-`(functional motherOf)` plus `(motherOf Tom Mary)` and `(motherOf Tom MrsSmith)` can only
-be a clash, even when they are the same woman — and functional roles
-(mother, birthplace, age) are exactly where co-reference shows up.
+Identity can connect `(motherOf Tom Mary)` and `(motherOf Tom MrsSmith)` when
+independent evidence establishes that the two names denote one woman. Motherhood itself
+is not a uniqueness constraint: a child can have several distinct mothers, and sharing
+a child does not merge their names.
 
 ## Three assertable relations, one closure
 

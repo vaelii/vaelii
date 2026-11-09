@@ -117,29 +117,25 @@ what its other antecedents guarantee, add an antecedent per argument naming the 
 argument needs. Each argument gets its own guard, because two positions can need two
 types.
 
-**Example.** `CxSocial.txt` reads `originatorOf` from `parentOf`, guarded to two persons:
+**Example.** `CxSocial.txt` reads acquaintance from kinship only between persons:
 
 ```clojure
-;; Backward: read on demand (query), not materialized over every parentOf pair the
-;; moment one end's personhood is known.
-(set/backwardRule
-  (implies (and (parentOf ?p ?c) (person ?p) (person ?c))
-           (originatorOf ?p ?c)))
+(set/defaultRule (set/forwardRule (implies (and (kinOf ?x ?y) (person ?x) (person ?y)) (knows ?x ?y))))
 ```
 
 **Why.**
 
-- Logical: `parentOf` relates any two organisms, and `originatorOf` relates two persons.
-  The guarded rule concludes `originatorOf` exactly where both ends are known persons,
+- Logical: `kinOf` relates causal individuals, and `knows` relates two persons.
+  The guarded rule concludes `knows` exactly where both ends are known persons,
   which is the claim the author means.
 - Engine: under the entailing reading, an `arg` declaration derives the type it names
   for the argument a fact puts there. Without the guards, the rule would conclude
-  `originatorOf` of two dogs, and `originatorOf`'s `arg` declarations would derive
+  `knows` of two dogs, and `knows`'s `arg` declarations would derive
   `person` for each dog, or hold the conclusion inert where a separation rules `person`
   out. The guards keep the rule from firing on a pair the conclusion's types do not
   admit.
 - Maintenance: this is **different-type genl** in rule form. A predicate edge
-  `(genl parentOf originatorOf)` would make every animal parentage an `originatorOf`
+  `(genl kinOf knows)` would make every kinship an `knows`
   tuple; `kb-integrity`'s `:genl-arg-widening` reports such an edge.
 
 **Why not the other ways.** A predicate `genl` between the two widens types silently. An
