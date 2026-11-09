@@ -764,19 +764,24 @@
   `:holds?` (a ground goal answered), each read from `context`.  `vaelii.core`'s
   `subsumption-statuses` and `disjointness-audit` read through this with `query`'s reads,
   and the `:open-sibling-pair` pass with `facts-only-reads`.  At the five-argument arity
-  the `genl` paths and the shared subtypes are read over every edge, unscoped, as
-  `vaelii.core/genl?` and `specs` read them at their short arity: the status of a pair
-  under one context differs only in what that context sees separated or overlapping.
+  the `genl` paths and shared subtypes use every edge, as `vaelii.core/genl?` and `specs`
+  do at their short arity. Separation and overlap witnesses remain contextual.
   With `scoped?` true they are read through the edges `context` sees, as the
-  `:open-sibling-pair` pass reads them."
+  `:open-sibling-pair` pass reads them. At the unscoped arity, `rd` may also supply
+  prepared `:genl?`, `:specs` and contextual `:disjoint?` reads; scoped reads ignore them."
   ([kb a b context rd] (subsumption-reading kb a b context rd false))
   ([kb a b context rd scoped?]
    (let [tx    (reasoning/taxonomy kb)
-         genl? (if scoped? #(tax/genl? tx %1 %2 context) #(tax/genl?-global tx %1 %2))
-         specs (if scoped? #(tax/specs tx % context) #(tax/specs-global tx %))
+         genl? (if scoped?
+                 #(tax/genl? tx %1 %2 context)
+                 (or (:genl? rd) #(tax/genl?-global tx %1 %2)))
+         specs (if scoped?
+                 #(tax/specs tx % context)
+                 (or (:specs rd) #(tax/specs-global tx %)))
+         sep?  (or (when-not scoped? (:disjoint? rd)) #(kb/disjoint? kb %1 %2 context))
          a<b   (genl? a b)
          b<a   (genl? b a)
-         sep (kb/disjoint? kb a b context)
+         sep (sep? a b)
          ;; asked in one spelling: `orthogonal` is symmetric, so the goal folds onto the
          ;; stored order
          declared? ((:holds? rd) (list 'orthogonal a b))
@@ -795,7 +800,7 @@
                      (let [sb  (specs b)
                            cs  (nm/by-print-key
                                 (filter #(and (contains? sb %) (not= % a) (not= % b)
-                                              (not (kb/disjoint? kb % % context))
+                                              (not (sep? % %))
                                               (not ((:holds? rd) (list 'empty %))))
                                         (specs a)))
                            nes (filter #((:holds? rd) (list 'nonempty %)) cs)

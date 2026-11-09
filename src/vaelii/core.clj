@@ -3667,6 +3667,23 @@
                 (caches-impl/read-through held (caches-impl/limit-of :resident holds-limit) goal
                                           #(boolean (seq (query kb goal context {:max-depth 0})))))}))
 
+(defn- audit-row-reads
+  "The prepared taxonomy reads for one audit row with fixed first type `a`. The global
+  ancestor and descendant sets answer both directions of subsumption. Only this row
+  retains the sets and the contextual separation predicate; other subtype reads use the
+  taxonomy's bounded closure cache. Facts-only reads remain those of `rd`."
+  [kb context rd a]
+  (let [above (genls kb a)
+        below (specs kb a)
+        sep?  (tax/disjointness-test (reasoning/taxonomy kb) a context)]
+    (assoc rd
+           :genl? (fn [x y]
+                    (cond (= x a) (contains? above y)
+                          (= y a) (contains? below x)
+                          :else   (genl? kb x y)))
+           :specs (fn [t] (if (= t a) below (specs kb t)))
+           :disjoint? (fn [x y] (if (= x a) (sep? y) (disjoint? kb x y context))))))
+
 (defn subsumption-statuses
   "The set of applicable subsumption relationships between types `a` and `b`: any subset
   of `#{:coextensional :genl :spec :disjoint :orthogonal}`.  A consistent pair yields a
@@ -3718,22 +3735,23 @@
                 (persistent!
                  (reduce
                   (fn [acc i]
-                    (reduce
-                     (fn [a j]
-                       (let [{ss :statuses w :witness t :via}
-                             (integrity/subsumption-reading kb (nth ts i) (nth ts j) context rd)]
-                         (progress/tick! r)
-                         (conj! a (cond-> {:a        (nth ts i)
-                                           :b        (nth ts j)
-                                           :statuses ss
-                                           :status   (case (count ss)
-                                                       0 :unknown
-                                                       1 (first ss)
-                                                       :inconsistent)}
-                                    w (assoc :witness w)
-                                    t (assoc :via t)))))
-                     acc (range (inc i) n)))
-                  (transient []) (range n))))]
+                    (let [rd (audit-row-reads kb context rd (nth ts i))]
+                      (reduce
+                       (fn [a j]
+                         (let [{ss :statuses w :witness t :via}
+                               (integrity/subsumption-reading kb (nth ts i) (nth ts j) context rd)]
+                           (progress/tick! r)
+                           (conj! a (cond-> {:a        (nth ts i)
+                                             :b        (nth ts j)
+                                             :statuses ss
+                                             :status   (case (count ss)
+                                                         0 :unknown
+                                                         1 (first ss)
+                                                         :inconsistent)}
+                                      w (assoc :witness w)
+                                      t (assoc :via t)))))
+                       acc (range (inc i) n))))
+                  (transient []) (range (dec n)))))]
      {:types     n
       :pairs     (count data)
       :by-status (frequencies (map :status data))
