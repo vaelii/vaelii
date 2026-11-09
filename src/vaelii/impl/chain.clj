@@ -5766,10 +5766,19 @@
         named (vec (kb/find-sentexes kb k))
         mhs   (into [] (comp (filter #(let [s (:sentence %)]
                                         (and (= sx/root-context (:context %)) (= 'natFormula (nm/functor s))
-                                             (= k (second s)) (jtms/in? tms (:id %)))))
+                                             (= k (second s)) (seq? (nth s 2 nil))
+                                             ;; A value's merge retires the original map;
+                                             ;; that must not withdraw the merge itself.
+                                             ;; Like nat-read/map-rows, retain a stated
+                                             ;; map while its premise is network-IN.
+                                             (or (jtms/in? tms (:id %))
+                                                 (and (jtms/premise? tms (:id %))
+                                                      (jtms/network-in? tms (:id %)))))))
                              (map :id))
                     named)
-        E     (res/minted-expression kb k)
+        E     (nm/min-by-content-key
+               identity
+               (map #(nth (:sentence (p/get-sentex recs %)) 2) mhs))
         own?  (if E (nat/own-sentex-test kb k E named) (constantly true))
         uses  (into [] (remove #(or (some? (:antecedent %)) (own? %)
                                     (= 'natFormula (nm/functor (:sentence %)))
