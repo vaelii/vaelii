@@ -87,7 +87,7 @@
   extents, in content order of the predicates."
   [kb w ps]
   (into [] (mapcat #(reads/as-stored-with-functor (:index kb) %))
-        (into (sorted-set) (mapcat (:specs-global w)) ps)))
+        (into (sorted-set-by nm/compare-form) (mapcat (:specs-global w)) ps)))
 
 (defn- self-tuples-under
   "The stored self tuples of the predicates `fs` that an `irreflexive` mark stands on or
@@ -114,7 +114,7 @@
   (`decide/unscoped-closures`)."
   [kb w]
   (let [tax (:tax w)]
-    (self-tuples-under kb w (into (sorted-set) (mapcat (:specs-global w)) (tax/props tax :irreflexive)))))
+    (self-tuples-under kb w (into (sorted-set-by nm/compare-form) (mapcat (:specs-global w)) (tax/props tax :irreflexive)))))
 
 ;; ---- the tuple marks -------------------------------------------------------
 ;;
@@ -175,7 +175,7 @@
 (defn- stored-specs
   "The predicates at or below `p` holding a stored fact, in content order."
   [kb w p]
-  (into (sorted-set)
+  (into (sorted-set-by nm/compare-form)
         (filter #(pos? (reads/stored-count-with-functor (:index kb) %)))
         ((:specs-global w) p)))
 
@@ -353,7 +353,7 @@
   (let [pairs (tax/negates-over (:tax w) q)]
     (when (seq pairs)
       (let [up ((:genls-global w) q)
-            fs (into (sorted-set) (comp (map second) (mapcat #(stored-specs kb w %)) (remove #{q})) pairs)]
+            fs (into (sorted-set-by nm/compare-form) (comp (map second) (mapcat #(stored-specs kb w %)) (remove #{q})) pairs)]
         (cond-> (into #{} (map #(hash-set h %)) (keys (tuples-at kb fs args)))
           (some (fn [[_ r]] (contains? up r)) pairs) (conj #{h}))))))
 
@@ -601,7 +601,7 @@
   [kb w ctxs]
   (when (seq ctxs)
     (let [tax (:tax w)]
-      (self-tuples-under kb w (into (sorted-set) (mapcat (:specs-global w)) (tax/props tax :irreflexive))
+      (self-tuples-under kb w (into (sorted-set-by nm/compare-form) (mapcat (:specs-global w)) (tax/props tax :irreflexive))
                          ctxs))))
 
 (defn moved?
@@ -641,7 +641,7 @@
   [kb w c ps]
   (when (and (seq ps) (held? (:tax w) c))
     (let [idx  (:index kb)
-          fs   (into (sorted-set) (mapcat (:specs-global w)) ps)
+          fs   (into (sorted-set-by nm/compare-form) (mapcat (:specs-global w)) ps)
           ms   (tuple-members c)]
       (into (set (self-tuples-under kb w fs))
             (if (< (count ms) (transduce (map #(reads/stored-count-with-functor idx %)) + fs))
@@ -717,7 +717,7 @@
         tms   (reasoning/tms kb)
         recs  (:records kb)
         sxs   (into {} (map (fn [h] [h (p/get-sentex recs h)])) members)
-        fs    (into (sorted-set) (keep #(some-> (get sxs %) :sentence nm/functor)) members)
+        fs    (into (sorted-set-by nm/compare-form) (keep #(some-> (get sxs %) :sentence nm/functor)) members)
         links (fn [q] (into [] (comp (remove #(= q %)) (map #(vector % q))) fs))
         by    (fn [prop] (for [q (convicting tax prop fs)] {:keys #{[:prop prop q]} :links (links q)}))]
     (when (every? some? (vals sxs))
