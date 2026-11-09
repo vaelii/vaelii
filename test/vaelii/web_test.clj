@@ -863,7 +863,7 @@
         (is (some #(and (not= "animal" %) (true? (v/genl? tu/*kb* (symbol %) 'animal))) ts))))
     (testing "every node is a link to that term's page — the graph is navigation"
       (is (re-find #"<a href=\"/term\?q=organism\"><g class=\"g-node" svg))
-      (let [targets (map (fn [[_ encoded]]
+      (let [targets (map (fn [[_ ^String encoded]]
                            (edn/read-string (java.net.URLDecoder/decode encoded "UTF-8")))
                          (re-seq #"<a href=\"/term\?q=([^\"]+)\"" svg))
             names   (map #(pr-str (if (v/reified-term? %) (v/term-expression tu/*kb* %) %)) targets)]
