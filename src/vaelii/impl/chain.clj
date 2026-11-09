@@ -5767,10 +5767,6 @@
         mhs   (into [] (comp (filter #(let [s (:sentence %)]
                                         (and (= sx/root-context (:context %)) (= 'natFormula (nm/functor s))
                                              (= k (second s)) (seq? (nth s 2 nil))
-                                             ;; A value's merge retires the original map;
-                                             ;; that must not withdraw the merge itself.
-                                             ;; Like nat-read/map-rows, retain a stated
-                                             ;; map while its premise is network-IN.
                                              (or (jtms/in? tms (:id %))
                                                  (and (jtms/premise? tms (:id %))
                                                       (jtms/network-in? tms (:id %)))))))

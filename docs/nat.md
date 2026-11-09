@@ -481,7 +481,10 @@ spellings can otherwise reason with only that one.
   held, as a convicted firing is, and the argument-hold refresh releases it. Each
   declaration that yields one projected sentence adds its own justification to that
   sentence, and two predicates yield two sentences. A projection is dropped with the last
-  of its supports.
+  of its supports. Correspondence maintenance also reads a stated, network-IN mint map
+  while a merge supersedes it, as `nat-read/map-rows` does. Otherwise the merge would
+  retire its map, and maintenance would withdraw that same merge for lack of the map.
+  Removing the premise still withdraws its support.
 
 A corresponding predicate marked `not_assertible` ([naf.md](naf.md)) has no stored facts,
 and a prover answers it. An application of its function resolves on a read and on a write
