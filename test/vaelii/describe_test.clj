@@ -35,7 +35,7 @@
       (is (= :predicate (:role d)))
       (is (= [2 'parentOf] ((juxt :arity :arity-via) d))))
     (testing "both argument positions are declared, and each declaration says where"
-      (is (= '[(arg parentOf 1 organism) (arg parentOf 2 organism)]
+      (is (= '[(arg parentOf 1 causal) (arg parentOf 2 causal)]
              (mapv :sentence (:arg-declarations d))))
       (is (every? #(= :arg (:kind %)) (:arg-declarations d)))
       (is (every? #(symbol? (:context %)) (:arg-declarations d))))

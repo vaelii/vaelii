@@ -380,8 +380,13 @@
 ;; rigidity kinds, eternal_predicate, situation_predicate and core.txt's other temporal
 ;; classes of relation) add open pairs and remove no separation. The percentage floors are
 ;; the values the starter gives with them; the pair count floor catches a removal.
+;; Kinship's three predicate kinds and cross-cutting chimera type add types and open
+;; pairs; no separation is removed, so the absolute floor rises. Retain this separately
+;; approved vocabulary-expansion baseline; do not lower it for an unrelated lost
+;; separation. Unknown's committed value retains the published kinship band, with the
+;; shared slack policy above. Chimerism overlaps the 44 folk kinds.
 
-(def ^:private unknown-committed-% 6.43)
+(def ^:private unknown-committed-% 6.86)
 (def ^:private unknown-slack-pp 0.5)
 (def ^:private unknown-ceiling-% 10.0)
 
@@ -395,10 +400,10 @@
         unknown-%  (* 100.0 (/ unknown pairs))
         verdict    (dr/ratchet-verdict unknown-committed-% unknown-% unknown-slack-pp
                                        unknown-ceiling-%)]
-    (is (>= disjoint 33040)
-        (format "disjoint pairs must not fall below 33040 (got %d)" disjoint))
-    (is (>= disjoint-% 83.39)
-        (format "disjoint coverage must not regress below 83.39%% (got %.2f%%)" disjoint-%))
+    (is (>= disjoint 33642)
+        (format "disjoint pairs must not fall below 33642 (got %d)" disjoint))
+    (is (>= disjoint-% 83.12)
+        (format "disjoint coverage must not regress below 83.12%% (got %.2f%%)" disjoint-%))
     (is (:pass? verdict)
         (format "unknown pairs must stay at most %.2f%% + %.1fpp and under %.1f%% (got %.2f%%)"
                 unknown-committed-% unknown-slack-pp unknown-ceiling-% unknown-%))

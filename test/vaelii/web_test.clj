@@ -863,7 +863,12 @@
         (is (some #(and (not= "animal" %) (true? (v/genl? tu/*kb* (symbol %) 'animal))) ts))))
     (testing "every node is a link to that term's page — the graph is navigation"
       (is (re-find #"<a href=\"/term\?q=organism\"><g class=\"g-node" svg))
-      (is (= (drawn-terms svg) (set (map second (re-seq #"<a href=\"/term\?q=([^\"]+)\"" svg))))))
+      (let [targets (map (fn [[_ encoded]]
+                           (edn/read-string (java.net.URLDecoder/decode encoded "UTF-8")))
+                         (re-seq #"<a href=\"/term\?q=([^\"]+)\"" svg))
+            names   (map #(pr-str (if (v/reified-term? %) (v/term-expression tu/*kb* %) %)) targets)]
+        (is (= (count (drawn-terms svg)) (count targets)))
+        (is (= (drawn-terms svg) (set names)))))
     (testing "and it says which claim the vertical axis is"
       (is (re-find #"class=\"g-edge g-genl\"" svg))
       (is (re-find #"arrows point at the more general type" body)))
@@ -2210,7 +2215,9 @@
 (tu/deftest-kb a-rule-renders-with-the-authors-variable-names
   ;; rules are stored with canonical variables (?var0, …); the page restores the
   ;; author's names from the sentex :varmap so it reads as it was written.
-  (let [[rule & more] (filter :antecedent (v/find-sentexes kb 'grandparentOf))
+  (let [[rule & more] (filter #(and (:antecedent %) (= 'CxKinship (:context %))
+                                    (= 'grandparentOf (first (:consequent %))))
+                              (v/find-sentexes kb 'grandparentOf))
         r             (GET (str "/sentex/" (:id rule)))]
     (is (nil? more) "one grandparentOf rule, so reading it is not a choice between several")
     (is (some? rule) "the starter's grandparentOf rule is stored")

@@ -99,9 +99,16 @@
     ;; the run settles inside the fast path on an idle box; wait for it either way, then the
     ;; funnel it lands on still classifies the rules
     (jobs/wait (:id (first (jobs/jobs))))
-    (let [b (:body (GET "/funnel"))]
+    (let [b (:body (GET "/funnel"))
+          pages (loop [body b, pages []]
+                  (let [pages (conj pages body)
+                        href (second (re-find #"hx-get=\"(/funnel/rows\?offset=\d+)\"" body))]
+                    (if (and href (< (count pages) 100))
+                      (let [[uri qs] (str/split href #"\?")]
+                        (recur (:body (GET uri qs)) pages))
+                      pages)))]
       (is (re-find #"The chaining funnel" b))
-      (is (re-find #">fires<" b)))))
+      (is (some #(re-find #">fires<" %) pages)))))
 
 ;; ---- the read behind it --------------------------------------------------
 
