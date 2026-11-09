@@ -145,29 +145,41 @@ A believed equation is answered by every read, and three rules make that hold.
   read would return it under any name. An equality relation nested inside a sentence,
   `(not (sameAs A B))` say, is read through the mention walk, since its arguments move
   by a spelling rename and not by an identity merge.
-- **An equation goal is asked as spelled**, like a `different` goal
-  (`res/goal-held-as-spelled?`). Its arguments are mentions, and the goal rewrite would
-  turn `(rewriteOf P D)` into the self-edge `(rewriteOf P P)`, which matches nothing.
+- **Raw equation retrieval keeps the authored spelling**
+  (`res/goal-held-as-spelled?`). This remains the storage/mention policy, not a rule
+  that public positive `rewriteOf` answers must expose a retired spelling.
+- **Positive `rewriteOf` queries read visible witnesses through the reader's
+  representatives.** Both the goal endpoints and each stored witness's endpoints are
+  normalized as terms before matching, with existing closed applications resolved
+  without minting. Thus `(rewriteOf P D)` may answer `(rewriteOf P P)` and bind an open
+  endpoint to `P`; that binding roundtrips as a closed query and composes with another
+  conjunct. A variable predicate does not bypass normalization. This is the canonical
+  image of actual visible rewrite witnesses, not universal reflexivity: an unrelated
+  `(rewriteOf X X)` is unsupported. Negative equations keep their existing mention
+  policy. No stored self edge, converse edge, or retirement record is synthesized.
 - **`sameAs` and `equals` goals are answered from the closure** by
   `provers/EqualityProver`, scoped to the asking context the way `same-class?` is. A
   ground goal holds when both sides reach one normal form (congruence, then the visible
   schematic equations), so the stated form, its symmetric form, the reflexive form and a
   form joining two ends of a chain all answer true. A goal binding a symbol on one side
-  and a variable on the other enumerates that symbol's class, itself included.
+  and a variable on the other enumerates that symbol's class, itself included. A
+  spelling a visible `rewriteOf` retired is returned through its spelling representative;
+  ordinary nonretired identity aliases remain separate answers. This does not collapse
+  a `sameAs` class to one identity representative or change the stored class members.
 
-Three shapes are not answered from the closure, and each is left to the stored
-equations. A goal open on both sides asks for every pair over the domain, reflexive
+Two `sameAs` / `equals` shapes are not answered from the closure, and each is left to
+the stored equations. A goal open on both sides asks for every pair over the domain, reflexive
 pairs included, so it returns the stated equations only. A goal binding a **compound**
 beside a variable asks for every term that normalizes with it, which is E-unification
-("What is not built" below). And **`rewriteOf`** is directional: `(rewriteOf P D)` is
-answered by the stored edge, its converse and the self-edge are not, and a chain does
-not compose into a stated edge, since the preference it records is per edge.
+("What is not built" below). A stored **`rewriteOf`** preference is still directional;
+its public positive answers use the representative image described above. This
+does not change write admission or the stored preference graph.
 
 `sentexes-matching` is a storage read, so it returns the stated equation as spelled and
 nothing else: the symmetric form of an equation stated one way round is not a stored
-sentex. `prove` takes the stored facts as its leaf, so it proves the stated spelling;
-the closure's other answers come through `ask`, or through `prove` run with a registry
-leaf ([inference.md](inference.md)).
+sentex. Public registry-backed `ask`, `query` and `prove` use the semantic readers;
+a caller explicitly supplying a raw storage leaf still reads the stored records
+([inference.md](inference.md)).
 
 ## What a merge does
 

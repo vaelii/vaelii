@@ -277,21 +277,62 @@
                           (vec l)))
     kb))
 
-(defn- held-after
-  "`(held kb)` after `load!` on a cleared KB of its own, cleared again after."
+(defn- starter-public-reading
+  "A finite public observation matrix, not physical allocation/OUT history.
+  Includes the actual reflection, retirement and classification countergoals, open
+  metadata consumers and both inherited and local kinship readings. Never drops a
+  returned opaque value: if a public query exposes it, it participates in equality."
+  [kb]
+  (let [goals {:maps '(natFormula ?target ?expression)
+               :rewrites '(rewriteOf ?target ?expression)
+               :predicates '(predicate ?p)
+               :chosen '(chosen_kinship_predicate ?p)
+               :blood '(blood_kinship_predicate ?p)
+               :chosen-same-as '(sameAs chosenKinOf ?p)
+               :chosen-equals '(equals chosenKinOf ?p)
+               :blood-same-as '(sameAs bloodRelativeOf ?p)
+               :chosen-specs '(genl ?p chosenKinOf)
+               :blood-specs '(genl ?p bloodRelativeOf)
+               :chosen-correspondence '(chosenKinPredicateOf kinOf ?p)
+               :blood-correspondence '(bloodKinPredicateOf kinOf ?p)}]
+    {:answers (into {}
+                    (for [reader ['CxUniverse 'CxKinship]
+                          [label goal] goals]
+                      [[reader label] (set (v/query kb goal reader))]))
+     :chosen-root-predicate
+     {:closed (v/ask? kb '(predicate chosenKinOf) 'CxUniverse)
+      :open (contains? (set (v/query kb '(predicate ?p) 'CxUniverse))
+                       {'?p 'chosenKinOf})
+      :denied (v/ask? kb '(not (predicate chosenKinOf)) 'CxUniverse)}}))
+
+(defn- reading-after
+  "Public observations and raw diagnostics after `load!`, clearing the KB afterward.
+  Sequential loads retain the original memory/startup cost boundary: no second live
+  whole KB and no additional starter reload to discover a union of ground probes."
   [load!]
   (let [kb (tu/isolated-fresh)]
-    (try (held (load! kb)) (finally (tu/clear-kb! kb)))))
+    (try
+      (load! kb)
+      {:held (held kb)
+       :public (starter-public-reading kb)}
+      (finally (tu/clear-kb! kb)))))
 
 (defn- starter-in-orders
   "Each shuffled order in `seeds` against the shipped one.  The shipped reading is the
   restored starter dump — `starter/load-into`'s KB, which `starter_copy_test` tests — so
   a run pays for the shuffled loads alone."
   [seeds]
-  (let [shipped (held-after tu/load-starter!)]
+  (let [shipped-reading (reading-after tu/load-starter!)
+        shipped (:held shipped-reading)]
+    (is (= {:closed true :open true :denied false}
+           (get-in shipped-reading [:public :chosen-root-predicate])))
     (doseq [s seeds]
-      (let [shuffled (held-after #(load-shuffled! % s))]
-        (is (= shipped shuffled)
+      (let [shuffled-reading (reading-after #(load-shuffled! % s))
+            shuffled (:held shuffled-reading)]
+        (is (= {:closed true :open true :denied false}
+               (get-in shuffled-reading [:public :chosen-root-predicate]))
+            (str "seed " s ": the public predicate reading, not direct-row materialization"))
+        (is (= (:public shipped-reading) (:public shuffled-reading))
             (str "seed " s ": held only by the shipped order "
                  (pr-str (take 5 (remove (set (keys shuffled)) (keys shipped))))
                  ", only by the shuffled one "

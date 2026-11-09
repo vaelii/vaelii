@@ -299,7 +299,7 @@
 8	19	test/vaelii/encodable_test.clj
 19	85	test/vaelii/entry_point_and_report_test.clj
 7	11	test/vaelii/enumeration_shape_test.clj
-1	166	test/vaelii/equality_test.clj
+1	165	test/vaelii/equality_test.clj
 21	83	test/vaelii/equational_test.clj
 0	61	test/vaelii/evaluatable_test.clj
 0	22	test/vaelii/examples_test.clj
