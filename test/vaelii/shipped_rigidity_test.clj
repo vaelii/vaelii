@@ -472,3 +472,17 @@
   ;; content-essential token cannot.
   (all-of-kind kb 'time_varying_relation '[alterOf headmateOf] 'CxTra)
   (all-of-kind kb 'time_agnostic_relation '[carries] 'CxTra))
+
+(tu/deftest-kb cxtra-placement-naming-and-custody-are-time-varying-and-content-relations-classified
+  (all-of-kind kb 'time_varying_relation
+               '[toolEnablesCapability runsOn clusterNode onNetwork hasSeat hostnameOf
+                 discordChannelName nameString custodianOf holdsReadyLatch discordAccountId
+                 agentClaims]
+               'CxTra)
+  (all-of-kind kb 'time_invariant_relation
+               '[kubernetesNamespaceOf pathNamespace pathText discordMessageClaims]
+               'CxTra)
+  (all-of-kind kb 'time_agnostic_relation '[subInformationOf dataContent propositionalContent]
+               'CxTra)
+  (all-of-kind kb 'time_agnostic_relation '[properPartOf] 'CxUniverse)
+  (all-eternal kb '[founderOf] 'CxTra))

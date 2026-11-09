@@ -235,6 +235,7 @@
 ;; and the tool the instrument, so nothing here concludes hasCapability of the tool.
 (comment toolEnablesCapability "(toolEnablesCapability ?tool ?happeningKind) means that whoever has ?tool available can be the doer of a happening of kind ?happeningKind. ?tool is any temporal thing, software or physical: a tool that fetches an image and returns what it shows enables image_viewing, and a jetpack enables flying.")
 (binary_predicate toolEnablesCapability)
+(set/monotonic (time_varying_relation toolEnablesCapability))
 (arg toolEnablesCapability 1 temporal)
 (genlArg toolEnablesCapability 2 happening)
 
@@ -337,6 +338,7 @@
 
 (comment runsOn "(runsOn ?system ?host) means that ?system executes on ?host, a computer or another computational system: a service on a container, a container on a virtual machine or on a computer. Transitive, so a service on a container on a computer runs on that computer. No other fact about ?system is thereby a fact about ?host, nor the reverse.")
 (set/monotonic (instance_relation_predicate runsOn))
+(set/monotonic (time_varying_relation runsOn))
 (arg runsOn 1 computational_system)
 (arg runsOn 2 thing)
 (set/monotonic (transitive runsOn))
@@ -369,6 +371,7 @@
 
 (comment clusterNode "(clusterNode ?cluster ?node) means that ?node is a node of ?cluster: the operating system install the cluster's node agent runs in, which runsOn a computer for a bare-metal node and runsOn a hypervisor for a virtual one. Membership only: controlPlaneNode and workerNode state the node's role.")
 (set/monotonic (instance_relation_predicate clusterNode))
+(set/monotonic (time_varying_relation clusterNode))
 (arg clusterNode 1 kubernetes_cluster)
 (arg clusterNode 2 computational_system)
 
@@ -386,11 +389,13 @@
 
 (comment onNetwork "(onNetwork ?thing ?network) means that ?thing is a member of ?network, addressable on it. Not carried along runsOn: a container on a host is not thereby on the host's networks.")
 (set/monotonic (instance_relation_predicate onNetwork))
+(set/monotonic (time_varying_relation onNetwork))
 (arg onNetwork 1 thing)
 (arg onNetwork 2 network)
 
 (comment kubernetesNamespaceOf "(kubernetesNamespaceOf ?namespace ?cluster) means that ?namespace is a namespace in ?cluster. Functional: a namespace is in one cluster.")
 (set/monotonic (instance_relation_predicate kubernetesNamespaceOf))
+(set/monotonic (time_invariant_relation kubernetesNamespaceOf))
 (arg kubernetesNamespaceOf 1 kubernetes_namespace)
 (arg kubernetesNamespaceOf 2 kubernetes_cluster)
 (set/monotonic (functional kubernetesNamespaceOf))
@@ -400,6 +405,7 @@
 ;; in different naming contexts.  Either mark would equate two systems that share a name.
 (comment hostnameOf "(hostnameOf ?thing ?name) means that ?name names ?thing in some naming context: DNS, a machine's own configured name, a private network's name service or a container runtime. Two things with one name are not thereby one thing, and a name read from inside a container names the container, not its host.")
 (set/monotonic (instance_relation_predicate hostnameOf))
+(set/monotonic (time_varying_relation hostnameOf))
 (arg hostnameOf 1 thing)
 (quotedArg hostnameOf 2 string)
 (not (functional hostnameOf))
@@ -543,6 +549,7 @@
 
 (comment custodianOf "(custodianOf ?person ?thing) means that ?person is responsible for keeping ?thing in working order: the one to call when it breaks. Not access: a custodian need hold no grant over ?thing, and one who holds a grant need not be its custodian.")
 (set/monotonic (instance_relation_predicate custodianOf))
+(set/monotonic (time_varying_relation custodianOf))
 (arg custodianOf 1 person)
 (arg custodianOf 2 thing)
 
@@ -586,12 +593,14 @@
 
 (comment pathNamespace "(pathNamespace ?reference ?namespace) means that ?reference's path is resolved in the filesystem namespace ?namespace. Functional: a reference has one namespace.")
 (set/monotonic (instance_relation_predicate pathNamespace))
+(set/monotonic (time_invariant_relation pathNamespace))
 (arg pathNamespace 1 file_path_reference)
 (arg pathNamespace 2 filesystem_namespace)
 (set/monotonic (functional pathNamespace))
 
 (comment pathText "(pathText ?reference ?path) means that ?path is the absolute path string of ?reference. Functional: a reference has one path.")
 (set/monotonic (instance_relation_predicate pathText))
+(set/monotonic (time_invariant_relation pathText))
 (arg pathText 1 file_path_reference)
 (quotedArg pathText 2 string)
 (set/monotonic (functional pathText))
@@ -677,6 +686,7 @@
 
 (comment holdsReadyLatch "(holdsReadyLatch ?person ?repository) means that a draft pull request of ?repository waits on ?person to mark it ready or clear it to be. Not a permission: it grants no capability over ?repository, and a capability holder need not hold it.")
 (set/monotonic (instance_relation_predicate holdsReadyLatch))
+(set/monotonic (time_varying_relation holdsReadyLatch))
 (arg holdsReadyLatch 1 person)
 (arg holdsReadyLatch 2 forge_repository)
 
@@ -728,6 +738,7 @@
 
 (comment subInformationOf "(subInformationOf ?part ?whole) means that the information ?part is a component of the information ?whole, e.g. a chapter in a book or a frame in a video. A spec of intangiblePartOf, since information has no mass. Declared transitive, so a part of a part is a part.")
 (set/monotonic (instance_relation_predicate subInformationOf))
+(set/monotonic (time_agnostic_relation subInformationOf))
 (arg subInformationOf 1 information)
 (arg subInformationOf 2 information)
 (set/monotonic (transitive subInformationOf))
@@ -741,6 +752,7 @@
 ;; sentex_handle_term quoted, so a text KB writes it as an (ist Cx S) reference.
 (comment agentClaims "(agentClaims ?agent (sentexHandle H)) means that ?agent presents the sentex named by the handle in position 2 as true. A claim is not a belief: the KB believes the sentex only where a context the reader sees asserts it. Declared target_following_predicate, so retracting the sentex retracts each claim that names it. No rule concludes agentClaims from carries: a carrier that holds a sentex by quoting, denying or mocking it is not thereby concluded to present it as true.")
 (binary_predicate agentClaims)
+(set/monotonic (time_varying_relation agentClaims))
 (set/monotonic (instance_relation_predicate agentClaims))
 (arg agentClaims 1 thing)
 (arg agentClaims 2 thing)
@@ -799,6 +811,7 @@
 (set/monotonic (functional channelViewOf))
 (comment discordChannelName "(discordChannelName ?channel ?name) means that ?name is an observed human-readable name of Discord channel ?channel in the stated context and time. A label, not identity: channels can be renamed and names need not be unique.")
 (set/monotonic (instance_relation_predicate discordChannelName))
+(set/monotonic (time_varying_relation discordChannelName))
 (arg discordChannelName 1 discord_channel)
 (quotedArg discordChannelName 2 string)
 (not (functional discordChannelName))
@@ -806,6 +819,7 @@
 
 (comment discordAccountId "(discordAccountId ?person ?snowflake) means that ?person is authorized to use the Discord account whose stable user ID is the decimal string ?snowflake, in the stated context and time. It does not equate the person with the account, require a unique account per person, or exclude shared accounts.")
 (set/monotonic (instance_relation_predicate discordAccountId))
+(set/monotonic (time_varying_relation discordAccountId))
 (arg discordAccountId 1 person)
 (quotedArg discordAccountId 2 string)
 (not (functional discordAccountId))
@@ -837,6 +851,7 @@
 
 (comment discordMessageClaims "(discordMessageClaims ?message (sentexHandle H)) means that the Discord message ?message asserts, in natural language, what the sentex named by the handle states. Records where the claim came from, not that it is true. Declared target_following_predicate, so retracting the sentex retracts each receipt that names it.")
 (binary_predicate discordMessageClaims)
+(set/monotonic (time_invariant_relation discordMessageClaims))
 (set/monotonic (instance_relation_predicate discordMessageClaims))
 (arg discordMessageClaims 1 discord_message)
 (arg discordMessageClaims 2 thing)
@@ -848,6 +863,7 @@
 ;; propositionalContent independently of another information's data content.
 (comment dataContent "(dataContent ?info ?string) means that ?string, taken as written, is what ?info holds: the exact sequence of symbols, independent of any byte encoding that stores it. Functional: one piece of information has one data content.")
 (binary_predicate dataContent)
+(set/monotonic (time_agnostic_relation dataContent))
 (set/monotonic (instance_relation_predicate dataContent))
 (arg dataContent 1 information)
 (quotedArg dataContent 2 string)
@@ -855,6 +871,7 @@
 
 (comment propositionalContent "(propositionalContent ?info ?proposition) means that ?info says ?proposition. Not functional: one piece of information can say more than one proposition, and two pieces of information with equal data content can say different propositions, e.g. the same words from two different speakers.")
 (binary_predicate propositionalContent)
+(set/monotonic (time_agnostic_relation propositionalContent))
 (set/monotonic (instance_relation_predicate propositionalContent))
 (arg propositionalContent 1 information)
 (arg propositionalContent 2 proposition)
@@ -865,6 +882,7 @@
 ;; kind, and a thing can have more than one name.
 (comment nameString "(nameString ?thing ?name) means that ?name is a string that names ?thing, e.g. a person's name as written. A thing can have more than one name string.")
 (binary_predicate nameString)
+(set/monotonic (time_varying_relation nameString))
 (arg nameString 1 thing)
 (quotedArg nameString 2 string)
 
@@ -992,6 +1010,7 @@
 
 (comment hasSeat "(hasSeat ?construct ?seat) means that ?construct runs in ?seat. Says nothing about what ?seat runs on, which runsOn states.")
 (set/monotonic (instance_relation_predicate hasSeat))
+(set/monotonic (time_varying_relation hasSeat))
 (arg hasSeat 1 construct)
 (arg hasSeat 2 seat)
 (not (functional hasSeat))
@@ -1002,6 +1021,7 @@
 (comment founderOf
          "(founderOf ?founder ?construct) means that ?founder is the person who founded the construct ?construct: who designed it and brought it into being.")
 (set/monotonic (instance_relation_predicate founderOf))
+(set/monotonic (eternal_predicate founderOf))
 (set/monotonic (asymmetric founderOf))
 (arg founderOf 1 person)
 (arg founderOf 2 construct)

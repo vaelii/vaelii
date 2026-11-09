@@ -295,6 +295,7 @@
 (arg properPartOf 1 thing)   ;; a proper part of any kind, as partOf's part is of any kind
 (arg properPartOf 2 thing)   ;; a whole of any kind, as partOf's whole is of any kind
 (set/monotonic (instance_relation_predicate properPartOf))
+(set/monotonic (time_agnostic_relation properPartOf))
 (set/monotonic (irreflexive properPartOf))
 (set/monotonic (transitive properPartOf))
 (genl properPartOf partOf)
