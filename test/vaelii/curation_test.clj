@@ -349,11 +349,10 @@
   ;; definition check.  These are known ground candidates exercised by CxUniverse's numeric
   ;; definitions, not a request for the query engine to enumerate a domain.
   (every-believed-example-holds-as-stated)
-  ;; Classifying every relation by rigidity_kind is open work, so the one finding is
-  ;; core.txt's (typeAllSpecified rigidity_kind relation), and every other pass is clean.
+  ;; Every upper-ontology relation is classified by rigidity_kind, so core.txt's
+  ;; (typeAllSpecified rigidity_kind relation) is met and every pass is clean.
   (let [report (v/kb-integrity kb #{-212 0 212} 'CxUniverse)]
-    (is (= {:status :gap :candidate-count 3}
+    (is (= {:status :audited :candidate-count 3}
            (dissoc report :type-specified-violations :work :elapsed-ms))
         (pr-str (dissoc report :type-specified-violations :work :elapsed-ms)))
-    (is (= ['[typeAllSpecified rigidity_kind relation]]
-           (keys (:type-specified-violations report))))))
+    (is (empty? (:type-specified-violations report)))))

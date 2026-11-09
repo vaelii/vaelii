@@ -587,6 +587,7 @@
 
 (comment filePathRefOf "(filePathRefOf ?namespace ?path ?reference) means that ?reference is the reference made of ?namespace and the absolute path string ?path: (FilePathRefFn ?namespace ?path) is ?reference.")
 (ternary_predicate filePathRefOf)
+(set/monotonic (time_invariant_relation filePathRefOf))
 (arg filePathRefOf 1 filesystem_namespace)
 (quotedArg filePathRefOf 2 string)
 (arg filePathRefOf 3 file_path_reference)
@@ -1039,10 +1040,13 @@
 ;; arrangement that holds, and a change retracts the membership it ends.
 (unary_predicate singlet)
 (comment singlet "A person with no alters. Time-varying: a singlet can stop being one and go on existing, as a person who comes to have alters becomes a plural system.")
+(set/monotonic (time_varying_relation singlet))
 (unary_predicate plural_system)
 (comment plural_system "A person who has two or more alters: for a human, the body its alters share, not the alters taken together. Time-varying: a plural system can stop being one and go on existing, as a body whose alters integrate into one identity becomes a singlet.")
+(set/monotonic (time_varying_relation plural_system))
 (unary_predicate alter)
 (comment alter "One of the identities of a plural system, a person in its own right. Time-varying: an alter can stop being one and go on existing, since the arrangement of the system it belongs to can change.")
+(set/monotonic (time_varying_relation alter))
 (set/monotonic (partition person singlet plural_system alter))
 
 (comment alterOf

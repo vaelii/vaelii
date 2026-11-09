@@ -1011,6 +1011,8 @@
 (arity_type unbounded_arity)
 (arity_type at_least_binary)
 (arity_type at_least_ternary)
+(arity_type at_least_quaternary)
+(arity_type at_least_quinary)
 (typeOrthogonal arity_type abducible_predicate)
 
 ;; The rigidity kinds classify a relation by whether its instances could lose it and go
@@ -1334,6 +1336,7 @@
          "(diachronicallyDisjoint ?type1 ?type2) means that nothing is an instance of both types at the same time, though one thing can be an instance of each at different times: caterpillar and butterfly, a child and an adult. disjoint is a genl of it, because never sharing an instance means never sharing one at once. Stated and queryable, not enforced: memberships are checked without time, so the engine cannot yet tell an instance that is both at once from one that is each in turn.")
 (set/monotonic (symmetric diachronicallyDisjoint))
 (set/monotonic (type_relation_predicate diachronicallyDisjoint))
+(set/monotonic (time_agnostic_relation diachronicallyDisjoint))
 (genlArg diachronicallyDisjoint 1 thing)
 (genlArg diachronicallyDisjoint 2 thing)
 (genl disjoint diachronicallyDisjoint)
@@ -2032,6 +2035,7 @@
 (comment functionCorrespondingBinaryPredicate
          "(functionCorrespondingBinaryPredicate ?function ?predicate) means (functionCorrespondingPredicate ?function ?predicate 2): ?predicate is binary and holds of ?function's argument and then its value. So (functionCorrespondingBinaryPredicate MotherFn motherOf) says (MotherFn Muffet) is the Mary of (motherOf Muffet Mary). The rule below concludes the ternary, which is the only form the engine reads. See docs/nat.md.")
 (binary_predicate functionCorrespondingBinaryPredicate)
+(set/monotonic (time_invariant_relation functionCorrespondingBinaryPredicate))
 (arg functionCorrespondingBinaryPredicate 1 function)
 (arg functionCorrespondingBinaryPredicate 2 binary_predicate)
 (set/forwardRule

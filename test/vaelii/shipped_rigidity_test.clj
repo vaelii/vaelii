@@ -486,3 +486,14 @@
                'CxTra)
   (all-of-kind kb 'time_agnostic_relation '[properPartOf] 'CxUniverse)
   (all-eternal kb '[founderOf] 'CxTra))
+
+(tu/deftest-kb the-reconciled-relations-take-their-siblings-kinds
+  (all-of-kind kb 'time_invariant_relation
+               '[at_least_quaternary at_least_quinary functionCorrespondingBinaryPredicate]
+               'CxUniverse)
+  (all-of-kind kb 'time_agnostic_relation '[diachronicallyDisjoint] 'CxUniverse)
+  (all-of-kind kb 'time_varying_relation '[singlet plural_system alter] 'CxTra)
+  (testing "a node role is time-varying down its genl edge to clusterNode"
+    (all-of-kind kb 'time_varying_relation '[controlPlaneNode workerNode] 'CxTra))
+  (testing "FilePathRefFn takes filePathRefOf's kind through the correspondence"
+    (all-of-kind kb 'time_invariant_relation '[filePathRefOf FilePathRefFn] 'CxTra)))

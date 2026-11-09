@@ -72,11 +72,10 @@
     (let [report (v/kb-integrity kb terms 'CxUniverse)
           open   (get (:type-specified-violations report)
                       '[typeAllSpecified rigidity_kind relation])]
-      (is (= {:status :gap :candidate-count (count terms)}
+      (is (= {:status :audited :candidate-count (count terms)}
              (dissoc report :type-specified-violations :work :elapsed-ms))
           "the default passes find nothing")
-      (is (= ['[typeAllSpecified rigidity_kind relation]]
-             (keys (:type-specified-violations report))))
+      (is (empty? (:type-specified-violations report)))
       (is (empty? (filter terms (:violations open)))
           "each happening role is classified by rigidity kind"))
     ;; The review-only missing-arg pass audits the whole visible KB, not just the
