@@ -226,9 +226,9 @@ Data hangs below CxWell.
   - **pull requests** — a `pull_request` of a `forge_repository` (both below
     `digital_artifact`) is named by the reifiable `(PullRequestFn ?repository
     ?number)`, with `pullRequestOf` its corresponding predicate, value last.
-    `(prStatus ?pullRequest ?status)` takes one of four `pull_request_status` values,
-    `PullRequestDraft`, `PullRequestReady`, `PullRequestMerged` and
-    `PullRequestClosed`, and no time argument. `(holdsReadyLatch ?person ?repository)`
+    Its status is its membership in time-varying kinds: `open_pr`, `merged_pr` and
+    `closed_pr` partition `pull_request`, and `draft_pr` and `ready_pr` partition
+    `open_pr`. A membership takes no time argument. `(holdsReadyLatch ?person ?repository)`
     says whose call it is that a repository's drafts are ready, and is not a grant.
     `merge_access` is below `write_access`, `(hasCapability ?principal (MergeAccessFn
     ?repository))` states a grant of it, with `mergeAccessOf` its functional

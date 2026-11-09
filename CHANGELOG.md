@@ -66,6 +66,20 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `(variable_arity_predicate functionCorrespondingPredicate)`,
   `(arityMax functionCorrespondingPredicate 3)`
 
+### Breaking: shipped ontology
+
+- **A pull request's status is its membership in a status kind.** CxTra's `open_pr`,
+  `merged_pr` and `closed_pr` partition `pull_request`, and `draft_pr` and `ready_pr`
+  partition `open_pr`. Each is time-varying: a pull request changes status and stays the
+  same request. `prStatus`, `pull_request_status` and its four individuals
+  `PullRequestDraft`, `PullRequestReady`, `PullRequestMerged` and `PullRequestClosed` are
+  retired.
+  *Migration:* write `(prStatus ?pr PullRequestDraft)` as `(draft_pr ?pr)`,
+  `PullRequestReady` as `ready_pr`, `PullRequestMerged` as `merged_pr` and
+  `PullRequestClosed` as `closed_pr`.
+  *Breaks:* `prStatus`, `pull_request_status`, `PullRequestDraft`, `PullRequestReady`,
+  `PullRequestMerged`, `PullRequestClosed`
+
 ### Fix: contextual type definitions
 
 - **The starter text declares each type's unary arity in its defining context.**

@@ -628,8 +628,9 @@
 
 ;; ==== pull requests on a forge =================================================
 ;; A pull request is named by its repository and its number, built by PullRequestFn and
-;; read back through pullRequestOf, value last.  prStatus gives the stage it is at, and
-;; takes no time argument: a status holds over the time of the context it is stated in.
+;; read back through pullRequestOf, value last.  Its status is its membership in the
+;; status kinds below pull_request, and like any membership it holds over the time of the
+;; context it is stated in.
 ;; holdsReadyLatch says whose call it is that a repository's drafts are ready, and is not
 ;; a grant.  Merging is an access kind, and a grant of it is (hasCapability ?principal
 ;; (MergeAccessFn ?repository)).  Every merge changes its repository's target branch, so
@@ -649,6 +650,27 @@
 (set/monotonic (time_invariant_relation pull_request))
 (genl pull_request digital_artifact)
 
+;; Every pull request is open, merged or closed, and every open one is a draft or ready
+;; for review.  A pull request moves between these and stays the same request, so each
+;; status kind is time-varying.
+(unary_predicate open_pr)
+(comment open_pr "A pull request open on its forge: neither merged nor closed. A draft or ready for review.")
+(set/monotonic (time_varying_relation open_pr))
+(unary_predicate merged_pr)
+(comment merged_pr "A pull request its forge has merged into its target branch. A merged pull request is never reopened.")
+(set/monotonic (time_varying_relation merged_pr))
+(unary_predicate closed_pr)
+(comment closed_pr "A pull request closed without being merged. Its forge can reopen it.")
+(set/monotonic (time_varying_relation closed_pr))
+(set/monotonic (partition pull_request open_pr merged_pr closed_pr))
+(unary_predicate draft_pr)
+(comment draft_pr "An open pull request its author has marked not ready for review. Its forge refuses to merge it.")
+(set/monotonic (time_varying_relation draft_pr))
+(unary_predicate ready_pr)
+(comment ready_pr "An open pull request ready for review, whether or not it is approved or can merge cleanly.")
+(set/monotonic (time_varying_relation ready_pr))
+(set/monotonic (partition open_pr draft_pr ready_pr))
+
 (comment PullRequestFn "(PullRequestFn ?repository ?number) means the pull request numbered ?number in ?repository. A forge never gives one number to two pull requests of one repository, so the pair fixes the request. Says nothing about its status or whether the forge still serves it.")
 (reifiable_function PullRequestFn)
 (binary_function PullRequestFn)
@@ -663,28 +685,6 @@
 (arg pullRequestOf 1 forge_repository)
 (arg pullRequestOf 2 positive_integer)
 (arg pullRequestOf 3 pull_request)
-
-(unary_predicate pull_request_status)
-(comment pull_request_status "A stage a pull request can be at on its forge. A stage, not a pull request: it outlasts every request that passes through it.")
-(genl pull_request_status nowhere_never)
-
-(comment PullRequestDraft "Open, and marked by its author as not ready for review. A forge refuses to merge a pull request at this stage.")
-(pull_request_status PullRequestDraft)
-
-(comment PullRequestReady "Open and ready for review, whether or not it is approved or can merge cleanly.")
-(pull_request_status PullRequestReady)
-
-(comment PullRequestMerged "Merged into its target branch by the forge. Final: a merged pull request is never reopened.")
-(pull_request_status PullRequestMerged)
-
-(comment PullRequestClosed "Closed without being merged. Not final: the forge can reopen it.")
-(pull_request_status PullRequestClosed)
-
-(comment prStatus "(prStatus ?pullRequest ?status) means that ?pullRequest is at the stage ?status on its forge. One stage at a time. Takes no time argument: it holds over the time of the context it is stated in.")
-(set/monotonic (instance_relation_predicate prStatus))
-(arg prStatus 1 pull_request)
-(arg prStatus 2 pull_request_status)
-(set/monotonic (functional prStatus))
 
 (comment holdsReadyLatch "(holdsReadyLatch ?person ?repository) means that a draft pull request of ?repository waits on ?person to mark it ready or clear it to be. Not a permission: it grants no capability over ?repository, and a capability holder need not hold it.")
 (set/monotonic (instance_relation_predicate holdsReadyLatch))
