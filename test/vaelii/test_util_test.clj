@@ -99,16 +99,25 @@
   ;; Built under the overlay arm whatever the run selected, so `lein gate` at `:default`
   ;; tests the arm's `fresh` too.  A cleared fork hides its base for the rest of the process
   ;; (docs/overlay.md), so a `fresh` that cleared the slot's fork would read none of the
-  ;; record written into the base below.  The base is the one the whole arm shares, so it
-  ;; is emptied again before the test ends.
+  ;; record written into the base below.  Every later `fresh` on the scratch slot mounts
+  ;; this base, so the test empties it again before it ends.
   (binding [tu/*storage* {:backend :overlay}]
-    (let [base (doto (v/open-kb (assoc tu/overlay-base-space :recover? false)) (v/clear!))
+    (let [base (doto (v/open-kb (assoc (:base (tu/scratch-space)) :recover? false)) (v/clear!))
           h    (v/assert base '(dog Muffet) 'CxUniverse {:strength :monotonic})]
       (try
         (let [kb (tu/fresh)]
           (is (= h (v/handle-of kb '(dog Muffet) 'CxUniverse)) "the index half reads the base")
           (is (= '(dog Muffet) (:sentence (v/sentex kb h))) "the record half reads the base"))
         (finally (v/clear! base))))))
+
+(deftest the-overlay-arms-two-slots-give-the-same-writes-the-same-handles
+  (binding [tu/*storage* {:backend :overlay}]
+    (let [a  (tu/empty-kb)
+          b  (tu/isolated-fresh)
+          hs (vec (for [s '[(dog Muffet) (cat Tom)] kb [a b]]
+                    (v/assert kb s 'CxUniverse {:strength :monotonic})))]
+      (is (every? nat-int? hs))
+      (is (= (take-nth 2 hs) (take-nth 2 (rest hs)))))))
 
 (defn- under-neutral
   "Run `body` on `kb` under `tu/neutral`, and answer the failures it reported."
