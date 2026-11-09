@@ -1128,14 +1128,34 @@
 ;; Every mutating entry point below wraps its mutation in `moving`, and notes the handles whose
 ;; support it moved while a write record is open (`moved-supports`).
 
+(def ^:dynamic *support-observer*
+  "Optional queue-only support listener frames: :tms, :active?, :note, :previous.
+  The first identical network owns an event; nested writes on another network cannot
+  observe a hypothetical network or deliver the same event twice. No write report is opened."
+  nil)
+
+(defn- support-observer
+  "The active listener belonging to this exact network, never a read-copy network."
+  [tms]
+  (loop [frame *support-observer*]
+    (when frame
+      (if (identical? tms (:tms frame))
+        (when ((:active? frame)) frame)
+        (recur (:previous frame))))))
+
 (defn- note-moved!
-  "Add the handles `hs` to the handles whose support `tms` moved, in the open write
-  record."
-  [tms hs]
-  (when (and observe/*write-record* (seq hs))
-    (let [^java.util.Map m (observe/record-of ::moved #(java.util.IdentityHashMap.))
-          ^java.util.Set s (or (.get m tms) (let [s (java.util.HashSet.)] (.put m tms s) s))]
-      (run! #(.add s %) hs))))
+  "Record touched `hs` for an optional write report, and notify the listener of
+  `changed` (default `hs`). Listener no-op filtering leaves report touches unchanged;
+  a listener-only event can pass no report handles."
+  ([tms hs] (note-moved! tms hs false hs))
+  ([tms hs departing?] (note-moved! tms hs departing? hs))
+  ([tms hs departing? changed]
+   (when (seq changed)
+     (when-let [frame (support-observer tms)] ((:note frame) changed departing?)))
+   (when (and observe/*write-record* (seq hs))
+     (let [^java.util.Map m (observe/record-of ::moved #(java.util.IdentityHashMap.))
+           ^java.util.Set s (or (.get m tms) (let [s (java.util.HashSet.)] (.put m tms s) s))]
+       (run! #(.add s %) hs)))))
 
 (defn moved-supports
   "The handles whose premise mark, justifications, or forced or blocked membership `tms`
@@ -1147,7 +1167,7 @@
   "Note the consequences of the supports a removal (`retract!`'s shape) took, and return
   the result."
   [tms result]
-  (note-moved! tms (concat (map first (:removed-supports result)) (:removed-sentexes result)))
+  (note-moved! tms (concat (map first (:removed-supports result)) (:removed-sentexes result)) true)
   result)
 
 (defn ensure-node
@@ -1174,8 +1194,10 @@
   ([tms datum] (add-premise tms datum :default))
   ([tms datum strength-kw]
    (note-route-gain tms datum)
-   (moving (-add-premise tms datum (or strength-kw :default)))
-   (note-moved! tms [datum])
+   (let [strength (or strength-kw :default)
+         old (when (support-observer tms) (-premise-strength tms datum))]
+     (moving (-add-premise tms datum strength))
+     (note-moved! tms [datum] false (when (not= old strength) [datum])))
    datum))
 
 (defn suspend-premise
@@ -1183,7 +1205,11 @@
   effect on belief, undone by `add-premise` at the same strength.  Unknown datums no-op.
   Bare, not `!`: the node and its justifications stay.  `core/preview` is the caller
   (docs/nmtms.md)."
-  [tms datum] (moving (-suspend-premise tms datum)) (note-moved! tms [datum]) datum)
+  [tms datum]
+  (let [old (when (support-observer tms) (-premise-strength tms datum))]
+    (moving (-suspend-premise tms datum))
+    (note-moved! tms [datum] false (when old [datum])))
+  datum)
 
 (defn add-justification
   "Add `just` to the network.  `k`, when given, is its `justification-key`, already built
@@ -1191,8 +1217,10 @@
   ([tms just] (add-justification tms just nil))
   ([tms just k]
    (note-route-gain tms (:consequence just))
-   (moving (-add-justification tms just))
-   (note-moved! tms [(:consequence just)])
+   (let [old (when (support-observer tms) (-justification tms (:id just)))]
+     (moving (-add-justification tms just))
+     (note-moved! tms [(:consequence just)] false
+                  (when (not= old (graph-just just)) [(:consequence just)])))
    (when-let [^java.util.Set s observe/*fired-sink*]
      (when (integer? (:informant just)) (.add s (:consequence just))))
    ;; keep a bound dedup index in step: extend the one entry this justification lands
@@ -1232,8 +1260,11 @@
   justification exists, so the element never holds a label the set rules out."
   [tms kind xs on?]
   (when (seq xs)
-    (moving (-set-forced tms kind xs on?))
-    (note-moved! tms (if (= :void kind) (keep #(:consequence (-justification tms %)) xs) xs)))
+    (let [changed (when (support-observer tms)
+                    (filterv #(not= (boolean on?) (boolean (-forced? tms kind %))) xs))
+          datums (fn [xs] (if (= :void kind) (keep #(:consequence (-justification tms %)) xs) xs))]
+      (moving (-set-forced tms kind xs on?))
+      (note-moved! tms (datums xs) false (datums changed))))
   tms)
 
 (defn premise-class
@@ -1262,7 +1293,7 @@
   exceptions were discovered in.  The region is seeded from the consequences of the
   justifications whose blocked status changed; a call that changes nothing does no work."
   [tms jids]
-  (let [old (when observe/*write-record* (-blocked tms))]
+  (let [old (when (or observe/*write-record* (support-observer tms)) (-blocked tms))]
     (moving (-set-blocked tms jids))
     (when old
       (let [new (set jids)]
@@ -1431,8 +1462,13 @@
   [tms datum]
   ;; the one path besides `sweep!` that removes justifications — a bound dedup index
   ;; over this TMS is cleared wholesale rather than edited (see `*dedup-cache*`)
-  (note-removed! tms (moving (when-let [^java.util.Map c (dedup-cache-for tms)] (.clear c))
-                             (-retract tms datum))))
+  (let [old (when (support-observer tms) (-premise-strength tms datum))
+        result (note-removed! tms (moving (when-let [^java.util.Map c (dedup-cache-for tms)] (.clear c))
+                                          (-retract tms datum)))]
+    ;; A premise can leave while another support keeps the datum IN and no sweep
+    ;; removes anything. Its independent-demand authority still changed.
+    (note-moved! tms nil true (when old [datum]))
+    result))
 
 (defn sweep!
   "Garbage-collect the consequence closure of `seeds`: every datum in it that is not a premise

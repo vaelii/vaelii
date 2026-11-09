@@ -3,6 +3,7 @@
 (ns vaelii.impl.named-application
   "Supported results and projections of independently used compound rewrite targets."
   (:require [vaelii.impl.checks :as checks]
+            [vaelii.impl.except :as exc]
             [vaelii.impl.integrate :as integrate]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
@@ -44,7 +45,7 @@
 
 (defn- independent-handles
   "Candidate handles with finite live proofs not using this target's materialization."
-  [kb handles names bookkeeping]
+  [kb handles names bookkeeping reader]
   (let [tms (reasoning/tms kb)
         owned? #(and (= informant (:informant %))
                      (contains? names (get (:bindings (p/get-justification (:records kb) (:id %))) '?named-target)))
@@ -69,6 +70,7 @@
                                          (not (contains? bookkeeping %)))) nodes)
           js (into [] (comp (mapcat #(jtms/supports tms %)) (distinct)
                             (keep #(jtms/justification tms %))) nodes)
+          invalid (into invalid (keys (when reader (exc/invalid-supports-at kb nodes reader))))
           valid? (jtms/region-valid-fn tms nodes nil invalid)]
       (loop [in seed]
         (let [next-in (reduce (fn [acc j]
@@ -77,7 +79,9 @@
           (if (= in next-in) in (recur next-in)))))))
 
 (defn- used-spellings
-  "Semantic target spellings and map witnesses; quoting is not an application use."
+  "Semantic target spellings and map witnesses; quoting is not an application use.
+  Reads modal marks globally: whether a payload is a mention is sentence syntax,
+  not the reader's belief-projection policy (docs/belief.md)."
   [kb names mappings form]
   (let [modal (:modal (tax/mention-marks (reasoning/taxonomy kb)))]
     (letfn [(used? [seen x]
@@ -141,7 +145,9 @@
                                      :handles (mapv :id ms)}]))
                        (group-by #(second (:sentence %)) maps))
         mappings (into {} (map (fn [[k m]] [k (update m :expression #(nth (:sentence %) 2))])) mappings)
-        independent (independent-handles kb (map :id rows) names bookkeeping)
+        handles (mapv :id rows)
+        independent (independent-handles kb handles names bookkeeping nil)
+        independent-at (memoize #(independent-handles kb handles names bookkeeping %))
         uses (for [row rows
                    :when (and (contains? independent (:id row))
                               (not (kb/equality-sentence? (:sentence row)))
@@ -150,13 +156,18 @@
                [row spelling map-handles])
         recs (:records kb)
         at #(res/exception-aware-placements kb %1 %2)
-        add (fn [want sentence base antes local-handles spelling e]
+        add (fn [want sentence base antes local-handles spelling e use-h]
               (reduce (fn [want [reader witnesses]]
-                        (if (= (res/normal-form kb target (res/visible-supporter-fn kb reader))
-                               (nat-read/rewrite-target kb e nat-read/nat-namespace reader))
+                        (if (and (contains? (independent-at reader) use-h)
+                                 (= (res/normal-form kb target (res/visible-supporter-fn kb reader))
+                                    (nat-read/rewrite-target kb e nat-read/nat-namespace reader)))
                           (let [normalized (kb/rewrite-term kb sentence reader)
-                                s (kb/canonical-sentence kb (nat-read/reify-existing kb normalized reader) reader)]
-                            (update want [s reader] (fnil conj #{}) (into (set antes) witnesses)))
+                                s (kb/canonical-sentence kb (nat-read/reify-existing kb normalized reader) reader)
+                                supports (into (set antes) witnesses)
+                                h (kb/find-sentex-handle kb s reader)]
+                            (if (contains? supports h)
+                              want
+                              (update want [s reader] (fnil conj #{}) supports)))
                           want))
                       want (proof-placements kb target spelling sentence base local-handles)))]
     (reduce
@@ -172,7 +183,7 @@
             (let [want (reduce
                         (fn [want {dh :id [pred _ kind] :sentence}]
                           (reduce #(add %1 (if (= pred 'result) (list kind target) (list 'genl target kind))
-                                        %2 (into [rh uh dh] map-handles) (into [rh uh] map-handles) spelling e)
+                                        %2 (into [rh uh dh] map-handles) (into [rh uh] map-handles) spelling e uh)
                                   want (at (into [rh uh] map-handles) [rc uc])))
                         want declarations)]
               (reduce
@@ -180,7 +191,7 @@
                  (let [pos (res/stated-position declaration)]
                    (if (and pos (<= pos (inc (count (rest e)))))
                      (reduce #(add %1 (apply list pred (res/insert-at (rest e) pos target))
-                                   %2 (into [rh uh dh] map-handles) (into [rh uh dh] map-handles) spelling e)
+                                   %2 (into [rh uh dh] map-handles) (into [rh uh dh] map-handles) spelling e uh)
                              want (at (into [rh uh dh] map-handles) [rc uc dc]))
                      want))) want projections)))
           want uses)))

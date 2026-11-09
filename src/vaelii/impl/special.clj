@@ -4612,10 +4612,12 @@
   `integrate-rewrite-rule`, and a `(rewriteOf T E)` with a compound `E` is a NAT
   reify-to-term declaration the partition holds no part of (`equality-entry`)."
   [kb sentex handle]
-  (let [s (:sentence sentex) [_ _ b] s]
+  (let [s (:sentence sentex) [_ a b] s]
     (cond
       (rewrite/schematic-equation? s) (integrate-rewrite-rule kb sentex handle)
-      (sequential? b)                 nil   ; NAT rewriteOf-to-compound
+      (sequential? b)                 (when (= 'rewriteOf (first s))
+                                        (tax/mark-compound-rewrite (reasoning/taxonomy kb) a handle (:context sentex))
+                                        nil)
       :else                           (integrate-equality kb sentex handle))))
 
 (defn- believed-restatements
@@ -6874,7 +6876,7 @@
   "One entry-shape for all three equality relations; whether a preferred term is named
   is read off the sentence by `kb/preferred-term` inside the arms.  Two compound shapes
   are not a symbol merge: `(rewriteOf T E)` with a compound `E` is a NAT reify-to-term
-  declaration (docs/nat.md), skipped by every arm; `(equals L R)` with a variable-bearing
+  declaration (docs/nat.md), maintained only as a supported presence guard; `(equals L R)` with a variable-bearing
   compound side is a schematic equational rule, cached in the taxonomy's rewrite-rule set
   (docs/equality.md).  `wff/equality-problems` waves both through.  The add arm is
   `integrate-equality-sentex`, which the derivation path calls too."
@@ -6886,7 +6888,9 @@
                        (rewrite/schematic-equation? s)
                        (do (tax/del-rewrite-rule! (reasoning/taxonomy kb) (:id sx))
                            (recheck-equality-edge kb))
-                       (sequential? b) nil
+                       (sequential? b) (when (= 'rewriteOf (first s))
+                                         (tax/unmark-compound-rewrite! (reasoning/taxonomy kb) a (:id sx))
+                                         nil)
                        :else
                        (do (tax/del-equality! (reasoning/taxonomy kb) a b (:id sx))
                            ;; no class to narrow by on this side: what a released
@@ -6902,7 +6906,8 @@
                        (rewrite/schematic-equation? s)
                        (when-let [[lhs rhs] (rewrite/orient a b)]
                          (tax/add-rewrite-rule tax id lhs rhs ctx))
-                       (sequential? b) nil
+                       (sequential? b) (when (= 'rewriteOf (first s))
+                                         (tax/mark-compound-rewrite tax a id ctx))
                        :else (tax/add-equality tax a b id (kb/preferred-term s)))))
    :wff          equality-wff-problems})
 

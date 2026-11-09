@@ -348,7 +348,7 @@
           :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
           :sibling-disjoint #{} :sib-exception-index {}
           :covers {} :cover-parts {} :partitions #{}
-          :props {} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
+          :props {} :compound-targets #{} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
           :cache-dirty #{} :cache-ctxs {}
           ;; The supporter cache (`supporters-of`), over the index's supporter families
           :supporters empty-supporters
@@ -607,15 +607,16 @@
 (def ^:private flat-functors
   "The functors whose declarations the flat caches record, read off their storage in
   `vaelii.impl.predicates`: every property, mark, keyed pair other than equality, cover,
-  per-position and commuting declaration.  A disjoint metatype's members are stated under
+  per-position and commuting declaration. Compound rewrites contribute their presence
+  cache beside the atomic equality partition. A disjoint metatype's members are stated under
   the metatype, which is data, so `census-functors` adds those."
-  (into #{} (comp (filter (fn [[_ spec]]
-                            (let [[kind target] (:storage spec)]
-                              (and (contains? #{:prop :mark :keyed-pair :cover :pred-position
-                                                :pred-commuting}
-                                              kind)
-                                   (not= :equality target)))))
-                  (map first))
+  (into '#{rewriteOf} (comp (filter (fn [[_ spec]]
+                                      (let [[kind target] (:storage spec)]
+                                        (and (contains? #{:prop :mark :keyed-pair :cover :pred-position
+                                                          :pred-commuting}
+                                                        kind)
+                                             (not= :equality target)))))
+                            (map first))
         pr/entries))
 
 (defn- census-functors
@@ -1225,6 +1226,7 @@
                                                               (fnil conj #{}) [whole parts b]))
                                          t'' parts)))
                (cond-> t' (separating-kind? b) (update :partitions conj [whole parts b]))))
+    :compound-rewrite (update t :compound-targets conj a)
     :prop     (update-in t [:props a] (fnil conj #{}) b)             ; a = prop-kind, b = pred
     :inverse  (index-symmetric t :inverse a true)                  ; a = #{p q}
     :negates  (index-symmetric t :negates a true)                  ; a = #{p q}
@@ -1282,6 +1284,7 @@
                        (as-> t'' (reduce (fn [t p] (drop-in t [:cover-parts p] [whole parts b]))
                                          t'' parts)))
                (cond-> t' (separating-kind? b) (update :partitions disj [whole parts b]))))
+    :compound-rewrite (update t :compound-targets disj a)
     :prop     (update-in t [:props a] (fnil disj #{}) b)
     :inverse  (index-symmetric t :inverse a false)
     :negates  (index-symmetric t :negates a false)
@@ -2551,7 +2554,7 @@
          :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
          :sibling-disjoint #{} :sib-exception-index {}
          :covers {} :cover-parts {} :partitions #{}
-         :props {} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
+         :props {} :compound-targets #{} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
          :cache-dirty #{} :cache-ctxs {}
          :supporters empty-supporters
          :cache-moves (journal/restart nil)
@@ -5466,6 +5469,21 @@
 
 ;; ---- predicate properties -----------------------------------------------
 
+(defn mark-compound-rewrite
+  "Record one compound rewrite binding's support; no equality class is merged."
+  [tax target handle ctx]
+  (add-supported tax [:compound-rewrite target] handle ctx))
+
+(defn unmark-compound-rewrite!
+  "Remove this binding's supporter, retaining a target with other supporters."
+  [tax target handle]
+  (del-supported! tax [:compound-rewrite target] handle))
+
+(defn compound-rewrites?
+  "Coarse global presence of active compound bindings, not reader-local authority."
+  [tax]
+  (boolean (seq (:compound-targets @tax))))
+
 (defn mark-prop
   ([tax kind pred handle] (mark-prop tax kind pred handle nil))
   ([tax kind pred handle ctx] (add-supported tax [:prop kind pred] handle ctx)))
@@ -6078,7 +6096,7 @@
 
 (def ^:private flat-keys
   [:disjoint :disjoint-index :disjoint-metatypes :metatype-members :sibling-disjoint
-   :sib-exception-index :covers :cover-parts :partitions :props :inverse :negates :genl-inverse-down :genl-inverse-up :arity
+   :sib-exception-index :covers :cover-parts :partitions :props :compound-targets :inverse :negates :genl-inverse-down :genl-inverse-up :arity
    :functional-in-arg :commuting :meet :distinct :cache-dirty :cache-ctxs])
 
 (caches/register-derived
@@ -6099,7 +6117,7 @@
   :retired-by {:declared :K :edge-belief :K :recover :R :image-install :R}
   :computed :write :imaged? :taxonomy :at (mapv #(vector :taxonomy %) flat-keys)
   :value (fn [kb] (select-keys (caches/value-at kb [:taxonomy]) flat-keys))
-  :note "disjointness, covers, partitions, predicate properties, inverses, arities, functional arguments and commuting pairs, with their contexts"})
+  :note "disjointness, covers, partitions, predicate properties, compound-binding presence, inverses, arities, functional arguments and commuting pairs, with their contexts"})
 
 (caches/register-cache
  {:cache    :taxonomy-supporters

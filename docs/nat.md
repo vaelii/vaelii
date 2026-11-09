@@ -174,8 +174,20 @@ in a projection use ordinary conclusion reification. Their maps witness the mean
 an independently used inner value; intrinsic map/type premises are not demand roots.
 The proof read excludes those seeds, not independent justifications of the same row,
 and never changes the live premises. As in orphan detection, an identical reassertion
-of an intrinsic type premise has no separately represented origin. A lost premise
-queues demand again even when another derivation keeps that row believed.
+of an intrinsic type premise has no separately represented origin. A premise or
+justification arriving, leaving, or becoming blocked queues demand again even when
+another derivation keeps its row believed. A network-owned, queue-only listener
+records the changed handles and departing sentences; the normal correspondence drain
+walks their dependent handles and discovers affected targets. It does not open a write
+report, inspect proof regions during a network mutation, or observe a read-copy network.
+Both ordinary writes and a deferred batch's closing settle bind the listener.
+Compound-binding presence is a counted, belief-following taxonomy mark, so a write
+beside no active compound binding does no discovery read.
+Independent proof alternatives are checked at each output reader, including the
+guard-covered justifications of a row another proof keeps believed. Distinct demand
+facts remain distinct supports even when they are `genl` edges: this producer reconciles
+its exact support sets, rather than treating those facts as alternative routes of one
+ordinary rule firing. Ordinary rule route replacement is unchanged.
 
 `K` is **named by the content of `E`**: `constant-for` hashes `E` with SHA-256, takes the
 first 96 bits, and encodes them base62 behind a one-letter scheme tag — `nat/a<17

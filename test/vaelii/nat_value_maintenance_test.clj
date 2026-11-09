@@ -4,8 +4,12 @@
   "A correspondence keeps the mint map its own supported rewrite supersedes."
   (:require [clojure.test :refer [deftest is]]
             [vaelii.core :as v]
+            [vaelii.impl.jtms :as jtms]
             [vaelii.impl.nat-read :as nat-read]
+            [vaelii.impl.oplog :as oplog]
             [vaelii.impl.protocols :as p]
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (defn- application-maps
@@ -60,6 +64,185 @@
     (is (= [true true true] (named-answers kb 'CxUniverse)))
     (v/retract! kb (v/handle-of kb '(functionCorrespondingPredicate QualifierFn qualifierOf 2) 'CxUniverse))
     (is (= [true false true] (named-answers kb 'CxUniverse)))))
+
+(deftest a-named-result-does-not-rest-on-its-independent-premise
+  (tu/with-neutral-kb [kb tu/isolated-fresh]
+    (declare-function! kb)
+    (v/assert kb '(rewriteOf namedRoot (QualifierFn base)) 'CxUniverse)
+    (let [use (v/assert kb '(qualified_relation namedRoot) 'CxUniverse)]
+      (is (true? (v/ask? kb '(qualifierOf base namedRoot) 'CxUniverse)))
+      (is (empty? (for [id (p/justification-ids (:records kb))
+                        :let [j (p/get-justification (:records kb) id)]
+                        :when (some #{(:consequence j)} (:antecedents j))]
+                    id)))
+      (v/retract! kb use)
+      (is (= [false false false] (named-answers kb 'CxUniverse))))))
+
+(deftest independent-proof-changes-on-an-existing-row-refresh-named-demand
+  (doseq [mode [:eager :deferred :replay :except]]
+    (tu/with-neutral-kb [kb tu/isolated-fresh]
+      (declare-function! kb)
+      (v/assert kb '(rewriteOf namedRoot (QualifierFn base)) 'CxUniverse)
+      (v/assert-rule kb '[(qualified_relation ?x)] '(shadow ?x) 'CxUniverse {:direction :forward})
+      ;; Neither this rule nor its trigger names the target. Its conclusion is
+      ;; reified onto an already IN row, so support changes without a label move.
+      (if (= :except mode)
+        (v/assert kb (tu/except-rule '(muted ?x) '[(signal ?x)] '(shadow (QualifierFn ?x))) 'CxUniverse)
+        (v/assert-rule kb '[(signal ?x)] '(shadow (QualifierFn ?x)) 'CxUniverse {:direction :forward}))
+      (is (false? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse)))
+      (let [use (v/assert kb '(marked namedRoot) 'CxUniverse)
+            shadow (v/handle-of kb '(shadow namedRoot) 'CxUniverse)
+            result (v/handle-of kb '(qualified_relation namedRoot) 'CxUniverse)
+            shadow-support? #(boolean
+                              (some (fn [id]
+                                      (let [j (p/get-justification (:records kb) id)]
+                                        (and (= result (:consequence j))
+                                             (some #{shadow} (:antecedents j)))))
+                                    (p/justification-ids (:records kb))))
+            before (set (p/justification-ids (:records kb)))
+            signal (atom nil)]
+        (is (true? (v/ask? kb '(shadow namedRoot) 'CxUniverse)))
+        (is (false? (shadow-support?)))
+        (case mode
+          :deferred (v/with-deferred-settle kb (reset! signal (v/assert kb '(signal base) 'CxUniverse)))
+          :replay (do (oplog/replay! kb [{:op :assert :args ['(signal base) 'CxUniverse]
+                                          :in {:defer-settle? true :sweep? true}}
+                                         {:op :settle :args [] :in {:seed-moves? true}}])
+                      (reset! signal (v/handle-of kb '(signal base) 'CxUniverse)))
+          (:eager :except) (reset! signal (v/assert kb '(signal base) 'CxUniverse)))
+        (is (= shadow (v/handle-of kb '(shadow namedRoot) 'CxUniverse)))
+        (is (true? (shadow-support?)))
+        (is (empty? @(reasoning/respell kb)))
+        (when (= :except mode)
+          (let [blocker (v/assert kb '(muted base) 'CxUniverse)]
+            (is (true? (v/ask? kb '(shadow namedRoot) 'CxUniverse)))
+            (is (false? (shadow-support?)))
+            (v/retract! kb blocker)
+            (is (true? (shadow-support?)))))
+        (v/retract! kb @signal)
+        (is (true? (v/ask? kb '(shadow namedRoot) 'CxUniverse)))
+        (is (false? (shadow-support?)))
+        (is (= before (set (p/justification-ids (:records kb)))))
+        (is (empty? @(reasoning/respell kb)))
+        (v/retract! kb use)
+        (is (false? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse)))
+        (is (false? (v/ask? kb '(shadow namedRoot) 'CxUniverse)))))))
+
+(deftest nested-write-observers-reuse-the-owner-and-ignore-other-networks
+  (tu/with-neutral-kb [a tu/isolated-fresh]
+    (tu/with-neutral-kb [b tu/isolated-fresh]
+      (#'v/with-support-observer
+       a
+       (fn []
+         (let [outer jtms/*support-observer*]
+           (#'v/with-support-observer a #(is (identical? outer jtms/*support-observer*)))
+           (#'v/with-support-observer
+            b
+            (fn []
+              (is (identical? (reasoning/tms b) (:tms jtms/*support-observer*)))
+              (is (identical? outer (:previous jtms/*support-observer*)))
+              (#'v/with-support-observer
+               a
+               (fn []
+                 (is (identical? (reasoning/tms a) (:tms jtms/*support-observer*)))
+                 (is (not (identical? outer jtms/*support-observer*)))))))
+           (is (identical? outer jtms/*support-observer*))))))))
+
+(deftest a-private-guard-does-not-globally-invalidate-an-independent-use
+  (tu/with-neutral-kb [kb tu/isolated-fresh]
+    (declare-function! kb)
+    (v/assert kb '(genlCx CxSecret CxUniverse) 'CxUniverse)
+    (v/assert kb '(rewriteOf namedRoot (QualifierFn base)) 'CxUniverse)
+    (v/assert-rule kb '[(qualified_relation ?x)] '(shadow ?x) 'CxUniverse {:direction :forward})
+    (v/assert kb (tu/except-rule '(muted ?x) '[(signal ?x)] '(shadow (QualifierFn ?x))) 'CxUniverse)
+    (let [signal (v/assert kb '(signal base) 'CxUniverse)
+          before (tu/baseline kb)
+          blocker (v/assert kb '(muted base) 'CxSecret)]
+      (is (true? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse)))
+      (is (true? (v/ask? kb '(qualified_relation namedRoot) 'CxOther)))
+      (is (false? (v/ask? kb '(qualified_relation namedRoot) 'CxSecret)))
+      (is (false? (v/ask? kb '(qualifierOf base namedRoot) 'CxSecret)))
+      (v/retract! kb blocker)
+      (is (true? (v/ask? kb '(qualified_relation namedRoot) 'CxSecret)))
+      (is (= before (tu/baseline kb)))
+      (v/retract! kb signal)
+      (is (false? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse))))))
+
+(deftest distinct-genl-uses-keep-their-own-named-supports
+  (doseq [parents ['[first_parent second_parent] '[second_parent first_parent]]]
+    (tu/with-neutral-kb [kb tu/isolated-fresh]
+      (declare-function! kb)
+      (v/assert kb '(rewriteOf namedRoot (QualifierFn base)) 'CxUniverse)
+      (let [write! #(v/assert kb (list 'genl 'namedRoot %) 'CxUniverse
+                              {:max-ms 1000 :max-derivations 100})
+            a (write! (first parents))
+            b (atom nil)
+            status (try (reset! b (write! (second parents))) :returned
+                        (catch clojure.lang.ExceptionInfo e (:type (ex-data e))))
+            proofs #(filter (fn [j] (= :vaelii.impl.named-application/named-application (:informant j)))
+                            (v/supporting-justifications
+                             kb (v/handle-of kb '(qualified_relation namedRoot) 'CxUniverse)))]
+        (is (= :returned status) "two genuine uses must not cause a support-only replacement loop")
+        (is (some? @b))
+        (is (= #{#{a} #{@b}}
+               (into #{} (map (fn [j] (into #{} (filter #{a @b}) (:antecedents j)))) (proofs))))
+        (let [ids (set (map :id (proofs)))
+              survivor (into #{} (comp (filter #(some #{a} (:antecedents %))) (map :id)) (proofs))]
+          (is (false? (:truncated? (v/forward-chain kb {:max-ms 1000 :max-derivations 100}))))
+          (is (= ids (set (map :id (proofs)))))
+          (when @b (v/retract! kb @b))
+          (is (= survivor (set (map :id (proofs))))
+              "removing either arrival removes only the proof using it")
+          (is (true? (v/ask? kb '(qualifierOf base namedRoot) 'CxUniverse))))))))
+
+(deftest compound-binding-presence-follows-support-and-belief
+  (let [tx (tax/create-taxonomy)]
+    (is (false? (tax/compound-rewrites? tx)))
+    (tax/mark-compound-rewrite tx 'namedRoot 10 'CxUniverse)
+    (tax/mark-compound-rewrite tx 'namedRoot 11 'CxStory)
+    (tax/unmark-compound-rewrite! tx 'namedRoot 10)
+    (is (true? (tax/compound-rewrites? tx)))
+    (tax/refresh-beliefs tx #{} #{11})
+    (is (false? (tax/compound-rewrites? tx)))
+    (tax/refresh-beliefs tx #{11} #{11})
+    (is (true? (tax/compound-rewrites? tx)))
+    (tax/clear-relations! tx)
+    (is (false? (tax/compound-rewrites? tx)))
+    (tax/mark-compound-rewrite tx 'namedRoot 11 'CxStory)
+    (is (true? (tax/compound-rewrites? tx)))
+    (tax/unmark-compound-rewrite! tx 'namedRoot 11)
+    (is (false? (tax/compound-rewrites? tx)))))
+
+(deftest named-binding-presence-survives-recovery-and-preview-rollback
+  (tu/with-neutral-kb [kb tu/isolated-fresh]
+    (declare-function! kb)
+    (let [global (v/assert kb '(rewriteOf namedRoot (QualifierFn base)) 'CxUniverse)
+          local (v/assert kb '(rewriteOf namedRoot (QualifierFn base)) 'CxStory)]
+      (v/assert kb '(related namedRoot Other) 'CxUniverse)
+      (v/retract! kb global)
+      (is (true? (nat-read/named-values-reachable? kb)))
+      (is (= [true true true] (named-answers kb 'CxStory)))
+      (v/recover kb)
+      (is (true? (nat-read/named-values-reachable? kb)))
+      (is (= [true true true] (named-answers kb 'CxStory)))
+      (let [seen (atom #{})
+            present? nat-read/named-values-reachable?
+            before (tu/baseline kb)]
+        (with-redefs [nat-read/named-values-reachable?
+                      (fn [candidate]
+                        (let [answer (present? candidate)]
+                          (when (identical? kb candidate) (swap! seen conj answer))
+                          answer))]
+          (v/preview kb {:remove [local]}))
+        (is (contains? @seen false) "suspending the last alias makes the actual presence cache empty")
+        (is (true? (present? kb)) "rollback revives its supporter")
+        (is (= before (tu/baseline kb)))
+        (is (= [true true true] (named-answers kb 'CxStory))))
+      (v/preview kb {:add [['(rewriteOf rivalRoot (QualifierFn base)) 'CxStory]]})
+      (is (= [true true true] (named-answers kb 'CxStory)))
+      (v/retract! kb local)
+      (is (false? (nat-read/named-values-reachable? kb)))
+      (is (= [false false true] (named-answers kb 'CxStory))))))
 
 (deftest a-retired-map-does-not-keep-an-ambiguous-rewrite
   (tu/with-neutral-kb [kb tu/isolated-fresh]

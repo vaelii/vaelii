@@ -1306,7 +1306,9 @@
       (cond
         *rebuilding?*    (do (reset! q #{}) nil)
         (not *sweep?*)   nil
-        :else            (let [[moved] (swap-vals! q (constantly #{}))
+        :else            (let [[taken] (swap-vals! q (constantly #{}))
+                               moved   (into taken (chain/proof-value-events
+                                                    kb (filter #(and (vector? %) (= :named-proof (first %))) taken)))
                                tagged (fn [k] (into [] (comp (filter #(and (vector? %) (= k (first %))))
                                                              (map second))
                                                     moved))
@@ -1387,7 +1389,8 @@
                   back    (into (vec @seeds) respelled)
                   dropped (withdraw-retired-firings! kb retired)]
               (cond
-                (and (empty? back) (empty? valued) (not dropped)) nil
+                (and (empty? back) (empty? valued) (not dropped)
+                     (not (and *sweep?* (chain/queued-values? kb)))) nil
                 (>= round max-unmerge-rounds)
                 (trove/log! {:level :warn :id ::unmerge-fixpoint
                              :msg  (str "un-merge re-seeding did not converge in "

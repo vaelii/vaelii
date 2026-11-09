@@ -2257,6 +2257,26 @@
    :bulk-load?  *bulk-load?*
    :seed-moves? (if-let [v settle/*batch-seeds-moves*] @v special/*seed-moves?*)})
 
+(defn- with-support-observer
+  "Run a write with a network-owned, queue-only named-demand listener. Dependency
+  traversal waits for the normal value-maintenance drain; departing rows are saved
+  before physical deletion. Same-network nesting reuses the listener."
+  [kb thunk]
+  (let [tms (reasoning/tms kb)
+        previous jtms/*support-observer*]
+    (if (identical? tms (:tms previous))
+      (thunk)
+      (binding [jtms/*support-observer*
+                {:tms tms :previous previous
+                 :active? #(nat-read/named-values-reachable? kb)
+                 :note (fn [hs departing?]
+                         (swap! (reasoning/respell kb) into
+                                (map (fn [h]
+                                       [:named-proof h
+                                        (when departing? (:sentence (p/get-sentex (:records kb) h)))])
+                                     hs)))}]
+        (thunk)))))
+
 (defn- closing-settle
   "The settle that closes a `with-deferred-settle` batch, under the inputs its `:settle`
   frame records (`in`, `batch-settle-inputs`), or under the batch in force when `in` is
@@ -2269,15 +2289,17 @@
   [kb in]
   (let [{:keys [bulk-load? seed-moves?]} (or in (batch-settle-inputs))
         owed chain/*batch-rejoins*]
-    (binding [special/*entail-moves?*      (not bulk-load?)
-              special/*release-withheld?* (and special/*release-withheld?* (not bulk-load?))
-              special/*seed-moves?*        seed-moves?
-              chain/*batch-rejoins*        nil
-              special/*producer-moves*     (special/producer-moves)]
-      (chain/run-batch-rejoins kb owed)
-      (let [settled (settle/settle kb)]
-        (nat-maint/reconcile-moves! kb)
-        settled))))
+    (with-support-observer
+      kb
+      #(binding [special/*entail-moves?*      (not bulk-load?)
+                 special/*release-withheld?* (and special/*release-withheld?* (not bulk-load?))
+                 special/*seed-moves?*        seed-moves?
+                 chain/*batch-rejoins*        nil
+                 special/*producer-moves*     (special/producer-moves)]
+         (chain/run-batch-rejoins kb owed)
+         (let [settled (settle/settle kb)]
+           (nat-maint/reconcile-moves! kb)
+           settled)))))
 
 (defmacro with-deferred-settle
   "Run `body`, a batch of `assert` / `assert-rule` / `ist` calls on `kb`, with belief
@@ -7385,20 +7407,22 @@
     (binding [observe/*route-gain-sink* (if (:reasoning kb)
                                           (special/route-gain-sink kb)
                                           observe/*route-gain-sink*)]
-      (dur/call-as-write
-       op
-       (fn []
-         (if (nil? (:oplog kb))
-           (do (seal/retire-unlogged! kb)
-               (apply g kb args))
-           (try
-             (oplog/run-op kb op class (unbounded-args args) #(op-inputs op)
-                           (fn [inputs] (with-op-inputs inputs #(apply g kb args))))
-             (catch clojure.lang.ExceptionInfo e
-               (when (and (#{:shutdown-abort :interrupted} (:type (ex-data e)))
-                          (not oplog/*in-op?*))
-                 (oplog/mark-unusable! (:oplog kb) [(:type (ex-data e)) op]))
-               (throw e)))))))))
+      (with-support-observer
+        kb
+        (fn [] (dur/call-as-write
+                op
+                (fn []
+                  (if (nil? (:oplog kb))
+                    (do (seal/retire-unlogged! kb)
+                        (apply g kb args))
+                    (try
+                      (oplog/run-op kb op class (unbounded-args args) #(op-inputs op)
+                                    (fn [inputs] (with-op-inputs inputs #(apply g kb args))))
+                      (catch clojure.lang.ExceptionInfo e
+                        (when (and (#{:shutdown-abort :interrupted} (:type (ex-data e)))
+                                   (not oplog/*in-op?*))
+                          (oplog/mark-unusable! (:oplog kb) [(:type (ex-data e)) op]))
+                        (throw e)))))))))))
 
 (def ^:private write-ops
   "Every public write entry point, as `name -> [op class]`.  The classes are

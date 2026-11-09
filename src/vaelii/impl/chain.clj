@@ -3479,9 +3479,9 @@
             ;; places a defeat of the firing
             (when (and (integer? inf) (or (:watched? rule) (:inherited? rule)))
               (place-guard-defeats! kb [[just true (guard-conditions-of rule)]]))
-            ;; a firing over a route the witness rule now names replaces the same firing
-            ;; over the route it named before, which only a stored conclusion can hold
-            (when-not new?
+            ;; Replace an ordinary firing's old route; an exact-support producer retires
+            ;; its own stale sets. Its demand genl facts are not interchangeable routes.
+            (when (and (not new?) (not (:managed-supports? rule)))
               (when-let [r (special/drop-replaced-routes! kb just)]
                 (integrate/apply-removals! kb r)
                 (drop-unowned-guard-justifications! kb h)))
@@ -5857,12 +5857,36 @@
                     (named-application/sync!
                      kb target
                      (fn [sentence context antes bindings]
-                       (place-conclusion kb {:name named-application/informant :rule-handle nil}
+                       (place-conclusion kb {:name named-application/informant :rule-handle nil
+                                             :managed-supports? true}
                                          sentence context antes
                                          (inc (reduce max 0 (map #(or (jtms/depth (reasoning/tms kb) %) 0) antes)))
                                          bindings :monotonic nil))
                      (when deferred #(vswap! deferred conj [:named-valued target])))))
           (sort-by nm/name-key (distinct targets)))))
+
+(defn proof-value-events
+  "Named targets whose independent proofs moved, including placed guards with no
+  whole-row belief change. Traverse the existing bounded moved-reach only at a queue
+  drain, never in a network mutation. Saved departing placements retain their targets."
+  [kb events]
+  (when (seq events)
+    (let [saved (keep #(nth % 2 nil) events)
+          seeds (into (mapv second events) (mapcat #(kb/placed-targets kb %)) saved)
+          current (when (nat-read/named-values-reachable? kb)
+                    (keep #(some-> (p/get-sentex (:records kb) %) :sentence)
+                          (kb/moved-reach kb seeds)))]
+      (nat-read/named-value-events kb (concat saved current)))))
+
+(defn- value-event?
+  "An actionable correspondence or named-proof obligation on the shared respell queue."
+  [event]
+  (and (vector? event) (contains? #{:valued :valued-fn :valued-facts :named-valued :named-proof} (first event))))
+
+(defn queued-values?
+  "Does the respell queue owe value/proof work, including changes with no new fact?"
+  [kb]
+  (boolean (some value-event? @(reasoning/respell kb))))
 
 (defn- sync-queued-values!
   "Place what the constants queued on `:respell` for their correspondence derivations owe
@@ -5872,11 +5896,11 @@
   which the run queues back for its settle, since a rollback keeps no record below the
   write's mark.  One scan of the queue while nothing is queued."
   [kb queued deferred]
-  (let [q      (reasoning/respell kb)
-        value? #(and (vector? %) (contains? #{:valued :valued-fn :valued-facts :named-valued} (first %)))]
-    (when (some value? @q)
-      (let [[old _] (swap-vals! q #(into (empty %) (remove value?) %))
-            taken   (filter value? old)
+  (let [q (reasoning/respell kb)]
+    (when (some value-event? @q)
+      (let [[old _] (swap-vals! q #(into (empty %) (remove value-event?) %))
+            taken   (let [taken (filter value-event? old)]
+                      (into (vec taken) (proof-value-events kb (filter #(= :named-proof (first %)) taken))))
             by      (fn [t] (into [] (comp (filter #(= t (first %))) (map second)) taken))]
         (vswap! queued into (concat (sync-values! kb (by :valued) (by :valued-fn) (by :valued-facts)
                                                   (when *rollback-scope* deferred))
@@ -6570,8 +6594,8 @@
                     *computed-rejoins* rejoins]
             (arrive! seed)
             (loop [agenda (into clojure.lang.PersistentQueue/EMPTY seed)]
-              (if (or (empty? agenda) (spent?)
-                      (and (seq agenda) (stopped? *stop*)))
+              (if (or (and (empty? agenda) (not (queued-values? kb))) (spent?)
+                      (stopped? *stop*))
                 (do (when (seq @deferred)
                       (swap! (reasoning/respell kb) into (map #(if (vector? %) % [:valued %])) @deferred))
                     (when (and *rollback-scope* (not *keep-on-stop*))
@@ -6587,15 +6611,19 @@
                       (cond-> {:derived @placed :truncated? (boolean (or @truncated bound))}
                         (some-> term-bound :cut deref pos?) (assoc :term-cut @(:cut term-bound))
                         bound                               (assoc :bound bound))))
-                (let [_       (heap-check!)
-                      d       (peek agenda)
-                      fired   (process-datum kb d max-depth truncated)
-                      new-hs  (into (drain!) fired)
-                      _       (arrive! new-hs)
-                      agenda' (-> (pop agenda) (into new-hs) (into (owed!)))]
-                  (vreset! pending (count agenda'))
-                  (when (and on-progress (due?)) (report!))
-                  (recur agenda'))))))))))
+                (if (empty? agenda)
+                  (let [hs (drain!)]
+                    (arrive! hs)
+                    (recur (-> agenda (into hs) (into (owed!)))))
+                  (let [_       (heap-check!)
+                        d       (peek agenda)
+                        fired   (process-datum kb d max-depth truncated)
+                        new-hs  (into (drain!) fired)
+                        _       (arrive! new-hs)
+                        agenda' (-> (pop agenda) (into new-hs) (into (owed!)))]
+                    (vreset! pending (count agenda'))
+                    (when (and on-progress (due?)) (report!))
+                    (recur agenda')))))))))))
 
 (defn rerecord-refusals!
   "Rebuild the refusal record by re-firing every believed forward rule that carries a

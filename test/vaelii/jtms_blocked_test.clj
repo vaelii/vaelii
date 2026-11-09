@@ -16,7 +16,9 @@
   locality (blocking seeds the region from the changed justifications' consequences,
   so the work is flat in graph size)."
   (:require [clojure.test :refer [deftest is testing]]
-            [vaelii.impl.jtms :as jtms]))
+            [vaelii.impl.dense-jtms :as dense]
+            [vaelii.impl.jtms :as jtms]
+            [vaelii.impl.observe :as observe]))
 
 ;; ---- tiny graph builders ------------------------------------------------
 
@@ -31,6 +33,40 @@
    (jtms/ensure-node tms conseq 1)
    (jtms/add-justification tms (jtms/->just jid 'rule antes conseq {} strength))
    jid))
+
+(deftest queue-only-support-observers-are-network-local-without-write-reports
+  (doseq [create [jtms/create-tms dense/create-dense-tms]]
+    (let [a (create), b (create), other (create)
+          events (atom [])
+          frame (fn [tms label previous]
+                  {:tms tms :previous previous :active? (constantly true)
+                   :note (fn [hs removed?] (swap! events conj [label (set hs) removed?]))})]
+      (premise a 1)
+      (premise a 2)
+      (justify a 101 [1] 3)
+      (justify a 102 [2] 3)
+      (binding [observe/*write-record* nil
+                jtms/*support-observer* (frame a :inner-a (frame b :b (frame a :outer-a nil)))]
+        (jtms/set-blocked a #{101})
+        (jtms/set-blocked a #{})
+        (jtms/set-forced a :void [101] true)
+        (jtms/set-forced a :void [101] false)
+        (jtms/add-premise b 20)
+        (jtms/set-blocked a #{})
+        (jtms/set-forced a :void [101] false)
+        (jtms/add-premise b 20)
+        (justify a 101 [1] 3)
+        (jtms/retract! a 999)
+        (jtms/add-premise other 30)
+        (is (nil? observe/*write-record*))
+        (is (jtms/in? a 3) "the independent alternate keeps the datum IN throughout")
+        (is (= [[:inner-a #{3} false] [:inner-a #{3} false]
+                [:inner-a #{3} false] [:inner-a #{3} false] [:b #{20} false]] @events)
+            "first matching owner only, including blocked moves with reporting disabled"))
+      (reset! events [])
+      (binding [jtms/*support-observer* (assoc (frame a :inactive nil) :active? (constantly false))]
+        (jtms/add-premise a 40))
+      (is (empty? @events)))))
 
 ;; ---- the headline: a blocked justification supports nothing -------------
 

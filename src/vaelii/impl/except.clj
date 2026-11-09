@@ -1648,6 +1648,15 @@
                 (when (:void? forced) (zipmap (forced-void st x) (repeat :void)))
                 (zipmap (guard-covered st x) (repeat :guard)))))
 
+(defn invalid-supports-at
+  "The reader-specific invalid justification ids of supplied support handles, with
+  their existing guard/void/exemption reasons. Unlike a whole-row belief read, this
+  inspects each alternative even when another monotonic proof keeps its row IN.
+  A producer doing a counterfactual support read must not force that whole row OUT."
+  [kb handles context]
+  (when-let [st (reader-state kb context)]
+    (into {} (mapcat #(reader-invalid st %)) handles)))
+
 (defn- support-read
   "What the walk reads over `h`'s support at the reader: `:in`, the handles of the support
   it believes, or ::all when it hides none of them; `:reasons`, `{x {jid reason}}` for each

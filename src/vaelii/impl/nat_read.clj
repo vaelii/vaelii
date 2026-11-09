@@ -543,11 +543,11 @@
           (reads/as-stored-with-args (:index kb) res/correspondence-predicate {}))))
 
 (defn named-values-reachable?
-  "Does the KB store rewriteOf rows: the coarse named-application presence check."
+  "Can an active compound rewrite name a value: a coarse, zero-index-read presence guard."
   [kb]
-  (pos? (reads/stored-count-with-functor (:index kb) 'rewriteOf)))
+  (tax/compound-rewrites? (reasoning/taxonomy kb)))
 
-(defn- named-value-events
+(defn named-value-events
   "The named targets affected by these uses, compound rewrites or function declarations."
   [kb sentences]
   (when (or (named-values-reachable? kb)
