@@ -128,6 +128,42 @@
         (is (false? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse)))
         (is (false? (v/ask? kb '(shadow namedRoot) 'CxUniverse)))))))
 
+(deftest record-only-direction-edits-refresh-named-support-when-settled
+  (tu/with-cleared-kb [kb tu/isolated-fresh]
+    (declare-function! kb)
+    (v/assert kb '(rewriteOf namedRoot (QualifierFn base)) 'CxUniverse)
+    (v/assert-rule kb '[(qualified_relation ?x)] '(shadow ?x) 'CxUniverse {:direction :forward})
+    (let [use (v/assert kb '(marked namedRoot) 'CxUniverse)
+          signal (v/assert kb '(signal base) 'CxUniverse)
+          rule (v/assert-rule kb '[(signal ?x)] '(shadow (QualifierFn ?x))
+                              'CxUniverse {:direction :backward})
+          shadow (v/handle-of kb '(shadow namedRoot) 'CxUniverse)
+          result (v/handle-of kb '(qualified_relation namedRoot) 'CxUniverse)
+          records (:records kb)
+          shadow-support? #(boolean
+                            (some (fn [id]
+                                    (let [j (p/get-justification records id)]
+                                      (and (= result (:consequence j))
+                                           (some #{shadow} (:antecedents j)))))
+                                  (p/justification-ids records)))
+          reopened (tu/isolated-test-kb)
+          blind (assoc reopened :reasoning
+                       (reify clojure.lang.IDeref
+                         (deref [_] (throw (ex-info "record-only edit read belief" {})))))]
+      (is (true? (v/in? kb shadow)))
+      (is (false? (shadow-support?)))
+      (let [edit (v/edit-records! blind {:direction {rule :forward}})]
+        (is (= 1 (:redirected edit)))
+        (is (false? (shadow-support?)))
+        (v/settle-record-edits! reopened {:seeds (:seeds edit) :arg-types? false})
+        (is (true? (shadow-support?)))
+        (is (empty? @(reasoning/respell reopened)))
+        (v/retract! reopened use)
+        (is (true? (v/ask? reopened '(qualified_relation namedRoot) 'CxUniverse)))
+        (v/retract! reopened signal)
+        (is (false? (v/ask? reopened '(qualified_relation namedRoot) 'CxUniverse)))
+        (is (false? (v/ask? reopened '(shadow namedRoot) 'CxUniverse)))))))
+
 (deftest nested-write-observers-reuse-the-owner-and-ignore-other-networks
   (tu/with-neutral-kb [a tu/isolated-fresh]
     (tu/with-neutral-kb [b tu/isolated-fresh]
