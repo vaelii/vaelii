@@ -154,6 +154,8 @@
 (negativeExampleComment hollow "an empty clenched fist")
 (negativeExampleComment hollow "a box crushed flat")
 (genl hollow spatiotemporal)
+(genl hollow causal)
+(comment (genl hollow causal) "A hollow can be a cause without being tangible: a cave shelters, echoes and floods.")
 ;; A cup is hollow and made, a pitcher plant hollow and alive, a cupped hand hollow and a
 ;; part an organism grew; a bread bowl is hollow and food.  Stuff has no interior of its own.
 (orthogonal hollow made)
@@ -164,6 +166,10 @@
 ;; are hollow and not biological, and a leaf is biological and not hollow.
 (orthogonal biological hollow)
 (set/monotonic (disjoint hollow substance))
+(orthogonal hollow tangible)
+(comment (orthogonal hollow tangible) "A cup is hollow and tangible, a cave is hollow and made of nothing, and a solid stone is tangible and not hollow.")
+(orthogonal hollow uninterrupted)
+(comment (orthogonal hollow uninterrupted) "A cave is hollow and present without a break, and a box taken apart and put back together is hollow and intermittent.")
 
 (comment language "A system of signs a person speaks, writes or signs in.")
 (set/monotonic (time_invariant_relation language))

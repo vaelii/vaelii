@@ -492,10 +492,10 @@
 ;; The partition of thing into tangible and intangible does not derive a genl edge from
 ;; the disjointness, so the edge is stated.
 (set/monotonic (genl situation intangible))
-;; sempiternal crosscuts the tangible/intangible and temporal/atemporal partitions alike
-;; (time and situation are temporal; atemporal is not), so, like person, it reaches
-;; thing directly rather than through either partition.
-(genl sempiternal thing)
+(set/monotonic (disjoint sempiternal tangible))
+(comment (disjoint sempiternal tangible) "Nothing with mass is present at every evaluation time. sempiternal still crosscuts the temporal/atemporal partition: time and situation are temporal, and atemporal is not.")
+(set/monotonic (genl sempiternal intangible))
+(comment (genl sempiternal intangible) "Stated, as (genl situation intangible) is, because the partition of thing into tangible and intangible does not derive a genl edge from (disjoint sempiternal tangible).")
 ;; atemporal is outside time, and a time or situation exists at every evaluation
 ;; time while occupying only its own, so all three are present at every evaluation time.
 (set/monotonic (genl atemporal sempiternal))
@@ -2636,7 +2636,7 @@
 (unary_predicate idempotent)
 (decontextualized_predicate idempotent)
 (set/monotonic (eternal_predicate idempotent))
-(genl idempotent relation)
+(genl idempotent function)
 
 (comment meetFunctionOf
          "(meetFunctionOf ?function ?order) means that an application of ?function denotes the greatest thing ?order places below each of its arguments: the meet of ?order. An argument that ?order places above another argument adds nothing, so the assert entry point drops it from a ground application below the literal, and of two arguments each below the other it keeps the first in canonical term order. Whether one argument is below another is answered by the comparator the engine registers for ?order, which reads the two terms alone; a stored (?order a b) fact is never read, so the stored form of a term does not move with belief, and an order with no registered comparator absorbs nothing. A meet is commutative, associative and idempotent, and the forward rules below conclude those three marks from this one. See docs/canonicalization.md.")
@@ -3180,6 +3180,8 @@
 ;; facts below satisfy their declaration under the constraint-only reading as well.
 (set/monotonic (at_least_metatype metatype))
 (set/monotonic (at_least_metatype meta_metatype))
+(set/monotonic (disjoint type at_least_metatype))
+(comment (disjoint type at_least_metatype) "A first-order type's instances are individuals and an at_least_metatype's are types, so no type is both. type is itself an at_least_metatype, which is membership, not genl.")
 (set/monotonic (disjoint_metatype type_type_by_order))
 ;; Each order is a fixed_order_type: every member of type, of metatype or of
 ;; meta_metatype is of that one order.
