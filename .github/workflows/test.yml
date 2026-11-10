@@ -356,11 +356,20 @@ jobs:
 
   # A green leg's namespace times, averaged into the weights this run packed from
   # (scripts/lib/ns-timings.sh, `ns_timings_average`), become the weights the next
-  # run packs from. Not a required check: a failure here costs the next run its balance and
-  # nothing else. The `-<attempt>` suffix gives a re-run its own key, since a
+  # run packs from. The `-<attempt>` suffix gives a re-run its own key, since a
   # cache entry cannot be overwritten. scripts/ci-weights.sh refuses a set of
   # timing files missing a shard, so a re-run that downloads only some shards'
   # files saves nothing.
+  #
+  # The job then checks each green leg's times against develop's weights and goes
+  # red when the leg ran slower than its runners' speed accounts for
+  # (scripts/ci-weights.sh, the --check form). Only a push to develop saves a
+  # `ci-baseline-` entry, and a pull request reads its base branch's cache, so every
+  # run of a pull request is judged against develop and not against its own earlier
+  # runs, while a push to develop is judged against the push before it. The checks
+  # follow both weight saves, so a red check still hands the next run its weights.
+  # Not a required check: a red here names namespaces for a reviewer to read, and
+  # blocks no merge.
   weights:
     name: weights
     needs: [weights-plan, memory-shard, disk-shard]
@@ -424,6 +433,48 @@ jobs:
         with:
           path: target/ci-weights/disk.tsv
           key: ci-weights-disk-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # No entry has the exact key, so the prefix finds the newest develop push's.
+      # `!cancelled()` on every step from here: a red memory check still runs the disk
+      # check and records the baseline.
+      - name: Restore develop's weights
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: target/ci-baseline/
+          key: ci-baseline-${{ github.run_id }}
+          restore-keys: ci-baseline-
+      - name: Check the memory times against develop's
+        if: ${{ !cancelled() && needs.memory-shard.result == 'success' && hashFiles('target/ci-baseline/memory.tsv') != '' }}
+        run: |
+          set -o pipefail
+          scripts/ci-weights.sh --from target/ci/timings-memory --leg memory \
+            --check target/ci-baseline/memory.tsv | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Check the disk times against develop's
+        if: ${{ !cancelled() && needs.disk-shard.result == 'success' && hashFiles('target/ci-baseline/disk.tsv') != '' }}
+        run: |
+          set -o pipefail
+          scripts/ci-weights.sh --from target/ci/timings-disk --leg disk \
+            --check target/ci-baseline/disk.tsv | tee -a "$GITHUB_STEP_SUMMARY"
+      # A red leg leaves no weights file, and keeps the baseline it restored.
+      - name: Record this push's weights as develop's
+        id: baseline
+        if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
+        run: |
+          mkdir -p target/ci-baseline
+          for leg in memory disk; do
+            if [ -f "target/ci-weights/$leg.tsv" ]; then
+              cp "target/ci-weights/$leg.tsv" "target/ci-baseline/$leg.tsv"
+            fi
+          done
+          [ -n "$(ls target/ci-baseline)" ]
+      - name: Save develop's weights
+        if: ${{ !cancelled() && steps.baseline.outcome == 'success' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: target/ci-baseline/
+          key: ci-baseline-${{ github.run_id }}-${{ github.run_attempt }}
 
   # The suite again, with an ANSWER SET SOLVER on the box. Without one, eight
   # test namespaces skip their bodies and still report as passing — every solver
