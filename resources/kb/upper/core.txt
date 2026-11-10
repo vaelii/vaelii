@@ -492,10 +492,13 @@
 ;; The partition of thing into tangible and intangible does not derive a genl edge from
 ;; the disjointness, so the edge is stated.
 (set/monotonic (genl situation intangible))
-;; sempiternal crosscuts the tangible/intangible and temporal/atemporal partitions alike
-;; (time and situation are temporal; atemporal is not), so, like person, it reaches
-;; thing directly rather than through either partition.
-(genl sempiternal thing)
+;; sempiternal crosscuts the temporal/atemporal partition (time and situation are
+;; temporal; atemporal is not), but nothing with mass is present at every evaluation
+;; time, so sempiternal is disjoint with tangible.  As with situation, the partition of
+;; thing does not derive the genl edge to intangible from the disjointness, so the edge
+;; is stated.
+(set/monotonic (disjoint sempiternal tangible))
+(set/monotonic (genl sempiternal intangible))
 ;; atemporal is outside time, and a time or situation exists at every evaluation
 ;; time while occupying only its own, so all three are present at every evaluation time.
 (set/monotonic (genl atemporal sempiternal))
