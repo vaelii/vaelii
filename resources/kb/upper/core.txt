@@ -2639,7 +2639,7 @@
 (unary_predicate idempotent)
 (decontextualized_predicate idempotent)
 (set/monotonic (eternal_predicate idempotent))
-(genl idempotent relation)
+(genl idempotent function)
 
 (comment meetFunctionOf
          "(meetFunctionOf ?function ?order) means that an application of ?function denotes the greatest thing ?order places below each of its arguments: the meet of ?order. An argument that ?order places above another argument adds nothing, so the assert entry point drops it from a ground application below the literal, and of two arguments each below the other it keeps the first in canonical term order. Whether one argument is below another is answered by the comparator the engine registers for ?order, which reads the two terms alone; a stored (?order a b) fact is never read, so the stored form of a term does not move with belief, and an order with no registered comparator absorbs nothing. A meet is commutative, associative and idempotent, and the forward rules below conclude those three marks from this one. See docs/canonicalization.md.")
