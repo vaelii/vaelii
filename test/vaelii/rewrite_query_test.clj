@@ -241,6 +241,79 @@
              (set (v/query kb (list 'rewriteOf namedRoot '?endpoint) 'CxUniverse
                            {:max-depth 3})))))))
 
+(tu/deftest-kb backward-heads-read-body-bound-endpoints-before-public-joins
+  (tu/with-terms [QualifierFn namedRoot ruleRoot binaryRelation marked absent]
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (v/assert kb (list 'rewriteOf namedRoot (list QualifierFn 2)) 'CxUniverse)
+    (v/assert kb (list 'arity binaryRelation 2) 'CxUniverse)
+    (v/assert kb (list marked namedRoot) 'CxUniverse)
+    (let [head (list 'rewriteOf ruleRoot (list QualifierFn '?number))
+          rh (v/assert-rule kb [(list 'arity binaryRelation '?number)] head
+                            'CxUniverse {:direction :backward})
+          goal (list 'rewriteOf ruleRoot '?endpoint)
+          joined [goal (list marked '?endpoint)
+                  (list 'unknown (list absent '?endpoint))]]
+      (is (some? rh))
+      (is (= head (last (v/readable-sentence (v/sentex kb rh)))))
+      ;; No equation with this left endpoint is stored: a closed success must use
+      ;; the backward head rather than the alias fact that normalizes its rhs.
+      (is (empty? (v/sentexes-matching kb (list 'rewriteOf ruleRoot '?raw))))
+      (doseq [engine [:dfs :inference]]
+        (binding [v/*query-engine* engine]
+          (is (v/provable? kb (list 'rewriteOf ruleRoot namedRoot) 'CxUniverse
+                           {:max-depth 3}))
+          (is (= #{{'?endpoint namedRoot}}
+                 (set (v/prove kb goal 'CxUniverse {:max-depth 3}))))
+          (is (= #{{'?endpoint namedRoot}}
+                 (set (v/prove kb joined 'CxUniverse {:max-depth 3}))))))
+      (is (= #{{'?endpoint namedRoot}}
+             (set (v/query kb goal 'CxUniverse {:max-depth 3}))))
+      (let [proofs (v/query kb goal 'CxUniverse {:max-depth 3 :proof? true})]
+        (is (seq proofs))
+        (doseq [answer proofs]
+          (is (= {'?endpoint namedRoot} (:bindings answer)))
+          (is (= 1 (count (:because (first (:proof answer)))))))))))
+
+(tu/deftest-kb a-variable-predicate-consequent-uses-the-same-public-head-view
+  (tu/with-terms [QualifierFn namedRoot ruleRoot binaryRelation]
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (v/assert kb (list 'rewriteOf namedRoot (list QualifierFn 2)) 'CxUniverse)
+    (v/assert kb (list 'arity 'rewriteOf 2) 'CxUniverse)
+    (v/assert kb (list 'arity binaryRelation 2) 'CxUniverse)
+    (let [rh (v/assert-rule kb [(list 'arity '?relation '?number)
+                                (list 'arity binaryRelation '?number)]
+                            (list '?relation ruleRoot (list QualifierFn '?number))
+                            'CxUniverse {:direction :backward})]
+      (is (some? rh))
+      (doseq [engine [:dfs :inference]]
+        (binding [v/*query-engine* engine]
+          (is (= #{{'?endpoint namedRoot}}
+                 (set (v/prove kb (list 'rewriteOf ruleRoot '?endpoint) 'CxUniverse
+                               {:max-depth 3}))))
+          (is (= #{{'?endpoint (list QualifierFn 2)}}
+                 (set (v/prove kb (list binaryRelation ruleRoot '?endpoint) 'CxUniverse
+                               {:max-depth 3})))))))))
+
+(tu/deftest-kb backward-head-normalization-remains-reader-local
+  (tu/with-terms [QualifierFn namedRoot ruleRoot binaryRelation CxPrivate CxSibling]
+    (doseq [reader [CxPrivate CxSibling]]
+      (v/assert kb (list 'genlCx reader 'CxUniverse) 'CxUniverse))
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (v/assert kb (list 'arity binaryRelation 2) 'CxUniverse)
+    (let [expression (list QualifierFn 2)
+          goal (list 'rewriteOf ruleRoot '?endpoint)]
+      (v/assert kb (list 'rewriteOf namedRoot expression) CxPrivate)
+      (is (some? (v/assert-rule kb [(list 'arity binaryRelation '?number)]
+                                (list 'rewriteOf ruleRoot (list QualifierFn '?number))
+                                'CxUniverse {:direction :backward})))
+      (doseq [engine [:dfs :inference]]
+        (binding [v/*query-engine* engine]
+          (is (= #{{'?endpoint namedRoot}}
+                 (set (v/prove kb goal CxPrivate {:max-depth 3}))))
+          (doseq [reader ['CxUniverse CxSibling]]
+            (is (= #{{'?endpoint expression}}
+                   (set (v/prove kb goal reader {:max-depth 3}))))))))))
+
 (tu/deftest-kb a-counter-reading-does-not-canonicalize-an-old-output-again
   (tu/with-terms [preferred old]
     (let [h (v/assert kb (list 'rewriteOf preferred old) 'CxUniverse)

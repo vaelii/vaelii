@@ -3369,6 +3369,38 @@
 (defn- guard-marker? [g] (and (vector? g) (= ::guard (first g))))
 (defn- marker-guard  [g] (second g))
 
+(defn rule-head-step?
+  "An internal public-head binding step, never a stored or registry literal.
+  Substitution may turn a vector into a list, so its private tag carries identity."
+  [g]
+  (and (sequential? g) (= ::rule-head (first g))))
+
+(defn rule-head-match
+  "The initial rule match as [bindings pending-head-step], or nil.
+  An explicit reader may defer a public head until its body binds raw inputs;
+  ordinary/private callers retain the existing whole-head unifier."
+  [kb goal consequent bindings context head-reader]
+  (if (and head-reader ((:defer? head-reader) goal consequent))
+    [bindings (list ::rule-head consequent goal)]
+    (when-let [b (subsuming-unify kb goal consequent bindings context)] [b nil])))
+
+(defn rule-head-estimator
+  "The ordinary cost model plus readiness of private public-head binding steps.
+  Only raw consequent variables are inputs; the caller goal's variables may be outputs."
+  [estimate]
+  (fn [goal bound]
+    (if (rule-head-step? goal)
+      (if (every? bound (sx/form-variables (second goal))) 0 plan/unbounded)
+      (when estimate (estimate goal bound)))))
+
+(defn solve-rule-head
+  "Complete an internal head step using the explicit public reader and current bindings.
+  A rule's range-restricted body binds its head before this step can produce answers."
+  [head-reader step bindings]
+  (when (and head-reader (sx/ground-term? (substitute (second step) bindings)))
+    ((:match head-reader) (substitute (nth step 2) bindings)
+                          (substitute (second step) bindings) bindings)))
+
 ;; ---- scope markers on the goal stack -------------------------------------
 ;; The loop guard belongs to a goal's derivation path, not its frame: a marker behind the antecedents
 ;; restores the `:seen` scope where the subtree ends, so a later conjunct repeating the goal-key is
@@ -3502,7 +3534,8 @@
   (`:stack` empty), else `:timeout` or `:capped` with a non-empty `:stack` to resume from;
   a leaf the deadline stops inside goes back marked `:unbounded-leaf?`."
   [kb rules-fn context
-   {:keys [deadline max-results max-depth max-term-growth leaf-solver est-override truncated]}
+   {:keys [deadline max-results max-depth max-term-growth leaf-solver est-override truncated
+           head-reader]}
    stack solutions]
   ;; One search scope per segment (`observe/with-search-scope`); the loop is eager, as the macro needs.
   ;; `prove-seq` opens a scope per call, which is sound because a query writes nothing. The defeated set is
@@ -3544,6 +3577,19 @@
                        (conj {:goals (rest goals) :bindings bindings :seen seen :depth depth
                               :answer-vars answer-vars :names names :term-base term-base}))
                      solutions)
+
+              (rule-head-step? (first goals))
+              (let [solve #(solve-rule-head head-reader (first goals) bindings)
+                    b (if (or deadline (:unbounded-leaf? frame))
+                        (budget/interruptible (when-not (:unbounded-leaf? frame) deadline) solve)
+                        (solve))]
+                (if (identical? ::budget/interrupted b)
+                  {:solutions solutions :status :timeout
+                   :stack (conj stack (assoc frame :unbounded-leaf? true))}
+                  (recur (cond-> stack
+                           b (conj {:goals (rest goals) :bindings b :seen seen :depth depth
+                                    :answer-vars answer-vars :names names :term-base term-base}))
+                         solutions)))
 
               ;; the rule expansion behind this marker has produced an answer for the goal
               ;; it was opened for, and belief may already have decided against that answer
@@ -3618,14 +3664,16 @@
                                       (for [rule (rules-fn g)
                                             :let [{:keys [antecedents consequent guard]}
                                                   (freshen-rule rule names)
-                                                  b (subsuming-unify kb g consequent bindings context)]
-                                            :when b]
+                                                  match (rule-head-match kb g consequent bindings context head-reader)]
+                                            :when match
+                                            :let [[b head-step] match]]
                                         ;; pushed onto the front of `rest-goals` in reverse, so a step costs this rule's goals only
                                         {:goals    (into rest-goals
                                                          (rseq
                                                           (-> (planned-antecedents
                                                                kb antecedents consequent context b
                                                                est-override)
+                                                              (cond-> head-step (conj head-step))
                                                               (cond-> guard (conj (->guard-marker guard)))
                                                               ;; behind the guard, so an excepted
                                                               ;; firing is refused before belief

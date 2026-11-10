@@ -261,6 +261,7 @@
                 :max-depth   depth
                 :strategy    strat
                 :leaf-solver (:leaf-solver opts)
+                :head-reader (:head-reader opts)
                 ;; the cost model the leaf is planned by, and only ever supplied with
                 ;; one — the index model is right for a stored-facts leaf (`solve-inline`)
                 :est-override (:est-override opts)
@@ -312,12 +313,19 @@
   registry makes every prover answer a leaf.  `est-override` is the cost model that leaf is
   planned by (the index would price a `genl` conjunct answered from the cached closure as the
   cheapest literal); the DFS chainer takes the same pair (`res/prove-from`)."
-  [kb literals context leaf-solver est-override]
-  (let [planned (plan/order kb literals context {:est-override est-override})]
+  [kb literals context leaf-solver est-override head-reader]
+  (let [planned (plan/order kb literals context
+                            {:est-override (if (some res/rule-head-step? literals)
+                                             (res/rule-head-estimator est-override)
+                                             est-override)})]
     (reduce (fn [sols literal]
               (mapcat (fn [b]
                         (let [g (res/substitute literal b)]
                           (cond
+                            (res/rule-head-step? g)
+                            (when-let [solution (res/solve-rule-head head-reader g b)]
+                              [solution])
+
                             (sx/deferred-literal? g)
                             (map #(merge b %) (res/solve-deferred kb g context))
                             leaf-solver
@@ -391,6 +399,7 @@
                       (concat (range i) (range end (count spliced)))))
           (some (fn [^long p]
                   (and (<= (depth p) (long goal-depth))
+                       (not (res/rule-head-step? (:sentence (nth spliced p))))
                        (= res/no-bindings
                           (res/subsuming-unify kb g (:sentence (nth spliced p))
                                                res/no-bindings context))))
@@ -408,21 +417,24 @@
   each pending guard's numbering (`shift-back`).  The spliced conjunction goes through
   `collapse-repeats`.  A child whose residual asks the goal it rewrote again is not built
   (`restates-goal?`)."
-  [kb node context defeated]
+  [kb node context defeated head-reader]
   (let [{:keys [literals guards supports tree-depth from nvars answer-terms derived]} node]
     (for [i     (range (long from) (count literals))
           :let  [{:keys [sentence depth]} (nth literals i)]
-          :when (and (>= (long depth) 1) (not (sx/deferred-literal? sentence)))
+          :when (and (>= (long depth) 1) (not (sx/deferred-literal? sentence))
+                     (not (res/rule-head-step? sentence)))
           rule  (provers/candidate-rules kb sentence context)
           :let  [{:keys [antecedents consequent guard handle]} rule
                  [shifted shift-back] (sx/canonical-conjunction
                                        (into [consequent] antecedents) nvars)
-                 b (res/subsuming-unify kb sentence (first shifted) res/no-bindings context)]
-          :when b
-          :let  [carry (fn [l] (update l :sentence #(res/substitute % b)))
+                 match (res/rule-head-match kb sentence (first shifted) res/no-bindings
+                                            context head-reader)]
+          :when match
+          :let  [[b head-step] match
+                 carry (fn [l] (update l :sentence #(res/substitute % b)))
                  resid (mapv (fn [a] {:sentence (res/substitute a b)
                                       :depth    (dec (long depth))})
-                             (rest shifted))
+                             (cond-> (vec (rest shifted)) head-step (conj head-step)))
                  spliced (-> (mapv carry (take i literals))
                              (into resid)
                              (into (map carry) (drop (inc i) literals)))
@@ -472,8 +484,9 @@
        ;; the tree in one namespace instead of one per node.  `:slots` is the
        ;; collapse's map from each spliced position to the literal it landed on, nil
        ;; when nothing folded; `:arity` stays, since a nil `:slots` does not give it
-       :rewrite      {:rule handle :at i :arity (count resid) :slots slots :goal sentence
-                      :push [b vm-inv]}
+       :rewrite      (cond-> {:rule handle :at i :arity (count resid) :slots slots :goal sentence
+                              :push [b vm-inv]}
+                       head-step (assoc :head-step? true))
        :tree-depth   (inc (long tree-depth))
        :context      context})))
 
@@ -523,10 +536,11 @@
         paths  (mapv (fn [i] [[i]]) (range (count forest)))]
     (loop [forest forest, paths paths, cs (rest chain)]
       (if-let [c (first cs)]
-        (let [{:keys [rule at arity slots goal push]} (:rewrite c)
+        (let [{:keys [rule at arity slots goal push head-step?]} (:rewrite c)
               [b vm-inv] push
               at    (long at)
               arity (long arity)
+              body-arity (- arity (if head-step? 1 0))
               here  (nth paths at)
               lits  (:literals c)
               ;; each leaf being rewritten becomes a rule node — still in the *parent's*
@@ -543,10 +557,13 @@
                                    grown)
               landed (fn [j] (if slots (nth slots j) j))
               kids  (mapv (fn [k] {:goal (:sentence (nth lits (landed (+ at k)))) :via :leaf})
-                          (range arity))
+                          (range body-arity))
               ;; one entry per spliced position, then merged onto the literal each landed on
               spliced (-> (subvec paths 0 at)
-                          (into (map (fn [k] (mapv #(into % [:because k]) here)))
+                          (into (map (fn [k]
+                                       (if (< k body-arity)
+                                         (mapv #(into % [:because k]) here)
+                                         [])))
                                 (range arity))
                           (into (subvec paths (inc at))))]
           (recur (reduce #(assoc-in %1 (conj %2 :because) kids) moved here)
@@ -568,11 +585,11 @@
   the `?varN` namespace, so a plain unify would collide them and miss a rewrite a freshened
   one takes.  A truncation check asks only *whether* a rewrite was available, never carries
   one out, so the shifted consequent alone is enough."
-  [kb sentence context nvars]
+  [kb sentence context nvars head-reader]
   (boolean (some (fn [rule]
                    (let [[shifted _] (sx/canonical-conjunction [(:consequent rule)] nvars)]
-                     (res/subsuming-unify kb sentence (first shifted)
-                                          res/no-bindings context)))
+                     (res/rule-head-match kb sentence (first shifted)
+                                          res/no-bindings context head-reader)))
                  (provers/candidate-rules kb sentence context))))
 
 (defn- depth-truncated?
@@ -582,20 +599,21 @@
   `children`'s `(>= depth 1)` filter drops: a rewrite site the search reached and the
   bound refused.  Read only under `:track-truncation?`, so the candidate-rule probe never
   runs on the plain query path."
-  [kb {:keys [literals from nvars]} context]
+  [kb {:keys [literals from nvars]} context head-reader]
   (boolean
    (some (fn [{:keys [sentence depth]}]
            (and (< (long depth) 1)
                 (not (sx/deferred-literal? sentence))
-                (rewritable? kb sentence context nvars)))
+                (not (res/rule-head-step? sentence))
+                (rewritable? kb sentence context nvars head-reader)))
          (subvec literals (long from)))))
 
 (defn- node-solutions
   "The solutions `node`'s conjunction has against the leaf, past its guards and belief's
   defeats and in the asker's variables — realized, and with nothing recorded, so a
   `step!` stopped inside it leaves the session as it found it."
-  [kb node context leaf-solver est-override defeated]
-  (->> (solve-inline kb (mapv :sentence (:literals node)) context leaf-solver est-override)
+  [kb node context leaf-solver est-override defeated head-reader]
+  (->> (solve-inline kb (mapv :sentence (:literals node)) context leaf-solver est-override head-reader)
        (filter (fn [s] (every? #(ask-guard % s) (:guards node))))
        (map res/resolve-bindings)
        ;; A rewrite above answered a goal; belief may already have decided
@@ -633,7 +651,7 @@
   `InterruptedException` and expands nothing."
   ([sess] (step! sess nil))
   ([{:keys [kb context queue nodes counter stats seen strategy leaf-solver est-override
-            proof? defeated truncated unenumerated]
+            proof? defeated truncated unenumerated head-reader]
      :as sess}
     dl]
    ;; An interrupted thread stops here, between two expansions, with the session intact:
@@ -655,11 +673,11 @@
                ;; site this node reached and the bound refused (`depth-truncated?`).  Off
                ;; entirely unless the session asked for it, and skipped once a prior node
                ;; already found one — a report needs the bit set, not every place it was set.
-               _     (when (and truncated (not @truncated) (depth-truncated? kb node context))
+               _     (when (and truncated (not @truncated) (depth-truncated? kb node context head-reader))
                        (reset! truncated true))
                found (budget/interruptible
                       dl #(binding [provers/*unenumerated* unenumerated]
-                            (node-solutions kb node context leaf-solver est-override defeated)))]
+                            (node-solutions kb node context leaf-solver est-override defeated head-reader)))]
            (if (identical? ::budget/interrupted found)
              (do (reset! queue q0) found)
              (let [;; Dedup keys on the **bindings**, with or without a proof: two
@@ -678,7 +696,7 @@
                    paid (boolean (seq sols))
                    bias (tactics/child-bias strategy paid)]
                (when-not (and (:first-result? strategy) paid)
-                 (doseq [kid (children kb node context defeated)]
+                 (doseq [kid (children kb node context defeated head-reader)]
                    (if (claim! sess (node-key kid))
                      (let [kid-id (swap! counter inc)
                            kid    (assoc kid :id kid-id :parent-id id)]

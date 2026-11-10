@@ -1250,6 +1250,12 @@ backward search never finds less than `ask` does for the literal it stops at. Th
 chainer that exists only to reach the registry, and neither leaf itself expands a rule.
 [why](defenses.md#the-leaf-must-never-itself-backchain)
 
+Public positive `rewriteOf` rule heads use the same representative view as fact reads.
+Both engines bind the raw rule body first, then compare the head's canonical endpoints
+with the caller's goal before dependent guards or conjuncts consume its outputs. This
+also covers a variable-predicate head whose body selects `rewriteOf`. The binding step
+is internal search state, not a stored fact or an extra antecedent in a proof tree.
+
 **Conjunct order is not a thing either of them can observe.** A rule's antecedents are
 put into canonical order at *storage* (`sentex/canonicalize-rule`), so the same rule
 written with its recursive literal first and last stores identically, and both engines

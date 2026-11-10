@@ -551,6 +551,25 @@
              (and (symbol? f)
                   (contains? (res/sub-predicates kb f reader) 'rewriteOf))))))
 
+(defn head-reader
+  "The public backward-head capability, separate from raw rule storage/unification.
+  A raw body-bound head is read only once its inputs are ground. Ordinary heads
+  use their original unifier; this capability introduces no stored predicate."
+  [kb reader]
+  {:defer? (fn [goal consequent]
+             (and (sequential? consequent)
+                  (or (= 'rewriteOf (first consequent))
+                      (sx/variable? (first consequent)))
+                  (applicable? kb goal reader)))
+   :match (fn [goal consequent bindings]
+            (if (and (= 'rewriteOf (first consequent)) (= 3 (count consequent)))
+              (let [read-form (fn [[predicate left right]]
+                                (list predicate (endpoint kb reader left)
+                                      (endpoint kb reader right)))]
+                (res/subsuming-unify kb (read-form goal) (read-form consequent)
+                                     bindings reader))
+              (res/subsuming-unify kb goal consequent bindings reader)))})
+
 (defn fact-matches
   "The public fact leaf reading positive rewrite witnesses through representatives.
   Other stored predicates retain the existing retrieval path, including negation and

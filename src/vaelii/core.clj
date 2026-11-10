@@ -3267,6 +3267,15 @@
   (or (:max-depth opts)
       (when (map? *query-options*) (:max-depth *query-options*))))
 
+(defn- registry-leaf
+  "What a backward search from `prove` or `query` answers a literal it does not rewrite
+  with: the prover registry's bounds (`provers/registry-bounds`) and the reader of a
+  rewrite head after its body binds (`rewrite-query/head-reader`).  Merged into the DFS's
+  bounds and the node engine's opts alike."
+  [kb context]
+  (assoc (provers/registry-bounds kb context)
+         :head-reader (rewrite-query/head-reader kb context)))
+
 (defn- backward-within
   "One bounded run of the backward chainer over `goals` in `context`, as the anytime
   partial-result contract (`vaelii.impl.budget`), on `prove`'s engine selector: the DFS
@@ -3281,10 +3290,10 @@
     (if (and (not refuse?) (inference-engine? (:max-depth budget)))
       (inference/search-within
        (inference/session kb goals context (merge (query-options (:max-depth budget))
-                                                  (provers/registry-bounds kb context)))
+                                                  (registry-leaf kb context)))
        budget)
       (let [rules-fn  (fn [g] (provers/candidate-rules kb g context))
-            leaf      (provers/registry-bounds kb context)
+            leaf      (registry-leaf kb context)
             truncated (when refuse? (atom false))
             start     (System/nanoTime)
             {:keys [solutions status]}
@@ -3321,11 +3330,11 @@
 
               (inference-engine? nil)
               (inference/solutions kb goals ctx
-                                   (cap (merge (query-options nil) (provers/registry-bounds kb ctx))))
+                                   (cap (merge (query-options nil) (registry-leaf kb ctx))))
 
               :else
               (res/prove kb (fn [g] (provers/candidate-rules kb g ctx)) goals ctx
-                         (cap (provers/registry-bounds kb ctx))))))
+                         (cap (registry-leaf kb ctx))))))
         ;; unbounded rule expansion, so an antecedent fact is not one of `goals` and its
         ;; context never reaches a placement: outside post-hoc's domain by construction
         {:expands-rules? true})))))
@@ -3461,7 +3470,7 @@
   cost model that leaf is planned by.  `query-at` and `query-status-at` both build the
   same run from it."
   [kb context d opts]
-  (merge (query-options nil) opts {:max-depth d} (provers/registry-bounds kb context)))
+  (merge (query-options nil) opts {:max-depth d} (registry-leaf kb context)))
 
 (defn- query-at
   "`query`'s answer from **one** named context, once the depth has been read and the goal
@@ -3494,7 +3503,7 @@
             ;; answers.  Lazy, like the single-literal case.
             :else
             (res/prove-seq kb #(provers/candidate-rules kb % context) goals context
-                           (assoc (provers/registry-bounds kb context) :max-depth 0))))]
+                           (assoc (registry-leaf kb context) :max-depth 0))))]
     (if (:max-ms opts) (clocked "query" opts max-results read) (read))))
 
 (defn- query-capped
@@ -4142,7 +4151,7 @@
   [kb context budget stack una truncated]
   (budget/check-budget! budget)
   (let [rules-fn (fn [g] (provers/candidate-rules kb g context))
-        bounds   (merge (budget/prove-bounds budget) (provers/registry-bounds kb context)
+        bounds   (merge (budget/prove-bounds budget) (registry-leaf kb context)
                         {:truncated truncated})
         start    (System/nanoTime)
         {:keys [solutions status stack]} (binding [provers/*unenumerated* una]
@@ -4174,7 +4183,7 @@
        ;; wide unproductive stretch cannot run past the deadline.
        (let [sess (inference/session kb goals context
                                      (merge (query-options (:max-depth budget))
-                                            (provers/registry-bounds kb context)
+                                            (registry-leaf kb context)
                                             {:track-truncation? true}))]
          (budget/reporting-unenumerated
           (inference/search-within sess budget)
