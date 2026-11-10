@@ -79,6 +79,12 @@
   stores, and a read looks up, the spelling that reader reads (`chain/reconcile-reified!`)."
   #{})
 
+(def ^:dynamic *application-read*
+  "Optional internal observer of the actual application lookup branch.
+  Receives a decision map, not a proof or authority to change the lookup. A semantic
+  prover may use it to retain the selected sources; ordinary reads bind nothing."
+  nil)
+
 (defn reifiable-function?
   "True iff `head` reifies its ground applications in argument position: a believed
   `(reifiable_function head)`, and `head` not in `*withheld*`.  The mark is read
@@ -234,7 +240,10 @@
   (let [tax (reasoning/taxonomy kb)
         f   (first E)]
     (if (or (tax/has-prop? tax :symmetric f) (seq (tax/commuting-groups tax f)))
-      (sx/permute-args E (permuting-marks tax))
+      (let [sorted (sx/permute-args E (permuting-marks tax))]
+        (when (and *application-read* (not= E sorted))
+          (*application-read* {:operation :stored-order :expression E :value sorted}))
+        sorted)
       E)))
 
 (defn- map-rows
@@ -261,14 +270,29 @@
         stated?  #(and (jtms/premise? tms (:id %)) (jtms/network-in? tms (:id %))
                        (or (= 'natFormula pred) (nil? visible?) (tax/sees? tx ctx (:context %))))
         seen?    #(and (tax/sees? tx ctx (:context %)) (jtms/in? tms (:id %)))]
-    (distinct
-     (concat (filter #(or (stated? %) (seen? %)) (mapcat rows (orders N)))
-             (for [C     (class-spellings kb E visible?)
-                   S     (orders C)
-                   :when (not= S N)
-                   sx    (rows S)
-                   :when (and (stated? sx) (= N (norm S)))]
-               sx)))))
+    (let [admitted (distinct
+                    (concat (filter #(or (stated? %) (seen? %)) (mapcat rows (orders N)))
+                            (for [C     (class-spellings kb E visible?)
+                                  S     (orders C)
+                                  :when (not= S N)
+                                  sx    (rows S)
+                                  :when (and (stated? sx) (= N (norm S)))]
+                              sx)))]
+      (if-let [observe res/*correspondence-read*]
+        (map (fn [record]
+               (observe {:operation :application-row :predicate pred :expression E
+                         :context ctx :record record :stated? (stated? record)})
+               record)
+             admitted)
+        admitted))))
+
+(defn application-rows
+  "The actual map/compound-rewrite rows `map-rows` reads for application `E`.
+  A semantic reader that records proof must name these rows, including the distinction
+  between globally read stated maps and reader-local derived maps. This exposes the
+  existing lookup, not a second expression resolver or a write path."
+  [kb pred E context]
+  (map-rows kb pred E context))
 
 (defn dedup-constant
   "The existing reified constant for the ground NAT expression `E` in reify namespace `ns`
@@ -296,15 +320,19 @@
   (`in-namespace?`).  Every row `map-rows` reads is a stored `rewriteOf`, so a KB storing
   none answers nil off one functor count, before `E` is normalized and spelled."
   [kb E ns context]
-  (when (pos? (reads/stored-count-with-functor (:index kb) 'rewriteOf))
-    (let [ts (into #{} (comp (map #(second (:sentence %)))
+  (let [ts (if (pos? (reads/stored-count-with-functor (:index kb) 'rewriteOf))
+             (into #{} (comp (map #(second (:sentence %)))
                              (map #(res/normal-form kb % (res/visible-supporter-fn kb (reader-of context))))
                              (distinct)
                              (take 2))
-                   (map-rows kb 'rewriteOf E context))]
-      (when (= 1 (count ts))
-        (let [t (first ts)]
-          (when (in-namespace? ns t) t))))))
+                   (map-rows kb 'rewriteOf E context))
+             #{})]
+    (when *application-read*
+      (*application-read* {:operation :alias-decision :expression E :namespace ns
+                           :targets ts}))
+    (when (= 1 (count ts))
+      (let [t (first ts)]
+        (when (in-namespace? ns t) t)))))
 
 (defn- sole-value
   "`[value facts]` when the corresponding facts visible from `context` name exactly one
@@ -313,6 +341,8 @@
   ([kb E context] (sole-value kb E nil context))
   ([kb E cor context]
    (let [vs (if cor (res/corresponding-values kb E cor context) (res/corresponding-values kb E context))]
+     (when *application-read*
+       (*application-read* {:operation :correspondence-decision :expression E :values vs}))
      (when (= 1 (count vs)) (first vs)))))
 
 (defn- computed-value
@@ -355,17 +385,24 @@
   ([kb s nat-fn] (reify-in kb s nat-fn nat-fn))
   ([kb s nat-fn head-fn]
    (let [modal (:modal (tax/mention-marks (reasoning/taxonomy kb)))]
-     (letfn [(walk [s]
+     (letfn [(read-nat [f s]
+               (when *application-read*
+                 (*application-read* {:operation :reifiable-use :function (first s)}))
+               (f kb s))
+             (walk [s]
                (cond
-                 (reifiable-ground-nat? kb s) (nat-fn kb s)
+                 (reifiable-ground-nat? kb s) (read-nat nat-fn s)
                  (vector? s) (mapv walk s)
                  (and (seq? s) (seq s))
                  (cond
                    (contains? res/nat-quoting-predicates (first s)) s
-                   (res/attitude-application? modal s) (list (first s) (walk (second s)) (nth s 2))
+                   (res/attitude-application? modal s)
+                   (do (when *application-read*
+                         (*application-read* {:operation :modal-use :predicate (first s)}))
+                       (list (first s) (walk (second s)) (nth s 2)))
                    :else (apply list (head (first s)) (map walk (rest s))))
                  :else s))
-             (head [h] (if (reifiable-ground-nat? kb h) (head-fn kb h) h))]
+             (head [h] (if (reifiable-ground-nat? kb h) (read-nat head-fn h) h))]
        (walk s)))))
 
 (defn existing-term
@@ -377,10 +414,44 @@
   write.  A context slot (`cx/`) takes no correspondence value, which names an object."
   ([kb E ns context] (existing-term kb E ns context false))
   ([kb E ns context write?]
-   (if (= context-namespace ns)
-     (or (rewrite-target kb E ns context) (dedup-constant kb E ns context))
-     (or (rewrite-target kb E ns context) (correspondence-value kb E context write?)
-         (dedup-constant kb E ns context write?)))))
+   (if-not *application-read*
+     (if (= context-namespace ns)
+       (or (rewrite-target kb E ns context) (dedup-constant kb E ns context))
+       (or (rewrite-target kb E ns context) (correspondence-value kb E context write?)
+           (dedup-constant kb E ns context write?)))
+     (let [read-branch (fn [branch lookup]
+                         (let [events (atom [])
+                               observe (fn [outer]
+                                         (fn [event]
+                                           (swap! events conj event)
+                                           (when outer
+                                             (outer (assoc event :application-attempt
+                                                           [E ns context branch])))))
+                               value (binding [res/*normalization-read*
+                                               (observe res/*normalization-read*)
+                                               res/*correspondence-read*
+                                               (observe res/*correspondence-read*)
+                                               *application-read* (observe *application-read*)]
+                                       (lookup))]
+                           [value @events]))
+           [alias alias-reads] (read-branch :rewrite #(rewrite-target kb E ns context))
+           [value value-reads] (when (and (nil? alias) (not= context-namespace ns))
+                                 (read-branch :correspondence #(correspondence-value kb E context write?)))
+           [mapped map-reads] (when (and (nil? alias) (nil? value))
+                                (read-branch :map #(if (= context-namespace ns)
+                                                     (dedup-constant kb E ns context)
+                                                     (dedup-constant kb E ns context write?))))
+           result (or alias value mapped)]
+       (*application-read* {:expression E :namespace ns :context context
+                            :source (cond alias :rewrite value :correspondence
+                                          mapped :map :else :unresolved)
+                            :readings (cond alias alias-reads value value-reads
+                                            mapped map-reads :else [])
+                            :attempt-readings (cond-> {:rewrite alias-reads}
+                                                value-reads (assoc :correspondence value-reads)
+                                                map-reads (assoc :map map-reads))
+                            :value result})
+       result))))
 
 (defn reify-nat-for-read
   "Read-mode leaf: reify nested NAT arguments, then resolve the expression, in its

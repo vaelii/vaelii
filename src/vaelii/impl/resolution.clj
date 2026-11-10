@@ -576,17 +576,23 @@
   the supporters.  A reading pass holds the check per handle (`tax/pass-held`).  Assertion
   contexts alone do not decide the case, since an except can hide a supporter at its own
   context while a meta-exception restores it in only one descendant ancestor set."
-  [kb handles contexts]
-  (let [tax (reasoning/taxonomy kb)]
-    (if (some #(tax/pass-held [::closure-excepted-anywhere %]
-                              (fn [] (exc/closure-excepted-anywhere? kb %)))
-              handles)
-      (let [common  (tax/common-descendants tax contexts)
-            visible (filter (fn [ctx]
-                              (every? #(supporter-visible? kb % ctx false) handles))
-                            common)]
-        (tax/max-cxs tax visible))
-      (tax/maximal-common-descendant-contexts tax contexts))))
+  ([kb handles contexts]
+   (exception-aware-placements kb handles contexts nil))
+  ([kb handles contexts reading]
+   (let [tax (reasoning/taxonomy kb)
+         ;; Context ingredients still constrain placement. Only this proof's explicit
+         ;; primitive-label sources omit the reader exception walk. Nonplacing source
+         ;; contexts must have been removed by the caller, with its aligned records.
+         scoped (if (seq (:label-only reading)) (remove (:label-only reading) handles) handles)]
+     (if (some #(tax/pass-held [::closure-excepted-anywhere %]
+                               (fn [] (exc/closure-excepted-anywhere? kb %)))
+               scoped)
+       (let [common  (tax/common-descendants tax contexts)
+             visible (filter (fn [ctx]
+                               (every? #(supporter-visible? kb % ctx false) scoped))
+                             common)]
+         (tax/max-cxs tax visible))
+       (tax/maximal-common-descendant-contexts tax contexts)))))
 
 (defn visible-supporter-fn
   "`handle -> boolean`, memoized: is the sentex `handle` believed, inherited by
@@ -814,15 +820,61 @@
   (cond->> (tax/rewrite-rules (reasoning/taxonomy kb))
     visible? (filterv #(visible? (:handle %)))))
 
+(def ^:dynamic *normalization-read*
+  "Optional internal observer of a normal-form read and its traced positive supports.
+  The ordinary read retains its nontracing path. Absence/ambiguity conditions still
+  require a semantic consumer's reader-specific recheck."
+  nil)
+
+(defn representative-supports
+  "Alternative equality supports for the actual representative walk over `term`.
+  This follows the same mention policy as `representative-term`, not an unscoped
+  assumption that every symbol in its global class is interchangeable."
+  [kb term visible?]
+  (let [tx (reasoning/taxonomy kb)
+        admit? (or visible? (constantly true))
+        displaced (displaced-terms-in kb visible? term)
+        ;; A shortest identity path alone need not explain the election: a side
+        ;; preference can select its winner. Retain the reader-visible preference
+        ;; claims in these bounded classes as well as the connecting paths. This
+        ;; also warrants a spelling-only move when a sameAs path is shorter than
+        ;; the actual rename path. Discovery is global; admission remains scoped.
+        preferences (into #{}
+                          (comp (mapcat #(tax/class-supporters tx %)) (distinct)
+                                (filter admit?)
+                                (filter #(= 'rewriteOf
+                                             (first (:sentence (p/get-sentex (:records kb) %))))))
+                          (keys displaced))
+        paths (map (fn [[a b]] (tax/scoped-path-supporters tx a b admit?))
+                   displaced)]
+    (when (every? some? paths)
+      (reduce (fn [choices path]
+                (for [choice choices, hs (tax/path-alternatives path)] (into choice hs)))
+              [preferences] paths))))
+
+(defn normal-form-with-support
+  "`[normal-form alternative-supports]`, tracing the same representative and term
+  reducer as `normal-form`. Used by semantic reads that must justify normalization;
+  ordinary normalization keeps its existing nontracing path."
+  [kb term visible?]
+  (let [[form rules] (rewrite/normalize-sentence-with-support
+                      (rewrite-rules-in kb visible?) (representative-term kb visible? term))]
+    [form (map #(into % rules) (representative-supports kb term visible?))]))
+
 (defn normal-form
   "`term` (a sentence or a term) in the equality **normal form** the KB stores and asks in:
   `representative-term`, then argument terms reduced by the schematic equations the same
-  reader sees (`rewrite/normalize-sentence`).  Migration and query both go through here.
+  reader sees (`rewrite/normalize-sentence`). Migration and query both go through here.
   `visible?` is a built supporter predicate (`visible-supporter-fn`), nil for the unscoped
   read; `kb/rewrite-term` takes a context instead."
   [kb term visible?]
-  (rewrite/normalize-sentence (rewrite-rules-in kb visible?)
-                              (representative-term kb visible? term)))
+  (if *normalization-read*
+    (let [[form supports] (normal-form-with-support kb term visible?)]
+      (*normalization-read* {:operation :normalization :term term :value form
+                            :supports (vec supports)})
+      form)
+    (rewrite/normalize-sentence (rewrite-rules-in kb visible?)
+                                (representative-term kb visible? term))))
 
 (defn goal-held-as-spelled?
   "Is `goal` asked **as spelled**, exempt from the goal rewrite?  A `different` goal is,
@@ -921,20 +973,39 @@
   [kb tax]
   (fn [f n] (boolean (seq (mention-declarations kb tax f n)))))
 
+(def ^:dynamic *correspondence-read*
+  "Optional observer of actual correspondence reads. Retrieval lineage is diagnostic
+  until the surviving answer is admitted by `values-of`; ordinary triples are unchanged."
+  nil)
+
 (defn store-marks
   "`sx/sentex`'s canonicalization reads under every permuting mark, term mark and mention
   position the store spells by.  Read unscoped: the fold decides the stored key, which
   every reader shares."
   [kb]
   (let [tax (reasoning/taxonomy kb)]
-    {:symmetric?    #(tax/has-prop? tax :symmetric %)
-     :groups-of     (fn [f _arity] (tax/commuting-groups tax f))
-     :opaque?       (opaque-fn tax)
-     :mention-at?   (mention-at kb tax)
-     :associative?  #(tax/has-prop? tax :associative %)
-     :idempotent?   #(tax/has-prop? tax :idempotent %)
-     :meet-order    (meet-order tax)
-     :distinct-from (distinct-from tax)}))
+    (let [marks {:symmetric?    #(tax/has-prop? tax :symmetric %)
+                 :groups-of     (fn [f _arity] (tax/commuting-groups tax f))
+                 :opaque?       (opaque-fn tax)
+                 :mention-at?   (mention-at kb tax)
+                 :associative?  #(tax/has-prop? tax :associative %)
+                 :idempotent?   #(tax/has-prop? tax :idempotent %)
+                 :meet-order    (meet-order tax)
+                 :distinct-from (distinct-from tax)}]
+      (if-let [observe *correspondence-read*]
+        (into {}
+              (map (fn [[kind read]]
+                     [kind (fn [& args]
+                             (let [value (apply read args)]
+                               ;; A comparator is an implementation closure, not
+                               ;; portable evidence. Its declaring source is what
+                               ;; a semantic consumer must retain.
+                               (observe {:operation :store-mark :kind kind :arguments (vec args)
+                                         :present? (boolean value)
+                                         :value (when-not (fn? value) value)})
+                               value))]))
+              marks)
+        marks))))
 
 (defn nested-probes
   "The spellings literal `sentence` is probed in for the compounds below it that hold a
@@ -1825,6 +1896,11 @@
                  (or *prefetch-candidates* 1)
                  cands)))
 
+(defn- match-answer
+  "Keep optional successful-unification lineage outside logical bindings."
+  [h b stored lineage]
+  (cond-> [h b stored] *correspondence-read* (conj lineage)))
+
 (defn- match-one
   "Matches are belief-sensitive: a handle stored but currently OUT does not match.  Yields
   `[handle bindings stored-sentex]`; the record is fetched to unify against, so it rides
@@ -1853,7 +1929,10 @@
                                           (unify psent (if rule-pat?
                                                          (sx/sentence-of stored)
                                                          (:sentence stored))))]
-                        [h b stored])))))
+                        (match-answer h b stored
+                                      (when *correspondence-read*
+                                        {:probe sentence :pattern psent
+                                         :literal-context context})))))))
         ;; a superset of the trie hits when an argument root is tighter than a
         ;; leading-variable fan-out; the unify above filters it to the same set
         cands (candidate-handles kb pat)]
@@ -2161,6 +2240,17 @@
     (into #{} (filter members) cut)
     (into #{} (filter cut) members)))
 
+(defn- fan-read
+  "Annotate the actual chosen fan hop only while a correspondence read is traced."
+  [raw form super swapped?]
+  (let [answers (raw form)]
+    (if *correspondence-read*
+      (map (fn [[h b stored lineage]]
+             (match-answer h b stored
+                           (assoc lineage :fan [(nm/functor form) super swapped?])))
+           answers)
+      answers)))
+
 (defn fanned-match
   "The fan-out shared by every matcher: decompose `sentence` into the functor that fans and
   the rebuild that puts it back, take the functor's closure from `vantage`, and run `raw`
@@ -2187,13 +2277,13 @@
            ()
 
            (and (= 1 (count fan)) (contains? fan f) (empty? swapped))
-           (raw sentence)
+           (fan-read raw sentence f false)
 
            (empty? swapped)
            (let [rebuild (if neg?
                            (fn [f'] (list sx/not-functor (cons f' (rest body))))
                            (fn [f'] (cons f' (rest body))))]
-             (mapcat-fn (fn [f'] (raw (rebuild f'))) fan))
+             (mapcat-fn (fn [f'] (fan-read raw (rebuild f') f false)) fan))
 
            :else
            ;; each member of the fan is read as written, and each swapped member with its
@@ -2203,7 +2293,7 @@
                  rebuild (fn [[f' swap?]]
                            (let [b (if swap? (list f' y x) (cons f' (rest body)))]
                              (if neg? (list sx/not-functor b) b)))]
-             (mapcat-fn (fn [m] (raw (rebuild m)))
+             (mapcat-fn (fn [m] (fan-read raw (rebuild m) f (second m)))
                         (concat (map #(vector % false) (nm/sort-by-content-key nm/print-key compare fan))
                                 (map #(vector % true) (nm/sort-by-content-key nm/print-key compare swapped)))))))
        (raw sentence)))))
@@ -2525,6 +2615,9 @@
                            (vswap! alt-args assoc f v)
                            v)))
           seen  (volatile! #{})
+          ;; This belongs to the SAME successful unify below. Candidate probes
+          ;; alone are never a proof, and ordinary reads allocate no trace map.
+          traces (when *correspondence-read* (volatile! {}))
           ;; The unify-attempt tally: candidates that clear the cheap filters and reach `unify`. `prof?` is
           ;; captured once so the off path costs a `false` test and one call records or declines a literal
           ;; consistently.
@@ -2578,8 +2671,18 @@
                                        (if up? (:context stored) '?ctx)
                                        i)]
                       (when (= (sx/negative? pat) (sx/negative? stored))
-                        (unify (:context pat) (:context stored)
-                               (unify (:sentence pat) (:sentence stored))))))
+                        (when-let [b (unify (:context pat) (:context stored)
+                                           (unify (:sentence pat) (:sentence stored)))]
+                          (when traces
+                            (let [k [(:id stored) b]]
+                              (when-not (contains? @traces k)
+                                (vswap! traces assoc k
+                                        {:probe sentence :pattern (:sentence pat)
+                                         :fan [(first (:sentence stored)) (first sentence) false]
+                                         :literal-context (:context pat)
+                                         :arrangement (if (neg? i) (vec args)
+                                                          (nth (args-for (first (:sentence stored))) i))}))))
+                          b))))
             out
             (if-not (or sym? comm-preds nested)
               ;; Nothing under this functor is symmetric, so a candidate answers at most once and the handle is the
@@ -2590,7 +2693,7 @@
                           (when prof? (vswap! unifs inc))
                           (when-let [b (order stored 0)]
                             (vswap! seen conj h)
-                            [h b stored]))))
+                            (match-answer h b stored (when traces (get @traces [h b])))))))
                     cands)
               ;; A permuting sub-predicate: one candidate can answer more than once (an all-variable pattern binds
               ;; `(sibOf Rex Tib)` both ways), so dedup keys on `[handle bindings]` (`raw-match` says why).
@@ -2609,7 +2712,7 @@
                            (comp (remove #(contains? @seen [h %]))
                                  (map (fn [b]
                                         (vswap! seen conj [h b])
-                                        [h b stored])))
+                                        (match-answer h b stored (when traces (get @traces [h b]))))))
                            bs))))
                cands))]
         ;; Returned-vs-matched, opt-in: realizing `out` walks the candidate seq, so it runs only while the
@@ -2696,12 +2799,14 @@
   (let [fv (when (and (seq? sentence) (sx/variable? (first sentence))) (first sentence))]
     (if (or (nil? fv) (some #(= fv %) (tree-seq sequential? seq (rest sentence))))
       matches
-      (mapcat (fn [[h b stored :as m]]
+      (mapcat (fn [[h b stored lineage :as m]]
                 (let [f (get b fv)]
                   (if (symbol? f)
                     (cons m (for [g (nm/sort-by-content-key nm/print-key compare
                                                             (disj (super-predicates kb f view-context) f))]
-                              [h (assoc b fv g) stored]))
+                              (match-answer h (assoc b fv g) stored
+                                            (when *correspondence-read*
+                                              (assoc lineage :functor-super [f g])))))
                     [m])))
               matches))))
 
@@ -2713,14 +2818,21 @@
   constant `k` to, the content-least where several do, or nil."
   [kb k]
   (let [tms  (reasoning/tms kb)
-        recs (:records kb)]
-    (->> (reads/as-stored-with-args (:index kb) 'natFormula {1 k})
-         (keep #(p/get-sentex recs %))
-         (keep (fn [{s :sentence c :context h :id}]
-                 (when (and (= sx/root-context c) (= k (second s)) (seq? (nth s 2 nil))
-                            (jtms/in? tms h))
-                   (nth s 2))))
-         (nm/min-by-content-key identity))))
+        recs (:records kb)
+        selected (when *correspondence-read* (volatile! []))
+        expression (->> (reads/as-stored-with-args (:index kb) 'natFormula {1 k})
+                        (keep #(p/get-sentex recs %))
+                        (keep (fn [{s :sentence c :context h :id}]
+                                (when (and (= sx/root-context c) (= k (second s)) (seq? (nth s 2 nil))
+                                           (jtms/in? tms h))
+                                  (when selected (vswap! selected conj [h (nth s 2)]))
+                                  (nth s 2))))
+                        (nm/min-by-content-key identity))]
+    (when *correspondence-read*
+      (*correspondence-read* {:operation :minted-expression :target k :expression expression
+                             :handles (into #{} (keep (fn [[h e]] (when (= e expression) h)))
+                                            @selected)}))
+    expression))
 
 (defn- values-of
   "`{value [fact-handle …]}` for the ground NAT expression `E` read from `context`: the
@@ -2731,15 +2843,43 @@
   ([kb E context match]
    (values-of kb E (correspondence-of kb (first E) (count (rest E)) context) context match))
   ([kb E cor context match]
+   (when *correspondence-read*
+     (*correspondence-read*
+      {:operation :declarations :expression E :context context
+       :declarations (into [] (filter #(= (first E) (first %)))
+                           (correspondence-declarations kb context))}))
    (if-let [[pr pos] cor]
-     (let [visible? (visible-supporter-fn kb context)]
-       (reduce (fn [acc [h b]]
+     (let [visible? (visible-supporter-fn kb context)
+           goal-reads (when *correspondence-read* (volatile! []))
+           goal-form (apply list pr (insert-at (rest E) pos '?v))
+           goal (if goal-reads
+                  (let [outer *normalization-read*]
+                    (binding [*normalization-read* (fn [event]
+                                                    (vswap! goal-reads conj event)
+                                                    (when outer (outer event)))]
+                      (goal-normal-form kb goal-form context)))
+                  (goal-normal-form kb goal-form context))]
+       (reduce (fn [acc [h b _ lineage]]
                  (let [v (get b '?v)]
                    (if (or (nil? v) (sequential? v))
                      acc
-                     (update acc (normal-form kb v visible?) (fnil conj []) h))))
+                     (let [value-reads (when *correspondence-read* (volatile! []))
+                           value (if value-reads
+                                   (let [outer *normalization-read*]
+                                     (binding [*normalization-read* (fn [event]
+                                                                     (vswap! value-reads conj event)
+                                                                     (when outer (outer event)))]
+                                       (normal-form kb v visible?)))
+                                   (normal-form kb v visible?))]
+                       (when *correspondence-read*
+                         (*correspondence-read*
+                          {:operation :tuple :expression E :context context
+                           :goal goal :handle h :bindings b :raw-value v :value value
+                           :lineage lineage :goal-readings @goal-reads
+                           :value-readings @value-reads}))
+                       (update acc value (fnil conj []) h)))))
                {}
-               (match kb (goal-normal-form kb (apply list pr (insert-at (rest E) pos '?v)) context) context)))
+               (match kb goal context)))
      {})))
 
 (defn- names-object-constant?
@@ -2820,9 +2960,20 @@
   (`copied-values`).  One definition, so a cached and an uncached read cannot come to
   answer differently."
   [kb sentence view-context]
-  (let [read  #(if *hierarchical-retrieval*
-                 (matches-hierarchical kb % view-context)
-                 (matches-visible* kb % view-context))
+  (let [retrieve #(if *hierarchical-retrieval*
+                   (matches-hierarchical kb % view-context)
+                   (matches-visible* kb % view-context))
+        read (if-let [observe *correspondence-read*]
+               (fn [goal]
+                 (map (fn [[h bindings :as answer]]
+                        ;; Admission still happens below. A tuple event emitted by
+                        ;; values-of identifies a surviving match; this event alone
+                        ;; must never authorize a proof or a reader placement.
+                        (observe {:operation :retrieval-candidate :goal goal :context view-context
+                                  :handle h :bindings bindings})
+                        answer)
+                      (retrieve goal)))
+               retrieve)
         extra (into [] (distinct) (concat (mention-probes kb sentence)
                                           (fan-mention-probes kb sentence view-context)))
         own   (->> (if (seq extra)
@@ -2830,9 +2981,26 @@
                      (read sentence))
                    (without-hidden-matches kb view-context sentence extra)
                    (with-open-functor-supers kb sentence view-context))]
-    (if-let [kv (copied-values kb sentence view-context visible-matches)]
-      (distinct (concat own (visible-matches kb (walk/postwalk-replace kv sentence) view-context)))
-      own)))
+    (let [copy-events (when *correspondence-read* (volatile! []))
+          kv (if-let [outer *correspondence-read*]
+               (binding [*correspondence-read* (fn [event]
+                                               (vswap! copy-events conj event)
+                                               (outer event))]
+                 (copied-values kb sentence view-context visible-matches))
+               (copied-values kb sentence view-context visible-matches))]
+      (if kv
+        (let [copied (visible-matches kb (walk/postwalk-replace kv sentence) view-context)]
+          (distinct
+           (concat own
+                   (if copy-events
+                     (map (fn [[h b stored lineage]]
+                            (match-answer h b stored
+                                          (update lineage :copied-steps (fnil conj [])
+                                                  {:sentence sentence :replacements kv
+                                                   :readings @copy-events})))
+                          copied)
+                     copied))))
+        own))))
 
 (defn matches-visible
   "Type-aware matches of `sentence` visible from `view-context`.  A variable context means
@@ -2846,11 +3014,13 @@
   ([kb sentence view-context] (matches-visible kb sentence view-context true))
   ([kb sentence view-context cached?]
    (let [sentence (probe-spelling kb sentence)]
+     ;; A bindings-only cache entry carries no retrieval trace. An explicit
+     ;; evidence read must run the same retrieval rather than invent its witnesses.
      (cond
        (and (sx/negation? sentence) (zero? (reads/stored-count-at (:index kb) [:false])))
        ()
 
-       (not (and cached? lc/*enabled*))
+       (not (and cached? lc/*enabled* (nil? *correspondence-read*)))
        (visible-matches kb sentence view-context)
 
        :else

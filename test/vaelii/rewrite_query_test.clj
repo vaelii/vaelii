@@ -3,12 +3,156 @@
 (ns vaelii.rewrite-query-test
   "The positive rewriteOf public relation is read through reader representatives.
   Raw storage remains directed."
-  (:require [clojure.test :refer [is testing use-fixtures]]
+  (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.nat-read :as nat-read]
             [vaelii.impl.quasiquote :as quasiquote]
+            [vaelii.impl.resolution :as res]
+            [vaelii.impl.rewrite-query :as rewrite-query]
+            [vaelii.impl.types.prover :as prover-types]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
+
+(deftest an-independent-strict-use-wins-on-each-source-axis
+  (let [relaxed {:nonplacing #{1} :label-only #{1} :readers #{'CxPrivate}}]
+    (is (nil? (prover-types/merge-source-roles [1] nil [2] nil)))
+    (is (= {:readers #{'CxPrivate}}
+           (prover-types/merge-source-roles [1] relaxed [1] nil)
+           (prover-types/merge-source-roles [1] nil [1] relaxed)))
+    ;; Neither proof-local strict use may be relaxed by the other axis. Reader
+    ;; constraints accumulate; they are not logical bindings or synthetic premises.
+    (is (= {:readers #{'CxPrivate 'CxOther}}
+           (prover-types/merge-source-roles
+            [1] {:nonplacing #{1} :readers #{'CxPrivate}}
+            [1] {:label-only #{1} :readers #{'CxOther}})))))
+
+(deftest rewrite-read-associations-are-unioned-without-changing-logical-values
+  (let [a {:goal '(rewriteOf 17 ?x) :handle 1 :outputs '{?x 23}}
+        b {:goal '(rewriteOf ?y 23) :handle 2 :outputs '{?y 17}}]
+    (is (= #{a b}
+           (:rewrite-reads
+            (prover-types/merge-source-roles
+             #{1} {:rewrite-reads #{a}} #{2} {:rewrite-reads #{b}}))))))
+
+(deftest application-evidence-observes-the-existing-branch-without-another-resolution
+  ;; This is a branch-observer control, not a substitute for the forward proof tests.
+  ;; The same resolver functions and short-circuit precedence must run in both modes.
+  (doseq [[namespace alias value mapped expected source expected-calls]
+          [["nat" 'namedRoot 'otherValue 'oldMap 'namedRoot :rewrite [:rewrite]]
+           ["nat" nil 'namedRoot 'oldMap 'namedRoot :correspondence [:rewrite :correspondence]]
+           ["nat" nil nil 'oldMap 'oldMap :map [:rewrite :correspondence :map]]
+           ["nat" nil nil nil nil :unresolved [:rewrite :correspondence :map]]
+           ["cx" nil 'notAContext 'cx/old 'cx/old :map [:rewrite :map]]]]
+    (let [calls (atom [])
+          events (atom [])
+          lookup (fn [observe?]
+                   (binding [nat-read/*application-read* (when observe? #(swap! events conj %))]
+                     (nat-read/existing-term nil '(QualifierFn base) namespace 'CxPrivate)))]
+      (with-redefs [nat-read/rewrite-target (fn [& _] (swap! calls conj :rewrite) alias)
+                    nat-read/correspondence-value (fn [& _] (swap! calls conj :correspondence) value)
+                    nat-read/dedup-constant (fn [& _] (swap! calls conj :map) mapped)]
+        (is (= expected (lookup false)))
+        (is (= expected-calls @calls))
+        (reset! calls [])
+        (is (= expected (lookup true)))
+        (is (= expected-calls @calls))
+        (is (= [{:expression '(QualifierFn base) :namespace namespace :context 'CxPrivate
+                 :source source :value expected :readings []}]
+               (map #(dissoc % :attempt-readings) @events)))))))
+
+(deftest map-fallback-does-not-claim-the-failed-correspondence-attempt
+  (let [events (atom [])]
+    (with-redefs [nat-read/rewrite-target (constantly nil)
+                  nat-read/correspondence-value
+                  (fn [& _]
+                    (res/*correspondence-read* {:operation :tuple :handle 123 :value 'ambiguous})
+                    nil)
+                  nat-read/dedup-constant
+                  (fn [& _]
+                    (res/*normalization-read* {:operation :normalization :supports [#{456}]})
+                    'nat/existing)]
+      (is (= 'nat/existing
+             (binding [nat-read/*application-read* #(swap! events conj %)]
+               (nat-read/existing-term nil '(QualifierFn base) "nat" 'CxPrivate))))
+      (is (= :map (:source (last @events))))
+      (is (= [{:operation :normalization :supports [#{456}]}]
+             (:readings (last @events)))))))
+
+(tu/deftest-kb a-correspondence-trace-retains-the-actual-declaration-and-tuple
+  (tu/with-terms [QualifierFn qualifierOf base namedRoot old]
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (let [declaration (v/assert kb (list 'functionCorrespondingPredicate QualifierFn qualifierOf 2)
+                                'CxUniverse)
+          tuple (v/assert kb (list qualifierOf base namedRoot) 'CxUniverse)
+          events (atom [])
+          expression (list QualifierFn base)]
+      (is (= namedRoot
+             (binding [nat-read/*application-read* #(swap! events conj %)
+                       res/*correspondence-read* #(swap! events conj %)]
+               (nat-read/existing-term kb expression "nat" 'CxUniverse))))
+      (is (some #(= {:expression expression :namespace "nat" :context 'CxUniverse
+                     :source :correspondence :value namedRoot}
+                    (dissoc % :readings :attempt-readings))
+                @events))
+      (is (some #(and (= :declarations (:operation %))
+                      (some #{[QualifierFn qualifierOf 2 declaration]} (:declarations %)))
+                @events))
+      (is (some #(and (= :tuple (:operation %)) (= tuple (:handle %))
+                      (= namedRoot (:value %))
+                      (sequential? (get-in % [:lineage :pattern]))
+                      (= (list qualifierOf base '?v) (:goal %)))
+                @events))
+      (let [[actual readings] (rewrite-query/endpoint-reading kb 'CxUniverse expression)]
+        (is (= namedRoot actual (rewrite-query/endpoint kb 'CxUniverse expression)))
+        (is (some #(and (= :tuple (:operation %)) (= tuple (:handle %))) readings))
+        (is (some #(and (= :correspondence (:source %)) (= namedRoot (:value %))) readings))
+        (is (some #(and (= :retrieval-candidate (:operation %)) (= tuple (:handle %))
+                        (= (list qualifierOf base '?v) (:goal %)))
+                  readings)))
+      (v/assert kb (list 'rewriteOf namedRoot old) 'CxUniverse)
+      (let [goal (list 'rewriteOf '?left expression)
+            plain (set (rewrite-query/matches kb goal 'CxUniverse))
+            traced (vec (rewrite-query/matches-with-readings kb goal 'CxUniverse))
+            certificates (vec (rewrite-query/match-certificates kb goal 'CxUniverse))]
+        (is (seq traced))
+        (is (= plain (set (map #(subvec % 0 3) traced))))
+        (is (= (set (map second plain)) (set (map first certificates))))
+        (is (every? #(and (contains? (second %) declaration)
+                          (contains? (second %) tuple)
+                          (= #{'CxUniverse} (:readers (nth % 2)))) certificates))
+        (is (every? #(contains? (:label-only (nth % 2)) declaration) certificates))
+        (is (every? #(not (contains? (:label-only (nth % 2)) tuple)) certificates))
+        (is (every? #(= namedRoot (get (second %) '?left)) traced))
+        (is (some #(some (fn [event] (= :correspondence (:source event)))
+                        (:events (nth % 3)))
+                  traced))))))
+
+(tu/deftest-kb admitted-correspondence-lineage-survives-both-retrieval-paths
+  (tu/with-terms [QualifierFn qualifierOf narrowQualifierOf base namedRoot]
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (v/assert kb (list 'genl narrowQualifierOf qualifierOf) 'CxUniverse)
+    (v/assert kb (list 'symmetric narrowQualifierOf) 'CxUniverse)
+    (let [declaration (v/assert kb (list 'functionCorrespondingPredicate QualifierFn qualifierOf 2)
+                                'CxUniverse)
+          h (v/assert kb (list narrowQualifierOf base namedRoot) 'CxUniverse)
+          expression (list QualifierFn base)]
+      (doseq [hierarchical? [false true]]
+        (binding [res/*hierarchical-retrieval* hierarchical?]
+          (let [events (atom [])
+                plain (nat-read/existing-term kb expression "nat" 'CxUniverse)
+                traced (binding [nat-read/*application-read* #(swap! events conj %)]
+                         (nat-read/existing-term kb expression "nat" 'CxUniverse))
+                selected (:readings (last @events))
+                admitted (filter #(= :tuple (:operation %)) selected)]
+            (is (= namedRoot plain traced))
+            (is (= :correspondence (:source (last @events))))
+            (is (some #(some #{[QualifierFn qualifierOf 2 declaration]} (:declarations %)) selected))
+            (is (some #(and (= h (:handle %)) (= namedRoot (:value %))
+                            (= (list qualifierOf base '?v) (:goal %))
+                            (sequential? (get-in % [:lineage :probe]))
+                            (= narrowQualifierOf (first (get-in % [:lineage :pattern]))))
+                      admitted))))))))
 
 (tu/deftest-kb a-rewrite-binding-roundtrips-and-composes-before-projection
   (tu/with-terms [preferred old marked unrelated]
@@ -47,10 +191,14 @@
     (v/assert kb (list 'rewriteOf preferred old) CxPrivate)
     (doseq [reader [CxPrivate CxChild]]
       (is (= #{{'?x preferred}}
-             (set (v/query kb (list 'rewriteOf old '?x) reader)))))
+             (set (v/query kb (list 'rewriteOf old '?x) reader))))
+      (doseq [pred ['sameAs 'equals]]
+        (is (= #{{'?x preferred}} (set (v/query kb (list pred old '?x) reader))))))
     (doseq [reader ['CxUniverse CxSibling]]
       (is (empty? (v/query kb (list 'rewriteOf old '?x) reader)))
-      (is (false? (v/ask? kb (list 'rewriteOf preferred preferred) reader))))))
+      (is (false? (v/ask? kb (list 'rewriteOf preferred preferred) reader)))
+      (doseq [pred ['sameAs 'equals]]
+        (is (= #{{'?x old}} (set (v/query kb (list pred old '?x) reader))))))))
 
 (tu/deftest-kb identity-class-answers-keep-live-aliases-but-not-retired-spellings
   (tu/with-terms [preferred old identityAlias]
@@ -76,3 +224,135 @@
     (is (false? (v/ask? kb (list mentioned (list 'Quote (list QualifierFn base))) CxPrivate)))
     (doseq [reader ['CxUniverse CxSibling]]
       (is (false? (v/ask? kb (list mentioned (list 'Quote namedRoot)) reader))))))
+
+(tu/deftest-kb a-backward-rewrite-head-does-not-reintroduce-a-resolved-application
+  (tu/with-terms [QualifierFn base namedRoot binaryRelation]
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (v/assert kb (list 'rewriteOf namedRoot (list QualifierFn base)) 'CxUniverse)
+    ;; Arity is itself forced-monotonic: the fixture does not rely on an unforced
+    ;; ordinary antecedent licensing an equation conclusion.
+    (v/assert kb (list 'arity binaryRelation 2) 'CxUniverse)
+    (let [head (list 'rewriteOf namedRoot (list QualifierFn base))
+          rh (v/assert-rule kb [(list 'arity binaryRelation 2)] head
+                            'CxUniverse {:direction :backward})]
+      (is (some? rh))
+      (is (= head (:consequent (v/sentex kb rh))))
+      (is (= #{{'?endpoint namedRoot}}
+             (set (v/query kb (list 'rewriteOf namedRoot '?endpoint) 'CxUniverse
+                           {:max-depth 3})))))))
+
+(tu/deftest-kb a-counter-reading-does-not-canonicalize-an-old-output-again
+  (tu/with-terms [preferred old]
+    (let [h (v/assert kb (list 'rewriteOf preferred old) 'CxUniverse)
+          rows (rewrite-query/row-readings kb h 'CxUniverse)]
+      (is (= #{(list 'rewriteOf preferred preferred)} (set (map first rows))))
+      ;; Asking this closed goal would normalize `old` again and answer true. A
+      ;; firing that bound `old` must compare the returned canonical fact instead.
+      (is (true? (v/ask? kb (list 'rewriteOf preferred old) 'CxUniverse)))
+      (is (not-any? #(= (list 'rewriteOf preferred old) (first %)) rows))
+      (is (= (list 'rewriteOf preferred old) (:sentence (v/sentex kb h)))))))
+
+(tu/deftest-kb an-unresolved-alias-certificate-retains-both-ambiguity-witnesses
+  (tu/with-terms [QualifierFn base namedRoot rival CxPrivate]
+    (v/assert kb (list 'genlCx CxPrivate 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (let [expression (list QualifierFn base)
+          first-h (v/assert kb (list 'rewriteOf namedRoot expression) 'CxUniverse)
+          goal (list 'rewriteOf namedRoot '?endpoint)
+          original (first (rewrite-query/match-certificates kb goal CxPrivate))
+          association (first (:rewrite-reads (nth original 2)))
+          rival-h (v/assert kb (list 'rewriteOf rival expression) CxPrivate)
+          certificates (vec (rewrite-query/match-certificates kb goal CxPrivate))]
+      (is (= #{{'?endpoint expression}} (set (map first certificates))))
+      ;; With only first-h the same resolver returns namedRoot, not expression.
+      ;; A raw candidate event could not warrant this negative-branch decision.
+      (is (every? #(and (contains? (second %) first-h)
+                        (contains? (second %) rival-h)) certificates))
+      (let [counter (vec (rewrite-query/counter-certificates kb association CxPrivate))]
+        (is (seq counter))
+        (is (every? #(contains? (first %) rival-h) counter)))
+      (is (empty? (rewrite-query/counter-certificates kb association 'CxUniverse)))
+      (v/retract! kb rival-h)
+      (let [restored (vec (rewrite-query/match-certificates kb goal CxPrivate))]
+        (is (= #{{'?endpoint namedRoot}} (set (map first restored))))
+        (is (every? #(not (contains? (second %) rival-h)) restored))
+        (is (empty? (rewrite-query/counter-certificates kb association CxPrivate)))))))
+
+(defn- check-map-source-role
+  "The primitive reads stated maps globally and derived maps only in their context."
+  [kb stated?]
+  (doseq [sentence '[(genlCx CxPrivate CxUniverse) (reifiable_function QualifierFn)
+                    (rewriteOf namedRoot old)]]
+    (v/assert kb sentence 'CxUniverse))
+  (if stated?
+    (v/assert kb '(natFormula namedRoot (QualifierFn base)) 'CxPrivate)
+    (do (v/assert-rule kb '[(marker base)] '(natFormula namedRoot (QualifierFn base))
+                       'CxPrivate {:direction :forward})
+        (v/assert kb '(marker base) 'CxPrivate)))
+  (let [h (v/handle-of kb '(natFormula namedRoot (QualifierFn base)) 'CxPrivate)
+        goal '(rewriteOf namedRoot (QualifierFn base))
+        private (vec (rewrite-query/match-certificates kb goal 'CxPrivate))
+        public (vec (rewrite-query/match-certificates kb goal 'CxUniverse))]
+    (is (some? h))
+    (is (= stated? (v/premise? kb h)))
+    (is (seq private))
+    (is (= stated? (boolean (seq public))))
+    (doseq [[_ supports reading] (concat private public)]
+      (is (contains? supports h))
+      (is (contains? (:label-only reading) h))
+      (is (= stated? (contains? (:nonplacing reading) h))))))
+
+(tu/deftest-kb a-stated-map-retains-global-structural-source-roles
+  (check-map-source-role kb true))
+
+(tu/deftest-kb a-derived-map-retains-contextual-source-placement
+  (check-map-source-role kb false))
+
+(tu/deftest-kb a-private-rival-rechecks-an-inherited-forward-rewrite-answer
+  (tu/with-terms [QualifierFn base namedRoot rival mentioned CxPrivate CxSibling]
+    (quasiquote/ensure-quasiquote-functions kb)
+    (v/assert kb (list 'genlCx CxPrivate 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxSibling 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (v/assert kb (list 'rewriteOf namedRoot (list QualifierFn base)) 'CxUniverse)
+    (v/assert-rule kb [(list 'rewriteOf namedRoot '?endpoint)]
+                   (list mentioned (list 'Quasiquote (list 'Unquote '?endpoint)))
+                   'CxUniverse {:direction :forward})
+    (doseq [reader ['CxUniverse CxPrivate CxSibling]]
+      (is (true? (v/ask? kb (list mentioned (list 'Quote namedRoot)) reader))))
+    (let [rival-h (v/assert kb (list 'rewriteOf rival (list QualifierFn base)) CxPrivate)]
+      ;; The old alias still exists and is IN. The new ambiguity changes the read,
+      ;; so withdrawing only positive support cannot repair this inherited proof.
+      (is (false? (v/ask? kb (list mentioned (list 'Quote namedRoot)) CxPrivate)))
+      (is (true? (v/ask? kb (list mentioned (list 'Quote (list QualifierFn base))) CxPrivate)))
+      (doseq [reader ['CxUniverse CxSibling]]
+        (is (true? (v/ask? kb (list mentioned (list 'Quote namedRoot)) reader)))
+        (is (false? (v/ask? kb (list mentioned (list 'Quote (list QualifierFn base))) reader))))
+      (v/retract! kb rival-h)
+      (is (true? (v/ask? kb (list mentioned (list 'Quote namedRoot)) CxPrivate)))
+      (is (false? (v/ask? kb (list mentioned (list 'Quote (list QualifierFn base))) CxPrivate))))))
+
+(tu/deftest-kb a-new-correspondence-rejoins-a-quoted-ground-application-without-a-map
+  (tu/with-terms [QualifierFn qualifierOf base preferred old mentioned CxPrivate CxSibling]
+    (quasiquote/ensure-quasiquote-functions kb)
+    (v/assert kb (list 'genlCx CxPrivate 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxSibling 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (v/assert kb (list 'rewriteOf preferred old) 'CxUniverse)
+    (v/assert-rule kb [(list 'rewriteOf '?left (list QualifierFn base))]
+                   (list mentioned (list 'Quasiquote (list 'Unquote '?left)))
+                   'CxUniverse {:direction :forward})
+    (is (false? (v/ask? kb (list mentioned (list 'Quote preferred)) CxPrivate)))
+    (let [declaration (v/assert kb (list 'functionCorrespondingPredicate QualifierFn qualifierOf 2)
+                                'CxUniverse)
+          tuple (v/assert kb (list qualifierOf base preferred) CxPrivate)]
+      (is (true? (v/ask? kb (list mentioned (list 'Quote preferred)) CxPrivate)))
+      (doseq [reader ['CxUniverse CxSibling]]
+        (is (false? (v/ask? kb (list mentioned (list 'Quote preferred)) reader))))
+      ;; The written application is an equation mention, not an independently used
+      ;; application. Neither a named alias nor an opaque placeholder licenses it.
+      (is (empty? (filter #(= (list QualifierFn base) (nth (:sentence %) 2 nil))
+                          (v/find-sentexes kb 'natFormula))))
+      (v/retract! kb declaration)
+      (is (false? (v/ask? kb (list mentioned (list 'Quote preferred)) CxPrivate)))
+      (v/retract! kb tuple))))

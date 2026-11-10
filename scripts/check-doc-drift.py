@@ -1734,6 +1734,9 @@ E16_FAMILY_CALL = re.compile(r"\bp/(" + "|".join(re.escape(r) for r in E16_FAMIL
 # allowlist names who calls one, as E17's does for `tax/…-global`. The reason lives in the
 # caller's docstring or beside the row.
 E16_GLOBAL_ALLOW = {
+    # Discovery only: sparse rule ids and candidate source contexts, not reader authority.
+    ("src/vaelii/impl/rewrite_query.clj", "read-consumer-census"),
+    ("src/vaelii/impl/rewrite_query.clj", "reader-contexts"),
     # A mark in CxUniverse is seen from every context, so its conflict reads every context.
     ("src/vaelii/impl/checks.clj", "self-tuple-declaration-conflict"),
     # A fact in CxUniverse is seen from every context, so its merge readers are the
@@ -1975,6 +1978,8 @@ E17_FLAT = {
 }
 E17_PRESENCE_TESTS = ("seq", "empty?", "not-empty")
 E17_ALLOW = {
+    # Evidence of the SAME KB-wide stored-key primitive, with explicit proof-local roles.
+    ("src/vaelii/impl/rewrite_query.clj", "primitive-mark-evidence"),
     # A fact in CxUniverse merges with a partner in any context: the predicates above and
     # below its functor in every context name where a partner may be stored.
     ("src/vaelii/impl/special.clj", "merge-readers"),
