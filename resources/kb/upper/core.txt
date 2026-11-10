@@ -492,13 +492,10 @@
 ;; The partition of thing into tangible and intangible does not derive a genl edge from
 ;; the disjointness, so the edge is stated.
 (set/monotonic (genl situation intangible))
-;; sempiternal crosscuts the temporal/atemporal partition (time and situation are
-;; temporal; atemporal is not), but nothing with mass is present at every evaluation
-;; time, so sempiternal is disjoint with tangible.  As with situation, the partition of
-;; thing does not derive the genl edge to intangible from the disjointness, so the edge
-;; is stated.
 (set/monotonic (disjoint sempiternal tangible))
+(comment (disjoint sempiternal tangible) "Nothing with mass is present at every evaluation time. sempiternal still crosscuts the temporal/atemporal partition: time and situation are temporal, and atemporal is not.")
 (set/monotonic (genl sempiternal intangible))
+(comment (genl sempiternal intangible) "Stated, as (genl situation intangible) is, because the partition of thing into tangible and intangible does not derive a genl edge from (disjoint sempiternal tangible).")
 ;; atemporal is outside time, and a time or situation exists at every evaluation
 ;; time while occupying only its own, so all three are present at every evaluation time.
 (set/monotonic (genl atemporal sempiternal))
@@ -1017,10 +1014,6 @@
 (arity_type at_least_quaternary)
 (arity_type at_least_quinary)
 (typeOrthogonal arity_type abducible_predicate)
-;; arity_independent names the kinds of relation that no arity_type settles: whether a
-;; predicate's sentences follow the sentex they name, whether its extent is closed, and
-;; whether its truth is stable once reached do not depend on how many arguments it
-;; takes, and a truth-valued relation can take any number.
 (unary_predicate arity_independent)
 (comment arity_independent "A kind of relation that is orthogonal to every arity_type: it has members of any number of arguments, and no arity_type is a genl or spec of it, e.g. truth_valued_relation.")
 (at_least_metatype arity_independent)
@@ -1035,6 +1028,7 @@
 (arity_independent stable_once_true)
 (arity_independent closed_extent_predicate)
 (not (arity_independent time_indexed_relation))
+(comment (not (arity_independent time_indexed_relation)) "Every time_indexed_relation is at_least_binary, so no unary relation is one.")
 
 ;; The rigidity kinds classify a relation by whether its instances could lose it and go
 ;; on existing: OntoClean's rigidity (+R, -R, ~R) read modally and lifted from types to
@@ -3201,9 +3195,8 @@
 ;; facts below satisfy their declaration under the constraint-only reading as well.
 (set/monotonic (at_least_metatype metatype))
 (set/monotonic (at_least_metatype meta_metatype))
-;; A first-order type's instances are individuals and an at_least_metatype's are types, so
-;; no type is both.  type is itself an at_least_metatype, which is membership, not genl.
 (set/monotonic (disjoint type at_least_metatype))
+(comment (disjoint type at_least_metatype) "A first-order type's instances are individuals and an at_least_metatype's are types, so no type is both. type is itself an at_least_metatype, which is membership, not genl.")
 (set/monotonic (disjoint_metatype type_type_by_order))
 ;; Each order is a fixed_order_type: every member of type, of metatype or of
 ;; meta_metatype is of that one order.
