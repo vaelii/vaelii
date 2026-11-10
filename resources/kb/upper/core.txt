@@ -1017,6 +1017,24 @@
 (arity_type at_least_quaternary)
 (arity_type at_least_quinary)
 (typeOrthogonal arity_type abducible_predicate)
+;; arity_independent names the kinds of relation that no arity_type settles: whether a
+;; predicate's sentences follow the sentex they name, whether its extent is closed, and
+;; whether its truth is stable once reached do not depend on how many arguments it
+;; takes, and a truth-valued relation can take any number.  time_indexed_relation is not
+;; one: every time_indexed_relation is at_least_binary.
+(unary_predicate arity_independent)
+(comment arity_independent "A kind of relation that is orthogonal to every arity_type: it has members of any number of arguments, and no arity_type is a genl or spec of it, e.g. truth_valued_relation.")
+(at_least_metatype arity_independent)
+(typeGenl arity_independent relation)
+(genl arity_independent unary_predicate)
+(forced_monotonic_predicate arity_independent)
+(set/monotonic (time_invariant_relation arity_independent))
+(orthogonalMetatypes arity_independent arity_type)
+(arity_independent target_following_predicate)
+(arity_independent truth_valued_relation)
+(arity_independent stable_once_false)
+(arity_independent stable_once_true)
+(arity_independent closed_extent_predicate)
 
 ;; The rigidity kinds classify a relation by whether its instances could lose it and go
 ;; on existing: OntoClean's rigidity (+R, -R, ~R) read modally and lifted from types to
