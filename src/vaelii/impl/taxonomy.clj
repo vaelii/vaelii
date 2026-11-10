@@ -6121,7 +6121,7 @@
   :retired-by {:declared :K :rule-indexed :K :removed :K :edge-belief :K :recover :R :image-install :R}
   :computed :write :imaged? :taxonomy :at (mapv #(vector :taxonomy %) flat-keys)
   :value (fn [kb] (select-keys (caches/value-at kb [:taxonomy]) flat-keys))
-  :note "disjointness, covers, partitions, predicate properties, compound-binding presence, inverses, arities, functional arguments and commuting pairs, with their contexts; plus the syntax-only positive rewrite-view consumer census, mirrored from rule antecedent/watch postings and rebuilt from those sparse postings at recovery"})
+  :note "disjointness, covers, partitions, predicate properties, compound-binding presence, inverses, arities, functional arguments and commuting pairs, with their contexts; plus the syntax-only positive rewrite-query consumer census, mirrored from rule antecedent/watch postings and rebuilt from those sparse postings at recovery"})
 
 (caches/register-cache
  {:cache    :taxonomy-supporters

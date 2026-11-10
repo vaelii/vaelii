@@ -15,7 +15,7 @@
             [vaelii.impl.types.reasoning :as reasoning]))
 
 (def consumer-key
-  "The syntax-only T2 census: rule ids reading the positive rewrite view, not verdicts."
+  "The syntax-only T2 census: rule ids reading positive rewrite queries, not verdicts."
   :rewrite-view-consumers)
 
 (defn- read-consumer-census
@@ -60,7 +60,7 @@
   nil)
 
 (defn possible-consumers?
-  "Queue-only observer gate: no index read, including while an older image is cold."
+  "Queue-only observer presence check: no index read, including while an older image is cold."
   [kb]
   (let [c (get @(reasoning/taxonomy kb) consumer-key)]
     (boolean (or (nil? c) (:cold? c) (seq (:antecedents c)) (seq (:watched c))))))
@@ -90,7 +90,7 @@
 (defn- normalization-source?
   "Could `source` move a rewrite read? This is discovery, not reader authority.
   Dynamic correspondence predicates are probed through indexed declaration slots
-  only after the in-memory consumer gate, not on ordinary no-consumer writes."
+  only when the in-memory census contains consumers, not on ordinary no-consumer writes."
   [kb source]
   (or (contains? normalization-sources source)
       (and (symbol? source) (nat-read/any-reifiable-functions? kb)
@@ -99,7 +99,7 @@
                          (res/swapped-super-predicates kb source '?ctx))))))
 
 (defn affected-consumers
-  "The syntax census when a source can change this view, otherwise nil.
+  "The syntax census when a source can change a rewrite answer, otherwise nil.
   Consumers rejoin in FULL: a rival alias can expose a fallback answer that does not
   rest on the rival's handle, so a supporting-only delta is not sound here."
   [kb source]

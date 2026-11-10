@@ -128,7 +128,7 @@ on them, and retracting any of them withdraws the conclusion through the JTMS. A
 backward rule's conclusion is not read by a forward join. Cyc's `backchainRequired` is
 the analogue of the marking.
 
-A positive `rewriteOf` lazy head is compared through the public representative view
+A positive `rewriteOf` lazy head is compared after public representative normalization
 after its raw body inputs are bound. The firing also retains the actual normalization
 supports and the grounded raw head it read, without materializing an equation. Its
 proof-local reader counterguards detect a changed endpoint, including a private rival;
@@ -1258,7 +1258,7 @@ backward search never finds less than `ask` does for the literal it stops at. Th
 chainer that exists only to reach the registry, and neither leaf itself expands a rule.
 [why](defenses.md#the-leaf-must-never-itself-backchain)
 
-Public positive `rewriteOf` rule heads use the same representative view as fact reads.
+Public positive `rewriteOf` rule heads use the same representative normalization as fact reads.
 Both engines bind the raw rule body first, then compare the head's canonical endpoints
 with the caller's goal before dependent guards or conjuncts consume its outputs. This
 also covers a variable-predicate head whose body selects `rewriteOf`. The binding step

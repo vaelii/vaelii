@@ -286,14 +286,6 @@
              admitted)
         admitted))))
 
-(defn application-rows
-  "The actual map/compound-rewrite rows `map-rows` reads for application `E`.
-  A semantic reader that records proof must name these rows, including the distinction
-  between globally read stated maps and reader-local derived maps. This exposes the
-  existing lookup, not a second expression resolver or a write path."
-  [kb pred E context]
-  (map-rows kb pred E context))
-
 (defn dedup-constant
   "The existing reified constant for the ground NAT expression `E` in reify namespace `ns`
   (default `nat/`) for a reader in `context` (CxUniverse when nil), or nil: the

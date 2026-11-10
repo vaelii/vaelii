@@ -367,7 +367,7 @@
           (is (= {'?endpoint namedRoot} (:bindings answer)))
           (is (= 1 (count (:because (first (:proof answer)))))))))))
 
-(tu/deftest-kb a-variable-predicate-consequent-uses-the-same-public-head-view
+(tu/deftest-kb a-variable-predicate-consequent-compares-canonical-endpoints
   (tu/with-terms [QualifierFn namedRoot ruleRoot binaryRelation]
     (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
     (v/assert kb (list 'rewriteOf namedRoot (list QualifierFn 2)) 'CxUniverse)

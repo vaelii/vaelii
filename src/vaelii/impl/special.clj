@@ -509,7 +509,7 @@
 (defn rewrite-reading-rules
   "Positive rewrite consumers moved by `source`: always a full rejoin.
   A new rival can expose a fallback whose proof does not name it. Keep these rules
-  separate from ordinary supporting-delta routing; the no-consumer gate is in memory."
+  separate from ordinary supporting-delta routing; the no-consumer presence check is in memory."
   [kb source]
   (when-let [census (rewrite-query/affected-consumers kb source)]
     (not-empty (into (:antecedents census) (:watched census)))))
