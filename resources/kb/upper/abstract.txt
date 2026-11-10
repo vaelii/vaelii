@@ -166,6 +166,11 @@
 ;; are hollow and not biological, and a leaf is biological and not hollow.
 (orthogonal biological hollow)
 (set/monotonic (disjoint hollow substance))
+;; A cup is hollow and tangible; a cave is hollow and made of nothing.  A cave is hollow
+;; and present without a break; a box taken apart and put back together is hollow and
+;; intermittent.
+(orthogonal hollow tangible)
+(orthogonal hollow uninterrupted)
 
 (comment language "A system of signs a person speaks, writes or signs in.")
 (set/monotonic (time_invariant_relation language))
