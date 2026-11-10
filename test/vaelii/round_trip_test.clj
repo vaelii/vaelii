@@ -26,10 +26,13 @@
             [vaelii.impl.io.export :as export]
             [vaelii.impl.io.frames :as frames]
             [vaelii.impl.io.import :as imp]
+            [vaelii.impl.io.fingerprint :as fingerprint]
+            [vaelii.impl.jtms :as jtms]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.rules :as vr]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu])
   (:import (java.io File)))
 
@@ -214,6 +217,41 @@
         (finally (tu/rm-rf! dump))))))
 
 ;;; ── the round trips ───────────────────────────────────────────────────
+
+(deftest source-readings-survive-portable-record-import-and-withdrawal
+  (let [dump (tu/temp-dir "vaelii-rt-" "source-reading-dump" "-")
+        store (tu/temp-dir "vaelii-rt-" "source-reading-store" "-")]
+    (tu/rm-rf! dump)
+    (try
+      (tu/with-cleared-kb [source memory-kb]
+        (tu/with-terms [signal noted A]
+          (let [rule (v/assert-rule source [(list signal '?x)] (list noted '?x)
+                                    'CxUniverse {:direction :forward})
+                fact (v/assert source (list signal A) 'CxUniverse)
+                q (v/handle-of source (list noted A) 'CxUniverse)
+                original (first (filter #(= rule (:informant %)) (v/supporting-justifications source q)))
+                reading {:nonplacing #{fact} :label-only #{fact} :readers #{'CxUniverse}}]
+            (is (some? original))
+            (when original
+              (let [annotated (assoc original :reading reading)
+                    target (disk-kb store)]
+                (is (not= (fingerprint/justification-hash (:id original) original)
+                          (fingerprint/justification-hash (:id annotated) annotated)))
+                (p/put-justification (:records source) annotated)
+                (jtms/add-justification (reasoning/tms source) annotated)
+                (export/export! source dump {:compression :none})
+                (imp/import-dump target dump)
+                (let [target-fact (v/handle-of target (list signal A) 'CxUniverse)
+                      target-q (v/handle-of target (list noted A) 'CxUniverse)
+                      expected (assoc reading :nonplacing #{target-fact} :label-only #{target-fact})]
+                  (is (some #(= expected (:reading %)) (v/supporting-justifications target target-q)))
+                  (is (true? (v/ask? target (list noted A) 'CxUniverse)))
+                  (v/retract! target target-fact)
+                  (is (false? (v/ask? target (list noted A) 'CxUniverse)))))))))
+      (finally
+        (backend/close-dir! (.getPath store))
+        (tu/rm-rf! store)
+        (tu/rm-rf! dump)))))
 
 (deftest memory-out-disk-in
   (let [store (tu/temp-dir "vaelii-rt-" "disk-in" "-")]

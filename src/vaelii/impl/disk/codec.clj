@@ -190,21 +190,24 @@
   [d]
   (if (instance? vaelii.impl.types.tms.Justification d)
     (cond-> [(:id d) (:informant d) (:antecedents d) (:consequence d) (:bindings d) (:strength d)]
-      (:subsumptions d) (conj (:subsumptions d)))
+      (or (:subsumptions d) (:reading d)) (conj (:subsumptions d))
+      (:reading d) (conj (:reading d)))
     d))
 
 (defn decode-justification
-  "The inverse of `encode-justification`, for the six- and seven-element frames and for a
+  "The inverse of `encode-justification`, for six-, seven-, eight-element frames and for a
   frozen record; anything else as it thawed."
   [v]
   (cond
     (vector? v)
     (jtms/->just (nth v 0) (sx/intern-deep (nth v 1)) (nth v 2) (nth v 3)
-                 (sx/intern-deep (nth v 4)) (nth v 5) (intern-pairs (nth v 6 nil)))
+                 (sx/intern-deep (nth v 4)) (nth v 5) (intern-pairs (nth v 6 nil))
+                 (sx/intern-deep (nth v 7 nil)))
 
     (instance? vaelii.impl.types.tms.Justification v)
     (jtms/->just (:id v) (sx/intern-deep (:informant v)) (:antecedents v) (:consequence v)
-                 (sx/intern-deep (:bindings v)) (:strength v) (intern-pairs (:subsumptions v)))
+                 (sx/intern-deep (:bindings v)) (:strength v) (intern-pairs (:subsumptions v))
+                 (sx/intern-deep (:reading v)))
 
     :else v))
 

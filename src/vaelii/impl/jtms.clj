@@ -92,16 +92,20 @@
   "Construct a Justification, defaulting `strength` to :monotonic — a bare monotone
   justification adds no defeasibility of its own, so `conferred-class` caps it at its
   weakest antecedent.  A rule-handle informant is taken out of `antecedents`
-  (`without-informant`).  `subsumptions` is a rule firing's set of `[sub super]` pairs,
-  stored under `:subsumptions` when it is not empty."
+  (`without-informant`). `subsumptions` is a firing's `[sub super]` set. Optional
+  `reading` records a producer's source interpretation, outside logical bindings;
+  both are retained only when nonempty and participate in proof identity."
   ([id informant antecedents consequence bindings]
    (->just id informant antecedents consequence bindings :monotonic nil))
   ([id informant antecedents consequence bindings strength]
    (->just id informant antecedents consequence bindings strength nil))
   ([id informant antecedents consequence bindings strength subsumptions]
+   (->just id informant antecedents consequence bindings strength subsumptions nil))
+  ([id informant antecedents consequence bindings strength subsumptions reading]
    (cond-> (tms-types/->Justification id informant (without-informant informant antecedents)
                                       consequence bindings (or strength :monotonic))
-     (seq subsumptions) (assoc :subsumptions subsumptions))))
+     (seq subsumptions) (assoc :subsumptions subsumptions)
+     (seq reading) (assoc :reading reading))))
 
 (defn graph-just
   "The part of a justification the network is made of: everything except the firing's
@@ -110,10 +114,43 @@
   want them, and those take the record from the store.  Measured (`lein bench-jtms`): 80 of
   277 B per justification at 3.6 justifications per node.  It also normalizes (antecedents to a
   vector without the informant, strength defaulted) so both representations store equal
-  values.  `:bindings` is nil, not dropped.  `:subsumptions` stays for `just-key`."
+  values. `:bindings` is nil, not dropped. `:subsumptions` and optional `:reading`
+  stay for `just-key`; a reader policy must explicitly interpret the latter."
   [j]
   (->just (:id j) (:informant j) (:antecedents j) (:consequence j) nil (:strength j)
-          (:subsumptions j)))
+          (:subsumptions j) (:reading j)))
+
+;; Owner-key remapping shares the dedup key defined after the network accessors.
+(declare justification-key)
+
+(defn remap-reading
+  "Remap a source reading's antecedent ids during import or a row fold. If several
+  old sources become the SAME handle, an ordinary strict source wins on each axis.
+  Reader contexts and other non-handle evidence are preserved. Nil remains nil."
+  ([reading antecedents remap] (remap-reading reading antecedents remap false))
+  ([reading antecedents remap informant?]
+   (when (seq reading)
+     (let [changed (reduce (fn [r axis]
+                             (if-let [relaxed (get reading axis)]
+                               (let [strict (into #{} (comp (remove relaxed) (keep remap)) antecedents)
+                                     kept (into #{} (comp (keep remap) (remove strict)) relaxed)]
+                                 (if (seq kept) (assoc r axis kept) (dissoc r axis)))
+                               r))
+                           reading [:nonplacing :label-only])
+           changed (cond-> changed
+                     (seq (:rewrite-reads reading))
+                     (assoc :rewrite-reads
+                            (into #{} (keep (fn [{:keys [handle] :as read}]
+                                               (when-let [h (remap handle)]
+                                                 (assoc read :handle h))))
+                                  (:rewrite-reads reading))))]
+       (if-let [[inf owner-antes subs owner-reading] (:owner-key reading)]
+         ;; Import remaps the owning informant; folding retains it.
+         (assoc changed :owner-key
+                (justification-key (if informant? (remap inf) inf)
+                                   (mapv remap owner-antes) subs
+                                   (remap-reading owner-reading owner-antes remap informant?)))
+         changed)))))
 
 ;; ---- derivation depth ---------------------------------------------------
 ;;
@@ -1077,11 +1114,16 @@
   into one hashable value, and the subsumptions.  A rule-handle informant is dropped
   from the set: a stored record never lists it there, and a firing's handle list does.
   Two firings that pair the same facts with different literals can rest on one
-  antecedent set, and the subsumptions keep them two (`late_route_test`)."
-  [informant antecedents subsumptions]
-  (let [inf (unbox informant)
-        s   (set antecedents)]
-    [inf (if (integer? inf) (disj s inf) s) (not-empty subsumptions)]))
+  antecedent set, and the subsumptions keep them two (`late_route_test`). Optional
+  source readings remain correlated alternatives, never a union of exemptions. The
+  ordinary nil-reading key retains its three-element shape."
+  ([informant antecedents subsumptions]
+   (just-key informant antecedents subsumptions nil))
+  ([informant antecedents subsumptions reading]
+   (let [inf (unbox informant)
+         s   (set antecedents)]
+     (cond-> [inf (if (integer? inf) (disj s inf) s) (not-empty subsumptions)]
+       (seq reading) (conj reading)))))
 
 (defn- dedup-keys
   "The cached key set for `consequence`, built from its supports on the first ask."
@@ -1091,7 +1133,7 @@
         (let [s (java.util.HashSet.)]
           (doseq [jid (-supports tms consequence)]
             (when-let [j (-justification tms jid)]
-              (.add s (just-key (:informant j) (:antecedents j) (:subsumptions j)))))
+              (.add s (just-key (:informant j) (:antecedents j) (:subsumptions j) (:reading j)))))
           (.put cache ck s)
           s))))
 
@@ -1101,7 +1143,8 @@
   `has-justification?` and then adds the justification, and so would otherwise build the
   same set twice."
   ([informant antecedents] (just-key informant antecedents nil))
-  ([informant antecedents subsumptions] (just-key informant antecedents subsumptions)))
+  ([informant antecedents subsumptions] (just-key informant antecedents subsumptions))
+  ([informant antecedents subsumptions reading] (just-key informant antecedents subsumptions reading)))
 
 (defn has-justification?
   "Is there already a support for `consequence` from `informant` over exactly these
@@ -1116,12 +1159,14 @@
    (if-let [^java.util.Map cache (dedup-cache-for tms)]
      (.contains (dedup-keys tms cache consequence) (or k (just-key informant antecedents nil)))
      (let [antes (without-informant informant antecedents)
-           subs  (when k (nth k 2))]
+           subs  (when k (nth k 2))
+           reading (when k (nth k 3 nil))]
        (boolean
         (some (fn [jid]
                 (let [j (-justification tms jid)]
                   (and (= informant (:informant j))
                        (= subs (:subsumptions j))
+                       (= reading (:reading j))
                        (same-antecedents? antes (:antecedents j)))))
               (-supports tms consequence)))))))
 
@@ -1228,7 +1273,8 @@
    ;; which now includes this justification, so absence needs nothing)
    (when-let [^java.util.Map cache (dedup-cache-for tms)]
      (when-let [^java.util.HashSet ks (.get cache (unbox (:consequence just)))]
-       (.add ks (or k (just-key (:informant just) (:antecedents just) (:subsumptions just))))))
+       (.add ks (or k (just-key (:informant just) (:antecedents just) (:subsumptions just)
+                               (:reading just))))))
    just))
 
 (defn restrength-informant

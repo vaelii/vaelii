@@ -225,16 +225,30 @@
                        (jtms/supports tms r)))
                (reads/as-stored-at-path (:index kb) (sx/path (sx/sentex (list q (second s)) '?c)))))))))
 
+(defn- join-belief-only
+  "Union a handle or handle set with another, retaining the scalar ordinary path."
+  [a b]
+  (cond (nil? b) a
+        (nil? a) b
+        :else (into (if (set? a) a #{a}) (if (set? b) b #{b}))))
+
+(defn- copy-belief-only
+  "The equality witness of an except-reading copy, if present."
+  [j]
+  (when (= 'except (:informant j)) (nth (:antecedents j) 1 nil)))
+
 (defn belief-only-antecedent
-  "The antecedent justification `j` rests on for belief and not for visibility, or nil.
+  "The handle or set justification `j` reads at network label, or nil.
   A reader's copy has one: `[original equality except]` under informant `except`
   (`special/migrate-sentex`) is stored in a context that reads the except, so the equality
   is hidden wherever the copy is read, and that hiding is the copy's reason rather than a
-  withdrawal of it.  The read walk adds the placed nogood's own loser
-  (`placed-belief-only`)."
+  withdrawal of it. An explicitly recorded source reading can name `:label-only`
+  antecedents for this proof alone. It cannot exempt the rule or an unrelated handle.
+  The read walk adds a placed nogood's own loser (`placed-belief-only`)."
   [j]
-  (when (= 'except (:informant j))
-    (nth (:antecedents j) 1 nil)))
+  (let [roles (get-in j [:reading :label-only])]
+    (join-belief-only (copy-belief-only j)
+                     (when (seq roles) (not-empty (into #{} (filter roles) (:antecedents j)))))))
 
 (defn- defeat-target*
   "The handle a `(defeat (sentexHandle H))` sentence names, or nil."
@@ -635,10 +649,7 @@
   [belief-only routes]
   (if (empty? routes)
     belief-only
-    (fn [j] (let [a (belief-only j) r (get routes (:id j))]
-              (cond (nil? r) a
-                    (nil? a) r
-                    :else    (conj r a))))))
+    (fn [j] (join-belief-only (belief-only j) (get routes (:id j))))))
 
 (defn- except-hidden-in
   "Is the handle `h`, IN in the network, hidden by the excepts alone, where `excepted?` is
@@ -1526,8 +1537,10 @@
   decides against it."
   [st by-defeat by-conflict by-other]
   (fn [j]
-    (or (belief-only-antecedent j)
-        (when-let [[k x] (own-loser st j)]
+    (join-belief-only
+     (belief-only-antecedent j)
+     (when-not (copy-belief-only j)
+       (when-let [[k x] (own-loser st j)]
           (case k
             :defeat   (when (and (or (contains? by-defeat x) (contains? by-conflict x))
                                  (not (contains? by-other x)))
@@ -1537,7 +1550,7 @@
                                                                    (rest (:sentence (p/get-sentex (:recs st) x)))))))]
                         (when (and m (contains? by-conflict m) (not (contains? by-defeat m))
                                    (not (contains? by-other m)))
-                          m)))))))
+                          m))))))))
 
 (defn- exempt-justifications
   "The `nogood` justifications of the placed `(contradicts …)` or `defeat` at `x` whose
@@ -1572,11 +1585,16 @@
   [recs g js]
   (let [ga   (set (:antecedents g))
         gb   (:bindings (p/get-justification recs (:id g)))
+        owner-key (get-in g [:reading :owner-key])
         held (into [] (comp (filter #(every? ga (cond-> (:antecedents %)
                                                   (not= edge-reading-informant (:informant %))
                                                   (conj (:informant %)))))
                             (filter #(or (empty? gb)
                                          (= gb (:bindings (p/get-justification recs (:id %))))))
+                            (filter #(if owner-key
+                                       (= owner-key (jtms/justification-key (:informant %) (:antecedents %)
+                                                                           (:subsumptions %) (:reading %)))
+                                       (not (seq (:reading %)))))
                             (map (fn [j] [j (set (:antecedents j))])))
                    js)
         within? (fn [[j a] [k b]] (and (= (:informant j) (:informant k))
@@ -1602,7 +1620,9 @@
       (let [owners (guard-owners recs g @js)
             fired  (into #{x} (comp (filter #(contains? owners (:id %)))
                                     (mapcat #(conj (:antecedents %) (:informant %))))
-                         @js)]
+                         @js)
+            labels (belief-only-antecedent g)
+            fired (cond-> fired labels (into (if (set? labels) labels #{labels})))]
         (not-any? #(and (not (contains? fired %)) ((unseen-fn st) %)) (:antecedents g))))))
 
 (defn- guard-in-force?
@@ -1722,7 +1742,7 @@
   (let [own     (get reasons h)
         blocked (jtms/blocked tms)
         valid?  (or (when-not (= ::all in) valid?)
-                    (let [v (jtms/region-valid-fn tms #{} nil #{})] #(v #{} %)))]
+                    (let [v (jtms/region-valid-fn tms #{} belief-only-antecedent #{})] #(v #{} %)))]
     (into {}
           (keep (fn [jid]
                   (when-let [j (jtms/justification tms jid)]

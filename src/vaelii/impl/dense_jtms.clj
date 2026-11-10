@@ -174,10 +174,11 @@
                    ;; depth, adjacency, and the consequence / informant / antecedent
                    ;; columns — see `TmsColumns`
                    ^TmsColumns cols
-                   ;; the live ids, and the two sparse or two-class columns
+                   ;; the live ids, sparse annotations and two-class strength
                    ^RoaringBitmap jids
                    ^Int2ObjectOpenHashMap j-inf-sym
                    ^Int2ObjectOpenHashMap j-subs
+                   ^Int2ObjectOpenHashMap j-reading
                    ^RoaringBitmap j-mono
                    ^RoaringBitmap in
                    ^RoaringBitmap blocked
@@ -524,7 +525,9 @@
            nil
            (if (rb-has? ^RoaringBitmap (.-j-mono this) jid) :monotonic :default))
     (.containsKey ^Int2ObjectOpenHashMap (.-j-subs this) (int jid))
-    (assoc :subsumptions (.get ^Int2ObjectOpenHashMap (.-j-subs this) (int jid)))))
+    (assoc :subsumptions (.get ^Int2ObjectOpenHashMap (.-j-subs this) (int jid)))
+    (.containsKey ^Int2ObjectOpenHashMap (.-j-reading this) (int jid))
+    (assoc :reading (.get ^Int2ObjectOpenHashMap (.-j-reading this) (int jid)))))
 
 ;; ---- validity and class, against the dense structures -------------------
 ;;
@@ -851,7 +854,7 @@
   forward closure is walked once, when a fact is first derived. Any real change takes the
   full resettle."
   [^DenseTms this just]
-  (let [{:keys [id informant antecedents consequence strength subsumptions]} (jtms/graph-just just)
+  (let [{:keys [id informant antecedents consequence strength subsumptions reading]} (jtms/graph-just just)
         jid   (int (check-handle! id "justification id"))
         cols  ^TmsColumns (.-cols this)
         in    ^RoaringBitmap (.-in this)
@@ -871,6 +874,9 @@
     (if subsumptions
       (.put ^Int2ObjectOpenHashMap (.-j-subs this) jid subsumptions)
       (.remove ^Int2ObjectOpenHashMap (.-j-subs this) jid))
+    (if reading
+      (.put ^Int2ObjectOpenHashMap (.-j-reading this) jid reading)
+      (.remove ^Int2ObjectOpenHashMap (.-j-reading this) jid))
     (if (= :monotonic strength)
       (rb-add! ^RoaringBitmap (.-j-mono this) jid)
       (rb-del! ^RoaringBitmap (.-j-mono this) jid))
@@ -998,6 +1004,7 @@
     (.dropJustification cols k)
     (.remove ^Int2ObjectOpenHashMap (.-j-inf-sym this) k)
     (.remove ^Int2ObjectOpenHashMap (.-j-subs this) k)
+    (.remove ^Int2ObjectOpenHashMap (.-j-reading this) k)
     (rb-del! ^RoaringBitmap (.-j-mono this) k)
     (.removeSupport cols (int c) k)
     (dotimes [i (alength antes)] (.removeDependent cols (aget antes i) k))
@@ -1210,7 +1217,7 @@
 (def image-version
   "The byte image's layout number.  `read-image!` refuses any other, so an image of
   another layout is discarded rather than misread."
-  6)
+  7)
 
 (def ^:private ^:const image-magic 0x76544D53)
 
@@ -1328,7 +1335,7 @@
       (write-postings! o (.-supports c))
       (write-postings! o (.-conseqs c))
       (write-arrays! o (.-j-antes c)))
-    (doseq [m [(.-j-inf-sym t) (.-j-subs t)]]
+    (doseq [m [(.-j-inf-sym t) (.-j-subs t) (.-j-reading t)]]
       (write-data! o (mapv (fn [k] [k (.get ^Int2ObjectOpenHashMap m (int k))]) (sorted-keys m))))
     (write-data! o (into (sorted-map) @(.-superseded t))))
   nil)
@@ -1355,7 +1362,7 @@
       (read-postings! i (.-supports c))
       (read-postings! i (.-conseqs c))
       (read-arrays! i (.-j-antes c)))
-    (doseq [^Int2ObjectOpenHashMap m [(.-j-inf-sym t) (.-j-subs t)]]
+    (doseq [^Int2ObjectOpenHashMap m [(.-j-inf-sym t) (.-j-subs t) (.-j-reading t)]]
       (doseq [[k v] (read-data i)] (.put m (int k) v)))
     (reset! (.-superseded t) (into {} (read-data i))))
   t)
@@ -1420,7 +1427,8 @@
             [[(.-supports tc) (.-supports sc)] [(.-conseqs tc) (.-conseqs sc)]
              [(.-j-antes tc) (.-j-antes sc)]
              [(.-j-inf-sym target) (.-j-inf-sym src)]
-             [(.-j-subs target) (.-j-subs src)]]]
+             [(.-j-subs target) (.-j-subs src)]
+             [(.-j-reading target) (.-j-reading src)]]]
       (.putAll t s)))
   (reset! (.-superseded target) @(.-superseded src)))
 
@@ -1500,6 +1508,7 @@
               (rb)                                             ; jids
               (Int2ObjectOpenHashMap.)                         ; j-inf-sym
               (Int2ObjectOpenHashMap.)                         ; j-subs
+              (Int2ObjectOpenHashMap.)                         ; j-reading
               (rb)                                             ; j-mono
               (rb) (rb) (rb) (rb) (rb) (rb) (rb)               ; in blocked touched touched-in
                                                                ; touched-new touched-out mono
