@@ -333,7 +333,7 @@ The tables are generated from the register by `lein regen-goldens`, and
 | S5 | Refused firings | `special` | handle | records T1 | E2 K, E3 K, E17 R, E18 R, E19 W, E22 G | write | index | state |  | yes |
 | S7 | Last edge program | `kb` | global | records S5 | E18 R | write | index | state |  |  |
 | T1 | genl and genlCx relations | `taxonomy` | node | records M1 | E7 K, E8 K, E16 K, E17 R, E18 R | write | index | taxonomy |  |  |
-| T2 | Flat declaration caches | `taxonomy` | value | records M1 | E8 K, E9 K, E17 R, E18 R | write | index | taxonomy |  |  |
+| T2 | Flat declaration caches | `taxonomy` | value | records M1 | E3 K, E8 K, E9 K, E13 K, E17 R, E18 R | write | index | taxonomy |  |  |
 | T3 | Equality partition | `taxonomy` | term | records M1 | E8 K, E11 K, E17 R, E18 R | write | index | taxonomy |  |  |
 | T4 | Rewrite rules | `taxonomy` | handle | records M1 | E2 K, E3 K, E8 K, E17 R, E18 R | write | index | taxonomy |  |  |
 | T5 | Taxonomy closures | `taxonomy` | node | T1 M1 | E7 G, E8 G, E17 W, E21 W, every other event G* | read | cache | no | `:taxonomy-closures` |  |
@@ -406,7 +406,7 @@ The tables are generated from the register by `lein regen-goldens`, and
 |---|---|---|---|---|
 | E1 | `stored` | `kb/create-sentex` | handle, sentence, context | T5 T7 T12 J1 J2 N1 N2 N3 N5 N6 N8 N10 X1 X3 X4 R1 R2 R3 R6 R9 R10 R13 K10 K11 K13 K14 |
 | E2 | `integrated` | `special/integrate-sentex`, `special/derived-sentex-added`, `special/integrate-twin` | handle, functor | S5 T4 T5 T7 X1 X3 X4 R1 R2 R3 K10 K11 |
-| E3 | `removed` | `integrate/sentex-removed!` | record, except target | S5 T4 T5 T7 T12 J1 J2 N1 N2 N3 N5 N6 N8 N10 X1 X3 X4 D3 Q7 R1 R2 R3 R6 R8 R9 R10 R13 K10 K11 K13 K14 |
+| E3 | `removed` | `integrate/sentex-removed!` | record, except target | S5 T2 T4 T5 T7 T12 J1 J2 N1 N2 N3 N5 N6 N8 N10 X1 X3 X4 D3 Q7 R1 R2 R3 R6 R8 R9 R10 R13 K10 K11 K13 K14 |
 | E4 | `respelled` | `kb/respell-sentex!` | old and new sentex, one handle | T5 T7 T12 J1 J2 N1 N2 N5 N6 X1 X3 X4 R1 R2 R3 R6 R8 R9 R10 R13 K10 K11 |
 | E5 | `relabelled` | `jtms/supersede`, `jtms/ensure-node`, `jtms/add-premise`, `jtms/suspend-premise`, `jtms/add-justification`, `jtms/restrength-informant`, `jtms/set-forced`, `jtms/relabel`, `jtms/set-blocked`, `jtms/retract!`, `jtms/sweep!`, `jtms/drop-justification!` | the handles of the region, held in the network | T5 T7 T12 M1 M2 M4 N3 N10 X1 X3 X4 Q3 R1 R2 R3 K10 K11 |
 | E6 | `held` | `settle/hold-belief!`, `settle/publish-belief!` | hold token | T5 T7 T12 M3 X1 X3 X4 Q4 R1 R2 R3 K10 K11 |
@@ -416,7 +416,7 @@ The tables are generated from the register by `lein regen-goldens`, and
 | E10 | `forced-monotonic` | `checks/force-reach!` | predicate | T5 T7 M1 M2 X1 X3 X4 R1 R2 R3 K10 K11 |
 | E11 | `equality` | `taxonomy/add-equality`, `taxonomy/del-equality!` | handle, pair | T3 T5 T7 X1 X3 X4 Q5 R1 R2 R3 K10 K11 |
 | E12 | `except` | `special/recheck-except` | except, target, context | T5 T7 X1 X3 X4 R1 R2 R3 K10 K11 |
-| E13 | `rule-indexed` | `special/index-rule-sentex` | rule, antecedent predicates, context | T5 T7 X1 X3 X4 R1 R2 R3 K10 K11 |
+| E13 | `rule-indexed` | `special/index-rule-sentex` | rule, antecedent predicates, context | T2 T5 T7 X1 X3 X4 R1 R2 R3 K10 K11 |
 | E14 | `recheck` | `special/mark-recheck` | rules; a trigger, :all or :all-rejoin | T5 T7 X1 X3 X4 R1 R2 R3 K10 K11 |
 | E15 | `inherited` | `decide.inherited/install-inherited!`, `decide.inherited/update-inherited!` | clash rows | T5 T7 J1 J2 N7 X1 X3 X4 D3 R1 R2 R3 K10 K11 |
 | E16 | `settle-exit` | `settle/settle-finish` | region | T1 T5 T7 T12 M2 X1 X3 X4 D3 Q2 Q3 Q5 Q6 R1 R2 R3 K10 K11 |
