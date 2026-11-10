@@ -32,6 +32,8 @@
     (is (tu/holds-ask (list 'arg p 1 'causal) 'CxUniverse) (str p " takes a causal doer first"))
     (is (tu/holds-ask (list 'genlArg p 2 'happening) 'CxUniverse)
         (str p " takes a happening kind second"))
+    (is (tu/holds-ask (list 'time_varying_relation p) 'CxUniverse)
+        (str p " is time-varying"))
     (is (= 1 (count (v/sentexes-matching kb (list 'comment p '?c) 'CxUniverse)))
         (str p " carries one comment"))))
 
