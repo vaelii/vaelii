@@ -246,17 +246,22 @@
 (arg expresses 1 wff_sentence)
 (arg expresses 2 proposition)
 
-;; A syncategorematic constant is written where a term goes and names nothing, so it is
-;; no expression: the expression lattice's atomic kinds are the denoting terms and the
+;; A syncategorematic constant is a reserved quotation or assertion-control constant of
+;; vaelii's syntax, written where a term goes.  A set/ wrapper names nothing, so it is no
+;; expression: the expression lattice's atomic kinds are the denoting terms and the
 ;; variables.  core.txt states the membership of each set/ wrapper and of Quote, and the
 ;; type is the list of syntax constants the :undeclared-term pass reads as declared.  The
 ;; type sits beside logical, linguistic and quantitative under nowhere_never, separated
-;; from linguistic and quantitative.  Nothing separates it from logical: a KB may declare
-;; Quote a reifiable_function, and a function is logical.
-(comment syncategorematic "A constant of vaelii's syntax that is written like a term and names nothing, e.g. set/monotonic, which the loader reads and never stores. A sentence mentions one only to document it.")
+;; from linguistic and quantitative, and from the truth-valued relations, contexts and
+;; propositions.  Nothing separates it from logical: a KB may declare Quote a
+;; reifiable_function, and a function is logical.
+(comment syncategorematic "A reserved quotation or assertion-control constant of vaelii's syntax, written like a term, e.g. set/monotonic, which the loader reads and never stores. A set/ wrapper names nothing; a KB may still read Quote as a function. A sentence mentions one only to document it.")
 (unary_predicate syncategorematic)
 (set/monotonic (eternal_predicate syncategorematic))
 (genl syncategorematic nowhere_never)
 (set/monotonic (disjoint syncategorematic linguistic))
 (set/monotonic (disjoint syncategorematic quantitative))
+(set/monotonic (disjoint syncategorematic truth_valued_relation))
+(set/monotonic (disjoint syncategorematic context))
+(set/monotonic (disjoint syncategorematic proposition))
 (not (disjoint syncategorematic logical))
