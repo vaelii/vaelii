@@ -125,7 +125,7 @@
         (is (every? #(not (contains? (:label-only (nth % 2)) tuple)) certificates))
         (is (every? #(= namedRoot (get (second %) '?left)) traced))
         (is (some #(some (fn [event] (= :correspondence (:source event)))
-                        (:events (nth % 3)))
+                         (:events (nth % 3)))
                   traced))))))
 
 (tu/deftest-kb admitted-correspondence-lineage-survives-both-retrieval-paths
@@ -164,7 +164,7 @@
         (is (true? (v/ask? kb (list 'rewriteOf preferred (get answer '?x)) 'CxUniverse))))
       (is (= #{{'?x preferred}}
              (set (v/query kb (list 'and (list 'rewriteOf preferred '?x)
-                                   (list marked '?x)) 'CxUniverse)))))
+                                    (list marked '?x)) 'CxUniverse)))))
     (testing "a variable predicate does not expose the retired spelling"
       (let [bindings (filter #(= 'rewriteOf (get % '?p))
                              (v/query kb (list '?p preferred '?x) 'CxUniverse))]
@@ -282,7 +282,7 @@
   "The primitive reads stated maps globally and derived maps only in their context."
   [kb stated?]
   (doseq [sentence '[(genlCx CxPrivate CxUniverse) (reifiable_function QualifierFn)
-                    (rewriteOf namedRoot old)]]
+                     (rewriteOf namedRoot old)]]
     (v/assert kb sentence 'CxUniverse))
   (if stated?
     (v/assert kb '(natFormula namedRoot (QualifierFn base)) 'CxPrivate)

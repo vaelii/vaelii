@@ -141,8 +141,8 @@
                      (seq (:rewrite-reads reading))
                      (assoc :rewrite-reads
                             (into #{} (keep (fn [{:keys [handle] :as read}]
-                                               (when-let [h (remap handle)]
-                                                 (assoc read :handle h))))
+                                              (when-let [h (remap handle)]
+                                                (assoc read :handle h))))
                                   (:rewrite-reads reading))))]
        (if-let [[inf owner-antes subs owner-reading] (:owner-key reading)]
          ;; Import remaps the owning informant; folding retains it.
@@ -1274,7 +1274,7 @@
    (when-let [^java.util.Map cache (dedup-cache-for tms)]
      (when-let [^java.util.HashSet ks (.get cache (unbox (:consequence just)))]
        (.add ks (or k (just-key (:informant just) (:antecedents just) (:subsumptions just)
-                               (:reading just))))))
+                                (:reading just))))))
    just))
 
 (defn restrength-informant

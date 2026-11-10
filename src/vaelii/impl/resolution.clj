@@ -843,7 +843,7 @@
                           (comp (mapcat #(tax/class-supporters tx %)) (distinct)
                                 (filter admit?)
                                 (filter #(= 'rewriteOf
-                                             (first (:sentence (p/get-sentex (:records kb) %))))))
+                                            (first (:sentence (p/get-sentex (:records kb) %))))))
                           (keys displaced))
         paths (map (fn [[a b]] (tax/scoped-path-supporters tx a b admit?))
                    displaced)]
@@ -871,7 +871,7 @@
   (if *normalization-read*
     (let [[form supports] (normal-form-with-support kb term visible?)]
       (*normalization-read* {:operation :normalization :term term :value form
-                            :supports (vec supports)})
+                             :supports (vec supports)})
       form)
     (rewrite/normalize-sentence (rewrite-rules-in kb visible?)
                                 (representative-term kb visible? term))))
@@ -2672,7 +2672,7 @@
                                        i)]
                       (when (= (sx/negative? pat) (sx/negative? stored))
                         (when-let [b (unify (:context pat) (:context stored)
-                                           (unify (:sentence pat) (:sentence stored)))]
+                                            (unify (:sentence pat) (:sentence stored)))]
                           (when traces
                             (let [k [(:id stored) b]]
                               (when-not (contains? @traces k)
@@ -2830,8 +2830,8 @@
                         (nm/min-by-content-key identity))]
     (when *correspondence-read*
       (*correspondence-read* {:operation :minted-expression :target k :expression expression
-                             :handles (into #{} (keep (fn [[h e]] (when (= e expression) h)))
-                                            @selected)}))
+                              :handles (into #{} (keep (fn [[h e]] (when (= e expression) h)))
+                                             @selected)}))
     expression))
 
 (defn- values-of
@@ -2855,8 +2855,8 @@
            goal (if goal-reads
                   (let [outer *normalization-read*]
                     (binding [*normalization-read* (fn [event]
-                                                    (vswap! goal-reads conj event)
-                                                    (when outer (outer event)))]
+                                                     (vswap! goal-reads conj event)
+                                                     (when outer (outer event)))]
                       (goal-normal-form kb goal-form context)))
                   (goal-normal-form kb goal-form context))]
        (reduce (fn [acc [h b _ lineage]]
@@ -2867,8 +2867,8 @@
                            value (if value-reads
                                    (let [outer *normalization-read*]
                                      (binding [*normalization-read* (fn [event]
-                                                                     (vswap! value-reads conj event)
-                                                                     (when outer (outer event)))]
+                                                                      (vswap! value-reads conj event)
+                                                                      (when outer (outer event)))]
                                        (normal-form kb v visible?)))
                                    (normal-form kb v visible?))]
                        (when *correspondence-read*
@@ -2961,8 +2961,8 @@
   answer differently."
   [kb sentence view-context]
   (let [retrieve #(if *hierarchical-retrieval*
-                   (matches-hierarchical kb % view-context)
-                   (matches-visible* kb % view-context))
+                    (matches-hierarchical kb % view-context)
+                    (matches-visible* kb % view-context))
         read (if-let [observe *correspondence-read*]
                (fn [goal]
                  (map (fn [[h bindings :as answer]]
@@ -2984,8 +2984,8 @@
     (let [copy-events (when *correspondence-read* (volatile! []))
           kv (if-let [outer *correspondence-read*]
                (binding [*correspondence-read* (fn [event]
-                                               (vswap! copy-events conj event)
-                                               (outer event))]
+                                                 (vswap! copy-events conj event)
+                                                 (outer event))]
                  (copied-values kb sentence view-context visible-matches))
                (copied-values kb sentence view-context visible-matches))]
       (if kv

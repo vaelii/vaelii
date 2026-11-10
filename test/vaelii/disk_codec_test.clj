@@ -94,7 +94,7 @@
              (jtms/->just 22 9 [1 9] 5 nil :default)
              (jtms/->just 23 9 [1 2] 5 '{?x A} :monotonic '#{[kind inspace] [sort intime]})
              (jtms/->just 24 9 [1 2] 5 '{?x A} :monotonic nil
-                           {:nonplacing #{2} :label-only #{2} :reader 'CxPrivate})]]
+                          {:nonplacing #{2} :label-only #{2} :reader 'CxPrivate})]]
     (let [t (d-trip d)]
       (is (= d t))
       (is (instance? vaelii.impl.types.tms.Justification t))

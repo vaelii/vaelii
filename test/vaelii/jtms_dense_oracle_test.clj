@@ -84,31 +84,31 @@
         (binding [observe/*chain-fast-paths* cached?]
           (jtms/with-dedup-cache t
             (is (false? (jtms/has-justification? t 'rule [1 2] 3
-                                                (jtms/justification-key 'rule [1 2] nil a))))
+                                                 (jtms/justification-key 'rule [1 2] nil a))))
             (jtms/add-justification t j)
             (is (true? (jtms/has-justification? t 'rule [2 1] 3
-                                               (jtms/justification-key 'rule [2 1] nil a))))
+                                                (jtms/justification-key 'rule [2 1] nil a))))
             (is (false? (jtms/has-justification? t 'rule [1 2] 3
-                                                (jtms/justification-key 'rule [1 2] nil b))))
+                                                 (jtms/justification-key 'rule [1 2] nil b))))
             (jtms/add-justification t k)
             (is (true? (jtms/has-justification? t 'rule [1 2] 3
-                                               (jtms/justification-key 'rule [1 2] nil b))))
+                                                (jtms/justification-key 'rule [1 2] nil b))))
             (is (false? (jtms/has-justification? t 'rule [1 2] 3)))
             (is (= #{a b} (set (map #(-> (jtms/justification t %) :reading)
-                                     (jtms/supports t 3)))))
+                                    (jtms/supports t 3)))))
             (is (nil? (:bindings (jtms/justification t 10))))
             (jtms/drop-justification! t 10)
             (is (= #{11} (jtms/supports t 3)))
             (is (= b (:reading (jtms/justification t 11))))
             (is (false? (jtms/has-justification? t 'rule [1 2] 3
-                                                (jtms/justification-key 'rule [1 2] nil a)))))))
+                                                 (jtms/justification-key 'rule [1 2] nil a)))))))
       (is (nil? (same? ref dns))))))
 
 (deftest source-labels-are-proof-local-and-never-force-an-absent-source-or-rule
   (doseq [create [jtms/create-tms dense/create-dense-tms]]
     (let [t (create)
           j (jtms/->just 10 4 [1] 2 nil :monotonic nil
-                        {:label-only #{1 4 99}})
+                         {:label-only #{1 4 99}})
           scope #{1 2 3 4}]
       (jtms/add-premise t 1 :monotonic)
       (jtms/add-premise t 4 :monotonic)
@@ -121,10 +121,10 @@
         (is (not (contains? read 3)))
         (is (= before (jtms/snapshot t)))
         (is (not (contains? (jtms/region-in t scope scope #{} #{1 4}
-                                           exc/belief-only-antecedent #{}) 2))))
+                                            exc/belief-only-antecedent #{}) 2))))
       (jtms/suspend-premise t 1)
       (is (not (contains? (jtms/region-in t scope scope #{} #{}
-                                         exc/belief-only-antecedent #{}) 2))))))
+                                          exc/belief-only-antecedent #{}) 2))))))
 
 (deftest remapping-a-proof-source-keeps-a-collapsed-strict-use-strict
   (let [reading {:nonplacing #{1} :label-only #{1 3} :readers #{'CxPrivate}}
@@ -149,7 +149,7 @@
         plain (jtms/->just 12 7 [1 2] 3 '{?x A} :monotonic)
         key-of #(jtms/justification-key (:informant %) (:antecedents %) (:subsumptions %) (:reading %))
         ga (jtms/->just 20 exc/guard-informant [1 2 3 7 8] 4 '{?x A} :default nil
-                         {:owner-key (key-of a)})
+                        {:owner-key (key-of a)})
         gb (assoc ga :id 21 :reading {:owner-key (key-of b)})
         legacy (dissoc (assoc ga :id 22) :reading)]
     (try

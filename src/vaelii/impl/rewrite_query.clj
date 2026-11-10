@@ -76,7 +76,7 @@
           old
           (let [fresh (read-consumer-census kb (long (:gen old 0)))
                 result (swap! tx #(if (= old (get % consumer-key))
-                                   (assoc % consumer-key fresh) %))]
+                                    (assoc % consumer-key fresh) %))]
             (if (= fresh (get result consumer-key)) fresh (recur))))))))
 
 (def normalization-sources
@@ -202,7 +202,7 @@
       (grounded? right)
       (let [names (spellings kb right)]
         (into (into #{} (mapcat #(concat (reads/as-stored-with-args idx 'rewriteOf {1 %})
-                                        (reads/as-stored-with-args idx 'rewriteOf {2 %}))) names)
+                                         (reads/as-stored-with-args idx 'rewriteOf {2 %}))) names)
               (mapcat #(reads/as-stored-with-term idx %))
               (application-heads kb right)))
 
@@ -288,7 +288,7 @@
   (for [a left, b right]
     {:supports (into (:supports a) (:supports b))
      :reading (prover-types/merge-source-roles (:supports a) (:reading a)
-                                              (:supports b) (:reading b))}))
+                                               (:supports b) (:reading b))}))
 
 (defn- contextualize-evidence
   "Retain actual context-route witnesses for sources whose primitive is contextual.
@@ -353,7 +353,7 @@
       (for [marks permutations
             :let [hs (into #{handle} (map first) path)
                   choice (first (join-evidence [(evidence hs)]
-                                              [(evidence marks marks #{})]))
+                                               [(evidence marks marks #{})]))
                   qualified (contextualize-evidence kb reader choice)]
             :when qualified]
         qualified))))
@@ -481,7 +481,7 @@
              (= :stored-order operation)
              (map #(evidence % % %)
                   (inherit/permuted-read-supports kb (:expression event)
-                                                 (vec (rest (:value event))) '?ctx))
+                                                  (vec (rest (:value event))) '?ctx))
              ;; Declarations/tuples/maps are consumed ONLY by their selected
              ;; branch or copied bridge above. Pre-admission candidates never are.
              :else [(evidence #{})])]
@@ -502,8 +502,8 @@
                          {:type ::missing-certificate :handle h :reader reader})))
        (for [{:keys [supports reading]} choices]
          [bindings supports (assoc reading :readers #{reader}
-                                 :rewrite-reads #{{:goal goal :handle h
-                                                   :outputs (select-keys bindings (sx/free-vars goal))}})])))
+                                   :rewrite-reads #{{:goal goal :handle h
+                                                     :outputs (select-keys bindings (sx/free-vars goal))}})])))
    (matches-with-readings kb goal reader)))
 
 (defn reader-contexts

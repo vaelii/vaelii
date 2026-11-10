@@ -248,7 +248,7 @@
   [j]
   (let [roles (get-in j [:reading :label-only])]
     (join-belief-only (copy-belief-only j)
-                     (when (seq roles) (not-empty (into #{} (filter roles) (:antecedents j)))))))
+                      (when (seq roles) (not-empty (into #{} (filter roles) (:antecedents j)))))))
 
 (defn- defeat-target*
   "The handle a `(defeat (sentexHandle H))` sentence names, or nil."
@@ -1541,16 +1541,16 @@
      (belief-only-antecedent j)
      (when-not (copy-belief-only j)
        (when-let [[k x] (own-loser st j)]
-          (case k
-            :defeat   (when (and (or (contains? by-defeat x) (contains? by-conflict x))
-                                 (not (contains? by-other x)))
-                        x)
-            :conflict (let [m (kept (:memo st) [::conflict-loser x]
-                                    #(:defeat (verdict-at st (into #{} (map sx/handle-id)
-                                                                   (rest (:sentence (p/get-sentex (:recs st) x)))))))]
-                        (when (and m (contains? by-conflict m) (not (contains? by-defeat m))
-                                   (not (contains? by-other m)))
-                          m))))))))
+         (case k
+           :defeat   (when (and (or (contains? by-defeat x) (contains? by-conflict x))
+                                (not (contains? by-other x)))
+                       x)
+           :conflict (let [m (kept (:memo st) [::conflict-loser x]
+                                   #(:defeat (verdict-at st (into #{} (map sx/handle-id)
+                                                                  (rest (:sentence (p/get-sentex (:recs st) x)))))))]
+                       (when (and m (contains? by-conflict m) (not (contains? by-defeat m))
+                                  (not (contains? by-other m)))
+                         m))))))))
 
 (defn- exempt-justifications
   "The `nogood` justifications of the placed `(contradicts …)` or `defeat` at `x` whose
@@ -1593,7 +1593,7 @@
                                          (= gb (:bindings (p/get-justification recs (:id %))))))
                             (filter #(if owner-key
                                        (= owner-key (jtms/justification-key (:informant %) (:antecedents %)
-                                                                           (:subsumptions %) (:reading %)))
+                                                                            (:subsumptions %) (:reading %)))
                                        (not (seq (:reading %)))))
                             (map (fn [j] [j (set (:antecedents j))])))
                    js)

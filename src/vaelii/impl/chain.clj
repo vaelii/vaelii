@@ -710,9 +710,9 @@
    (extend-state state bindings supports matched nil))
   ([state bindings supports matched reading]
    (let [combined (prover-types/merge-source-roles (:handles state) (:reading state)
-                                                  supports reading)
+                                                   supports reading)
          state (assoc state :bindings (merge (:bindings state) bindings)
-                            :handles (into (:handles state) supports) :matched matched)]
+                      :handles (into (:handles state) supports) :matched matched)]
      (if (seq combined) (assoc state :reading combined) (dissoc state :reading)))))
 
 (defn- solve-qualitative
@@ -1950,7 +1950,7 @@
         (let [antes (vec (:antecedents j))
               pctx  (:context csx)]
           (when-not (or (antecedent-hidden? kb (if-let [b (exc/belief-only-antecedent j)]
-                                                (remove (if (set? b) b #{b}) antes) antes) pctx)
+                                                 (remove (if (set? b) b #{b}) antes) antes) pctx)
                         (post-join-withdrawn? kb rsx
                                               (delay (settled-bindings kb (:bindings j) pctx))
                                               pctx))
@@ -2968,12 +2968,12 @@
         (if (empty? gs)
           #{}
           (binding [tax/*network-belief* true
-                      inherit/*memo*       nil]
-              (into #{}
-                    (for [g gs
-                          c (inherit/contraries kb g pctx)
-                          :when (= :default (:class c))]
-                      [pctx #{(:handle c)}]))))))))
+                    inherit/*memo*       nil]
+            (into #{}
+                  (for [g gs
+                        c (inherit/contraries kb g pctx)
+                        :when (= :default (:class c))]
+                    [pctx #{(:handle c)}]))))))))
 
 (defn- route-placements
   "The `[context antecedents]` placements of the nogood over `members` that the `routes`
@@ -3195,7 +3195,7 @@
                 (keep (fn [g] (when (contains? (exc/guard-owners recs g js) (:id j))
                                 (let [c (p/get-sentex recs (:consequence g))]
                                   [(:id g) (guard-key (:sentence c) (:context c)
-                                                     (set (:antecedents g)) (:reading g))])))))
+                                                      (set (:antecedents g)) (:reading g))])))))
           (jtms/dependents tms (:consequence j)))))
 
 (defn- drop-unowned-guard-justifications!
@@ -3244,16 +3244,16 @@
                    core (cond-> (conj (set (:antecedents j)) (:consequence j))
                           (integer? inf) (conj inf))
                    want  (into #{} (map (fn [[q blockers local-reading]]
-                                         (let [extra (conj (set blockers) (:consequence j))
-                                               extra (cond-> extra (integer? inf) (conj inf))
-                                               reading (when (or (seq (:reading j)) (seq local-reading))
-                                                         (assoc
-                                                          (or (prover-types/merge-source-roles
-                                                               (:antecedents j) (:reading j) extra local-reading) {})
-                                                          :owner-key
-                                                          (jtms/justification-key inf (:antecedents j)
-                                                                                  (:subsumptions j) (:reading j))))]
-                                           (guard-key s q (into core blockers) reading))))
+                                          (let [extra (conj (set blockers) (:consequence j))
+                                                extra (cond-> extra (integer? inf) (conj inf))
+                                                reading (when (or (seq (:reading j)) (seq local-reading))
+                                                          (assoc
+                                                           (or (prover-types/merge-source-roles
+                                                                (:antecedents j) (:reading j) extra local-reading) {})
+                                                           :owner-key
+                                                           (jtms/justification-key inf (:antecedents j)
+                                                                                   (:subsumptions j) (:reading j))))]
+                                            (guard-key s q (into core blockers) reading))))
                                (when live?
                                  (-> (guard-defeat-placements kb j conds)
                                      (into (inheritance-defeat-placements kb j))
@@ -4502,7 +4502,7 @@
     (and (seq (antecedent-calculi kb (:antecedents rule)))
          (antecedent-blocked? kb (:antecedents rule) (delay bindings) pctx)) :entailment
     (antecedent-hidden? kb (if-let [labels (seq (:label-only (:source-reading rule)))]
-                            (remove (set labels) antes) antes) pctx) :hidden
+                             (remove (set labels) antes) antes) pctx) :hidden
     (mention-unread? kb (:antecedents rule) bindings pctx)           :mention))
 
 (def ^:dynamic *report-no-placement?*
@@ -4644,7 +4644,7 @@
                       ;; refusal record and `place-conclusion`, and a refused or re-deriving firing pays no sort.
                       (let [antes (into all-antes (get support pctx))
                             reading (prover-types/merge-source-roles handles (:source-reading rule)
-                                                                    (get support pctx) nil)
+                                                                     (get support pctx) nil)
                             rule (cond-> rule (:source-reading rule) (assoc :source-reading reading))
                             post  (:post-join rule)
                             ;; the post-join literals extend the bindings every check
@@ -4899,7 +4899,7 @@
       (let [pctx (:pctx entry)]
         (cond
           (or (antecedent-hidden? kb (if-let [labels (seq (:label-only (:reading entry)))]
-                                      (remove (set labels) (:antes entry)) (:antes entry)) pctx)
+                                       (remove (set labels) (:antes entry)) (:antes entry)) pctx)
               (lazy-firing-blocked? kb (:antes entry) (:conseq entry) pctx rh)
               (rule-firing-blocked? kb rsx
                                     (delay (settled-bindings kb (:bindings entry) pctx))
@@ -6481,7 +6481,7 @@
         (let [ordinary (if rwrhs (remove rwrhs crhs) crhs)]
           (when (seq ordinary)
             (owe-computed-rejoins kb ordinary datum (and (not= sx/not-functor ffn)
-                                                        (provers/support-delta-source? kb bfn fact))
+                                                         (provers/support-delta-source? kb bfn fact))
                                   max-depth truncated))))
       (when (seq rwrhs) (rejoin-in-full kb rwrhs max-depth truncated))
       (when (seq trhs) (owe-computed-rejoins kb trhs datum false max-depth truncated))

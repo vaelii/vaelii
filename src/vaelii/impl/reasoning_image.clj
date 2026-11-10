@@ -94,8 +94,8 @@
             [vaelii.impl.progress :as progress]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.provers :as provers]
-            [vaelii.impl.rewrite-query :as rewrite-query]
             [vaelii.impl.reads :as reads]
+            [vaelii.impl.rewrite-query :as rewrite-query]
             [vaelii.impl.solve :as solve]
             [vaelii.impl.source-identity :as si]
             [vaelii.impl.types.reasoning :as reasoning])
