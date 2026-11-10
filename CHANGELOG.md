@@ -82,7 +82,8 @@ it — `git show v0.16.0:CHANGELOG.md`.
 - **life.txt ships `may` and `can` beside `able`.** `(may ?doer ?kind)` is deontic
   permission to be the doer of a happening of kind `?kind`, and `(can ?doer ?kind)` is
   ability and permission together. Both take `able`'s positions: `(arg … 1 causal)`,
-  `(genlArg … 2 happening)` and `transitiveInArg` along `genl` on the second. life.txt
+  `(genlArg … 2 happening)`, `transitiveInArg` along `genl` on the second and
+  `time_varying_relation`, since an ability or a permission can be gained and lost. life.txt
   states `(intersection can able may)`, so `able` and `may` together conclude `can`, and
   `can` is `genl` each half. Ability without permission, or permission without ability,
   concludes no `can`.
