@@ -92,7 +92,7 @@
 
 (comment FatherFn
          "(FatherFn ?animal) means the father of ?animal. fatherOf is the corresponding predicate, so (FatherFn Muffet) and the F of a believed (fatherOf Muffet F) name one father. See docs/nat.md.")
-(implementationNote FatherFn "A reifiable_function, so a ground application denotes an object rather than being computed, and it reifies to an opaque constant before it reaches the index. The correspondence to fatherOf keeps it from minting a second name for a father the KB already knows: (FatherFn Muffet) resolves to the father of a believed (fatherOf Muffet F). Where none is known it mints a placeholder and projects that back onto fatherOf, so the placeholder still answers whose father it is, and a father arriving later is equated with it.")
+(implementationNote FatherFn "A reifiable_function, so a ground application denotes an object rather than being computed, and it reifies to an opaque constant before it reaches the index. The correspondence to fatherOf equates the constant with a father the KB already knows: a believed :monotonic (fatherOf Muffet F) merges the constant of (FatherFn Muffet) with F, and a read of (FatherFn Muffet) finds F. Where none is known the constant is projected back onto fatherOf, so it still answers whose father it is, and a father arriving later is equated with it.")
 (reifiable_function FatherFn)
 (unary_function FatherFn)
 (set/monotonic (time_invariant_relation FatherFn))

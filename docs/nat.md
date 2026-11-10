@@ -181,9 +181,11 @@ bindings make each one ground and this pass mints it, with or without a correspo
 A generator's generated rule goes through this pass too, so a ground application in its
 antecedent is spelled with the constant the facts it matches are stored under.
 
-- An application that already has a term resolves to it — a `rewriteOf` target, the
-  value its corresponding predicate names, or the minted constant — through
-  `nat-read/reify-existing`, which mints nothing.
+- An application that already has a term resolves to it — a `rewriteOf` target or the
+  minted constant — through `nat-read/reify-existing`, which mints nothing. A value a
+  stored corresponding fact names is not one of these: the conclusion names the
+  application's constant, and the value reaches it through `chain/sync-values!` ([The
+  corresponding predicate](#the-corresponding-predicate)).
 - An application with no term is checked before it is minted. The placement's own checks
   run over the conclusion under `checks/*entry-mints?*`, which reads the application as
   the constant a mint would give it, the reading `check` uses (below). A conclusion those
@@ -315,8 +317,8 @@ Four things fix what that reading is and is not.
   reifiable function's application never reaches this arm, since it is minted first.
 
 **`check` reads a reifiable application as the constant `assert` would mint.** `check`
-writes nothing, so it mints nothing. An application that already has a term
-(`nat-read/reify-existing`) is checked as that term. One that has none is read under
+writes nothing, so it mints nothing. An application that already has a term a write
+would store (`nat-read/reify-existing`) is checked as that term. One that has none is read under
 `checks/*entry-mints?*`, with its function's result types standing where the minted
 constant's memberships would. Under assertive argument types ([argtypes.md](argtypes.md))
 the demand then refuses only a result type the taxonomy separates from the demanded type,
@@ -380,8 +382,10 @@ indistinguishable from a KB that was never told.
 
 Two paths resolve a NAT the same way — dedup, never mint — without being query reads,
 through `nat-read/resolve-for-read`, which answers nil when a NAT was never minted rather
-than a sentence carrying the `no-match` sentinel. `handle-of` reads the constant `ist`
-stored, so a lookup of the compound finds the stored sentex. `assert-inert` stores the resolved
+than a sentence carrying the `no-match` sentinel. Each resolves the NAT to the term a write in its
+context stores, the application's own constant and not a value a corresponding fact
+names, so a lookup of the compound finds the row `assert` stored. `handle-of` reads the
+constant `ist` stored. `assert-inert` stores the resolved
 sentence, so an inert record keys on the constant every read reifies to instead of a
 compound no read finds, and refuses a NAT this KB never minted (`:unminted-nat`) — it
 never mints, since a `natFormula` is a belief-carrying write this entry point does not do.
@@ -447,16 +451,20 @@ reads them.
 It is read in **both** directions, and that is the point: a KB told only one of the two
 spellings can otherwise reason with only that one.
 
-- **value → term.** A believed `:monotonic` `(motherOf Muffet Mary)` reifies
-  `(MotherFn Muffet)` to `Mary` for a write or a read in a context that sees the fact. The
-  expression names the object the KB already has a name for rather than minting a second
-  one beside it, so the correspondence is a *computed* `rewriteOf` target — the same
-  protocol, looked up through the predicate instead of declared per expression. It is
-  consulted before the dedup probe, because a real term outranks a placeholder. A value
-  only `:default` facts name resolves no write (`nat-read/correspondence-value` reads the
-  class off each fact's handle): the write mints the placeholder, and the value reaches
-  the placeholder's uses as copies (below). A read of an application nothing minted
-  resolves to the one value the visible facts name, whatever its class.
+- **value → term.** A write or a firing that names `(MotherFn Muffet)` stores the
+  application's own constant `K`, whatever value the corresponding facts name. A believed
+  `:monotonic` `(motherOf Muffet Mary)` reaches `K` through the merge `(rewriteOf Mary
+  K)`, which `chain/sync-values!` derives from the fact and the declaration (the table
+  below). The equality migration then restates each use of `K` as `Mary` where the fact is
+  visible, and the restatement rests on the fact, so a retraction of the fact's premise
+  takes the restatement OUT and leaves the use of `K`. The stored set and the belief after
+  that retraction are the same whichever of the fact and the use arrives first
+  (`nat_test/a-monotonic-value-reaches-the-application-s-constant-and-leaves-with-its-premise-in-every-order`).
+  A value only `:default` facts name reaches the uses of `K` as copies (below). A read in
+  a context that sees a `:monotonic` value resolves the application to that value before
+  the dedup probe (`nat-read/correspondence-value`, which reads the class off each fact's
+  handle). A read of an application nothing minted resolves to the one value the visible
+  facts name, whatever its class.
 - **term → value.** When no value is known, the mint proceeds and the constant is
   **projected** back onto the predicate: `(motherOf Muffet K)`, derived from the
   declaration and `K`'s `natFormula` map under the `functionCorrespondingPredicate`
@@ -478,7 +486,7 @@ declaration — and each of the three landing last has an arm:
 
 | Last to arrive | What happens |
 |---|---|
-| the application | reifies to the believed `:monotonic` value, and nothing is minted; beside a `:default` value only, mints `K`, which takes copies as the next row says |
+| the application | mints `K`, which the visible value reaches as the next two rows say: a merge from a `:monotonic` value, copies from a `:default` one |
 | a `:monotonic` fact | `(rewriteOf V K)`, derived from the fact and the declaration and placed where their contexts meet, retires the placeholder there, and the equality migration folds every use of `K` — its `natFormula` map included — onto `V` |
 | a `:default` fact | each fact and each rule naming `K` takes a copy with `V` in `K`'s place, derived from the use, the fact and the declaration and placed where the three contexts meet; nothing is merged, so `K`'s own sentexes stay believed |
 | the declaration | each constant already minted for `F` is projected, then merged with or copied onto its value as the two rows above say |
@@ -513,9 +521,9 @@ retraction and a `:default` assert: the merge leaves with the fact, and the copi
 derived again
 (`nat_test/a-default-value-made-monotonic-and-default-again-ends-where-it-started`).
 
-**A value applies where it is visible.** The mint reads the values the corresponding facts
-visible from the writing context name, each spelled under that context's merges
-(`nat-read/correspondence-value`), and a read does the same from the reading context. A
+**A value applies where it is visible.** A read resolves an application to the value the
+corresponding facts visible from the reading context name, each spelled under that
+context's merges (`nat-read/correspondence-value`). A
 merge or a copy is placed only where the placement context reads exactly one value beside
 the placeholder, through the one correspondence the merge or copy was drawn from
 (`chain/sync-values!`), decided over the believed facts that context sees. With
@@ -523,7 +531,7 @@ the placeholder, through the one correspondence the merge or copy was drawn from
 
 | The fact's class | A write in `CxStory` | The placeholder minted in `CxUniverse` | A goal in `CxStory` naming the application or `K` |
 |---|---|---|---|
-| `:monotonic` | reifies to `Mary` | retired in `CxStory` by `(rewriteOf Mary K)`; `CxUniverse` reads `K` | reads `Mary`, the representative |
+| `:monotonic` | stores `K`, restated as `Mary` under the merge | retired in `CxStory` by `(rewriteOf Mary K)`; `CxUniverse` reads `K` | reads `Mary`, the representative |
 | `:default` | mints `K` | stays; each use of `K` has a copy naming `Mary` in `CxStory` | reads both spellings, `K` and `Mary` |
 
 Both hold in every arrival order, a `genlCx` edge included

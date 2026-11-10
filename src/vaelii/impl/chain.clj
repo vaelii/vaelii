@@ -3387,10 +3387,11 @@
               ;; matching at once, and the restatement must be on the agenda.
               _    (when (seq (:superseded mig))
                      (special/refresh-supersessions kb (:superseded mig)))
-              ;; A decontextualized predicate is a claim about the predicate, so the lift runs on
-              ;; concluded content as on asserted (`assert-one`).  It runs for a re-derivation too, since
-              ;; a conclusion stored before the declaration picks up its copy then; the copy is enqueued
-              ;; like the conclusion.
+              ;; ...and a new conclusion spelled at an application's constant is restated where a
+              ;; merge retires that constant, as an asserted one is (docs/nat.md)
+              rst  (when (and new? written (not= written conseq)) (special/restate-retired kb s))
+              ;; A decontextualized predicate's lift runs on concluded content as on asserted (`assert-one`),
+              ;; a re-derivation included: a conclusion stored before the declaration takes its copy then.
               lift (special/deduce-lifts kb conseq h pctx)
               ;; The argument constraints entail of a derived conclusion what they entail of an
               ;; asserted one, drawn only for a new conclusion
@@ -3407,9 +3408,10 @@
               ;; ...and the class membership a metatype route derives from a derived
               ;; membership or edge, as from an asserted one
               cls  (when new? (arity-classes-moved! kb [s] false *rollback-scope*))]
-          (when (or (seq (:violations mig)) (seq (:violations lift)) (seq (:violations args))
-                    (seq (:violations back)) (seq (:violations down)) (seq (:violations cls)))
-            (violations/report kb (concat (:violations mig) (:violations lift)
+          (when (or (seq (:violations mig)) (seq (:violations rst)) (seq (:violations lift))
+                    (seq (:violations args)) (seq (:violations back)) (seq (:violations down))
+                    (seq (:violations cls)))
+            (violations/report kb (concat (:violations mig) (:violations rst) (:violations lift)
                                           (:violations args) (:violations back)
                                           (:violations down) (:violations cls))))
           ;; The arms above install the conclusion in its cache unconditionally; a void firing leaves
@@ -3418,6 +3420,7 @@
           (when (and void? new?) (special/reconcile-belief-change kb [h]))
           (-> (if new? [h] [])
               (into-some (special/minted-seeds kb (:new mig)))
+              (into-some (:new rst))
               (into-some (:new lift))
               (into-some (special/minted-seeds kb (:new args)))
               (into-some (special/minted-seeds kb (:new back)))
@@ -3456,7 +3459,7 @@
   (nat/queue-split-uses! kb conseq)
   (if-not (nat/names-reifiable-nat? kb conseq)
     [conseq nil]
-    (let [known (nat-read/reify-existing kb conseq pctx)]
+    (let [known (nat-read/reify-existing kb conseq pctx true)]
       (if-not (nat/names-reifiable-nat? kb known)
         [known nil]
         (if-let [v (binding [checks/*entry-mints?* true] (violation-of known))]

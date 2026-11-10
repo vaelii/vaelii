@@ -249,12 +249,16 @@
   (default `nat/`) for a reader in `context` (CxUniverse when nil), or nil: the
   `natFormula` rows `map-rows` reads.  Where several constants map `E` in one namespace
   (an import restores what the dump held, or a merge the reader sees joins two
-  expressions), the lexicographically smallest, the survivor `group-collisions` elects."
+  expressions), the lexicographically smallest, the survivor `group-collisions` elects.
+  With `write?`, a `nat/` expression answers only a reified constant, never a term a
+  merge's twin of the map names: a write names the application's own constant."
   ([kb E] (dedup-constant kb E nat-namespace nil))
-  ([kb E ns context]
+  ([kb E ns context] (dedup-constant kb E ns context false))
+  ([kb E ns context write?]
    (->> (map-rows kb 'natFormula E context)
         (map #(second (:sentence %)))
-        (filter #(in-namespace? ns %))
+        (filter #(and (in-namespace? ns %)
+                      (or (not write?) (= context-namespace ns) (reified-object-symbol? %))))
         sort
         first)))
 
@@ -284,12 +288,15 @@
 (defn correspondence-value
   "The term a `:monotonic` corresponding fact visible from `context` (CxUniverse when nil)
   names as the value of the ground NAT expression `E`, spelled under `context`'s merges,
-  when the visible facts name that one value and no other, or nil.  A value only
-  `:default` facts name resolves no write (docs/nat.md, The corresponding predicate)."
-  [kb E context]
-  (when-let [[v hs] (sole-value kb E context)]
-    (let [tms (reasoning/tms kb)]
-      (when (some #(tuple/monotonic-member? tms %) hs) v))))
+  when the visible facts name that one value and no other, or nil.  With `write?`, nil: a
+  write names the application's own constant, which a stored value reaches through
+  `chain/sync-values!`'s merge (docs/nat.md, The corresponding predicate)."
+  ([kb E context] (correspondence-value kb E context false))
+  ([kb E context write?]
+   (when-not write?
+     (when-let [[v hs] (sole-value kb E context)]
+       (let [tms (reasoning/tms kb)]
+         (when (some #(tuple/monotonic-member? tms %) hs) v))))))
 
 (defn reify-in
   "Reify every reifiable ground NAT subterm of literal/sentence `s`, calling `nat-fn` (a
@@ -318,41 +325,48 @@
 
 (defn existing-term
   "The term ground NAT expression `E` already resolves to in reify namespace `ns` for a
-  reader or writer in `context`, or nil: a `rewriteOf` target, the value its
-  corresponding predicate names where `context` reads it (`correspondence-value`), else
-  the constant `dedup-constant` finds.  A context slot (`cx/`) takes no correspondence
-  value, which names an object."
-  [kb E ns context]
-  (if (= context-namespace ns)
-    (or (rewrite-target kb E ns context) (dedup-constant kb E ns context))
-    (or (rewrite-target kb E ns context) (correspondence-value kb E context)
-        (dedup-constant kb E ns context))))
+  reader in `context`, or nil: a `rewriteOf` target, the value its corresponding
+  predicate names where `context` reads it (`correspondence-value`), else the constant
+  `dedup-constant` finds.  With `write?`, the term a write in `context` stores: the
+  value and the constant as `correspondence-value` and `dedup-constant` read them for a
+  write.  A context slot (`cx/`) takes no correspondence value, which names an object."
+  ([kb E ns context] (existing-term kb E ns context false))
+  ([kb E ns context write?]
+   (if (= context-namespace ns)
+     (or (rewrite-target kb E ns context) (dedup-constant kb E ns context))
+     (or (rewrite-target kb E ns context) (correspondence-value kb E context write?)
+         (dedup-constant kb E ns context write?)))))
 
 (defn reify-nat-for-read
   "Read-mode leaf: reify nested NAT arguments, then resolve the expression, in its
   `sorted-expression` order, to its existing term in reify namespace `ns` for a reader in
-  `context` (`existing-term`), or to `no-match`.  Never mints.  A quoting function's
-  argument stays opaque, as `reify-or-mint-nat` holds it."
-  [kb form ns context]
-  (let [E (if (sx/quoting-functor? (first form))
-            (apply list form)
-            (sorted-expression
-             kb (apply list (first form)
-                       (map #(if (reifiable-ground-nat? kb %) (reify-nat-for-read kb % nat-namespace context) %)
-                            (rest form)))))]
-    (or (existing-term kb E ns context) no-match)))
+  `context` (`existing-term`, with `write?` as a write in `context` stores it), or to
+  `no-match`.  Never mints.  A quoting function's argument stays opaque, as
+  `reify-or-mint-nat` holds it."
+  ([kb form ns context] (reify-nat-for-read kb form ns context false))
+  ([kb form ns context write?]
+   (let [E (if (sx/quoting-functor? (first form))
+             (apply list form)
+             (sorted-expression
+              kb (apply list (first form)
+                        (map #(if (reifiable-ground-nat? kb %)
+                                (reify-nat-for-read kb % nat-namespace context write?)
+                                %)
+                             (rest form)))))]
+     (or (existing-term kb E ns context write?) no-match))))
 
 (defn- read-leaf
   "`reify-in`'s leaf for a read in `context`: the existing term, else the one value the
   corresponding facts visible from `context` name for an application nothing minted, or
-  `no-match`.  A never-minted quoting application stays as written: a mention names its
-  own syntax."
-  [context]
+  `no-match`.  With `write?`, the term a write in `context` stores, or `no-match`.  A
+  never-minted quoting application stays as written: a mention names its own syntax."
+  [context write?]
   (fn [kb form]
-    (let [k (reify-nat-for-read kb form nat-namespace context)]
+    (let [k (reify-nat-for-read kb form nat-namespace context write?)]
       (cond
         (not= no-match k)                    k
         (sx/quoting-functor? (first form))   form
+        write?                               k
         :else (or (when (res/any-corresponding-predicates? kb)
                     (first (sole-value kb (apply list (first form)
                                                  (map #(if (reifiable-ground-nat? kb %)
@@ -365,25 +379,31 @@
 (defn reify-existing
   "Reify every reifiable ground NAT subterm of `sentence` that has an existing term for a
   reader in `context` (CxUniverse when nil) to that term, and leave every other one as
-  written.  Never mints.  `vaelii.core/check` reads a sentence through this (docs/nat.md,
-  Typing an application that is never minted)."
-  [kb sentence context]
-  (if (any-reifiable-functions? kb)
-    (reify-in kb sentence (fn [kb form]
-                            (let [k (reify-nat-for-read kb form nat-namespace context)]
-                              (if (= no-match k) form k))))
-    sentence))
+  written.  With `write?`, the existing term a write in `context` stores
+  (`existing-term`).  Never mints.  `vaelii.core/check` and a firing's conclusion read a
+  sentence through this with `write?` (docs/nat.md, Typing an application that is never
+  minted)."
+  ([kb sentence context] (reify-existing kb sentence context false))
+  ([kb sentence context write?]
+   (if (any-reifiable-functions? kb)
+     (reify-in kb sentence (fn [kb form]
+                             (let [k (reify-nat-for-read kb form nat-namespace context write?)]
+                               (if (= no-match k) form k))))
+     sentence)))
 
 (defn maybe-reify-for-read
   "Reify every reifiable ground NAT subterm of a query `sentence` to its existing term for
   a reader in `context` (CxUniverse when nil), never minting; a never-minted NAT resolves
-  to `no-match`, except a quoting application, which stays as written.  An application
-  of a function `context` does not believe reifiable stays as written (`withheld-at`)."
-  [kb sentence context]
-  (if (any-reifiable-functions? kb)
-    (binding [*withheld* (withheld-at kb context)]
-      (reify-in kb sentence (read-leaf context)))
-    sentence))
+  to `no-match`, except a quoting application, which stays as written.  With `write?`,
+  each resolves to the term a write in `context` stores (`read-leaf`), the reading a
+  lookup of a stored sentex takes.  An application of a function `context` does not
+  believe reifiable stays as written (`withheld-at`)."
+  ([kb sentence context] (maybe-reify-for-read kb sentence context false))
+  ([kb sentence context write?]
+   (if (any-reifiable-functions? kb)
+     (binding [*withheld* (withheld-at kb context)]
+       (reify-in kb sentence (read-leaf context write?)))
+     sentence)))
 
 (defn- has-no-match?
   "Does `form` hold the `no-match` sentinel in a list or vector, at any nesting?"
@@ -393,11 +413,12 @@
            (boolean (some has-no-match? form)))))
 
 (defn resolve-for-read
-  "The read-mode reify of `sentence` for a reader in `context` (`maybe-reify-for-read`)
-  when every reifiable NAT in it has a stored term, else nil."
-  [kb sentence context]
-  (let [r (maybe-reify-for-read kb sentence context)]
-    (when-not (has-no-match? r) r)))
+  "The read-mode reify of `sentence` for a reader in `context` (`maybe-reify-for-read`,
+  with `write?` as given) when every reifiable NAT in it has a stored term, else nil."
+  ([kb sentence context] (resolve-for-read kb sentence context false))
+  ([kb sentence context write?]
+   (let [r (maybe-reify-for-read kb sentence context write?)]
+     (when-not (has-no-match? r) r))))
 
 ;; ---- the constants a value can reach -------------------------------------
 ;; docs/nat.md, The corresponding predicate.  The queue `chain/sync-values!` drains.

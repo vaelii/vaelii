@@ -105,9 +105,9 @@ and the KB says so from four sentences none of which mentions a litre
 
 **`motherOf` / `fatherOf`, with `MotherFn` / `FatherFn` beside them.** The reified
 functions are what let a KB name somebody by their role before it knows their name, and
-the correspondence is what stops `(MotherFn Pup)` from minting a second name for a mother
-already stored. Both predicates are functional, so a second mother merges rather than
-piling up.
+the correspondence merges the constant `(MotherFn Pup)` mints with a mother already
+stored, so a read of either name finds the other's facts. Both predicates are functional,
+so a second mother merges rather than piling up.
 
 **The event calculus, and the fluents to run it on.** `CxChange` ships the inertia
 axioms and `time.txt` the vocabulary they are stated in, so *asleep at four* is a question

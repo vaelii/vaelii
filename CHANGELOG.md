@@ -14,6 +14,23 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Breaking: inference
+
+- **A write or a firing that names an application stores the application's constant, and a
+  `:monotonic` value reaches it through `rewriteOf`.** Beside a `:monotonic` `(motherOf
+  Muffet Mary)`, `(caresFor Bob (MotherFn Muffet))` stores `(caresFor Bob K)`, with `K` the
+  constant minted for `(MotherFn Muffet)`, and `(rewriteOf Mary K)` restates it as
+  `(caresFor Bob Mary)`. A retraction of the value's premise takes the restatement OUT and
+  leaves `(caresFor Bob K)` believed, whichever of the value and the use arrived first.
+  `handle-of`, `why-not`, `assert-inert`, `canonical-sentex` and `check` resolve an
+  application as a write does.
+  [nat.md](docs/nat.md#the-corresponding-predicate)
+  *Migration:* read a use through `ask`, `query` or `representative`, which answer the
+  value where its fact is visible; the stored sentence of the write's handle names `K`.
+  *Breaks:* the stored sentence, `why` and the sentex count of a write or a firing naming
+  an application beside a `:monotonic` corresponding value; what is believed after that
+  value's premise is retracted
+
 ### Internal: disjointness audit
 
 - **`disjointness-audit` prepares taxonomy reads once per row.** Each row holds its

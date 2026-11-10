@@ -508,7 +508,7 @@
                                 (reify-or-mint-nat kb % nat-read/nat-namespace chain? context)
                                 %)
                              (rest form)))))]
-     (or (nat-read/existing-term kb E ns context) (mint-nat! kb E ns chain?)))))
+     (or (nat-read/existing-term kb E ns context true) (mint-nat! kb E ns chain?)))))
 
 (defn maybe-reify-nats
   "Replace every ground reifiable NAT subterm of `sentence`, written in `context`
@@ -572,7 +572,7 @@
   to, minting nothing: its existing term, else the `nat/` constant `constant-for` names for
   `form` as written, which no stored sentex names."
   [kb form context]
-  (let [k (nat-read/reify-nat-for-read kb form nat-read/nat-namespace context)]
+  (let [k (nat-read/reify-nat-for-read kb form nat-read/nat-namespace context true)]
     (if (= nat-read/no-match k) (constant-for nat-read/nat-namespace form) k)))
 
 (defn heads-for-check

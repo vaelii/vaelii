@@ -2094,7 +2094,7 @@
                  :else
                  (or (some-> (problem (fn [] (check-reified-inputs! kb sentence context))) vector)
                      (binding [checks/*entry-mints?* true]
-                       (fact-problems kb (nat-read/reify-existing kb (nat/heads-for-check kb sentence context) context)
+                       (fact-problems kb (nat-read/reify-existing kb (nat/heads-for-check kb sentence context) context true)
                                       context)))))))))))
 
 (defn- bad-handle-message
@@ -2887,7 +2887,7 @@
         sentence           (first (sx/peel-strength sentence nil))]
     (check-shape! (sentence-shape-problem sentence))
     (check-shape! (lookup-context-shape-problem context))
-    (let [s (nat-read/maybe-reify-for-read kb sentence context)]
+    (let [s (nat-read/maybe-reify-for-read kb sentence context true)]
       ;; spelled as `context` reads it: a permuting mark it does not believe sorts nothing
       (binding [res/*spelled-by* (res/reader-spelled-by kb s (stored-context kb s context))]
         (when-let [s (try (entry/resolve-references kb s context)
@@ -2993,7 +2993,7 @@
       ;; to.  A NAT with no stored constant is refused (`:unminted-nat`): minting asserts a
       ;; `natFormula` premise, a belief-carrying side effect this entry point never has
       ;; (`nat-read/resolve-for-read`).
-      (if-let [reified (nat-read/resolve-for-read kb sentence context)]
+      (if-let [reified (nat-read/resolve-for-read kb sentence context true)]
         (let [[h _ new?] (kb/find-or-create-sentex kb reified context)]
           ;; the :inert mark tells a new inert record apart from a record a failed write
           ;; left (`unsupported`); a sentence already stored keeps its own provenance
@@ -5061,7 +5061,7 @@
   handle.  A ground reifiable NAT resolves to its stored constant, never minting, as
   `handle-of` does; an unminted NAT stays a compound (docs/nat.md, Read path)."
   [kb sentence context]
-  (res/kb-sentex kb (or (nat-read/resolve-for-read kb sentence context) sentence) context))
+  (res/kb-sentex kb (or (nat-read/resolve-for-read kb sentence context true) sentence) context))
 
 ;; ---- content digests: a checksum of a stored sentex's content ---------------
 
@@ -6051,7 +6051,7 @@
    (let [[sentence context kb] (checked-ist-goal kb sentence context)
          ;; the stored spelling of a ground reifiable NAT is its constant, looked up where
          ;; `assert` stores it (`handle-of`)
-         s (nat-read/maybe-reify-for-read kb sentence context)
+         s (nat-read/maybe-reify-for-read kb sentence context true)
          h (kb/find-sentex-handle kb s (stored-context kb s context))]
      (if h
        (why-not-handle kb h)

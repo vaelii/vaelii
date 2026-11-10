@@ -827,8 +827,8 @@
      ['functionCorrespondingPredicate
       (enforced (wff-only [:function :predicate :position]
                           :facets #{:answers})
-                (str "nat — reifies an application to the value the predicate already names,"
-                     " and projects a minted constant back onto it"))]
+                (str "nat — merges an application's constant with the value the predicate names,"
+                     " and projects the constant back onto the predicate"))]
      ['functionCorrespondingBinaryPredicate
       (enforced {:shape {:args [:function :predicate]} :storage [:none] :checked false
                  :family nil :facets #{}

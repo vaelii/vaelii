@@ -745,16 +745,19 @@
 
 ;; ---- the corresponding predicate -----------------------------------------
 
-(tu/deftest-kb a-corresponding-fact-names-the-term-an-application-reifies-to
+(tu/deftest-kb a-write-stores-the-application-s-constant-and-a-monotonic-value-merges-it
   (tu/with-terms [MotherFn motherOf Muffet Mary Bob caresFor]
     (v/assert kb (list 'reifiable_function MotherFn) 'CxUniverse)
     (v/assert kb (list 'functionCorrespondingPredicate MotherFn motherOf 2) 'CxUniverse)
     (v/assert kb (list motherOf Muffet Mary) 'CxUniverse {:strength :monotonic})
-    (let [h (v/assert kb (list caresFor Bob (list MotherFn Muffet)) 'CxUniverse)]
-      (testing "the application resolves to the value, and mints nothing beside it"
-        (is (= (list caresFor Bob Mary) (:sentence (v/sentex kb h))))
-        (is (empty? (v/sentexes-matching kb (list 'natFormula '?k (list MotherFn Muffet))
-                                         'CxUniverse))))
+    (let [h (v/assert kb (list caresFor Bob (list MotherFn Muffet)) 'CxUniverse)
+          k (nat/constant-for nat-read/nat-namespace (list MotherFn Muffet))]
+      (testing "the stored premise names the constant, and handle-of finds it"
+        (is (= (list caresFor Bob k) (:sentence (v/sentex kb h))))
+        (is (= h (v/handle-of kb (list caresFor Bob (list MotherFn Muffet)) 'CxUniverse))))
+      (testing "the value fact merges the constant, and the use is believed at the value"
+        (is (v/believed? kb (v/handle-of kb (list 'rewriteOf Mary k) 'CxUniverse) 'CxUniverse))
+        (is (v/believed? kb (v/handle-of kb (list caresFor Bob Mary) 'CxUniverse) 'CxUniverse)))
       (testing "a query written with the application still finds it"
         (is (= [{'?w Bob}] (v/ask kb (list caresFor '?w (list MotherFn Muffet)) 'CxUniverse)))))))
 
@@ -793,8 +796,8 @@
     (v/assert kb (list 'functionCorrespondingPredicate StreetCornerFn streetCornerOf 1)
               'CxUniverse)
     (v/assert kb (list streetCornerOf Lot7 Xing1 North) 'CxUniverse {:strength :monotonic})
-    (let [h (v/assert kb (list ownedBy (list StreetCornerFn Xing1 North) Alice) 'CxUniverse)]
-      (is (= (list ownedBy Lot7 Alice) (:sentence (v/sentex kb h)))))))
+    (v/assert kb (list ownedBy (list StreetCornerFn Xing1 North) Alice) 'CxUniverse)
+    (is (v/ask? kb (list ownedBy Lot7 Alice) 'CxUniverse))))
 
 (tu/deftest-kb a-declaration-arriving-last-reconciles-what-was-already-minted
   (tu/with-terms [MotherFn motherOf Muffet Mary Bob caresFor]
@@ -931,8 +934,8 @@
     (v/assert kb (list motherOf Muffet Mary) 'CxUniverse {:strength :monotonic})
     (v/recover kb)
     (is (= Mary (nat-read/correspondence-value kb (list MotherFn Muffet) nil)))
-    (let [h (v/assert kb (list caresFor Bob (list MotherFn Muffet)) 'CxUniverse)]
-      (is (= (list caresFor Bob Mary) (:sentence (v/sentex kb h)))))))
+    (v/assert kb (list caresFor Bob (list MotherFn Muffet)) 'CxUniverse)
+    (is (v/ask? kb (list caresFor Bob Mary) 'CxUniverse))))
 
 (tu/deftest-kb a-projection-does-not-keep-an-orphaned-placeholder-alive
   (tu/with-terms [MotherFn motherOf Muffet Bob caresFor]
@@ -1646,8 +1649,9 @@
     (try (f kb) (finally (tu/clear-kb! kb)))))
 
 (defn- commuted-mints
-  "`[constants equalities-in-CxParent]` after the six sentences with `names` for the
-  four individuals, the two `equals` in CxA in written order or `reversed?`."
+  "`[constants equalities-in-CxParent joined?]` after the six sentences with `names` for
+  the four individuals, the two `equals` in CxA in written order or `reversed?`, `joined?`
+  whether CxA reads the constants of `(fooFn a b)` and `(fooFn b a)` as one term."
   [kb [a b c d] reversed?]
   (let [m  {:strength :monotonic}
         e1 (list 'equals (list 'fooFn c b) (list 'fooFn b a))
@@ -1660,14 +1664,16 @@
       (v/assert kb s cx m))
     (doseq [e (if reversed? [e2 e1] [e1 e2])] (v/assert kb e 'CxA m))
     [(count (distinct (map '?k (v/ask kb '(natFormula ?k ?e) 'CxUniverse))))
-     (count (v/sentexes-matching kb '(equals ?x ?y) 'CxParent))]))
+     (count (v/sentexes-matching kb '(equals ?x ?y) 'CxParent))
+     (v/same-class? kb (nat/constant-for nat-read/nat-namespace (list 'fooFn a b))
+                    (nat/constant-for nat-read/nat-namespace (list 'fooFn b a)) 'CxA)]))
 
-(deftest a-commuted-application-reifies-to-the-value-the-writer-reads-for-every-name-and-order
+(deftest a-commuted-application-mints-its-own-constant-and-joins-the-value-the-writer-reads-for-every-name-and-order
   ;; a merge's restatement of a corresponding fact in CxA is no second value for a
   ;; writer that reads it as the same term
   (doseq [names '[[n/Aa n/Bb n/Cc n/Dd] [Aa Bb Cc Dd] [P2x0 P2x1 P2x2 P2x3] [P1x0 P1x1 P1x2 P1x3]]
           rev?  [false true]]
-    (is (= [3 0] (on-own-kb #(commuted-mints % names rev?))) (pr-str names rev?))))
+    (is (= [4 0 true] (on-own-kb #(commuted-mints % names rev?))) (pr-str names rev?))))
 
 (deftest a-merge-the-writer-does-not-see-leaves-one-value
   ;; with `Maria` the merge in CxB restates `(momOf Muffet Mary)` there; with `Mz` it
@@ -1918,6 +1924,58 @@
                  (= before (tu/baseline kb)))))
             (str step))))))
 
+;; ---- a :monotonic value reaches the written constant ------------------------
+
+(defn- value-use-run
+  "The stored and the believed `[sentence context]` sets after the `:value`, `:use` and
+  `:use2` steps of `order`, `:before` and `:after` the value's premise is retracted.  The
+  value `(motherOf Muffet Mary)` is `:asserted`, or `:derived` from `(has_mom Muffet)`;
+  the use `(caresFor Bob (MotherFn Muffet))` is `:asserted`, `:fired` from an open
+  application, or fired by a `:rule` naming the ground application; `:use2` asserts
+  `(fondOf Ann (MotherFn Muffet))`."
+  [kb [value use] order]
+  (let [m       {:strength :monotonic}
+        premise (atom nil)
+        content (fn [] {:stored   (into #{} (map #(let [s (v/sentex kb %)] [(v/sentence-of s) (:context s)]))
+                                        (tu/sentex-ids kb))
+                        :believed (believed-content kb)})]
+    (v/assert kb '(reifiable_function MotherFn) 'CxUniverse m)
+    (v/assert kb '(functionCorrespondingPredicate MotherFn motherOf 2) 'CxUniverse m)
+    (doseq [step order]
+      (case [step (if (= :value step) value use)]
+        [:value :asserted] (reset! premise (v/assert kb '(motherOf Muffet Mary) 'CxUniverse m))
+        [:value :derived]  (do (v/assert kb '(set/forwardRule (implies (has_mom ?x) (motherOf ?x Mary))) 'CxUniverse m)
+                               (reset! premise (v/assert kb '(has_mom Muffet) 'CxUniverse m)))
+        [:use :asserted]   (v/assert kb '(caresFor Bob (MotherFn Muffet)) 'CxUniverse)
+        [:use :fired]      (do (v/assert kb '(set/forwardRule (implies (childOf ?x ?y) (caresFor ?x (MotherFn ?y))))
+                                         'CxUniverse)
+                               (v/assert kb '(childOf Bob Muffet) 'CxUniverse))
+        [:use :rule]       (do (v/assert kb '(set/forwardRule (implies (kind ?x) (caresFor ?x (MotherFn Muffet))))
+                                         'CxUniverse)
+                               (v/assert kb '(kind Bob) 'CxUniverse))
+        (v/assert kb '(fondOf Ann (MotherFn Muffet)) 'CxUniverse)))
+    (let [before (content)]
+      (v/retract! kb @premise)
+      {:before before :after (content)})))
+
+(deftest a-monotonic-value-reaches-the-application-s-constant-and-leaves-with-its-premise-in-every-order
+  (let [k (nat/constant-for nat-read/nat-namespace '(MotherFn Muffet))]
+    (doseq [row [[:asserted :asserted] [:asserted :fired] [:asserted :rule]
+                 [:derived :asserted] [:derived :fired]]]
+      (let [runs (for [order (tu/orders [:value :use :use2])]
+                   (on-own-kb #(value-use-run % row order)))]
+        (is (= 1 (count (set (map :before runs)))) (str "before the retraction " row))
+        (is (= 1 (count (set (map :after runs)))) (str "after the retraction " row))
+        (is (every? #(contains? (get-in % [:before :believed]) ['(caresFor Bob Mary) 'CxUniverse]) runs)
+            (str row))
+        (is (not-any? #(some (fn [[s]] (let [ts (set (flatten (seq s)))]
+                                         (and (ts 'Mary) (not (ts 'has_mom)))))
+                             (get-in % [:after :believed]))
+                      runs)
+            (str "no belief but the value's rule names the value " row))
+        (is (every? #(contains? (get-in % [:after :believed]) [(list 'caresFor 'Bob k) 'CxUniverse]) runs)
+            (str row))))))
+
 ;; ---- an application resolves under the reader's merges ---------------------
 
 (deftest an-application-resolves-under-the-merges-the-reader-sees
@@ -2045,14 +2103,12 @@
 
 ;; ---- a correspondence stated in one context ---------------------------------
 
-(tu/deftest-kb ^:red a-correspondence-stated-in-one-context-does-not-merge-its-predicates-values-in-another
+(tu/deftest-kb a-correspondence-stated-in-one-context-does-not-merge-its-predicates-values-in-another
   ;; A correspondence can hold only under a simplifying theory.  In an atlas where every
   ;; country has one capital, `capitalOf` is functional and `CapitalFn` names its value;
   ;; the world gives one country two.  An application written in the world before its
   ;; values must not be retired onto each value in turn, which equates the two values
-  ;; through the placeholder.  Red because the declaration is read KB-wide
-  ;; (`res/believed-correspondences`), so the world reads the atlas's correspondence and
-  ;; merges the two capitals.
+  ;; through the placeholder.
   (tu/with-terms [CapitalFn capitalOf country city locatedIn Bolivia LaPaz Sucre Embassy
                   CxAtlas CxWorld]
     (doseq [s [(list 'genlCx CxAtlas 'CxUniverse) (list 'genlCx CxWorld 'CxUniverse)
@@ -2065,9 +2121,9 @@
     (v/assert kb (list 'functionCorrespondingPredicate CapitalFn capitalOf 2) CxAtlas)
     (v/assert kb (list locatedIn Embassy (list CapitalFn Bolivia)) CxWorld)
     (v/assert kb (list capitalOf Bolivia LaPaz) CxAtlas)
-    (testing "the atlas reads the correspondence: the application resolves to its value"
-      (let [h (v/assert kb (list locatedIn Embassy (list CapitalFn Bolivia)) CxAtlas)]
-        (is (= (list locatedIn Embassy LaPaz) (:sentence (v/sentex kb h))))))
+    (testing "the atlas reads the correspondence: the application reads as its value"
+      (v/assert kb (list locatedIn Embassy (list CapitalFn Bolivia)) CxAtlas)
+      (is (v/ask? kb (list locatedIn Embassy LaPaz) CxAtlas)))
     (v/assert kb (list capitalOf Bolivia LaPaz) CxWorld)
     (v/assert kb (list capitalOf Bolivia Sucre) CxWorld)
     (testing "the world does not: its two values stay two, and nothing clashes"
@@ -2200,8 +2256,11 @@
     (is (true? (v/ask? kb (list 'functionCorrespondingPredicate MotherFn motherOf 2) 'CxUniverse))
         "the rule concludes the ternary")
     (v/assert kb (list motherOf Muffet Mary) 'CxUniverse {:strength :monotonic})
-    (let [h (v/assert kb (list caresFor Bob (list MotherFn Muffet)) 'CxUniverse)]
-      (is (= (list caresFor Bob Mary) (:sentence (v/sentex kb h)))))))
+    (let [h (v/assert kb (list caresFor Bob (list MotherFn Muffet)) 'CxUniverse)
+          k (nat/constant-for nat-read/nat-namespace (list MotherFn Muffet))]
+      (is (= (list caresFor Bob k) (:sentence (v/sentex kb h))))
+      (is (v/believed? kb (v/handle-of kb (list 'rewriteOf Mary k) 'CxUniverse) 'CxUniverse))
+      (is (v/believed? kb (v/handle-of kb (list caresFor Bob Mary) 'CxUniverse) 'CxUniverse)))))
 
 (tu/deftest-kb a-binary-correspondence-arriving-last-reconciles-what-was-already-minted
   (tu/with-terms [MotherFn motherOf Muffet Mary Bob caresFor]

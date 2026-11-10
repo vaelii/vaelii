@@ -1149,9 +1149,9 @@ ground **NAT** is minted as, `nat/a…` in argument position and `cx/a…` in a 
 named by a hash of its expression. Its **bookkeeping** is its `natFormula` map plus what
 the mint wrote about it: the materialized result types, the `genlResult` edges and the
 correspondence projection.
-A **placeholder** is a constant minted for an application whose corresponding predicate
-names no `:monotonic` value. Beside a `:default` value its uses take **copies**, derived
-restatements with the value in its place. A constant is an **orphan** when every stored sentex naming it is its
+A **placeholder** is the constant minted for an application of a function with a
+corresponding predicate. A `:monotonic` value retires it by a merge, and beside a
+`:default` value its uses take **copies**, derived restatements with the value in its place. A constant is an **orphan** when every stored sentex naming it is its
 own bookkeeping or a record the argument-type entailment derives off that bookkeeping
 alone, and the orphan sweep then retracts it. See [nat.md](nat.md).
 
