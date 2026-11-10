@@ -3183,6 +3183,9 @@
 ;; facts below satisfy their declaration under the constraint-only reading as well.
 (set/monotonic (at_least_metatype metatype))
 (set/monotonic (at_least_metatype meta_metatype))
+;; A first-order type's instances are individuals and an at_least_metatype's are types, so
+;; no type is both.  type is itself an at_least_metatype, which is membership, not genl.
+(set/monotonic (disjoint type at_least_metatype))
 (set/monotonic (disjoint_metatype type_type_by_order))
 ;; Each order is a fixed_order_type: every member of type, of metatype or of
 ;; meta_metatype is of that one order.
