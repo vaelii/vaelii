@@ -128,6 +128,14 @@ on them, and retracting any of them withdraws the conclusion through the JTMS. A
 backward rule's conclusion is not read by a forward join. Cyc's `backchainRequired` is
 the analogue of the marking.
 
+A positive `rewriteOf` lazy head is compared through the public representative view
+after its raw body inputs are bound. The firing also retains the actual normalization
+supports and the grounded raw head it read, without materializing an equation. Its
+proof-local reader counterguards detect a changed endpoint, including a private rival;
+the rule/body supports and ordinary lazy-rule validity checks remain required.
+An exact certified head uses those counterguards rather than a fact-only re-query,
+which cannot establish an unmaterialized lazy conclusion.
+
 A datum on a lazy rule's antecedent predicate owes a re-join to each rule whose join
 proves what the lazy rule concludes (`chain/lazy-readers`), by the route a computed
 antecedent's source takes (`chain/owe-computed-rejoins`), keeping past the lazy

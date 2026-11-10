@@ -9,6 +9,7 @@
             [vaelii.impl.quasiquote :as quasiquote]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rewrite-query :as rewrite-query]
+            [vaelii.impl.rules :as rules]
             [vaelii.impl.types.prover :as prover-types]
             [vaelii.test-util :as tu]))
 
@@ -264,6 +265,9 @@
                            {:max-depth 3}))
           (is (= #{{'?endpoint namedRoot}}
                  (set (v/prove kb goal 'CxUniverse {:max-depth 3}))))
+          (is (= #{{'?rest (list namedRoot)}}
+                 (set (v/prove kb (list 'rewriteOf ruleRoot '. '?rest) 'CxUniverse
+                               {:max-depth 3}))))
           (is (= #{{'?endpoint namedRoot}}
                  (set (v/prove kb joined 'CxUniverse {:max-depth 3}))))))
       (is (= #{{'?endpoint namedRoot}}
@@ -313,6 +317,130 @@
           (doseq [reader ['CxUniverse CxSibling]]
             (is (= #{{'?endpoint expression}}
                    (set (v/prove kb goal reader {:max-depth 3}))))))))))
+
+(defn- assert-lazy-rewrite-head!
+  ([kb binary-relation rule-root qualifier-fn]
+   (assert-lazy-rewrite-head! kb binary-relation rule-root qualifier-fn 'CxUniverse))
+  ([kb binary-relation rule-root qualifier-fn context]
+   (v/assert kb
+             (list 'set/lazyForwardRule
+                   (rules/rule-sentence [(list 'arity binary-relation '?number)]
+                                        (list 'rewriteOf rule-root (list qualifier-fn '?number))))
+             context)))
+
+(tu/deftest-kb dotted-public-rewrite-goals-preserve-canonical-rest-bindings
+  (tu/with-terms [preferred old]
+    (v/assert kb (list 'rewriteOf preferred old) 'CxUniverse)
+    (is (= #{{'?rest (list preferred)}}
+           (set (v/query kb (list 'rewriteOf preferred '. '?rest) 'CxUniverse))))
+    (is (= #{{'?predicate 'rewriteOf '?rest (list preferred)}}
+           (set (filter #(= 'rewriteOf (get % '?predicate))
+                        (v/query kb (list '?predicate preferred '. '?rest) 'CxUniverse)))))
+    (is (= #{{'?predicate 'rewriteOf '?args (list preferred preferred)}}
+           (set (filter #(= 'rewriteOf (get % '?predicate))
+                        (v/query kb (list '?predicate '. '?args) 'CxUniverse)))))))
+
+(tu/deftest-kb lazy-heads-bind-canonical-endpoints-without-storing-an-equation
+  (tu/with-terms [QualifierFn namedRoot ruleRoot binaryRelation mentioned restMentioned closed]
+    (quasiquote/ensure-quasiquote-functions kb)
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (let [alias-h (v/assert kb (list 'rewriteOf namedRoot (list QualifierFn 2)) 'CxUniverse)
+          body-h (v/assert kb (list 'arity binaryRelation 2) 'CxUniverse)
+          lazy-h (assert-lazy-rewrite-head! kb binaryRelation ruleRoot QualifierFn)]
+      (is (some? lazy-h))
+      (v/assert-rule kb [(list 'rewriteOf ruleRoot '?endpoint)]
+                     (list mentioned (list 'Quasiquote (list 'Unquote '?endpoint)))
+                     'CxUniverse {:direction :forward})
+      (v/assert-rule kb [(list 'rewriteOf ruleRoot namedRoot)] (list closed ruleRoot)
+                     'CxUniverse {:direction :forward})
+      (v/assert-rule kb [(list 'rewriteOf ruleRoot '. '?tail)]
+                     (list restMentioned (list 'Quasiquote (list 'Unquote '?tail)))
+                     'CxUniverse {:direction :forward})
+      (is (true? (v/ask? kb (list mentioned (list 'Quote namedRoot)) 'CxUniverse)))
+      (is (false? (v/ask? kb (list mentioned (list 'Quote (list QualifierFn 2))) 'CxUniverse)))
+      (is (true? (v/ask? kb (list closed ruleRoot) 'CxUniverse)))
+      (is (true? (v/ask? kb (list restMentioned (list 'Quote (list namedRoot))) 'CxUniverse)))
+      (is (empty? (v/sentexes-matching kb (list 'rewriteOf ruleRoot '?raw))))
+      (v/retract! kb alias-h)
+      (is (false? (v/ask? kb (list mentioned (list 'Quote namedRoot)) 'CxUniverse)))
+      (is (true? (v/ask? kb (list mentioned (list 'Quote (list QualifierFn 2))) 'CxUniverse)))
+      (is (false? (v/ask? kb (list closed ruleRoot) 'CxUniverse)))
+      (v/assert kb (list 'rewriteOf namedRoot (list QualifierFn 2)) 'CxUniverse)
+      (is (true? (v/ask? kb (list mentioned (list 'Quote namedRoot)) 'CxUniverse)))
+      (v/retract! kb body-h)
+      (is (false? (v/ask? kb (list mentioned (list 'Quote namedRoot)) 'CxUniverse)))
+      (is (false? (v/ask? kb (list restMentioned (list 'Quote (list namedRoot))) 'CxUniverse)))
+      (is (false? (v/ask? kb (list closed ruleRoot) 'CxUniverse))))))
+
+(tu/deftest-kb lazy-head-counter-readings-are-proof-local-to-private-rivals
+  (tu/with-terms [QualifierFn namedRoot rival ruleRoot binaryRelation mentioned CxPrivate CxSibling]
+    (quasiquote/ensure-quasiquote-functions kb)
+    (doseq [reader [CxPrivate CxSibling]]
+      (v/assert kb (list 'genlCx reader 'CxUniverse) 'CxUniverse))
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (let [expression (list QualifierFn 2)]
+      (v/assert kb (list 'rewriteOf namedRoot expression) 'CxUniverse)
+      (v/assert kb (list 'arity binaryRelation 2) 'CxUniverse)
+      (is (some? (assert-lazy-rewrite-head! kb binaryRelation ruleRoot QualifierFn)))
+      (v/assert-rule kb [(list 'rewriteOf ruleRoot '?endpoint)]
+                     (list mentioned (list 'Quasiquote (list 'Unquote '?endpoint)))
+                     'CxUniverse {:direction :forward})
+      (is (true? (v/ask? kb (list mentioned (list 'Quote namedRoot)) CxPrivate)))
+      (let [rival-h (v/assert kb (list 'rewriteOf rival expression) CxPrivate)]
+        (is (false? (v/ask? kb (list mentioned (list 'Quote namedRoot)) CxPrivate)))
+        (is (true? (v/ask? kb (list mentioned (list 'Quote expression)) CxPrivate)))
+        (doseq [reader ['CxUniverse CxSibling]]
+          (is (true? (v/ask? kb (list mentioned (list 'Quote namedRoot)) reader)))
+          (is (false? (v/ask? kb (list mentioned (list 'Quote expression)) reader))))
+        (v/retract! kb rival-h)
+        (is (true? (v/ask? kb (list mentioned (list 'Quote namedRoot)) CxPrivate)))
+        (is (false? (v/ask? kb (list mentioned (list 'Quote expression)) CxPrivate)))))))
+
+(tu/deftest-kb a-private-lazy-head-is-not-authorized-by-public-discovery-contexts
+  (tu/with-terms [QualifierFn namedRoot ruleRoot binaryRelation mentioned CxPrivate CxSibling]
+    (quasiquote/ensure-quasiquote-functions kb)
+    (doseq [reader [CxPrivate CxSibling]]
+      (v/assert kb (list 'genlCx reader 'CxUniverse) 'CxUniverse))
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (v/assert kb (list 'rewriteOf namedRoot (list QualifierFn 2)) 'CxUniverse)
+    (v/assert kb (list 'arity binaryRelation 2) 'CxUniverse)
+    (is (some? (assert-lazy-rewrite-head! kb binaryRelation ruleRoot QualifierFn CxPrivate)))
+    (v/assert-rule kb [(list 'rewriteOf ruleRoot '?endpoint)]
+                   (list mentioned (list 'Quasiquote (list 'Unquote '?endpoint)))
+                   'CxUniverse {:direction :forward})
+    (is (true? (v/ask? kb (list mentioned (list 'Quote namedRoot)) CxPrivate)))
+    (doseq [reader ['CxUniverse CxSibling]]
+      (is (false? (v/ask? kb (list mentioned (list 'Quote namedRoot)) reader))))))
+
+(tu/deftest-kb lazy-heads-follow-a-new-correspondence-without-a-map
+  (tu/with-terms [QualifierFn qualifierOf preferred ruleRoot binaryRelation mentioned]
+    (quasiquote/ensure-quasiquote-functions kb)
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (v/assert kb (list 'arity binaryRelation 2) 'CxUniverse)
+    (is (some? (assert-lazy-rewrite-head! kb binaryRelation ruleRoot QualifierFn)))
+    (v/assert-rule kb [(list 'rewriteOf ruleRoot '?endpoint)]
+                   (list mentioned (list 'Quasiquote (list 'Unquote '?endpoint)))
+                   'CxUniverse {:direction :forward})
+    (let [expression (list QualifierFn 2)
+          written (list mentioned (list 'Quote expression))
+          resolved (list mentioned (list 'Quote preferred))
+          tuple-h (v/assert kb (list qualifierOf 2 preferred) 'CxUniverse)]
+      (is (true? (v/ask? kb written 'CxUniverse)))
+      (is (false? (v/ask? kb resolved 'CxUniverse)))
+      (let [declaration-h (v/assert kb (list 'functionCorrespondingPredicate QualifierFn qualifierOf 2)
+                                    'CxUniverse)]
+        (is (false? (v/ask? kb written 'CxUniverse)))
+        (is (true? (v/ask? kb resolved 'CxUniverse)))
+        (v/retract! kb tuple-h)
+        (is (true? (v/ask? kb written 'CxUniverse)))
+        (is (false? (v/ask? kb resolved 'CxUniverse)))
+        (v/assert kb (list qualifierOf 2 preferred) 'CxUniverse)
+        (is (true? (v/ask? kb resolved 'CxUniverse)))
+        (v/retract! kb declaration-h)
+        (is (true? (v/ask? kb written 'CxUniverse)))
+        (is (false? (v/ask? kb resolved 'CxUniverse))))
+      (is (empty? (filter #(= expression (nth (:sentence %) 2 nil))
+                          (v/find-sentexes kb 'natFormula)))))))
 
 (tu/deftest-kb a-counter-reading-does-not-canonicalize-an-old-output-again
   (tu/with-terms [preferred old]

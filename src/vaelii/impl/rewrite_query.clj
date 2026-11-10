@@ -189,17 +189,21 @@
   The stored lhs is not compound (wff/equality-problems), so a bound canonical lhs leads
   directly from its spellings. A right-bound goal also discovers compound rhs heads
   through existing maps/correspondence value slots, including ambiguous alias cases."
-  [kb [_ left right]]
-  (let [idx (:index kb)
+  [kb goal]
+  (let [prefix (sx/positional goal)
+        [_ left right] prefix
+        left? (< 1 (count prefix))
+        right? (< 2 (count prefix))
+        idx (:index kb)
         grounded? sx/ground-term?]
     (cond
       (sequential? left) #{}
 
-      (grounded? left)
+      (and left? (grounded? left))
       (into #{} (mapcat #(reads/as-stored-with-args idx 'rewriteOf {1 %}))
             (spellings kb left))
 
-      (grounded? right)
+      (and right? (grounded? right))
       (let [names (spellings kb right)]
         (into (into #{} (mapcat #(concat (reads/as-stored-with-args idx 'rewriteOf {1 %})
                                          (reads/as-stored-with-args idx 'rewriteOf {2 %}))) names)
@@ -212,21 +216,31 @@
 
       :else (reads/as-stored-with-functor idx 'rewriteOf))))
 
+(defn- endpoint-form
+  "Read present positional endpoints, retaining any dotted tail for the unifier."
+  [kb form reader capture?]
+  (let [read-endpoint (if capture? endpoint-reading
+                          (fn [kb reader term] [(endpoint kb reader term) nil]))
+        prefix (sx/positional form)
+        arguments (mapv (fn [position term]
+                          (if (< position 2) (read-endpoint kb reader term) [term nil]))
+                        (range) (rest prefix))]
+    [(apply list (concat [(first prefix)] (map first arguments)
+                         (when (sx/dotted? form) ['. (last form)])))
+     (into [] (mapcat second) arguments)]))
+
 (defn- read-row
   "Read ONE actual directed row through the same public endpoint computation.
   Keeping the canonical fact separate from goal unification lets a stored firing
   check its old output bindings without normalizing those old values again."
   [kb record reader capture?]
   (let [h (:id record)
-        [f a b :as stored] (:sentence record)
-        read-endpoint (if capture? endpoint-reading
-                          (fn [kb reader term] [(endpoint kb reader term) nil]))]
+        [f :as stored] (:sentence record)]
     (when (and (= 'rewriteOf f) (= 3 (count stored)))
       (for [[visible-h context-bindings] (res/matches-visible kb stored reader)
             :when (= h visible-h)
-            :let [[a a-reads] (read-endpoint kb reader a)
-                  [b b-reads] (read-endpoint kb reader b)]]
-        [(list f a b) context-bindings (into [] cat [a-reads b-reads])]))))
+            :let [[fact events] (endpoint-form kb stored reader capture?)]]
+        [fact context-bindings events]))))
 
 (defn row-readings
   "Canonical facts and resolver readings for an actual visible stored rewrite handle.
@@ -239,12 +253,7 @@
 (defn- matching-rows
   "One matcher for public bindings and optional resolver-reading capture."
   [kb goal reader capture?]
-  (let [[pred left right] goal
-        read-endpoint (if capture? endpoint-reading
-                          (fn [kb reader term] [(endpoint kb reader term) nil]))
-        [left left-reads] (read-endpoint kb reader left)
-        [right right-reads] (read-endpoint kb reader right)
-        canonical (list pred left right)
+  (let [[canonical goal-reads] (endpoint-form kb goal reader capture?)
         recs (:records kb)]
     (for [h (candidate-handles kb canonical)
           :let [record (p/get-sentex recs h)]
@@ -255,7 +264,7 @@
           :when bindings]
       (cond-> [h (merge context-bindings bindings) record]
         capture? (conj {:reader reader
-                        :events (into [] cat [left-reads right-reads row-reads])})))))
+                        :events (into goal-reads row-reads)})))))
 
 (defn matches
   "Positive rewrite witnesses as `[handle bindings stored-record]` for `goal`.
@@ -506,6 +515,27 @@
                                                      :outputs (select-keys bindings (sx/free-vars goal))}})])))
    (matches-with-readings kb goal reader)))
 
+(defn head-certificates
+  "Supported public matches of a lazy rule's already-ground consequent.
+  The raw head is derived by the rule/body proof, NOT a fabricated stored equation.
+  Its association retains that raw head so counterguards can re-read it at each reader."
+  [kb goal head rule-h reader]
+  (when (res/supporter-visible? kb rule-h reader)
+    (let [[canonical goal-reads] (endpoint-form kb goal reader true)
+          [fact head-reads] (endpoint-form kb head reader true)]
+      (when-let [bindings (res/unify canonical fact)]
+        (let [choices (keep #(contextualize-evidence kb reader %)
+                            (join-evidence [(evidence #{rule-h})]
+                                           (reading-evidence kb reader (into goal-reads head-reads))))]
+          (when (empty? choices)
+            (throw (ex-info "An admitted lazy head has no complete positive certificate"
+                            {:type ::missing-head-certificate :handle rule-h :reader reader})))
+          (for [{:keys [supports reading]} choices]
+            [bindings supports
+             (assoc reading :readers #{reader}
+                    :rewrite-reads #{{:goal goal :handle rule-h :head head
+                                      :outputs (select-keys bindings (sx/free-vars goal))}})]))))))
+
 (defn reader-contexts
   "Candidate readers across ALL source contexts, including dynamically named
   correspondence tuple predicates and their fans. Only rewrite consumers call this;
@@ -522,21 +552,31 @@
                    predicates)]
     (tax/meet-closure tx held)))
 
+(defn head-reader-contexts
+  "Lazy-head readers from normalization sources and the actual rule/body supports.
+  Including the latter keeps a source-free raw head readable in its own context.
+  This is discovery only; each head certificate and the firing's placement admit it."
+  [kb handles]
+  (tax/meet-closure
+   (reasoning/taxonomy kb)
+   (into (set (reader-contexts kb))
+         (keep #(:context (p/get-sentex (:records kb) %))) handles)))
+
 (defn counter-certificates
   "Positive counter-readings of one firing association at `reader`.
   Fixed inputs retain public endpoint normalization; ONLY the former newly bound
   outputs are compared as values. Re-normalizing those outputs would hide a change.
   This returns proof-specific guard ingredients, never a global defeat or stored edit."
-  [kb {:keys [goal handle outputs]} reader]
-  (let [[f left right] goal
-        [left left-reads] (endpoint-reading kb reader left)
-        [right right-reads] (endpoint-reading kb reader right)
-        canonical (list f left right)]
-    (for [[fact _ row-reads] (row-readings kb handle reader)
+  [kb {:keys [goal handle outputs head]} reader]
+  (let [[canonical goal-reads] (endpoint-form kb goal reader true)
+        rows (if head
+               (let [[fact events] (endpoint-form kb head reader true)] [[fact {} events]])
+               (row-readings kb handle reader))]
+    (for [[fact _ row-reads] rows
           :let [b (res/match1 kb canonical fact reader)]
           :when (or (nil? b) (not= outputs (select-keys b (keys outputs))))
           choice (join-evidence [(evidence #{handle})]
-                                (reading-evidence kb reader (into [] cat [left-reads right-reads row-reads])))
+                                (reading-evidence kb reader (into goal-reads row-reads)))
           :let [qualified (contextualize-evidence kb reader choice)]
           :when qualified]
       [(:supports qualified) (assoc (:reading qualified) :readers #{reader})])))
@@ -544,7 +584,8 @@
 (defn applicable?
   "Can this positive binary goal read an actual rewriteOf row, including an open head?"
   [kb goal reader]
-  (and (sequential? goal) (= 3 (count goal))
+  (and (sequential? goal)
+       (if (sx/dotted? goal) (<= (count (sx/positional goal)) 3) (= 3 (count goal)))
        (let [f (first goal)]
          (or (= 'rewriteOf f)
              (sx/variable? f)
@@ -563,10 +604,9 @@
                   (applicable? kb goal reader)))
    :match (fn [goal consequent bindings]
             (if (and (= 'rewriteOf (first consequent)) (= 3 (count consequent)))
-              (let [read-form (fn [[predicate left right]]
-                                (list predicate (endpoint kb reader left)
-                                      (endpoint kb reader right)))]
-                (res/subsuming-unify kb (read-form goal) (read-form consequent)
+              (let [[goal _] (endpoint-form kb goal reader false)
+                    [consequent _] (endpoint-form kb consequent reader false)]
+                (res/subsuming-unify kb goal consequent
                                      bindings reader))
               (res/subsuming-unify kb goal consequent bindings reader)))})
 

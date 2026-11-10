@@ -853,7 +853,12 @@
             tms (reasoning/tms kb)]
         (boolean
          (some (fn [a]
-                 (let [shared (into #{} (comp (remove #{a})
+                 (let [lazy-head? (and (= 'rewriteOf (nm/functor a))
+                                       (some (fn [{:keys [head goal]}]
+                                               (and head (= (res/substitute a b)
+                                                            (res/substitute goal b))))
+                                             (:rewrite-reads (:source-reading rsx))))
+                       shared (into #{} (comp (remove #{a})
                                               (remove sx/deferred-literal?)
                                               (remove #(computed-antecedent? kb %))
                                               (mapcat sx/free-vars))
@@ -861,7 +866,8 @@
                        outs   (remove shared (sx/free-vars a))
                        g      (res/substitute a (apply dissoc b outs))
                        want   (res/substitute a b)]
-                   (and (not-any? #(= want (res/substitute g %)) (provers/solve-goal kb g pctx))
+                   (and (not lazy-head?)
+                        (not-any? #(= want (res/substitute g %)) (provers/solve-goal kb g pctx))
                         (not-any? #(jtms/in? tms (first %)) (res/matches-visible kb want pctx)))))
                cs))))))
 
@@ -1738,8 +1744,11 @@
                           (sx/form-variables (cons (:consequent r) (:antecedent r))))
                  c  (sx/rename-vars (:consequent r) m)
                  lv (set (vals m))
-                 b0 (some->> (res/unify c g)
-                             (into {} (filter (fn [[k v]] (and (lv k) (sx/ground-term? v))))))]
+                 rewrite-head? (= 'rewriteOf (nm/functor c))
+                 b0 (if rewrite-head?
+                      {}
+                      (some->> (res/unify c g)
+                               (into {} (filter (fn [[k v]] (and (lv k) (sx/ground-term? v)))))))]
            :when b0
            row (binding [*lazy-solving* (conj *lazy-solving* (:id r)), *lazy-delta* nil]
                  (let [antes (mapv #(sx/rename-vars % m) (:antecedent r))]
@@ -1747,9 +1756,18 @@
                        (doall (planned-join kb antes b0 (nm/functor c)
                                             [{:bindings b0 :handles [(:id r)] :matched []}]
                                             nil stop)))))
-           :let [b (res/unify g (res/substitute c (:bindings row)))]
+           [b sources reading]
+           (let [head (res/substitute c (:bindings row))]
+             (if rewrite-head?
+               (when (sx/ground-term? head)
+                 (mapcat #(rewrite-query/head-certificates kb g head (:id r) %)
+                         (rewrite-query/head-reader-contexts kb (:handles row))))
+               [[(res/unify g head) [] nil]]))
            :when b]
-       (extend-state state b (:handles row) (into matched (:matched row)) (:reading row))))))
+       (let [body-state (extend-state state b (:handles row) (into matched (:matched row)) (:reading row))]
+         (if rewrite-head?
+           (extend-state body-state {} sources (:matched body-state) reading)
+           body-state))))))
 
 (defn- closure-bound?
   "Does `planned-join` reach closure antecedent `ante`, one of `antecedents`, with an end
@@ -3171,7 +3189,8 @@
            (lazy-firing-blocked? kb (jtms/rests-on j) (:sentence csx) pctx inf)
            (when (special/firing-informant? kb inf)
              (when-let [rsx (p/get-sentex (:records kb) inf)]
-               (rule-firing-blocked? kb rsx
+               (rule-firing-blocked? kb (cond-> rsx
+                                          (:reading j) (assoc :source-reading (:reading j)))
                                      (delay (settled-bindings kb (:bindings j) pctx))
                                      pctx))))))))
 
@@ -4901,7 +4920,8 @@
           (or (antecedent-hidden? kb (if-let [labels (seq (:label-only (:reading entry)))]
                                        (remove (set labels) (:antes entry)) (:antes entry)) pctx)
               (lazy-firing-blocked? kb (:antes entry) (:conseq entry) pctx rh)
-              (rule-firing-blocked? kb rsx
+              (rule-firing-blocked? kb (cond-> rsx
+                                         (:reading entry) (assoc :source-reading (:reading entry)))
                                     (delay (settled-bindings kb (:bindings entry) pctx))
                                     pctx))
           :blocked
