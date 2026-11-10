@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/ci-shard.sh — the test namespaces one CI shard runs.
 #
-#   scripts/ci-shard.sh <shard> <of> [--leg disk|memory] [--weights FILE]
+#   scripts/ci-shard.sh <shard> <of> [--leg disk|memory] [--weights FILE] [--history FILE]
 #                                                  # 1-based: `3 4` is the third of four
 #
 # .github/workflows/test.yml runs each backend leg across several runner VMs,
@@ -32,6 +32,21 @@
 # file, so a namespace the file does not name still runs, weighted at the mean of
 # the namespaces the file does name.  scripts/ci-weights.sh regenerates the files.
 #
+# THE ORDER INSIDE A SHARD PUTS RECURRING FAILURES FIRST.  Once the shards are
+# packed, each runs its own namespaces by policy 1 of scripts/ci-test-history.tsv
+# (or --history FILE): recurring-failure count descending, then the leg's weight
+# descending, then name ascending, so a namespace that keeps failing on CI reports
+# before the rest of the shard and the expensive ones start early.  Only the order
+# moves.  The history is read after the packing and the packing never sees it, so
+# every shard holds the same namespaces with or without it, and nothing stops
+# early: the shard still runs every namespace it was given.  The file is checked
+# in and every shard reads the same one, so a run replays from the tree alone.  A
+# history that is missing, marked `status: stale`, of another policy version,
+# empty, or has one row that is not `namespace<TAB>count` is ignored whole, and the
+# shard runs lightest, heaviest, second lightest, second heaviest, and so on, the
+# order it ran before the history existed.  The file is data: awk matches each row
+# against a pattern and nothing in it is sourced or evaluated.
+#
 # The output is one namespace per line on stdout, ready for `lein test`; the
 # summary line goes to stderr so a caller can read the list from a pipe.
 { # one brace group, read whole before it runs: scripts/lint-shellcheck.sh says why
@@ -41,10 +56,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
 
 WEIGHTS=""
+HISTORY=scripts/ci-test-history.tsv
 LEG=disk
 
 usage() {
-  echo "usage: scripts/ci-shard.sh <shard> <of> [--leg disk|memory] [--weights FILE]   # 1-based, e.g. 3 4" >&2
+  echo "usage: scripts/ci-shard.sh <shard> <of> [--leg disk|memory] [--weights FILE] [--history FILE]   # 1-based, e.g. 3 4" >&2
 }
 
 # A flag rather than an environment variable, and the reason is that
@@ -56,6 +72,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --weights) WEIGHTS="${2:?--weights needs a file}"; shift 2 ;;
     --weights=*) WEIGHTS="${1#--weights=}"; shift ;;
+    --history) HISTORY="${2:?--history needs a file}"; shift 2 ;;
+    --history=*) HISTORY="${1#--history=}"; shift ;;
     --leg) LEG="${2:?--leg needs disk or memory}"; shift 2 ;;
     --leg=*) LEG="${1#--leg=}"; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -116,23 +134,72 @@ printf '%s\n' "${namespaces[@]}" \
       }
       { printf "%012.3f\t%s\n", (($0 in secs) ? secs[$0] : mean), $0 }' \
   | LC_ALL=C sort -k1,1r -k2,2 \
-  | awk -F'\t' -v shard="$shard" -v of="$of" -v weights="$WEIGHTS" '
+  | awk -F'\t' -v shard="$shard" -v of="$of" -v weights="$WEIGHTS" -v history="$HISTORY" '
+      # The recurring-failure history, policy 1 (scripts/ci-test-history.tsv says
+      # what the numbers are).  Each row is matched whole against the pattern
+      # `namespace<TAB>count`; a row that does not match makes the whole file
+      # unusable rather than half-used, and nothing in the file is run.
+      BEGIN {
+        use = 0; why = ""; rows = 0; policy = 0; status = ""
+        nsre = "^[a-z][a-z0-9]*(-[a-z0-9]+)*([.][a-z][a-z0-9]*(-[a-z0-9]+)*)*$"
+        while ((rc = (getline line < history)) > 0) {
+          if (line == "# policy: 1") { policy++; continue }
+          if (line ~ /^# policy:/)   { why = why "policy is not 1; "; continue }
+          if (line ~ /^# status:/)   { status = status substr(line, 11) ","; continue }
+          if (line ~ /^#/ || line ~ /^[ \t]*$/) continue
+          n = split(line, f, "\t")
+          if (n != 2 || f[1] !~ nsre || f[2] !~ /^(0|[1-9][0-9]*)$/ || length(f[2]) > 6 || (f[1] in fails)) {
+            why = why "row " (rows + 1) " is not namespace<TAB>count; "; break
+          }
+          fails[f[1]] = f[2] + 0; rows++
+        }
+        if (rc < 0)                    why = "missing; "
+        else if (why == "") {
+          if (policy != 1)             why = "no \"# policy: 1\" line; "
+          else if (status != "current,") why = "status is not current; "
+          else if (rows == 0)          why = "no rows; "
+          else use = 1
+        }
+        close(history)
+      }
       { light = 1
         for (b = 2; b <= of; b++) if (load[b] < load[light]) light = b
         load[light] += $1 + 0; count[light]++
-        if (light == shard) mine[++m] = $2
+        if (light == shard) { mine[++m] = $2; cost[$2] = $1 + 0 }
+      }
+      # Does a run before b?  Policy 1: more recurring failures first, then the
+      # heavier, then the name, so two shards given one input print one order.
+      function before(a, b,   fa, fb) {
+        fa = (a in fails) ? fails[a] : 0; fb = (b in fails) ? fails[b] : 0
+        if (fa != fb) return fa > fb
+        if (cost[a] != cost[b]) return cost[a] > cost[b]
+        return a < b
       }
       END {
-        # The shard runs its namespaces lightest, heaviest, second lightest, second
-        # heaviest, and so on, so the runtime is spread evenly over the run.
-        hi = 1
-        for (lo = m; lo >= hi; lo--) {
-          print mine[lo]
-          if (hi < lo) print mine[hi++]
+        if (use) {
+          # An insertion sort: a shard holds some fifty namespaces, and awk has no
+          # portable sort of its own.
+          for (i = 2; i <= m; i++) {
+            x = mine[i]
+            for (j = i - 1; j >= 1 && before(x, mine[j]); j--) mine[j + 1] = mine[j]
+            mine[j + 1] = x
+          }
+          for (i = 1; i <= m; i++) print mine[i]
+          order = "recurring failures first, from " history
+        } else {
+          # The shard runs its namespaces lightest, heaviest, second lightest, second
+          # heaviest, and so on, so the runtime is spread evenly over the run.
+          hi = 1
+          for (lo = m; lo >= hi; lo--) {
+            print mine[lo]
+            if (hi < lo) print mine[hi++]
+          }
+          sub(/; $/, "", why)
+          order = "lightest/heaviest alternating, history " history " ignored: " why
         }
         for (b = 1; b <= of; b++) all += load[b]
-        msg = sprintf("shard %d of %d: %d of %d namespaces, %.0fs of %.0fs predicted, from %s",
-                      shard, of, count[shard] + 0, NR, load[shard] + 0, all, weights)
+        msg = sprintf("shard %d of %d: %d of %d namespaces, %.0fs of %.0fs predicted, from %s; order: %s",
+                      shard, of, count[shard] + 0, NR, load[shard] + 0, all, weights, order)
         print msg > "/dev/stderr"
       }'
 exit
