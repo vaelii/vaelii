@@ -1028,6 +1028,9 @@
 (arity_independent stable_once_true)
 (arity_independent closed_extent_predicate)
 (implies (genl time_indexed_relation at_least_binary) (not (arity_independent time_indexed_relation)))
+(set/inertRule (implies (and (arity_type ?arity) (genl ?kind ?arity)) (not (arity_independent ?kind))))
+(set/inertRule (implies (and (arity_type ?arity) (genl ?arity ?kind)) (not (arity_independent ?kind))))
+(set/inertRule (implies (and (arity_type ?arity) (disjoint ?kind ?arity)) (not (arity_independent ?kind))))
 
 ;; The rigidity kinds classify a relation by whether its instances could lose it and go
 ;; on existing: OntoClean's rigidity (+R, -R, ~R) read modally and lifted from types to
