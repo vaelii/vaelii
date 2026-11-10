@@ -82,6 +82,7 @@
             [vaelii.impl.recovery :as recovery]
             [vaelii.impl.reindex :as reindex]
             [vaelii.impl.resolution :as res]
+            [vaelii.impl.rewrite-query :as rewrite-query]
             [vaelii.impl.rete :as rete]
             [vaelii.impl.rules :as rules]
             [vaelii.impl.scenario :as scenario]
@@ -2268,7 +2269,8 @@
       (thunk)
       (binding [jtms/*support-observer*
                 {:tms tms :previous previous
-                 :active? #(nat-read/named-values-reachable? kb)
+                 :active? #(or (nat-read/named-values-reachable? kb)
+                               (rewrite-query/possible-consumers? kb))
                  :note (fn [hs departing?]
                          (swap! (reasoning/respell kb) into
                                 (map (fn [h]

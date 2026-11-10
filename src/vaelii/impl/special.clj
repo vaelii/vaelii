@@ -74,6 +74,7 @@
             [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rewrite :as rewrite]
+            [vaelii.impl.rewrite-query :as rewrite-query]
             [vaelii.impl.rules :as rules]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
@@ -505,6 +506,21 @@
   (when-let [answers (provers/support-answers-reading kb bfn s)]
     (rules-taking kb answers)))
 
+(defn rewrite-reading-rules
+  "Positive rewrite consumers moved by `source`: always a full rejoin.
+  A new rival can expose a fallback whose proof does not name it. Keep these rules
+  separate from ordinary supporting-delta routing; the no-consumer gate is in memory."
+  [kb source]
+  (when-let [census (rewrite-query/affected-consumers kb source)]
+    (not-empty (into (:antecedents census) (:watched census)))))
+
+(defn recheck-rewrite-source
+  "A support-only source change owes full rewrite-consumer rechecks. Called at the
+  existing queue drain, never from inside a network mutation."
+  [kb source]
+  (when-let [rs (rewrite-reading-rules kb source)]
+    (mark-recheck kb rs ::computed)))
+
 (defn- recheck-on-computed
   "A sentence on `bfn` arrived or left and moved what a `SupportingProver` computes: queue
   every rule `computed-reading-rules` names with the `::computed` marker, so each firing
@@ -513,8 +529,10 @@
   firing's handles name neither move (docs/inference.md, \"What a computed answer rests
   on\")."
   [kb bfn s]
-  (when-let [rs (computed-reading-rules kb bfn s)]
-    (mark-recheck kb rs ::computed)))
+  (let [ordinary (computed-reading-rules kb bfn s)
+        rewrite (rewrite-reading-rules kb bfn)
+        rs (if rewrite (into (or ordinary #{}) rewrite) ordinary)]
+    (when (seq rs) (mark-recheck kb rs ::computed))))
 
 (defn recheck-on-lengths
   "The settle pass moved the length of the relations `moved` (`arity/drain!`'s `:moved`,
@@ -1017,13 +1035,17 @@
   bucket.  The record holds `:engines` and `:defeasible`; no rule index keys on them.
   This is the add half of the structural arm of `integrate-sentex`."
   [kb handle rule-sentex]
-  (let [antes (:antecedent rule-sentex)]
+  (let [antes (:antecedent rule-sentex)
+        keys (rules/antecedent-keys antes)]
     (rules/index-rule (:index kb) handle
-                      (rules/antecedent-keys antes)
+                      keys
                       (rules/consequent-index-pred rule-sentex)
                       (:context rule-sentex))
+    (rewrite-query/note-consumer! kb :antecedents handle (boolean (some #{'rewriteOf} keys)))
     (when-let [ks (rule-recheck-keys (reasoning/taxonomy kb) rule-sentex)]
       (rules/index-exception (:index kb) handle ks)
+      (when (some #{'rewriteOf} ks)
+        (rewrite-query/note-consumer! kb :watched handle true))
       ;; `:all`: no trigger sentence, and the rule may have fired before the drain
       (mark-recheck kb [handle] :all))))
 
@@ -1119,6 +1141,8 @@
         preds (exception-recheck-predicates (reasoning/taxonomy kb) (:sentence meta-sentex))]
     (when rh
       (rules/index-exception (:index kb) rh preds)
+      (when (some #{'rewriteOf} preds)
+        (rewrite-query/note-consumer! kb :watched rh true))
       (mark-recheck kb [rh] :all)
       (restrength-firings! kb rh)
       (force-rule! kb rh))
@@ -1157,8 +1181,9 @@
         this-preds (exception-recheck-predicates (reasoning/taxonomy kb) (:sentence meta-sentex))]
     (when rh
       (rules/unindex-exception! (:index kb) rh this-preds)
-      (when-let [remaining (seq (rule-remaining-recheck-preds kb rh (:id meta-sentex)))]
-        (rules/index-exception (:index kb) rh remaining))
+      (let [remaining (rule-remaining-recheck-preds kb rh (:id meta-sentex))]
+        (when (seq remaining) (rules/index-exception (:index kb) rh remaining))
+        (rewrite-query/note-consumer! kb :watched rh (boolean (some #{'rewriteOf} remaining))))
       (mark-recheck kb [rh] :all)
       (restrength-firings! kb rh (:id meta-sentex))
       (force-rule! kb rh))))
@@ -1530,6 +1555,7 @@
                               extra (reduce disj a core)]
                           (and (not= jid (:id just))
                                (= (:informant just) (:informant j))
+                               (= (:reading just) (:reading j))
                                (seq extra)
                                (= (count core) (- (count a) (count extra)))
                                (every? #(and (jtms/in? tms %) (route-edge? kb %)) extra)
@@ -7547,6 +7573,8 @@
                                (rules/antecedent-keys (:antecedent sentex))
                                (rules/consequent-index-pred sentex)
                                (:context sentex))
+          (rewrite-query/note-consumer! kb :antecedents (:id sentex) false)
+          (rewrite-query/note-consumer! kb :watched (:id sentex) false)
           ;; Deregistration recomputes the re-check predicates from the stored sentex, so a
           ;; mismatched call cannot leave a stale posting.  An exceptWhen exception's are withdrawn
           ;; by its meta-sentex leaving.
@@ -7685,7 +7713,11 @@
             :when rebuild
             sx   (stored-declarations kb f)]
       (rebuild tax sx))
-    (tax/refresh-beliefs tax (partial jtms/in? (reasoning/tms kb)))))
+    (let [rebuilt (tax/refresh-beliefs tax (partial jtms/in? (reasoning/tms kb)))
+          census (rewrite-query/rebuild-consumers! kb)
+          consumers (into (:antecedents census) (:watched census))]
+      (when (seq consumers) (mark-recheck kb consumers :all-rejoin))
+      rebuilt)))
 
 ;; ---- derived state (docs/caches.md, "The derived-state register") ----------------
 

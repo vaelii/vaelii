@@ -348,7 +348,9 @@
           :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
           :sibling-disjoint #{} :sib-exception-index {}
           :covers {} :cover-parts {} :partitions #{}
-          :props {} :compound-targets #{} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
+          :props {} :compound-targets #{}
+          :rewrite-view-consumers {:gen 0 :antecedents #{} :watched #{}}
+          :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
           :cache-dirty #{} :cache-ctxs {}
           ;; The supporter cache (`supporters-of`), over the index's supporter families
           :supporters empty-supporters
@@ -2554,7 +2556,9 @@
          :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
          :sibling-disjoint #{} :sib-exception-index {}
          :covers {} :cover-parts {} :partitions #{}
-         :props {} :compound-targets #{} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
+         :props {} :compound-targets #{}
+         :rewrite-view-consumers {:gen 0 :antecedents #{} :watched #{}}
+         :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
          :cache-dirty #{} :cache-ctxs {}
          :supporters empty-supporters
          :cache-moves (journal/restart nil)
@@ -6096,7 +6100,7 @@
 
 (def ^:private flat-keys
   [:disjoint :disjoint-index :disjoint-metatypes :metatype-members :sibling-disjoint
-   :sib-exception-index :covers :cover-parts :partitions :props :compound-targets :inverse :negates :genl-inverse-down :genl-inverse-up :arity
+   :sib-exception-index :covers :cover-parts :partitions :props :compound-targets :rewrite-view-consumers :inverse :negates :genl-inverse-down :genl-inverse-up :arity
    :functional-in-arg :commuting :meet :distinct :cache-dirty :cache-ctxs])
 
 (caches/register-derived
@@ -6114,10 +6118,10 @@
  {:id :T2 :label "Flat declaration caches" :kind :index :keyed-by :value
   :holds-content? false
   :reads [:records :M1]
-  :retired-by {:declared :K :edge-belief :K :recover :R :image-install :R}
+  :retired-by {:declared :K :rule-indexed :K :rule-removed :K :edge-belief :K :recover :R :image-install :R}
   :computed :write :imaged? :taxonomy :at (mapv #(vector :taxonomy %) flat-keys)
   :value (fn [kb] (select-keys (caches/value-at kb [:taxonomy]) flat-keys))
-  :note "disjointness, covers, partitions, predicate properties, compound-binding presence, inverses, arities, functional arguments and commuting pairs, with their contexts"})
+  :note "disjointness, covers, partitions, predicate properties, compound-binding presence, inverses, arities, functional arguments and commuting pairs, with their contexts; plus the syntax-only positive rewrite-view consumer census, mirrored from rule antecedent/watch postings and rebuilt from those sparse postings at recovery"})
 
 (caches/register-cache
  {:cache    :taxonomy-supporters

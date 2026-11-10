@@ -50,10 +50,10 @@
                  answer)))) [true false])]
     (is (= [{:closed true
              :open '#{{?expression (OuterFn (InnerFn X))}}
-             :rewrite '#{{?expression (OuterFn (InnerFn X))}}}
+             :rewrite '#{{?expression namedRoot}}}
             {:closed true
              :open '#{{?expression (OuterFn (InnerFn X))}}
-             :rewrite '#{{?expression (OuterFn (InnerFn X))}}}]
+             :rewrite '#{{?expression namedRoot}}}]
            answers))))
 
 (deftest named-reflection-withdraws-with-its-private-alias-and-independent-demand
