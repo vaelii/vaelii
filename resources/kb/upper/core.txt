@@ -1027,11 +1027,7 @@
 (arity_independent stable_once_false)
 (arity_independent stable_once_true)
 (arity_independent closed_extent_predicate)
-;; A kind under an arity_type (time_indexed_relation is at_least_binary), above one
-;; (relation is a genl of every arity_type) or disjoint with one is not orthogonal to it.
-(set/backwardRule (implies (and (arity_type ?arity) (genl ?kind ?arity)) (not (arity_independent ?kind))))
-(set/backwardRule (implies (and (arity_type ?arity) (genl ?arity ?kind)) (not (arity_independent ?kind))))
-(set/backwardRule (implies (and (arity_type ?arity) (disjoint ?kind ?arity)) (not (arity_independent ?kind))))
+(implies (genl time_indexed_relation at_least_binary) (not (arity_independent time_indexed_relation)))
 
 ;; The rigidity kinds classify a relation by whether its instances could lose it and go
 ;; on existing: OntoClean's rigidity (+R, -R, ~R) read modally and lifted from types to
