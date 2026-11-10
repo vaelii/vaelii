@@ -465,11 +465,13 @@ streetCornerOf 1)` makes `(StreetCornerFn Xing North)` the `Lot` of
 `(streetCornerOf Lot Xing North)`.
 
 The common case is a binary predicate with the value second, and
-`(functionCorrespondingBinaryPredicate MotherFn motherOf)` states it. A `core.txt` rule
-concludes `(functionCorrespondingPredicate MotherFn motherOf 2)` from it, and the engine
+`(functionCorrespondingBinaryPredicate MotherFn (BloodKinFn motherOf))` states it. A `core.txt` rule
+concludes `(functionCorrespondingPredicate MotherFn (BloodKinFn motherOf) 2)` from it, and the engine
 reads only the ternary. The example is the shipped one: `resources/kb/upper/life.txt`
-states `motherOf` and `fatherOf` with `MotherFn` and `FatherFn` beside them, so a KB that
+declares `MotherFn` and `FatherFn` beside blood-qualified `motherOf` and `fatherOf`, so a KB that
 loads the starter can name somebody by their role before it knows their name.
+Generic `motherOf` alone does not determine a `MotherFn` value. Distinct blood mothers
+remain distinct; ambiguous admissible values select none rather than choosing or merging them.
 
 Two `functionalInArg` marks constrain the ternary. A function and predicate pair has one
 position (`functionalInArg` at 3), and a predicate and position have one function
@@ -487,7 +489,7 @@ spellings can otherwise reason with only that one.
 
 - **value → term.** A write or a firing that names `(MotherFn Muffet)` stores the
   application's own constant `K`, whatever value the corresponding facts name. A believed
-  `:monotonic` `(motherOf Muffet Mary)` reaches `K` through the merge `(rewriteOf Mary
+  `:monotonic` `((BloodKinFn motherOf) Muffet Mary)` reaches `K` through the merge `(rewriteOf Mary
   K)`, which `chain/sync-values!` derives from the fact and the declaration (the table
   below). The equality migration then restates each use of `K` as `Mary` where the fact is
   visible, and the restatement rests on the fact, so a retraction of the fact's premise
@@ -500,11 +502,11 @@ spellings can otherwise reason with only that one.
   handle). A read of an application nothing minted resolves to the one value the visible
   facts name, whatever its class.
 - **term → value.** When no value is known, the mint proceeds and the constant is
-  **projected** back onto the predicate: `(motherOf Muffet K)`, derived from the
+  **projected** back onto the predicate: `((BloodKinFn motherOf) Muffet K)`, derived from the
   declaration and `K`'s `natFormula` map under the `functionCorrespondingPredicate`
   informant and placed where CxUniverse and the declaration's context meet
   (`res/exception-aware-placements`), as a firing is placed. So the placeholder answers
-  `motherOf`'s questions instead of being a term nothing says anything about. The
+  blood-qualified `motherOf` questions instead of being a term nothing says anything about. The
   alternative — minting the constant and leaving the predicate unstated — makes the
   placeholder invisible to every question the predicate answers. The projection is
   placed after the mint stores the result types, since the projected literal is
@@ -573,7 +575,8 @@ context's merges (`nat-read/correspondence-value`). A
 merge or a copy is placed only where the placement context reads exactly one value beside
 the placeholder, through the one correspondence the merge or copy was drawn from
 (`chain/sync-values!`), decided over the believed facts that context sees. With
-`(motherOf Muffet Mary)` in `CxStory` and a write of `(MotherFn Muffet)` in `CxUniverse`:
+a single visible `((BloodKinFn motherOf) Muffet Mary)` in `CxStory` and a write of
+`(MotherFn Muffet)` in `CxUniverse`:
 
 | The fact's class | A write in `CxStory` | The placeholder minted in `CxUniverse` | A goal in `CxStory` naming the application or `K` |
 |---|---|---|---|

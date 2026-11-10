@@ -316,13 +316,13 @@
   [kb literals context leaf-solver est-override head-reader]
   (let [planned (plan/order kb literals context
                             {:est-override (if (some res/rule-head-step? literals)
-                                             (res/rule-head-estimator est-override)
+                                             (res/rule-head-estimator est-override head-reader)
                                              est-override)})]
     (reduce (fn [sols literal]
               (mapcat (fn [b]
                         (let [g (res/substitute literal b)]
                           (cond
-                            (res/rule-head-step? g)
+                            (res/rule-head-step? g head-reader)
                             (when-let [solution (res/solve-rule-head head-reader g b)]
                               [solution])
 

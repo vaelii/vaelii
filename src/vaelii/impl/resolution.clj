@@ -3369,11 +3369,29 @@
 (defn- guard-marker? [g] (and (vector? g) (= ::guard (first g))))
 (defn- marker-guard  [g] (second g))
 
+(deftype ^:private RuleHeadOwner [])
+
+(defn new-rule-head-owner
+  "Opaque identity for one search, never a caller-serializable instruction tag."
+  [] (RuleHeadOwner.))
+
 (defn rule-head-step?
-  "An internal public-head binding step, never a stored or registry literal.
-  Substitution may turn a vector into a list, so its private tag carries identity."
-  [g]
-  (and (sequential? g) (= ::rule-head (first g))))
+  "An opaque internal step; execution additionally requires this search's owner."
+  ([g] (and (sequential? g) (= 3 (count g)) (instance? RuleHeadOwner (first g))))
+  ([g head-reader]
+   (and head-reader (rule-head-step? g) (identical? (:owner head-reader) (first g)))))
+
+(defn rule-head-input-problem
+  "Refuse internal control values at public ingress; quoted mentions remain data."
+  [goal]
+  (letfn [(internal? [x]
+            (cond
+              (instance? RuleHeadOwner x) true
+              (sx/quote-form? x) false
+              (coll? x) (boolean (some internal? x))
+              :else false))]
+    (when (internal? goal)
+      {:type :shape :goal goal :message "Internal query control values are not public formula data."})))
 
 (defn rule-head-match
   "The initial rule match as [bindings pending-head-step], or nil.
@@ -3381,15 +3399,18 @@
   ordinary/private callers retain the existing whole-head unifier."
   [kb goal consequent bindings context head-reader]
   (if (and head-reader ((:defer? head-reader) goal consequent))
-    [bindings (list ::rule-head consequent goal)]
+    (let [owner (:owner head-reader)]
+      (when-not (instance? RuleHeadOwner owner)
+        (throw (ex-info "A head reader needs its search owner" {:type ::invalid-head-reader})))
+      [bindings (list owner consequent goal)])
     (when-let [b (subsuming-unify kb goal consequent bindings context)] [b nil])))
 
 (defn rule-head-estimator
   "The ordinary cost model plus readiness of private public-head binding steps.
   Only raw consequent variables are inputs; the caller goal's variables may be outputs."
-  [estimate]
+  [estimate head-reader]
   (fn [goal bound]
-    (if (rule-head-step? goal)
+    (if (rule-head-step? goal head-reader)
       (if (every? bound (sx/form-variables (second goal))) 0 plan/unbounded)
       (when estimate (estimate goal bound)))))
 
@@ -3397,7 +3418,8 @@
   "Complete an internal head step using the explicit public reader and current bindings.
   A rule's range-restricted body binds its head before this step can produce answers."
   [head-reader step bindings]
-  (when (and head-reader (sx/ground-term? (substitute (second step) bindings)))
+  (when (and (rule-head-step? step head-reader)
+             (sx/ground-term? (substitute (second step) bindings)))
     ((:match head-reader) (substitute (nth step 2) bindings)
                           (substitute (second step) bindings) bindings)))
 
@@ -3578,7 +3600,7 @@
                               :answer-vars answer-vars :names names :term-base term-base}))
                      solutions)
 
-              (rule-head-step? (first goals))
+              (rule-head-step? (first goals) head-reader)
               (let [solve #(solve-rule-head head-reader (first goals) bindings)
                     b (if (or deadline (:unbounded-leaf? frame))
                         (budget/interruptible (when-not (:unbounded-leaf? frame) deadline) solve)

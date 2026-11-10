@@ -83,7 +83,7 @@
   "Static normalizer sources. Value-predicate sources are discovered through fCP slots."
   '#{rewriteOf sameAs equals natFormula functionCorrespondingPredicate
      functionCorrespondingBinaryPredicate reifiable_function symmetric commutative
-     commutativeInArgs associative idempotent meetFunctionOf distinctInArgAndRest
+     commutativeInArgs commutativeInArgAndRest associative idempotent meetFunctionOf distinctInArgAndRest
      modal_predicate quotedArg quotedArgAndRest genl genlInverse
      inverse genlCx except defeat})
 
@@ -597,7 +597,8 @@
   A raw body-bound head is read only once its inputs are ground. Ordinary heads
   use their original unifier; this capability introduces no stored predicate."
   [kb reader]
-  {:defer? (fn [goal consequent]
+  {:owner (res/new-rule-head-owner)
+   :defer? (fn [goal consequent]
              (and (sequential? consequent)
                   (or (= 'rewriteOf (first consequent))
                       (sx/variable? (first consequent)))

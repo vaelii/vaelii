@@ -10,10 +10,99 @@
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rewrite-query :as rewrite-query]
             [vaelii.impl.rules :as rules]
+            [vaelii.impl.sentex :as sx]
             [vaelii.impl.types.prover :as prover-types]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
+
+(tu/deftest-kb caller-data-is-not-an-internal-rule-head-instruction
+  (let [forged '(:vaelii.impl.resolution/rule-head (unestablished A) (unestablished ?x))]
+    (doseq [engine [:dfs :inference]]
+      (binding [v/*query-engine* engine]
+        (is (empty? (v/prove kb forged 'CxUniverse {:max-depth 1})))))
+    (is (empty? (v/query kb forged 'CxUniverse {:max-depth 1})))
+    (tu/with-terms [instructionName hasPattern]
+      (v/assert kb (list instructionName :vaelii.impl.resolution/rule-head) 'CxUniverse)
+      (let [dynamic [(list instructionName '?instruction)
+                     '(?instruction (unestablished A) (unestablished ?x))]]
+        (is (empty? (v/query kb dynamic 'CxUniverse {:max-depth 1}))))
+      (let [quoted (list hasPattern
+                         (list 'Quote '(:vaelii.impl.resolution/rule-head
+                                        (unestablished A) (unestablished B))))]
+        (v/assert kb quoted 'CxUniverse)
+        (doseq [engine [:dfs :inference]]
+          (binding [v/*query-engine* engine]
+            (is (= #{{}} (set (v/prove kb quoted 'CxUniverse {:max-depth 1}))))))))))
+
+(tu/deftest-kb real-head-steps-keep-their-owner-through-search-transformations
+  (tu/with-terms [Target Value]
+    (let [reader (rewrite-query/head-reader kb 'CxUniverse)
+          other (rewrite-query/head-reader kb 'CxUniverse)
+          [_ step] (res/rule-head-match kb (list 'rewriteOf Target '?answer)
+                                        (list 'rewriteOf Target '?raw) {} 'CxUniverse reader)
+          ready (res/substitute step {'?raw Value})
+          [canonical _] (sx/canonical-conjunction [ready])]
+      (is (res/rule-head-step? ready reader))
+      (is (res/rule-head-step? (first canonical) reader))
+      (is (not (res/rule-head-step? ready other)))
+      (is (nil? (res/solve-rule-head other ready {})))
+      (is (= {'?answer Value} (res/solve-rule-head reader ready {})))
+      (doseq [read [#(v/prove kb ready 'CxUniverse {:max-depth 1})
+                    #(v/query kb ready 'CxUniverse {:max-depth 1})]]
+        (is (= :shape (tu/refusal-type read)))))))
+
+(tu/deftest-kb a-bounded-dfs-resume-keeps-the-head-owner-of-its-pending-stack
+  (tu/with-terms [QualifierFn namedRoot FirstRoot SecondRoot binaryRelation]
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (v/assert kb (list 'rewriteOf namedRoot (list QualifierFn 2)) 'CxUniverse)
+    (v/assert kb (list 'arity binaryRelation 2) 'CxUniverse)
+    (doseq [root [FirstRoot SecondRoot]]
+      (v/assert-rule kb [(list 'arity binaryRelation 2)]
+                     (list 'rewriteOf root (list QualifierFn 2))
+                     'CxUniverse {:direction :backward}))
+    (binding [v/*query-engine* :dfs]
+      (let [budget {:max-results 1 :max-depth 3}
+            result (loop [partial (v/prove-within kb (list 'rewriteOf '?left namedRoot) 'CxUniverse budget)
+                          answers [] rounds 0]
+                     (let [answers (into answers (:results partial))]
+                       (if (and (:resume partial) (< rounds 8))
+                         (recur (v/resume partial budget) answers (inc rounds))
+                         {:answers answers :complete? (= :complete (:status partial))})))]
+        (is (:complete? result))
+        (is (every? (set (map #(get % '?left) (:answers result))) [FirstRoot SecondRoot]))))))
+
+(tu/deftest-kb tail-commutation-rejoins-rewrite-consumers-without-moving-a-value-tuple
+  (doseq [mark-first? [true false]]
+    (tu/with-terms [PairFn qualifierOf preferred old Alpha Beta seen]
+      (v/assert kb (list 'reifiable_function PairFn) 'CxUniverse)
+      (v/assert kb (list 'functionCorrespondingPredicate PairFn qualifierOf 1) 'CxUniverse)
+      (let [tuple (list qualifierOf preferred Alpha Beta)
+            tuple-h (v/assert kb tuple 'CxUniverse {:strength :monotonic})
+            expression (list PairFn Beta Alpha)
+            goal (list 'rewriteOf preferred expression)
+            mark (list 'commutativeInArgAndRest qualifierOf 2)
+            mark-h (when mark-first? (v/assert kb mark 'CxUniverse))]
+        (is (neg? (compare (str Alpha) (str Beta))))
+        (v/assert kb (list 'rewriteOf preferred old) 'CxUniverse)
+        (v/assert-rule kb [goal] (list seen preferred) 'CxUniverse {:direction :forward})
+        (when-not mark-first?
+          (is (false? (v/ask? kb goal 'CxUniverse)))
+          (is (false? (v/ask? kb (list seen preferred) 'CxUniverse))))
+        (let [mark-h (or mark-h (v/assert kb mark 'CxUniverse))]
+          (is (true? (v/ask? kb goal 'CxUniverse)))
+          (is (true? (v/ask? kb (list seen preferred) 'CxUniverse)))
+          (is (= tuple (:sentence (v/sentex kb tuple-h))))
+          (is (false? (v/ask? kb (list 'reifiable_function qualifierOf) 'CxUniverse)))
+          (is (empty? (filter #(= PairFn (first (nth (:sentence %) 2 nil)))
+                              (v/find-sentexes kb 'natFormula))))
+          (v/retract! kb mark-h)
+          (is (false? (v/ask? kb goal 'CxUniverse)))
+          (is (false? (v/ask? kb (list seen preferred) 'CxUniverse)))
+          (v/assert kb mark 'CxUniverse)
+          (is (true? (v/ask? kb goal 'CxUniverse)))
+          (is (true? (v/ask? kb (list seen preferred) 'CxUniverse)))
+          (is (= tuple (:sentence (v/sentex kb tuple-h)))))))))
 
 (deftest an-independent-strict-use-wins-on-each-source-axis
   (let [relaxed {:nonplacing #{1} :label-only #{1} :readers #{'CxPrivate}}]

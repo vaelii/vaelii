@@ -2662,6 +2662,7 @@
   spelling arrived.  `disjunctive-goal-problem` says why an `or` is refused."
   [goal]
   (or
+   (res/rule-head-input-problem goal)
    (disjunctive-goal-problem goal)
    (sx/dot-problem :goal goal)
    (when (vector? goal)
@@ -2685,6 +2686,7 @@
   misplaced `.` is refused as at `sentence-goal-problem`."
   [goal]
   (or
+   (res/rule-head-input-problem goal)
    (disjunctive-goal-problem goal)
    (sx/dot-problem :goal goal)
    ;; `some`, not `when-some` over the first offender: a nil conjunct is a value that
@@ -3270,11 +3272,11 @@
 (defn- registry-leaf
   "What a backward search from `prove` or `query` answers a literal it does not rewrite
   with: the prover registry's bounds (`provers/registry-bounds`) and the reader of a
-  rewrite head after its body binds (`rewrite-query/head-reader`).  Merged into the DFS's
-  bounds and the node engine's opts alike."
-  [kb context]
-  (assoc (provers/registry-bounds kb context)
-         :head-reader (rewrite-query/head-reader kb context)))
+  rewrite head after its body binds (`rewrite-query/head-reader`), `head-reader` where
+  the caller holds one.  Merged into the DFS's bounds and the node engine's opts alike."
+  ([kb context] (registry-leaf kb context (rewrite-query/head-reader kb context)))
+  ([kb context head-reader]
+   (assoc (provers/registry-bounds kb context) :head-reader head-reader)))
 
 (defn- backward-within
   "One bounded run of the backward chainer over `goals` in `context`, as the anytime
@@ -4146,18 +4148,18 @@
 
 (defn- run-prove-step
   "One bounded step of the DFS prover, wrapped in the anytime contract.  The continuation
-  captures the remaining goal stack, so `resume` continues where the search stopped.  The
+  captures the remaining stack and head owner, so `resume` continues the same search. The
   bounds map is `budget/prove-bounds`, the one translation of the key set."
-  [kb context budget stack una truncated]
+  [kb context budget stack una truncated head-reader]
   (budget/check-budget! budget)
   (let [rules-fn (fn [g] (provers/candidate-rules kb g context))
-        bounds   (merge (budget/prove-bounds budget) (registry-leaf kb context)
+        bounds   (merge (budget/prove-bounds budget) (registry-leaf kb context head-reader)
                         {:truncated truncated})
         start    (System/nanoTime)
         {:keys [solutions status stack]} (binding [provers/*unenumerated* una]
                                            (res/prove-from kb rules-fn context bounds stack []))]
     (budget/from-batch solutions status start
-                       (fn [b] (run-prove-step kb context b stack una truncated)))))
+                       (fn [b] (run-prove-step kb context b stack una truncated head-reader)))))
 
 (defn prove-within
   "Anytime `prove`: run the depth-first backward chainer over `goal` (a sentence or a
@@ -4190,12 +4192,13 @@
           #(assoc (inference/unenumerated sess) :truncated? (boolean @(:truncated sess)))))
        ;; the DFS's continuation is the goal stack, so the collectors ride the closure
        (let [una       (provers/unenumerated-collector)
-             truncated (atom false)]
+             truncated (atom false)
+             leaf      (registry-leaf kb context)]
          (budget/reporting-unenumerated
           (run-prove-step kb context budget
                           (res/initial-prove-stack kb goals context
-                                                   (:est-override (provers/registry-bounds kb context)))
-                          una truncated)
+                                                   (:est-override leaf))
+                          una truncated (:head-reader leaf))
           #(assoc (provers/unenumerated-report una) :truncated? @truncated)))))))
 
 (defn resume
