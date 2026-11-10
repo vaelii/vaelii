@@ -81,6 +81,7 @@
       (doseq [t [ref dns]]
         (jtms/add-premise t 1 :monotonic)
         (jtms/add-premise t 2 :monotonic)
+        (jtms/ensure-node t 3 1)
         (binding [observe/*chain-fast-paths* cached?]
           (jtms/with-dedup-cache t
             (is (false? (jtms/has-justification? t 'rule [1 2] 3
@@ -112,6 +113,8 @@
           scope #{1 2 3 4}]
       (jtms/add-premise t 1 :monotonic)
       (jtms/add-premise t 4 :monotonic)
+      (jtms/ensure-node t 2 1)
+      (jtms/ensure-node t 3 1)
       (jtms/add-justification t j)
       (jtms/add-justification t (jtms/->just 11 4 [1] 3 nil :monotonic))
       (is (= #{1} (exc/belief-only-antecedent (jtms/justification t 10))))
