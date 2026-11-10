@@ -9,6 +9,7 @@
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
+            [vaelii.impl.rules :as rules]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.prover :as prover-types]
@@ -18,13 +19,35 @@
   "The syntax-only T2 census: rule ids reading positive rewrite queries, not verdicts."
   :rewrite-view-consumers)
 
+(defn positive-query-consumer?
+  "Do these query bodies actually read a positive rewrite literal? Dependency keys
+  such as a different guard's equality sources do not establish query syntax."
+  [queries]
+  (boolean (some #(= 'rewriteOf (first %)) (mapcat rules/watched-literals queries))))
+
+(defn watched-consumer?
+  "Actual rewrite queries of the rule and its remaining exception bodies.
+  Inspect only the named rule and sparse handle-reference postings, never all rules."
+  [kb handle dropping-id]
+  (let [rule (p/get-sentex (:records kb) handle)]
+    (or (and rule (positive-query-consumer? (rules/condition-queries-of (sx/sentence-of rule))))
+        (boolean
+         (some (fn [h]
+                 (when-let [record (p/get-sentex (:records kb) h)]
+                   (let [sentence (:sentence record)]
+                     (and (not= h dropping-id) (sx/exceptWhen-meta? sentence)
+                          (= handle (sx/exceptWhen-rule-handle sentence))
+                          (positive-query-consumer? (sx/exception-query-conjuncts sentence))))))
+               (reads/as-stored-naming-handle (:index kb) handle))))))
+
 (defn- read-consumer-census
   "Census of rule ids across ALL contexts from two sparse index postings, not verdicts.
   Actual bindings and placement still check the reader; never scan all rule records."
   [kb generation]
   {:gen generation
    :antecedents (set (reads/as-stored-rules-by-antecedent-global (:index kb) 'rewriteOf))
-   :watched (set (reads/watched-rules-on (:index kb) 'rewriteOf))})
+   :watched (into #{} (filter #(watched-consumer? kb % nil))
+                  (reads/watched-rules-on (:index kb) 'rewriteOf))})
 
 (defn rebuild-consumers!
   "Rebuild the syntax census after recovery. No belief or rule body is inferred."
@@ -119,7 +142,7 @@
         term (res/representative-term kb visible? term)]
     (binding [nat-read/*withheld* (nat-read/withheld-at kb reader)]
       (res/representative-term kb visible?
-                               (nat-read/reify-existing kb term reader)))))
+                               (nat-read/endpoint-term kb term reader)))))
 
 (defn endpoint-reading
   "The endpoint and the actual resolver readings used to compute it.
@@ -140,7 +163,7 @@
                         res/*normalization-read* record!]
                 (let [term (representative term)]
                   (binding [nat-read/*withheld* (nat-read/withheld-at kb reader)]
-                    (representative (nat-read/reify-existing kb term reader)))))]
+                    (representative (nat-read/endpoint-term kb term reader)))))]
     [value @events]))
 
 (defn- spellings
@@ -444,6 +467,9 @@
         failed (case source
                  :rewrite []
                  :correspondence [(:rewrite attempt-readings)]
+                 :unminted-correspondence [(:rewrite attempt-readings)
+                                           (:correspondence attempt-readings)
+                                           (:map attempt-readings)]
                  :map [(:rewrite attempt-readings) (:correspondence attempt-readings)]
                  :unresolved (vals attempt-readings)
                  [])
@@ -457,6 +483,7 @@
                      :let [h (:id record)]]
                  (evidence #{h} (if stated? #{h} #{}) #{h}))
           :correspondence (correspondence-evidence kb reader expression value readings true)
+          :unminted-correspondence (correspondence-evidence kb reader expression value readings false)
           :unresolved [(evidence #{})]
           (throw (ex-info "Unknown application read branch" {:type ::unknown-branch :source source})))]
     (reduce join-evidence

@@ -1044,7 +1044,7 @@
     (rewrite-query/note-consumer! kb :antecedents handle (boolean (some #{'rewriteOf} keys)))
     (when-let [ks (rule-recheck-keys (reasoning/taxonomy kb) rule-sentex)]
       (rules/index-exception (:index kb) handle ks)
-      (when (some #{'rewriteOf} ks)
+      (when (rewrite-query/positive-query-consumer? (rules/condition-queries-of (sx/sentence-of rule-sentex)))
         (rewrite-query/note-consumer! kb :watched handle true))
       ;; `:all`: no trigger sentence, and the rule may have fired before the drain
       (mark-recheck kb [handle] :all))))
@@ -1141,7 +1141,7 @@
         preds (exception-recheck-predicates (reasoning/taxonomy kb) (:sentence meta-sentex))]
     (when rh
       (rules/index-exception (:index kb) rh preds)
-      (when (some #{'rewriteOf} preds)
+      (when (rewrite-query/positive-query-consumer? (sx/exception-query-conjuncts (:sentence meta-sentex)))
         (rewrite-query/note-consumer! kb :watched rh true))
       (mark-recheck kb [rh] :all)
       (restrength-firings! kb rh)
@@ -1183,7 +1183,7 @@
       (rules/unindex-exception! (:index kb) rh this-preds)
       (let [remaining (rule-remaining-recheck-preds kb rh (:id meta-sentex))]
         (when (seq remaining) (rules/index-exception (:index kb) rh remaining))
-        (rewrite-query/note-consumer! kb :watched rh (boolean (some #{'rewriteOf} remaining))))
+        (rewrite-query/note-consumer! kb :watched rh (rewrite-query/watched-consumer? kb rh (:id meta-sentex))))
       (mark-recheck kb [rh] :all)
       (restrength-firings! kb rh (:id meta-sentex))
       (force-rule! kb rh))))

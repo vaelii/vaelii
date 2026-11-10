@@ -397,53 +397,84 @@
              (head [h] (if (reifiable-ground-nat? kb h) (read-nat head-fn h) h))]
        (walk s)))))
 
-(defn existing-term
+(defn- lookup-existing-term
   "The term ground NAT expression `E` already resolves to in reify namespace `ns` for a
-  reader in `context`, or nil: a `rewriteOf` target, the value its corresponding
-  predicate names where `context` reads it (`correspondence-value`), else the constant
-  `dedup-constant` finds.  With `write?`, the term a write in `context` stores: the
-  value and the constant as `correspondence-value` and `dedup-constant` read them for a
-  write.  A context slot (`cx/`) takes no correspondence value, which names an object."
+  reader in `context`, or nil: a `rewriteOf` target, the value its
+  corresponding predicate names where `context` reads it (`correspondence-value`), else
+  the constant `dedup-constant` finds. With `write?`, a write names the application's
+  own constant rather than its corresponding value. A context slot (`cx/`) takes no correspondence
+  value, which names an object."
+  [kb E ns context write? unminted?]
+  (if-not *application-read*
+    (if (= context-namespace ns)
+      (or (rewrite-target kb E ns context) (dedup-constant kb E ns context))
+      (or (rewrite-target kb E ns context) (correspondence-value kb E context write?)
+          (dedup-constant kb E ns context write?)
+          (when unminted? (first (sole-value kb E context)))))
+    (let [read-branch (fn [branch lookup]
+                        (let [events (atom [])
+                              observe (fn [outer]
+                                        (fn [event]
+                                          (swap! events conj event)
+                                          (when outer
+                                            (outer (assoc event :application-attempt
+                                                          [E ns context branch])))))
+                              value (binding [res/*normalization-read*
+                                              (observe res/*normalization-read*)
+                                              res/*correspondence-read*
+                                              (observe res/*correspondence-read*)
+                                              *application-read* (observe *application-read*)]
+                                      (lookup))]
+                          [value @events]))
+          [alias alias-reads] (read-branch :rewrite #(rewrite-target kb E ns context))
+          [value value-reads] (when (and (nil? alias) (not= context-namespace ns))
+                                (read-branch :correspondence #(correspondence-value kb E context write?)))
+          [mapped map-reads] (when (and (nil? alias) (nil? value))
+                               (read-branch :map #(dedup-constant kb E ns context write?)))
+          [unminted unminted-reads] (when (and unminted? (nil? alias) (nil? value) (nil? mapped))
+                                      (read-branch :unminted-correspondence
+                                                   #(first (sole-value kb E context))))
+          result (or alias value mapped unminted)]
+      (*application-read* {:expression E :namespace ns :context context
+                           :source (cond alias :rewrite value :correspondence
+                                         mapped :map unminted :unminted-correspondence
+                                         :else :unresolved)
+                           :readings (cond alias alias-reads value value-reads
+                                           mapped map-reads unminted unminted-reads :else [])
+                           :attempt-readings (cond-> {:rewrite alias-reads}
+                                               value-reads (assoc :correspondence value-reads)
+                                               map-reads (assoc :map map-reads)
+                                               unminted-reads (assoc :unminted-correspondence unminted-reads))
+                           :value result})
+      result)))
+
+(defn existing-term
+  "The existing application term, with monotonic correspondence before the stored map.
+  With `write?`, preserve the application's own constant. Never uses the no-map default
+  fallback of a public endpoint reading."
   ([kb E ns context] (existing-term kb E ns context false))
-  ([kb E ns context write?]
-   (if-not *application-read*
-     (if (= context-namespace ns)
-       (or (rewrite-target kb E ns context) (dedup-constant kb E ns context))
-       (or (rewrite-target kb E ns context) (correspondence-value kb E context write?)
-           (dedup-constant kb E ns context write?)))
-     (let [read-branch (fn [branch lookup]
-                         (let [events (atom [])
-                               observe (fn [outer]
-                                         (fn [event]
-                                           (swap! events conj event)
-                                           (when outer
-                                             (outer (assoc event :application-attempt
-                                                           [E ns context branch])))))
-                               value (binding [res/*normalization-read*
-                                               (observe res/*normalization-read*)
-                                               res/*correspondence-read*
-                                               (observe res/*correspondence-read*)
-                                               *application-read* (observe *application-read*)]
-                                       (lookup))]
-                           [value @events]))
-           [alias alias-reads] (read-branch :rewrite #(rewrite-target kb E ns context))
-           [value value-reads] (when (and (nil? alias) (not= context-namespace ns))
-                                 (read-branch :correspondence #(correspondence-value kb E context write?)))
-           [mapped map-reads] (when (and (nil? alias) (nil? value))
-                                (read-branch :map #(if (= context-namespace ns)
-                                                     (dedup-constant kb E ns context)
-                                                     (dedup-constant kb E ns context write?))))
-           result (or alias value mapped)]
-       (*application-read* {:expression E :namespace ns :context context
-                            :source (cond alias :rewrite value :correspondence
-                                          mapped :map :else :unresolved)
-                            :readings (cond alias alias-reads value value-reads
-                                            mapped map-reads :else [])
-                            :attempt-readings (cond-> {:rewrite alias-reads}
-                                                value-reads (assoc :correspondence value-reads)
-                                                map-reads (assoc :map map-reads))
-                            :value result})
-       result))))
+  ([kb E ns context write?] (lookup-existing-term kb E ns context write? false)))
+
+(defn endpoint-term
+  "Read an application endpoint without minting or replacing unknown nested syntax.
+  A unique corresponding value of any class answers only after alias and stored-map
+  lookup fail. Ordinary strict reads and write identity keep their existing rules."
+  [kb sentence context]
+  (if (any-reifiable-functions? kb)
+    (letfn [(read-application [kb form]
+              (let [E (if (sx/quoting-functor? (first form))
+                        (apply list form)
+                        (sorted-expression
+                         kb (apply list (first form)
+                                   (map #(if (reifiable-ground-nat? kb %)
+                                           (do (when *application-read*
+                                                 (*application-read* {:operation :reifiable-use
+                                                                      :function (first %)}))
+                                               (read-application kb %)) %)
+                                        (rest form)))))]
+                (or (lookup-existing-term kb E nat-namespace context false true) E)))]
+      (reify-in kb sentence read-application))
+    sentence))
 
 (defn reify-nat-for-read
   "Read-mode leaf: reify nested NAT arguments, then resolve the expression, in its

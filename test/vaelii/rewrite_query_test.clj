@@ -16,6 +16,27 @@
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
 
+(tu/deftest-kb rewrite-consumer-census-distinguishes-query-syntax-from-equality-dependencies
+  (tu/with-terms [related observed]
+    (let [body [(list related '?x '?y) '(different ?x ?y)]
+          ordinary (v/assert-rule kb body (list observed '?x '?y) 'CxUniverse {:direction :forward})
+          watched (v/assert-rule kb (conj body '(unknown (rewriteOf ?x ?y)))
+                                 (list observed '?y '?x) 'CxUniverse {:direction :forward})
+          direct (v/assert-rule kb [(list related '?x '?y) '(rewriteOf ?x ?y) '(different ?x ?y)]
+                                (list observed '?x '?x) 'CxUniverse {:direction :forward})
+          check! (fn [census]
+                   (is (not (contains? (:watched census) ordinary)))
+                   (is (contains? (:watched census) watched))
+                   (is (contains? (:antecedents census) direct)))]
+      (is (not (rewrite-query/watched-consumer? kb ordinary nil)))
+      (is (rewrite-query/watched-consumer? kb watched nil))
+      (check! (rewrite-query/rebuild-consumers! kb))
+      (let [meta-h (v/assert kb (sx/exceptWhen-meta ['(rewriteOf ?x ?y)] ordinary) 'CxUniverse)]
+        (is (rewrite-query/watched-consumer? kb ordinary nil))
+        (is (contains? (:watched (rewrite-query/rebuild-consumers! kb)) ordinary))
+        (v/retract! kb meta-h)
+        (check! (rewrite-query/rebuild-consumers! kb))))))
+
 (tu/deftest-kb caller-data-is-not-an-internal-rule-head-instruction
   (let [forged '(:vaelii.impl.resolution/rule-head (unestablished A) (unestablished ?x))]
     (doseq [engine [:dfs :inference]]
@@ -174,7 +195,7 @@
     (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
     (let [declaration (v/assert kb (list 'functionCorrespondingPredicate QualifierFn qualifierOf 2)
                                 'CxUniverse)
-          tuple (v/assert kb (list qualifierOf base namedRoot) 'CxUniverse)
+          tuple (v/assert kb (list qualifierOf base namedRoot) 'CxUniverse {:strength :monotonic})
           events (atom [])
           expression (list QualifierFn base)]
       (is (= namedRoot
@@ -225,7 +246,7 @@
     (v/assert kb (list 'symmetric narrowQualifierOf) 'CxUniverse)
     (let [declaration (v/assert kb (list 'functionCorrespondingPredicate QualifierFn qualifierOf 2)
                                 'CxUniverse)
-          h (v/assert kb (list narrowQualifierOf base namedRoot) 'CxUniverse)
+          h (v/assert kb (list narrowQualifierOf base namedRoot) 'CxUniverse {:strength :monotonic})
           expression (list QualifierFn base)]
       (doseq [hierarchical? [false true]]
         (binding [res/*hierarchical-retrieval* hierarchical?]
@@ -244,6 +265,47 @@
                             (= narrowQualifierOf (first (get-in % [:lineage :pattern]))))
                       admitted))))))))
 
+(tu/deftest-kb endpoint-default-values-do-not-change-existing-term-or-write-identity
+  (tu/with-terms [QualifierFn qualifierOf base preferred rival related Other]
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (let [declaration (v/assert kb (list 'functionCorrespondingPredicate QualifierFn qualifierOf 2)
+                                'CxUniverse)
+          tuple-h (v/assert kb (list qualifierOf base preferred) 'CxUniverse)
+          expression (list QualifierFn base)
+          [value readings] (rewrite-query/endpoint-reading kb 'CxUniverse expression)
+          evidence (rewrite-query/reading-evidence kb 'CxUniverse readings)]
+      (is (nil? (nat-read/existing-term kb expression "nat" 'CxUniverse)))
+      (is (nil? (nat-read/existing-term kb expression "nat" 'CxUniverse true)))
+      (is (= preferred value (rewrite-query/endpoint kb 'CxUniverse expression)))
+      (is (some #(and (= :unminted-correspondence (:source %)) (= preferred (:value %))) readings))
+      (is (some #(and (contains? (:supports %) declaration)
+                      (contains? (:supports %) tuple-h)) evidence))
+      (is (empty? (v/find-sentexes kb 'natFormula)))
+      (let [rival-h (v/assert kb (list qualifierOf base rival) 'CxUniverse)]
+        (is (= expression (rewrite-query/endpoint kb 'CxUniverse expression)))
+        (v/retract! kb rival-h))
+      (v/assert kb (list related expression Other) 'CxUniverse)
+      (let [own (nat-read/dedup-constant kb expression "nat" 'CxUniverse true)]
+        (is (nat-read/reified-object-symbol? own))
+        (is (= own (rewrite-query/endpoint kb 'CxUniverse expression)
+               (nat-read/existing-term kb expression "nat" 'CxUniverse true)))))))
+
+(tu/deftest-kb endpoint-preserves-unknown-nested-syntax-for-an-outer-alias
+  (tu/with-terms [OuterFn InnerFn X preferred]
+    (doseq [f [OuterFn InnerFn]]
+      (v/assert kb (list 'reifiable_function f) 'CxUniverse))
+    (let [inner (list InnerFn X)
+          expression (list OuterFn inner)
+          alias-h (v/assert kb (list 'rewriteOf preferred expression) 'CxUniverse)
+          [value readings] (rewrite-query/endpoint-reading kb 'CxUniverse expression)]
+      (is (= preferred value (rewrite-query/endpoint kb 'CxUniverse expression)))
+      (is (some #(and (= :rewrite (:source %)) (= preferred (:value %))) readings))
+      (is (= inner (rewrite-query/endpoint kb 'CxUniverse inner)))
+      (is (= nat-read/no-match (nat-read/reify-nat-for-read kb inner "nat" 'CxUniverse)))
+      (is (empty? (v/find-sentexes kb 'natFormula)))
+      (v/retract! kb alias-h)
+      (is (= expression (rewrite-query/endpoint kb 'CxUniverse expression))))))
+
 (tu/deftest-kb a-rewrite-binding-roundtrips-and-composes-before-projection
   (tu/with-terms [preferred old marked unrelated]
     (v/assert kb (list marked preferred) 'CxUniverse)
@@ -253,8 +315,8 @@
       (doseq [answer answers]
         (is (true? (v/ask? kb (list 'rewriteOf preferred (get answer '?x)) 'CxUniverse))))
       (is (= #{{'?x preferred}}
-             (set (v/query kb (list 'and (list 'rewriteOf preferred '?x)
-                                    (list marked '?x)) 'CxUniverse)))))
+             (set (v/query kb [(list 'rewriteOf preferred '?x)
+                               (list marked '?x)] 'CxUniverse)))))
     (testing "a variable predicate does not expose the retired spelling"
       (let [bindings (filter #(= 'rewriteOf (get % '?p))
                              (v/query kb (list '?p preferred '?x) 'CxUniverse))]
