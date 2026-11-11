@@ -120,3 +120,24 @@
     (let [answers (v/prove kb (list qQ A '?m) C)]
       (is (= 1 (count answers)))
       (is (sx/variable? (get (first answers) '?m))))))
+
+;; Use/mention for a skolem witness (aspirational, Iris).  The witness for "a cat named
+;; #31-1764 exists" stands for a cat: it is a cat, and neither an expression nor an
+;; indeterminate term.  Quoted, it is the term itself: an expression and an indeterminate
+;; term, and not a cat.  Today the engine reads indeterminacy on the witness (use) rather
+;; than on its quotation (mention), and leaves the witness's own expression status unknown.
+(tu/deftest-kb ^:red a-skolem-witness-denotes-a-cat-and-its-quotation-is-the-indeterminate-term
+  (v/assert-rule kb '[(stuffie_name ?n)] '(exists ?c (and (cat ?c) (nameString ?c ?n)))
+                 C {:direction :forward})
+  (v/assert kb '(stuffie_name "#31-1764") C {:strength :monotonic})
+  (let [k       (witness kb '(nameString ?c "#31-1764") 1)
+        verdict #(:verdict (v/argue kb % C))]
+    (is (= 'SkolemFn (first (nat/nat-expression kb k))) "the witness is a reified SkolemFn NAT")
+    (testing "the witness itself is used: it denotes a cat"
+      (is (= :true (verdict (list 'cat k))))
+      (is (= :false (verdict (list 'expression k))))
+      (is (= :false (verdict (list 'indeterminate_term k)))))
+    (testing "the quoted witness is mentioned: it is a term"
+      (is (= :false (verdict (list 'cat (list 'Quote k)))))
+      (is (= :true (verdict (list 'expression (list 'Quote k)))))
+      (is (= :true (verdict (list 'indeterminate_term (list 'Quote k))))))))
