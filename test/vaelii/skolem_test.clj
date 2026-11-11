@@ -121,7 +121,7 @@
       (is (= 1 (count answers)))
       (is (sx/variable? (get (first answers) '?m))))))
 
-;; Use/mention for a skolem witness (aspirational, Iris).  The witness for "a cat named
+;; Use/mention for a skolem witness (aspirational).  The witness for "a cat named
 ;; #31-1764 exists" stands for a cat: it is a cat, and neither an expression nor an
 ;; indeterminate term.  Quoted, it is the term itself: an expression and an indeterminate
 ;; term, and not a cat.  Where false is expected, unknown is also accepted.  Today the
