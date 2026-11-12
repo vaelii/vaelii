@@ -54,12 +54,12 @@ ns_timings() {
 # interleaved runs only the first pays it, and the median is a warm time.  A
 # namespace with fewer than three rerun rows takes the median of the rows it has.
 ns_timings_rerun() {
-  local out="$1" rerun i
-  local -a runs=()
+  local out="$1" rerun
+  local -a runs
   shift
   [[ $# -gt 0 ]] || return 0
   rerun=$(mktemp) || return 1
-  for i in 1 2 3; do runs+=("$@"); done
+  runs=("$@" "$@" "$@")
   if (set -o pipefail; lein test "${runs[@]}" 2>&1 | ns_timings "$rerun"); then
     awk -F'\t' -v OFS='\t' '
       NR == FNR { if ($1 != "") { n[$1]++; v[$1, n[$1]] = $2 + 0 }; next }
