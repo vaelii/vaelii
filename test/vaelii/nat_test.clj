@@ -721,6 +721,31 @@
                               (ask (list 'rewriteOf Duo (list PairFn '?x y)))])
             (str "the rewrite payload, mark first: " mark-first?))))))
 
+(tu/deftest-kb an-open-commuted-rewrite-pattern-binds-in-both-engines
+  ;; The stored row's application reads as its own lhs, so an open application pattern
+  ;; is answered by proposing its variables and re-reading the instance canonically.
+  (doseq [mark-first? [true false]]
+    (tu/with-terms [PairFn pairOf Ada Bea Cid Duo picked]
+      (let [[x y] (sort-by str [Ada Bea])
+            mark  #(v/assert kb (list 'commutative PairFn) 'CxUniverse)]
+        (v/assert kb (list 'binary_function PairFn) 'CxUniverse)
+        (v/assert kb (list 'reifiable_function PairFn) 'CxUniverse)
+        (when mark-first? (mark))
+        (v/assert kb (list 'functionCorrespondingPredicate PairFn pairOf 3) 'CxUniverse)
+        (v/assert kb (list picked (list PairFn y x)) 'CxUniverse)
+        (v/assert kb (list 'rewriteOf Duo (list PairFn y Cid)) 'CxUniverse)
+        (when-not mark-first? (mark))
+        (doseq [engine [:dfs :inference]]
+          (binding [v/*query-engine* engine]
+            (let [ask (fn [g] (set (map #(get % '?x) (v/prove kb g 'CxUniverse {:max-depth 1}))))
+                  why (str engine ", mark first: " mark-first?)]
+              (is (= #{Cid} (ask (list 'rewriteOf Duo (list PairFn y '?x)))) why)
+              (is (= #{Cid} (ask (list 'rewriteOf Duo (list PairFn '?x y)))) why)
+              (testing "closed endpoints keep their canonical reading"
+                (is (v/provable? kb (list 'rewriteOf Duo (list PairFn y Cid)) 'CxUniverse {:max-depth 1}) why)
+                (is (v/provable? kb (list 'rewriteOf Duo (list PairFn Cid y)) 'CxUniverse {:max-depth 1}) why)
+                (is (= #{Duo} (ask (list 'rewriteOf Duo '?x))) why)))))))))
+
 (tu/deftest-kb two-rewrite-declarations-mint-fresh-rather-than-electing-one
   (tu/with-terms [MotherFn Muffet Mary Maria]
     (v/assert kb (list 'reifiable_function MotherFn) 'CxUniverse)

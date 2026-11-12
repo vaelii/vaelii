@@ -5,6 +5,7 @@
   (:require [vaelii.impl.decide.tuple :as tuple]
             [vaelii.impl.inherit :as inherit]
             [vaelii.impl.jtms :as jtms]
+            [vaelii.impl.naming :as nm]
             [vaelii.impl.nat-read :as nat-read]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reads :as reads]
@@ -273,21 +274,59 @@
   (when-let [record (p/get-sentex (:records kb) handle)]
     (read-row kb record reader true)))
 
+(defn- open-application-vars
+  "Variables of present endpoints written as nonground applications. Such an endpoint
+  stays structural, so it cannot unify with a row whose application reads as a value."
+  [goal]
+  (into #{}
+        (comp (take 2)
+              (filter #(and (seq? %) (not (sx/ground-term? %))))
+              (mapcat sx/free-vars))
+        (rest (sx/positional goal))))
+
+(defn- open-application-rows
+  "Rows answering an open application endpoint. Raw retrieval (with its argument
+  arrangements) only PROPOSES values for that application's variables; the instantiated
+  goal is then read and unified canonically, exactly as a closed goal is. Proposed values
+  are returned through their public endpoint, so a retired spelling is never bound."
+  [kb goal reader capture? vars]
+  (let [recs (:records kb)]
+    (for [[h raw] (res/matches-visible kb goal reader)
+          :let [proposal (select-keys raw vars)]
+          :when (and (= (count vars) (count proposal))
+                     (every? sx/ground-term? (vals proposal)))
+          :let [record (p/get-sentex recs h)
+                [canonical goal-reads] (endpoint-form kb (res/substitute goal proposal)
+                                                      reader capture?)]
+          [fact context-bindings row-reads] (read-row kb record reader capture?)
+          :let [bindings (res/match1 kb canonical fact reader)]
+          :when bindings]
+      (cond-> [h (merge context-bindings bindings
+                        (update-vals proposal #(endpoint kb reader %)))
+               record]
+        capture? (conj {:reader reader
+                        :events (into goal-reads row-reads)})))))
+
 (defn- matching-rows
   "One matcher for public bindings and optional resolver-reading capture."
   [kb goal reader capture?]
   (let [[canonical goal-reads] (endpoint-form kb goal reader capture?)
-        recs (:records kb)]
-    (for [h (candidate-handles kb canonical)
-          :let [record (p/get-sentex recs h)]
-          ;; Reuse raw retrieval's visibility/exception/retirement contract. Asking
-          ;; the exact ground row does not claim the canonical row was stored.
-          [fact context-bindings row-reads] (read-row kb record reader capture?)
-          :let [bindings (res/match1 kb canonical fact reader)]
-          :when bindings]
-      (cond-> [h (merge context-bindings bindings) record]
-        capture? (conj {:reader reader
-                        :events (into goal-reads row-reads)})))))
+        recs (:records kb)
+        vars (open-application-vars goal)
+        rows (for [h (candidate-handles kb canonical)
+                   :let [record (p/get-sentex recs h)]
+                   ;; Reuse raw retrieval's visibility/exception/retirement contract. Asking
+                   ;; the exact ground row does not claim the canonical row was stored.
+                   [fact context-bindings row-reads] (read-row kb record reader capture?)
+                   :let [bindings (res/match1 kb canonical fact reader)]
+                   :when bindings]
+               (cond-> [h (merge context-bindings bindings) record]
+                 capture? (conj {:reader reader
+                                 :events (into goal-reads row-reads)})))]
+    (if (seq vars)
+      (nm/distinct-by (fn [[h bindings]] [h bindings])
+                      (concat rows (lazy-seq (open-application-rows kb goal reader capture? vars))))
+      rows)))
 
 (defn matches
   "Positive rewrite witnesses as `[handle bindings stored-record]` for `goal`.
