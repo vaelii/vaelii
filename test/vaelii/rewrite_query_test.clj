@@ -708,3 +708,58 @@
       (v/retract! kb declaration)
       (is (false? (v/ask? kb (list mentioned (list 'Quote preferred)) CxPrivate)))
       (v/retract! kb tuple))))
+
+(defn- assert-open-application-row!
+  "The commuted PairFn row whose application `(PairFn y Cid)` reads as its own lhs Duo."
+  [kb mark-first? PairFn pairOf picked x y Cid Duo]
+  (let [mark #(v/assert kb (list 'commutative PairFn) 'CxUniverse)]
+    (v/assert kb (list 'binary_function PairFn) 'CxUniverse)
+    (v/assert kb (list 'reifiable_function PairFn) 'CxUniverse)
+    (when mark-first? (mark))
+    (v/assert kb (list 'functionCorrespondingPredicate PairFn pairOf 3) 'CxUniverse)
+    (v/assert kb (list picked (list PairFn y x)) 'CxUniverse)
+    (v/assert kb (list 'rewriteOf Duo (list PairFn y Cid)) 'CxUniverse)
+    (when-not mark-first? (mark))))
+
+(tu/deftest-kb an-open-application-forward-answer-has-no-counter-reading-of-itself
+  (doseq [mark-first? [true false]]
+    (tu/with-terms [PairFn pairOf Ada Bea Cid Duo picked]
+      (let [[x y] (sort-by str [Ada Bea])
+            goal (list 'rewriteOf Duo (list PairFn y '?x))
+            why (str "mark first: " mark-first?)]
+        (assert-open-application-row! kb mark-first? PairFn pairOf picked x y Cid Duo)
+        (v/assert-rule kb [goal] (list picked '?x) 'CxUniverse {:direction :forward})
+        (is (true? (v/ask? kb (list picked Cid) 'CxUniverse)) why)
+        (let [certificates (vec (rewrite-query/match-certificates kb goal 'CxUniverse))]
+          (is (= #{Cid} (set (map #(get (first %) '?x) certificates))) why)
+          (doseq [[_ _ reading] certificates
+                  association (:rewrite-reads reading)]
+            (is (empty? (rewrite-query/counter-certificates kb association 'CxUniverse)) why)))))))
+
+(tu/deftest-kb a-private-alias-of-an-open-application-output-rechecks-only-that-reader
+  (tu/with-terms [PairFn pairOf Ada Bea Cid Cee Duo picked mentioned CxPrivate CxSibling]
+    (quasiquote/ensure-quasiquote-functions kb)
+    (doseq [reader [CxPrivate CxSibling]]
+      (v/assert kb (list 'genlCx reader 'CxUniverse) 'CxUniverse))
+    (let [[x y] (sort-by str [Ada Bea])
+          goal (list 'rewriteOf Duo (list PairFn y '?x))
+          quoted (list mentioned (list 'Quote Cid))]
+      (assert-open-application-row! kb true PairFn pairOf picked x y Cid Duo)
+      (v/assert-rule kb [goal] (list mentioned (list 'Quasiquote (list 'Unquote '?x)))
+                     'CxUniverse {:direction :forward})
+      (doseq [reader ['CxUniverse CxPrivate CxSibling]]
+        (is (true? (v/ask? kb quoted reader)) (str reader)))
+      (let [[[_ _ reading]] (rewrite-query/match-certificates kb goal 'CxUniverse)
+            association (first (:rewrite-reads reading))
+            alias-h (v/assert kb (list 'rewriteOf Cee Cid) CxPrivate)]
+        (is (false? (v/ask? kb quoted CxPrivate)))
+        (doseq [reader ['CxUniverse CxSibling]]
+          (is (true? (v/ask? kb quoted reader)) (str reader)))
+        (let [counter (vec (rewrite-query/counter-certificates kb association CxPrivate))]
+          (is (seq counter))
+          (is (every? #(contains? (first %) alias-h) counter)))
+        (is (empty? (rewrite-query/counter-certificates kb association 'CxUniverse)))
+        (v/retract! kb alias-h)
+        (doseq [reader ['CxUniverse CxPrivate CxSibling]]
+          (is (true? (v/ask? kb quoted reader)) (str reader)))
+        (is (empty? (rewrite-query/counter-certificates kb association CxPrivate)))))))

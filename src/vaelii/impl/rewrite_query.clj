@@ -284,11 +284,22 @@
               (mapcat sx/free-vars))
         (rest (sx/positional goal))))
 
+(defn- proposed-values
+  "Proposed raw values read through their public endpoint, with the readings used."
+  [kb reader proposal capture?]
+  (reduce-kv (fn [[values events] v term]
+               (let [[value reads] (if capture?
+                                     (endpoint-reading kb reader term)
+                                     [(endpoint kb reader term) nil])]
+                 [(assoc values v value) (into events reads)]))
+             [{} []] proposal))
+
 (defn- open-application-rows
   "Rows answering an open application endpoint. Raw retrieval (with its argument
   arrangements) only PROPOSES values for that application's variables; the instantiated
   goal is then read and unified canonically, exactly as a closed goal is. Proposed values
-  are returned through their public endpoint, so a retired spelling is never bound."
+  are returned through their public endpoint, so a retired spelling is never bound.
+  A captured row keeps its raw proposal, so a counter-reading rechecks this same goal."
   [kb goal reader capture? vars]
   (let [recs (:records kb)]
     (for [[h raw] (res/matches-visible kb goal reader)
@@ -300,12 +311,11 @@
                                                       reader capture?)]
           [fact context-bindings row-reads] (read-row kb record reader capture?)
           :let [bindings (res/match1 kb canonical fact reader)]
-          :when bindings]
-      (cond-> [h (merge context-bindings bindings
-                        (update-vals proposal #(endpoint kb reader %)))
-               record]
-        capture? (conj {:reader reader
-                        :events (into goal-reads row-reads)})))))
+          :when bindings
+          :let [[values value-reads] (proposed-values kb reader proposal capture?)]]
+      (cond-> [h (merge context-bindings bindings values) record]
+        capture? (conj {:reader reader :proposal proposal
+                        :events (-> goal-reads (into row-reads) (into value-reads))})))))
 
 (defn- matching-rows
   "One matcher for public bindings and optional resolver-reading capture."
@@ -569,7 +579,7 @@
   adding normalization sources to unrelated prover-registry summaries."
   [kb goal reader]
   (mapcat
-   (fn [[h bindings _ {:keys [events]}]]
+   (fn [[h bindings _ {:keys [events proposal]}]]
      (let [choices (keep #(contextualize-evidence kb reader %)
                          (join-evidence [(evidence #{h})] (reading-evidence kb reader events)))]
        (when (empty? choices)
@@ -577,8 +587,9 @@
                          {:type ::missing-certificate :handle h :reader reader})))
        (for [{:keys [supports reading]} choices]
          [bindings supports (assoc reading :readers #{reader}
-                                   :rewrite-reads #{{:goal goal :handle h
-                                                     :outputs (select-keys bindings (sx/free-vars goal))}})])))
+                                   :rewrite-reads #{(cond-> {:goal goal :handle h
+                                                             :outputs (select-keys bindings (sx/free-vars goal))}
+                                                      proposal (assoc :proposal proposal))})])))
    (matches-with-readings kb goal reader)))
 
 (defn head-certificates
@@ -632,17 +643,21 @@
   "Positive counter-readings of one firing association at `reader`.
   Fixed inputs retain public endpoint normalization; ONLY the former newly bound
   outputs are compared as values. Re-normalizing those outputs would hide a change.
-  This returns proof-specific guard ingredients, never a global defeat or stored edit."
-  [kb {:keys [goal handle outputs head]} reader]
-  (let [[canonical goal-reads] (endpoint-form kb goal reader true)
+  This returns proof-specific guard ingredients, never a global defeat or stored edit.
+  An open application association rechecks its raw proposal as its matcher did."
+  [kb {:keys [goal handle outputs head proposal]} reader]
+  (let [[canonical goal-reads] (endpoint-form kb (cond-> goal proposal (res/substitute proposal))
+                                              reader true)
+        [values value-reads] (proposed-values kb reader proposal true)
         rows (if head
                (let [[fact events] (endpoint-form kb head reader true)] [[fact {} events]])
                (row-readings kb handle reader))]
     (for [[fact _ row-reads] rows
-          :let [b (res/match1 kb canonical fact reader)]
+          :let [b (some-> (res/match1 kb canonical fact reader) (merge values))]
           :when (or (nil? b) (not= outputs (select-keys b (keys outputs))))
           choice (join-evidence [(evidence #{handle})]
-                                (reading-evidence kb reader (into goal-reads row-reads)))
+                                (reading-evidence kb reader (-> goal-reads (into row-reads)
+                                                                (into value-reads))))
           :let [qualified (contextualize-evidence kb reader choice)]
           :when qualified]
       [(:supports qualified) (assoc (:reading qualified) :readers #{reader})])))
