@@ -1157,12 +1157,15 @@
           :let [[_ a b] (res/substitute ante bindings)]
           [{ks :keys links :links} bnd] (routes a b)
           sups (route-supporters kb ks)
-          ;; a route over the stated sentence the literal names, with no edge climbed, is
-          ;; the matcher's own hit, which the arrival filter already admits or declines
+          ;; a stated route climbing no edge is the matcher's own hit, the mirror's while
+          ;; a mark licenses it (`read-marks`); the arrival filter admits or declines it
           :when (not (and (empty? links)
-                          (every? #(= (res/substitute ante (merge bindings bnd))
-                                      (:sentence (p/get-sentex (:records kb) (first %))))
-                                  sups)))]
+                          (let [g (res/substitute ante (merge bindings bnd))]
+                            (every? #(let [s (:sentence (p/get-sentex (:records kb) (first %)))]
+                                       (or (= g s)
+                                           (some? (inherit/permuted-read-supports
+                                                   kb s (vec (rest g)) '?ctx))))
+                                    sups))))]
       {:bindings (merge bindings bnd)
        :handles  (into handles (map first) sups)
        :matched  (into matched (map #(vector ak nil %)) links)})))

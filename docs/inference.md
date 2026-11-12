@@ -1017,7 +1017,9 @@ forward chaining agree about the rule.
   the `sibling_disjoint` mark) are antecedents, one believed supporter per declaration.
   The `genl` subsumptions the route climbs are closure links, placed and named as the
   closure arm's are. Retracting the cover declaration or an edge of the named path withdraws the
-  firing, and the re-join below re-derives it over a second path.
+  firing, and the re-join below re-derives it over a second path. A route over the stated
+  sentence that climbs no subsumption is left to the matcher. That covers the sentence read
+  mirrored while a mark licenses the read, and the matcher's firing names the mark.
 - **An exception or a `genl` edge blocks at the conclusion's context.** The join reads
   no `siblingDisjointException`, and a mark spares two types one of which is a `genl` of
   the other. A firing whose conclusion's context reads the pair not separated, with no
