@@ -1876,8 +1876,9 @@
 ;; A not_assertible relation has no stored sentence, so a mark that places or treats a
 ;; relation's stored sentences has no not_assertible member: abduction stores the sentence
 ;; it assumes, the forced and decontextualized marks place stored sentences, a
-;; target_following_predicate's meta-sentex is retracted with the sentex it names, and a
-;; documentation predicate's sentences are the documentation the KB stores.
+;; target_following_predicate's meta-sentex is retracted with the sentex it names, a
+;; documentation predicate's sentences are the documentation the KB stores, and a
+;; kinship predicate's tuples, generic, blood or chosen, are stored when asserted.
 (set/monotonic (disjoint not_assertible abducible_predicate))
 (set/monotonic (disjoint not_assertible decontextualized_predicate))
 (set/monotonic (disjoint not_assertible forced_decontextualized_predicate))
@@ -1885,6 +1886,9 @@
 (set/monotonic (disjoint not_assertible forced_monotonic_between_predicates))
 (set/monotonic (disjoint not_assertible target_following_predicate))
 (set/monotonic (disjoint not_assertible documentation_predicate))
+(set/monotonic (disjoint not_assertible generic_kinship_predicate))
+(set/monotonic (disjoint not_assertible blood_kinship_predicate))
+(set/monotonic (disjoint not_assertible chosen_kinship_predicate))
 ;; A classifier whose members are stated content has no not_assertible member: the arity
 ;; check reads the arity types' stored bindings, the definitional blocks state the order
 ;; types, the relation kinds and the arity-independent kinds, and the classifiers of
