@@ -412,6 +412,26 @@
           (is (holds? kb (list 'disjoint fish_ whale_) U) "the query answers the specialized pair")
           (is (= #{[fish_ mammal_] [mammal_ fish_]} (fired-pairs kb keptApart [fish_ mammal_ whale_]))))))))
 
+(tu/deftest-kb a-disjoint-antecedent-with-a-constant-matches-it-in-either-position
+  ;; The rule names the constant second and the stated pair names it first, so only
+  ;; the symmetric read binds ?x for the first rule.  Without `(symmetric disjoint)` only
+  ;; the rule naming the constant first fires.
+  (doseq [order (oi/permutations [:second :first :disjoint])]
+    (testing (str order)
+      (tu/with-terms [fish_ mammal_ apartFromFish apartFromFish2]
+        (let [step {:second   #(v/assert kb (list 'set/forwardRule
+                                                  (list 'implies (list 'disjoint '?x fish_)
+                                                        (list apartFromFish '?x)))
+                                         U)
+                    :first    #(v/assert kb (list 'set/forwardRule
+                                                  (list 'implies (list 'disjoint fish_ '?x)
+                                                        (list apartFromFish2 '?x)))
+                                         U)
+                    :disjoint #(v/assert kb (list 'disjoint fish_ mammal_) U)}]
+          (doseq [k order] ((step k)))
+          (is (holds? kb (list apartFromFish mammal_) U) "the constant read in second position")
+          (is (holds? kb (list apartFromFish2 mammal_) U) "the constant read in first position"))))))
+
 (tu/deftest-kb a-disjoint-antecedent-another-literal-names-fires-on-every-separated-pair-in-every-order
   ;; `(genl ?a animal)` names ?a alone.  The edge arriving last moves `whale`, so only a
   ;; re-join binding ?b to it reads `[fish whale]`.
