@@ -396,6 +396,9 @@
         (v/sentexes-matching kb (list p '?x '?y) U)))
 
 (tu/deftest-kb a-disjoint-antecedent-no-other-literal-names-fires-on-the-stated-pair-in-every-order
+  ;; `disjoint` is declared symmetric, so the matcher reads the stored pair in both
+  ;; argument orders (docs/inference.md) and the rule fires on each.  The specialized
+  ;; pair the query answers is not stored, so nothing fires on it.
   (doseq [order (oi/permutations [:rule :disjoint :edge])]
     (testing (str order)
       (tu/with-terms [fish_ mammal_ whale_ keptApart]
@@ -407,7 +410,7 @@
                     :edge     #(v/assert kb (list 'genl whale_ mammal_) U)}]
           (doseq [k order] ((step k)))
           (is (holds? kb (list 'disjoint fish_ whale_) U) "the query answers the specialized pair")
-          (is (= #{[fish_ mammal_]} (fired-pairs kb keptApart [fish_ mammal_ whale_]))))))))
+          (is (= #{[fish_ mammal_] [mammal_ fish_]} (fired-pairs kb keptApart [fish_ mammal_ whale_]))))))))
 
 (tu/deftest-kb a-disjoint-antecedent-another-literal-names-fires-on-every-separated-pair-in-every-order
   ;; `(genl ?a animal)` names ?a alone.  The edge arriving last moves `whale`, so only a
