@@ -38,57 +38,38 @@ ns_timings() {
   done
 }
 
-# `ns_timings_rerun FILE NAMESPACE…` runs the NAMESPACEs again three times over in
-# one `lein test` call, interleaved (a b a b a b), its output on stdout.  On a green
-# rerun it writes each namespace's median rerun time into FILE's row for it.  A red
-# rerun keeps every first time and prints a GitHub `::warning::` line, so the rerun
-# decides no verdict.  .github/workflows/test.yml reruns the namespaces
-# scripts/ci-weights.sh's --list form names: one CI shard ran vaelii.quote-test in
-# 92 s against the 27 s its runner's speed predicted, on a tree where it took 105 s
-# locally against 114 s on the tree before.
-#
-# A namespace that runs first in a JVM also pays the JVM's and the KB's start-up.
-# Under the recurring-failures-first order that is no longer the lightest
-# namespace: vaelii.query-context-test read 73 s against 7 s expected when it ran
-# first.  A single rerun is a fresh JVM, so it pays the start-up again.  Of three
-# interleaved runs only the first pays it, and the median is a warm time.  A
-# namespace with fewer than three rerun rows takes the median of the rows it has.
+# `ns_timings_rerun FILE NAMESPACE…` runs each NAMESPACE again with `lein test`, its
+# output on stdout, and on a green rerun writes the smaller of the two times into
+# FILE's row for it.  A red rerun keeps the first time and prints a GitHub
+# `::warning::` line, so the rerun decides no verdict.  .github/workflows/test.yml
+# reruns the namespaces scripts/ci-weights.sh's --list form names: one CI shard ran
+# vaelii.quote-test in 92 s against the 27 s its runner's speed predicted, on a tree
+# where it took 105 s locally against 114 s on the tree before.  `lein test` runs a
+# namespace named twice in one call only once, so each rerun is its own call.
 ns_timings_rerun() {
-  local out="$1" rerun
-  local -a runs
+  local out="$1" ns rerun
   shift
-  [[ $# -gt 0 ]] || return 0
   rerun=$(mktemp) || return 1
-  runs=("$@" "$@" "$@")
-  if (set -o pipefail; lein test "${runs[@]}" 2>&1 | ns_timings "$rerun"); then
-    awk -F'\t' -v OFS='\t' '
-      NR == FNR { if ($1 != "") { n[$1]++; v[$1, n[$1]] = $2 + 0 }; next }
-      ($1 in n) {
-        k = n[$1]
-        for (i = 1; i <= k; i++) s[i] = v[$1, i]
-        for (i = 2; i <= k; i++) for (j = i; j > 1 && s[j - 1] > s[j]; j--) {
-          t = s[j]; s[j] = s[j - 1]; s[j - 1] = t
-        }
-        $2 = sprintf("%.2f", s[int((k + 1) / 2)])
-      }
-      { print }' "$rerun" "$out" > "$out.new" && mv "$out.new" "$out"
-    awk -F'\t' '$1 != "" { n[$1]++ } END { for (k in n) if (n[k] < 3)
-      printf "::warning::%s ran %d time(s) when run again, not 3\n", k, n[k] }' "$rerun"
-  else
-    echo "::warning::a namespace failed when run again for its time; every first time stands"
-  fi
+  for ns in "$@"; do
+    if (set -o pipefail; lein test "$ns" 2>&1 | ns_timings "$rerun"); then
+      awk -F'\t' -v OFS='\t' 'NR == FNR { if ($1 != "") r[$1] = $2 + 0; next }
+        ($1 in r) && r[$1] < $2 + 0 { $2 = sprintf("%.2f", r[$1]) } { print }' \
+        "$rerun" "$out" > "$out.new" && mv "$out.new" "$out"
+    else
+      echo "::warning::$ns failed when run again for its time; its first time stands"
+    fi
+  done
   rm -f "$rerun"
 }
 
-# `ns_timings_rerun_fits BASELINE SHARD SLOW…` succeeds when three runs of the SLOW
-# namespaces are predicted to take no longer than the whole SHARD (a space-separated
+# `ns_timings_rerun_fits BASELINE SHARD SLOW…` succeeds when rerunning the SLOW
+# namespaces is predicted to take no longer than the whole SHARD (a space-separated
 # list of its namespaces).  Both predictions are sums of BASELINE's
 # `namespace<TAB>seconds` rows, and a namespace BASELINE does not name counts at the
 # mean of the rows it does.  When the rerun would cost more than the shard, it prints
 # a `::warning::` line and fails, and the shard skips the rerun.  The first times then
 # stand and the `weights` job fails on them.  A run where most namespaces regress
-# therefore fails in about one shard's time, instead of running the shard three more
-# times.
+# therefore fails in about one shard's time, instead of running most of the shard again.
 ns_timings_rerun_fits() {
   local base="$1" shard="$2"
   shift 2
@@ -101,8 +82,8 @@ ns_timings_rerun_fits() {
       mean = n ? tot / n : 0
       k = split(shard, s, " "); for (i = 1; i <= k; i++) sh += (s[i] in w) ? w[s[i]] : mean
       k = split(slow, r, " "); for (i = 1; i <= k; i++) re += (r[i] in w) ? w[r[i]] : mean
-      if (3 * re > sh) {
-        printf "::warning::the rerun (3 x %.0f s) would take longer than the shard (%.0f s), so it is skipped\n", re, sh
+      if (re > sh) {
+        printf "::warning::the rerun (%.0f s) would take longer than the shard (%.0f s), so it is skipped\n", re, sh
         exit 1
       }
     }' "$base"
