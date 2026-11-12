@@ -120,7 +120,11 @@ HDR
 
 # check_leg <leg> <dir> <baseline> [list]: the --check form's report on stdout, its
 # exit 1 on a namespace finding and 3 on a leg finding alone; with `list`, the
-# namespace finding's names and exit 0.  The insertion sort keeps to POSIX awk, which
+# namespace finding's names and exit 0.  A shard file's rows are in run order.  The
+# namespace finding skips each shard's first row, because the first namespace in a
+# JVM also pays the JVM's and the KB's start-up, about 70 s on CI.  On CI,
+# vaelii.query-context-test read 76 s against 6 s expected when it ran first, and
+# 75 s when rerun alone.  The insertion sort keeps to POSIX awk, which
 # has no asort.
 check_leg() {
   awk -F'\t' -v leg="$1" -v baseline="$3" -v list="${4:-}" -v speed_floor="$SPEED_FLOOR" \
@@ -154,7 +158,7 @@ check_leg() {
       }
       for (i = 1; i <= shards; i++) {
         s = shard[i]
-        for (j = 1; j <= rows[s]; j++) {
+        for (j = 2; j <= rows[s]; j++) {
           if (!(ns[s, j] in w) || w[ns[s, j]] < ns_floor) continue
           expect = w[ns[s, j]] * speed[s]
           if (t[s, j] >= ns_slower * expect && t[s, j] - expect >= ns_excess) {

@@ -44,7 +44,8 @@ ns_timings() {
 # `::warning::` line, so the rerun decides no verdict.  .github/workflows/test.yml
 # reruns the namespaces scripts/ci-weights.sh's --list form names: one CI shard ran
 # vaelii.quote-test in 92 s against the 27 s its runner's speed predicted, on a tree
-# where it took 105 s locally against 114 s on the tree before.
+# where it took 105 s locally against 114 s on the tree before.  `lein test` runs a
+# namespace named twice in one call only once, so each rerun is its own call.
 ns_timings_rerun() {
   local out="$1" ns rerun
   shift
@@ -59,6 +60,33 @@ ns_timings_rerun() {
     fi
   done
   rm -f "$rerun"
+}
+
+# `ns_timings_rerun_fits BASELINE SHARD SLOW…` succeeds when rerunning the SLOW
+# namespaces is predicted to take no longer than the whole SHARD (a space-separated
+# list of its namespaces).  Both predictions are sums of BASELINE's
+# `namespace<TAB>seconds` rows, and a namespace BASELINE does not name counts at the
+# mean of the rows it does.  When the rerun would cost more than the shard, it prints
+# a `::warning::` line and fails, and the shard skips the rerun.  The first times then
+# stand and the `weights` job fails on them.  A run where most namespaces regress
+# therefore fails in about one shard's time, instead of running most of the shard again.
+ns_timings_rerun_fits() {
+  local base="$1" shard="$2"
+  shift 2
+  [[ $# -gt 0 ]] || return 0
+  [[ -f "$base" ]] || return 0
+  awk -F'\t' -v shard="$shard" -v slow="$*" '
+    $1 == "" || $1 ~ /^#/ { next }
+    { w[$1] = $2 + 0; tot += $2 + 0; n++ }
+    END {
+      mean = n ? tot / n : 0
+      k = split(shard, s, " "); for (i = 1; i <= k; i++) sh += (s[i] in w) ? w[s[i]] : mean
+      k = split(slow, r, " "); for (i = 1; i <= k; i++) re += (r[i] in w) ? w[r[i]] : mean
+      if (re > sh) {
+        printf "::warning::the rerun (%.0f s) would take longer than the shard (%.0f s), so it is skipped\n", re, sh
+        exit 1
+      }
+    }' "$base"
 }
 
 # `ns_timings_average PREV NEW` writes `namespace<TAB>seconds` rows to stdout: each

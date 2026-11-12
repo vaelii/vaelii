@@ -218,7 +218,9 @@ jobs:
             slow=$(scripts/ci-weights.sh --from target/ci/timings-memory --leg memory --list target/ci-baseline/memory.tsv) \
               || echo "::warning::scripts/ci-weights.sh --list failed, so no namespace runs again"
             # shellcheck disable=SC2086
-            ns_timings_rerun "$t" $slow | tee -a "$log"
+            if ns_timings_rerun_fits target/ci-baseline/memory.tsv "$nss" $slow; then
+              ns_timings_rerun "$t" $slow | tee -a "$log"
+            fi
           fi
 
       # The log is the answer to "why did it fail", and a red run is exactly when
@@ -348,7 +350,9 @@ jobs:
             slow=$(scripts/ci-weights.sh --from target/ci/timings-disk --leg disk --list target/ci-baseline/disk.tsv) \
               || echo "::warning::scripts/ci-weights.sh --list failed, so no namespace runs again"
             # shellcheck disable=SC2086
-            ns_timings_rerun "$t" $slow | tee -a "$log"
+            if ns_timings_rerun_fits target/ci-baseline/disk.tsv "$nss" $slow; then
+              ns_timings_rerun "$t" $slow | tee -a "$log"
+            fi
           fi
 
       - name: Upload failure logs
