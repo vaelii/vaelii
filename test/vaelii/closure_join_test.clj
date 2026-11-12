@@ -372,19 +372,19 @@
   (doseq [edges [[:near-far] [:near :far]]
           order (oi/permutations (into [:rule :disjoint] edges))]
     (testing (str order)
-      (tu/with-terms [lo mid hi clashes]
+      (tu/with-terms [narrow mid broad clashes]
         (let [step {:rule     #(v/assert kb (list 'set/forwardRule
                                                   (list 'implies (list 'and (list 'disjoint '?a '?b)
                                                                        (list 'genl '?a '?b))
                                                         (list clashes '?a '?b)))
                                          U)
-                    :disjoint #(v/assert kb (list 'disjoint lo hi) U)
-                    :near-far #(v/assert kb (list 'genl lo hi) U)
-                    :near     #(v/assert kb (list 'genl lo mid) U)
-                    :far      #(v/assert kb (list 'genl mid hi) U)}]
+                    :disjoint #(v/assert kb (list 'disjoint narrow broad) U)
+                    :near-far #(v/assert kb (list 'genl narrow broad) U)
+                    :near     #(v/assert kb (list 'genl narrow mid) U)
+                    :far      #(v/assert kb (list 'genl mid broad) U)}]
           (doseq [k order] ((step k)))
-          (is (= [#{[lo hi]}]
-                 (some->> (v/handle-of kb (list clashes lo hi) U)
+          (is (= [#{[narrow broad]}]
+                 (some->> (v/handle-of kb (list clashes narrow broad) U)
                           (v/supporting-justifications kb)
                           (map :subsumptions)))
               "one justification, reading the pair as the closure's"))))))
