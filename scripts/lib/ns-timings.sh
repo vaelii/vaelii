@@ -80,6 +80,34 @@ ns_timings_rerun() {
   rm -f "$rerun"
 }
 
+# `ns_timings_rerun_fits BASELINE SHARD SLOW…` succeeds when three runs of the SLOW
+# namespaces are predicted to take no longer than the whole SHARD (a space-separated
+# list of its namespaces).  Both predictions are sums of BASELINE's
+# `namespace<TAB>seconds` rows, and a namespace BASELINE does not name counts at the
+# mean of the rows it does.  When the rerun would cost more than the shard, it prints
+# a `::warning::` line and fails, and the shard skips the rerun.  The first times then
+# stand and the `weights` job fails on them.  A run where most namespaces regress
+# therefore fails in about one shard's time, instead of running the shard three more
+# times.
+ns_timings_rerun_fits() {
+  local base="$1" shard="$2"
+  shift 2
+  [[ $# -gt 0 ]] || return 0
+  [[ -f "$base" ]] || return 0
+  awk -F'\t' -v shard="$shard" -v slow="$*" '
+    $1 == "" || $1 ~ /^#/ { next }
+    { w[$1] = $2 + 0; tot += $2 + 0; n++ }
+    END {
+      mean = n ? tot / n : 0
+      k = split(shard, s, " "); for (i = 1; i <= k; i++) sh += (s[i] in w) ? w[s[i]] : mean
+      k = split(slow, r, " "); for (i = 1; i <= k; i++) re += (r[i] in w) ? w[r[i]] : mean
+      if (3 * re > sh) {
+        printf "::warning::the rerun (3 x %.0f s) would take longer than the shard (%.0f s), so it is skipped\n", re, sh
+        exit 1
+      }
+    }' "$base"
+}
+
 # `ns_timings_average PREV NEW` writes `namespace<TAB>seconds` rows to stdout: each
 # NEW figure moved NS_TIMINGS_WEIGHT of the way from PREV's figure for the same
 # namespace, an exponential moving average.  A namespace in one file only keeps that

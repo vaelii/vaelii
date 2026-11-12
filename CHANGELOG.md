@@ -28,6 +28,9 @@ it — `git show v0.16.0:CHANGELOG.md`.
   names three times over in one `lein test` call, interleaved, and keeps each one's
   median. A single rerun was a fresh JVM, so a namespace that runs first paid the
   start-up twice.
+  The rerun is skipped when three runs of the named namespaces are predicted to take
+  longer than the whole shard, so a run where most namespaces regress fails on its
+  first times instead of rerunning the shard.
 
 ## 0.33.0 — 2026-11-10 — "A separation undercutting a `:default` edge's reading, shipped type edges at `:monotonic`, relations classified by rigidity, a three-argument `functionCorrespondingPredicate`, daemon reads held to their ceilings, a time slice seeing the context it slices"
 
