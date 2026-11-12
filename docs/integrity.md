@@ -1379,7 +1379,7 @@ reads the subject as a bag of rules (`integrity/acknowledged-pair`), so either o
 the pair.
 
 A `:rule-macro` or `:derivable-stated-edge` subject is one sentence, written `(Quote S)`.
-The store does not enter the quote, so the sweep takes S out of it and reads it as the KB
+The store does not enter the quote, so the sweep takes S out of it. It reads S as the KB
 would store it in the context the record is read from (`kb/canonical-sentence`), and
 compares the finding's sentence the same way. Under the symmetric `inverse` and
 `disjoint`, `(Quote (inverse P Q))` and `(Quote (inverse Q P))` name one suggestion, and

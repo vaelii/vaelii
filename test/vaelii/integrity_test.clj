@@ -1275,8 +1275,8 @@
 (tu/deftest-kb an-acknowledged-derivable-edge-carries-its-reason
   ;; Handbook ch. 14 asks that a stated edge a cover also installs say which exception of
   ;; state it once applies; the record is that note, and the sweep reads it.
-  ;; disjoint is symmetric in core.txt; this KB holds the interface rules alone, so the
-  ;; test states the mark the reader canonicalizes both spellings under.
+  ;; Core.txt declares disjoint symmetric.  This KB holds the interface rules alone, so
+  ;; the test states the mark the reader canonicalizes both spellings under.
   (tu/with-terms [whole_kind left_part right_part]
     (v/assert kb (list 'symmetric 'disjoint) 'CxUniverse)
     (v/assert kb (list 'partition whole_kind left_part right_part) 'CxUniverse)
