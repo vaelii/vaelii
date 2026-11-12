@@ -312,6 +312,34 @@
                                         {:max-depth 2 :refuse-depth-cut? true})
                                '?w)))))))))
 
+(tu/deftest-kb a-depth-cut-counts-a-rewrite-head-its-body-binds
+  ;; The head (rewriteOf ruleRoot (QualifierFn ?number)) does not unify raw with
+  ;; namedRoot; it answers the goal only once the body binds ?number and the endpoint
+  ;; reads. A depth cut at that rule is still a cut, not an exhausted search.
+  (tu/with-terms [QualifierFn namedRoot ruleRoot binaryRelation]
+    (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
+    (v/assert kb (list 'rewriteOf namedRoot (list QualifierFn 2)) 'CxUniverse)
+    (v/assert kb (list 'arity binaryRelation 2) 'CxUniverse)
+    (is (some? (v/assert-rule kb [(list 'arity binaryRelation '?number)]
+                              (list 'rewriteOf ruleRoot (list QualifierFn '?number))
+                              'CxUniverse {:direction :backward})))
+    (let [goal    (list 'rewriteOf ruleRoot namedRoot)
+          refused #((juxt :type :status) (tu/refusal-data %))]
+      (doseq [engine [:dfs :inference]]
+        (binding [v/*query-engine* engine]
+          (testing (str engine " at a depth that cuts the rule")
+            (let [r (v/prove-within kb goal 'CxUniverse {:max-depth 0})]
+              (is (empty? (:results r)))
+              (is (true? (:truncated? r)))))
+          (testing (str engine " at a depth the derivation fits in")
+            (let [r (v/prove-within kb goal 'CxUniverse {:max-depth 3})]
+              (is (seq (:results r)))
+              (is (true? (v/provable? kb goal 'CxUniverse {:max-depth 3})))))))
+      (binding [v/*query-engine* :dfs]
+        (is (= [:budget-exhausted :depth-cut]
+               (refused #(v/prove kb goal 'CxUniverse {:max-depth 0 :refuse-depth-cut? true}))
+               (refused #(v/provable? kb goal 'CxUniverse {:max-depth 0 :refuse-depth-cut? true}))))))))
+
 (tu/deftest-kb prove-bounds-carries-the-term-growth-ceiling
   (tu/with-terms [p SuccFn A CxRaise]
     ;; (implies (p (SuccFn ?x)) (p ?x)): every expansion wraps one more SuccFn, so the

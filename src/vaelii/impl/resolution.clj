@@ -3672,10 +3672,12 @@
                         cut?        (or (contains? seen k)
                                         depth-cut?
                                         (> (long (term-depth g)) ceiling))
+                        ;; the probe asks what expansion below would: a head a reader defers
+                        ;; until its body binds is an available rewrite, not a mismatch
                         _           (when (and truncated depth-cut? (not @truncated)
                                                (not (contains? seen k))
-                                               (some #(subsuming-unify kb g (:consequent (freshen-rule % names))
-                                                                       bindings context)
+                                               (some #(rule-head-match kb g (:consequent (freshen-rule % names))
+                                                                       bindings context head-reader)
                                                      (rules-fn g)))
                                       (reset! truncated true))
                         ;; asked once per expanded goal rather than once per rule: whether an
