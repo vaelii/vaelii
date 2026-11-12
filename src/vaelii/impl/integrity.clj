@@ -694,19 +694,13 @@
   (let [tx        (reasoning/taxonomy kb)
         genls     (stated-pairs kb 'genl context)
         disjoints (stated-pairs kb 'disjoint context)
-        acks      (acknowledgements kb :derivable-stated-edge context)
-        ;; a stored subject is a term, which no canonicalization reorders, so a `disjoint`
-        ;; subject matches in either argument order
-        names?    (fn [sentence subject]
-                    (or (= sentence subject)
-                        (and (= 'disjoint (first sentence)) (sequential? subject)
-                             (= 3 (count subject)) (= 'disjoint (first subject))
-                             (= (set (rest sentence)) (set (rest subject))))))
-        ack       (fn [f] (if-let [r (some (fn [[subject r]]
-                                             (when (names? (:sentence (:stated f)) subject) r))
-                                           acks)]
-                            (assoc f :acknowledged r)
-                            f))]
+        ;; both sides read through `canonical-subject` in the audit context, so the
+        ;; symmetric `disjoint` names its pair in either argument order
+        acks      (canonical-acknowledgements kb :derivable-stated-edge context)
+        ack       (fn [f] (let [s (canonical-subject kb (:sentence (:stated f)) context)]
+                            (if-let [r (some (fn [[subject r]] (when (= s subject) r)) acks)]
+                              (assoc f :acknowledged r)
+                              f)))]
     (with-open [r (progress/start ::derivable-stated-edge "integrity: find the derivable stated edges"
                                   (+ (count genls) (count disjoints)))]
       (bounded-findings
