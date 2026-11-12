@@ -34,17 +34,18 @@
 #
 # THE ORDER INSIDE A SHARD PUTS RECURRING FAILURES FIRST.  Once the shards are
 # packed, each runs its own namespaces by policy 1 of scripts/ci-test-history.tsv
-# (or --history FILE): recurring-failure count descending, then the leg's weight
-# descending, then name ascending, so a namespace that keeps failing on CI reports
-# before the rest of the shard and the expensive ones start early.  Only the order
+# (or --history FILE).  Policy 1 sorts by recurring-failure count descending, then
+# the leg's weight descending, then name ascending.  So a namespace that keeps
+# failing on CI reports before the rest of the shard, and the expensive ones start
+# early.  Only the order
 # moves.  The history is read after the packing and the packing never sees it, so
 # every shard holds the same namespaces with or without it, and nothing stops
 # early: the shard still runs every namespace it was given.  The file is checked
 # in and every shard reads the same one, so a run replays from the tree alone.  A
-# history that is missing, marked `status: stale`, of another policy version,
-# empty, or has one row that is not `namespace<TAB>count` is ignored whole, and the
-# shard runs lightest, heaviest, second lightest, second heaviest, and so on, the
-# order it ran before the history existed.  The file is data: awk matches each row
+# history is ignored whole when it is missing, marked `status: stale`, of another
+# policy version, empty, or has one row that is not `namespace<TAB>count`.  The
+# shard then runs lightest, heaviest, second lightest, second heaviest, and so on,
+# the order it ran before the history existed.  The file is data: awk matches each row
 # against a pattern and nothing in it is sourced or evaluated.
 #
 # The output is one namespace per line on stdout, ready for `lein test`; the
