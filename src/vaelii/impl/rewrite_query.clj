@@ -276,7 +276,7 @@
 
 (defn- open-application-vars
   "Variables of present endpoints written as nonground applications. Such an endpoint
-  stays structural, so it cannot unify with a row whose application reads as a value."
+  stays structural, so it cannot unify with a row whose application normalizes to a value."
   [goal]
   (into #{}
         (comp (take 2)

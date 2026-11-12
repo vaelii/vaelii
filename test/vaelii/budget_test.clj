@@ -313,9 +313,6 @@
                                '?w)))))))))
 
 (tu/deftest-kb a-depth-cut-counts-a-rewrite-head-its-body-binds
-  ;; The head (rewriteOf ruleRoot (QualifierFn ?number)) does not unify raw with
-  ;; namedRoot; it answers the goal only once the body binds ?number and the endpoint
-  ;; reads. A depth cut at that rule is still a cut, not an exhausted search.
   (tu/with-terms [QualifierFn namedRoot ruleRoot binaryRelation]
     (v/assert kb (list 'reifiable_function QualifierFn) 'CxUniverse)
     (v/assert kb (list 'rewriteOf namedRoot (list QualifierFn 2)) 'CxUniverse)
