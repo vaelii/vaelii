@@ -1020,6 +1020,9 @@ forward chaining agree about the rule.
   firing, and the re-join below re-derives it over a second path. A route over the stated
   sentence that climbs no subsumption is left to the matcher. That covers the sentence read
   mirrored while a mark licenses the read, and the matcher's firing names the mark.
+  Withdrawing that mark can drop a firing that still has a valid proof without it, because
+  no re-join runs when a mark leaves (the `^:red`
+  `withdrawing-the-symmetric-mark-keeps-a-firing-the-separation-reading-proves`).
 - **An exception or a `genl` edge blocks at the conclusion's context.** The join reads
   no `siblingDisjointException`, and a mark spares two types one of which is a `genl` of
   the other. A firing whose conclusion's context reads the pair not separated, with no

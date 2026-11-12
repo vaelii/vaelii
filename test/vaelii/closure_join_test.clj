@@ -389,6 +389,24 @@
                           (map :subsumptions)))
               "one justification, reading the pair as the closure's"))))))
 
+(deftest ^:red withdrawing-the-symmetric-mark-keeps-a-firing-the-separation-reading-proves
+  ;; The store sorts the pair, so the rule's literal reads it mirrored.  The matcher's
+  ;; firing names the mark; the separation reading needs none.  No re-join runs when a
+  ;; mark leaves, so the firing goes OUT although the stated pair still proves it.
+  (tu/with-cleared-kb [kb tu/isolated-fresh]
+    (tu/with-terms [narrow broad clashes]
+      (v/assert kb '(symmetric disjoint) U)
+      (v/assert kb (list 'set/forwardRule
+                         (list 'implies (list 'and (list 'disjoint '?a '?b) (list 'genl '?a '?b))
+                               (list clashes '?a '?b)))
+                U)
+      (v/assert kb (list 'disjoint narrow broad) U)
+      (v/assert kb (list 'genl narrow broad) U)
+      (is (holds? kb (list clashes narrow broad) U) "the firing reads the mirrored pair")
+      (v/retract! kb (v/handle-of kb '(symmetric disjoint) U))
+      (is (holds? kb (list clashes narrow broad) U)
+          "the stated pair still separates the two types, so the firing stays IN"))))
+
 (defn- fired-pairs
   "The pairs over `types` that `p` holds in CxUniverse."
   [kb p types]
