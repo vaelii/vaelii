@@ -38,26 +38,45 @@ ns_timings() {
   done
 }
 
-# `ns_timings_rerun FILE NAMESPACE…` runs each NAMESPACE again with `lein test`, its
-# output on stdout, and on a green rerun writes the smaller of the two times into
-# FILE's row for it.  A red rerun keeps the first time and prints a GitHub
-# `::warning::` line, so the rerun decides no verdict.  .github/workflows/test.yml
-# reruns the namespaces scripts/ci-weights.sh's --list form names: one CI shard ran
-# vaelii.quote-test in 92 s against the 27 s its runner's speed predicted, on a tree
-# where it took 105 s locally against 114 s on the tree before.
+# `ns_timings_rerun FILE NAMESPACE…` runs the NAMESPACEs again three times over in
+# one `lein test` call, interleaved (a b a b a b), its output on stdout.  On a green
+# rerun it writes each namespace's median rerun time into FILE's row for it.  A red
+# rerun keeps every first time and prints a GitHub `::warning::` line, so the rerun
+# decides no verdict.  .github/workflows/test.yml reruns the namespaces
+# scripts/ci-weights.sh's --list form names: one CI shard ran vaelii.quote-test in
+# 92 s against the 27 s its runner's speed predicted, on a tree where it took 105 s
+# locally against 114 s on the tree before.
+#
+# A namespace that runs first in a JVM also pays the JVM's and the KB's start-up.
+# Under the recurring-failures-first order that is no longer the lightest
+# namespace: vaelii.query-context-test read 73 s against 7 s expected when it ran
+# first.  A single rerun is a fresh JVM, so it pays the start-up again.  Of three
+# interleaved runs only the first pays it, and the median is a warm time.  A
+# namespace with fewer than three rerun rows takes the median of the rows it has.
 ns_timings_rerun() {
-  local out="$1" ns rerun
+  local out="$1" rerun i
+  local -a runs=()
   shift
+  [[ $# -gt 0 ]] || return 0
   rerun=$(mktemp) || return 1
-  for ns in "$@"; do
-    if (set -o pipefail; lein test "$ns" 2>&1 | ns_timings "$rerun"); then
-      awk -F'\t' -v OFS='\t' 'NR == FNR { if ($1 != "") r[$1] = $2 + 0; next }
-        ($1 in r) && r[$1] < $2 + 0 { $2 = sprintf("%.2f", r[$1]) } { print }' \
-        "$rerun" "$out" > "$out.new" && mv "$out.new" "$out"
-    else
-      echo "::warning::$ns failed when run again for its time; its first time stands"
-    fi
-  done
+  for i in 1 2 3; do runs+=("$@"); done
+  if (set -o pipefail; lein test "${runs[@]}" 2>&1 | ns_timings "$rerun"); then
+    awk -F'\t' -v OFS='\t' '
+      NR == FNR { if ($1 != "") { n[$1]++; v[$1, n[$1]] = $2 + 0 }; next }
+      ($1 in n) {
+        k = n[$1]
+        for (i = 1; i <= k; i++) s[i] = v[$1, i]
+        for (i = 2; i <= k; i++) for (j = i; j > 1 && s[j - 1] > s[j]; j--) {
+          t = s[j]; s[j] = s[j - 1]; s[j - 1] = t
+        }
+        $2 = sprintf("%.2f", s[int((k + 1) / 2)])
+      }
+      { print }' "$rerun" "$out" > "$out.new" && mv "$out.new" "$out"
+    awk -F'\t' '$1 != "" { n[$1]++ } END { for (k in n) if (n[k] < 3)
+      printf "::warning::%s ran %d time(s) when run again, not 3\n", k, n[k] }' "$rerun"
+  else
+    echo "::warning::a namespace failed when run again for its time; every first time stands"
+  fi
   rm -f "$rerun"
 }
 

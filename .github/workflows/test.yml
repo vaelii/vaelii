@@ -211,9 +211,9 @@ jobs:
           log="target/ci/test-memory-shard-${{ matrix.shard }}.log"
           # shellcheck disable=SC2086
           lein test $nss 2>&1 | ns_timings "$t" | tee "$log"
-          # A namespace slower than this runner's speed accounts for runs once more,
-          # and the smaller of its two times is the one the `weights` job reads
-          # (scripts/lib/ns-timings.sh, `ns_timings_rerun`).
+          # A namespace slower than this runner's speed accounts for runs again three
+          # times, interleaved, and its median rerun time is the one the `weights` job
+          # reads (scripts/lib/ns-timings.sh, `ns_timings_rerun`).
           if [ -f target/ci-baseline/memory.tsv ]; then
             slow=$(scripts/ci-weights.sh --from target/ci/timings-memory --leg memory --list target/ci-baseline/memory.tsv) \
               || echo "::warning::scripts/ci-weights.sh --list failed, so no namespace runs again"

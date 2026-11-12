@@ -23,6 +23,11 @@ it — `git show v0.16.0:CHANGELOG.md`.
   change, and every shard still runs every namespace it is given. A history that is
   missing, stale or malformed is ignored whole, for the lightest/heaviest order shards
   ran before.
+- **A slow namespace's rerun time is the median of three warm runs.** The `weights`
+  job's rerun (`scripts/lib/ns-timings.sh`, `ns_timings_rerun`) runs the namespaces it
+  names three times over in one `lein test` call, interleaved, and keeps each one's
+  median. A single rerun was a fresh JVM, so a namespace that runs first paid the
+  start-up twice.
 
 ## 0.33.0 — 2026-11-10 — "A separation undercutting a `:default` edge's reading, shipped type edges at `:monotonic`, relations classified by rigidity, a three-argument `functionCorrespondingPredicate`, daemon reads held to their ceilings, a time slice seeing the context it slices"
 
