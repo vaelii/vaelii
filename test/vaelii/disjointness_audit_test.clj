@@ -43,9 +43,8 @@
     (is (= :disjoint (v/subsumption-status kb plant mineral)))))
 
 (tu/deftest-kb disjoint-names-one-pair-in-either-order
-  ;; core.txt declares `disjoint` symmetric: (disjoint A B) and (disjoint B A) say that the
-  ;; two types share no instance, so the store keeps one row and answers both spellings.
-  (is (v/ask? kb '(symmetric disjoint) 'CxUniverse))
+  (is (v/ask? kb '(symmetric disjoint) 'CxUniverse)
+      "core.txt declares disjoint symmetric, so the store keeps one row for both spellings")
   (tu/with-terms [plant mineral]
     (v/assert kb (list 'genl plant 'thing) 'CxUniverse)
     (v/assert kb (list 'genl mineral 'thing) 'CxUniverse)
