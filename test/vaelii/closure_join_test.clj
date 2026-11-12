@@ -389,23 +389,25 @@
                           (map :subsumptions)))
               "one justification, reading the pair as the closure's"))))))
 
-(deftest ^:red withdrawing-the-symmetric-mark-keeps-a-firing-the-separation-reading-proves
-  ;; The store sorts the pair, so the rule's literal reads it mirrored.  The matcher's
-  ;; firing names the mark; the separation reading needs none.  No re-join runs when a
-  ;; mark leaves, so the firing goes OUT although the stated pair still proves it.
+(deftest withdrawing-the-symmetric-mark-respells-the-pair-and-the-firing-stays-in
+  ;; The store sorts the pair, so the rule's literal reads it mirrored and the firing
+  ;; names the mark.  Withdrawing the mark respells the row as stated, and the matcher
+  ;; then fires on it directly, with no mark among the antecedents.
   (tu/with-cleared-kb [kb tu/isolated-fresh]
     (tu/with-terms [narrow broad clashes]
-      (v/assert kb '(symmetric disjoint) U)
-      (v/assert kb (list 'set/forwardRule
-                         (list 'implies (list 'and (list 'disjoint '?a '?b) (list 'genl '?a '?b))
-                               (list clashes '?a '?b)))
-                U)
-      (v/assert kb (list 'disjoint narrow broad) U)
-      (v/assert kb (list 'genl narrow broad) U)
-      (is (holds? kb (list clashes narrow broad) U) "the firing reads the mirrored pair")
-      (v/retract! kb (v/handle-of kb '(symmetric disjoint) U))
-      (is (holds? kb (list clashes narrow broad) U)
-          "the stated pair still separates the two types, so the firing stays IN"))))
+      (let [mark (v/assert kb '(symmetric disjoint) U)
+            supports #(mapcat :antecedents (v/supporting-justifications
+                                            kb (v/handle-of kb (list clashes narrow broad) U)))]
+        (v/assert kb (list 'set/forwardRule
+                           (list 'implies (list 'and (list 'disjoint '?a '?b) (list 'genl '?a '?b))
+                                 (list clashes '?a '?b)))
+                  U)
+        (v/assert kb (list 'disjoint narrow broad) U)
+        (v/assert kb (list 'genl narrow broad) U)
+        (is (some #{mark} (supports)) "the mirrored read names the mark")
+        (v/retract! kb mark)
+        (is (holds? kb (list clashes narrow broad) U) "the firing stays IN")
+        (is (not-any? #{mark} (supports)) "and rests on the respelled pair alone")))))
 
 (defn- fired-pairs
   "The pairs over `types` that `p` holds in CxUniverse."
