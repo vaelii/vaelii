@@ -574,9 +574,15 @@
   what matched when it fired, so a re-check that substituted the stored bindings would ask
   under a retired spelling and read an empty answer as *not excepted*.  One visibility
   predicate for the whole map; the bindings come back unchanged when the partition is
-  empty and no schematic equation is declared."
+  empty and no schematic equation is declared.  A minted application is read as its
+  constant (`nat-read/reify-existing`), as the store re-spelled it (docs/nat.md)."
   [kb bindings pctx]
-  (let [tx (reasoning/taxonomy kb)]
+  (let [tx       (reasoning/taxonomy kb)
+        bindings (if (some #(nat/names-reifiable-nat? kb %) (vals bindings))
+                   (binding [nat-read/*withheld*  (nat-read/withheld-at kb pctx)
+                             nat-read/*sorted-by* (nat-read/sorted-by-at kb pctx)]
+                     (update-vals bindings #(nat-read/reify-existing kb % pctx true)))
+                   bindings)]
     (if (and (nil? (tax/merged-term-pred tx)) (empty? (tax/rewrite-rules tx)))
       bindings
       (let [visible? (res/visible-supporter-fn kb pctx)]
