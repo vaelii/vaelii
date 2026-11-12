@@ -41,8 +41,10 @@
     (doseq [[label secs extra want named]
             [["one shard at 0.6x and the other at 1.4x"
               (fn [n w] (* w (if (shard-1? n) 0.6 1.4))) nil 0 nil]
-             ["one namespace at 3x its shard's speed and 200 s over"
-              (fn [n w] (if (= n "a-test") (* 3 w) w)) nil 1 "a-test"]
+             ["one namespace at 3x its shard's speed and 80 s over"
+              (fn [n w] (if (= n "b-test") (* 3 w) w)) nil 1 "b-test"]
+             ["a shard's first namespace at 3x and 200 s over, which pays the JVM's start-up"
+              (fn [n w] (if (= n "a-test") (* 3 w) w)) nil 0 nil]
              ["one namespace at 3x its shard's speed and 20 s over"
               (fn [n w] (if (= n "d-test") (* 3 w) w)) nil 0 nil]
              ["every namespace at 1.4x"
@@ -63,7 +65,7 @@
       (fn [root]
         (spit (io/file root "baseline.tsv") "a-test\t10\nb-test\t10\nc-test\t10\n")
         (.mkdir (io/file root "t"))
-        (spit (io/file root "t" "1-of-2.tsv") "a-test\t100\nb-test\t10\nc-test\t10\n")
+        (spit (io/file root "t" "1-of-2.tsv") "b-test\t10\na-test\t100\nc-test\t10\n")
         (let [run (fn [form] (shell/sh tu/bash "scripts/ci-weights.sh" "--from" (tu/posix-path (io/file root "t"))
                                        "--leg" "disk" form (tu/posix-path (io/file root "baseline.tsv"))))
               {:keys [exit err]} (run "--check")]

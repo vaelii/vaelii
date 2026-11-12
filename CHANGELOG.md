@@ -12,6 +12,24 @@ call; 0.8.0 through 0.13.0 keep a subset. The full entry prose for a
 released version is in this file's git history, at the tag of the release that shipped
 it — `git show v0.16.0:CHANGELOG.md`.
 
+## Unreleased
+
+### Internal: CI
+
+- **A CI shard runs its recurring failures first**
+  ([#280](https://github.com/vaelii/vaelii/issues/280)). `scripts/ci-shard.sh` reads the
+  checked-in `scripts/ci-test-history.tsv` and orders each shard's namespaces by
+  recurring-failure count, then weight, then name. Which shard a namespace is in does not
+  change, and every shard still runs every namespace it is given. A history that is
+  missing, stale or malformed is ignored whole, for the lightest/heaviest order shards
+  ran before.
+- **The `weights` check skips each shard's first namespace.** A namespace that runs
+  first in a JVM also pays the JVM's and the KB's start-up, about 70 s on CI, so
+  `scripts/ci-weights.sh` judges every row but the first of each shard's timings. The
+  rerun is skipped when rerunning the named namespaces is predicted to take longer
+  than the whole shard, so a run where most namespaces regress fails on its first
+  times instead of rerunning the shard.
+
 ## 0.33.0 — 2026-11-10 — "A separation undercutting a `:default` edge's reading, shipped type edges at `:monotonic`, relations classified by rigidity, a three-argument `functionCorrespondingPredicate`, daemon reads held to their ceilings, a time slice seeing the context it slices"
 
 | Area | Change |
