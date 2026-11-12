@@ -47,7 +47,7 @@
 ;; stated denial overrides it.  The rule-macro pass suggests the genl edge the rule
 ;; would be if it were strict, and the suggestion is declined.
 (set/defaultRule (set/forwardRule (implies (and (relativeOf ?x ?y)) (knows ?x ?y))))
-(declined_rule_macro (genl relativeOf knows))
+(declined_rule_macro (Quote (genl relativeOf knows)))
 (implementationNote relativeOf "knows follows from relativeOf by a default rule, not a genl edge, since two relatives need not have met. The rule-macro suggestion (genl relativeOf knows) is recorded declined.")
 
 (comment romanticPartnerOf

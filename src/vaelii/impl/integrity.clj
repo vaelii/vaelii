@@ -579,12 +579,11 @@
 
 (defn- canonical-subject
   "`subject` as the KB would store the sentence in `context` (`kb/canonical-sentence`),
-  for comparing an acknowledgment's subject with a finding's sentence.  The subject sits
-  at a mention position of `acknowledgedFinding` (core.txt's `quotedArg`), which the
-  store keeps as written (docs/canonicalization.md, \"A mention position is held as
-  written\"), so the reader sorts a symmetric or commuting functor's arguments itself.
-  A subject that is not a list, or that the canonicalizer refuses, is compared as
-  written."
+  for comparing an acknowledgment's subject with a finding's sentence.  An
+  acknowledgment writes its sentence `(Quote S)`, and the store does not enter a quoted
+  form (docs/canonicalization.md, \"Held as written\"), so the reader takes S out of the
+  quote and sorts a symmetric or commuting functor's arguments itself.  A subject that
+  is not a list, or that the canonicalizer refuses, is compared as written."
   [kb subject context]
   (if (seq? subject)
     (try (kb/canonical-sentence kb subject context)
@@ -592,11 +591,15 @@
     subject))
 
 (defn- canonical-acknowledgements
-  "`acknowledgements` of `category` in `context`, each subject read through
-  `canonical-subject` in the same context, so a finding's sentence compared under
-  `canonical-subject` matches an acknowledgment written in any of its spellings."
+  "`acknowledgements` of `category` in `context` whose subject is a quoted sentence
+  `(Quote S)`, each as S read through `canonical-subject` in the same context, so a
+  finding's sentence compared under `canonical-subject` matches an acknowledgment
+  written in any of its spellings.  A subject not written `(Quote S)` names no finding
+  of a category whose subject is a sentence."
   [kb category context]
-  (mapv (fn [[subject r]] [(canonical-subject kb subject context) r])
+  (into [] (keep (fn [[subject r]]
+                   (when (sx/quote-form? subject)
+                     [(canonical-subject kb (second subject) context) r])))
         (acknowledgements kb category context)))
 
 ;; ---- twin-genls: sibling types with one direct genl set, a missing common parent ----
