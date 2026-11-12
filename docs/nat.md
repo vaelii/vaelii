@@ -1057,6 +1057,11 @@ marks that hold.
   goes to the row its written spelling reifies to (`chain/reconcile-recorded-fact!`,
   `split-row!`). A row left holding no piece is retracted, and its conclusions are drawn
   again from the rows its pieces moved to.
+- **A membership moved onto a constant withdraws the mints it makes redundant.** Each
+  unary row on the constant is asked the withdrawal question
+  (`chain/note-moved-memberships!`), as `recover` asks of every stored mint, so the mark
+  arriving after the facts leaves the store a recover leaves
+  ([argtypes.md](argtypes.md#pruning-what-the-kb-says-more-specifically--vaelii_prune_subsumed_mints-on)).
 - **The constants the moved rows stop naming are collected** by the orphan rule of
   [Rename and remove](#rename-and-remove--keeping-the-11-invariant), over the spellings
   the rows moved off. A settle has no teardown entry point, so each bookkeeping handle is

@@ -5581,6 +5581,25 @@
   [kb f]
   (integrate/witness-among kb (tax/prop-supporters (reasoning/taxonomy kb) :reifiable f)))
 
+(defn- note-moved-memberships!
+  "Queue for the settle's mint withdrawal (`special/note-unpremised!`) each stored unary row
+  on a constant that a row of `hs` now holds as a membership `(t k)`.  A row moved onto `k`
+  arrives in `k`'s memberships with no relabel, so the settle would not ask whether it
+  makes a mint on `k` redundant, as `recover` asks of every stored mint."
+  [kb hs]
+  (let [recs (:records kb)
+        ks   (into (sorted-set)
+                   (keep (fn [h]
+                           (let [s (:sentence (p/get-sentex recs h))]
+                             (when (and (seq? s) (symbol? (nm/functor s)) (= 1 (nm/arity s))
+                                        (symbol? (first (nm/args s))))
+                               (first (nm/args s))))))
+                   hs)]
+    (doseq [k ks
+            sx (kb/find-sentexes kb k)
+            :when (and (nil? (:antecedent sx)) (= 1 (nm/arity (:sentence sx))))]
+      (special/note-unpremised! kb (:id sx)))))
+
 (defn- reconcile-regions!
   "Reconcile the rows `region-of` answers for each function of `fns`
   (`reconcile-reified-row!`, content order), collect the orphans the moved rows leave, and
@@ -5600,6 +5619,7 @@
                                             #(vector (sx/sentence-of %) (:context %)) (region-of f))))))))
                       (sort fns)))]
     (collect-respelled-orphans! kb @moved)
+    (note-moved-memberships! kb new)
     new))
 
 (defn reconcile-reified!
