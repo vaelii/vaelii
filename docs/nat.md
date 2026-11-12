@@ -633,13 +633,14 @@ or constants
 (`nat_test/a-correspondence-respells-a-rule-where-its-context-meets-the-declarations-in-every-order`). A query
 context or a variable context reads every declaration through a predicate variable, so
 each reader matches the declarations it sees. The value side reads the declarations the
-context sees as well: a write or a read reifies an application through the declarations
-its context sees (`res/correspondence-of`), and a projection, a merge or a copy is placed
-where its declaration is seen.
+context sees as well: read-mode reification looks up an application's value through the
+declarations its context sees (`res/correspondence-of`). A write names its own constant;
+correspondence maintenance reads the declarations to place a projection, merge or copy
+where the declaration is seen.
 
-The declaration is read through the **index**, not a taxonomy cache. It is consulted
-once per NAT, where the reify is already probing for a `rewriteOf` target and a dedup,
-and a KB declaring none pays one O(1) functor count per assert
+The declaration is read through the **index**, not a taxonomy cache. The read path
+consults it beside the `rewriteOf` and dedup lookups; write-side maintenance reads the
+declarations for queued constants. A KB declaring none pays one O(1) functor count per assert
 (`res/any-corresponding-predicates?`). Nothing to integrate means nothing for `recover`
 to rebuild — a correspondence works across a restart because the declaration is a
 stored fact and always has been; `recover` holds the rules below again

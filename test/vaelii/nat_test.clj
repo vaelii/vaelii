@@ -2001,6 +2001,40 @@
         (is (every? #(contains? (get-in % [:after :believed]) [(list 'caresFor 'Bob k) 'CxUniverse]) runs)
             (str row))))))
 
+(deftest an-observed-application-write-keeps-its-own-constant-after-the-value-merge
+  (doseq [observe? [false true]]
+    (on-own-kb
+     (fn [kb]
+       (let [events (atom [])
+             E '(MotherFn Muffet)
+             k (nat/constant-for nat-read/nat-namespace E)]
+         (binding [nat-read/*application-read* (when observe? #(swap! events conj %))]
+           (v/assert kb '(reifiable_function MotherFn) 'CxUniverse)
+           (v/assert kb '(functionCorrespondingPredicate MotherFn motherOf 2) 'CxUniverse)
+           (v/assert kb '(motherOf Muffet Mary) 'CxUniverse {:strength :monotonic})
+           (v/assert kb '(caresFor Bob (MotherFn Muffet)) 'CxUniverse)
+           ;; The first use has merged the map onto Mary; the second must still store K.
+           (let [h (v/assert kb '(fondOf Ann (MotherFn Muffet)) 'CxUniverse)]
+             (is (= (list 'fondOf 'Ann k) (:sentence (v/sentex kb h))))
+             (is (= k (nat-read/existing-term kb E nat-read/nat-namespace 'CxUniverse true)))
+             (is (= 'Mary (nat-read/existing-term kb E nat-read/nat-namespace 'CxUniverse)))
+             (is (v/ask? kb '(fondOf Ann Mary) 'CxUniverse)))
+           (when observe?
+             (is (some #(and (= E (:expression %)) (= k (:value %)) (= :map (:source %))) @events))
+             (is (some #(and (= E (:expression %)) (= 'Mary (:value %))
+                             (= :correspondence (:source %))) @events)))))))))
+
+(deftest an-observed-firing-keeps-the-value-restatement-supported-by-its-premise
+  (let [k (nat/constant-for nat-read/nat-namespace '(MotherFn Muffet))]
+    (doseq [order [[:value :use :use2] [:use :use2 :value]]]
+      (let [events (atom [])
+            run (binding [nat-read/*application-read* #(swap! events conj %)]
+                  (on-own-kb #(value-use-run % [:asserted :fired] order)))]
+        (is (seq @events))
+        (is (contains? (get-in run [:before :believed]) ['(caresFor Bob Mary) 'CxUniverse]))
+        (is (contains? (get-in run [:after :believed]) [(list 'caresFor 'Bob k) 'CxUniverse]))
+        (is (not (contains? (get-in run [:after :believed]) ['(caresFor Bob Mary) 'CxUniverse])))))))
+
 ;; ---- an application resolves under the reader's merges ---------------------
 
 (deftest an-application-resolves-under-the-merges-the-reader-sees

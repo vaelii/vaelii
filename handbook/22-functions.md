@@ -53,13 +53,15 @@ selects none and does not merge them.
   `(functionCorrespondingBinaryPredicate F P)` is
   `(functionCorrespondingPredicate F P 2)`. The function and the predicate state one
   relationship, and the declaration tells the KB so.
-- *Engine.* The correspondence is read both ways. A believed `((BloodKinFn motherOf) Muffet Mary)`
-  makes `(MotherFn Muffet)` written in a context that sees the fact resolve to `Mary`, so
-  no second name is minted. When no value is known, the mint proceeds and the constant is
-  projected back onto the predicate as `((BloodKinFn motherOf) Muffet K)`, so the placeholder answers
-  `motherOf` questions. A value arriving after the mint retires the placeholder by a
-  `rewriteOf` in the fact's context. Whichever of the application, the fact and the
-  declaration arrives last, the KB ends in the same state.
+- *Engine.* The correspondence is read both ways. A write or firing naming
+  `(MotherFn Muffet)` stores the application's own constant `K`. A single visible
+  `:monotonic` `((BloodKinFn motherOf) Muffet Mary)` reaches `K` through a supported
+  `rewriteOf` merge, so a read sees its uses as `Mary`. Retracting the value's premise
+  withdraws those restatements and leaves the original uses of `K`. A `:default` value
+  supplies supported copies instead of a merge. When no value is known, the constant is
+  projected onto `((BloodKinFn motherOf) Muffet K)`, so it answers blood-qualified
+  `motherOf` questions. Whichever of the application, the fact and the declaration
+  arrives last, the KB ends in the same state.
 - *Engine.* The engine does not match a function application inside a rule. A rule whose
   antecedents name an open application of a reifiable function is stored with the
   application replaced by a variable and the corresponding literal added to its
