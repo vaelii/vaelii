@@ -755,8 +755,10 @@
             defeat (list 'defeat (list 'sentexHandle answer-h))
             alias-h (v/assert kb (list 'rewriteOf Cee Cid) CxPrivate)]
         (is (some? (v/handle-of kb defeat CxPrivate)))
+        (is (false? (v/believed? kb answer-h CxPrivate)))
         (doseq [reader ['CxUniverse CxSibling]]
           (is (nil? (v/handle-of kb defeat reader)) (str reader))
+          (is (true? (v/believed? kb answer-h reader)) (str reader))
           (is (true? (v/ask? kb quoted reader)) (str reader)))
         (is (true? (v/ask? kb (list mentioned (list 'Quote Cee)) CxPrivate)))
         (let [counter (vec (rewrite-query/counter-certificates kb association CxPrivate))]
@@ -766,5 +768,6 @@
         (v/retract! kb alias-h)
         (is (nil? (v/handle-of kb defeat CxPrivate)))
         (doseq [reader ['CxUniverse CxPrivate CxSibling]]
+          (is (true? (v/believed? kb answer-h reader)) (str reader))
           (is (true? (v/ask? kb quoted reader)) (str reader)))
         (is (empty? (rewrite-query/counter-certificates kb association CxPrivate)))))))
