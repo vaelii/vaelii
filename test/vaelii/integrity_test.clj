@@ -1829,6 +1829,38 @@
             "a record below the rule's context does not decline it")
         (is (= [] (own decl (acknowledged-macros kb))))))))
 
+(tu/deftest-kb ^:red acknowledged-finding-matches-either-spelling-of-a-commutative-sentence
+  ;; Two converse rules over childX and parentX are each the inverse macro's shape.  Each
+  ;; finding suggests the declaration with its own rule's antecedent predicate first:
+  ;; (inverse childX parentX) for one, (inverse parentX childX) for the other.  inverse is
+  ;; symmetric (core.txt), so the two suggestions are one sentence.  An acknowledgment
+  ;; naming that sentence in either argument order moves both findings to review.
+  (tu/with-terms [childX parentX]
+    (doseq [spelling [(list 'inverse childX parentX) (list 'inverse parentX childX)]]
+      (tu/with-cleared-kb [kb core-kb]
+        (doseq [p [childX parentX]]
+          (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+        (let [rules  (mapv (fn [r] (v/assert kb r 'CxUniverse) (v/handle-of kb r 'CxUniverse))
+                           [(list 'implies (list childX '?x '?y) (list parentX '?y '?x))
+                            (list 'implies (list parentX '?x '?y) (list childX '?y '?x))])
+              reason "the converse rules are kept as written"
+              ours   (fn [category]
+                       (->> (get (v/kb-integrity kb #{} 'CxUniverse {:categories #{category}})
+                                 category)
+                            (filter #(some #{(:rule %)} rules))
+                            (map (juxt :rule :macro :acknowledged))
+                            set))]
+          (is (= #{[(first rules) 'inverse nil] [(second rules) 'inverse nil]}
+                 (ours :rule-macro))
+              "before the acknowledgment each rule is an inverse finding")
+          (is (= #{} (ours :rule-macro-review)))
+          (v/assert kb (list 'acknowledgedFinding :rule-macro spelling reason) 'CxUniverse)
+          (is (= #{} (ours :rule-macro))
+              (str "acknowledging " spelling " leaves no inverse finding under :rule-macro"))
+          (is (= #{[(first rules) 'inverse reason] [(second rules) 'inverse reason]}
+                 (ours :rule-macro-review))
+              (str "acknowledging " spelling " moves both findings to review with its reason")))))))
+
 (defn- with-temp-dirs
   "`(f dir-a dir-b)` on two new temp directory paths, removed afterwards."
   [f]
