@@ -1829,7 +1829,7 @@
             "a record below the rule's context does not decline it")
         (is (= [] (own decl (acknowledged-macros kb))))))))
 
-(tu/deftest-kb ^:red acknowledged-finding-matches-either-spelling-of-a-commutative-sentence
+(tu/deftest-kb acknowledged-finding-matches-either-spelling-of-a-commutative-sentence
   ;; Two converse rules over childX and parentX are each the inverse macro's shape.  Each
   ;; finding suggests the declaration with its own rule's antecedent predicate first:
   ;; (inverse childX parentX) for one, (inverse parentX childX) for the other.  inverse is
