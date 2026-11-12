@@ -751,15 +751,20 @@
         (is (true? (v/ask? kb quoted reader)) (str reader)))
       (let [[[_ _ reading]] (rewrite-query/match-certificates kb goal 'CxUniverse)
             association (first (:rewrite-reads reading))
+            answer-h (v/handle-of kb quoted 'CxUniverse)
+            defeat (list 'defeat (list 'sentexHandle answer-h))
             alias-h (v/assert kb (list 'rewriteOf Cee Cid) CxPrivate)]
-        (is (false? (v/ask? kb quoted CxPrivate)))
+        (is (some? (v/handle-of kb defeat CxPrivate)))
         (doseq [reader ['CxUniverse CxSibling]]
+          (is (nil? (v/handle-of kb defeat reader)) (str reader))
           (is (true? (v/ask? kb quoted reader)) (str reader)))
+        (is (true? (v/ask? kb (list mentioned (list 'Quote Cee)) CxPrivate)))
         (let [counter (vec (rewrite-query/counter-certificates kb association CxPrivate))]
           (is (seq counter))
           (is (every? #(contains? (first %) alias-h) counter)))
         (is (empty? (rewrite-query/counter-certificates kb association 'CxUniverse)))
         (v/retract! kb alias-h)
+        (is (nil? (v/handle-of kb defeat CxPrivate)))
         (doseq [reader ['CxUniverse CxPrivate CxSibling]]
           (is (true? (v/ask? kb quoted reader)) (str reader)))
         (is (empty? (rewrite-query/counter-certificates kb association CxPrivate)))))))
